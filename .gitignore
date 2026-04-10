@@ -38,3 +38,8 @@ Thumbs.db
 # Misc
 *.zip
 .claude/
+
+# Lockfiles (platform-specific, let Railway regenerate)
+nexo-main/package-lock.json
+nexo-main/bun.lock
+nexo-main/bun.lockb
