@@ -17,39 +17,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CashMovementInput } from "../types";
+import type { AddCashMovementRequest } from "../types";
 
 interface CashMovementModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  defaultType?: "reinforcement" | "withdrawal" | "adjustment";
-  onConfirm: (input: CashMovementInput) => void;
+  defaultType?: AddCashMovementRequest["movementType"];
+  onConfirm: (req: AddCashMovementRequest) => void;
   isLoading?: boolean;
 }
 
-const typeOptions: { value: CashMovementInput["type"]; label: string }[] = [
-  { value: "reinforcement", label: "Suprimento" },
-  { value: "withdrawal", label: "Sangria" },
-  { value: "adjustment", label: "Ajuste" },
+const typeOptions: { value: AddCashMovementRequest["movementType"]; label: string }[] = [
+  { value: "Deposit",    label: "Suprimento" },
+  { value: "Withdrawal", label: "Sangria" },
 ];
+
+const titleMap: Record<AddCashMovementRequest["movementType"], string> = {
+  Deposit:    "Registrar suprimento",
+  Withdrawal: "Registrar sangria",
+};
 
 export function CashMovementModal({
   open,
   onOpenChange,
-  defaultType = "withdrawal",
+  defaultType = "Withdrawal",
   onConfirm,
   isLoading,
 }: CashMovementModalProps) {
-  const [type, setType] = useState<CashMovementInput["type"]>(defaultType);
+  const [type, setType] = useState<AddCashMovementRequest["movementType"]>(defaultType);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [notes, setNotes] = useState("");
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const parsedAmount = parseFloat(amount.replace(",", "."));
-    if (isNaN(parsedAmount) || parsedAmount <= 0 || !description.trim()) return;
-    onConfirm({ type, amount: parsedAmount, description: description.trim(), notes: notes.trim() || undefined });
+    const parsed = parseFloat(amount.replace(",", "."));
+    if (isNaN(parsed) || parsed <= 0 || !description.trim()) return;
+    const desc = notes.trim()
+      ? `${description.trim()} — ${notes.trim()}`
+      : description.trim();
+    onConfirm({ movementType: type, amount: parsed, description: desc });
   }
 
   function handleClose() {
@@ -62,14 +69,8 @@ export function CashMovementModal({
     }
   }
 
-  const parsedAmount = parseFloat(amount.replace(",", "."));
-  const isValid = !isNaN(parsedAmount) && parsedAmount > 0 && description.trim().length > 0;
-
-  const titleMap: Record<CashMovementInput["type"], string> = {
-    reinforcement: "Registrar suprimento",
-    withdrawal: "Registrar sangria",
-    adjustment: "Registrar ajuste",
-  };
+  const parsed = parseFloat(amount.replace(",", "."));
+  const isValid = !isNaN(parsed) && parsed > 0 && description.trim().length > 0;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -80,7 +81,10 @@ export function CashMovementModal({
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <Label>Tipo</Label>
-            <Select value={type} onValueChange={(v) => setType(v as CashMovementInput["type"])}>
+            <Select
+              value={type}
+              onValueChange={(v) => setType(v as AddCashMovementRequest["movementType"])}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

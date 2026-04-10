@@ -1,13 +1,14 @@
 import { CheckCircle2, XCircle, Clock } from "lucide-react";
-import type { CashSession } from "../types";
+import type { CashSessionDto } from "../types";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
 
 interface CashStatusBannerProps {
-  session: CashSession | null;
+  session: CashSessionDto | null;
+  expectedBalance: number;
 }
 
-export function CashStatusBanner({ session }: CashStatusBannerProps) {
-  if (!session) {
+export function CashStatusBanner({ session, expectedBalance }: CashStatusBannerProps) {
+  if (!session || session.status !== "Open") {
     return (
       <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-5 py-4">
         <XCircle className="h-5 w-5 text-muted-foreground shrink-0" />
@@ -30,10 +31,7 @@ export function CashStatusBanner({ session }: CashStatusBannerProps) {
             Caixa aberto
           </p>
           <p className="text-xs text-green-700 dark:text-green-400 mt-0.5">
-            Operador: <span className="font-medium">{session.operator}</span>
-            {session.store && (
-              <> &middot; {session.store}</>
-            )}
+            Operador: <span className="font-medium">{session.openedByName}</span>
           </p>
         </div>
       </div>
@@ -45,7 +43,7 @@ export function CashStatusBanner({ session }: CashStatusBannerProps) {
         <div className="text-right">
           <p className="text-xs text-green-600 dark:text-green-500">Saldo esperado</p>
           <p className="text-base font-bold text-green-800 dark:text-green-200">
-            {formatCurrency(session.expectedBalance)}
+            {formatCurrency(expectedBalance)}
           </p>
         </div>
       </div>

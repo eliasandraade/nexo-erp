@@ -1,64 +1,92 @@
-export type CashSessionStatus = "open" | "closed";
+// ── Backend DTO types ──────────────────────────────────────────────────────────
 
 export type CashMovementType =
-  | "opening"
-  | "reinforcement"
-  | "withdrawal"
-  | "sale"
-  | "adjustment"
-  | "closing";
+  | "Opening"
+  | "SaleReceipt"
+  | "Withdrawal"
+  | "Deposit"
+  | "Closing";
 
-export const cashMovementTypeLabels: Record<CashMovementType, string> = {
-  opening: "Abertura",
-  reinforcement: "Suprimento",
-  withdrawal: "Sangria",
-  sale: "Venda",
-  adjustment: "Ajuste",
-  closing: "Fechamento",
-};
+export type CashSessionStatus = "Open" | "Closed";
 
-export interface CashSession {
+export interface CashMovementDto {
+  id: string;
+  movementType: CashMovementType;
+  amount: number;          // always positive; type defines direction
+  description: string;
+  referenceType: string | null;
+  referenceId: string | null;
+  createdByUserId: string;
+  createdAt: string;
+}
+
+export interface CashSessionDto {
   id: string;
   status: CashSessionStatus;
-  operator: string;
-  store?: string;
+  openedByUserId: string;
+  openedByName: string;
+  closedByUserId: string | null;
+  closedByName: string | null;
+  openingBalance: number;
+  closingBalance: number | null;
   openedAt: string;
-  closedAt?: string;
-  openingAmount: number;
-  expectedBalance: number;
-  countedBalance?: number;
-  divergence?: number;
+  closedAt: string | null;
+  notes: string | null;
+  movements: CashMovementDto[] | null;
+}
+
+// ── Request types ──────────────────────────────────────────────────────────────
+
+export interface OpenCashSessionRequest {
+  openingBalance: number;
   notes?: string;
 }
 
-export interface CashMovement {
-  id: string;
-  sessionId: string;
-  type: CashMovementType;
+export interface CloseCashSessionRequest {
+  closingBalance: number;
+}
+
+export interface AddCashMovementRequest {
+  movementType: "Deposit" | "Withdrawal";
   amount: number;
   description: string;
-  operator: string;
-  timestamp: string;
-  notes?: string;
-  source?: "manual" | "sale" | "opening" | "closing";
-  paymentMethod?: "cash" | "pix" | "card";
 }
 
-export interface CashOpenInput {
-  openingAmount: number;
-  operator: string;
-  store?: string;
-}
+// ── Labels & variants ──────────────────────────────────────────────────────────
 
-export interface CashMovementInput {
-  type: "reinforcement" | "withdrawal" | "adjustment";
-  amount: number;
-  description: string;
-  operator?: string;
-  notes?: string;
-}
+export const MOVEMENT_TYPE_LABEL: Record<CashMovementType, string> = {
+  Opening:     "Abertura",
+  SaleReceipt: "Venda",
+  Withdrawal:  "Sangria",
+  Deposit:     "Suprimento",
+  Closing:     "Fechamento",
+};
 
-export interface CashCloseInput {
-  countedAmount: number;
-  notes?: string;
+export const MOVEMENT_TYPE_VARIANT: Record<
+  CashMovementType,
+  "default" | "secondary" | "destructive" | "outline"
+> = {
+  Opening:     "secondary",
+  SaleReceipt: "default",
+  Withdrawal:  "destructive",
+  Deposit:     "default",
+  Closing:     "secondary",
+};
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+/** Derives the expected physical cash balance from session data + movements. */
+export function deriveExpectedBalance(
+  openingBalance: number,
+  movements: CashMovementDto[]
+): number {
+  return movements.reduce((acc, m) => {
+    if (m.movementType === "Deposit" || m.movementType === "SaleReceipt") {
+      return acc + m.amount;
+    }
+    if (m.movementType === "Withdrawal") {
+      return acc - m.amount;
+    }
+    return acc;
+  }, openingBalance);
 }

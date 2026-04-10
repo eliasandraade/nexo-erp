@@ -1,87 +1,48 @@
 import { useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Wallet, X } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import { cashService } from "../services/cashService";
+import { deriveExpectedBalance } from "../types";
+import {
+  useOpenSession,
+  useSessionById,
+  useOpenCashSession,
+  useCloseCashSession,
+  useAddCashMovement,
+} from "../hooks/use-cash";
 import { CashStatusBanner } from "../components/CashStatusBanner";
 import { CashKpiCards } from "../components/CashKpiCards";
 import { CashMovementsTable } from "../components/CashMovementsTable";
 import { CashOpenModal } from "../components/CashOpenModal";
 import { CashMovementModal } from "../components/CashMovementModal";
 import { CashCloseModal } from "../components/CashCloseModal";
-import type { CashMovementInput } from "../types";
+import type { AddCashMovementRequest } from "../types";
 
 export default function CaixaPage() {
-  const queryClient = useQueryClient();
   const [openModal, setOpenModal] = useState(false);
   const [movementModal, setMovementModal] = useState(false);
-  const [movementDefaultType, setMovementDefaultType] = useState<CashMovementInput["type"]>("withdrawal");
+  const [movementDefaultType, setMovementDefaultType] =
+    useState<AddCashMovementRequest["movementType"]>("Withdrawal");
   const [closeModal, setCloseModal] = useState(false);
 
-  const { data: session, isLoading: sessionLoading } = useQuery({
-    queryKey: ["cash-session"],
-    queryFn: () => cashService.getCurrentSession(),
-  });
+  const { data: openSession, isLoading: sessionLoading } = useOpenSession();
+  const { data: sessionDetail } = useSessionById(openSession?.id);
 
-  const { data: movements = [], isLoading: movementsLoading } = useQuery({
-    queryKey: ["cash-movements", session?.id],
-    queryFn: () => cashService.listMovements(),
-    enabled: !!session,
-  });
+  const movements = sessionDetail?.movements ?? [];
+  const expectedBalance = openSession
+    ? deriveExpectedBalance(openSession.openingBalance, movements)
+    : 0;
 
-  const openMutation = useMutation({
-    mutationFn: ({ amount, operator }: { amount: number; operator: string }) =>
-      cashService.openSession({ openingAmount: amount, operator }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cash-session"] });
-      queryClient.invalidateQueries({ queryKey: ["cash-movements"] });
-      setOpenModal(false);
-      toast.success("Caixa aberto com sucesso.");
-    },
-    onError: (err: Error) => {
-      toast.error(err.message);
-    },
-  });
+  const openMutation = useOpenCashSession();
+  const closeMutation = useCloseCashSession();
+  const movementMutation = useAddCashMovement();
 
-  const movementMutation = useMutation({
-    mutationFn: (input: CashMovementInput) => cashService.addMovement(input),
-    onSuccess: (_, input) => {
-      queryClient.invalidateQueries({ queryKey: ["cash-session"] });
-      queryClient.invalidateQueries({ queryKey: ["cash-movements"] });
-      setMovementModal(false);
-      const labels: Record<string, string> = {
-        reinforcement: "Suprimento registrado.",
-        withdrawal: "Sangria registrada.",
-        adjustment: "Ajuste registrado.",
-      };
-      toast.success(labels[input.type] ?? "Movimentação registrada.");
-    },
-    onError: (err: Error) => {
-      toast.error(err.message);
-    },
-  });
+  const isOpen = openSession?.status === "Open";
 
-  const closeMutation = useMutation({
-    mutationFn: ({ counted, notes }: { counted: number; notes: string }) =>
-      cashService.closeSession({ countedAmount: counted, notes }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cash-session"] });
-      queryClient.invalidateQueries({ queryKey: ["cash-movements"] });
-      setCloseModal(false);
-      toast.success("Caixa fechado com sucesso.");
-    },
-    onError: (err: Error) => {
-      toast.error(err.message);
-    },
-  });
-
-  const isOpen = session?.status === "open";
-
-  function openMovementModal(type: CashMovementInput["type"]) {
+  function openMovementModal(type: AddCashMovementRequest["movementType"]) {
     setMovementDefaultType(type);
     setMovementModal(true);
   }
@@ -101,11 +62,11 @@ export default function CaixaPage() {
             )}
             {isOpen && (
               <>
-                <Button variant="outline" onClick={() => openMovementModal("withdrawal")}>
+                <Button variant="outline" onClick={() => openMovementModal("Withdrawal")}>
                   <ArrowDownLeft className="h-4 w-4 mr-1.5" />
                   Sangria
                 </Button>
-                <Button variant="outline" onClick={() => openMovementModal("reinforcement")}>
+                <Button variant="outline" onClick={() => openMovementModal("Deposit")}>
                   <ArrowUpRight className="h-4 w-4 mr-1.5" />
                   Suprimento
                 </Button>
@@ -122,34 +83,38 @@ export default function CaixaPage() {
       {sessionLoading ? (
         <Skeleton className="h-16 w-full rounded-lg" />
       ) : (
-        <CashStatusBanner session={session ?? null} />
+        <CashStatusBanner session={openSession ?? null} expectedBalance={expectedBalance} />
       )}
 
-      {isOpen && session && (
+      {isOpen && openSession && (
         <CashKpiCards
-          session={session}
+          openingBalance={openSession.openingBalance}
+          expectedBalance={expectedBalance}
           movementsCount={movements.length}
         />
       )}
 
       {isOpen && (
         <SectionCard title="Movimentações do dia">
-          {movementsLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : (
-            <CashMovementsTable movements={movements} />
-          )}
+          <CashMovementsTable movements={movements} />
         </SectionCard>
       )}
 
       <CashOpenModal
         open={openModal}
         onOpenChange={setOpenModal}
-        onConfirm={(amount, operator) => openMutation.mutate({ amount, operator })}
+        onConfirm={(openingBalance, notes) =>
+          openMutation.mutate(
+            { openingBalance, notes },
+            {
+              onSuccess: () => {
+                setOpenModal(false);
+                toast.success("Caixa aberto com sucesso.");
+              },
+              onError: (err: Error) => toast.error(err.message),
+            }
+          )
+        }
         isLoading={openMutation.isPending}
       />
 
@@ -157,16 +122,43 @@ export default function CaixaPage() {
         open={movementModal}
         onOpenChange={setMovementModal}
         defaultType={movementDefaultType}
-        onConfirm={(input) => movementMutation.mutate(input)}
+        onConfirm={(req) =>
+          openSession &&
+          movementMutation.mutate(
+            { id: openSession.id, req },
+            {
+              onSuccess: () => {
+                setMovementModal(false);
+                const labels: Record<string, string> = {
+                  Deposit:    "Suprimento registrado.",
+                  Withdrawal: "Sangria registrada.",
+                };
+                toast.success(labels[req.movementType] ?? "Movimentação registrada.");
+              },
+              onError: (err: Error) => toast.error(err.message),
+            }
+          )
+        }
         isLoading={movementMutation.isPending}
       />
 
-      {session && (
+      {openSession && (
         <CashCloseModal
           open={closeModal}
           onOpenChange={setCloseModal}
-          expectedBalance={session.expectedBalance}
-          onConfirm={(counted, notes) => closeMutation.mutate({ counted, notes })}
+          expectedBalance={expectedBalance}
+          onConfirm={(closingBalance, _notes) =>
+            closeMutation.mutate(
+              { id: openSession.id, req: { closingBalance } },
+              {
+                onSuccess: () => {
+                  setCloseModal(false);
+                  toast.success("Caixa fechado com sucesso.");
+                },
+                onError: (err: Error) => toast.error(err.message),
+              }
+            )
+          }
           isLoading={closeMutation.isPending}
         />
       )}

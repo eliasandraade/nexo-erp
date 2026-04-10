@@ -18,7 +18,7 @@ interface CashCloseModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   expectedBalance: number;
-  onConfirm: (countedAmount: number, notes: string) => void;
+  onConfirm: (closingBalance: number, notes: string) => void;
   isLoading?: boolean;
 }
 
@@ -29,10 +29,10 @@ export function CashCloseModal({
   onConfirm,
   isLoading,
 }: CashCloseModalProps) {
-  const [countedAmount, setCountedAmount] = useState("");
+  const [closingBalance, setClosingBalance] = useState("");
   const [notes, setNotes] = useState("");
 
-  const parsed = parseFloat(countedAmount.replace(",", "."));
+  const parsed = parseFloat(closingBalance.replace(",", "."));
   const isValidAmount = !isNaN(parsed) && parsed >= 0;
   const divergence = isValidAmount ? parsed - expectedBalance : null;
 
@@ -44,7 +44,7 @@ export function CashCloseModal({
 
   function handleClose() {
     if (!isLoading) {
-      setCountedAmount("");
+      setClosingBalance("");
       setNotes("");
       onOpenChange(false);
     }
@@ -98,8 +98,8 @@ export function CashCloseModal({
             <Input
               id="counted"
               placeholder="0,00"
-              value={countedAmount}
-              onChange={(e) => setCountedAmount(e.target.value)}
+              value={closingBalance}
+              onChange={(e) => setClosingBalance(e.target.value)}
               inputMode="decimal"
               autoFocus
             />

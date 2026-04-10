@@ -1,10 +1,10 @@
-import { Wallet, TrendingUp, List, AlertTriangle } from "lucide-react";
+import { Wallet, TrendingUp, List } from "lucide-react";
 import { SectionCard } from "@/components/shared/SectionCard";
-import type { CashSession } from "../types";
 import { formatCurrency } from "@/lib/formatters";
 
 interface CashKpiCardsProps {
-  session: CashSession;
+  openingBalance: number;
+  expectedBalance: number;
   movementsCount: number;
 }
 
@@ -12,15 +12,13 @@ interface KpiCardProps {
   icon: React.ElementType;
   label: string;
   value: string;
-  highlight?: "positive" | "negative" | "neutral";
+  highlight?: "positive" | "neutral";
 }
 
 function KpiCard({ icon: Icon, label, value, highlight = "neutral" }: KpiCardProps) {
   const valueClass =
     highlight === "positive"
       ? "text-green-600 dark:text-green-400"
-      : highlight === "negative"
-      ? "text-red-600 dark:text-red-400"
       : "text-foreground";
 
   return (
@@ -36,25 +34,18 @@ function KpiCard({ icon: Icon, label, value, highlight = "neutral" }: KpiCardPro
   );
 }
 
-export function CashKpiCards({ session, movementsCount }: CashKpiCardsProps) {
-  const divergenceHighlight =
-    session.divergence === undefined
-      ? "neutral"
-      : session.divergence === 0
-      ? "positive"
-      : "negative";
-
+export function CashKpiCards({ openingBalance, expectedBalance, movementsCount }: CashKpiCardsProps) {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-3 gap-4">
       <KpiCard
         icon={Wallet}
         label="Abertura"
-        value={formatCurrency(session.openingAmount)}
+        value={formatCurrency(openingBalance)}
       />
       <KpiCard
         icon={TrendingUp}
         label="Saldo esperado"
-        value={formatCurrency(session.expectedBalance)}
+        value={formatCurrency(expectedBalance)}
         highlight="positive"
       />
       <KpiCard
@@ -62,20 +53,6 @@ export function CashKpiCards({ session, movementsCount }: CashKpiCardsProps) {
         label="Movimentações"
         value={String(movementsCount)}
       />
-      {session.divergence !== undefined ? (
-        <KpiCard
-          icon={AlertTriangle}
-          label="Divergência"
-          value={formatCurrency(session.divergence)}
-          highlight={divergenceHighlight}
-        />
-      ) : (
-        <KpiCard
-          icon={AlertTriangle}
-          label="Divergência"
-          value="—"
-        />
-      )}
     </div>
   );
 }
