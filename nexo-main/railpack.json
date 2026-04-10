@@ -1,7 +1,10 @@
 {
   "steps": {
     "install": {
-      "cmds": ["bun install"]
+      "cmds": ["npm install"]
+    },
+    "build": {
+      "cmds": ["npm run build"]
     }
   }
 }
