@@ -72,7 +72,7 @@ public class ModuleSubscription : BaseEntity
     public static ModuleSubscription CreateAdminGrant(
         Guid tenantId,
         string moduleKey,
-        Guid grantedById,
+        Guid? grantedById = null,
         DateTime? expiresAt = null,
         string? notes = null)
     {

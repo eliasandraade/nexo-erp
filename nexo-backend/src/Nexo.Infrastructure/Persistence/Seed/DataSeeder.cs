@@ -194,15 +194,11 @@ public class DataSeeder
         var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for module subscriptions.");
 
-        var admin = await _context.Users.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.Login == "admin", ct)
-            ?? throw new InvalidOperationException("Seed: admin user not found for module subscription grant.");
-
         // Grant the "varejo" module to the default tenant as an admin grant
+        // grantedById is null for system-seeded grants (no platform user exists at seed time)
         var subscription = ModuleSubscription.CreateAdminGrant(
-            tenantId:    tenant.Id,
-            moduleKey:   "varejo",
-            grantedById: admin.Id);
+            tenantId:  tenant.Id,
+            moduleKey: "varejo");
 
         _context.ModuleSubscriptions.Add(subscription);
         await _context.SaveChangesAsync(ct);
