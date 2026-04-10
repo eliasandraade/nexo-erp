@@ -1,0 +1,88 @@
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Nexo.Infrastructure.MultiTenancy;
+using Nexo.Infrastructure.Persistence;
+using Nexo.Infrastructure.Persistence.Seed;
+using Testcontainers.PostgreSql;
+
+namespace Nexo.IntegrationTests.Helpers;
+
+/// <summary>
+/// Spins up a real PostgreSQL container via Testcontainers for each test class.
+///
+/// EF Core 8.0 registers two service types when AddDbContext is called with an options
+/// factory (sp, opts) => { ... }:
+///   1. DbContextOptions&lt;T&gt;  — factory that calls the options lambda  (TryAdd)
+///   2. T (NexoDbContext)    — constructor-injected from (1)           (TryAdd)
+///
+/// ConfigureTestServices (which runs LAST, after all ConfigureServices) removes
+/// both and re-adds them pointing at the Testcontainers PostgreSQL instance.
+/// </summary>
+public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
+{
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
+        .WithDatabase("nexo_test")
+        .WithUsername("nexo_test")
+        .WithPassword("nexo_test")
+        .Build();
+
+    public async Task InitializeAsync()
+    {
+        await _postgres.StartAsync();
+
+        // Trigger the host build (Program.cs runs but skips migrations/seeding
+        // in "Testing" environment), then migrate and seed the test container.
+        using var scope = Services.CreateScope();
+        var db     = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        var seeder = scope.ServiceProvider.GetRequiredService<DataSeeder>();
+        await db.Database.MigrateAsync();
+        await seeder.SeedAsync();
+    }
+
+    public new async Task DisposeAsync()
+    {
+        await _postgres.StopAsync();
+        await base.DisposeAsync();
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseEnvironment("Testing");
+
+        // ConfigureTestServices runs AFTER all ConfigureServices callbacks.
+        // Remove both EF Core TryAdd registrations added by AddInfrastructure,
+        // then re-add them pointing at the Testcontainers PostgreSQL instance.
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<DbContextOptions<NexoDbContext>>();
+            services.RemoveAll<NexoDbContext>();
+
+            services.AddDbContext<NexoDbContext>((sp, opts) =>
+            {
+                opts.UseNpgsql(_postgres.GetConnectionString(), npgsql =>
+                {
+                    npgsql.MigrationsHistoryTable("__ef_migrations_history", "nexo");
+                    npgsql.MigrationsAssembly(typeof(NexoDbContext).Assembly.GetName().Name);
+                });
+
+                var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
+                opts.AddInterceptors(interceptor);
+            });
+        });
+
+        // JWT overrides so test tokens validate against the test server.
+        builder.UseSetting("Jwt:Secret",   "test-secret-key-minimum-32-characters-long!");
+        builder.UseSetting("Jwt:Issuer",   "nexo-api-test");
+        builder.UseSetting("Jwt:Audience", "nexo-frontend-test");
+    }
+
+    /// <summary>Creates an HttpClient pre-configured for the test server.</summary>
+    public HttpClient CreateApiClient() => CreateClient(new WebApplicationFactoryClientOptions
+    {
+        AllowAutoRedirect = false,
+    });
+}

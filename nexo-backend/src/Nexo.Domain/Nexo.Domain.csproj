@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nexo.Shared\Nexo.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Allows Nexo.Infrastructure to call internal members (e.g. TenantEntity.SetTenantId) -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>Nexo.Infrastructure</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>
