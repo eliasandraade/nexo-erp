@@ -30,6 +30,7 @@ export default function RegisterPage() {
     if (result.error) {
       setError(result.error);
     } else {
+      localStorage.setItem("nexo:pending_email", email.trim());
       navigate(`/check-email?email=${encodeURIComponent(email.trim())}`);
     }
   }
