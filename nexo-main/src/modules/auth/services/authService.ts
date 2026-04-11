@@ -17,15 +17,17 @@ import type {
 
 function toAuthSession(dto: BackendSessionDto): AuthSession {
   return {
-    userId:   dto.userId,
-    tenantId: dto.tenantId,
-    name:     dto.name,
-    role:     dto.role as AuthSession["role"],
-    login:    dto.login,
-    email:    dto.email,
-    modules:  dto.activeModules ?? [],
-    storeId:  dto.storeId,
-    storeIds: dto.storeIds ?? [],
+    userId:      dto.userId,
+    tenantId:    dto.tenantId,
+    name:        dto.name,
+    role:        dto.role as AuthSession["role"],
+    login:       dto.login,
+    email:       dto.email,
+    modules:     dto.activeModules ?? [],
+    storeId:     dto.storeId,
+    storeIds:    dto.storeIds ?? [],
+    companyName: dto.companyName ?? "",
+    type:        (dto.type === "platform" ? "platform" : "tenant"),
   };
 }
 

@@ -43,6 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authService.validateSession().then((fresh) => {
       if (fresh) {
         setSession(fresh);
+        // If platform user lands on a non-platform route, redirect them
+        if (fresh.type === "platform" && !window.location.pathname.startsWith("/platform")) {
+          navigate("/platform", { replace: true });
+        }
       } else {
         // Token rejected by server — force logout
         setSession(null);
@@ -57,8 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const result = await authService.login(input);
     if (!result.success) return result.error;
     setSession(result.session);
+    if (result.session.type === "platform") {
+      navigate("/platform", { replace: true });
+    }
     return null;
-  }, []);
+  }, [navigate]);
 
   const logout = useCallback(() => {
     authService.logout();

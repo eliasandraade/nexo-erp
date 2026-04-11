@@ -47,6 +47,14 @@ public class TenantResolutionMiddleware
             return;
         }
 
+        // Skip for platform tokens — they have no tenant context
+        var tokenType = context.User.FindFirstValue("type");
+        if (tokenType == "platform")
+        {
+            await _next(context);
+            return;
+        }
+
         // 1. Extract tenant_id from JWT
         var tenantIdClaim = context.User.FindFirstValue("tenantId");
         if (!Guid.TryParse(tenantIdClaim, out var tenantId))

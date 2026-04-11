@@ -35,7 +35,7 @@ export function AppHeader() {
       <div className="flex items-center gap-3">
         <button className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-secondary transition-colors">
           <Building2 className="h-4 w-4 text-muted-foreground" />
-          <span>Andrade Corp</span>
+          <span>{session?.companyName || "—"}</span>
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
         <div className="w-px h-5 bg-border" />

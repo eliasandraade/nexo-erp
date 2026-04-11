@@ -1,9 +1,12 @@
+using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Auth;
 using Nexo.Application.Validators.Auth;
+using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Api.Controllers;
 
@@ -17,6 +20,9 @@ public class AuthController : ControllerBase
     private readonly IUserRepository _users;
     private readonly ITenantRepository _tenants;
     private readonly IStoreRepository _stores;
+    private readonly NexoDbContext _db;
+    private readonly IPasswordHasher _hasher;
+    private readonly IJwtTokenService _jwt;
 
     public AuthController(
         AuthService authService,
@@ -24,7 +30,10 @@ public class AuthController : ControllerBase
         ICurrentUser currentUser,
         IUserRepository users,
         ITenantRepository tenants,
-        IStoreRepository stores)
+        IStoreRepository stores,
+        NexoDbContext db,
+        IPasswordHasher hasher,
+        IJwtTokenService jwt)
     {
         _authService = authService;
         _loginValidator = loginValidator;
@@ -32,6 +41,9 @@ public class AuthController : ControllerBase
         _users = users;
         _tenants = tenants;
         _stores = stores;
+        _db = db;
+        _hasher = hasher;
+        _jwt = jwt;
     }
 
     /// <summary>Authenticate and receive access + refresh tokens.</summary>
@@ -45,10 +57,34 @@ public class AuthController : ControllerBase
 
         var result = await _authService.LoginAsync(request, ct);
 
-        if (result is null)
-            return Unauthorized(new { error = "Invalid login or password." });
+        if (result is not null)
+            return Ok(result);
 
-        return Ok(result);
+        // Fallback: check platform users (login field accepted as email)
+        var platformUser = await _db.PlatformUsers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Email == request.Login.Trim().ToLowerInvariant(), ct);
+
+        if (platformUser is not null && _hasher.Verify(request.Password, platformUser.PasswordHash))
+        {
+            var token = _jwt.GeneratePlatformToken(platformUser);
+            var session = new SessionDto(
+                UserId:        platformUser.Id.ToString(),
+                TenantId:      "",
+                Name:          platformUser.Email,
+                Role:          platformUser.Role,
+                Login:         platformUser.Email,
+                Email:         platformUser.Email,
+                ActiveModules: new List<string>(),
+                StoreId:       null,
+                StoreIds:      new List<string>(),
+                CompanyName:   "NexoERP",
+                Type:          "platform");
+
+            return Ok(new LoginResponse(token.AccessToken, "", token.ExpiresAt, session));
+        }
+
+        return Unauthorized(new { error = "Invalid login or password." });
     }
 
     /// <summary>
@@ -77,9 +113,24 @@ public class AuthController : ControllerBase
     [Authorize]
     public async Task<ActionResult<SessionDto>> Me(CancellationToken ct)
     {
+        // Platform token path — no tenant context
+        var tokenType = User.FindFirstValue("type");
+        if (tokenType == "platform")
+        {
+            var platformUserId = User.FindFirstValue("platformUserId");
+            if (!Guid.TryParse(platformUserId, out var pid)) return Unauthorized();
+            var pu = await _db.PlatformUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Id == pid, ct);
+            if (pu is null) return Unauthorized();
+            return Ok(new SessionDto(
+                UserId: pu.Id.ToString(), TenantId: "", Name: pu.Email, Role: pu.Role,
+                Login: pu.Email, Email: pu.Email, ActiveModules: new List<string>(),
+                StoreId: null, StoreIds: new List<string>(), CompanyName: "NexoERP", Type: "platform"));
+        }
+
         var user = await _users.GetByIdAsync(_currentUser.UserId, ct);
         if (user is null) return Unauthorized();
 
+        var tenant = await _tenants.GetByIdAsync(_currentUser.TenantId, ct);
         var activeModules = await _tenants.GetActiveModuleKeysAsync(_currentUser.TenantId, ct);
         var stores = await _stores.GetByTenantIdAsync(_currentUser.TenantId, ct);
 
@@ -92,7 +143,8 @@ public class AuthController : ControllerBase
             Email:         user.Email,
             ActiveModules: activeModules.ToList(),
             StoreId:       _currentUser.StoreId == Guid.Empty ? null : _currentUser.StoreId.ToString(),
-            StoreIds:      stores.Select(s => s.Id.ToString()).ToList()));
+            StoreIds:      stores.Select(s => s.Id.ToString()).ToList(),
+            CompanyName:   tenant?.TradeName ?? tenant?.CompanyName ?? ""));
     }
 
     /// <summary>

@@ -26,6 +26,7 @@ public class JwtTokenService : IJwtTokenService
     public TokenPair GenerateTokenPair(
         User user,
         string tenantSlug,
+        string companyName,
         IReadOnlyList<string> activeModules,
         Guid storeId,
         IReadOnlyList<Guid> accessibleStoreIds)
@@ -33,7 +34,7 @@ public class JwtTokenService : IJwtTokenService
         var accessExpiry = GetAccessTokenExpiration();
         var refreshExpiry = GetRefreshTokenExpiration();
 
-        var accessToken = BuildAccessToken(user, tenantSlug, activeModules, storeId, accessibleStoreIds, accessExpiry);
+        var accessToken = BuildAccessToken(user, tenantSlug, companyName, activeModules, storeId, accessibleStoreIds, accessExpiry);
         var refreshToken = BuildRefreshToken(user, refreshExpiry);
 
         return new TokenPair(accessToken, refreshToken, accessExpiry, refreshExpiry);
@@ -92,6 +93,7 @@ public class JwtTokenService : IJwtTokenService
     private string BuildAccessToken(
         User user,
         string tenantSlug,
+        string companyName,
         IReadOnlyList<string> activeModules,
         Guid storeId,
         IReadOnlyList<Guid> accessibleStoreIds,
@@ -104,6 +106,7 @@ public class JwtTokenService : IJwtTokenService
             new("userId",      user.Id.ToString()),
             new("tenantId",    user.TenantId.ToString()),
             new("tenantSlug",  tenantSlug),
+            new("companyName", companyName),
             new("name",        user.FullName),
             new("role",        user.Role.ToString().ToLowerInvariant()),
             new(ClaimTypes.Role, user.Role.ToString()),

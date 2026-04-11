@@ -38,6 +38,7 @@ public class AuthServiceTests
         _jwt.GenerateTokenPair(
             Arg.Any<User>(),
             Arg.Any<string>(),
+            Arg.Any<string>(),
             Arg.Any<IReadOnlyList<string>>(),
             Arg.Any<Guid>(),
             Arg.Any<IReadOnlyList<Guid>>())

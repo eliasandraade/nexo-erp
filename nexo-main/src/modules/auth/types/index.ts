@@ -17,6 +17,10 @@ export interface AuthSession {
   storeId?: string;
   /** All store IDs accessible to this user */
   storeIds: string[];
+  /** Company display name (TradeName ?? CompanyName from tenant) */
+  companyName: string;
+  /** "tenant" for regular users, "platform" for NexoERP superusers */
+  type: "tenant" | "platform";
 }
 
 export interface LoginInput {
@@ -36,6 +40,8 @@ export interface BackendSessionDto {
   activeModules: string[];
   storeId?: string;
   storeIds?: string[];
+  companyName?: string;
+  type?: string;
 }
 
 export interface BackendSwitchStoreResponse {

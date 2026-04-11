@@ -21,6 +21,7 @@ public interface IJwtTokenService
     TokenPair GenerateTokenPair(
         User user,
         string tenantSlug,
+        string companyName,
         IReadOnlyList<string> activeModules,
         Guid storeId,
         IReadOnlyList<Guid> accessibleStoreIds);

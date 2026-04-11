@@ -58,7 +58,8 @@ public class AuthService
         var storeId = defaultStore?.Id ?? Guid.Empty;
         var storeIds = stores.Select(s => s.Id).ToList();
 
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, activeModules, storeId, storeIds);
+        var companyName = tenant.TradeName ?? tenant.CompanyName;
+        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, companyName, activeModules, storeId, storeIds);
 
         // Store refresh token as valid in cache (TTL = refresh token expiry)
         var refreshClaims = _jwt.ValidateRefreshToken(tokens.RefreshToken);
@@ -80,7 +81,8 @@ public class AuthService
             Email:         user.Email,
             ActiveModules: activeModules.ToList(),
             StoreId:       storeId == Guid.Empty ? null : storeId.ToString(),
-            StoreIds:      storeIds.Select(id => id.ToString()).ToList());
+            StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
+            CompanyName:   companyName);
 
         return new LoginResponse(
             tokens.AccessToken,
@@ -120,7 +122,7 @@ public class AuthService
         var storeId = defaultStore?.Id ?? Guid.Empty;
         var storeIds = stores.Select(s => s.Id).ToList();
 
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, activeModules, storeId, storeIds);
+        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, storeId, storeIds);
 
         // Revoke old refresh token, store new one
         await _cache.RemoveAsync(cacheKey, ct);
@@ -178,7 +180,7 @@ public class AuthService
         if (oldClaims is not null)
             await _cache.RemoveAsync($"refresh:valid:{oldClaims.Jti}", ct);
 
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, activeModules, requestedStoreId, storeIds);
+        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, requestedStoreId, storeIds);
 
         var newClaims = _jwt.ValidateRefreshToken(tokens.RefreshToken);
         if (newClaims is not null)

@@ -27,7 +27,9 @@ public record SessionDto(
     string Email,
     List<string> ActiveModules,
     string? StoreId,
-    List<string> StoreIds);
+    List<string> StoreIds,
+    string CompanyName = "",
+    string Type = "tenant");
 
 public record LoginResponse(
     string AccessToken,

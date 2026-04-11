@@ -3,8 +3,13 @@ import { AuthProvider } from "@/modules/auth/context/AuthContext";
 import { AuthLayout } from "@/app/layouts/AuthLayout";
 import { MainAppLayout } from "@/app/layouts/MainAppLayout";
 import { PosLayout } from "@/app/layouts/PosLayout";
+import { PlatformLayout } from "@/app/layouts/PlatformLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ModuleRoute } from "./ModuleRoute";
+import { PlatformRoute } from "./PlatformRoute";
+import PlatformDashboardPage from "@/modules/platform/pages/PlatformDashboardPage";
+import PlatformTenantsPage from "@/modules/platform/pages/PlatformTenantsPage";
+import PlatformTenantDetailPage from "@/modules/platform/pages/PlatformTenantDetailPage";
 
 // Auth pages
 import LoginPage from "@/modules/auth/pages/LoginPage";
@@ -88,6 +93,15 @@ export function AppRouter() {
               <Route path="/auditoria"              element={<AuditoriaPage />} />
               <Route path="/configuracoes"          element={<ConfiguracoesPage />} />
               <Route path="/perfil"                 element={<PerfilPage />} />
+            </Route>
+          </Route>
+
+          {/* Platform admin — requires type: "platform" in session */}
+          <Route element={<PlatformRoute />}>
+            <Route element={<PlatformLayout />}>
+              <Route path="/platform" element={<PlatformDashboardPage />} />
+              <Route path="/platform/tenants" element={<PlatformTenantsPage />} />
+              <Route path="/platform/tenants/:tenantId" element={<PlatformTenantDetailPage />} />
             </Route>
           </Route>
 
