@@ -164,7 +164,27 @@ public class JwtTokenService : IJwtTokenService
         return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
     }
 
-    private string GetIssuer()          => _config["Jwt:Issuer"]          ?? "nexo-api";
-    private string GetAudience()        => _config["Jwt:Audience"]        ?? "nexo-frontend";
-    private string GetRefreshAudience() => _config["Jwt:RefreshAudience"] ?? "nexo-refresh";
+    public PlatformTokenResult GeneratePlatformToken(PlatformUser user)
+    {
+        var expiry = DateTime.UtcNow.AddHours(8);
+
+        var claims = new List<Claim>
+        {
+            new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new("platformUserId", user.Id.ToString()),
+            new("email",          user.Email),
+            new("role",           user.Role),
+            new("type",           "platform"),
+            new(ClaimTypes.Role,  user.Role),
+        };
+
+        var token = BuildToken(claims, GetPlatformAudience(), expiry);
+        return new PlatformTokenResult(token, expiry);
+    }
+
+    private string GetIssuer()           => _config["Jwt:Issuer"]          ?? "nexo-api";
+    private string GetAudience()         => _config["Jwt:Audience"]        ?? "nexo-frontend";
+    private string GetRefreshAudience()  => _config["Jwt:RefreshAudience"] ?? "nexo-refresh";
+    private string GetPlatformAudience() => _config["Jwt:PlatformAudience"] ?? "nexo-platform";
 }

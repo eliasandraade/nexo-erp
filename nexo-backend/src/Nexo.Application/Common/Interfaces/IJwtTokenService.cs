@@ -2,6 +2,9 @@ using Nexo.Domain.Entities;
 
 namespace Nexo.Application.Common.Interfaces;
 
+/// <summary>Platform-only access token (no tenant, no store, no refresh).</summary>
+public record PlatformTokenResult(string AccessToken, DateTime ExpiresAt);
+
 /// <summary>Result of a token generation — access token + refresh token.</summary>
 public record TokenPair(
     string AccessToken,
@@ -33,6 +36,12 @@ public interface IJwtTokenService
 
     /// <summary>Returns when the refresh token expires (UTC) from now.</summary>
     DateTime GetRefreshTokenExpiration();
+
+    /// <summary>
+    /// Generates a short-lived access token for a platform admin (no tenant/store claims).
+    /// Audience: "nexo-platform". Expires in 8 hours.
+    /// </summary>
+    PlatformTokenResult GeneratePlatformToken(PlatformUser user);
 }
 
 public record RefreshTokenClaims(

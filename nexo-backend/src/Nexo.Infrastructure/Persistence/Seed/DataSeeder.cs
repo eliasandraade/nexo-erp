@@ -35,6 +35,8 @@ public class DataSeeder
         await SeedDefaultFinancialAccountsAsync(ct);
         await SeedDefaultModuleSubscriptionsAsync(ct);
         await SeedDefaultStoreAsync(ct);
+        await SeedTestUsersAsync(ct);
+        await SeedPlatformUserAsync(ct);
     }
 
     // ── Tenant ────────────────────────────────────────────────────────────────
@@ -207,6 +209,106 @@ public class DataSeeder
         _logger.LogInformation(
             "Seed: 'varejo' module subscription granted to tenant {TenantId}.",
             tenant.Id);
+    }
+
+    // ── Test users ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Seeds 3 test tenants covering the main multi-store/multi-module scenarios:
+    ///
+    ///   1. clara.boutique  / boutique@123  — 1 módulo ativo (varejo)
+    ///   2. lucas.mix       / lucas@123     — 2 módulos diferentes (varejo + restaurante)
+    ///   3. ana.norte       / ana@123       — 2 lojas com o mesmo módulo (varejo × 2 filiais)
+    ///
+    /// Idempotent — skipped if any user with these logins already exists.
+    /// </summary>
+    private async Task SeedTestUsersAsync(CancellationToken ct)
+    {
+        var existingLogins = new[] { "clara.boutique", "lucas.mix", "ana.norte" };
+        var alreadySeeded = await _context.Users
+            .IgnoreQueryFilters()
+            .AnyAsync(u => existingLogins.Contains(u.Login), ct);
+
+        if (alreadySeeded)
+        {
+            _logger.LogDebug("Seed: test users already exist, skipping.");
+            return;
+        }
+
+        // ── Tenant 1: Boutique Clara — 1 módulo ativo (varejo) ───────────────
+        var t1 = Tenant.Create("Boutique Clara", "11.111.111/0001-11",
+            "contato@boutiqueclara.com.br", "Boutique Clara", "(11) 1111-1111", "varejo");
+        _context.Tenants.Add(t1);
+        await _context.SaveChangesAsync(ct);
+
+        var sub1 = ModuleSubscription.CreateAdminGrant(t1.Id, "varejo");
+        _context.ModuleSubscriptions.Add(sub1);
+        await _context.SaveChangesAsync(ct);
+
+        _context.Stores.Add(Domain.Entities.Store.Create(t1.Id, "Boutique Clara", "boutique-clara", sub1.Id));
+        _context.Users.Add(User.Create(t1.Id, "Clara Mendes", "clara@boutiqueclara.com.br",
+            "clara.boutique", _hasher.Hash("boutique@123"), UserRole.Gerente));
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Seed: Tenant 'Boutique Clara' created (1 módulo, 1 loja). Login: clara.boutique / boutique@123");
+
+        // ── Tenant 2: Grupo Mix — 2 módulos diferentes (varejo + restaurante) ─
+        var t2 = Tenant.Create("Grupo Mix", "22.222.222/0001-22",
+            "contato@grupomix.com.br", "Grupo Mix", "(22) 2222-2222", "varejo");
+        _context.Tenants.Add(t2);
+        await _context.SaveChangesAsync(ct);
+
+        var sub2v = ModuleSubscription.CreateAdminGrant(t2.Id, "varejo");
+        var sub2r = ModuleSubscription.CreateAdminGrant(t2.Id, "restaurante");
+        _context.ModuleSubscriptions.AddRange(sub2v, sub2r);
+        await _context.SaveChangesAsync(ct);
+
+        _context.Stores.Add(Domain.Entities.Store.Create(t2.Id, "Mix Loja", "mix-loja", sub2v.Id));
+        _context.Stores.Add(Domain.Entities.Store.Create(t2.Id, "Mix Restaurante", "mix-restaurante", sub2r.Id));
+        _context.Users.Add(User.Create(t2.Id, "Lucas Ferreira", "lucas@grupomix.com.br",
+            "lucas.mix", _hasher.Hash("lucas@123"), UserRole.Diretoria));
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Seed: Tenant 'Grupo Mix' created (2 módulos diferentes, 2 lojas). Login: lucas.mix / lucas@123");
+
+        // ── Tenant 3: Rede Norte — 2 lojas com o mesmo módulo (varejo × 2) ───
+        var t3 = Tenant.Create("Rede Norte", "33.333.333/0001-33",
+            "contato@redenorte.com.br", "Rede Norte", "(33) 3333-3333", "varejo");
+        _context.Tenants.Add(t3);
+        await _context.SaveChangesAsync(ct);
+
+        var sub3 = ModuleSubscription.CreateAdminGrant(t3.Id, "varejo");
+        _context.ModuleSubscriptions.Add(sub3);
+        await _context.SaveChangesAsync(ct);
+
+        _context.Stores.Add(Domain.Entities.Store.Create(t3.Id, "Filial Centro", "filial-centro", sub3.Id));
+        _context.Stores.Add(Domain.Entities.Store.Create(t3.Id, "Filial Sul", "filial-sul", sub3.Id));
+        _context.Users.Add(User.Create(t3.Id, "Ana Souza", "ana@redenorte.com.br",
+            "ana.norte", _hasher.Hash("ana@123"), UserRole.Gerente));
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Seed: Tenant 'Rede Norte' created (1 módulo, 2 lojas/filiais). Login: ana.norte / ana@123");
+    }
+
+    // ── Platform user (superusuário NexoERP) ─────────────────────────────────
+
+    private async Task SeedPlatformUserAsync(CancellationToken ct)
+    {
+        if (await _context.PlatformUsers.AnyAsync(u => u.Email == "elias@nexo.com", ct))
+        {
+            _logger.LogDebug("Seed: platform user already exists, skipping.");
+            return;
+        }
+
+        var platformUser = PlatformUser.Create(
+            email:        "elias@nexo.com",
+            passwordHash: _hasher.Hash("elias@2026"),
+            role:         "super_admin");
+
+        _context.PlatformUsers.Add(platformUser);
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Seed: platform superuser created. Email: elias@nexo.com / elias@2026");
     }
 
     // ── Default store ─────────────────────────────────────────────────────────
