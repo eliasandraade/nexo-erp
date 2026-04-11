@@ -17,6 +17,10 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasColumnName("tenant_id")
             .IsRequired();
 
+        builder.Property(x => x.StoreId)
+            .HasColumnName("store_id")
+            .IsRequired();
+
         builder.Property(x => x.Code)
             .HasColumnName("code")
             .HasMaxLength(50)
@@ -80,9 +84,9 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasColumnType("timestamptz")
             .IsRequired();
 
-        builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
-        builder.HasIndex(x => new { x.TenantId, x.Barcode });
-        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Code }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Barcode });
+        builder.HasIndex(x => new { x.TenantId, x.StoreId });
 
         builder.HasOne(x => x.Category)
             .WithMany(x => x.Products)
@@ -93,5 +97,10 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .WithMany()
             .HasForeignKey(x => x.TenantId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

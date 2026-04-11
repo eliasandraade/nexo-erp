@@ -18,7 +18,7 @@ namespace Nexo.Domain.Entities;
 ///   - Confirmation is atomic (transaction wraps stock + payment record creation)
 ///   - SaleItem.UnitPrice and SaleItem.CostPrice are snapshots at time of sale
 /// </summary>
-public class Sale : TenantEntity
+public class Sale : StoreEntity
 {
     private Sale() { }
     private Sale(Guid tenantId) : base(tenantId) { }

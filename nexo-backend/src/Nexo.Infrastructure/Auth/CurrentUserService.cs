@@ -41,6 +41,27 @@ public class CurrentUserService : ICurrentUser
         }
     }
 
+    public Guid StoreId
+    {
+        get
+        {
+            var value = Principal?.FindFirstValue("storeId");
+            return Guid.TryParse(value, out var id) ? id : Guid.Empty;
+        }
+    }
+
+    public IReadOnlyList<Guid> StoreIds
+    {
+        get
+        {
+            return Principal?.FindAll("store")
+                .Select(c => Guid.TryParse(c.Value, out var id) ? id : Guid.Empty)
+                .Where(id => id != Guid.Empty)
+                .ToList()
+                ?? [];
+        }
+    }
+
     public string Name
         => Principal?.FindFirstValue("name") ?? "Unknown";
 

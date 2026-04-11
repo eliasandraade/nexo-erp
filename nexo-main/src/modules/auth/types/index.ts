@@ -13,8 +13,10 @@ export interface AuthSession {
   email: string;
   /** Module keys granted to this tenant (e.g. "retail", "restaurant") */
   modules: string[];
-  /** Optional display label — not in backend, kept for UI compatibility */
-  store?: string;
+  /** Active store ID from JWT storeId claim */
+  storeId?: string;
+  /** All store IDs accessible to this user */
+  storeIds: string[];
 }
 
 export interface LoginInput {
@@ -32,6 +34,15 @@ export interface BackendSessionDto {
   login: string;
   email: string;
   activeModules: string[];
+  storeId?: string;
+  storeIds?: string[];
+}
+
+export interface BackendSwitchStoreResponse {
+  accessToken: string;
+  refreshToken: string;
+  accessTokenExpiresAt: string;
+  session: BackendSessionDto;
 }
 
 export interface BackendLoginResponse {

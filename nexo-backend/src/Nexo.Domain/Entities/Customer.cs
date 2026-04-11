@@ -21,6 +21,12 @@ public class Customer : TenantEntity
     public string? Notes { get; private set; }
     public bool IsActive { get; private set; }
 
+    /// <summary>
+    /// Optional store affiliation. Null = customer is shared across all stores in the tenant.
+    /// Set to scope a customer to a specific store (e.g. loyalty program per filial).
+    /// </summary>
+    public Guid? StoreId { get; private set; }
+
     // Navigation
     public ICollection<Sale> Sales { get; private set; } = [];
 

@@ -17,6 +17,10 @@ public class StockMovementConfiguration : IEntityTypeConfiguration<StockMovement
             .HasColumnName("tenant_id")
             .IsRequired();
 
+        builder.Property(x => x.StoreId)
+            .HasColumnName("store_id")
+            .IsRequired();
+
         builder.Property(x => x.ProductId)
             .HasColumnName("product_id")
             .IsRequired();
@@ -71,8 +75,8 @@ public class StockMovementConfiguration : IEntityTypeConfiguration<StockMovement
             .HasColumnType("timestamptz")
             .IsRequired();
 
-        builder.HasIndex(x => new { x.TenantId, x.ProductId });
-        builder.HasIndex(x => new { x.TenantId, x.CreatedAt });
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.ProductId });
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.CreatedAt });
         builder.HasIndex(x => new { x.ReferenceType, x.ReferenceId });
 
         builder.HasOne(x => x.Product)
@@ -84,5 +88,10 @@ public class StockMovementConfiguration : IEntityTypeConfiguration<StockMovement
             .WithMany()
             .HasForeignKey(x => x.TenantId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

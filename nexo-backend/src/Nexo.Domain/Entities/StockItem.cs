@@ -6,7 +6,7 @@ namespace Nexo.Domain.Entities;
 /// Saldo atual de estoque por produto. Uma linha por produto por tenant.
 /// Atualizado pelo StockMovementService a cada movimentação.
 /// </summary>
-public class StockItem : TenantEntity
+public class StockItem : StoreEntity
 {
     private StockItem() { }
     private StockItem(Guid tenantId) : base(tenantId) { }

@@ -13,9 +13,14 @@ public interface IJwtTokenService
 {
     /// <summary>
     /// Generates an access token (15min) + refresh token (7d) for the given user.
-    /// The access token includes: userId, tenantId, tenantSlug, role, activeModules, jti.
+    /// The access token includes: userId, tenantId, tenantSlug, role, activeModules, storeId, store[].
     /// </summary>
-    TokenPair GenerateTokenPair(User user, string tenantSlug, IReadOnlyList<string> activeModules);
+    TokenPair GenerateTokenPair(
+        User user,
+        string tenantSlug,
+        IReadOnlyList<string> activeModules,
+        Guid storeId,
+        IReadOnlyList<Guid> accessibleStoreIds);
 
     /// <summary>
     /// Validates a refresh token signature and returns its claims.

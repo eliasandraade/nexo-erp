@@ -17,6 +17,10 @@ public class StockItemConfiguration : IEntityTypeConfiguration<StockItem>
             .HasColumnName("tenant_id")
             .IsRequired();
 
+        builder.Property(x => x.StoreId)
+            .HasColumnName("store_id")
+            .IsRequired();
+
         builder.Property(x => x.ProductId)
             .HasColumnName("product_id")
             .IsRequired();
@@ -54,8 +58,8 @@ public class StockItemConfiguration : IEntityTypeConfiguration<StockItem>
             .HasColumnType("timestamptz")
             .IsRequired();
 
-        // One StockItem per product per tenant
-        builder.HasIndex(x => new { x.TenantId, x.ProductId }).IsUnique();
+        // One StockItem per product per store (not per tenant) — each store tracks its own stock
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.ProductId }).IsUnique();
 
         builder.HasOne(x => x.Product)
             .WithOne(x => x.StockItem)
@@ -66,5 +70,10 @@ public class StockItemConfiguration : IEntityTypeConfiguration<StockItem>
             .WithMany()
             .HasForeignKey(x => x.TenantId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

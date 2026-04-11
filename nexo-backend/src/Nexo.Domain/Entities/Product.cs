@@ -3,7 +3,7 @@ using Nexo.Domain.Enums;
 
 namespace Nexo.Domain.Entities;
 
-public class Product : TenantEntity
+public class Product : StoreEntity
 {
     private Product() { }
     private Product(Guid tenantId) : base(tenantId) { }

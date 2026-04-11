@@ -3,15 +3,21 @@ using Nexo.Domain.Entities;
 namespace Nexo.Application.Common.Interfaces;
 
 /// <summary>
-/// Tenant repository — operates on the platform-level tenants table (no tenant isolation filter).
-/// Used by: TenantResolutionMiddleware, AuthService, Platform admin services.
+/// Store repository — operates on the stores table.
+/// Bypasses Global Query Filters (like ITenantRepository) so it can be used in
+/// auth flows (login, switch-store) before the tenant context is resolved.
 /// </summary>
-public interface ITenantRepository
+public interface IStoreRepository
 {
-    Task<Tenant?> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<Tenant?> GetBySlugAsync(string slug, CancellationToken ct = default);
-    Task<IReadOnlyList<Tenant>> GetAllAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<string>> GetActiveModuleKeysAsync(Guid tenantId, CancellationToken ct = default);
-    Task AddAsync(Tenant tenant, CancellationToken ct = default);
+    Task<Store?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<IReadOnlyList<Store>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Returns stores by their IDs (from JWT store[] claims), including ModuleSubscription for moduleKey.
+    /// Only returns active stores that belong to the specified tenant (security guard).
+    /// </summary>
+    Task<IReadOnlyList<Store>> GetByIdsAsync(Guid tenantId, IReadOnlyList<Guid> ids, CancellationToken ct = default);
+
+    Task AddAsync(Store store, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
 }

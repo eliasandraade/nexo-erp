@@ -9,11 +9,14 @@ namespace Nexo.UnitTests.Auth;
 
 public class AuthServiceTests
 {
-    private readonly IUserRepository _users = Substitute.For<IUserRepository>();
-    private readonly IPasswordHasher _hasher = Substitute.For<IPasswordHasher>();
-    private readonly IJwtTokenService _jwt   = Substitute.For<IJwtTokenService>();
+    private readonly IUserRepository    _users   = Substitute.For<IUserRepository>();
+    private readonly ITenantRepository  _tenants = Substitute.For<ITenantRepository>();
+    private readonly IStoreRepository   _stores  = Substitute.For<IStoreRepository>();
+    private readonly IPasswordHasher    _hasher  = Substitute.For<IPasswordHasher>();
+    private readonly IJwtTokenService   _jwt     = Substitute.For<IJwtTokenService>();
+    private readonly ICacheService      _cache   = Substitute.For<ICacheService>();
 
-    private AuthService CreateSut() => new(_users, _hasher, _jwt);
+    private AuthService CreateSut() => new(_users, _tenants, _stores, _hasher, _jwt, _cache);
 
     // ── LoginAsync ────────────────────────────────────────────────────────────
 
@@ -21,11 +24,26 @@ public class AuthServiceTests
     public async Task LoginAsync_WithValidCredentials_ReturnsLoginResponse()
     {
         // Arrange
-        var user = BuildUser(UserRole.Vendedor);
+        var tenantId = Guid.NewGuid();
+        var user = BuildUser(UserRole.Vendedor, tenantId: tenantId);
+        var tenant = Tenant.Create("Loja", "00.000.000/0001-00", "a@b.com", null, null, "varejo");
+
         _users.GetByLoginAsync("joao", Arg.Any<CancellationToken>()).Returns(user);
         _hasher.Verify("senha123", user.PasswordHash).Returns(true);
-        _jwt.GenerateToken(user).Returns("fake-jwt");
-        _jwt.GetExpiration().Returns(DateTime.UtcNow.AddHours(8));
+        _tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(tenant);
+        _tenants.GetActiveModuleKeysAsync(tenantId, Arg.Any<CancellationToken>())
+            .Returns(new List<string> { "varejo" });
+        _stores.GetByTenantIdAsync(tenantId, Arg.Any<CancellationToken>())
+            .Returns(new List<Store>());
+        _jwt.GenerateTokenPair(
+            Arg.Any<User>(),
+            Arg.Any<string>(),
+            Arg.Any<IReadOnlyList<string>>(),
+            Arg.Any<Guid>(),
+            Arg.Any<IReadOnlyList<Guid>>())
+            .Returns(new TokenPair("fake-access", "fake-refresh",
+                DateTime.UtcNow.AddMinutes(15), DateTime.UtcNow.AddDays(7)));
+        _jwt.ValidateRefreshToken("fake-refresh").Returns((RefreshTokenClaims?)null);
 
         var sut = CreateSut();
 
@@ -34,7 +52,7 @@ public class AuthServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        result!.Token.Should().Be("fake-jwt");
+        result!.AccessToken.Should().Be("fake-access");
         result.Session.Login.Should().Be("joao");
         result.Session.Role.Should().Be("vendedor");
     }
@@ -122,11 +140,23 @@ public class AuthServiceTests
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static User BuildUser(UserRole role, UserStatus status = UserStatus.Active)
-        => User.Create(
+    private static User BuildUser(
+        UserRole role,
+        UserStatus status = UserStatus.Active,
+        Guid? tenantId = null,
+        string login = "joao")
+    {
+        var user = User.Create(
+            tenantId:     tenantId ?? Guid.NewGuid(),
             fullName:     "João Silva",
-            email:        $"{role.ToString().ToLower()}@nexo.local",
-            login:        role.ToString().ToLower(),
+            email:        $"{login}@nexo.local",
+            login:        login,
             passwordHash: "$2a$12$hash",
             role:         role);
+
+        if (status != UserStatus.Active)
+            user.SetStatus(status);
+
+        return user;
+    }
 }

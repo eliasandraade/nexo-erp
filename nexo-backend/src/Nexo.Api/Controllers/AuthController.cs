@@ -16,19 +16,22 @@ public class AuthController : ControllerBase
     private readonly ICurrentUser _currentUser;
     private readonly IUserRepository _users;
     private readonly ITenantRepository _tenants;
+    private readonly IStoreRepository _stores;
 
     public AuthController(
         AuthService authService,
         IValidator<LoginRequest> loginValidator,
         ICurrentUser currentUser,
         IUserRepository users,
-        ITenantRepository tenants)
+        ITenantRepository tenants,
+        IStoreRepository stores)
     {
         _authService = authService;
         _loginValidator = loginValidator;
         _currentUser = currentUser;
         _users = users;
         _tenants = tenants;
+        _stores = stores;
     }
 
     /// <summary>Authenticate and receive access + refresh tokens.</summary>
@@ -78,6 +81,7 @@ public class AuthController : ControllerBase
         if (user is null) return Unauthorized();
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(_currentUser.TenantId, ct);
+        var stores = await _stores.GetByTenantIdAsync(_currentUser.TenantId, ct);
 
         return Ok(new SessionDto(
             UserId:        user.Id.ToString(),
@@ -86,7 +90,38 @@ public class AuthController : ControllerBase
             Role:          user.Role.ToString().ToLowerInvariant(),
             Login:         user.Login,
             Email:         user.Email,
-            ActiveModules: activeModules.ToList()));
+            ActiveModules: activeModules.ToList(),
+            StoreId:       _currentUser.StoreId == Guid.Empty ? null : _currentUser.StoreId.ToString(),
+            StoreIds:      stores.Select(s => s.Id.ToString()).ToList()));
+    }
+
+    /// <summary>
+    /// Switch the active store context. Issues a new token pair with the requested storeId.
+    /// The old refresh token is revoked; a new one is issued.
+    /// </summary>
+    [HttpPost("switch-store")]
+    [Authorize]
+    public async Task<ActionResult<SwitchStoreResponse>> SwitchStore(
+        [FromBody] SwitchStoreRequest request,
+        CancellationToken ct)
+    {
+        if (!Guid.TryParse(request.StoreId, out var storeId))
+            return BadRequest(new { error = "Invalid storeId format." });
+
+        var refreshToken = HttpContext.Request.Headers.Authorization
+            .FirstOrDefault()?.Replace("Bearer ", string.Empty);
+
+        var result = await _authService.SwitchStoreAsync(
+            _currentUser.UserId,
+            _currentUser.TenantId,
+            storeId,
+            refreshToken ?? string.Empty,
+            ct);
+
+        if (result is null)
+            return Forbid();
+
+        return Ok(result);
     }
 
     /// <summary>

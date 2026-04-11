@@ -34,6 +34,7 @@ public class DataSeeder
         await SeedModuleDefinitionsAsync(ct);
         await SeedDefaultFinancialAccountsAsync(ct);
         await SeedDefaultModuleSubscriptionsAsync(ct);
+        await SeedDefaultStoreAsync(ct);
     }
 
     // ── Tenant ────────────────────────────────────────────────────────────────
@@ -206,5 +207,38 @@ public class DataSeeder
         _logger.LogInformation(
             "Seed: 'varejo' module subscription granted to tenant {TenantId}.",
             tenant.Id);
+    }
+
+    // ── Default store ─────────────────────────────────────────────────────────
+
+    private async Task SeedDefaultStoreAsync(CancellationToken ct)
+    {
+        // IgnoreQueryFilters: seeder has no tenant context
+        if (await _context.Stores.IgnoreQueryFilters().AnyAsync(ct))
+        {
+            _logger.LogDebug("Seed: stores already exist, skipping.");
+            return;
+        }
+
+        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException("Seed: no tenant found for default store.");
+
+        var subscription = await _context.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.TenantId == tenant.Id && s.ModuleKey == "varejo", ct);
+
+        var store = Domain.Entities.Store.Create(
+            tenantId:             tenant.Id,
+            name:                 "Loja Principal",
+            slug:                 "loja-principal",
+            moduleSubscriptionId: subscription?.Id,
+            settingsJson:         null);
+
+        _context.Stores.Add(store);
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Seed: default store created (Id: {StoreId}) for tenant {TenantId}.",
+            store.Id, tenant.Id);
     }
 }

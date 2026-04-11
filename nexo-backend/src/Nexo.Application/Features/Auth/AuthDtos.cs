@@ -10,6 +10,8 @@ public record RefreshTokenRequest(string RefreshToken);
 
 public record LogoutRequest(string RefreshToken);
 
+public record SwitchStoreRequest(string StoreId);
+
 // ── Responses ───────────────────────────────────────────────────────────────
 
 /// <summary>
@@ -23,7 +25,9 @@ public record SessionDto(
     string Role,
     string Login,
     string Email,
-    List<string> ActiveModules);
+    List<string> ActiveModules,
+    string? StoreId,
+    List<string> StoreIds);
 
 public record LoginResponse(
     string AccessToken,
@@ -42,3 +46,10 @@ public record VerifyManagerResponse(
     string? ManagerUserId,
     string? ManagerName,
     string? Role);
+
+public record SwitchStoreResponse(
+    string AccessToken,
+    string RefreshToken,
+    DateTime AccessTokenExpiresAt,
+    DateTime RefreshTokenExpiresAt,
+    string StoreId);

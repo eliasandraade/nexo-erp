@@ -9,19 +9,19 @@ using Nexo.Infrastructure.Persistence;
 namespace Nexo.Infrastructure.MultiTenancy;
 
 /// <summary>
-/// EF Core SaveChanges interceptor — enforces tenant isolation on every INSERT/UPDATE.
+/// EF Core SaveChanges interceptor — enforces tenant and store isolation on every INSERT/UPDATE.
 ///
 /// Registered as a SINGLETON (EF Core requirement for interceptors).
-/// Does NOT inject ICurrentTenant in its constructor — that would create a captive
-/// dependency (singleton capturing a scoped service). Instead, the current tenant is
-/// read from the NexoDbContext instance passed in each SaveChanges event, which is
-/// itself scoped and already holds the correct ICurrentTenant for the request.
+/// Does NOT inject ICurrentTenant/ICurrentStore in its constructor — that would create a captive
+/// dependency (singleton capturing a scoped service). Instead, the current tenant/store is
+/// read from the NexoDbContext instance passed in each SaveChanges event.
 ///
 /// On every SaveChanges:
-///   1. For Added entities: auto-sets TenantId if still Guid.Empty.
-///   2. Validates no TenantEntity has a TenantId that differs from the current tenant.
-///   3. Validates no existing entity attempts to change its TenantId.
-///   4. Throws TenantIsolationViolationException on any violation.
+///   1. For Added TenantEntity: auto-sets TenantId if still Guid.Empty.
+///   2. For Added StoreEntity: additionally auto-sets StoreId if still Guid.Empty.
+///   3. Validates no TenantEntity has a TenantId that differs from the current tenant.
+///   4. Validates no existing entity attempts to change its TenantId.
+///   5. Throws TenantIsolationViolationException on any violation.
 ///
 /// Skips all validation when IsResolved = false (DataSeeder, migrations, unauthenticated).
 /// </summary>
@@ -29,8 +29,8 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
 {
     private readonly ILogger<TenantSaveChangesInterceptor> _logger;
 
-    // ICurrentTenant is intentionally NOT injected here.
-    // It is obtained per-call from the NexoDbContext passed in the event data.
+    // ICurrentTenant/ICurrentStore are intentionally NOT injected here.
+    // They are obtained per-call from the NexoDbContext passed in the event data.
     public TenantSaveChangesInterceptor(ILogger<TenantSaveChangesInterceptor> logger)
     {
         _logger = logger;
@@ -55,11 +55,12 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
 
     private void ValidateTenantEntities(DbContext? context)
     {
-        // Access the scoped ICurrentTenant from the DbContext itself —
+        // Access the scoped ICurrentTenant/ICurrentStore from the DbContext itself —
         // this is the correct per-request instance, not a captured singleton.
         if (context is not NexoDbContext nexoCtx) return;
 
         var currentTenant = nexoCtx.CurrentTenant;
+        var currentStore  = nexoCtx.CurrentStore;
 
         // Skip validation when there's no resolved tenant (DataSeeder, migrations, anon requests)
         if (!currentTenant.IsResolved) return;
@@ -75,7 +76,6 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
                 if (entry.Entity.TenantId == Guid.Empty)
                 {
                     entry.Entity.SetTenantId(currentTenant.Id);
-                    continue;
                 }
 
                 // Block cross-tenant INSERTs
@@ -94,6 +94,13 @@ public class TenantSaveChangesInterceptor : SaveChangesInterceptor
                         entityType,
                         entry.Entity.TenantId,
                         currentTenant.Id);
+                }
+
+                // Auto-inject StoreId for StoreEntity subclasses
+                if (entry.Entity is StoreEntity storeEntity && currentStore.IsResolved)
+                {
+                    if (storeEntity.StoreId == Guid.Empty)
+                        storeEntity.SetStoreId(currentStore.Id);
                 }
             }
 

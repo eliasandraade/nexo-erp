@@ -12,7 +12,7 @@ namespace Nexo.Infrastructure.Auth;
 /// Generates signed HS256 JWT access tokens (15min) and refresh tokens (7d).
 ///
 /// Access token claims:
-///   sub, jti, userId, tenantId, tenantSlug, name, role, activeModules
+///   sub, jti, userId, tenantId, tenantSlug, name, role, module[], storeId, store[]
 ///
 /// Refresh token claims:
 ///   sub, jti, userId, tenantId (minimal — only what's needed for refresh)
@@ -26,12 +26,14 @@ public class JwtTokenService : IJwtTokenService
     public TokenPair GenerateTokenPair(
         User user,
         string tenantSlug,
-        IReadOnlyList<string> activeModules)
+        IReadOnlyList<string> activeModules,
+        Guid storeId,
+        IReadOnlyList<Guid> accessibleStoreIds)
     {
         var accessExpiry = GetAccessTokenExpiration();
         var refreshExpiry = GetRefreshTokenExpiration();
 
-        var accessToken = BuildAccessToken(user, tenantSlug, activeModules, accessExpiry);
+        var accessToken = BuildAccessToken(user, tenantSlug, activeModules, storeId, accessibleStoreIds, accessExpiry);
         var refreshToken = BuildRefreshToken(user, refreshExpiry);
 
         return new TokenPair(accessToken, refreshToken, accessExpiry, refreshExpiry);
@@ -91,6 +93,8 @@ public class JwtTokenService : IJwtTokenService
         User user,
         string tenantSlug,
         IReadOnlyList<string> activeModules,
+        Guid storeId,
+        IReadOnlyList<Guid> accessibleStoreIds,
         DateTime expiry)
     {
         var claims = new List<Claim>
@@ -106,9 +110,16 @@ public class JwtTokenService : IJwtTokenService
         };
 
         // Active modules embedded in JWT — avoids a Redis call on every request
-        // for the first 15 minutes. On refresh, the list is re-evaluated.
         foreach (var module in activeModules)
             claims.Add(new Claim("module", module));
+
+        // Active store (the store context for this session)
+        if (storeId != Guid.Empty)
+            claims.Add(new Claim("storeId", storeId.ToString()));
+
+        // All accessible stores (used by switch-store UI to show available options)
+        foreach (var id in accessibleStoreIds)
+            claims.Add(new Claim("store", id.ToString()));
 
         return BuildToken(claims, GetAudience(), expiry);
     }
@@ -153,7 +164,7 @@ public class JwtTokenService : IJwtTokenService
         return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
     }
 
-    private string GetIssuer()        => _config["Jwt:Issuer"]   ?? "nexo-api";
-    private string GetAudience()      => _config["Jwt:Audience"] ?? "nexo-frontend";
+    private string GetIssuer()          => _config["Jwt:Issuer"]          ?? "nexo-api";
+    private string GetAudience()        => _config["Jwt:Audience"]        ?? "nexo-frontend";
     private string GetRefreshAudience() => _config["Jwt:RefreshAudience"] ?? "nexo-refresh";
 }

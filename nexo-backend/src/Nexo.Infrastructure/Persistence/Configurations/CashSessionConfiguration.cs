@@ -17,6 +17,10 @@ public class CashSessionConfiguration : IEntityTypeConfiguration<CashSession>
             .HasColumnName("tenant_id")
             .IsRequired();
 
+        builder.Property(x => x.StoreId)
+            .HasColumnName("store_id")
+            .IsRequired();
+
         builder.Property(x => x.Status)
             .HasColumnName("status")
             .HasConversion<string>()
@@ -62,14 +66,11 @@ public class CashSessionConfiguration : IEntityTypeConfiguration<CashSession>
             .HasColumnType("timestamptz")
             .IsRequired();
 
-        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => new { x.TenantId, x.StoreId });
 
-        // Rule: one open session per tenant + user.
-        // A partial unique index would be ideal (WHERE status = 'Open'), but EF doesn't
-        // support that directly. The unique index here covers (tenant_id, opened_by_user_id, status).
-        // The service layer enforces the Open-only constraint via GetOpenSessionByUserAsync.
-        builder.HasIndex(x => new { x.TenantId, x.OpenedByUserId, x.Status })
-            .HasDatabaseName("ix_cash_sessions_tenant_user_status");
+        // Rule: one open session per store + user.
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.OpenedByUserId, x.Status })
+            .HasDatabaseName("ix_cash_sessions_store_user_status");
 
         builder.HasOne(x => x.OpenedBy)
             .WithMany()
@@ -85,5 +86,10 @@ public class CashSessionConfiguration : IEntityTypeConfiguration<CashSession>
             .WithMany()
             .HasForeignKey(x => x.TenantId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

@@ -30,6 +30,9 @@ public static class DependencyInjection
         // ICurrentTenant is scoped: one instance per HTTP request.
         services.AddScoped<ICurrentTenant, CurrentTenantService>();
 
+        // ICurrentStore is scoped: reads storeId JWT claim per request.
+        services.AddScoped<ICurrentStore, CurrentStoreService>();
+
         // TenantSaveChangesInterceptor must be singleton (EF interceptors are registered once).
         services.AddSingleton<TenantSaveChangesInterceptor>();
 
@@ -91,6 +94,9 @@ public static class DependencyInjection
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ITenantRepository, TenantRepository>();
         services.AddScoped<IAppSettingsRepository, AppSettingsRepository>();
+
+        // Store repository (platform-level, bypasses query filters)
+        services.AddScoped<IStoreRepository, StoreEntityRepository>();
 
         // CORE business repositories
         services.AddScoped<ICustomerRepository, CustomerRepository>();

@@ -18,6 +18,8 @@ interface AuthContextValue {
   /** Attempt login. Returns error message on failure, null on success. */
   login: (input: LoginInput) => Promise<string | null>;
   logout: () => void;
+  /** Switch the active store. Issues new JWT pair scoped to the given store. */
+  switchStore: (storeId: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -64,9 +66,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate("/login", { replace: true });
   }, [navigate]);
 
+  const switchStore = useCallback(async (storeId: string): Promise<void> => {
+    const fresh = await authService.switchStore(storeId);
+    setSession(fresh);
+  }, []);
+
   const value = useMemo(
-    () => ({ session, isReady, login, logout }),
-    [session, isReady, login, logout]
+    () => ({ session, isReady, login, logout, switchStore }),
+    [session, isReady, login, logout, switchStore]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

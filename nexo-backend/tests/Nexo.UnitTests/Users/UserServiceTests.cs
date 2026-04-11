@@ -10,12 +10,13 @@ namespace Nexo.UnitTests.Users;
 
 public class UserServiceTests
 {
-    private readonly IUserRepository _users  = Substitute.For<IUserRepository>();
-    private readonly IPasswordHasher _hasher = Substitute.For<IPasswordHasher>();
-    private readonly IAuditWriter    _audit  = Substitute.For<IAuditWriter>();
+    private readonly IUserRepository _users   = Substitute.For<IUserRepository>();
+    private readonly IPasswordHasher _hasher  = Substitute.For<IPasswordHasher>();
+    private readonly IAuditWriter    _audit   = Substitute.For<IAuditWriter>();
     private readonly ICurrentUser    _current = Substitute.For<ICurrentUser>();
+    private readonly ICurrentTenant  _tenant  = Substitute.For<ICurrentTenant>();
 
-    private UserService CreateSut() => new(_users, _hasher, _audit, _current);
+    private UserService CreateSut() => new(_users, _hasher, _audit, _current, _tenant);
 
     // ── CreateAsync ───────────────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ public class UserServiceTests
         _users.EmailExistsAsync("joao@loja.com", Arg.Any<CancellationToken>()).Returns(false);
         _hasher.Hash("senha123").Returns("hashed");
         _current.IsAuthenticated.Returns(false);
+        _tenant.Id.Returns(Guid.NewGuid());
 
         var sut = CreateSut();
         var result = await sut.CreateAsync(new CreateUserRequest(
@@ -34,7 +36,6 @@ public class UserServiceTests
             Login:    "joao.silva",
             Password: "senha123",
             Role:     "vendedor",
-            StoreId:  null,
             Phone:    null,
             Notes:    null));
 
@@ -57,7 +58,6 @@ public class UserServiceTests
             Login:    "joao.silva",
             Password: "senha123",
             Role:     "vendedor",
-            StoreId:  null,
             Phone:    null,
             Notes:    null));
 
@@ -77,7 +77,6 @@ public class UserServiceTests
             Login:    "joao.silva",
             Password: "senha123",
             Role:     "vendedor",
-            StoreId:  null,
             Phone:    null,
             Notes:    null));
 
@@ -97,7 +96,6 @@ public class UserServiceTests
             Login:    "j",
             Password: "senha",
             Role:     "superadmin",   // invalid
-            StoreId:  null,
             Phone:    null,
             Notes:    null));
 
@@ -122,9 +120,11 @@ public class UserServiceTests
     [Fact]
     public async Task ChangePasswordAsync_WithWrongCurrentPassword_ThrowsForbidden()
     {
-        var user = User.Create("A", "a@b.com", "a", "hash", UserRole.Vendedor);
+        var tenantId = Guid.NewGuid();
+        var user = User.Create(tenantId, "A", "a@b.com", "a", "hash", UserRole.Vendedor);
         _users.GetByIdAsync(user.Id, Arg.Any<CancellationToken>()).Returns(user);
         _hasher.Verify("wrong", "hash").Returns(false);
+        _tenant.Id.Returns(tenantId);
 
         var sut = CreateSut();
         var act = () => sut.ChangePasswordAsync(user.Id,

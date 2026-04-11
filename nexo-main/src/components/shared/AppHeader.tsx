@@ -1,4 +1,4 @@
-import { Search, Bell, ChevronDown, Building2, Store, LogOut, UserCircle } from "lucide-react";
+import { Search, Bell, ChevronDown, Building2, LogOut, UserCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { roleLabels } from "@/modules/users/types";
+import { StoreSwitcher } from "./StoreSwitcher";
 
 function getInitials(name: string): string {
   return name
@@ -27,7 +28,6 @@ export function AppHeader() {
   const initials = session ? getInitials(session.name) : "?";
   const displayName = session?.name ?? "—";
   const displayRole = session ? (roleLabels[session.role] ?? session.role) : "—";
-  const displayStore = session?.store && session.store !== "—" ? session.store : null;
 
   return (
     <header className="h-14 border-b border-border bg-card flex items-center justify-between px-6 shrink-0">
@@ -39,11 +39,7 @@ export function AppHeader() {
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
         <div className="w-px h-5 bg-border" />
-        <button className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-secondary transition-colors">
-          <Store className="h-4 w-4 text-muted-foreground" />
-          <span>{displayStore ?? "Todas as lojas"}</span>
-          <ChevronDown className="h-3 w-3 text-muted-foreground" />
-        </button>
+        <StoreSwitcher />
       </div>
 
       {/* Center: Search */}

@@ -71,6 +71,9 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
             .HasColumnName("is_active")
             .HasDefaultValue(true);
 
+        builder.Property(x => x.StoreId)
+            .HasColumnName("store_id");   // nullable — null means shared across all stores
+
         builder.Property(x => x.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamptz")
@@ -89,5 +92,10 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
             .WithMany()
             .HasForeignKey(x => x.TenantId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .OnDelete(DeleteBehavior.SetNull);
     }
 }

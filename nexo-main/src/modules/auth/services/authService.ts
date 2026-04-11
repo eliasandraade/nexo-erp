@@ -8,6 +8,7 @@ import type {
   AuthSession,
   BackendLoginResponse,
   BackendSessionDto,
+  BackendSwitchStoreResponse,
   LoginInput,
   LoginResponse,
 } from "../types";
@@ -23,6 +24,8 @@ function toAuthSession(dto: BackendSessionDto): AuthSession {
     login:    dto.login,
     email:    dto.email,
     modules:  dto.activeModules ?? [],
+    storeId:  dto.storeId,
+    storeIds: dto.storeIds ?? [],
   };
 }
 
@@ -74,6 +77,18 @@ export async function logout(): Promise<void> {
   } finally {
     clearTokens();
   }
+}
+
+/**
+ * Switches the active store. Issues a new JWT pair scoped to the given store.
+ * Updates stored tokens and session on success.
+ */
+export async function switchStore(storeId: string): Promise<AuthSession> {
+  const data = await apiClient.post<BackendSwitchStoreResponse>("/auth/switch-store", { storeId });
+  const session = toAuthSession(data.session);
+  setTokens(data.accessToken, data.refreshToken);
+  persistSession(session);
+  return session;
 }
 
 /**

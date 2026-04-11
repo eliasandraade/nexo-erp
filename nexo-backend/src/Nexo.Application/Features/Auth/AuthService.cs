@@ -7,6 +7,7 @@ public class AuthService
 {
     private readonly IUserRepository _users;
     private readonly ITenantRepository _tenants;
+    private readonly IStoreRepository _stores;
     private readonly IPasswordHasher _hasher;
     private readonly IJwtTokenService _jwt;
     private readonly ICacheService _cache;
@@ -14,12 +15,14 @@ public class AuthService
     public AuthService(
         IUserRepository users,
         ITenantRepository tenants,
+        IStoreRepository stores,
         IPasswordHasher hasher,
         IJwtTokenService jwt,
         ICacheService cache)
     {
         _users = users;
         _tenants = tenants;
+        _stores = stores;
         _hasher = hasher;
         _jwt = jwt;
         _cache = cache;
@@ -49,10 +52,15 @@ public class AuthService
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(user.TenantId, ct);
 
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, activeModules);
+        // Load stores for this tenant — active store defaults to the first one
+        var stores = await _stores.GetByTenantIdAsync(user.TenantId, ct);
+        var defaultStore = stores.FirstOrDefault();
+        var storeId = defaultStore?.Id ?? Guid.Empty;
+        var storeIds = stores.Select(s => s.Id).ToList();
+
+        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, activeModules, storeId, storeIds);
 
         // Store refresh token as valid in cache (TTL = refresh token expiry)
-        // Key structure: refresh:valid:{jti} — validated on refresh endpoint
         var refreshClaims = _jwt.ValidateRefreshToken(tokens.RefreshToken);
         if (refreshClaims is not null)
         {
@@ -64,13 +72,15 @@ public class AuthService
         }
 
         var session = new SessionDto(
-            UserId:    user.Id.ToString(),
-            TenantId:  user.TenantId.ToString(),
-            Name:      user.FullName,
-            Role:      user.Role.ToString().ToLowerInvariant(),
-            Login:     user.Login,
-            Email:     user.Email,
-            ActiveModules: activeModules.ToList());
+            UserId:        user.Id.ToString(),
+            TenantId:      user.TenantId.ToString(),
+            Name:          user.FullName,
+            Role:          user.Role.ToString().ToLowerInvariant(),
+            Login:         user.Login,
+            Email:         user.Email,
+            ActiveModules: activeModules.ToList(),
+            StoreId:       storeId == Guid.Empty ? null : storeId.ToString(),
+            StoreIds:      storeIds.Select(id => id.ToString()).ToList());
 
         return new LoginResponse(
             tokens.AccessToken,
@@ -103,7 +113,14 @@ public class AuthService
             return null;
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(claims.TenantId, ct);
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, activeModules);
+
+        // Re-load stores to refresh the list in the new token
+        var stores = await _stores.GetByTenantIdAsync(claims.TenantId, ct);
+        var defaultStore = stores.FirstOrDefault();
+        var storeId = defaultStore?.Id ?? Guid.Empty;
+        var storeIds = stores.Select(s => s.Id).ToList();
+
+        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, activeModules, storeId, storeIds);
 
         // Revoke old refresh token, store new one
         await _cache.RemoveAsync(cacheKey, ct);
@@ -125,16 +142,72 @@ public class AuthService
     }
 
     /// <summary>
+    /// Issues a new access token scoped to a different store.
+    /// Validates the requested store belongs to the current user's tenant
+    /// and is in the user's accessible store list.
+    /// Returns null if the store is invalid or inaccessible.
+    /// </summary>
+    public async Task<SwitchStoreResponse?> SwitchStoreAsync(
+        Guid userId,
+        Guid tenantId,
+        Guid requestedStoreId,
+        string refreshToken,
+        CancellationToken ct = default)
+    {
+        // Validate the requested store exists and belongs to this tenant
+        var store = await _stores.GetByIdAsync(requestedStoreId, ct);
+        if (store is null || store.TenantId != tenantId)
+            return null;
+
+        if (store.Status != Domain.Enums.StoreStatus.Active)
+            return null;
+
+        var user = await _users.GetByIdAsync(userId, ct);
+        if (user is null || user.Status != UserStatus.Active)
+            return null;
+
+        var tenant = await _tenants.GetByIdAsync(tenantId, ct);
+        if (tenant is null) return null;
+
+        var activeModules = await _tenants.GetActiveModuleKeysAsync(tenantId, ct);
+        var stores = await _stores.GetByTenantIdAsync(tenantId, ct);
+        var storeIds = stores.Select(s => s.Id).ToList();
+
+        // Revoke old refresh token and issue new token pair for the switched store
+        var oldClaims = _jwt.ValidateRefreshToken(refreshToken);
+        if (oldClaims is not null)
+            await _cache.RemoveAsync($"refresh:valid:{oldClaims.Jti}", ct);
+
+        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, activeModules, requestedStoreId, storeIds);
+
+        var newClaims = _jwt.ValidateRefreshToken(tokens.RefreshToken);
+        if (newClaims is not null)
+        {
+            var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
+            await _cache.SetAsync(
+                $"refresh:valid:{newClaims.Jti}",
+                new RefreshTokenEntry(user.Id, user.TenantId),
+                ttl, ct);
+        }
+
+        return new SwitchStoreResponse(
+            tokens.AccessToken,
+            tokens.RefreshToken,
+            tokens.AccessTokenExpiresAt,
+            tokens.RefreshTokenExpiresAt,
+            requestedStoreId.ToString());
+    }
+
+    /// <summary>
     /// Revokes the given refresh token so it cannot be used again.
-    /// If the token is already expired or not in Redis, the call is a no-op
-    /// (idempotent — safe to call multiple times).
+    /// Idempotent — safe to call multiple times.
     /// </summary>
     public async Task LogoutAsync(string? refreshToken, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(refreshToken)) return;
 
         var claims = _jwt.ValidateRefreshToken(refreshToken);
-        if (claims is null) return; // already expired or invalid — nothing to revoke
+        if (claims is null) return;
 
         await _cache.RemoveAsync($"refresh:valid:{claims.Jti}", ct);
     }

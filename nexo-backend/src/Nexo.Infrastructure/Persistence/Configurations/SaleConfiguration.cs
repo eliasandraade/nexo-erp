@@ -17,6 +17,10 @@ public class SaleConfiguration : IEntityTypeConfiguration<Sale>
             .HasColumnName("tenant_id")
             .IsRequired();
 
+        builder.Property(x => x.StoreId)
+            .HasColumnName("store_id")
+            .IsRequired();
+
         builder.Property(x => x.Number)
             .HasColumnName("number")
             .IsRequired();
@@ -83,10 +87,10 @@ public class SaleConfiguration : IEntityTypeConfiguration<Sale>
             .HasColumnType("timestamptz")
             .IsRequired();
 
-        builder.HasIndex(x => new { x.TenantId, x.Number }).IsUnique();
-        builder.HasIndex(x => new { x.TenantId, x.Status });
-        builder.HasIndex(x => new { x.TenantId, x.CreatedAt });
-        builder.HasIndex(x => new { x.TenantId, x.CustomerId });
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Number }).IsUnique();
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Status });
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.CreatedAt });
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.CustomerId });
 
         builder.HasOne(x => x.Customer)
             .WithMany(x => x.Sales)
@@ -107,5 +111,10 @@ public class SaleConfiguration : IEntityTypeConfiguration<Sale>
             .WithMany()
             .HasForeignKey(x => x.TenantId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

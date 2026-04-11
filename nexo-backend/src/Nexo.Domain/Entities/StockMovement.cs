@@ -7,7 +7,7 @@ namespace Nexo.Domain.Entities;
 /// Registro imutável de cada alteração no estoque.
 /// Nunca editado ou deletado — correções são feitas por novos registros de ajuste.
 /// </summary>
-public class StockMovement : TenantEntity
+public class StockMovement : StoreEntity
 {
     private StockMovement() { }
     private StockMovement(Guid tenantId) : base(tenantId) { }

@@ -6,7 +6,7 @@ namespace Nexo.Domain.Entities;
 /// <summary>
 /// Representa um turno de caixa. Apenas uma sessão pode estar Open por tenant por vez.
 /// </summary>
-public class CashSession : TenantEntity
+public class CashSession : StoreEntity
 {
     private CashSession() { }
     private CashSession(Guid tenantId) : base(tenantId) { }
