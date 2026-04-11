@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   ShoppingCart,
   Package,
@@ -12,6 +11,8 @@ import {
   CheckCircle2,
   ShoppingBag,
   BarChart3,
+  Layers,
+  Building2,
 } from "lucide-react";
 
 // ─── Navbar ──────────────────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ function LandingNav() {
             <Link to="/login">Entrar</Link>
           </Button>
           <Button asChild size="sm" className="bg-[hsl(217,91%,60%)] hover:bg-[hsl(217,91%,55%)] text-white border-0">
-            <Link to="/register">Criar conta grátis</Link>
+            <Link to="/register">Criar conta</Link>
           </Button>
         </nav>
       </div>
@@ -42,22 +43,15 @@ function HeroSection() {
   return (
     <section className="bg-[hsl(222,47%,11%)] pt-28 pb-24 px-6">
       <div className="max-w-3xl mx-auto text-center space-y-8">
-        <Badge
-          variant="outline"
-          className="border-white/20 text-white/60 bg-white/5 text-xs font-normal px-3 py-1"
-        >
-          Em beta — primeiros lojistas entrando agora
-        </Badge>
-
         <h1 className="text-4xl sm:text-5xl font-bold text-white leading-tight tracking-tight">
-          Seu negócio organizado.
+          Gestão que cresce
           <br />
-          <span className="text-[hsl(217,91%,60%)]">Do estoque ao caixa.</span>
+          <span className="text-[hsl(217,91%,60%)]">com o seu negócio.</span>
         </h1>
 
         <p className="text-lg text-white/60 max-w-xl mx-auto leading-relaxed">
-          O Nexo conecta PDV, estoque, compras e financeiro em um sistema
-          simples — sem planilhas, sem gambiarras.
+          O Nexo é um ERP modular para empresas reais. Comece pelo módulo que
+          você precisa hoje. Expanda quando quiser — sem trocar de sistema.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -67,12 +61,12 @@ function HeroSection() {
             className="bg-[hsl(217,91%,60%)] hover:bg-[hsl(217,91%,55%)] text-white border-0 px-8 text-base font-medium"
           >
             <Link to="/register">
-              Criar conta grátis
+              Criar conta
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
           <p className="text-sm text-white/40">
-            Sem cartão de crédito. Pronto em minutos.
+            Sem cartão de crédito. Configuração em minutos.
           </p>
         </div>
       </div>
@@ -120,33 +114,99 @@ function ProblemSection() {
   );
 }
 
+// ─── Modularidade ─────────────────────────────────────────────────────────────
+
+const modules = [
+  {
+    icon: ShoppingCart,
+    title: "Varejo",
+    description: "PDV, estoque, caixa e vendas integrados.",
+  },
+  {
+    icon: ShoppingBag,
+    title: "Compras",
+    description: "Pedidos a fornecedores, recebimentos e custos.",
+  },
+  {
+    icon: Landmark,
+    title: "Financeiro",
+    description: "Fluxo de caixa, contas e resultado do período.",
+  },
+  {
+    icon: Store,
+    title: "Multi-loja",
+    description: "Gerencie filiais e operações separadas no mesmo sistema.",
+  },
+];
+
+function ModularitySection() {
+  return (
+    <section className="bg-background py-20 px-6">
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-12 space-y-3">
+          <div className="inline-flex items-center gap-2 text-primary">
+            <Layers className="h-5 w-5" />
+            <span className="text-sm font-medium uppercase tracking-widest">Arquitetura modular</span>
+          </div>
+          <h2 className="text-2xl font-semibold text-foreground">
+            Comece pelo que você precisa.
+            <br />
+            Expanda conforme crescer.
+          </h2>
+          <p className="text-sm text-muted-foreground max-w-lg mx-auto leading-relaxed">
+            Cada módulo funciona de forma independente e se integra aos outros.
+            Ideal para quem tem mais de um negócio em ramos diferentes ou
+            uma rede com várias filiais.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {modules.map(({ icon: Icon, title, description }) => (
+            <div
+              key={title}
+              className="flex items-start gap-4 bg-card border border-border rounded-xl p-5"
+            >
+              <div className="w-10 h-10 rounded-lg bg-primary/8 flex items-center justify-center shrink-0">
+                <Icon className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground text-sm">{title}</p>
+                <p className="text-sm text-muted-foreground mt-0.5 leading-relaxed">{description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── Como funciona ────────────────────────────────────────────────────────────
 
 const steps = [
   {
     number: "01",
     title: "Crie sua conta",
-    description: "Cadastro em menos de 1 minuto. Sem formulário longo, sem burocracia.",
+    description: "Cadastro em menos de 1 minuto. Sem formulário longo.",
   },
   {
     number: "02",
-    title: "Cadastre seus produtos",
-    description: "Adicione o catálogo com preços, estoque e código de barras.",
+    title: "Configure sua operação",
+    description: "Produtos, estoque, lojas e usuários. Tudo no painel.",
   },
   {
     number: "03",
-    title: "Abra o caixa e venda",
-    description: "PDV pronto para uso. Estoque atualiza automaticamente a cada venda.",
+    title: "Abra o caixa e opere",
+    description: "PDV pronto para uso. Estoque e caixa atualizados em tempo real.",
   },
 ];
 
 function HowItWorksSection() {
   return (
-    <section className="bg-background py-20 px-6">
+    <section className="bg-muted/30 py-20 px-6 border-y border-border">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12 space-y-2">
           <h2 className="text-2xl font-semibold text-foreground">Como funciona</h2>
-          <p className="text-sm text-muted-foreground">Três passos para sair do caos e entrar no controle.</p>
+          <p className="text-sm text-muted-foreground">Do cadastro à operação em três passos.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {steps.map(({ number, title, description }) => (
@@ -170,18 +230,18 @@ const features = [
   { icon: Landmark,      label: "Gestão de caixa e movimentações" },
   { icon: ShoppingBag,   label: "Módulo de compras e fornecedores" },
   { icon: BarChart3,     label: "Relatórios e histórico de vendas" },
-  { icon: Store,         label: "Suporte a múltiplas lojas" },
+  { icon: Store,         label: "Multi-loja e multi-operação" },
   { icon: Users,         label: "Usuários com permissões por função" },
   { icon: TrendingUp,    label: "Dashboard com visão geral do negócio" },
 ];
 
 function FeaturesSection() {
   return (
-    <section className="bg-muted/30 py-20 px-6 border-y border-border">
+    <section className="bg-background py-20 px-6">
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-12 space-y-2">
-          <h2 className="text-2xl font-semibold text-foreground">Tudo em um só lugar</h2>
-          <p className="text-sm text-muted-foreground">Sem módulos pagos separados. Sem surpresa no boleto.</p>
+          <h2 className="text-2xl font-semibold text-foreground">Tudo integrado</h2>
+          <p className="text-sm text-muted-foreground">Uma plataforma para centralizar toda a operação.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {features.map(({ icon: Icon, label }) => (
@@ -199,25 +259,31 @@ function FeaturesSection() {
   );
 }
 
-// ─── Beta ─────────────────────────────────────────────────────────────────────
+// ─── Prova institucional ──────────────────────────────────────────────────────
 
-function BetaSection() {
+function InstitutionalSection() {
   return (
-    <section className="bg-background py-20 px-6">
-      <div className="max-w-2xl mx-auto text-center space-y-4">
-        <Badge
-          variant="outline"
-          className="border-primary/30 text-primary bg-primary/5 text-xs font-normal px-3 py-1"
-        >
-          Fase beta
-        </Badge>
-        <h2 className="text-2xl font-semibold text-foreground">
-          Os primeiros lojistas estão entrando agora
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
-          O Nexo está em fase de ativação com os primeiros usuários reais.
-          Seu feedback molda diretamente o produto. É isso — sem promessa exagerada.
-        </p>
+    <section className="bg-muted/40 py-16 px-6 border-y border-border">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex flex-col sm:flex-row items-start gap-8">
+          <div className="shrink-0 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-primary" />
+            </div>
+            <span className="font-semibold text-foreground text-sm">Ecossistema Nexo</span>
+          </div>
+          <div className="space-y-2">
+            <p className="text-sm text-foreground font-medium">
+              O Nexo faz parte de um ecossistema de gestão que inclui o{" "}
+              <span className="text-primary font-semibold">NexoGov</span> — solução
+              utilizada por prefeituras no Ceará para gestão pública municipal.
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              A mesma base tecnológica que atende o setor público sustenta o NexoERP
+              para o setor privado. Infraestrutura testada, equipe com experiência real.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -230,12 +296,12 @@ function CtaFinalSection() {
     <section className="bg-[hsl(222,47%,11%)] py-24 px-6">
       <div className="max-w-xl mx-auto text-center space-y-6">
         <h2 className="text-3xl font-bold text-white leading-tight">
-          Chega de improvisar.
+          Um sistema que acompanha
           <br />
-          <span className="text-[hsl(217,91%,60%)]">Comece grátis hoje.</span>
+          <span className="text-[hsl(217,91%,60%)]">cada fase do seu negócio.</span>
         </h2>
         <p className="text-white/50 text-sm">
-          Sem cartão de crédito. Sem limite de vendas no beta.
+          Comece simples. Cresça sem trocar de plataforma.
         </p>
         <Button
           asChild
@@ -243,7 +309,7 @@ function CtaFinalSection() {
           className="bg-[hsl(217,91%,60%)] hover:bg-[hsl(217,91%,55%)] text-white border-0 px-10 text-base font-medium"
         >
           <Link to="/register">
-            Criar conta grátis
+            Criar conta
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
@@ -284,9 +350,10 @@ export default function LandingPage() {
       <main className="flex-1">
         <HeroSection />
         <ProblemSection />
+        <ModularitySection />
         <HowItWorksSection />
         <FeaturesSection />
-        <BetaSection />
+        <InstitutionalSection />
         <CtaFinalSection />
       </main>
       <LandingFooter />

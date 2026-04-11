@@ -128,7 +128,21 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUserService>();
-        services.AddScoped<IEmailService, ConsoleEmailService>();
+        // Use Resend when API key is configured; fall back to console logging.
+        var resendApiKey = configuration["Resend:ApiKey"];
+        if (!string.IsNullOrWhiteSpace(resendApiKey))
+        {
+            services.AddHttpClient<ResendEmailService>(client =>
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", resendApiKey);
+            });
+            services.AddScoped<IEmailService, ResendEmailService>();
+        }
+        else
+        {
+            services.AddScoped<IEmailService, ConsoleEmailService>();
+        }
         services.AddScoped<RegistrationService>();
 
         // ── Audit ─────────────────────────────────────────────────────────────
