@@ -84,6 +84,12 @@ public class User : TenantEntity
         SetUpdatedAt();
     }
 
+    public void Activate()
+    {
+        Status = UserStatus.Active;
+        SetUpdatedAt();
+    }
+
     public void RecordAccess()
     {
         LastAccessAt = DateTime.UtcNow;

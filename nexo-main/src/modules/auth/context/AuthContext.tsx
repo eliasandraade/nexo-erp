@@ -23,6 +23,8 @@ interface AuthContextValue {
   logout: () => void;
   /** Switch the active store. Issues new JWT pair scoped to the given store. */
   switchStore: (storeId: string) => Promise<void>;
+  /** Set session after successful email verification (auto-login). */
+  setSessionFromVerify: (session: AuthSession) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -78,9 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(fresh);
   }, []);
 
+  const setSessionFromVerify = useCallback((session: AuthSession) => {
+    setSession(session);
+  }, []);
+
   const value = useMemo(
-    () => ({ session, isReady, login, logout, switchStore }),
-    [session, isReady, login, logout, switchStore]  // eslint-disable-line react-hooks/exhaustive-deps
+    () => ({ session, isReady, login, logout, switchStore, setSessionFromVerify }),
+    [session, isReady, login, logout, switchStore, setSessionFromVerify]  // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

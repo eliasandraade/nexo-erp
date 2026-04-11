@@ -29,7 +29,8 @@ public record SessionDto(
     string? StoreId,
     List<string> StoreIds,
     string CompanyName = "",
-    string Type = "tenant");
+    string Type = "tenant",
+    bool IsNewAccount = false);
 
 public record LoginResponse(
     string AccessToken,
@@ -55,3 +56,24 @@ public record SwitchStoreResponse(
     DateTime AccessTokenExpiresAt,
     DateTime RefreshTokenExpiresAt,
     string StoreId);
+
+// ── Register / Verify ──────────────────────────────────────────────────────────
+
+public record RegisterRequest(string Name, string Email, string Password);
+
+public record RegisterResponse(string Message);
+
+public record VerifyEmailRequest(string Token);
+
+public record ResendVerificationRequest(string Email);
+
+/// <summary>Wraps LoginAsync result to distinguish failure reasons.</summary>
+public record LoginOutcome
+{
+    public LoginResponse? Response { get; init; }
+    public string? ErrorCode { get; init; }
+    public bool IsSuccess => Response is not null;
+
+    public static LoginOutcome Ok(LoginResponse r) => new() { Response = r };
+    public static LoginOutcome Fail(string code) => new() { ErrorCode = code };
+}

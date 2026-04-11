@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { KpiCards } from "@/modules/dashboard/components/KpiCards";
 import { SalesChart } from "@/modules/dashboard/components/SalesChart";
@@ -5,10 +6,21 @@ import { TopProducts } from "@/modules/dashboard/components/TopProducts";
 import { SellerRanking } from "@/modules/dashboard/components/SellerRanking";
 import { RecentInsights } from "@/modules/dashboard/components/RecentInsights";
 import { StockAlerts } from "@/modules/dashboard/components/StockAlerts";
+import { OnboardingWizard } from "@/components/shared/OnboardingWizard";
+import { useAuth } from "@/modules/auth/context/AuthContext";
 
 export default function DashboardPage() {
+  const { session } = useAuth();
+  const onboardingKey = session ? `nexo:onboarding:${session.userId}` : null;
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => !!onboardingKey && !!localStorage.getItem(onboardingKey)
+  );
+
   return (
     <div className="space-y-6">
+      {showOnboarding && (
+        <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
+      )}
       <PageHeader
         title="Dashboard"
         description="Visão geral do seu negócio hoje"

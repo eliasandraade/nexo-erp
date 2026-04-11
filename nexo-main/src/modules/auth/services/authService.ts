@@ -7,27 +7,32 @@ import {
 import type {
   AuthSession,
   BackendLoginResponse,
+  BackendRegisterResponse,
   BackendSessionDto,
   BackendSwitchStoreResponse,
   LoginInput,
   LoginResponse,
+  RegisterInput,
+  RegisterResult,
+  VerifyEmailResult,
 } from "../types";
 
 // ── Session helpers ───────────────────────────────────────────────────────────
 
 function toAuthSession(dto: BackendSessionDto): AuthSession {
   return {
-    userId:      dto.userId,
-    tenantId:    dto.tenantId,
-    name:        dto.name,
-    role:        dto.role as AuthSession["role"],
-    login:       dto.login,
-    email:       dto.email,
-    modules:     dto.activeModules ?? [],
-    storeId:     dto.storeId,
-    storeIds:    dto.storeIds ?? [],
-    companyName: dto.companyName ?? "",
-    type:        (dto.type === "platform" ? "platform" : "tenant"),
+    userId:       dto.userId,
+    tenantId:     dto.tenantId,
+    name:         dto.name,
+    role:         dto.role as AuthSession["role"],
+    login:        dto.login,
+    email:        dto.email,
+    modules:      dto.activeModules ?? [],
+    storeId:      dto.storeId,
+    storeIds:     dto.storeIds ?? [],
+    companyName:  dto.companyName ?? "",
+    type:         (dto.type === "platform" ? "platform" : "tenant"),
+    isNewAccount: dto.isNewAccount ?? false,
   };
 }
 
@@ -108,4 +113,44 @@ export async function validateSession(): Promise<AuthSession | null> {
     clearTokens();
     return null;
   }
+}
+
+// ── Registration / Email verification ────────────────────────────────────────
+
+export async function register(input: RegisterInput): Promise<RegisterResult> {
+  try {
+    await apiClient.post<BackendRegisterResponse>("/auth/register", {
+      name:     input.name,
+      email:    input.email,
+      password: input.password,
+    });
+    return { success: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Erro ao criar conta.";
+    if (message.includes("email_already_registered") || message.includes("409")) {
+      return { success: false, error: "Este e-mail já está cadastrado." };
+    }
+    return { success: false, error: message };
+  }
+}
+
+export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
+  try {
+    const data = await apiClient.get<BackendLoginResponse>(
+      `/auth/verify-email?token=${encodeURIComponent(token)}`
+    );
+    const session = toAuthSession(data.session);
+    setTokens(data.accessToken, data.refreshToken);
+    persistSession(session);
+    if (session.isNewAccount) {
+      localStorage.setItem(`nexo:onboarding:${session.userId}`, "true");
+    }
+    return { success: true, session };
+  } catch {
+    return { success: false, error: "Link inválido ou expirado." };
+  }
+}
+
+export async function resendVerification(email: string): Promise<void> {
+  await apiClient.post("/auth/resend-verification", { email });
 }

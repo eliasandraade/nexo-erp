@@ -21,6 +21,8 @@ export interface AuthSession {
   companyName: string;
   /** "tenant" for regular users, "platform" for NexoERP superusers */
   type: "tenant" | "platform";
+  /** True when this session was created via email verification (first login) */
+  isNewAccount: boolean;
 }
 
 export interface LoginInput {
@@ -42,6 +44,7 @@ export interface BackendSessionDto {
   storeIds?: string[];
   companyName?: string;
   type?: string;
+  isNewAccount?: boolean;
 }
 
 export interface BackendSwitchStoreResponse {
@@ -78,3 +81,26 @@ export interface LoginError {
 }
 
 export type LoginResponse = LoginResult | LoginError;
+
+// ── Register / Verify ────────────────────────────────────────────────────────
+
+export interface RegisterInput {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface BackendRegisterResponse {
+  message: string;
+}
+
+export interface RegisterResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface VerifyEmailResult {
+  success: boolean;
+  session?: AuthSession;
+  error?: string;
+}

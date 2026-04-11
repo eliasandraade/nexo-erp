@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Auth;
 using Nexo.Application.Validators.Auth;
+using Nexo.Infrastructure.Auth;
 using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Api.Controllers;
@@ -15,6 +16,7 @@ namespace Nexo.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly AuthService _authService;
+    private readonly RegistrationService _registration;
     private readonly IValidator<LoginRequest> _loginValidator;
     private readonly ICurrentUser _currentUser;
     private readonly IUserRepository _users;
@@ -26,6 +28,7 @@ public class AuthController : ControllerBase
 
     public AuthController(
         AuthService authService,
+        RegistrationService registration,
         IValidator<LoginRequest> loginValidator,
         ICurrentUser currentUser,
         IUserRepository users,
@@ -36,6 +39,7 @@ public class AuthController : ControllerBase
         IJwtTokenService jwt)
     {
         _authService = authService;
+        _registration = registration;
         _loginValidator = loginValidator;
         _currentUser = currentUser;
         _users = users;
@@ -55,10 +59,16 @@ public class AuthController : ControllerBase
     {
         await _loginValidator.ValidateAndThrowAsync(request, ct);
 
-        var result = await _authService.LoginAsync(request, ct);
+        var outcome = await _authService.LoginAsync(request, ct);
 
-        if (result is not null)
-            return Ok(result);
+        if (outcome.IsSuccess)
+            return Ok(outcome.Response!);
+
+        if (outcome.ErrorCode == "email_not_verified")
+            return Unauthorized(new { error = "E-mail não verificado. Verifique sua caixa de entrada.", code = "email_not_verified" });
+
+        if (outcome.ErrorCode == "account_blocked")
+            return Unauthorized(new { error = "Conta bloqueada. Entre em contato com o suporte." });
 
         // Fallback: check platform users (login field accepted as email)
         var platformUser = await _db.PlatformUsers
@@ -188,6 +198,62 @@ public class AuthController : ControllerBase
     {
         await _authService.LogoutAsync(request.RefreshToken, ct);
         return NoContent();
+    }
+
+    /// <summary>
+    /// Self-registration: creates tenant + store + user + subscription + settings atomically.
+    /// Sends a verification email. User must verify before logging in.
+    /// </summary>
+    [HttpPost("register")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length < 2)
+            return BadRequest(new { error = "Informe seu nome completo." });
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return BadRequest(new { error = "Informe um e-mail válido." });
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
+            return BadRequest(new { error = "A senha deve ter no mínimo 6 caracteres." });
+
+        var errorCode = await _registration.RegisterAsync(request, ct);
+        if (errorCode == "email_already_registered")
+            return Conflict(new { error = "Este e-mail já está cadastrado.", code = errorCode });
+        if (errorCode is not null)
+            return BadRequest(new { error = "Erro ao criar conta.", code = errorCode });
+
+        return Ok(new { message = "verification_email_sent" });
+    }
+
+    /// <summary>
+    /// Email verification: validates the one-time token and activates the user.
+    /// Returns access + refresh tokens for auto-login.
+    /// </summary>
+    [HttpGet("verify-email")]
+    [AllowAnonymous]
+    public async Task<ActionResult<LoginResponse>> VerifyEmail([FromQuery] string token, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(token))
+            return BadRequest(new { error = "Token inválido." });
+
+        var result = await _registration.VerifyEmailAsync(token, ct);
+        if (result is null)
+            return BadRequest(new { error = "Link inválido ou expirado." });
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Resends the verification email. Silently succeeds even if email not found
+    /// to prevent email enumeration attacks.
+    /// </summary>
+    [HttpPost("resend-verification")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return BadRequest(new { error = "Informe o e-mail." });
+        await _registration.ResendVerificationAsync(request.Email.Trim().ToLowerInvariant(), ct);
+        return Ok(new { message = "Email reenviado se o endereço estiver cadastrado." });
     }
 
     /// <summary>

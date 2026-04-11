@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -112,6 +112,14 @@ export default function LoginPage() {
           {loading ? "Entrando..." : "Entrar"}
         </Button>
       </form>
+
+      {/* Create account link */}
+      <p className="text-center text-sm text-muted-foreground">
+        Não tem conta?{" "}
+        <Link to="/register" className="text-primary hover:underline font-medium">
+          Criar conta
+        </Link>
+      </p>
 
       {/* Demo users */}
       <div className="border-t border-border pt-4">

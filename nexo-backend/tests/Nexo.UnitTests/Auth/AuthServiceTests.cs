@@ -52,14 +52,14 @@ public class AuthServiceTests
         var result = await sut.LoginAsync(new LoginRequest("joao", "senha123"));
 
         // Assert
-        result.Should().NotBeNull();
-        result!.AccessToken.Should().Be("fake-access");
-        result.Session.Login.Should().Be("joao");
-        result.Session.Role.Should().Be("vendedor");
+        result.IsSuccess.Should().BeTrue();
+        result.Response!.AccessToken.Should().Be("fake-access");
+        result.Response.Session.Login.Should().Be("joao");
+        result.Response.Session.Role.Should().Be("vendedor");
     }
 
     [Fact]
-    public async Task LoginAsync_WithWrongPassword_ReturnsNull()
+    public async Task LoginAsync_WithWrongPassword_ReturnsFail()
     {
         var user = BuildUser(UserRole.Vendedor);
         _users.GetByLoginAsync("joao", Arg.Any<CancellationToken>()).Returns(user);
@@ -68,22 +68,24 @@ public class AuthServiceTests
         var sut = CreateSut();
         var result = await sut.LoginAsync(new LoginRequest("joao", "wrong"));
 
-        result.Should().BeNull();
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("invalid_credentials");
     }
 
     [Fact]
-    public async Task LoginAsync_WithNonExistentLogin_ReturnsNull()
+    public async Task LoginAsync_WithNonExistentLogin_ReturnsFail()
     {
         _users.GetByLoginAsync(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((User?)null);
 
         var sut = CreateSut();
         var result = await sut.LoginAsync(new LoginRequest("ghost", "pass"));
 
-        result.Should().BeNull();
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("invalid_credentials");
     }
 
     [Fact]
-    public async Task LoginAsync_WithBlockedUser_ReturnsNull()
+    public async Task LoginAsync_WithBlockedUser_ReturnsFail()
     {
         var user = BuildUser(UserRole.Vendedor, UserStatus.Blocked);
         _users.GetByLoginAsync("joao", Arg.Any<CancellationToken>()).Returns(user);
@@ -92,7 +94,21 @@ public class AuthServiceTests
         var sut = CreateSut();
         var result = await sut.LoginAsync(new LoginRequest("joao", "senha123"));
 
-        result.Should().BeNull();
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("account_blocked");
+    }
+
+    [Fact]
+    public async Task LoginAsync_WithPendingVerification_ReturnsFail()
+    {
+        var user = BuildUser(UserRole.Vendedor, UserStatus.PendingVerification);
+        _users.GetByLoginAsync("joao", Arg.Any<CancellationToken>()).Returns(user);
+
+        var sut = CreateSut();
+        var result = await sut.LoginAsync(new LoginRequest("joao", "senha123"));
+
+        result.IsSuccess.Should().BeFalse();
+        result.ErrorCode.Should().Be("email_not_verified");
     }
 
     // ── VerifyManagerAsync ────────────────────────────────────────────────────

@@ -13,6 +13,9 @@ import PlatformTenantDetailPage from "@/modules/platform/pages/PlatformTenantDet
 
 // Auth pages
 import LoginPage from "@/modules/auth/pages/LoginPage";
+import RegisterPage from "@/modules/auth/pages/RegisterPage";
+import CheckEmailPage from "@/modules/auth/pages/CheckEmailPage";
+import VerifyEmailPage from "@/modules/auth/pages/VerifyEmailPage";
 import PerfilPage from "@/modules/profile/pages/PerfilPage";
 
 // Core module pages
@@ -53,9 +56,12 @@ export function AppRouter() {
           {/* Root redirect */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
-          {/* Public: login */}
+          {/* Public: auth pages */}
           <Route element={<AuthLayout />}>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/check-email" element={<CheckEmailPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
           </Route>
 
           {/* Protected: varejo — PDV uses its own full-screen layout */}

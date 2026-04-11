@@ -7,6 +7,7 @@ using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Varejo.Interfaces;
 using Nexo.Infrastructure.Audit;
 using Nexo.Infrastructure.Auth;
+using Nexo.Infrastructure.Email;
 using Nexo.Infrastructure.Cache;
 using Nexo.Infrastructure.Modules;
 using Nexo.Infrastructure.MultiTenancy;
@@ -127,6 +128,8 @@ public static class DependencyInjection
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUserService>();
+        services.AddScoped<IEmailService, ConsoleEmailService>();
+        services.AddScoped<RegistrationService>();
 
         // ── Audit ─────────────────────────────────────────────────────────────
         services.AddScoped<IAuditWriter, AuditWriterService>();

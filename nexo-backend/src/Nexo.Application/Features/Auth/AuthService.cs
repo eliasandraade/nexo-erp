@@ -29,26 +29,29 @@ public class AuthService
     }
 
     /// <summary>
-    /// Authenticates a user and returns access + refresh tokens.
-    /// Returns null if credentials are invalid or the account is inactive/blocked.
+    /// Authenticates a user and returns access + refresh tokens wrapped in LoginOutcome.
+    /// Returns LoginOutcome.Fail with an error code if credentials are invalid or account is blocked/pending.
     /// </summary>
-    public async Task<LoginResponse?> LoginAsync(LoginRequest request, CancellationToken ct = default)
+    public async Task<LoginOutcome> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         var user = await _users.GetByLoginAsync(request.Login.Trim().ToLowerInvariant(), ct);
-        if (user is null) return null;
+        if (user is null) return LoginOutcome.Fail("invalid_credentials");
+
+        if (user.Status == UserStatus.PendingVerification)
+            return LoginOutcome.Fail("email_not_verified");
 
         if (user.Status == UserStatus.Inactive || user.Status == UserStatus.Blocked)
-            return null;
+            return LoginOutcome.Fail("account_blocked");
 
         if (!_hasher.Verify(request.Password, user.PasswordHash))
-            return null;
+            return LoginOutcome.Fail("invalid_credentials");
 
         user.RecordAccess();
         await _users.SaveChangesAsync(ct);
 
         // Load tenant slug + active modules for JWT claims
         var tenant = await _tenants.GetByIdAsync(user.TenantId, ct);
-        if (tenant is null) return null;
+        if (tenant is null) return LoginOutcome.Fail("tenant_not_found");
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(user.TenantId, ct);
 
@@ -84,11 +87,11 @@ public class AuthService
             StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
             CompanyName:   companyName);
 
-        return new LoginResponse(
+        return LoginOutcome.Ok(new LoginResponse(
             tokens.AccessToken,
             tokens.RefreshToken,
             tokens.AccessTokenExpiresAt,
-            session);
+            session));
     }
 
     /// <summary>
