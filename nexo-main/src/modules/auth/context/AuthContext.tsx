@@ -15,8 +15,11 @@ interface AuthContextValue {
   session: AuthSession | null;
   /** True once the background /auth/me validation has completed. */
   isReady: boolean;
-  /** Attempt login. Returns error message on failure, null on success. */
-  login: (input: LoginInput) => Promise<string | null>;
+  /**
+   * Attempt login. Returns error message on failure, null on success.
+   * Also returns the session type so the caller can redirect appropriately.
+   */
+  login: (input: LoginInput) => Promise<{ error: string | null; type: "tenant" | "platform" | null }>;
   logout: () => void;
   /** Switch the active store. Issues new JWT pair scoped to the given store. */
   switchStore: (storeId: string) => Promise<void>;
@@ -57,15 +60,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const login = useCallback(async (input: LoginInput): Promise<string | null> => {
+  const login = useCallback(async (input: LoginInput) => {
     const result = await authService.login(input);
-    if (!result.success) return result.error;
+    if (!result.success) return { error: result.error, type: null } as const;
     setSession(result.session);
-    if (result.session.type === "platform") {
-      navigate("/platform", { replace: true });
-    }
-    return null;
-  }, [navigate]);
+    return { error: null, type: result.session.type } as const;
+  }, []);
 
   const logout = useCallback(() => {
     authService.logout();
@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ session, isReady, login, logout, switchStore }),
-    [session, isReady, login, logout, switchStore]
+    [session, isReady, login, logout, switchStore]  // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

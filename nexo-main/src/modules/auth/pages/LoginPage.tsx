@@ -38,13 +38,13 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    const err = await login({ login: loginField.trim(), password });
+    const { error: err, type } = await login({ login: loginField.trim(), password });
     setLoading(false);
 
     if (err) {
       setError(err);
     } else {
-      navigate("/dashboard", { replace: true });
+      navigate(type === "platform" ? "/platform" : "/dashboard", { replace: true });
     }
   }
 
