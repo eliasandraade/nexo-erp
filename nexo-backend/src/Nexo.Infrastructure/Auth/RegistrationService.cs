@@ -63,11 +63,11 @@ public class RegistrationService
         if (request.Password.Length < 6) return "password_too_short";
 
         // 3. Create tenant
-        // TaxId uses a unique placeholder — the user will fill the real CNPJ in settings.
+        // TaxId uses a unique placeholder (≤20 chars) — the user will fill the real CNPJ in settings.
         // Empty string would violate the unique index when multiple tenants register.
         var tenant = Tenant.Create(
             companyName:  name,
-            taxId:        $"_pending_{Guid.NewGuid():N}",
+            taxId:        Guid.NewGuid().ToString("N")[..16],
             email:        email);
         _db.Tenants.Add(tenant);
         await _db.SaveChangesAsync(ct);
