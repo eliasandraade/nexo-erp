@@ -132,11 +132,7 @@ public static class DependencyInjection
         var resendApiKey = configuration["Resend:ApiKey"];
         if (!string.IsNullOrWhiteSpace(resendApiKey))
         {
-            services.AddHttpClient<ResendEmailService>(client =>
-            {
-                client.DefaultRequestHeaders.Authorization =
-                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", resendApiKey);
-            });
+            services.AddHttpClient<ResendEmailService>();
             services.AddScoped<IEmailService, ResendEmailService>();
         }
         else

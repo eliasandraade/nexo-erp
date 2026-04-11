@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
 
@@ -16,11 +17,16 @@ public class ResendEmailService : IEmailService
     private const string FromAddress  = "NexoERP <noreply@nexoerp.com.br>";
 
     private readonly HttpClient _http;
+    private readonly string _apiKey;
     private readonly ILogger<ResendEmailService> _logger;
 
-    public ResendEmailService(HttpClient http, ILogger<ResendEmailService> logger)
+    public ResendEmailService(
+        HttpClient http,
+        IConfiguration configuration,
+        ILogger<ResendEmailService> logger)
     {
         _http   = http;
+        _apiKey = configuration["Resend:ApiKey"] ?? string.Empty;
         _logger = logger;
     }
 
@@ -41,12 +47,17 @@ public class ResendEmailService : IEmailService
             html    = html,
         };
 
-        var body    = new StringContent(
-            JsonSerializer.Serialize(payload),
-            Encoding.UTF8,
-            "application/json");
+        var request = new HttpRequestMessage(HttpMethod.Post, ResendApiUrl)
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(payload),
+                Encoding.UTF8,
+                "application/json"),
+        };
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        var response = await _http.PostAsync(ResendApiUrl, body, ct);
+        var response = await _http.SendAsync(request, ct);
 
         if (!response.IsSuccessStatusCode)
         {
