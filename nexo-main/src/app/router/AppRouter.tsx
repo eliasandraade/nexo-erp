@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/modules/auth/context/AuthContext";
 import { AuthLayout } from "@/app/layouts/AuthLayout";
 import { MainAppLayout } from "@/app/layouts/MainAppLayout";
@@ -10,6 +10,7 @@ import { PlatformRoute } from "./PlatformRoute";
 import PlatformDashboardPage from "@/modules/platform/pages/PlatformDashboardPage";
 import PlatformTenantsPage from "@/modules/platform/pages/PlatformTenantsPage";
 import PlatformTenantDetailPage from "@/modules/platform/pages/PlatformTenantDetailPage";
+import LandingPage from "@/modules/landing/pages/LandingPage";
 
 // Auth pages
 import LoginPage from "@/modules/auth/pages/LoginPage";
@@ -53,8 +54,8 @@ export function AppRouter() {
     <BrowserRouter>
       <AuthProvider>
         <Routes>
-          {/* Root redirect */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          {/* Public: landing page */}
+          <Route path="/" element={<LandingPage />} />
 
           {/* Public: auth pages */}
           <Route element={<AuthLayout />}>
