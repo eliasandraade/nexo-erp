@@ -94,10 +94,12 @@ A table has **many orders over its lifetime** but at most **one active order** a
 
 All restaurante entities must carry `StoreId`. This requires:
 
-1. Migration adding `store_id UUID NOT NULL` to `rest_areas`, `rest_tables`, `rest_orders`
+1. Migration adding `store_id UUID NOT NULL` to **`rest_areas`, `rest_tables`, `rest_orders`, `rest_recipe_cards`**
 2. Global Query Filters updated: `WHERE tenant_id = {tenantId} AND store_id = {storeId}`
 3. All services receive `ICurrentStore` (already exists in core) alongside `ICurrentTenant`
 4. Existing data migration: assign to the primary/first active store of each tenant
+
+`rest_recipe_cards` joins the migration because recipes are per-store: a bar's caipirinha recipe is independent from a sister restaurant's recipe for the same product.
 
 ### 3.4 Order Types
 
@@ -109,38 +111,65 @@ Delivery  — no table, external channel (v2: manual; v3: API integration)
 ```
 
 `TableId` is nullable. Required only for `DineIn`.  
-`PartySize` is nullable. Required when `FoodServiceSettings.CouvertEnabled = true && CouvertAutomatic = true` — backend returns 422 if PartySize is missing in that case. When `CouvertAutomatic = false`, party size can be set later by the waiter before payment.
+`PartySize` is nullable. **Required only when the operational rule demands it:**
+- `CouvertEnabled = true AND CouvertAutomatic = true` → required at order open (422 if missing)
+- `CouvertEnabled = true AND CouvertAutomatic = false` → required before payment (waiter sets at payment step)
+- `CouvertEnabled = false` → fully optional; can be set for split suggestion only
 
-### 3.5 Payment Breakdown (explicit)
+### 3.5 Payment Breakdown — Official Formula
 
 When closing/paying a comanda, the summary is always:
 
 ```
-Subtotal dos itens:       R$ 120,00
-Couvert (4 pessoas):      R$  20,00   ← optional, admin-configured
-Taxa de serviço (10%):    R$  14,00   ← optional, admin-configured, applied to subtotal only
-─────────────────────────────────────
-Total:                    R$ 154,00
+Items Subtotal  = Σ (item.Quantity × item.UnitPrice)
+                  + Σ (modifier.PriceAdjustment × item.Quantity)   ← per each item's modifiers
+
+Couvert         = settings.CouvertPricePerPerson × order.PartySize
+                  (0 if CouvertEnabled = false OR PartySize = null)
+
+Service Fee     = Items Subtotal × (settings.ServiceFeePercent / 100)
+                  (0 if ServiceFeeEnabled = false)
+                  ← applied to Items Subtotal ONLY, never to Couvert
+
+Total           = Items Subtotal + Couvert + Service Fee
+```
+
+Payment screen always shows all four lines, even when Couvert and Service Fee are zero (displayed as "—" or hidden if both disabled):
+
+```
+Subtotal dos itens         R$ 120,00
+Couvert (4 pessoas)        R$  20,00
+Taxa de serviço (10%)      R$  14,00
+──────────────────────────────────────
+Total                      R$ 154,00
 ```
 
 Rules:
-- Service fee applies to **subtotal only** (not to couvert)
-- Couvert = `CouvertPricePerPerson × PartySize`
-- Both are shown as line items in the payment drawer and in the sale record
-- Admin defines both values in FoodServiceSettings; waiter cannot override (only view)
-- If a waiter adds couvert manually (auto = false), they enter party size; system calculates
+- Service fee base is **Items Subtotal only** — couvert is excluded
+- `CouvertAmount` and `ServiceFeeAmount` are stored on `RestOrder` and passed to `SaleService.ConfirmAsync` as part of the total
+- Admin defines both in FoodServiceSettings; waiter can view but not override
+- When `CouvertAutomatic = false`: waiter sets party size at payment step; system recalculates
 
 ### 3.6 SignalR + Polling Fallback
 
-**Primary:** SignalR WebSocket Hub at `/hubs/restaurant`  
-**Fallback:** `useQuery` with `refetchInterval: 10_000` (10-second polling)  
-**Strategy:**
-- `useKitchenSocket` hook attempts SignalR connection on mount
-- On `HubConnectionState.Disconnected` after 3 retries: silently activates polling fallback
-- UI indicator in KitchenHeader: green dot "Tempo real" vs amber dot "Atualizando (10s)"
-- On reconnect: polling stops, SignalR resumes, query invalidated immediately
+This is split into two explicit checkpoints: backend infrastructure and frontend client.
 
-This ensures the kitchen always has data even on flaky connections. No manual refresh required.
+**Checkpoint B-14 — Backend (Hub infrastructure):**
+- `RestaurantHub` registered at `/hubs/restaurant`
+- `IRestaurantNotificationService` abstraction injected into `OrderService`
+- All `OrderService` mutations emit events after database commit
+- Groups: `$"store:{tenantId}:{storeId}"`
+- Railway: single instance is sufficient for v1; Redis backplane documented for scale
+
+**Checkpoint F-05 — Frontend (Client + fallback):**
+- `useKitchenSocket` hook manages connection lifecycle
+- Primary: SignalR WebSocket, auto-reconnect with exponential backoff (3 retries)
+- Fallback: activated silently after 3 failed retries → `useQuery` with `refetchInterval: 10_000`
+- On reconnect: polling stops, SignalR resumes, full query invalidation fires
+- UI indicator: green dot "Tempo real" / amber dot "Atualizando (10s)" in KitchenHeader
+- Fallback is transparent to the user — kitchen is never stuck, no manual refresh needed
+
+The two checkpoints are independent: backend hub can be shipped and tested before the frontend client exists (test via Postman/WebSocket client).
 
 ---
 
@@ -237,6 +266,13 @@ UNIQUE (tenant_id, store_id, table_id)
 WHERE status NOT IN ('Closed', 'Paid', 'Cancelled')
 ```
 
+#### `RestRecipeCard` — add StoreId
+```
++ StoreId   UUID FK → Store NOT NULL
+```
+Index: `(tenant_id, store_id, product_id)` UNIQUE — one recipe per product **per store**.  
+This replaces the previous `(tenant_id, product_id)` unique index.
+
 #### `RestOrderItem` — add modifiers navigation
 ```
 + Navigation: IReadOnlyList<RestOrderItemModifier> Modifiers
@@ -261,8 +297,9 @@ Product
         └── ProductModifier (N)
               └── RestOrderItemModifier (N) [snapshot]
 
-RestRecipeCard (1:1 with Product)
-  └── RestRecipeIngredient (N)
+Store (N)
+  └── RestRecipeCard (N, scoped per store, 1:1 with Product within a store)
+        └── RestRecipeIngredient (N)
 ```
 
 ---
@@ -376,10 +413,14 @@ The hub emits events after every `OrderService` mutation. No client-to-server mu
 - Responsive grid of TableCards
 - TableCard states: available (muted), occupied (primary), reserved (amber), maintenance (red)
 - Occupied card shows: table number + order number + time open + item count
-- Tap occupied → goes to OrderPage
-- Tap available → modal to open new order (orderType, partySize)
-- Counter orders button: "+ Balcão" (opens order without table)
-- Refresh on SignalR `TableStatusChanged` event
+
+**Navigation rule — no heavy modal on the critical path:**
+- **Tap occupied table** → navigate immediately to `OrderPage` (the active order for that table)
+- **Tap available table** → open a lightweight bottom sheet (not a dialog) with 3 fields only: order type (DineIn/Counter/Takeaway as chips), party size (optional numeric input), confirm button — on submit: creates order, navigates to `OrderPage` in the same action
+- "+ Balcão" button in header → same lightweight bottom sheet, table pre-set to null (Counter type)
+- **No intermediate state** — the floor plan should never feel like an admin form
+
+Refresh on SignalR `TableStatusChanged` event
 
 #### `OrderPage` (`/restaurante/mesa/:tableId` or `/restaurante/comanda/:orderId`)
 - Header: table number + order number + time open + party size
@@ -450,7 +491,17 @@ useMutation → POST /restaurante/orders/{id}/pay → invalidates CASH_KEY, STOC
 useQuery(["food-settings", storeId])
 ```
 
-### 6.4 Query Keys
+### 6.4 Dashboard Integration — No Fake Placeholders
+
+The two dashboard blocks ("Mesas abertas" and "Pedidos na cozinha") follow the same empty-state pattern used in the existing dashboard:
+
+- Block is **only visible** when `session.modules.includes("restaurante")` — no empty block shown to non-restaurant tenants
+- When data is zero (no open tables, no kitchen items): show empty state with meaningful message, **not** "0 mesas abertas" as if it were a KPI
+  - "Nenhuma mesa aberta agora." / "Tudo em ordem na cozinha."
+- Loading state: skeleton, not spinner
+- No static/hardcoded numbers — blocks are not rendered until real query resolves
+
+### 6.5 Query Keys
 
 ```typescript
 ["food-settings", storeId]
@@ -495,16 +546,18 @@ useQuery(["food-settings", storeId])
 20. **Sidebar entry** — "Restaurante" in nav, visible when module active
 21. **Dashboard integration** — "Mesas abertas" + "Pedidos na cozinha" blocks
 
-### Phase 3 — Bar/Pub + Delivery Manual (Week 6–8)
+### Phase 3 — Intelligence + Bar/Pub + Delivery Manual (Week 6–8)
 
-22. **`RestDeliveryOrder`** entity + service + controller
-23. **`RestEvent`** entity + service + controller
-24. **`DeliveryPage`** — manual order intake, channel tracking
-25. **`EventsPage`** — cadastrar evento, ver custo vs faturamento
-26. **Couvert manual flow** — when `CouvertAutomatic = false`, waiter enters party size and confirms
-27. **FoodServiceSettings UI** — admin config page for couvert, service fee, store type
-28. **CMV dashboard blocks** — top 5 dishes by CMV%, alerts for products > X%
-29. **Recipe card management page** in main app layout
+**CMV and recipes ship before events** — they deliver immediate owner value and complete the stock/cost loop opened by recipe cards in Phase 1.
+
+22. **`RecipesPage`** — recipe card management in main app layout (list, create/edit, add ingredients, view CMV per dish)
+23. **CMV dashboard blocks** — top 5 dishes by CMV%, alert when CMV exceeds configurable threshold; uses data already tracked in StockMovement.CostPriceSnapshot
+24. **FoodServiceSettings UI** — admin config page for couvert, service fee, store type, order types enabled
+25. **Couvert manual flow** — when `CouvertAutomatic = false`, waiter sets party size in PaymentDrawer; system recalculates breakdown before confirming
+26. **`RestDeliveryOrder`** entity + service + controller
+27. **`DeliveryPage`** — manual order intake, channel tracking (iFood / WhatsApp / Rappi / próprio)
+28. **`RestEvent`** entity + service + controller
+29. **`EventsPage`** — cadastrar show/atração, custo da atração, faturamento no período vs custo
 
 ### Phase 4 — External Integrations (Week 9–14, parallel track)
 
