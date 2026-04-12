@@ -12,7 +12,9 @@ import {
   ShoppingBag,
   BarChart3,
   Layers,
-  Building2,
+  Shield,
+  Zap,
+  RefreshCw,
 } from "lucide-react";
 
 // ─── Navbar ──────────────────────────────────────────────────────────────────
@@ -31,7 +33,7 @@ function LandingNav() {
             <Link to="/login">Entrar</Link>
           </Button>
           <Button asChild size="sm" className="bg-[hsl(217,91%,60%)] hover:bg-[hsl(217,91%,55%)] text-white border-0">
-            <Link to="/register">Criar conta</Link>
+            <Link to="/register">Criar conta grátis</Link>
           </Button>
         </nav>
       </div>
@@ -46,14 +48,14 @@ function HeroSection() {
     <section className="bg-[hsl(222,47%,11%)] pt-28 pb-24 px-6">
       <div className="max-w-3xl mx-auto text-center space-y-8">
         <h1 className="text-4xl sm:text-5xl font-bold text-white leading-tight tracking-tight">
-          Gestão que cresce
+          Venda, controle o estoque
           <br />
-          <span className="text-[hsl(217,91%,60%)]">com o seu negócio.</span>
+          <span className="text-[hsl(217,91%,60%)]">e feche o caixa — no mesmo lugar.</span>
         </h1>
 
         <p className="text-lg text-white/60 max-w-xl mx-auto leading-relaxed">
-          O Orken é um ERP modular para empresas reais. Comece pelo módulo que
-          você precisa hoje. Expanda quando quiser — sem trocar de sistema.
+          Cada venda registrada no Orken atualiza o estoque e o caixa
+          automaticamente. Sem planilha. Sem digitação dupla. Sem perder o controle.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -63,12 +65,12 @@ function HeroSection() {
             className="bg-[hsl(217,91%,60%)] hover:bg-[hsl(217,91%,55%)] text-white border-0 px-8 text-base font-medium"
           >
             <Link to="/register">
-              Criar conta
+              Criar conta grátis
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
           <p className="text-sm text-white/40">
-            Sem cartão de crédito. Configuração em minutos.
+            Sem cartão de crédito · Configuração em minutos.
           </p>
         </div>
       </div>
@@ -111,6 +113,9 @@ function ProblemSection() {
             </div>
           ))}
         </div>
+        <p className="text-center text-sm text-muted-foreground mt-8">
+          O Orken foi feito para resolver exatamente esses três problemas — de uma vez.
+        </p>
       </div>
     </section>
   );
@@ -121,23 +126,27 @@ function ProblemSection() {
 const modules = [
   {
     icon: ShoppingCart,
-    title: "Varejo",
-    description: "PDV, estoque, caixa e vendas integrados.",
+    title: "Venda mais rápido",
+    description:
+      "PDV com leitor de código de barras. Estoque e caixa atualizados a cada venda, automaticamente.",
   },
   {
     icon: ShoppingBag,
-    title: "Compras",
-    description: "Pedidos a fornecedores, recebimentos e custos.",
+    title: "Compre melhor",
+    description:
+      "Controle pedidos a fornecedores, recebimentos e o custo real de cada produto.",
   },
   {
     icon: Landmark,
-    title: "Financeiro",
-    description: "Fluxo de caixa, contas e resultado do período.",
+    title: "Saiba se está lucrando",
+    description:
+      "Fluxo de caixa, contas a pagar e resultado real do mês — sem precisar de planilha para entender.",
   },
   {
     icon: Store,
-    title: "Multi-loja",
-    description: "Gerencie filiais e operações separadas no mesmo sistema.",
+    title: "Cresça sem perder controle",
+    description:
+      "2, 3 ou 10 lojas no mesmo painel. Cada operação separada, tudo visível de um lugar só.",
   },
 ];
 
@@ -261,30 +270,48 @@ function FeaturesSection() {
   );
 }
 
-// ─── Prova institucional ──────────────────────────────────────────────────────
+// ─── Confiança técnica ────────────────────────────────────────────────────────
 
-function InstitutionalSection() {
+const trustItems = [
+  {
+    icon: RefreshCw,
+    title: "Atualizações sem downtime",
+    description: "O sistema é atualizado sem interromper sua operação. Você nunca perde uma venda por manutenção.",
+  },
+  {
+    icon: Shield,
+    title: "Multi-tenant seguro",
+    description: "Os dados de cada empresa são completamente isolados. Sua loja é sua — ninguém mais acessa.",
+  },
+  {
+    icon: Zap,
+    title: "Infraestrutura de alta demanda",
+    description: "Construído sobre a mesma base tecnológica usada em sistemas de gestão de grande volume.",
+  },
+];
+
+function TrustSection() {
   return (
     <section className="bg-muted/40 py-16 px-6 border-y border-border">
-      <div className="max-w-3xl mx-auto">
-        <div className="flex flex-col sm:flex-row items-start gap-8">
-          <div className="shrink-0 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <Building2 className="h-5 w-5 text-primary" />
+      <div className="max-w-4xl mx-auto">
+        <div className="text-center mb-10 space-y-2">
+          <h2 className="text-xl font-semibold text-foreground">Infraestrutura para operar de verdade.</h2>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Você opera. A gente cuida do resto.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {trustItems.map(({ icon: Icon, title, description }) => (
+            <div key={title} className="flex flex-col gap-3 bg-card border border-border rounded-xl p-5">
+              <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                <Icon className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">{title}</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{description}</p>
+              </div>
             </div>
-            <span className="font-semibold text-foreground text-sm">Ecossistema Orken</span>
-          </div>
-          <div className="space-y-2">
-            <p className="text-sm text-foreground font-medium">
-              O Orken faz parte de um ecossistema de gestão que inclui o{" "}
-              <span className="text-primary font-semibold">NexoGov</span> — solução
-              utilizada por prefeituras no Ceará para gestão pública municipal.
-            </p>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              A mesma base tecnológica que atende o setor público sustenta o Orken
-              para o setor privado. Infraestrutura testada, equipe com experiência real.
-            </p>
-          </div>
+          ))}
         </div>
       </div>
     </section>
@@ -298,12 +325,12 @@ function CtaFinalSection() {
     <section className="bg-[hsl(222,47%,11%)] py-24 px-6">
       <div className="max-w-xl mx-auto text-center space-y-6">
         <h2 className="text-3xl font-bold text-white leading-tight">
-          Um sistema que acompanha
+          Sua loja no controle.
           <br />
-          <span className="text-[hsl(217,91%,60%)]">cada fase do seu negócio.</span>
+          <span className="text-[hsl(217,91%,60%)]">Hoje mesmo.</span>
         </h2>
         <p className="text-white/50 text-sm">
-          Comece simples. Cresça sem trocar de plataforma.
+          Configure em minutos. Comece a vender com PDV real no mesmo dia.
         </p>
         <Button
           asChild
@@ -311,7 +338,7 @@ function CtaFinalSection() {
           className="bg-[hsl(217,91%,60%)] hover:bg-[hsl(217,91%,55%)] text-white border-0 px-10 text-base font-medium"
         >
           <Link to="/register">
-            Criar conta
+            Criar conta grátis
             <ArrowRight className="ml-2 h-4 w-4" />
           </Link>
         </Button>
@@ -339,7 +366,7 @@ function LandingFooter() {
             Entrar
           </Link>
           <Link to="/register" className="hover:text-white/70 transition-colors">
-            Criar conta
+            Criar conta grátis
           </Link>
         </nav>
       </div>
@@ -359,7 +386,7 @@ export default function LandingPage() {
         <ModularitySection />
         <HowItWorksSection />
         <FeaturesSection />
-        <InstitutionalSection />
+        <TrustSection />
         <CtaFinalSection />
       </main>
       <LandingFooter />

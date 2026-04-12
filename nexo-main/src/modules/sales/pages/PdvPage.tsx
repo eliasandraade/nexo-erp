@@ -132,7 +132,11 @@ export default function PdvPage() {
             <button
               type="button"
               className="text-red-500 hover:underline"
-              onClick={cart.clearCart}
+              onClick={() => {
+                if (window.confirm("Limpar todos os itens do carrinho?")) {
+                  cart.clearCart();
+                }
+              }}
             >
               Limpar carrinho
             </button>

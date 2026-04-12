@@ -115,9 +115,14 @@ export function KpiCards() {
         >
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                {kpi.label}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {kpi.label}
+                </p>
+                <span className="text-[10px] font-medium text-muted-foreground/60 bg-muted px-1.5 py-0.5 rounded">
+                  Este mês
+                </span>
+              </div>
               <p className="text-2xl font-bold text-foreground mt-1">{kpi.value}</p>
             </div>
             <div className={`w-9 h-9 rounded-lg ${kpi.iconBg} flex items-center justify-center`}>
