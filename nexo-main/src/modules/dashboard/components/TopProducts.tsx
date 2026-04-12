@@ -1,14 +1,56 @@
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { reportService } from "@/modules/reports/services/reportService";
+import { useMemo } from "react";
+import { listSales } from "@/modules/sales/api/sales.api";
 import { formatCurrency } from "@/lib/formatters";
 import { Link } from "react-router-dom";
 
+interface TopProductRow {
+  productCode:       string;
+  productDescription: string;
+  quantitySold:      number;
+  revenueGenerated:  number;
+}
+
 export function TopProducts() {
-  const { data: products = [], isLoading } = useQuery({
-    queryKey: ["dashboard-top-products"],
-    queryFn: () => reportService.getTopProducts(5),
+  const { data: sales = [], isLoading } = useQuery({
+    queryKey: ["sales"],
+    queryFn:  listSales,
   });
+
+  const products = useMemo((): TopProductRow[] => {
+    const byProduct = new Map<
+      string,
+      { code: string; description: string; qty: number; revenue: number }
+    >();
+
+    for (const sale of sales) {
+      if (sale.status === "Cancelled") continue;
+      for (const item of sale.items) {
+        if (!byProduct.has(item.productId)) {
+          byProduct.set(item.productId, {
+            code:        item.productCode,
+            description: item.productName,
+            qty:         0,
+            revenue:     0,
+          });
+        }
+        const entry = byProduct.get(item.productId)!;
+        entry.qty     += item.quantity;
+        entry.revenue += item.total;
+      }
+    }
+
+    return Array.from(byProduct.values())
+      .map((p) => ({
+        productCode:        p.code,
+        productDescription: p.description,
+        quantitySold:       p.qty,
+        revenueGenerated:   Math.round(p.revenue * 100) / 100,
+      }))
+      .sort((a, b) => b.revenueGenerated - a.revenueGenerated)
+      .slice(0, 5);
+  }, [sales]);
 
   return (
     <div

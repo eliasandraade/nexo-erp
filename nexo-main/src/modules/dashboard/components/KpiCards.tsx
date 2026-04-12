@@ -1,8 +1,11 @@
 import { DollarSign, TrendingUp, Receipt, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { reportService } from "@/modules/reports/services/reportService";
-import { inventoryService } from "@/modules/inventory/services/inventoryService";
+import { useMemo } from "react";
+import { listSales } from "@/modules/sales/api/sales.api";
+import { useStockItems } from "@/modules/inventory/hooks/use-stock";
+import { useProducts } from "@/modules/products/hooks/use-products";
+import { deriveStockStatus } from "@/modules/inventory/types";
 import { formatCurrency } from "@/lib/formatters";
 
 interface KpiDef {
@@ -16,17 +19,42 @@ interface KpiDef {
 }
 
 export function KpiCards() {
-  const { data: operational, isLoading: loadingOp } = useQuery({
-    queryKey: ["dashboard-operational"],
-    queryFn: () => reportService.getOperationalSummary(),
+  const { data: sales = [], isLoading: loadingSales } = useQuery({
+    queryKey: ["sales"],
+    queryFn:  listSales,
   });
 
-  const { data: alerts = [], isLoading: loadingAlerts } = useQuery({
-    queryKey: ["dashboard-alerts"],
-    queryFn: () => inventoryService.listAlerts(),
-  });
+  const { data: stockItems = [], isLoading: loadingStock } = useStockItems();
+  const { data: products = [],   isLoading: loadingProducts } = useProducts();
 
-  const isLoading = loadingOp || loadingAlerts;
+  const isLoading = loadingSales || loadingStock || loadingProducts;
+
+  /** Aggregate sales KPIs from real SaleDto list */
+  const operational = useMemo(() => {
+    const activeSales    = sales.filter((s) => s.status !== "Cancelled");
+    const cancelledCount = sales.filter((s) => s.status === "Cancelled").length;
+    const totalRevenue   = activeSales.reduce((acc, s) => acc + s.total, 0);
+    const averageTicket  = activeSales.length > 0
+      ? Math.round((totalRevenue / activeSales.length) * 100) / 100
+      : 0;
+
+    return {
+      totalSales:    sales.length,
+      totalRevenue:  Math.round(totalRevenue * 100) / 100,
+      averageTicket,
+      cancelledCount,
+    };
+  }, [sales]);
+
+  /** Count items below minimum stock using the same enrichment as EstoquePage */
+  const alertCount = useMemo(() => {
+    return stockItems.filter((s) => {
+      const product  = products.find((p) => p.id === s.productId);
+      const minStock = product?.minStockQuantity ?? null;
+      const status   = deriveStockStatus(s.availableQuantity, minStock);
+      return status === "low" || status === "zero";
+    }).length;
+  }, [stockItems, products]);
 
   if (isLoading) {
     return (
@@ -40,39 +68,39 @@ export function KpiCards() {
 
   const kpis: KpiDef[] = [
     {
-      label: "Faturamento",
-      value: formatCurrency(operational?.totalRevenue ?? 0),
-      sub: `${operational?.totalSales ?? 0} venda(s) no período`,
-      subType: "positive",
-      icon: DollarSign,
-      iconBg: "bg-secondary/10",
+      label:     "Faturamento",
+      value:     formatCurrency(operational.totalRevenue),
+      sub:       `${operational.totalSales} venda(s) no período`,
+      subType:   "positive",
+      icon:      DollarSign,
+      iconBg:    "bg-secondary/10",
       iconColor: "text-secondary",
     },
     {
-      label: "Ticket médio",
-      value: formatCurrency(operational?.averageTicket ?? 0),
-      sub: "por venda ativa",
-      subType: "positive",
-      icon: TrendingUp,
-      iconBg: "bg-success/10",
+      label:     "Ticket médio",
+      value:     formatCurrency(operational.averageTicket),
+      sub:       "por venda ativa",
+      subType:   "positive",
+      icon:      TrendingUp,
+      iconBg:    "bg-success/10",
       iconColor: "text-success",
     },
     {
-      label: "Vendas registradas",
-      value: String(operational?.totalSales ?? 0),
-      sub: `${operational?.cancelledCount ?? 0} cancelada(s)`,
-      subType: (operational?.cancelledCount ?? 0) > 0 ? "warning" : "positive",
-      icon: Receipt,
-      iconBg: "bg-primary/10",
+      label:     "Vendas registradas",
+      value:     String(operational.totalSales),
+      sub:       `${operational.cancelledCount} cancelada(s)`,
+      subType:   operational.cancelledCount > 0 ? "warning" : "positive",
+      icon:      Receipt,
+      iconBg:    "bg-primary/10",
       iconColor: "text-primary",
     },
     {
-      label: "Itens em alerta",
-      value: String(alerts.length),
-      sub: alerts.length > 0 ? "requerem atenção" : "estoque normal",
-      subType: alerts.length > 0 ? "warning" : "positive",
-      icon: AlertTriangle,
-      iconBg: "bg-warning/10",
+      label:     "Itens em alerta",
+      value:     String(alertCount),
+      sub:       alertCount > 0 ? "requerem atenção" : "estoque normal",
+      subType:   alertCount > 0 ? "warning" : "positive",
+      icon:      AlertTriangle,
+      iconBg:    "bg-warning/10",
       iconColor: "text-warning",
     },
   ];

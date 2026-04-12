@@ -10,14 +10,14 @@ import {
 } from "recharts";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { posService } from "@/modules/sales/services/posService";
+import { listSales } from "@/modules/sales/api/sales.api";
 
 type Period = "7d" | "30d" | "Todos";
 
 const PERIODS: Period[] = ["7d", "30d", "Todos"];
 
 function getDaysCutoff(period: Period): number {
-  if (period === "7d") return 7;
+  if (period === "7d")  return 7;
   if (period === "30d") return 30;
   return 365;
 }
@@ -26,8 +26,8 @@ export function SalesChart() {
   const [period, setPeriod] = useState<Period>("7d");
 
   const { data: sales = [], isLoading } = useQuery({
-    queryKey: ["dashboard-sales-chart"],
-    queryFn: () => posService.getRecentSales(),
+    queryKey: ["sales"],
+    queryFn:  listSales,
   });
 
   const chartData = useMemo(() => {
@@ -35,18 +35,19 @@ export function SalesChart() {
 
     const byDate = new Map<string, number>();
     for (const sale of sales) {
-      if (sale.status === "cancelled") continue;
-      const ts = new Date(sale.timestamp).getTime();
+      if (sale.status === "Cancelled") continue;
+      const timestamp = sale.confirmedAt ?? sale.createdAt;
+      const ts        = new Date(timestamp).getTime();
       if (ts < cutoff) continue;
       // Key as YYYY-MM-DD for deterministic sort
-      const isoDate = new Date(sale.timestamp).toISOString().split("T")[0];
+      const isoDate = new Date(timestamp).toISOString().split("T")[0];
       byDate.set(isoDate, (byDate.get(isoDate) ?? 0) + sale.total);
     }
 
     return Array.from(byDate.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([isoDate, vendas]) => {
-        const d = new Date(isoDate + "T12:00:00");
+        const d    = new Date(isoDate + "T12:00:00");
         const name = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
         return { name, vendas: Math.round(vendas * 100) / 100 };
       });
@@ -91,7 +92,7 @@ export function SalesChart() {
           <AreaChart data={chartData}>
             <defs>
               <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(217, 91%, 60%)" stopOpacity={0.2} />
+                <stop offset="5%"  stopColor="hsl(217, 91%, 60%)" stopOpacity={0.2} />
                 <stop offset="95%" stopColor="hsl(217, 91%, 60%)" stopOpacity={0} />
               </linearGradient>
             </defs>
@@ -113,10 +114,10 @@ export function SalesChart() {
             <Tooltip
               contentStyle={{
                 backgroundColor: "hsl(222, 47%, 11%)",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 12,
-                color: "#fff",
+                border:          "none",
+                borderRadius:    8,
+                fontSize:        12,
+                color:           "#fff",
               }}
               formatter={(value: number) => [
                 value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),

@@ -1,29 +1,134 @@
-import { Lightbulb, TrendingUp, AlertTriangle, Package, Landmark, ShoppingCart, Percent, Activity } from "lucide-react";
+import { Lightbulb, Package, Landmark, ShoppingCart, Percent, Activity } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { insightService } from "@/modules/insights/services/insightService";
-import type { InsightCategory, InsightSeverity } from "@/modules/insights/types";
+import { useMemo } from "react";
+import { listSales } from "@/modules/sales/api/sales.api";
+import { useStockItems } from "@/modules/inventory/hooks/use-stock";
+import { useProducts } from "@/modules/products/hooks/use-products";
+import { useOpenSession } from "@/modules/cash/hooks/use-cash";
+import { deriveStockStatus } from "@/modules/inventory/types";
 import { Link } from "react-router-dom";
+import type { InsightCategory, InsightSeverity } from "@/modules/insights/types";
 
 const categoryIcons: Record<InsightCategory, React.ElementType> = {
-  inventory: Package,
-  cash: Landmark,
-  sales: ShoppingCart,
+  inventory:   Package,
+  cash:        Landmark,
+  sales:       ShoppingCart,
   commissions: Percent,
-  operations: Activity,
+  operations:  Activity,
 };
 
 const severityColors: Record<InsightSeverity, { color: string; bg: string }> = {
   critical: { color: "text-destructive", bg: "bg-destructive/10" },
-  warning: { color: "text-warning", bg: "bg-warning/10" },
-  info: { color: "text-secondary", bg: "bg-secondary/10" },
+  warning:  { color: "text-warning",     bg: "bg-warning/10" },
+  info:     { color: "text-secondary",   bg: "bg-secondary/10" },
 };
 
+interface Insight {
+  id:          string;
+  category:    InsightCategory;
+  severity:    InsightSeverity;
+  title:       string;
+  description: string;
+  value?:      string;
+}
+
+let seq = 0;
+function makeInsight(
+  category: InsightCategory,
+  severity: InsightSeverity,
+  title: string,
+  description: string,
+  value?: string
+): Insight {
+  return { id: `i-${seq++}`, category, severity, title, description, value };
+}
+
 export function RecentInsights() {
-  const { data: insights = [], isLoading } = useQuery({
-    queryKey: ["dashboard-insights"],
-    queryFn: () => insightService.generateInsights(),
-  });
+  const { data: sales        = [], isLoading: loadingSales }    = useQuery({ queryKey: ["sales"],   queryFn: listSales });
+  const { data: stockItems   = [], isLoading: loadingStock }    = useStockItems();
+  const { data: products     = [], isLoading: loadingProducts } = useProducts();
+  const { data: cashSession,       isLoading: loadingCash }     = useOpenSession();
+
+  const isLoading = loadingSales || loadingStock || loadingProducts || loadingCash;
+
+  const insights = useMemo((): Insight[] => {
+    seq = 0;
+    const list: Insight[] = [];
+
+    // ── Inventory: zero stock ─────────────────────────────────────────────────
+    const zeroCount = stockItems.filter((s) => {
+      const p = products.find((p) => p.id === s.productId);
+      return deriveStockStatus(s.availableQuantity, p?.minStockQuantity ?? null) === "zero";
+    }).length;
+
+    if (zeroCount > 0) {
+      list.push(makeInsight(
+        "inventory", "critical",
+        "Produtos sem estoque",
+        "Existem produtos com estoque zerado que podem impedir vendas.",
+        `${zeroCount} produto${zeroCount > 1 ? "s" : ""}`,
+      ));
+    }
+
+    // ── Inventory: low stock ──────────────────────────────────────────────────
+    const lowCount = stockItems.filter((s) => {
+      const p = products.find((p) => p.id === s.productId);
+      return deriveStockStatus(s.availableQuantity, p?.minStockQuantity ?? null) === "low";
+    }).length;
+
+    if (lowCount > 0) {
+      list.push(makeInsight(
+        "inventory", "warning",
+        "Estoque baixo",
+        "Alguns produtos estão com estoque abaixo do nível mínimo.",
+        `${lowCount} produto${lowCount > 1 ? "s" : ""}`,
+      ));
+    }
+
+    // ── Cash: no open session ─────────────────────────────────────────────────
+    if (!loadingCash && cashSession?.status !== "Open") {
+      list.push(makeInsight(
+        "cash", "warning",
+        "Caixa não aberto",
+        "Não há sessão de caixa ativa. O PDV não poderá finalizar vendas.",
+      ));
+    }
+
+    // ── Sales: high cancellation rate (min 5 sales) ───────────────────────────
+    const totalSales     = sales.length;
+    const cancelledCount = sales.filter((s) => s.status === "Cancelled").length;
+    if (totalSales >= 5) {
+      const rate = cancelledCount / totalSales;
+      if (rate > 0.1) {
+        list.push(makeInsight(
+          "sales", "warning",
+          "Taxa de cancelamento elevada",
+          "A proporção de vendas canceladas está acima de 10% do total.",
+          `${Math.round(rate * 100)}% de cancelamentos`,
+        ));
+      }
+    }
+
+    // ── Sales: top seller (info) ──────────────────────────────────────────────
+    const bySeller = new Map<string, number>();
+    for (const s of sales) {
+      if (s.status === "Cancelled") continue;
+      bySeller.set(s.soldByName, (bySeller.get(s.soldByName) ?? 0) + s.total);
+    }
+    if (bySeller.size > 0) {
+      const [topName, topRevenue] = [...bySeller.entries()]
+        .sort(([, a], [, b]) => b - a)[0];
+      list.push(makeInsight(
+        "sales", "info",
+        "Melhor vendedor",
+        `${topName} lidera em faturamento no período.`,
+        topRevenue.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }),
+      ));
+    }
+
+    return list;
+  }, [sales, stockItems, products, cashSession, loadingCash]);
 
   // Show up to 3 most critical first
   const top = [...insights]
@@ -65,13 +170,11 @@ export function RecentInsights() {
       ) : (
         <div className="space-y-4">
           {top.map((item) => {
-            const Icon = categoryIcons[item.category];
-            const { color, bg } = severityColors[item.severity];
+            const Icon            = categoryIcons[item.category];
+            const { color, bg }   = severityColors[item.severity];
             return (
               <div key={item.id} className="flex gap-3">
-                <div
-                  className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center shrink-0`}
-                >
+                <div className={`w-8 h-8 rounded-lg ${bg} flex items-center justify-center shrink-0`}>
                   <Icon className={`h-4 w-4 ${color}`} />
                 </div>
                 <div className="flex-1 min-w-0">

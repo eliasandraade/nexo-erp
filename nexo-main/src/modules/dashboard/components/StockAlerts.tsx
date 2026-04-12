@@ -1,19 +1,35 @@
 import { AlertTriangle } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { inventoryService } from "@/modules/inventory/services/inventoryService";
+import { useMemo } from "react";
+import { useStockItems } from "@/modules/inventory/hooks/use-stock";
+import { useProducts } from "@/modules/products/hooks/use-products";
+import { deriveStockStatus } from "@/modules/inventory/types";
 import { Link } from "react-router-dom";
 
 export function StockAlerts() {
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ["dashboard-inventory"],
-    queryFn: () => inventoryService.list(),
-  });
+  const { data: stockItems = [], isLoading: loadingStock }    = useStockItems();
+  const { data: products   = [], isLoading: loadingProducts } = useProducts();
 
-  // Show items below minimum or zero stock, up to 4
-  const alertItems = items
-    .filter((i) => i.status === "low" || i.status === "zero")
-    .slice(0, 4);
+  const isLoading = loadingStock || loadingProducts;
+
+  /** Enrich stock items with minStockQuantity from product data — same pattern as EstoquePage */
+  const alertItems = useMemo(() => {
+    return stockItems
+      .map((s) => {
+        const product      = products.find((p) => p.id === s.productId);
+        const minStock     = product?.minStockQuantity ?? null;
+        const status       = deriveStockStatus(s.availableQuantity, minStock);
+        return {
+          productId:    s.productId,
+          description:  s.productName,
+          currentStock: s.currentQuantity,
+          minStock:     minStock ?? 0,
+          status,
+        };
+      })
+      .filter((i) => i.status === "low" || i.status === "zero")
+      .slice(0, 4);
+  }, [stockItems, products]);
 
   return (
     <div
