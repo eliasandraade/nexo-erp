@@ -6,21 +6,30 @@ import { TopProducts } from "@/modules/dashboard/components/TopProducts";
 import { SellerRanking } from "@/modules/dashboard/components/SellerRanking";
 import { RecentInsights } from "@/modules/dashboard/components/RecentInsights";
 import { StockAlerts } from "@/modules/dashboard/components/StockAlerts";
-import { OnboardingWizard } from "@/components/shared/OnboardingWizard";
+import { SetupCard } from "@/components/shared/SetupCard";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+
+function useSetupDismissed(userId: string | undefined) {
+  const key = userId ? `nexo:setup-dismissed:${userId}` : null;
+  const [dismissed, setDismissed] = useState(
+    () => !!key && localStorage.getItem(key) === "1"
+  );
+
+  function dismiss() {
+    if (key) localStorage.setItem(key, "1");
+    setDismissed(true);
+  }
+
+  return { dismissed, dismiss };
+}
 
 export default function DashboardPage() {
   const { session } = useAuth();
-  const onboardingKey = session ? `nexo:onboarding:${session.userId}` : null;
-  const [showOnboarding, setShowOnboarding] = useState(
-    () => !!onboardingKey && !!localStorage.getItem(onboardingKey)
-  );
+  const { dismissed, dismiss } = useSetupDismissed(session?.userId);
 
   return (
     <div className="space-y-6">
-      {showOnboarding && (
-        <OnboardingWizard onComplete={() => setShowOnboarding(false)} />
-      )}
+      {!dismissed && <SetupCard onDismiss={dismiss} />}
       <PageHeader
         title="Dashboard"
         description="Visão geral do seu negócio hoje"
