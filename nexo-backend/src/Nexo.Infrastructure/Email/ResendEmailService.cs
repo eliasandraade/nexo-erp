@@ -14,8 +14,7 @@ namespace Nexo.Infrastructure.Email;
 public class ResendEmailService : IEmailService
 {
     private const string ResendApiUrl = "https://api.resend.com/emails";
-    private const string FromAddress  = "Orken <onboarding@resend.dev>";
-    // TODO: switch to "Orken <noreply@orken.com.br>" after domain is verified at resend.com/domains
+    private const string FromAddress  = "Orken <noreply@orken.com.br>";
 
     private readonly HttpClient _http;
     private readonly string _apiKey;
