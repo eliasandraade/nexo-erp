@@ -34,9 +34,10 @@ export function SellerRanking() {
           ))}
         </div>
       ) : top.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-4">
-          Nenhum vendedor com comissões.
-        </p>
+        <div className="py-4 text-center space-y-1">
+          <p className="text-sm font-medium text-foreground">Sem dados ainda.</p>
+          <p className="text-xs text-muted-foreground">O ranking aparece após as primeiras vendas.</p>
+        </div>
       ) : (
         <div className="space-y-3">
           {top.map((s, i) => (

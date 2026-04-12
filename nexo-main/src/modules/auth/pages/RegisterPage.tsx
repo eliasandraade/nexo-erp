@@ -39,7 +39,7 @@ export default function RegisterPage() {
     <div className="bg-card border border-border rounded-xl shadow-sm p-8 space-y-6">
       <div className="space-y-1">
         <h1 className="text-xl font-semibold text-foreground">Criar conta</h1>
-        <p className="text-sm text-muted-foreground">Comece grátis em menos de 1 minuto.</p>
+        <p className="text-sm text-muted-foreground">Configure em menos de 1 minuto.</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>

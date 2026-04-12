@@ -6,13 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "../context/AuthContext";
 
-const demoUsers = [
-  { login: "carlos.andrade", password: "diretor123", label: "Diretoria" },
-  { login: "fernanda.lima",  password: "gerente123", label: "Gerente" },
-  { login: "rafael.souza",   password: "vendedor123", label: "Vendedor" },
-  { login: "juliana.costa",  password: "estoque123",  label: "Estoquista" },
-];
-
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -22,7 +15,6 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showDemo, setShowDemo] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -48,14 +40,13 @@ export default function LoginPage() {
     }
   }
 
-  function fillDemo(u: (typeof demoUsers)[number]) {
-    setLoginField(u.login);
-    setPassword(u.password);
-    setError(null);
-  }
-
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm p-8 space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-xl font-semibold text-foreground">Bem-vindo de volta.</h1>
+        <p className="text-sm text-muted-foreground">Entre com seus dados para continuar.</p>
+      </div>
+
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div className="space-y-1.5">
@@ -120,35 +111,6 @@ export default function LoginPage() {
           Criar conta
         </Link>
       </p>
-
-      {/* Demo users */}
-      <div className="border-t border-border pt-4">
-        <button
-          type="button"
-          onClick={() => setShowDemo((v) => !v)}
-          className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center"
-        >
-          {showDemo ? "Ocultar" : "Ver"} usuários de demonstração
-        </button>
-
-        {showDemo && (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {demoUsers.map((u) => (
-              <button
-                key={u.login}
-                type="button"
-                onClick={() => fillDemo(u)}
-                className="text-left px-3 py-2 rounded-lg border border-border hover:border-secondary/50 hover:bg-muted transition-colors"
-              >
-                <p className="text-xs font-medium text-foreground">{u.label}</p>
-                <p className="text-[11px] text-muted-foreground truncate">
-                  {u.login}
-                </p>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

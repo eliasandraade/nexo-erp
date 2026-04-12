@@ -58,8 +58,9 @@ export function RecentInsights() {
         </div>
       ) : top.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-4">
-          <Lightbulb className="h-5 w-5 text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">Nenhum insight disponível.</p>
+          <Lightbulb className="h-5 w-5 text-muted-foreground/50" />
+          <p className="text-sm font-medium text-foreground">Tudo em ordem.</p>
+          <p className="text-xs text-muted-foreground">Insights aparecem conforme o sistema acumula dados.</p>
         </div>
       ) : (
         <div className="space-y-4">

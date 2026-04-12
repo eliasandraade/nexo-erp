@@ -34,9 +34,10 @@ export function TopProducts() {
           ))}
         </div>
       ) : products.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-4">
-          Nenhuma venda registrada.
-        </p>
+        <div className="py-4 text-center space-y-1">
+          <p className="text-sm font-medium text-foreground">Nenhuma venda ainda.</p>
+          <p className="text-xs text-muted-foreground">Os produtos mais vendidos aparecem aqui.</p>
+        </div>
       ) : (
         <div className="space-y-3">
           {products.map((p, i) => (

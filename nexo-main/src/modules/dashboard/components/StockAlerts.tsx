@@ -42,9 +42,10 @@ export function StockAlerts() {
           ))}
         </div>
       ) : alertItems.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-4">
-          Nenhum alerta de estoque.
-        </p>
+        <div className="py-4 text-center space-y-1">
+          <p className="text-sm font-medium text-foreground">Estoque saudável.</p>
+          <p className="text-xs text-muted-foreground">Nenhum produto abaixo do mínimo.</p>
+        </div>
       ) : (
         <div className="space-y-3">
           {alertItems.map((a) => {

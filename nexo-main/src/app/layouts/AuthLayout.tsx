@@ -27,12 +27,12 @@ export function AuthLayout() {
 
         <div className="space-y-3">
           <p className="text-3xl font-semibold text-foreground leading-snug">
-            Um sistema.
+            Controle real
             <br />
-            Seus negócios.
+            do seu negócio.
           </p>
-          <p className="text-sm text-muted-foreground">
-            Controle operacional centralizado para pequenas e médias empresas.
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            PDV, estoque, caixa e compras — tudo conectado, tudo em tempo real.
           </p>
         </div>
 
@@ -53,20 +53,11 @@ export function AuthLayout() {
             />
           </div>
           <p className="text-sm text-muted-foreground">
-            Um sistema. Seus negócios.
+            Controle real do seu negócio.
           </p>
         </div>
 
         <div className="w-full max-w-sm">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold text-foreground">
-              Acesse sua conta
-            </h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Entre com suas credenciais para continuar.
-            </p>
-          </div>
-
           <Outlet />
         </div>
 

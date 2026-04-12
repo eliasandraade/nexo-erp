@@ -82,8 +82,9 @@ export function SalesChart() {
       {isLoading ? (
         <Skeleton className="h-[260px] w-full" />
       ) : chartData.length === 0 ? (
-        <div className="h-[260px] flex items-center justify-center">
-          <p className="text-xs text-muted-foreground">Nenhuma venda no período selecionado.</p>
+        <div className="h-[260px] flex flex-col items-center justify-center gap-2">
+          <p className="text-sm font-medium text-foreground">Nenhuma venda ainda.</p>
+          <p className="text-xs text-muted-foreground">Abra o caixa e registre a primeira venda pelo PDV.</p>
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={260}>
