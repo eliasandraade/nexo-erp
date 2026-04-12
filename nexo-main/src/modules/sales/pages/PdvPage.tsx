@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { cashService } from "@/modules/cash/services/cashService";
-import { posService } from "../services/posService";
+import { useOpenSession } from "@/modules/cash/hooks/use-cash";
 import { usePosCart } from "../hooks/usePosCart";
+import { useCompleteSale } from "../hooks/use-pos-sale";
 import { PosProductSearch } from "../components/PosProductSearch";
 import { PosCartTable } from "../components/PosCartTable";
 import { PosTotals } from "../components/PosTotals";
@@ -14,49 +13,73 @@ import { PosDiscountInput } from "../components/PosDiscountInput";
 import { PosPaymentPanel } from "../components/PosPaymentPanel";
 import { PosSaleSuccessModal } from "../components/PosSaleSuccessModal";
 import type { CompletedSale, PaymentEntry, ProductSearchResult } from "../types";
+import type { SaleDto } from "../api/sales.api";
+
+/** Maps a confirmed SaleDto + cart snapshot into the CompletedSale shape
+ *  that PosSaleSuccessModal expects — without touching the modal's contract. */
+function toCompletedSale(
+  dto: SaleDto,
+  cartItems: ReturnType<typeof usePosCart>["items"],
+  payments: PaymentEntry[],
+  subtotal: number,
+  discountTotal: number,
+): CompletedSale {
+  const cashPayment = payments.find((p) => p.method === "cash");
+  const change      = cashPayment ? Math.max(0, cashPayment.amount - dto.total) : 0;
+
+  return {
+    id:           `#${dto.number}`,
+    timestamp:    dto.confirmedAt ?? dto.createdAt,
+    operator:     dto.soldByName,
+    status:       "completed",
+    items:        cartItems,
+    subtotal,
+    discountTotal,
+    total:        dto.total,
+    payments,
+    change,
+  };
+}
 
 export default function PdvPage() {
-  const cart = usePosCart();
-  const queryClient = useQueryClient();
+  const cart        = usePosCart();
+  const completeSale = useCompleteSale();
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
 
-  const { data: cashSession } = useQuery({
-    queryKey: ["cash-session"],
-    queryFn: () => cashService.getCurrentSession(),
-    refetchInterval: 5000,
-  });
-
-  const hasOpenSession = cashSession?.status === "open";
-
-  const saleMutation = useMutation({
-    mutationFn: (payments: PaymentEntry[]) =>
-      posService.completeSale(
-        cart.items,
-        payments,
-        cart.discountTotal,
-        cashSession?.operator ?? "Operador"
-      ),
-    onSuccess: (sale) => {
-      setCompletedSale(sale);
-      // Invalidate cash session (balance updated) and sales list so
-      // /caixa and /vendas reflect the new sale without stale data.
-      queryClient.invalidateQueries({ queryKey: ["cash-session"] });
-      queryClient.invalidateQueries({ queryKey: ["cash-movements"] });
-      queryClient.invalidateQueries({ queryKey: ["sales"] });
-      // Dashboard widgets and reports derive from sales — refresh them too.
-      queryClient.invalidateQueries({ queryKey: ["dashboard-operational"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-top-products"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-seller-ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-sales-chart"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-insights"] });
-    },
-    onError: (err: Error) => {
-      toast.error(err.message);
-    },
-  });
+  // Real cash session from the backend (same query as CaixaPage)
+  const { data: cashSession } = useOpenSession();
+  const hasOpenSession = cashSession?.status === "Open";
 
   function handleAddProduct(product: ProductSearchResult) {
     cart.addItem(product);
+  }
+
+  function handleFinalize(payments: PaymentEntry[]) {
+    if (!cashSession?.id) return;
+
+    // Snapshot cart before clearing so the success modal can display it
+    const snapshotItems       = [...cart.items];
+    const snapshotSubtotal    = cart.subtotal;
+    const snapshotDiscountTotal = cart.discountTotal;
+
+    completeSale.mutate(
+      {
+        items:          snapshotItems,
+        payments,
+        discountAmount: snapshotDiscountTotal,
+        cashSessionId:  cashSession.id,
+      },
+      {
+        onSuccess: (dto) => {
+          setCompletedSale(
+            toCompletedSale(dto, snapshotItems, payments, snapshotSubtotal, snapshotDiscountTotal)
+          );
+        },
+        onError: (err: Error) => {
+          toast.error(err.message ?? "Erro ao finalizar venda. Tente novamente.");
+        },
+      }
+    );
   }
 
   function handleNewSale() {
@@ -64,7 +87,7 @@ export default function PdvPage() {
     setCompletedSale(null);
   }
 
-  // No open cash session guard
+  // Guard: cash session must be open
   if (!hasOpenSession) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -73,7 +96,7 @@ export default function PdvPage() {
           <div>
             <h2 className="text-lg font-semibold">Caixa não está aberto</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              É necessário abrir o caixa antes de registrar vendas.
+              Abra o caixa antes de registrar vendas.
             </p>
           </div>
           <Button asChild>
@@ -127,7 +150,6 @@ export default function PdvPage() {
             discountMode={cart.discountMode}
             total={cart.total}
           />
-
           <PosDiscountInput
             mode={cart.discountMode}
             value={cart.discountValue}
@@ -142,8 +164,8 @@ export default function PdvPage() {
             total={cart.total}
             hasOpenSession={hasOpenSession}
             cartEmpty={cart.items.length === 0}
-            onFinalize={(payments) => saleMutation.mutate(payments)}
-            isLoading={saleMutation.isPending}
+            onFinalize={handleFinalize}
+            isLoading={completeSale.isPending}
           />
         </div>
       </div>
