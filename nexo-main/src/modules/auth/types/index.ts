@@ -19,7 +19,7 @@ export interface AuthSession {
   storeIds: string[];
   /** Company display name (TradeName ?? CompanyName from tenant) */
   companyName: string;
-  /** "tenant" for regular users, "platform" for NexoERP superusers */
+  /** "tenant" for regular users, "platform" for Orken superusers */
   type: "tenant" | "platform";
   /** True when this session was created via email verification (first login) */
   isNewAccount: boolean;

@@ -10,9 +10,7 @@ export function PosLayout() {
       {/* Minimal top bar */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-sidebar shrink-0">
         <div className="flex items-center gap-3">
-          <h1 className="text-sm font-bold tracking-tight text-sidebar-primary-foreground">
-            NEXO
-          </h1>
+          <img src="/orken_darkmode.png" alt="Orken" className="h-5 w-auto object-contain" />
           <span className="text-xs text-sidebar-muted">PDV — Ponto de Venda</span>
         </div>
         <Button
