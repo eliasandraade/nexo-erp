@@ -21,9 +21,11 @@ function LandingNav() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[hsl(222,47%,11%)]/95 backdrop-blur border-b border-white/5">
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-        <span className="text-white font-semibold text-base tracking-tight">
-          Nexo<span className="text-[hsl(217,91%,60%)]">ERP</span>
-        </span>
+        <img
+          src="/orken_darkmode.png"
+          alt="Orken"
+          className="h-7 w-auto object-contain"
+        />
         <nav className="flex items-center gap-3">
           <Button asChild variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10">
             <Link to="/login">Entrar</Link>
@@ -50,7 +52,7 @@ function HeroSection() {
         </h1>
 
         <p className="text-lg text-white/60 max-w-xl mx-auto leading-relaxed">
-          O Nexo é um ERP modular para empresas reais. Comece pelo módulo que
+          O Orken é um ERP modular para empresas reais. Comece pelo módulo que
           você precisa hoje. Expanda quando quiser — sem trocar de sistema.
         </p>
 
@@ -270,16 +272,16 @@ function InstitutionalSection() {
             <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
               <Building2 className="h-5 w-5 text-primary" />
             </div>
-            <span className="font-semibold text-foreground text-sm">Ecossistema Nexo</span>
+            <span className="font-semibold text-foreground text-sm">Ecossistema Orken</span>
           </div>
           <div className="space-y-2">
             <p className="text-sm text-foreground font-medium">
-              O Nexo faz parte de um ecossistema de gestão que inclui o{" "}
+              O Orken faz parte de um ecossistema de gestão que inclui o{" "}
               <span className="text-primary font-semibold">NexoGov</span> — solução
               utilizada por prefeituras no Ceará para gestão pública municipal.
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              A mesma base tecnológica que atende o setor público sustenta o NexoERP
+              A mesma base tecnológica que atende o setor público sustenta o Orken
               para o setor privado. Infraestrutura testada, equipe com experiência real.
             </p>
           </div>
@@ -324,10 +326,14 @@ function LandingFooter() {
   return (
     <footer className="bg-[hsl(222,47%,8%)] py-8 px-6 border-t border-white/5">
       <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-        <span className="text-white/40 text-sm font-medium">
-          Nexo<span className="text-[hsl(217,91%,60%)]">ERP</span>
-          <span className="ml-2 font-normal">— Gestão inteligente para empresas reais.</span>
-        </span>
+        <div className="flex items-center gap-3">
+          <img
+            src="/orken_darkmode.png"
+            alt="Orken"
+            className="h-5 w-auto object-contain opacity-60"
+          />
+          <span className="text-white/40 text-sm font-normal">— Um sistema. Seus negócios.</span>
+        </div>
         <nav className="flex items-center gap-5 text-sm text-white/40">
           <Link to="/login" className="hover:text-white/70 transition-colors">
             Entrar

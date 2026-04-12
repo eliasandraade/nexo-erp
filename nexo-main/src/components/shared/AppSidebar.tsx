@@ -14,12 +14,11 @@ export function AppSidebar() {
     <aside className="w-60 min-h-screen bg-sidebar flex flex-col shrink-0">
       {/* Brand */}
       <div className="px-5 pt-6 pb-4">
-        <h1 className="text-xl font-bold tracking-tight text-sidebar-primary-foreground">
-          NEXO
-        </h1>
-        <p className="text-[11px] text-sidebar-muted mt-0.5 leading-tight">
-          Gestão inteligente para empresas reais.
-        </p>
+        <img
+          src="/orken_darkmode.png"
+          alt="Orken"
+          className="h-7 w-auto object-contain"
+        />
       </div>
 
       {/* Navigation */}

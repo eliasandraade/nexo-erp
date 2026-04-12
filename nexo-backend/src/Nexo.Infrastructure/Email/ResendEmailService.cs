@@ -14,7 +14,8 @@ namespace Nexo.Infrastructure.Email;
 public class ResendEmailService : IEmailService
 {
     private const string ResendApiUrl = "https://api.resend.com/emails";
-    private const string FromAddress  = "NexoERP <noreply@nexoerp.com.br>";
+    private const string FromAddress  = "Orken <onboarding@resend.dev>";
+    // TODO: switch to "Orken <noreply@orken.com.br>" after domain is verified at resend.com/domains
 
     private readonly HttpClient _http;
     private readonly string _apiKey;
@@ -36,7 +37,7 @@ public class ResendEmailService : IEmailService
         string verificationUrl,
         CancellationToken ct = default)
     {
-        var subject = "Confirme seu e-mail — NexoERP";
+        var subject = "Confirme seu email - Orken";
         var html    = BuildVerificationHtml(toName, verificationUrl);
 
         var payload = new
@@ -89,7 +90,7 @@ public class ResendEmailService : IEmailService
                 <tr>
                   <td style="background:#13214a;padding:28px 40px;">
                     <span style="font-size:20px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">
-                      Nexo<span style="color:#4d90fe;">ERP</span>
+                      Orken
                     </span>
                   </td>
                 </tr>
@@ -101,7 +102,7 @@ public class ResendEmailService : IEmailService
                       Olá, {name}.
                     </p>
                     <p style="margin:0 0 28px;font-size:15px;color:#5a6478;line-height:1.6;">
-                      Sua conta no NexoERP foi criada. Clique no botão abaixo para confirmar
+                      Sua conta no Orken foi criada. Clique no botão abaixo para confirmar
                       seu e-mail e acessar o sistema.
                     </p>
 
@@ -127,7 +128,7 @@ public class ResendEmailService : IEmailService
                 <tr>
                   <td style="padding:20px 40px;border-top:1px solid #edf0f5;">
                     <p style="margin:0;font-size:12px;color:#b0b8c9;">
-                      NexoERP — Gestão inteligente para empresas reais.<br />
+                      Orken — Um sistema. Seus negócios.<br />
                       Andrade Systems · Ceará, Brasil
                     </p>
                   </td>

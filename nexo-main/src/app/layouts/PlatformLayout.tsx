@@ -11,8 +11,13 @@ export function PlatformLayout() {
       <aside className="w-56 shrink-0 border-r border-border bg-card flex flex-col">
         {/* Logo */}
         <div className="h-14 flex items-center gap-2 px-4 border-b border-border">
-          <ShieldCheck className="h-5 w-5 text-primary" />
-          <span className="text-sm font-semibold text-foreground">NexoERP Admin</span>
+          <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
+          <img
+            src="/orken_lightmode.png"
+            alt="Orken"
+            className="h-5 w-auto object-contain"
+          />
+          <span className="text-xs font-medium text-muted-foreground">Admin</span>
         </div>
 
         {/* Nav */}

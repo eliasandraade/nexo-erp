@@ -18,21 +18,18 @@ export function AuthLayout() {
       {/* Left panel — branding */}
       <div className="hidden lg:flex lg:w-1/2 xl:w-2/5 bg-card border-r border-border flex-col justify-between p-12">
         <div>
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-xs font-bold text-primary-foreground">N</span>
-            </div>
-            <span className="text-xl font-bold text-foreground tracking-tight">
-              NEXO
-            </span>
-          </div>
+          <img
+            src="/orken_lightmode.png"
+            alt="Orken"
+            className="h-8 w-auto object-contain"
+          />
         </div>
 
         <div className="space-y-3">
           <p className="text-3xl font-semibold text-foreground leading-snug">
-            Gestão inteligente
+            Um sistema.
             <br />
-            para empresas reais.
+            Seus negócios.
           </p>
           <p className="text-sm text-muted-foreground">
             Controle operacional centralizado para pequenas e médias empresas.
@@ -48,16 +45,15 @@ export function AuthLayout() {
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         {/* Mobile branding */}
         <div className="lg:hidden mb-8 text-center">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <span className="text-xs font-bold text-primary-foreground">N</span>
-            </div>
-            <span className="text-xl font-bold text-foreground tracking-tight">
-              NEXO
-            </span>
+          <div className="flex items-center justify-center mb-2">
+            <img
+              src="/orken_lightmode.png"
+              alt="Orken"
+              className="h-8 w-auto object-contain"
+            />
           </div>
           <p className="text-sm text-muted-foreground">
-            Gestão inteligente para empresas reais.
+            Um sistema. Seus negócios.
           </p>
         </div>
 

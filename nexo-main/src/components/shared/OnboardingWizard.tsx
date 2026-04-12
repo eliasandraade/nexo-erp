@@ -83,7 +83,7 @@ export function OnboardingWizard({ onComplete }: Props) {
             </div>
             <div className="space-y-1">
               <h2 className="text-lg font-semibold text-foreground">
-                Bem-vindo ao Nexo{session?.companyName ? `, ${session.companyName}` : ""}!
+                Bem-vindo ao Orken{session?.companyName ? `, ${session.companyName}` : ""}!
               </h2>
               <p className="text-sm text-muted-foreground">
                 Vamos configurar seu primeiro produto para você poder fazer sua primeira venda.

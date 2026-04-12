@@ -13,7 +13,7 @@ export default function PlatformDashboardPage() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Visão geral da plataforma NexoERP</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Visão geral da plataforma Orken</p>
       </div>
 
       {/* Stats */}
