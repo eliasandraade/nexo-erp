@@ -59,6 +59,7 @@ public class RestOrder : StoreEntity
             WaiterId         = waiterId,
             CustomerId       = customerId,
             CouvertAmount    = couvertAmount >= 0 ? couvertAmount : 0,
+            ServiceFeeAmount = 0,
             Notes            = notes?.Trim(),
             OpenedAt         = DateTime.UtcNow,
         };

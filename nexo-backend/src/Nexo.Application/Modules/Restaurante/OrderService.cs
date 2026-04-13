@@ -82,6 +82,8 @@ public class OrderService
     /// </summary>
     public async Task<OrderDto> OpenAsync(OpenOrderRequest request, CancellationToken ct = default)
     {
+        // TODO(B-10): Counter/Takeaway orders should skip the transaction (fast path).
+        // B-10 will restructure OpenAsync to only open a transaction for DineIn orders.
         await using var tx = await _uow.BeginTransactionAsync(ct);
         try
         {
@@ -101,6 +103,7 @@ public class OrderService
                     throw new ConflictException($"Table '{table.Number}' already has an open order (#{existing.OrderNumber}).");
 
                 table.SetOccupied();  // automático
+                // TODO(B-10): Add guard — if orderType != DineIn && request.TableId.HasValue → throw DomainException.
             }
 
             var orderType = Enum.Parse<RestOrderType>(request.OrderType, ignoreCase: true);
