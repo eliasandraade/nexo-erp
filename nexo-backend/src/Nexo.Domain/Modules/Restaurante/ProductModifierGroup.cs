@@ -49,6 +49,8 @@ public class ProductModifierGroup : TenantEntity
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Modifier group name is required.");
+        if (maxSelections < 1)
+            throw new DomainException("MaxSelections must be at least 1.");
         Name          = name.Trim();
         IsRequired    = isRequired;
         MaxSelections = maxSelections;
