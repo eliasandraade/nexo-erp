@@ -1675,7 +1675,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("StoreId");
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_rest_areas_store_id");
 
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_rest_areas_tenant_id");
@@ -1757,7 +1758,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SaleId");
 
-                    b.HasIndex("StoreId");
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_rest_orders_store_id");
 
                     b.HasIndex("TableId");
 
@@ -1913,7 +1915,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.HasIndex("StoreId");
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_rest_recipe_cards_store_id");
 
                     b.HasIndex("TenantId", "StoreId", "ProductId")
                         .IsUnique()
@@ -2026,7 +2029,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AreaId");
 
-                    b.HasIndex("StoreId");
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_rest_tables_store_id");
 
                     b.HasIndex("TenantId", "StoreId", "AreaId")
                         .HasDatabaseName("ix_rest_tables_tenant_store_area");

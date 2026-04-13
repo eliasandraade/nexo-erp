@@ -44,6 +44,8 @@ public class RestRecipeCardConfiguration : IEntityTypeConfiguration<RestRecipeCa
             .HasConstraintName("fk_rest_recipe_cards_stores")
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasIndex(x => x.StoreId).HasDatabaseName("ix_rest_recipe_cards_store_id");
+
         // Uma ficha por produto por tenant + store
         builder.HasIndex(x => new { x.TenantId, x.StoreId, x.ProductId })
             .IsUnique()

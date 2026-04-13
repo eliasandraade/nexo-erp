@@ -43,6 +43,8 @@ public class RestTableConfiguration : IEntityTypeConfiguration<RestTable>
             .HasConstraintName("fk_rest_tables_stores")
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasIndex(x => x.StoreId).HasDatabaseName("ix_rest_tables_store_id");
+
         // Número de mesa único por tenant + store
         builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Number })
             .IsUnique()

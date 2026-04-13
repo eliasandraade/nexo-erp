@@ -36,6 +36,7 @@ public class RestAreaConfiguration : IEntityTypeConfiguration<RestArea>
             .HasConstraintName("fk_rest_areas_stores")
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasIndex(x => x.StoreId).HasDatabaseName("ix_rest_areas_store_id");
         builder.HasIndex(x => x.TenantId).HasDatabaseName("ix_rest_areas_tenant_id");
         builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Name })
             .IsUnique()

@@ -63,6 +63,8 @@ public class RestOrderConfiguration : IEntityTypeConfiguration<RestOrder>
             .HasConstraintName("fk_rest_orders_stores")
             .OnDelete(DeleteBehavior.Restrict);
 
+        builder.HasIndex(x => x.StoreId).HasDatabaseName("ix_rest_orders_store_id");
+
         builder.HasIndex(x => new { x.TenantId, x.StoreId, x.OrderNumber })
             .IsUnique()
             .HasDatabaseName("ix_rest_orders_tenant_store_number");
