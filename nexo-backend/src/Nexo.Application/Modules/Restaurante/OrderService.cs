@@ -307,8 +307,6 @@ public class OrderService
         var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
             ?? throw new NotFoundException("Order", orderId);
 
-        // ── Idempotência: guarda 1 ────────────────────────────────────────────
-        // Paid = already processed; return 409 so the client knows it's idempotent.
         if (order.Status == RestOrderStatus.Paid)
             throw new ConflictException("This order has already been paid.");
 
@@ -319,18 +317,49 @@ public class OrderService
                     : $"Order must be Closed before payment (current: {order.Status}). Call /close first.");
 
         if (order.SaleId is null)
-            throw new DomainException("Order has no linked Sale. This is an inconsistent state — contact support.");
+            throw new DomainException("Order has no linked Sale. Inconsistent state — contact support.");
 
-        // ── Idempotência: guarda 2 ────────────────────────────────────────────
         var saleDto = await _saleService.GetByIdAsync(order.SaleId.Value, ct);
         if (saleDto.Status == "Paid")
             throw new ConflictException("This order has already been paid.");
 
+        var settings = await _foodSettings.GetCurrentStoreAsync(ct);
+
+        // Manual couvert: when CouvertAutomatic=false and PartySize is provided at payment time,
+        // recalculate couvert based on the actual party size. This supports restaurants that only
+        // know the party size at the end of the meal (e.g., after splitting tables).
+        if (settings is { CouvertEnabled: true, CouvertAutomatic: false } && request.PartySize.HasValue)
+        {
+            order.SetPartySize(request.PartySize.Value);
+            var couvert = (settings.CouvertPricePerPerson ?? 0) * request.PartySize.Value;
+            order.SetCouvert(couvert);
+        }
+
+        // ─── Payment formula ─────────────────────────────────────────────────────────
+        // ItemsSubtotal   = Σ(item.Total) — already includes modifier price adjustments
+        // ServiceFeeAmount = ItemsSubtotal × (ServiceFeePercent / 100)
+        //                   ↑ service fee is applied ONLY to ItemsSubtotal, never to couvert
+        // CouvertAmount   = set at order open (auto) or recalculated here (manual, see above)
+        // SurchargesAmount = CouvertAmount + ServiceFeeAmount
+        // GrandTotal      = ItemsSubtotal + SurchargesAmount
+        // ─────────────────────────────────────────────────────────────────────────────
+        decimal serviceFeeAmount = 0;
+        if (settings is { ServiceFeeEnabled: true } && settings.ServiceFeePercent.HasValue)
+            serviceFeeAmount = Math.Round(order.ItemsSubtotal * (settings.ServiceFeePercent.Value / 100m), 2);
+
+        order.SetServiceFee(serviceFeeAmount);
+
+        decimal surchargesAmount = order.CouvertAmount + serviceFeeAmount;
+        decimal grandTotal       = order.ItemsSubtotal + surchargesAmount;
+        decimal paymentsTotal    = request.Payments.Sum(p => p.Amount);
+
+        if (paymentsTotal < grandTotal)
+            throw new DomainException(
+                $"Payment amount ({paymentsTotal:F2}) is less than order total ({grandTotal:F2}).");
+
         await using var tx = await _uow.BeginTransactionAsync(ct);
         try
         {
-            // Products with active recipe cards are excluded from direct stock deduction
-            // in ConfirmAsync — ingredient stocks are deducted below via recipe cards.
             var recipeProductIds = new HashSet<Guid>();
             foreach (var item in order.ActiveItems)
             {
@@ -339,15 +368,18 @@ public class OrderService
                     recipeProductIds.Add(item.ProductId);
             }
 
-            // Confirma a venda no CORE (gera CashMovement / FinancialTransaction)
             var payments = request.Payments
                 .Select(p => new PaymentInput(p.Method, p.Type, p.Amount, p.DueDate))
                 .ToList();
 
             await _saleService.ConfirmAsync(order.SaleId.Value,
-                new ConfirmSaleRequest(payments, SkipStockProductIds: recipeProductIds.Count > 0 ? recipeProductIds : null), ct);
+                new ConfirmSaleRequest(
+                    payments,
+                    SurchargesAmount: surchargesAmount > 0 ? surchargesAmount : 0,
+                    SkipStockProductIds: recipeProductIds.Count > 0 ? recipeProductIds : null),
+                ct);
 
-            // Baixa de ingredientes por ficha técnica
+            // Ingredient deduction via recipe cards
             foreach (var item in order.ActiveItems)
             {
                 var recipe = await _recipes.GetByProductIdWithIngredientsAsync(item.ProductId, ct);
@@ -361,7 +393,6 @@ public class OrderService
                     var stockItem = await _stock.GetByProductIdAsync(ingredient.IngredientProductId, ct);
                     if (stockItem is null) continue;
 
-                    // consumo real = (qty vendida / rendimento da ficha) × qty do ingrediente
                     var consumption = (item.Quantity / recipe.Yield) * ingredient.Quantity;
                     var qtyBefore   = stockItem.CurrentQuantity;
                     stockItem.ApplyMovement(-consumption);
@@ -377,29 +408,25 @@ public class OrderService
                         referenceType:     "Order",
                         referenceId:       order.Id,
                         notes:             $"Ficha técnica — Comanda #{order.OrderNumber} — {ingProduct.Name}",
-                        costPriceSnapshot: ingProduct.CostPrice);  // snapshot para CMV histórico
+                        costPriceSnapshot: ingProduct.CostPrice);
 
                     await _stock.AddMovementAsync(movement, ct);
                 }
             }
 
-            // Libera a mesa automaticamente e marca comanda como Paid (only for DineIn)
+            // Release table — only DineIn orders have a table
             if (order.TableId.HasValue)
             {
                 var table = await _tables.GetByIdAsync(order.TableId.Value, ct);
                 table?.SetAvailable();
             }
-            order.MarkPaid();
 
+            order.MarkPaid();
             await _orders.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return Map(order);
         }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+        catch { await tx.RollbackAsync(ct); throw; }
     }
 
     // ── Cancel ────────────────────────────────────────────────────────────────
