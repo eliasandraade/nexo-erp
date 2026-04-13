@@ -40,6 +40,9 @@ public class RestaurantHub : Hub
         if (!Guid.TryParse(storeId, out var storeGuid))
             throw new HubException("Invalid storeId format.");
 
+        if (!_currentUser.StoreIds.Contains(storeGuid))
+            throw new HubException("Access denied: you do not have access to this store.");
+
         var groupName = GroupFor(_currentUser.TenantId, storeGuid);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
         _logger.LogInformation("Connection {ConnectionId} left store group {Group}",
