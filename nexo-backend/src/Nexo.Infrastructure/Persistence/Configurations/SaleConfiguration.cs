@@ -59,7 +59,6 @@ public class SaleConfiguration : IEntityTypeConfiguration<Sale>
         builder.Property(x => x.SurchargesAmount)
             .HasColumnName("surcharges_amount")
             .HasColumnType("numeric(18,2)")
-            .HasDefaultValue(0m)
             .IsRequired();
 
         builder.Property(x => x.Total)
