@@ -78,6 +78,7 @@ public class NexoDbContext : DbContext
     public DbSet<RestRecipeIngredient>  RestRecipeIngredients => Set<RestRecipeIngredient>();
     public DbSet<ProductModifierGroup>  ProductModifierGroups => Set<ProductModifierGroup>();
     public DbSet<ProductModifier>       ProductModifiers      => Set<ProductModifier>();
+    public DbSet<FoodServiceSettings>   FoodServiceSettings   => Set<FoodServiceSettings>();
 
     // ── Módulo Varejo ─────────────────────────────────────────────────────────
     public DbSet<RetPurchase> RetPurchases => Set<RetPurchase>();
