@@ -29,34 +29,47 @@ public record TableDto(
 // ═══════════════════════════════════════════════════════════
 
 public record OpenOrderRequest(
-    Guid TableId,
-    Guid? CustomerId = null,
-    string? Notes = null);
+    string       OrderType,           // "DineIn"|"Counter"|"Takeaway"
+    Guid?        TableId    = null,
+    int?         PartySize  = null,
+    Guid?        CustomerId = null,
+    string?      Notes      = null);
 
 public record AddOrderItemRequest(
-    Guid ProductId,
-    decimal Quantity,
-    string? Notes = null);
+    Guid         ProductId,
+    decimal      Quantity,
+    string?      Notes      = null,
+    List<ApplyModifierRequest>? Modifiers = null);
+
+public record ApplyModifierRequest(Guid ModifierId);
 
 public record UpdateOrderItemStatusRequest(string Status);  // kitchen flow
 
-public record PayOrderRequest(List<PaymentInputDto> Payments);
+public record PayOrderRequest(
+    List<PaymentInputDto> Payments,
+    int?                  PartySize = null);   // set here when CouvertAutomatic=false
+
 public record PaymentInputDto(string Method, string Type, decimal Amount, DateTime? DueDate = null);
 
+public record OrderItemModifierDto(
+    Guid   ModifierId,
+    string LabelSnapshot,
+    decimal PriceSnapshot);
+
 public record OrderItemDto(
-    Guid Id, Guid ProductId, string ProductName,
+    Guid    Id, Guid ProductId, string ProductName,
     decimal Quantity, decimal UnitPrice, decimal Total,
-    string Status, string? Notes,
+    string  Status, string? Notes,
+    IReadOnlyList<OrderItemModifierDto> Modifiers,
     DateTime? SentToKitchenAt, DateTime? PreparedAt,
     DateTime? DeliveredAt, DateTime? CancelledAt);
 
 public record OrderDto(
-    Guid Id, int OrderNumber, string Status,
-    Guid TableId, string TableNumber,
-    Guid WaiterId,
-    Guid? CustomerId,
-    Guid? SaleId,
-    decimal Subtotal,
+    Guid    Id, int OrderNumber, string Status, string OrderType,
+    Guid?   TableId, string? TableNumber,
+    int?    PartySize,
+    Guid    WaiterId, Guid? CustomerId, Guid? SaleId,
+    decimal ItemsSubtotal, decimal CouvertAmount, decimal ServiceFeeAmount, decimal Total,
     string? Notes,
     DateTime OpenedAt, DateTime? ClosedAt, DateTime? CancelledAt,
     IReadOnlyList<OrderItemDto> Items);

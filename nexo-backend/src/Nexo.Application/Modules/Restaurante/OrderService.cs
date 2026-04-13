@@ -86,25 +86,34 @@ public class OrderService
         try
         {
             // Row-level lock na mesa para serializar abertura de comandas concorrentes
-            var table = await _tables.GetByIdForUpdateAsync(request.TableId, ct)
-                ?? throw new NotFoundException("Table", request.TableId);
+            // Only DineIn orders require a table
+            if (request.TableId.HasValue)
+            {
+                var table = await _tables.GetByIdForUpdateAsync(request.TableId.Value, ct)
+                    ?? throw new NotFoundException("Table", request.TableId.Value);
 
-            if (!table.IsActive)
-                throw new DomainException("Table is inactive.");
+                if (!table.IsActive)
+                    throw new DomainException("Table is inactive.");
 
-            // Verifica se já existe comanda aberta para esta mesa (segunda guarda)
-            var existing = await _orders.GetOpenOrderForTableAsync(request.TableId, ct);
-            if (existing is not null)
-                throw new ConflictException($"Table '{table.Number}' already has an open order (#{existing.OrderNumber}).");
+                // Verifica se já existe comanda aberta para esta mesa (segunda guarda)
+                var existing = await _orders.GetOpenOrderForTableAsync(request.TableId.Value, ct);
+                if (existing is not null)
+                    throw new ConflictException($"Table '{table.Number}' already has an open order (#{existing.OrderNumber}).");
+
+                table.SetOccupied();  // automático
+            }
+
+            var orderType = Enum.Parse<RestOrderType>(request.OrderType, ignoreCase: true);
+            if (orderType == RestOrderType.DineIn && !request.TableId.HasValue)
+                throw new DomainException("DineIn orders require a table.");
 
             var number = await _orders.GetNextNumberAsync(ct);
 
             var order = RestOrder.Create(
                 _currentTenant.Id, number,
-                request.TableId, _currentUser.UserId,
-                request.CustomerId, request.Notes);
-
-            table.SetOccupied();  // automático
+                orderType, request.TableId,
+                request.PartySize, _currentUser.UserId,
+                customerId: request.CustomerId, notes: request.Notes);
 
             await _orders.AddAsync(order, ct);
             await _orders.SaveChangesAsync(ct);
@@ -320,9 +329,12 @@ public class OrderService
                 }
             }
 
-            // Libera a mesa automaticamente e marca comanda como Paid
-            var table = await _tables.GetByIdAsync(order.TableId, ct);
-            table?.SetAvailable();
+            // Libera a mesa automaticamente e marca comanda como Paid (only for DineIn)
+            if (order.TableId.HasValue)
+            {
+                var table = await _tables.GetByIdAsync(order.TableId.Value, ct);
+                table?.SetAvailable();
+            }
             order.MarkPaid();
 
             await _orders.SaveChangesAsync(ct);
@@ -345,8 +357,11 @@ public class OrderService
 
         order.Cancel();  // throws if Closed or already Cancelled
 
-        var table = await _tables.GetByIdAsync(order.TableId, ct);
-        table?.SetAvailable();
+        if (order.TableId.HasValue)
+        {
+            var table = await _tables.GetByIdAsync(order.TableId.Value, ct);
+            table?.SetAvailable();
+        }
 
         await _orders.SaveChangesAsync(ct);
         return Map(order);
@@ -355,20 +370,25 @@ public class OrderService
     // ── Mapping ───────────────────────────────────────────────────────────────
 
     private static OrderDto Map(RestOrder o) => new(
-        Id:          o.Id,
-        OrderNumber: o.OrderNumber,
-        Status:      o.Status.ToString(),
-        TableId:     o.TableId,
-        TableNumber: o.Table?.Number ?? string.Empty,
-        WaiterId:    o.WaiterId,
-        CustomerId:  o.CustomerId,
-        SaleId:      o.SaleId,
-        Subtotal:    o.Subtotal,
-        Notes:       o.Notes,
-        OpenedAt:    o.OpenedAt,
-        ClosedAt:    o.ClosedAt,
-        CancelledAt: o.CancelledAt,
-        Items:       o.Items.Select(MapItem).ToList());
+        Id:               o.Id,
+        OrderNumber:      o.OrderNumber,
+        Status:           o.Status.ToString(),
+        OrderType:        o.OrderType.ToString(),
+        TableId:          o.TableId,
+        TableNumber:      o.Table?.Number,
+        PartySize:        o.PartySize,
+        WaiterId:         o.WaiterId,
+        CustomerId:       o.CustomerId,
+        SaleId:           o.SaleId,
+        ItemsSubtotal:    o.ItemsSubtotal,
+        CouvertAmount:    o.CouvertAmount,
+        ServiceFeeAmount: o.ServiceFeeAmount,
+        Total:            o.Total,
+        Notes:            o.Notes,
+        OpenedAt:         o.OpenedAt,
+        ClosedAt:         o.ClosedAt,
+        CancelledAt:      o.CancelledAt,
+        Items:            o.Items.Select(MapItem).ToList());
 
     private static OrderItemDto MapItem(RestOrderItem i) => new(
         Id:              i.Id,
@@ -379,6 +399,7 @@ public class OrderService
         Total:           i.Total,
         Status:          i.Status.ToString(),
         Notes:           i.Notes,
+        Modifiers:       [],
         SentToKitchenAt: i.SentToKitchenAt,
         PreparedAt:      i.PreparedAt,
         DeliveredAt:     i.DeliveredAt,
