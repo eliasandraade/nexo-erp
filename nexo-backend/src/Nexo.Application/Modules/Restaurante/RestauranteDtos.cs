@@ -104,3 +104,28 @@ public record RecipeCardDto(
     decimal CmvPercent,          // (calculatedCost / product.SalePrice) × 100
     IReadOnlyList<RecipeIngredientDto> Ingredients,
     DateTime CreatedAt);
+
+// ═══════════════════════════════════════════════════════════
+// MODIFIERS
+// ═══════════════════════════════════════════════════════════
+
+public record CreateModifierGroupRequest(
+    Guid ProductId, string Name,
+    bool IsRequired = false, short MaxSelections = 1, short SortOrder = 0);
+
+public record UpdateModifierGroupRequest(
+    string Name, bool IsRequired, short MaxSelections, short SortOrder);
+
+public record CreateModifierRequest(
+    string Name, decimal PriceAdjustment = 0, short SortOrder = 0);
+
+public record UpdateModifierRequest(
+    string Name, decimal PriceAdjustment, short SortOrder);
+
+public record ModifierDto(
+    Guid Id, string Name, decimal PriceAdjustment, short SortOrder, bool IsActive);
+
+public record ModifierGroupDto(
+    Guid Id, Guid ProductId, string Name,
+    bool IsRequired, short MaxSelections, short SortOrder, bool IsActive,
+    IReadOnlyList<ModifierDto> Modifiers);
