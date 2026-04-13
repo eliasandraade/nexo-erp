@@ -115,6 +115,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IRecipeCardRepository, RecipeCardRepository>();
         services.AddScoped<IModifierGroupRepository, ModifierGroupRepository>();
+        services.AddScoped<IFoodServiceSettingsRepository, FoodServiceSettingsRepository>();
 
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<IPurchaseRepository, PurchaseRepository>();

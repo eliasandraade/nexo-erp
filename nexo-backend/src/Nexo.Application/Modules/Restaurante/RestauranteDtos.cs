@@ -129,3 +129,26 @@ public record ModifierGroupDto(
     Guid Id, Guid ProductId, string Name,
     bool IsRequired, int MinSelections, int MaxSelections, int SortOrder, bool IsActive,
     IReadOnlyList<ModifierDto> Modifiers);
+
+// ═══════════════════════════════════════════════════════════
+// FOOD SERVICE SETTINGS
+// ═══════════════════════════════════════════════════════════
+
+public record UpdateFoodServiceSettingsRequest(
+    string   StoreType,
+    bool     CouvertEnabled,
+    decimal? CouvertPricePerPerson,
+    bool     CouvertAutomatic,
+    bool     ServiceFeeEnabled,
+    decimal? ServiceFeePercent,
+    string   OrderTypesEnabled);
+
+public record FoodServiceSettingsDto(
+    Guid     Id,
+    string   StoreType,
+    bool     CouvertEnabled,
+    decimal? CouvertPricePerPerson,
+    bool     CouvertAutomatic,
+    bool     ServiceFeeEnabled,
+    decimal? ServiceFeePercent,
+    string   OrderTypesEnabled);

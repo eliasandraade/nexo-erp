@@ -41,6 +41,8 @@ public static class DependencyInjection
         services.AddScoped<TableService>();
         services.AddScoped<OrderService>();
         services.AddScoped<RecipeCardService>();
+        services.AddScoped<ModifierGroupService>();
+        services.AddScoped<FoodServiceSettingsService>();
 
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<PurchaseService>();
