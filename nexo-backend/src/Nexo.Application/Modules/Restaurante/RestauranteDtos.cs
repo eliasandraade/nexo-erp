@@ -111,21 +111,21 @@ public record RecipeCardDto(
 
 public record CreateModifierGroupRequest(
     Guid ProductId, string Name,
-    bool IsRequired = false, short MaxSelections = 1, short SortOrder = 0);
+    bool IsRequired, int MinSelections, int MaxSelections, int SortOrder);
 
 public record UpdateModifierGroupRequest(
-    string Name, bool IsRequired, short MaxSelections, short SortOrder);
+    string Name, bool IsRequired, int MinSelections, int MaxSelections, int SortOrder);
 
 public record CreateModifierRequest(
-    string Name, decimal PriceAdjustment = 0, short SortOrder = 0);
+    Guid GroupId, string Name, decimal PriceAdjustment, int SortOrder);
 
 public record UpdateModifierRequest(
-    string Name, decimal PriceAdjustment, short SortOrder);
+    string Name, decimal PriceAdjustment, int SortOrder);
 
 public record ModifierDto(
-    Guid Id, string Name, decimal PriceAdjustment, short SortOrder, bool IsActive);
+    Guid Id, string Name, decimal PriceAdjustment, int SortOrder, bool IsActive);
 
 public record ModifierGroupDto(
     Guid Id, Guid ProductId, string Name,
-    bool IsRequired, short MaxSelections, short SortOrder, bool IsActive,
+    bool IsRequired, int MinSelections, int MaxSelections, int SortOrder, bool IsActive,
     IReadOnlyList<ModifierDto> Modifiers);

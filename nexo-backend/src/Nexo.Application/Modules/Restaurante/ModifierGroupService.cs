@@ -26,7 +26,7 @@ public class ModifierGroupService
     {
         var group = ProductModifierGroup.Create(
             _currentTenant.Id, req.ProductId, req.Name,
-            req.IsRequired, req.MaxSelections, req.SortOrder);
+            req.IsRequired, (short)req.MaxSelections, (short)req.SortOrder);
         await _repo.AddGroupAsync(group, ct);
         await _repo.SaveChangesAsync(ct);
         return Map(group);
@@ -36,7 +36,7 @@ public class ModifierGroupService
     {
         var group = await _repo.GetByIdWithModifiersAsync(groupId, ct)
             ?? throw new NotFoundException("ModifierGroup", groupId);
-        group.Update(req.Name, req.IsRequired, req.MaxSelections, req.SortOrder);
+        group.Update(req.Name, req.IsRequired, (short)req.MaxSelections, (short)req.SortOrder);
         await _repo.SaveChangesAsync(ct);
         return Map(group);
     }
@@ -46,7 +46,7 @@ public class ModifierGroupService
         var group = await _repo.GetByIdWithModifiersAsync(groupId, ct)
             ?? throw new NotFoundException("ModifierGroup", groupId);
         var modifier = ProductModifier.Create(
-            _currentTenant.Id, groupId, req.Name, req.PriceAdjustment, req.SortOrder);
+            _currentTenant.Id, groupId, req.Name, req.PriceAdjustment, (short)req.SortOrder);
         _repo.TrackModifier(modifier);
         await _repo.SaveChangesAsync(ct);
         // Re-fetch to get updated modifier list
@@ -55,30 +55,29 @@ public class ModifierGroupService
         return Map(updated);
     }
 
-    public async Task<ModifierGroupDto> UpdateModifierAsync(Guid groupId, Guid modifierId, UpdateModifierRequest req, CancellationToken ct = default)
+    public async Task<ModifierDto> UpdateModifierAsync(Guid modifierId, UpdateModifierRequest req, CancellationToken ct = default)
     {
         var modifier = await _repo.GetModifierByIdAsync(modifierId, ct)
             ?? throw new NotFoundException("Modifier", modifierId);
-        if (modifier.GroupId != groupId)
-            throw new DomainException("Modifier does not belong to this group.");
-        modifier.Update(req.Name, req.PriceAdjustment, req.SortOrder);
+        modifier.Update(req.Name, req.PriceAdjustment, (short)req.SortOrder);
         await _repo.SaveChangesAsync(ct);
-        var group = await _repo.GetByIdWithModifiersAsync(groupId, ct)
-            ?? throw new NotFoundException("ModifierGroup", groupId);
-        return Map(group);
+        return Map(modifier);
     }
 
-    public async Task DeleteModifierAsync(Guid groupId, Guid modifierId, CancellationToken ct = default)
+    public async Task DeleteModifierAsync(Guid modifierId, CancellationToken ct = default)
     {
         var modifier = await _repo.GetModifierByIdAsync(modifierId, ct)
             ?? throw new NotFoundException("Modifier", modifierId);
-        if (modifier.GroupId != groupId)
-            throw new DomainException("Modifier does not belong to this group.");
         modifier.Deactivate();
         await _repo.SaveChangesAsync(ct);
     }
 
     private static ModifierGroupDto Map(ProductModifierGroup g) => new(
-        g.Id, g.ProductId, g.Name, g.IsRequired, g.MaxSelections, g.SortOrder, g.IsActive,
-        g.Modifiers.Select(m => new ModifierDto(m.Id, m.Name, m.PriceAdjustment, m.SortOrder, m.IsActive)).ToList());
+        g.Id, g.ProductId, g.Name, g.IsRequired,
+        0, // MinSelections — not stored on domain entity in v1; default 0
+        g.MaxSelections, g.SortOrder, g.IsActive,
+        g.Modifiers.Select(Map).ToList());
+
+    private static ModifierDto Map(ProductModifier m) => new(
+        m.Id, m.Name, m.PriceAdjustment, m.SortOrder, m.IsActive);
 }
