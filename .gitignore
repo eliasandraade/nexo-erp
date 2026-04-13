@@ -43,3 +43,5 @@ Thumbs.db
 nexo-main/package-lock.json
 nexo-main/bun.lock
 nexo-main/bun.lockb
+.gstack/
+.worktrees/
