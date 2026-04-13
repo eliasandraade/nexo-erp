@@ -15,6 +15,7 @@ using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
 using Nexo.Infrastructure.Repositories;
 using Nexo.Application.Modules.Restaurante.Interfaces;
+using Nexo.Infrastructure.Hubs;
 using Nexo.Infrastructure.Repositories.Modules.Restaurante;
 using Nexo.Infrastructure.Repositories.Modules.Varejo;
 using StackExchange.Redis;
@@ -148,6 +149,10 @@ public static class DependencyInjection
 
         // ── Seed ─────────────────────────────────────────────────────────────
         services.AddScoped<DataSeeder>();
+
+        // ── SignalR ───────────────────────────────────────────────────────────
+        services.AddSignalR();
+        services.AddScoped<IRestaurantNotificationService, RestaurantNotificationService>();
 
         return services;
     }

@@ -38,6 +38,7 @@ public class OrderService
     private readonly ICurrentUser                  _currentUser;
     private readonly IFoodServiceSettingsRepository _foodSettings;
     private readonly IModifierGroupRepository      _modifierGroups;
+    private readonly IRestaurantNotificationService _notifications;
 
     public OrderService(
         IOrderRepository               orders,
@@ -50,7 +51,8 @@ public class OrderService
         ICurrentTenant                 currentTenant,
         ICurrentUser                   currentUser,
         IFoodServiceSettingsRepository foodSettings,
-        IModifierGroupRepository       modifierGroups)
+        IModifierGroupRepository       modifierGroups,
+        IRestaurantNotificationService notifications)
     {
         _orders         = orders;
         _tables         = tables;
@@ -63,6 +65,7 @@ public class OrderService
         _currentUser    = currentUser;
         _foodSettings   = foodSettings;
         _modifierGroups = modifierGroups;
+        _notifications  = notifications;
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -155,6 +158,7 @@ public class OrderService
             await _orders.AddAsync(order, ct);
             await _orders.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
+            _ = _notifications.TableStatusChangedAsync(request.TableId!.Value, "Occupied");
             return Map(order);
         }
         catch { await tx.RollbackAsync(ct); throw; }
@@ -205,6 +209,8 @@ public class OrderService
         }
 
         await _orders.SaveChangesAsync(ct);
+        // Fire-and-forget: SignalR notification (UX complement; polling fallback is authoritative)
+        _ = _notifications.NewItemAddedAsync(order.Id, MapItem(item));
         return Map(order);
     }
 
@@ -242,6 +248,8 @@ public class OrderService
         }
 
         await _orders.SaveChangesAsync(ct);
+        _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, item.Status.ToString());
+        _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString());
         return Map(order);
     }
 
@@ -430,6 +438,9 @@ public class OrderService
             order.MarkPaid();
             await _orders.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
+            if (order.TableId.HasValue)
+                _ = _notifications.TableStatusChangedAsync(order.TableId.Value, "Available");
+            _ = _notifications.OrderStatusChangedAsync(order.Id, "Paid");
             return Map(order);
         }
         catch { await tx.RollbackAsync(ct); throw; }
