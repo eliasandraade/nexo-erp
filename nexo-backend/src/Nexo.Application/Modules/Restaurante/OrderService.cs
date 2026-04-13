@@ -27,36 +27,42 @@ namespace Nexo.Application.Modules.Restaurante;
 /// </summary>
 public class OrderService
 {
-    private readonly IOrderRepository      _orders;
-    private readonly ITableRepository      _tables;
-    private readonly IRecipeCardRepository _recipes;
-    private readonly IProductRepository    _products;
-    private readonly IStockRepository      _stock;
-    private readonly SaleService           _saleService;
-    private readonly IUnitOfWork           _uow;
-    private readonly ICurrentTenant        _currentTenant;
-    private readonly ICurrentUser          _currentUser;
+    private readonly IOrderRepository              _orders;
+    private readonly ITableRepository              _tables;
+    private readonly IRecipeCardRepository         _recipes;
+    private readonly IProductRepository            _products;
+    private readonly IStockRepository              _stock;
+    private readonly SaleService                   _saleService;
+    private readonly IUnitOfWork                   _uow;
+    private readonly ICurrentTenant                _currentTenant;
+    private readonly ICurrentUser                  _currentUser;
+    private readonly IFoodServiceSettingsRepository _foodSettings;
+    private readonly IModifierGroupRepository      _modifierGroups;
 
     public OrderService(
-        IOrderRepository      orders,
-        ITableRepository      tables,
-        IRecipeCardRepository recipes,
-        IProductRepository    products,
-        IStockRepository      stock,
-        SaleService           saleService,
-        IUnitOfWork           uow,
-        ICurrentTenant        currentTenant,
-        ICurrentUser          currentUser)
+        IOrderRepository               orders,
+        ITableRepository               tables,
+        IRecipeCardRepository          recipes,
+        IProductRepository             products,
+        IStockRepository               stock,
+        SaleService                    saleService,
+        IUnitOfWork                    uow,
+        ICurrentTenant                 currentTenant,
+        ICurrentUser                   currentUser,
+        IFoodServiceSettingsRepository foodSettings,
+        IModifierGroupRepository       modifierGroups)
     {
-        _orders        = orders;
-        _tables        = tables;
-        _recipes       = recipes;
-        _products      = products;
-        _stock         = stock;
-        _saleService   = saleService;
-        _uow           = uow;
-        _currentTenant = currentTenant;
-        _currentUser   = currentUser;
+        _orders         = orders;
+        _tables         = tables;
+        _recipes        = recipes;
+        _products       = products;
+        _stock          = stock;
+        _saleService    = saleService;
+        _uow            = uow;
+        _currentTenant  = currentTenant;
+        _currentUser    = currentUser;
+        _foodSettings   = foodSettings;
+        _modifierGroups = modifierGroups;
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -77,62 +83,81 @@ public class OrderService
     // ── Open ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Abre uma comanda para a mesa.
-    /// Usa SELECT FOR UPDATE para evitar dupla abertura concorrente.
+    /// Abre uma comanda.
+    /// Counter/Takeaway: caminho rápido sem transação.
+    /// DineIn: usa SELECT FOR UPDATE para evitar dupla abertura concorrente.
+    /// Quando CouvertAutomatic=true, aplica couvert automaticamente via PartySize.
     /// </summary>
     public async Task<OrderDto> OpenAsync(OpenOrderRequest request, CancellationToken ct = default)
     {
-        // TODO(B-10): Counter/Takeaway orders should skip the transaction (fast path).
-        // B-10 will restructure OpenAsync to only open a transaction for DineIn orders.
+        var orderType = Enum.Parse<RestOrderType>(request.OrderType, ignoreCase: true);
+        var settings  = await _foodSettings.GetCurrentStoreAsync(ct);
+
+        // Validate PartySize when CouvertAutomatic = true
+        if (settings is { CouvertEnabled: true, CouvertAutomatic: true } && request.PartySize is null)
+            throw new DomainException("PartySize is required when CouvertAutomatic is enabled.");
+
+        // Counter/Takeaway: no table, no lock
+        if (orderType != RestOrderType.DineIn)
+        {
+            if (request.TableId.HasValue)
+                throw new DomainException($"{orderType} orders do not use a table.");
+
+            var number = await _orders.GetNextNumberAsync(ct);
+            decimal couvertAmount = 0;
+            if (settings is { CouvertEnabled: true, CouvertAutomatic: true } && request.PartySize.HasValue)
+                couvertAmount = (settings.CouvertPricePerPerson ?? 0) * request.PartySize.Value;
+
+            var order = RestOrder.Create(
+                _currentTenant.Id, number, orderType, null,
+                request.PartySize, _currentUser.UserId,
+                couvertAmount, request.CustomerId, request.Notes);
+
+            await _orders.AddAsync(order, ct);
+            await _orders.SaveChangesAsync(ct);
+            return Map(order);
+        }
+
+        // DineIn: require table, use SELECT FOR UPDATE
+        if (request.TableId is null)
+            throw new DomainException("DineIn orders require a TableId.");
+
         await using var tx = await _uow.BeginTransactionAsync(ct);
         try
         {
-            // Row-level lock na mesa para serializar abertura de comandas concorrentes
-            // Only DineIn orders require a table
-            if (request.TableId.HasValue)
-            {
-                var table = await _tables.GetByIdForUpdateAsync(request.TableId.Value, ct)
-                    ?? throw new NotFoundException("Table", request.TableId.Value);
+            var table = await _tables.GetByIdForUpdateAsync(request.TableId.Value, ct)
+                ?? throw new NotFoundException("Table", request.TableId.Value);
 
-                if (!table.IsActive)
-                    throw new DomainException("Table is inactive.");
+            if (!table.IsActive)
+                throw new DomainException("Table is inactive.");
 
-                // Verifica se já existe comanda aberta para esta mesa (segunda guarda)
-                var existing = await _orders.GetOpenOrderForTableAsync(request.TableId.Value, ct);
-                if (existing is not null)
-                    throw new ConflictException($"Table '{table.Number}' already has an open order (#{existing.OrderNumber}).");
-
-                table.SetOccupied();  // automático
-                // TODO(B-10): Add guard — if orderType != DineIn && request.TableId.HasValue → throw DomainException.
-            }
-
-            var orderType = Enum.Parse<RestOrderType>(request.OrderType, ignoreCase: true);
-            if (orderType == RestOrderType.DineIn && !request.TableId.HasValue)
-                throw new DomainException("DineIn orders require a table.");
+            var existing = await _orders.GetOpenOrderForTableAsync(request.TableId.Value, ct);
+            if (existing is not null)
+                throw new ConflictException($"Table '{table.Number}' already has an open order (#{existing.OrderNumber}).");
 
             var number = await _orders.GetNextNumberAsync(ct);
+            decimal couvertAmount = 0;
+            if (settings is { CouvertEnabled: true, CouvertAutomatic: true } && request.PartySize.HasValue)
+                couvertAmount = (settings.CouvertPricePerPerson ?? 0) * request.PartySize.Value;
 
             var order = RestOrder.Create(
-                _currentTenant.Id, number,
-                orderType, request.TableId,
+                _currentTenant.Id, number, orderType, request.TableId,
                 request.PartySize, _currentUser.UserId,
-                customerId: request.CustomerId, notes: request.Notes);
+                couvertAmount, request.CustomerId, request.Notes);
 
+            table.SetOccupied();
             await _orders.AddAsync(order, ct);
             await _orders.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return Map(order);
         }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+        catch { await tx.RollbackAsync(ct); throw; }
     }
 
     // ── Items ─────────────────────────────────────────────────────────────────
 
-    public async Task<OrderDto> AddItemAsync(Guid orderId, AddOrderItemRequest request, CancellationToken ct = default)
+    public async Task<OrderDto> AddItemAsync(
+        Guid orderId, AddOrderItemRequest request, CancellationToken ct = default)
     {
         var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
             ?? throw new NotFoundException("Order", orderId);
@@ -143,10 +168,36 @@ public class OrderService
         if (!product.IsActive)
             throw new DomainException($"Product '{product.Name}' is inactive.");
 
-        // snapshot do preço de venda atual
-        var item = order.AddItem(_currentTenant.Id, product.Id, request.Quantity, product.SalePrice, request.Notes);
+        // Validate required modifier groups
+        var groups = await _modifierGroups.GetByProductIdAsync(product.Id, ct);
+        var requestedModifierIds = (request.Modifiers ?? []).Select(m => m.ModifierId).ToHashSet();
 
+        foreach (var group in groups.Where(g => g.IsRequired))
+        {
+            var hasSelection = group.Modifiers.Any(m => requestedModifierIds.Contains(m.Id));
+            if (!hasSelection)
+                throw new DomainException(
+                    $"Modifier group '{group.Name}' is required. Select at least one option.");
+        }
+
+        var item = order.AddItem(
+            _currentTenant.Id, product.Id, request.Quantity, product.SalePrice, request.Notes);
         _orders.TrackItem(item);
+
+        // Apply modifier snapshots
+        foreach (var modReq in request.Modifiers ?? [])
+        {
+            var modifier = await _modifierGroups.GetModifierByIdAsync(modReq.ModifierId, ct)
+                ?? throw new NotFoundException("Modifier", modReq.ModifierId);
+
+            if (!modifier.IsActive)
+                throw new DomainException($"Modifier '{modifier.Name}' is not active.");
+
+            var snap = item.ApplyModifier(
+                _currentTenant.Id, modifier.Id, modifier.Name, modifier.PriceAdjustment);
+            _orders.TrackModifier(snap);
+        }
+
         await _orders.SaveChangesAsync(ct);
         return Map(order);
     }
@@ -402,7 +453,7 @@ public class OrderService
         Total:           i.Total,
         Status:          i.Status.ToString(),
         Notes:           i.Notes,
-        Modifiers:       [],
+        Modifiers:       i.Modifiers.Select(m => new OrderItemModifierDto(m.ModifierId, m.LabelSnapshot, m.PriceSnapshot)).ToList(),
         SentToKitchenAt: i.SentToKitchenAt,
         PreparedAt:      i.PreparedAt,
         DeliveredAt:     i.DeliveredAt,
