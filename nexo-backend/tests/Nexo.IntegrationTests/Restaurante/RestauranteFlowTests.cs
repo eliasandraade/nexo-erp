@@ -172,7 +172,7 @@ public class RestauranteFlowTests : IAsyncLifetime
     private async Task<OrderDto> OpenOrderAsync(Guid tableId, string? notes = null)
     {
         var r = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest(tableId, Notes: notes));
+            new OpenOrderRequest("DineIn", TableId: tableId, Notes: notes));
         r.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await r.Content.ReadFromJsonAsync<OrderDto>())!;
     }
@@ -244,7 +244,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         await OpenOrderAsync(table.Id);  // first — OK
 
         var r = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest(table.Id));
+            new OpenOrderRequest("DineIn", TableId: table.Id));
 
         r.StatusCode.Should().BeOneOf(
             HttpStatusCode.Conflict,
@@ -553,7 +553,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         await AuthenticateAsync(client2);
 
         // Fire both requests simultaneously before either can complete
-        var req = new OpenOrderRequest(table.Id, Notes: "concurrent");
+        var req = new OpenOrderRequest("DineIn", TableId: table.Id, Notes: "concurrent");
         var task1 = _client.PostAsJsonAsync("/api/restaurante/orders", req);
         var task2 = client2.PostAsJsonAsync("/api/restaurante/orders", req);
         var results = await Task.WhenAll(task1, task2);
@@ -592,11 +592,11 @@ public class RestauranteFlowTests : IAsyncLifetime
         var table = await CreateTableAsync(area.Id);
 
         var r1 = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest(table.Id));
+            new OpenOrderRequest("DineIn", TableId: table.Id));
         r1.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var r2 = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest(table.Id));
+            new OpenOrderRequest("DineIn", TableId: table.Id));
         r2.StatusCode.Should().BeOneOf(
             HttpStatusCode.Conflict,
             HttpStatusCode.BadRequest,
