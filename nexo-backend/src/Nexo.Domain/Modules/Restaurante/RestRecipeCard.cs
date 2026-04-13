@@ -16,7 +16,7 @@ namespace Nexo.Domain.Modules.Restaurante;
 ///
 /// Cálculo é feito no RecipeCardService — entidade só guarda os dados.
 /// </summary>
-public class RestRecipeCard : TenantEntity
+public class RestRecipeCard : StoreEntity
 {
     private RestRecipeCard() { }
     private RestRecipeCard(Guid tenantId) : base(tenantId) { }

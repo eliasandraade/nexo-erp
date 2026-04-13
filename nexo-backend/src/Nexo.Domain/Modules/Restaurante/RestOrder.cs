@@ -17,7 +17,7 @@ namespace Nexo.Domain.Modules.Restaurante;
 /// aplicado na migration. O OrderService usa SELECT FOR UPDATE (row-level lock)
 /// ao validar a mesa antes de abrir uma nova comanda.
 /// </summary>
-public class RestOrder : TenantEntity
+public class RestOrder : StoreEntity
 {
     private RestOrder() { }
     private RestOrder(Guid tenantId) : base(tenantId) { }

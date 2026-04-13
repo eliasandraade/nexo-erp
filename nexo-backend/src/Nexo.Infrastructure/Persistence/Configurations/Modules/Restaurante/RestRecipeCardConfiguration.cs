@@ -12,6 +12,7 @@ public class RestRecipeCardConfiguration : IEntityTypeConfiguration<RestRecipeCa
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id");
         builder.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        builder.Property(x => x.StoreId).HasColumnName("store_id").IsRequired();
         builder.Property(x => x.ProductId).HasColumnName("product_id").IsRequired();
         builder.Property(x => x.Yield).HasColumnName("yield").HasColumnType("numeric(18,4)").IsRequired();
         builder.Property(x => x.YieldUnit).HasColumnName("yield_unit").HasMaxLength(50).IsRequired();
@@ -37,9 +38,15 @@ public class RestRecipeCardConfiguration : IEntityTypeConfiguration<RestRecipeCa
             .HasConstraintName("fk_rest_recipe_cards_tenants")
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Uma ficha por produto por tenant
-        builder.HasIndex(x => new { x.TenantId, x.ProductId })
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .HasConstraintName("fk_rest_recipe_cards_stores")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Uma ficha por produto por tenant + store
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.ProductId })
             .IsUnique()
-            .HasDatabaseName("ix_rest_recipe_cards_tenant_product");
+            .HasDatabaseName("ix_rest_recipe_cards_tenant_store_product");
     }
 }

@@ -12,6 +12,7 @@ public class RestOrderConfiguration : IEntityTypeConfiguration<RestOrder>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id");
         builder.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        builder.Property(x => x.StoreId).HasColumnName("store_id").IsRequired();
         builder.Property(x => x.OrderNumber).HasColumnName("order_number").IsRequired();
         builder.Property(x => x.Status)
             .HasColumnName("status")
@@ -56,17 +57,23 @@ public class RestOrderConfiguration : IEntityTypeConfiguration<RestOrder>
             .HasConstraintName("fk_rest_orders_tenants")
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(x => new { x.TenantId, x.OrderNumber })
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .HasConstraintName("fk_rest_orders_stores")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.OrderNumber })
             .IsUnique()
-            .HasDatabaseName("ix_rest_orders_tenant_number");
+            .HasDatabaseName("ix_rest_orders_tenant_store_number");
 
-        builder.HasIndex(x => new { x.TenantId, x.Status })
-            .HasDatabaseName("ix_rest_orders_tenant_status");
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Status })
+            .HasDatabaseName("ix_rest_orders_tenant_store_status");
 
-        builder.HasIndex(x => new { x.TenantId, x.TableId })
-            .HasDatabaseName("ix_rest_orders_tenant_table");
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.TableId })
+            .HasDatabaseName("ix_rest_orders_tenant_store_table");
 
-        builder.HasIndex(x => new { x.TenantId, x.CreatedAt })
-            .HasDatabaseName("ix_rest_orders_tenant_created_at");
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.CreatedAt })
+            .HasDatabaseName("ix_rest_orders_tenant_store_created_at");
     }
 }

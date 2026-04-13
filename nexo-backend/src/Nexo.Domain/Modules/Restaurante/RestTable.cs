@@ -14,7 +14,7 @@ namespace Nexo.Domain.Modules.Restaurante;
 ///   Reserved   ──► Available   (manual)
 ///   Maintenance──► Available   (manual)
 /// </summary>
-public class RestTable : TenantEntity
+public class RestTable : StoreEntity
 {
     private RestTable() { }
     private RestTable(Guid tenantId) : base(tenantId) { }
