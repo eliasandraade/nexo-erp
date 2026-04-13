@@ -21,6 +21,8 @@ public class OrderRepository : IOrderRepository
             .Include(x => x.Table)
             .Include(x => x.Items)
                 .ThenInclude(i => i.Product)
+            .Include(x => x.Items)
+                .ThenInclude(i => i.Modifiers)
             .FirstOrDefaultAsync(x => x.Id == id, ct);
 
     /// <summary>
@@ -53,6 +55,9 @@ public class OrderRepository : IOrderRepository
 
     public void TrackItem(RestOrderItem item)
         => _context.Entry(item).State = EntityState.Added;
+
+    public void TrackModifier(RestOrderItemModifier modifier)
+        => _context.Entry(modifier).State = EntityState.Added;
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);
