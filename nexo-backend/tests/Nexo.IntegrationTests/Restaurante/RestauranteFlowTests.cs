@@ -663,18 +663,23 @@ public class RestauranteFlowTests : IAsyncLifetime
             ServiceFeePercent:    null,
             OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
 
-        var area  = await CreateAreaAsync($"Área Couvert {Interlocked.Increment(ref _tableSeq)}");
-        var table = await CreateTableAsync(area.Id);
+        try
+        {
+            var area  = await CreateAreaAsync($"Área Couvert {Interlocked.Increment(ref _tableSeq)}");
+            var table = await CreateTableAsync(area.Id);
 
-        var resp = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest("DineIn", TableId: table.Id, PartySize: 4));
-        resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var order = await resp.Content.ReadFromJsonAsync<OrderDto>();
+            var resp = await _client.PostAsJsonAsync("/api/restaurante/orders",
+                new OpenOrderRequest("DineIn", TableId: table.Id, PartySize: 4));
+            resp.StatusCode.Should().Be(HttpStatusCode.Created);
+            var order = await resp.Content.ReadFromJsonAsync<OrderDto>();
 
-        order!.CouvertAmount.Should().Be(32.00m); // 8.00 × 4
-        order.PartySize.Should().Be(4);
-
-        await ResetFoodServiceSettingsAsync();
+            order!.CouvertAmount.Should().Be(32.00m); // 8.00 × 4
+            order.PartySize.Should().Be(4);
+        }
+        finally
+        {
+            await ResetFoodServiceSettingsAsync();
+        }
     }
 
     /// <summary>
@@ -693,33 +698,38 @@ public class RestauranteFlowTests : IAsyncLifetime
             ServiceFeePercent:    null,
             OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
 
-        var product = await CreateProductWithStockAsync(
-            $"MANUAL-{Interlocked.Increment(ref _tableSeq)}", salePrice: 40m, costPrice: 10m, initialStock: 0m);
-        var area    = await CreateAreaAsync($"Área Manual {Interlocked.Increment(ref _tableSeq)}");
-        var table   = await CreateTableAsync(area.Id);
+        try
+        {
+            var product = await CreateProductWithStockAsync(
+                $"MANUAL-{Interlocked.Increment(ref _tableSeq)}", salePrice: 40m, costPrice: 10m, initialStock: 0m);
+            var area    = await CreateAreaAsync($"Área Manual {Interlocked.Increment(ref _tableSeq)}");
+            var table   = await CreateTableAsync(area.Id);
 
-        // Open without PartySize — couvert should be 0 at this point
-        var order = await OpenOrderAsync(table.Id);
-        order.CouvertAmount.Should().Be(0m); // not applied at open
+            // Open without PartySize — couvert should be 0 at this point
+            var order = await OpenOrderAsync(table.Id);
+            order.CouvertAmount.Should().Be(0m); // not applied at open
 
-        await AddItemAsync(order.Id, product.Id, qty: 1); // 40.00
+            await AddItemAsync(order.Id, product.Id, qty: 1); // 40.00
 
-        await CloseOrderAsync(order.Id);
+            await CloseOrderAsync(order.Id);
 
-        // Pay with PartySize=3 → couvert = 10.00 × 3 = 30.00
-        var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
-            new PayOrderRequest(
-                new List<PaymentInputDto> { new("Cash", "Cash", 70.00m) },
-                PartySize: 3));
-        r.StatusCode.Should().Be(HttpStatusCode.OK);
-        var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
+            // Pay with PartySize=3 → couvert = 10.00 × 3 = 30.00
+            var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
+                new PayOrderRequest(
+                    new List<PaymentInputDto> { new("Cash", "Cash", 70.00m) },
+                    PartySize: 3));
+            r.StatusCode.Should().Be(HttpStatusCode.OK);
+            var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
 
-        paid!.ItemsSubtotal.Should().Be(40.00m);
-        paid.CouvertAmount.Should().Be(30.00m); // 10.00 × 3 — set at pay time
-        paid.ServiceFeeAmount.Should().Be(0m);
-        paid.Total.Should().Be(70.00m);
-
-        await ResetFoodServiceSettingsAsync();
+            paid!.ItemsSubtotal.Should().Be(40.00m);
+            paid.CouvertAmount.Should().Be(30.00m); // 10.00 × 3 — set at pay time
+            paid.ServiceFeeAmount.Should().Be(0m);
+            paid.Total.Should().Be(70.00m);
+        }
+        finally
+        {
+            await ResetFoodServiceSettingsAsync();
+        }
     }
 
     /// <summary>
@@ -738,29 +748,34 @@ public class RestauranteFlowTests : IAsyncLifetime
             ServiceFeePercent:    10.00m,
             OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
 
-        var product = await CreateProductWithStockAsync(
-            $"FEE-{Interlocked.Increment(ref _tableSeq)}", salePrice: 100m, costPrice: 10m, initialStock: 0m);
-        var area    = await CreateAreaAsync($"Área Fee {Interlocked.Increment(ref _tableSeq)}");
-        var table   = await CreateTableAsync(area.Id);
+        try
+        {
+            var product = await CreateProductWithStockAsync(
+                $"FEE-{Interlocked.Increment(ref _tableSeq)}", salePrice: 100m, costPrice: 10m, initialStock: 0m);
+            var area    = await CreateAreaAsync($"Área Fee {Interlocked.Increment(ref _tableSeq)}");
+            var table   = await CreateTableAsync(area.Id);
 
-        var order = await OpenOrderAsync(table.Id);
+            var order = await OpenOrderAsync(table.Id);
 
-        await AddItemAsync(order.Id, product.Id, qty: 1); // 100.00
+            await AddItemAsync(order.Id, product.Id, qty: 1); // 100.00
 
-        await CloseOrderAsync(order.Id);
+            await CloseOrderAsync(order.Id);
 
-        var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
-            new PayOrderRequest(
-                new List<PaymentInputDto> { new("Cash", "Cash", 110.00m) }));
-        r.StatusCode.Should().Be(HttpStatusCode.OK);
-        var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
+            var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
+                new PayOrderRequest(
+                    new List<PaymentInputDto> { new("Cash", "Cash", 110.00m) }));
+            r.StatusCode.Should().Be(HttpStatusCode.OK);
+            var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
 
-        paid!.ItemsSubtotal.Should().Be(100.00m);
-        paid.CouvertAmount.Should().Be(0m);
-        paid.ServiceFeeAmount.Should().Be(10.00m); // 100 × 10% — couvert not in fee base
-        paid.Total.Should().Be(110.00m);
-
-        await ResetFoodServiceSettingsAsync();
+            paid!.ItemsSubtotal.Should().Be(100.00m);
+            paid.CouvertAmount.Should().Be(0m);
+            paid.ServiceFeeAmount.Should().Be(10.00m); // 100 × 10% — couvert not in fee base
+            paid.Total.Should().Be(110.00m);
+        }
+        finally
+        {
+            await ResetFoodServiceSettingsAsync();
+        }
     }
 
     /// <summary>
@@ -780,40 +795,45 @@ public class RestauranteFlowTests : IAsyncLifetime
             ServiceFeePercent:    10.00m,
             OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
 
-        var product = await CreateProductWithStockAsync(
-            $"DISH-{Interlocked.Increment(ref _tableSeq)}", salePrice: 60m, costPrice: 10m, initialStock: 0m);
-        var area    = await CreateAreaAsync($"Área Dish {Interlocked.Increment(ref _tableSeq)}");
-        var table   = await CreateTableAsync(area.Id);
+        try
+        {
+            var product = await CreateProductWithStockAsync(
+                $"DISH-{Interlocked.Increment(ref _tableSeq)}", salePrice: 60m, costPrice: 10m, initialStock: 0m);
+            var area    = await CreateAreaAsync($"Área Dish {Interlocked.Increment(ref _tableSeq)}");
+            var table   = await CreateTableAsync(area.Id);
 
-        var resp = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest("DineIn", TableId: table.Id, PartySize: 2));
-        resp.StatusCode.Should().Be(HttpStatusCode.Created);
-        var order = await resp.Content.ReadFromJsonAsync<OrderDto>();
+            var resp = await _client.PostAsJsonAsync("/api/restaurante/orders",
+                new OpenOrderRequest("DineIn", TableId: table.Id, PartySize: 2));
+            resp.StatusCode.Should().Be(HttpStatusCode.Created);
+            var order = await resp.Content.ReadFromJsonAsync<OrderDto>();
 
-        await AddItemAsync(order!.Id, product.Id, qty: 2); // 2 × 60 = 120
+            await AddItemAsync(order!.Id, product.Id, qty: 2); // 2 × 60 = 120
 
-        await CloseOrderAsync(order.Id);
+            await CloseOrderAsync(order.Id);
 
-        var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
-            new PayOrderRequest(
-                new List<PaymentInputDto> { new("Cash", "Cash", 148.00m) }));
-        r.StatusCode.Should().Be(HttpStatusCode.OK);
-        var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
+            var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
+                new PayOrderRequest(
+                    new List<PaymentInputDto> { new("Cash", "Cash", 148.00m) }));
+            r.StatusCode.Should().Be(HttpStatusCode.OK);
+            var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
 
-        paid!.ItemsSubtotal.Should().Be(120.00m);
-        paid.CouvertAmount.Should().Be(16.00m);   // 8.00 × 2
-        paid.ServiceFeeAmount.Should().Be(12.00m);  // 120 × 10% — NOT (120+16) × 10%
-        paid.Total.Should().Be(148.00m);
-        paid.Status.Should().Be("Paid");
-
-        await ResetFoodServiceSettingsAsync();
+            paid!.ItemsSubtotal.Should().Be(120.00m);
+            paid.CouvertAmount.Should().Be(16.00m);   // 8.00 × 2
+            paid.ServiceFeeAmount.Should().Be(12.00m);  // 120 × 10% — NOT (120+16) × 10%
+            paid.Total.Should().Be(148.00m);
+            paid.Status.Should().Be("Paid");
+        }
+        finally
+        {
+            await ResetFoodServiceSettingsAsync();
+        }
     }
 
     /// <summary>
     /// Adding an item to an order without satisfying a required modifier group
     /// returns 422 UnprocessableEntity (or 400 BadRequest).
-    /// The required group has no modifiers, so any(m => ...) is always false —
-    /// the validation rejects sending no modifiers when a required group exists.
+    /// A modifier option is added to the group so the validation tests the real business rule
+    /// ("user failed to select from available options"), not an empty-group edge case.
     /// </summary>
     [Fact]
     public async Task AddItem_WithRequiredModifierGroupMissing_Returns422()
@@ -821,9 +841,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         var product = await CreateProductWithStockAsync(
             $"BURGER-{Interlocked.Increment(ref _tableSeq)}", salePrice: 30m, costPrice: 10m, initialStock: 0m);
 
-        // Create a required modifier group — no modifier options added (empty group)
-        // AddItemAsync checks: group.Modifiers.Any(m => requestedModifierIds.Contains(m.Id))
-        // With no modifiers in the group, Any() is always false → validation always fails
+        // Create a required modifier group
         var groupResp = await _client.PostAsJsonAsync("/api/restaurante/modifier-groups",
             new CreateModifierGroupRequest(
                 ProductId:     product.Id,
@@ -833,6 +851,13 @@ public class RestauranteFlowTests : IAsyncLifetime
                 MaxSelections: 1,
                 SortOrder:     0));
         groupResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var group = await groupResp.Content.ReadFromJsonAsync<ModifierGroupDto>();
+
+        // Add a modifier option to the group so the "required" check is meaningful
+        var modifierResp = await _client.PostAsJsonAsync(
+            $"/api/restaurante/modifier-groups/{group!.Id}/modifiers",
+            new CreateModifierRequest(group.Id, "Mal passado", PriceAdjustment: 0m, SortOrder: 0));
+        modifierResp.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var area  = await CreateAreaAsync($"Área Modifier {Interlocked.Increment(ref _tableSeq)}");
         var table = await CreateTableAsync(area.Id);
@@ -842,7 +867,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         orderResp.StatusCode.Should().Be(HttpStatusCode.Created);
         var order = await orderResp.Content.ReadFromJsonAsync<OrderDto>();
 
-        // Act: add item WITHOUT selecting required group → validation must reject
+        // Act: add item WITHOUT selecting the required modifier → validation must reject
         var addResp = await _client.PostAsJsonAsync(
             $"/api/restaurante/orders/{order!.Id}/items",
             new AddOrderItemRequest(product.Id, Quantity: 1));
@@ -900,6 +925,9 @@ public class RestauranteFlowTests : IAsyncLifetime
         cancelled.TableId.Should().BeNull();
     }
 
+    // Note: this test verifies positive visibility (this store sees its own orders).
+    // Full negative-visibility testing (another store cannot see these orders) requires
+    // a multi-store test client setup and is tracked as a Phase 2 integration test concern.
     /// <summary>
     /// Orders are scoped to the current store via the StoreEntity global query filter.
     /// GET /tables/{id}/orders returns only the orders opened in this store context.
