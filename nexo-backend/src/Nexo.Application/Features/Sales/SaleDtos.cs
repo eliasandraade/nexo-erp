@@ -38,6 +38,7 @@ public record ConfirmSaleRequest(
     List<PaymentInput> Payments,
     decimal DiscountAmount = 0,
     decimal TaxAmount = 0,
+    decimal SurchargesAmount = 0,   // couvert + service fee (restaurant orders)
     /// <summary>
     /// Products in this set are skipped during direct stock deduction.
     /// Used by the restaurant flow where stock is managed at ingredient level

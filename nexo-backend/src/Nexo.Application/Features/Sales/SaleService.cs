@@ -135,7 +135,7 @@ public class SaleService
                 throw new DomainException("Cannot confirm a sale with no items.");
 
             // Recalculate totals with final discount/tax
-            sale.RecalculateTotals(sale.Items, request.DiscountAmount, request.TaxAmount);
+            sale.RecalculateTotals(sale.Items, request.DiscountAmount, request.TaxAmount, request.SurchargesAmount);
 
             // Validate: sum of payments must equal sale total
             var paymentTotal = request.Payments.Sum(p => p.Amount);

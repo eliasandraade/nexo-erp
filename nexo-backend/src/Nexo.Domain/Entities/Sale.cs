@@ -31,6 +31,7 @@ public class Sale : StoreEntity
     public decimal Subtotal { get; private set; }
     public decimal DiscountAmount { get; private set; }
     public decimal TaxAmount { get; private set; }
+    public decimal SurchargesAmount { get; private set; }
     public decimal Total { get; private set; }
     public string? Notes { get; private set; }
     public DateTime? ConfirmedAt { get; private set; }
@@ -67,13 +68,18 @@ public class Sale : StoreEntity
 
     // ── Totals ────────────────────────────────────────────────────────────────
 
-    public void RecalculateTotals(IEnumerable<SaleItem> items, decimal discountAmount = 0, decimal taxAmount = 0)
+    public void RecalculateTotals(
+        IEnumerable<SaleItem> items,
+        decimal discountAmount = 0,
+        decimal taxAmount = 0,
+        decimal surchargesAmount = 0)
     {
         EnsureCanBeModified();
-        Subtotal       = items.Sum(i => i.Total);
-        DiscountAmount = discountAmount;
-        TaxAmount      = taxAmount;
-        Total          = Subtotal - DiscountAmount + TaxAmount;
+        Subtotal         = items.Sum(i => i.Total);
+        DiscountAmount   = discountAmount;
+        TaxAmount        = taxAmount;
+        SurchargesAmount = surchargesAmount;
+        Total            = Subtotal - DiscountAmount + TaxAmount + SurchargesAmount;
         SetUpdatedAt();
     }
 
