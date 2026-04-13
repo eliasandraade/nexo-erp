@@ -18,6 +18,7 @@ public class ProductModifierGroup : TenantEntity
     public Guid   ProductId     { get; private set; }
     public string Name          { get; private set; } = string.Empty;
     public bool   IsRequired    { get; private set; }
+    public short  MinSelections { get; private set; }
     public short  MaxSelections { get; private set; }
     public short  SortOrder     { get; private set; }
     public bool   IsActive      { get; private set; }
@@ -27,10 +28,12 @@ public class ProductModifierGroup : TenantEntity
 
     public static ProductModifierGroup Create(
         Guid tenantId, Guid productId, string name,
-        bool isRequired = false, short maxSelections = 1, short sortOrder = 0)
+        bool isRequired = false, short minSelections = 0, short maxSelections = 1, short sortOrder = 0)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Modifier group name is required.");
+        if (minSelections < 0)
+            throw new DomainException("MinSelections must be at least 0.");
         if (maxSelections < 1)
             throw new DomainException("MaxSelections must be at least 1.");
 
@@ -39,20 +42,24 @@ public class ProductModifierGroup : TenantEntity
             ProductId     = productId,
             Name          = name.Trim(),
             IsRequired    = isRequired,
+            MinSelections = minSelections,
             MaxSelections = maxSelections,
             SortOrder     = sortOrder,
             IsActive      = true,
         };
     }
 
-    public void Update(string name, bool isRequired, short maxSelections, short sortOrder)
+    public void Update(string name, bool isRequired, short minSelections, short maxSelections, short sortOrder)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Modifier group name is required.");
+        if (minSelections < 0)
+            throw new DomainException("MinSelections must be at least 0.");
         if (maxSelections < 1)
             throw new DomainException("MaxSelections must be at least 1.");
         Name          = name.Trim();
         IsRequired    = isRequired;
+        MinSelections = minSelections;
         MaxSelections = maxSelections;
         SortOrder     = sortOrder;
         SetUpdatedAt();

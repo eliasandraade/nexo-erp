@@ -15,6 +15,7 @@ public class ProductModifierGroupConfiguration : IEntityTypeConfiguration<Produc
         builder.Property(x => x.ProductId).HasColumnName("product_id").IsRequired();
         builder.Property(x => x.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
         builder.Property(x => x.IsRequired).HasColumnName("is_required").IsRequired();
+        builder.Property(x => x.MinSelections).HasColumnName("min_selections").IsRequired();
         builder.Property(x => x.MaxSelections).HasColumnName("max_selections").IsRequired();
         builder.Property(x => x.SortOrder).HasColumnName("sort_order").HasDefaultValue((short)0).IsRequired();
         builder.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true).IsRequired();

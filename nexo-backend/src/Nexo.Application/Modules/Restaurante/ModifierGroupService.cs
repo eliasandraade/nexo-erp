@@ -26,7 +26,7 @@ public class ModifierGroupService
     {
         var group = ProductModifierGroup.Create(
             _currentTenant.Id, req.ProductId, req.Name,
-            req.IsRequired, (short)req.MaxSelections, (short)req.SortOrder);
+            req.IsRequired, (short)req.MinSelections, (short)req.MaxSelections, (short)req.SortOrder);
         await _repo.AddGroupAsync(group, ct);
         await _repo.SaveChangesAsync(ct);
         return Map(group);
@@ -36,7 +36,7 @@ public class ModifierGroupService
     {
         var group = await _repo.GetByIdWithModifiersAsync(groupId, ct)
             ?? throw new NotFoundException("ModifierGroup", groupId);
-        group.Update(req.Name, req.IsRequired, (short)req.MaxSelections, (short)req.SortOrder);
+        group.Update(req.Name, req.IsRequired, (short)req.MinSelections, (short)req.MaxSelections, (short)req.SortOrder);
         await _repo.SaveChangesAsync(ct);
         return Map(group);
     }
@@ -74,7 +74,7 @@ public class ModifierGroupService
 
     private static ModifierGroupDto Map(ProductModifierGroup g) => new(
         g.Id, g.ProductId, g.Name, g.IsRequired,
-        0, // MinSelections — not stored on domain entity in v1; default 0
+        g.MinSelections,
         g.MaxSelections, g.SortOrder, g.IsActive,
         g.Modifiers.Select(Map).ToList());
 
