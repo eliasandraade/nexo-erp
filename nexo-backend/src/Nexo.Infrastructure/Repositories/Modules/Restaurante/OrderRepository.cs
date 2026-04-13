@@ -44,6 +44,16 @@ public class OrderRepository : IOrderRepository
             .OrderByDescending(x => x.OpenedAt)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<RestOrder>> GetOrdersByTableIdAsync(
+        Guid tableId, CancellationToken ct = default)
+        => await _context.RestOrders
+            .Include(x => x.Table)
+            .Include(x => x.Items).ThenInclude(i => i.Product)
+            .Include(x => x.Items).ThenInclude(i => i.Modifiers)
+            .Where(x => x.TableId == tableId)
+            .OrderByDescending(x => x.OpenedAt)
+            .ToListAsync(ct);
+
     public async Task<int> GetNextNumberAsync(CancellationToken ct = default)
     {
         var max = await _context.RestOrders.MaxAsync(x => (int?)x.OrderNumber, ct);

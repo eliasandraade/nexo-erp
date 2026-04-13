@@ -8,6 +8,7 @@ public interface IOrderRepository
     Task<RestOrder?> GetByIdWithItemsAsync(Guid id, CancellationToken ct = default);
     Task<RestOrder?> GetOpenOrderForTableAsync(Guid tableId, CancellationToken ct = default);
     Task<IReadOnlyList<RestOrder>> GetAllAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<RestOrder>> GetOrdersByTableIdAsync(Guid tableId, CancellationToken ct = default);
     Task<int> GetNextNumberAsync(CancellationToken ct = default);
     Task AddAsync(RestOrder order, CancellationToken ct = default);
     /// <summary>Explicitly tracks a new order item as Added. Required because EF Core assigns

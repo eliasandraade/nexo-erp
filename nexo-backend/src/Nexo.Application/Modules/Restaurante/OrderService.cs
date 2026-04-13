@@ -80,6 +80,12 @@ public class OrderService
         return Map(order);
     }
 
+    public async Task<IReadOnlyList<OrderDto>> GetByTableIdAsync(Guid tableId, CancellationToken ct = default)
+    {
+        var orders = await _orders.GetOrdersByTableIdAsync(tableId, ct);
+        return orders.Select(Map).ToList();
+    }
+
     // ── Open ──────────────────────────────────────────────────────────────────
 
     /// <summary>
