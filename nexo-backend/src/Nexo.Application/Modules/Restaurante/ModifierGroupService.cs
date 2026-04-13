@@ -26,7 +26,10 @@ public class ModifierGroupService
     {
         var group = ProductModifierGroup.Create(
             _currentTenant.Id, req.ProductId, req.Name,
-            req.IsRequired, (short)req.MinSelections, (short)req.MaxSelections, (short)req.SortOrder);
+            req.IsRequired,
+            ToShort(req.MinSelections, nameof(req.MinSelections)),
+            ToShort(req.MaxSelections, nameof(req.MaxSelections)),
+            ToShort(req.SortOrder,     nameof(req.SortOrder)));
         await _repo.AddGroupAsync(group, ct);
         await _repo.SaveChangesAsync(ct);
         return Map(group);
@@ -36,7 +39,10 @@ public class ModifierGroupService
     {
         var group = await _repo.GetByIdWithModifiersAsync(groupId, ct)
             ?? throw new NotFoundException("ModifierGroup", groupId);
-        group.Update(req.Name, req.IsRequired, (short)req.MinSelections, (short)req.MaxSelections, (short)req.SortOrder);
+        group.Update(req.Name, req.IsRequired,
+            ToShort(req.MinSelections, nameof(req.MinSelections)),
+            ToShort(req.MaxSelections, nameof(req.MaxSelections)),
+            ToShort(req.SortOrder,     nameof(req.SortOrder)));
         await _repo.SaveChangesAsync(ct);
         return Map(group);
     }
@@ -46,20 +52,19 @@ public class ModifierGroupService
         var group = await _repo.GetByIdWithModifiersAsync(groupId, ct)
             ?? throw new NotFoundException("ModifierGroup", groupId);
         var modifier = ProductModifier.Create(
-            _currentTenant.Id, groupId, req.Name, req.PriceAdjustment, (short)req.SortOrder);
+            _currentTenant.Id, groupId, req.Name, req.PriceAdjustment,
+            ToShort(req.SortOrder, nameof(req.SortOrder)));
+        group.AddModifier(modifier);
         _repo.TrackModifier(modifier);
         await _repo.SaveChangesAsync(ct);
-        // Re-fetch to get updated modifier list
-        var updated = await _repo.GetByIdWithModifiersAsync(groupId, ct)
-            ?? throw new NotFoundException("ModifierGroup", groupId);
-        return Map(updated);
+        return Map(group);
     }
 
     public async Task<ModifierDto> UpdateModifierAsync(Guid modifierId, UpdateModifierRequest req, CancellationToken ct = default)
     {
         var modifier = await _repo.GetModifierByIdAsync(modifierId, ct)
             ?? throw new NotFoundException("Modifier", modifierId);
-        modifier.Update(req.Name, req.PriceAdjustment, (short)req.SortOrder);
+        modifier.Update(req.Name, req.PriceAdjustment, ToShort(req.SortOrder, nameof(req.SortOrder)));
         await _repo.SaveChangesAsync(ct);
         return Map(modifier);
     }
@@ -70,6 +75,13 @@ public class ModifierGroupService
             ?? throw new NotFoundException("Modifier", modifierId);
         modifier.Deactivate();
         await _repo.SaveChangesAsync(ct);
+    }
+
+    private static short ToShort(int value, string fieldName)
+    {
+        if (value is < 0 or > 32767)
+            throw new ArgumentOutOfRangeException(fieldName, value, $"{fieldName} must be between 0 and 32767.");
+        return (short)value;
     }
 
     private static ModifierGroupDto Map(ProductModifierGroup g) => new(

@@ -65,6 +65,12 @@ public class ProductModifierGroup : TenantEntity
         SetUpdatedAt();
     }
 
+    public void AddModifier(ProductModifier modifier)
+    {
+        _modifiers.Add(modifier);
+        SetUpdatedAt();
+    }
+
     public void Activate()   { IsActive = true;  SetUpdatedAt(); }
     public void Deactivate() { IsActive = false; SetUpdatedAt(); }
 }
