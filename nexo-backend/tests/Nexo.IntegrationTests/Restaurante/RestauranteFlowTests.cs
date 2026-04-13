@@ -927,6 +927,6 @@ public class RestauranteFlowTests : IAsyncLifetime
         orders!.All(o => o.TableId == table.Id).Should().BeTrue();
 
         // The order we opened must be present
-        orders.Any(o => o.Id == order!.Id).Should().BeTrue();
+        orders!.Any(o => o.Id == order!.Id).Should().BeTrue();
     }
 }
