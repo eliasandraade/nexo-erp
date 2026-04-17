@@ -28,8 +28,8 @@ public class TableRepository : ITableRepository
         // Usamos FromSqlRaw para emitir o lock explicitamente no PostgreSQL.
         var tables = await _context.RestTables
             .FromSqlRaw(
-                "SELECT * FROM nexo.rest_tables WHERE id = {0} AND tenant_id = {1} FOR UPDATE",
-                id, _context.CurrentTenantIdForFilter)
+                "SELECT * FROM nexo.rest_tables WHERE id = {0} AND tenant_id = {1} AND store_id = {2} FOR UPDATE",
+                id, _context.CurrentTenantIdForFilter, _context.CurrentStoreIdForFilter)
             .Include(x => x.Area)
             .ToListAsync(ct);
 

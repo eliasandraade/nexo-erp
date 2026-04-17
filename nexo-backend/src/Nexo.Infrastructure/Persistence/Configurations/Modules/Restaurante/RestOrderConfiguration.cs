@@ -12,13 +12,25 @@ public class RestOrderConfiguration : IEntityTypeConfiguration<RestOrder>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id");
         builder.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        builder.Property(x => x.StoreId).HasColumnName("store_id").IsRequired();
         builder.Property(x => x.OrderNumber).HasColumnName("order_number").IsRequired();
         builder.Property(x => x.Status)
             .HasColumnName("status")
             .HasMaxLength(20)
             .HasConversion<string>()
             .IsRequired();
-        builder.Property(x => x.TableId).HasColumnName("table_id").IsRequired();
+        builder.Property(x => x.OrderType)
+            .HasColumnName("order_type")
+            .HasMaxLength(20)
+            .HasConversion<string>()
+            .HasDefaultValue(RestOrderType.DineIn)
+            .IsRequired();
+        builder.Property(x => x.TableId).HasColumnName("table_id");
+        builder.Property(x => x.PartySize).HasColumnName("party_size");
+        builder.Property(x => x.CouvertAmount).HasColumnName("couvert_amount")
+            .HasColumnType("numeric(18,2)").HasDefaultValue(0m).IsRequired();
+        builder.Property(x => x.ServiceFeeAmount).HasColumnName("service_fee_amount")
+            .HasColumnType("numeric(18,2)").HasDefaultValue(0m).IsRequired();
         builder.Property(x => x.WaiterId).HasColumnName("waiter_id").IsRequired();
         builder.Property(x => x.CustomerId).HasColumnName("customer_id");
         builder.Property(x => x.SaleId).HasColumnName("sale_id");
@@ -31,6 +43,9 @@ public class RestOrderConfiguration : IEntityTypeConfiguration<RestOrder>
 
         // Computed properties — not persisted, must be ignored explicitly.
         builder.Ignore(x => x.ActiveItems);
+        builder.Ignore(x => x.ItemsSubtotal);
+        builder.Ignore(x => x.Total);
+        builder.Ignore(x => x.Subtotal);
 
         // Items — backed field
         builder.HasMany(x => x.Items)
@@ -56,17 +71,32 @@ public class RestOrderConfiguration : IEntityTypeConfiguration<RestOrder>
             .HasConstraintName("fk_rest_orders_tenants")
             .OnDelete(DeleteBehavior.Cascade);
 
-        builder.HasIndex(x => new { x.TenantId, x.OrderNumber })
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .HasConstraintName("fk_rest_orders_stores")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(x => x.StoreId).HasDatabaseName("ix_rest_orders_store_id");
+
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.OrderNumber })
             .IsUnique()
-            .HasDatabaseName("ix_rest_orders_tenant_number");
+            .HasDatabaseName("ix_rest_orders_tenant_store_number");
 
-        builder.HasIndex(x => new { x.TenantId, x.Status })
-            .HasDatabaseName("ix_rest_orders_tenant_status");
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Status })
+            .HasDatabaseName("ix_rest_orders_tenant_store_status");
 
-        builder.HasIndex(x => new { x.TenantId, x.TableId })
-            .HasDatabaseName("ix_rest_orders_tenant_table");
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.TableId })
+            .HasDatabaseName("ix_rest_orders_tenant_store_table");
 
-        builder.HasIndex(x => new { x.TenantId, x.CreatedAt })
-            .HasDatabaseName("ix_rest_orders_tenant_created_at");
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.CreatedAt })
+            .HasDatabaseName("ix_rest_orders_tenant_store_created_at");
+
+        // Partial unique: at most one active order per (tenant, store, table)
+        // table_id IS NOT NULL filters out Counter/Takeaway orders
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.TableId })
+            .IsUnique()
+            .HasFilter("table_id IS NOT NULL AND status NOT IN ('Closed','Paid','Cancelled')")
+            .HasDatabaseName("ix_rest_orders_one_active_per_table");
     }
 }

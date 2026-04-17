@@ -6,6 +6,7 @@ using Microsoft.OpenApi.Models;
 using Nexo.Api.Middleware;
 using Nexo.Application;
 using Nexo.Infrastructure;
+using Nexo.Infrastructure.Hubs;
 using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
 using Serilog;
@@ -64,6 +65,18 @@ try
                 IssuerSigningKey         = new SymmetricSecurityKey(
                                                Encoding.UTF8.GetBytes(jwtSecret)),
                 ClockSkew                = TimeSpan.FromMinutes(1),
+            };
+            opts.Events = new JwtBearerEvents
+            {
+                OnMessageReceived = ctx =>
+                {
+                    // SignalR sends JWT via query string for WebSocket connections
+                    var accessToken = ctx.Request.Query["access_token"];
+                    var path = ctx.HttpContext.Request.Path;
+                    if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                        ctx.Token = accessToken;
+                    return Task.CompletedTask;
+                }
             };
         });
 
@@ -172,6 +185,7 @@ try
     app.UseAuthentication();
     app.UseMiddleware<TenantResolutionMiddleware>();
     app.UseAuthorization();
+    app.MapHub<RestaurantHub>("/hubs/restaurant");
     app.MapControllers();
     app.MapHealthChecks("/health");
 

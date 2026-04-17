@@ -73,8 +73,12 @@ public class NexoDbContext : DbContext
     public DbSet<RestTable>             RestTables           => Set<RestTable>();
     public DbSet<RestOrder>             RestOrders           => Set<RestOrder>();
     public DbSet<RestOrderItem>         RestOrderItems       => Set<RestOrderItem>();
+    public DbSet<RestOrderItemModifier> RestOrderItemModifiers => Set<RestOrderItemModifier>();
     public DbSet<RestRecipeCard>        RestRecipeCards      => Set<RestRecipeCard>();
     public DbSet<RestRecipeIngredient>  RestRecipeIngredients => Set<RestRecipeIngredient>();
+    public DbSet<ProductModifierGroup>  ProductModifierGroups => Set<ProductModifierGroup>();
+    public DbSet<ProductModifier>       ProductModifiers      => Set<ProductModifier>();
+    public DbSet<FoodServiceSettings>   FoodServiceSettings   => Set<FoodServiceSettings>();
 
     // ── Módulo Varejo ─────────────────────────────────────────────────────────
     public DbSet<RetPurchase> RetPurchases => Set<RetPurchase>();

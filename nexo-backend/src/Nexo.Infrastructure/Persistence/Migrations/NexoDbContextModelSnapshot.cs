@@ -1003,6 +1003,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("subtotal");
 
+                    b.Property<decimal>("SurchargesAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("surcharges_amount");
+
                     b.Property<decimal>("TaxAmount")
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("tax_amount");
@@ -1633,6 +1637,208 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("users", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.FoodServiceSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("CouvertAutomatic")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("couvert_automatic");
+
+                    b.Property<bool>("CouvertEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("couvert_enabled");
+
+                    b.Property<decimal?>("CouvertPricePerPerson")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("couvert_price_per_person");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("OrderTypesEnabled")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasDefaultValue("DineIn,Counter,Takeaway")
+                        .HasColumnName("order_types_enabled");
+
+                    b.Property<bool>("ServiceFeeEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("service_fee_enabled");
+
+                    b.Property<decimal?>("ServiceFeePercent")
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("service_fee_percent");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<string>("StoreType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("restaurant")
+                        .HasColumnName("store_type");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_food_service_settings_store_id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_food_service_settings_tenant_id");
+
+                    b.HasIndex("TenantId", "StoreId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_food_service_settings_tenant_store");
+
+                    b.ToTable("food_service_settings", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.ProductModifier", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("group_id");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("PriceAdjustment")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("price_adjustment");
+
+                    b.Property<short>("SortOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)0)
+                        .HasColumnName("sort_order");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GroupId")
+                        .HasDatabaseName("ix_product_modifiers_group_id");
+
+                    b.HasIndex("TenantId", "GroupId")
+                        .HasDatabaseName("ix_product_modifiers_tenant_group");
+
+                    b.ToTable("product_modifiers", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.ProductModifierGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsRequired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_required");
+
+                    b.Property<short>("MaxSelections")
+                        .HasColumnType("smallint")
+                        .HasColumnName("max_selections");
+
+                    b.Property<short>("MinSelections")
+                        .HasColumnType("smallint")
+                        .HasColumnName("min_selections");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<short>("SortOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("smallint")
+                        .HasDefaultValue((short)0)
+                        .HasColumnName("sort_order");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("ix_product_modifier_groups_product_id");
+
+                    b.HasIndex("TenantId", "ProductId")
+                        .HasDatabaseName("ix_product_modifier_groups_tenant_product");
+
+                    b.ToTable("product_modifier_groups", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestArea", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1661,6 +1867,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("name");
 
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -1671,12 +1881,15 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_rest_areas_store_id");
+
                     b.HasIndex("TenantId")
                         .HasDatabaseName("ix_rest_areas_tenant_id");
 
-                    b.HasIndex("TenantId", "Name")
+                    b.HasIndex("TenantId", "StoreId", "Name")
                         .IsUnique()
-                        .HasDatabaseName("ix_rest_areas_tenant_id_name");
+                        .HasDatabaseName("ix_rest_areas_tenant_store_name");
 
                     b.ToTable("rest_areas", "nexo");
                 });
@@ -1695,6 +1908,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ClosedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("closed_at");
+
+                    b.Property<decimal>("CouvertAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("couvert_amount");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
@@ -1717,9 +1936,27 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("order_number");
 
+                    b.Property<string>("OrderType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("DineIn")
+                        .HasColumnName("order_type");
+
+                    b.Property<int?>("PartySize")
+                        .HasColumnType("integer")
+                        .HasColumnName("party_size");
+
                     b.Property<Guid?>("SaleId")
                         .HasColumnType("uuid")
                         .HasColumnName("sale_id");
+
+                    b.Property<decimal>("ServiceFeeAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("service_fee_amount");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1727,7 +1964,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
-                    b.Property<Guid>("TableId")
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid?>("TableId")
                         .HasColumnType("uuid")
                         .HasColumnName("table_id");
 
@@ -1747,20 +1988,25 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SaleId");
 
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_rest_orders_store_id");
+
                     b.HasIndex("TableId");
 
-                    b.HasIndex("TenantId", "CreatedAt")
-                        .HasDatabaseName("ix_rest_orders_tenant_created_at");
+                    b.HasIndex("TenantId", "StoreId", "CreatedAt")
+                        .HasDatabaseName("ix_rest_orders_tenant_store_created_at");
 
-                    b.HasIndex("TenantId", "OrderNumber")
+                    b.HasIndex("TenantId", "StoreId", "OrderNumber")
                         .IsUnique()
-                        .HasDatabaseName("ix_rest_orders_tenant_number");
+                        .HasDatabaseName("ix_rest_orders_tenant_store_number");
 
-                    b.HasIndex("TenantId", "Status")
-                        .HasDatabaseName("ix_rest_orders_tenant_status");
+                    b.HasIndex("TenantId", "StoreId", "Status")
+                        .HasDatabaseName("ix_rest_orders_tenant_store_status");
 
-                    b.HasIndex("TenantId", "TableId")
-                        .HasDatabaseName("ix_rest_orders_tenant_table");
+                    b.HasIndex("TenantId", "StoreId", "TableId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_rest_orders_one_active_per_table")
+                        .HasFilter("table_id IS NOT NULL AND status NOT IN ('Closed','Paid','Cancelled')");
 
                     b.ToTable("rest_orders", "nexo");
                 });
@@ -1833,7 +2079,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_rest_order_items_order_id");
 
                     b.HasIndex("ProductId");
 
@@ -1847,6 +2094,54 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_rest_order_items_tenant_status");
 
                     b.ToTable("rest_order_items", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestOrderItemModifier", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("LabelSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("label_snapshot");
+
+                    b.Property<Guid>("ModifierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modifier_id");
+
+                    b.Property<Guid>("OrderItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("order_item_id");
+
+                    b.Property<decimal>("PriceSnapshot")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("price_snapshot");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrderItemId")
+                        .HasDatabaseName("ix_rest_order_item_modifiers_order_item_id");
+
+                    b.HasIndex("TenantId", "OrderItemId")
+                        .HasDatabaseName("ix_rest_order_item_modifiers_item");
+
+                    b.ToTable("rest_order_item_modifiers", "nexo");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestRecipeCard", b =>
@@ -1875,6 +2170,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("product_id");
 
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -1897,9 +2196,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProductId");
 
-                    b.HasIndex("TenantId", "ProductId")
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_rest_recipe_cards_store_id");
+
+                    b.HasIndex("TenantId", "StoreId", "ProductId")
                         .IsUnique()
-                        .HasDatabaseName("ix_rest_recipe_cards_tenant_product");
+                        .HasDatabaseName("ix_rest_recipe_cards_tenant_store_product");
 
                     b.ToTable("rest_recipe_cards", "nexo");
                 });
@@ -1992,6 +2294,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
 
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -2004,15 +2310,18 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AreaId");
 
-                    b.HasIndex("TenantId", "AreaId")
-                        .HasDatabaseName("ix_rest_tables_tenant_area");
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_rest_tables_store_id");
 
-                    b.HasIndex("TenantId", "Number")
+                    b.HasIndex("TenantId", "StoreId", "AreaId")
+                        .HasDatabaseName("ix_rest_tables_tenant_store_area");
+
+                    b.HasIndex("TenantId", "StoreId", "Number")
                         .IsUnique()
-                        .HasDatabaseName("ix_rest_tables_tenant_number");
+                        .HasDatabaseName("ix_rest_tables_tenant_store_number");
 
-                    b.HasIndex("TenantId", "Status")
-                        .HasDatabaseName("ix_rest_tables_tenant_status");
+                    b.HasIndex("TenantId", "StoreId", "Status")
+                        .HasDatabaseName("ix_rest_tables_tenant_store_status");
 
                     b.ToTable("rest_tables", "nexo");
                 });
@@ -2631,8 +2940,68 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.FoodServiceSettings", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_food_service_settings_stores");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_food_service_settings_tenants");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.ProductModifier", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Restaurante.ProductModifierGroup", "Group")
+                        .WithMany("Modifiers")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_modifiers_product_modifier_groups");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_modifiers_tenants");
+
+                    b.Navigation("Group");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.ProductModifierGroup", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_modifier_groups_products");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_modifier_groups_tenants");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestArea", b =>
                 {
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_rest_areas_stores");
+
                     b.HasOne("Nexo.Domain.Entities.Tenant", null)
                         .WithMany()
                         .HasForeignKey("TenantId")
@@ -2649,11 +3018,17 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_rest_orders_sales");
 
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_rest_orders_stores");
+
                     b.HasOne("Nexo.Domain.Modules.Restaurante.RestTable", "Table")
                         .WithMany()
                         .HasForeignKey("TableId")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("fk_rest_orders_tables");
 
                     b.HasOne("Nexo.Domain.Entities.Tenant", null)
@@ -2693,6 +3068,23 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestOrderItemModifier", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Restaurante.RestOrderItem", null)
+                        .WithMany("Modifiers")
+                        .HasForeignKey("OrderItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_rest_order_item_modifiers_items");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_rest_order_item_modifiers_tenants");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestRecipeCard", b =>
                 {
                     b.HasOne("Nexo.Domain.Entities.Product", null)
@@ -2701,6 +3093,13 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_rest_recipe_cards_products");
+
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_rest_recipe_cards_stores");
 
                     b.HasOne("Nexo.Domain.Entities.Tenant", null)
                         .WithMany()
@@ -2743,6 +3142,13 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_rest_tables_areas");
+
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_rest_tables_stores");
 
                     b.HasOne("Nexo.Domain.Entities.Tenant", null)
                         .WithMany()
@@ -2899,6 +3305,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Payments");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.ProductModifierGroup", b =>
+                {
+                    b.Navigation("Modifiers");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestArea", b =>
                 {
                     b.Navigation("Tables");
@@ -2907,6 +3318,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestOrder", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestOrderItem", b =>
+                {
+                    b.Navigation("Modifiers");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestRecipeCard", b =>

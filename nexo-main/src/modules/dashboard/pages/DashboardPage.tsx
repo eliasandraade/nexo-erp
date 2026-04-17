@@ -7,6 +7,7 @@ import { SellerRanking } from "@/modules/dashboard/components/SellerRanking";
 import { RecentInsights } from "@/modules/dashboard/components/RecentInsights";
 import { StockAlerts } from "@/modules/dashboard/components/StockAlerts";
 import { SetupCard } from "@/components/shared/SetupCard";
+import { RestauranteBlocks } from "@/modules/dashboard/components/RestauranteBlocks";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 
 function useSetupDismissed(userId: string | undefined) {
@@ -35,6 +36,7 @@ export default function DashboardPage() {
         description="Visão geral do seu negócio hoje"
       />
       <KpiCards />
+      {session?.modules.includes("restaurante") && <RestauranteBlocks />}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <SalesChart />

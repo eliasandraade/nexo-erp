@@ -3,61 +3,69 @@ using Nexo.Domain.Exceptions;
 
 namespace Nexo.Domain.Modules.Restaurante;
 
-/// <summary>
-/// Comanda operacional do restaurante.
-///
-/// Estado: Open → InPreparation → Ready → Closed → (pago via PayAsync)
-///         Open | InPreparation | Ready → Cancelled
-///
-/// Closed = Sale criada em Draft. A mesa continua Occupied.
-/// A mesa só fica Available após PayAsync bem-sucedido.
-///
-/// Concorrência: a restrição de "uma comanda aberta por mesa" é garantida
-/// pelo índice UNIQUE parcial (tenant_id, table_id) WHERE status NOT IN ('Closed','Cancelled'),
-/// aplicado na migration. O OrderService usa SELECT FOR UPDATE (row-level lock)
-/// ao validar a mesa antes de abrir uma nova comanda.
-/// </summary>
-public class RestOrder : TenantEntity
+public class RestOrder : StoreEntity
 {
     private RestOrder() { }
     private RestOrder(Guid tenantId) : base(tenantId) { }
 
-    public int              OrderNumber  { get; private set; }
-    public RestOrderStatus  Status       { get; private set; }
-    public Guid             TableId      { get; private set; }
-    public Guid             WaiterId     { get; private set; }
-    public Guid?            CustomerId   { get; private set; }
-    public Guid?            SaleId       { get; private set; }   // preenchido em CloseAsync
-    public string?          Notes        { get; private set; }
+    public int             OrderNumber      { get; private set; }
+    public RestOrderStatus Status           { get; private set; }
+    public RestOrderType   OrderType        { get; private set; }
+    public Guid?           TableId          { get; private set; }  // null for Counter/Takeaway
+    public int?            PartySize        { get; private set; }
+    public Guid            WaiterId         { get; private set; }
+    public Guid?           CustomerId       { get; private set; }
+    public Guid?           SaleId           { get; private set; }
+    public decimal         CouvertAmount    { get; private set; }
+    public decimal         ServiceFeeAmount { get; private set; }
+    public string?         Notes            { get; private set; }
 
     public DateTime  OpenedAt    { get; private set; }
     public DateTime? ClosedAt    { get; private set; }
     public DateTime? CancelledAt { get; private set; }
 
-    // Navigation
     public RestTable? Table { get; private set; }
 
     private readonly List<RestOrderItem> _items = [];
     public IReadOnlyList<RestOrderItem> Items => _items.AsReadOnly();
 
-    // ── Factory ───────────────────────────────────────────────────────────────
+    // ── Computed ──────────────────────────────────────────────────────────────
+    public decimal ItemsSubtotal => _items.Where(i => i.IsActive).Sum(i => i.Total);
+    public decimal Total         => ItemsSubtotal + CouvertAmount + ServiceFeeAmount;
 
+    // Keep Subtotal for backward compatibility with existing code
+    public decimal Subtotal => ItemsSubtotal;
+
+    public IReadOnlyList<RestOrderItem> ActiveItems => _items.Where(i => i.IsActive).ToList();
+
+    // ── Factory ───────────────────────────────────────────────────────────────
     public static RestOrder Create(
-        Guid tenantId, int orderNumber, Guid tableId,
-        Guid waiterId, Guid? customerId = null, string? notes = null)
-        => new RestOrder(tenantId)
+        Guid tenantId, int orderNumber,
+        RestOrderType orderType, Guid? tableId,
+        int? partySize, Guid waiterId,
+        decimal couvertAmount = 0,
+        Guid? customerId = null, string? notes = null)
+    {
+        if (orderType == RestOrderType.DineIn && tableId is null)
+            throw new DomainException("DineIn orders require a table.");
+
+        return new RestOrder(tenantId)
         {
-            OrderNumber = orderNumber,
-            Status      = RestOrderStatus.Open,
-            TableId     = tableId,
-            WaiterId    = waiterId,
-            CustomerId  = customerId,
-            Notes       = notes?.Trim(),
-            OpenedAt    = DateTime.UtcNow,
+            OrderNumber      = orderNumber,
+            Status           = RestOrderStatus.Open,
+            OrderType        = orderType,
+            TableId          = tableId,
+            PartySize        = partySize,
+            WaiterId         = waiterId,
+            CustomerId       = customerId,
+            CouvertAmount    = couvertAmount >= 0 ? couvertAmount : 0,
+            ServiceFeeAmount = 0,
+            Notes            = notes?.Trim(),
+            OpenedAt         = DateTime.UtcNow,
         };
+    }
 
     // ── Items ─────────────────────────────────────────────────────────────────
-
     public RestOrderItem AddItem(
         Guid tenantId, Guid productId,
         decimal quantity, decimal unitPrice, string? notes = null)
@@ -76,14 +84,27 @@ public class RestOrder : TenantEntity
         item.Cancel();
     }
 
-    // ── Computed ──────────────────────────────────────────────────────────────
+    // ── Couvert and service fee ───────────────────────────────────────────────
+    public void SetPartySize(int partySize)
+    {
+        if (partySize <= 0) throw new DomainException("Party size must be greater than zero.");
+        PartySize = partySize;
+        SetUpdatedAt();
+    }
 
-    public decimal Subtotal => _items.Where(i => i.IsActive).Sum(i => i.Total);
+    public void SetCouvert(decimal amount)
+    {
+        CouvertAmount = amount >= 0 ? amount : 0;
+        SetUpdatedAt();
+    }
 
-    public IReadOnlyList<RestOrderItem> ActiveItems => _items.Where(i => i.IsActive).ToList();
+    public void SetServiceFee(decimal amount)
+    {
+        ServiceFeeAmount = amount >= 0 ? amount : 0;
+        SetUpdatedAt();
+    }
 
     // ── State machine ─────────────────────────────────────────────────────────
-
     public void SetInPreparation()
     {
         if (Status != RestOrderStatus.Open)
@@ -100,27 +121,18 @@ public class RestOrder : TenantEntity
         SetUpdatedAt();
     }
 
-    /// <summary>
-    /// Fecha a comanda e vincula a Sale gerada em Draft.
-    /// Pré-condição: pelo menos 1 item ativo.
-    /// </summary>
     public void Close(Guid saleId)
     {
         if (Status is RestOrderStatus.Closed or RestOrderStatus.Cancelled)
             throw new DomainException($"Cannot close an order with status {Status}.");
         if (!ActiveItems.Any())
             throw new DomainException("Cannot close an order with no active items.");
-
         Status   = RestOrderStatus.Closed;
         SaleId   = saleId;
         ClosedAt = DateTime.UtcNow;
         SetUpdatedAt();
     }
 
-    /// <summary>
-    /// Marks the order as Paid after SaleService.ConfirmAsync succeeds.
-    /// Pre-condition: order must be in Closed status.
-    /// </summary>
     public void MarkPaid()
     {
         if (Status != RestOrderStatus.Closed)
@@ -141,8 +153,6 @@ public class RestOrder : TenantEntity
         CancelledAt = DateTime.UtcNow;
         SetUpdatedAt();
     }
-
-    // ── Guards ────────────────────────────────────────────────────────────────
 
     public bool IsModifiable =>
         Status is RestOrderStatus.Open or RestOrderStatus.InPreparation or RestOrderStatus.Ready;

@@ -172,7 +172,7 @@ public class RestauranteFlowTests : IAsyncLifetime
     private async Task<OrderDto> OpenOrderAsync(Guid tableId, string? notes = null)
     {
         var r = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest(tableId, Notes: notes));
+            new OpenOrderRequest("DineIn", TableId: tableId, Notes: notes));
         r.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await r.Content.ReadFromJsonAsync<OrderDto>())!;
     }
@@ -244,7 +244,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         await OpenOrderAsync(table.Id);  // first — OK
 
         var r = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest(table.Id));
+            new OpenOrderRequest("DineIn", TableId: table.Id));
 
         r.StatusCode.Should().BeOneOf(
             HttpStatusCode.Conflict,
@@ -553,7 +553,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         await AuthenticateAsync(client2);
 
         // Fire both requests simultaneously before either can complete
-        var req = new OpenOrderRequest(table.Id, Notes: "concurrent");
+        var req = new OpenOrderRequest("DineIn", TableId: table.Id, Notes: "concurrent");
         var task1 = _client.PostAsJsonAsync("/api/restaurante/orders", req);
         var task2 = client2.PostAsJsonAsync("/api/restaurante/orders", req);
         var results = await Task.WhenAll(task1, task2);
@@ -592,14 +592,369 @@ public class RestauranteFlowTests : IAsyncLifetime
         var table = await CreateTableAsync(area.Id);
 
         var r1 = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest(table.Id));
+            new OpenOrderRequest("DineIn", TableId: table.Id));
         r1.StatusCode.Should().Be(HttpStatusCode.Created);
 
         var r2 = await _client.PostAsJsonAsync("/api/restaurante/orders",
-            new OpenOrderRequest(table.Id));
+            new OpenOrderRequest("DineIn", TableId: table.Id));
         r2.StatusCode.Should().BeOneOf(
             HttpStatusCode.Conflict,
             HttpStatusCode.BadRequest,
             HttpStatusCode.UnprocessableEntity);
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // 5. COUVERT, TAXA DE SERVIÇO, CANCELAMENTO, ISOLAMENTO
+    // ═══════════════════════════════════════════════════════════
+
+    private async Task ResetFoodServiceSettingsAsync()
+    {
+        await _client.PutAsJsonAsync("/api/restaurante/settings", new UpdateFoodServiceSettingsRequest(
+            StoreType:            "restaurant",
+            CouvertEnabled:       false,
+            CouvertPricePerPerson: null,
+            CouvertAutomatic:     false,
+            ServiceFeeEnabled:    false,
+            ServiceFeePercent:    null,
+            OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
+    }
+
+    /// <summary>
+    /// When both couvert and service fee are disabled, Total must equal ItemsSubtotal exactly.
+    /// </summary>
+    [Fact]
+    public async Task PayOrder_NoCouvertNoServiceFee_TotalEqualsItemsSubtotal()
+    {
+        await ResetFoodServiceSettingsAsync();
+
+        var product = await CreateProductWithStockAsync(
+            $"PLAIN-{Interlocked.Increment(ref _tableSeq)}", salePrice: 50m, costPrice: 10m, initialStock: 5m);
+        var area    = await CreateAreaAsync($"Área Plain {Interlocked.Increment(ref _tableSeq)}");
+        var table   = await CreateTableAsync(area.Id);
+
+        var order = await OpenOrderAsync(table.Id);
+
+        await AddItemAsync(order.Id, product.Id, qty: 2);  // 2 × 50 = 100
+
+        await CloseOrderAsync(order.Id);
+
+        var paid = await PayOrderAsync(order.Id, amount: 100m);
+
+        paid.ItemsSubtotal.Should().Be(100.00m);
+        paid.CouvertAmount.Should().Be(0m);
+        paid.ServiceFeeAmount.Should().Be(0m);
+        paid.Total.Should().Be(100.00m);
+        paid.Status.Should().Be("Paid");
+    }
+
+    /// <summary>
+    /// When CouvertAutomatic=true and PartySize is given at open time,
+    /// CouvertAmount = CouvertPricePerPerson × PartySize is stored on the order.
+    /// </summary>
+    [Fact]
+    public async Task OpenOrder_WithCouvertAutomatic_AppliesCouvertAmount()
+    {
+        await _client.PutAsJsonAsync("/api/restaurante/settings", new UpdateFoodServiceSettingsRequest(
+            StoreType:            "restaurant",
+            CouvertEnabled:       true,
+            CouvertPricePerPerson: 8.00m,
+            CouvertAutomatic:     true,
+            ServiceFeeEnabled:    false,
+            ServiceFeePercent:    null,
+            OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
+
+        try
+        {
+            var area  = await CreateAreaAsync($"Área Couvert {Interlocked.Increment(ref _tableSeq)}");
+            var table = await CreateTableAsync(area.Id);
+
+            var resp = await _client.PostAsJsonAsync("/api/restaurante/orders",
+                new OpenOrderRequest("DineIn", TableId: table.Id, PartySize: 4));
+            resp.StatusCode.Should().Be(HttpStatusCode.Created);
+            var order = await resp.Content.ReadFromJsonAsync<OrderDto>();
+
+            order!.CouvertAmount.Should().Be(32.00m); // 8.00 × 4
+            order.PartySize.Should().Be(4);
+        }
+        finally
+        {
+            await ResetFoodServiceSettingsAsync();
+        }
+    }
+
+    /// <summary>
+    /// When CouvertAutomatic=false, couvert is NOT applied at open.
+    /// When PartySize is provided in PayOrderRequest, couvert is calculated then.
+    /// </summary>
+    [Fact]
+    public async Task PayOrder_WithManualCouvert_RecalculatesAtPayment()
+    {
+        await _client.PutAsJsonAsync("/api/restaurante/settings", new UpdateFoodServiceSettingsRequest(
+            StoreType:            "restaurant",
+            CouvertEnabled:       true,
+            CouvertPricePerPerson: 10.00m,
+            CouvertAutomatic:     false,
+            ServiceFeeEnabled:    false,
+            ServiceFeePercent:    null,
+            OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
+
+        try
+        {
+            var product = await CreateProductWithStockAsync(
+                $"MANUAL-{Interlocked.Increment(ref _tableSeq)}", salePrice: 40m, costPrice: 10m, initialStock: 5m);
+            var area    = await CreateAreaAsync($"Área Manual {Interlocked.Increment(ref _tableSeq)}");
+            var table   = await CreateTableAsync(area.Id);
+
+            // Open without PartySize — couvert should be 0 at this point
+            var order = await OpenOrderAsync(table.Id);
+            order.CouvertAmount.Should().Be(0m); // not applied at open
+
+            await AddItemAsync(order.Id, product.Id, qty: 1); // 40.00
+
+            await CloseOrderAsync(order.Id);
+
+            // Pay with PartySize=3 → couvert = 10.00 × 3 = 30.00
+            var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
+                new PayOrderRequest(
+                    new List<PaymentInputDto> { new("Cash", "Cash", 70.00m) },
+                    PartySize: 3));
+            r.StatusCode.Should().Be(HttpStatusCode.OK);
+            var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
+
+            paid!.ItemsSubtotal.Should().Be(40.00m);
+            paid.CouvertAmount.Should().Be(30.00m); // 10.00 × 3 — set at pay time
+            paid.ServiceFeeAmount.Should().Be(0m);
+            paid.Total.Should().Be(70.00m);
+        }
+        finally
+        {
+            await ResetFoodServiceSettingsAsync();
+        }
+    }
+
+    /// <summary>
+    /// ServiceFeeAmount = ItemsSubtotal × rate, couvert is excluded from fee base.
+    /// With no couvert, Total = ItemsSubtotal + ServiceFeeAmount.
+    /// </summary>
+    [Fact]
+    public async Task PayOrder_ServiceFeeOnly_DoesNotApplyFeeOnCouvert()
+    {
+        await _client.PutAsJsonAsync("/api/restaurante/settings", new UpdateFoodServiceSettingsRequest(
+            StoreType:            "restaurant",
+            CouvertEnabled:       false,
+            CouvertPricePerPerson: null,
+            CouvertAutomatic:     false,
+            ServiceFeeEnabled:    true,
+            ServiceFeePercent:    10.00m,
+            OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
+
+        try
+        {
+            var product = await CreateProductWithStockAsync(
+                $"FEE-{Interlocked.Increment(ref _tableSeq)}", salePrice: 100m, costPrice: 10m, initialStock: 5m);
+            var area    = await CreateAreaAsync($"Área Fee {Interlocked.Increment(ref _tableSeq)}");
+            var table   = await CreateTableAsync(area.Id);
+
+            var order = await OpenOrderAsync(table.Id);
+
+            await AddItemAsync(order.Id, product.Id, qty: 1); // 100.00
+
+            await CloseOrderAsync(order.Id);
+
+            var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
+                new PayOrderRequest(
+                    new List<PaymentInputDto> { new("Cash", "Cash", 110.00m) }));
+            r.StatusCode.Should().Be(HttpStatusCode.OK);
+            var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
+
+            paid!.ItemsSubtotal.Should().Be(100.00m);
+            paid.CouvertAmount.Should().Be(0m);
+            paid.ServiceFeeAmount.Should().Be(10.00m); // 100 × 10% — couvert not in fee base
+            paid.Total.Should().Be(110.00m);
+        }
+        finally
+        {
+            await ResetFoodServiceSettingsAsync();
+        }
+    }
+
+    /// <summary>
+    /// ServiceFee applies only to ItemsSubtotal (not couvert).
+    /// Total = ItemsSubtotal + CouvertAmount + ServiceFeeAmount.
+    /// Formula: Items=120, Couvert=16, Fee=12(=120×10%), Total=148.
+    /// </summary>
+    [Fact]
+    public async Task PayOrder_CouvertAndServiceFee_CalculatesCorrectBreakdown()
+    {
+        await _client.PutAsJsonAsync("/api/restaurante/settings", new UpdateFoodServiceSettingsRequest(
+            StoreType:            "restaurant",
+            CouvertEnabled:       true,
+            CouvertPricePerPerson: 8.00m,
+            CouvertAutomatic:     true,
+            ServiceFeeEnabled:    true,
+            ServiceFeePercent:    10.00m,
+            OrderTypesEnabled:    "DineIn,Counter,Takeaway"));
+
+        try
+        {
+            var product = await CreateProductWithStockAsync(
+                $"DISH-{Interlocked.Increment(ref _tableSeq)}", salePrice: 60m, costPrice: 10m, initialStock: 5m);
+            var area    = await CreateAreaAsync($"Área Dish {Interlocked.Increment(ref _tableSeq)}");
+            var table   = await CreateTableAsync(area.Id);
+
+            var resp = await _client.PostAsJsonAsync("/api/restaurante/orders",
+                new OpenOrderRequest("DineIn", TableId: table.Id, PartySize: 2));
+            resp.StatusCode.Should().Be(HttpStatusCode.Created);
+            var order = await resp.Content.ReadFromJsonAsync<OrderDto>();
+
+            await AddItemAsync(order!.Id, product.Id, qty: 2); // 2 × 60 = 120
+
+            await CloseOrderAsync(order.Id);
+
+            var r = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/pay",
+                new PayOrderRequest(
+                    new List<PaymentInputDto> { new("Cash", "Cash", 148.00m) }));
+            r.StatusCode.Should().Be(HttpStatusCode.OK);
+            var paid = await r.Content.ReadFromJsonAsync<OrderDto>();
+
+            paid!.ItemsSubtotal.Should().Be(120.00m);
+            paid.CouvertAmount.Should().Be(16.00m);   // 8.00 × 2
+            paid.ServiceFeeAmount.Should().Be(12.00m);  // 120 × 10% — NOT (120+16) × 10%
+            paid.Total.Should().Be(148.00m);
+            paid.Status.Should().Be("Paid");
+        }
+        finally
+        {
+            await ResetFoodServiceSettingsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Adding an item to an order without satisfying a required modifier group
+    /// returns 422 UnprocessableEntity (or 400 BadRequest).
+    /// A modifier option is added to the group so the validation tests the real business rule
+    /// ("user failed to select from available options"), not an empty-group edge case.
+    /// </summary>
+    [Fact]
+    public async Task AddItem_WithRequiredModifierGroupMissing_Returns422()
+    {
+        var product = await CreateProductWithStockAsync(
+            $"BURGER-{Interlocked.Increment(ref _tableSeq)}", salePrice: 30m, costPrice: 10m, initialStock: 5m);
+
+        // Create a required modifier group
+        var groupResp = await _client.PostAsJsonAsync("/api/restaurante/modifier-groups",
+            new CreateModifierGroupRequest(
+                ProductId:     product.Id,
+                Name:          "Ponto da carne",
+                IsRequired:    true,
+                MinSelections: 1,
+                MaxSelections: 1,
+                SortOrder:     0));
+        groupResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var group = await groupResp.Content.ReadFromJsonAsync<ModifierGroupDto>();
+
+        // Add a modifier option to the group so the "required" check is meaningful
+        var modifierResp = await _client.PostAsJsonAsync(
+            $"/api/restaurante/modifier-groups/{group!.Id}/modifiers",
+            new CreateModifierRequest(group.Id, "Mal passado", PriceAdjustment: 0m, SortOrder: 0));
+        modifierResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var area  = await CreateAreaAsync($"Área Modifier {Interlocked.Increment(ref _tableSeq)}");
+        var table = await CreateTableAsync(area.Id);
+
+        var orderResp = await _client.PostAsJsonAsync("/api/restaurante/orders",
+            new OpenOrderRequest("DineIn", TableId: table.Id));
+        orderResp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var order = await orderResp.Content.ReadFromJsonAsync<OrderDto>();
+
+        // Act: add item WITHOUT selecting the required modifier → validation must reject
+        var addResp = await _client.PostAsJsonAsync(
+            $"/api/restaurante/orders/{order!.Id}/items",
+            new AddOrderItemRequest(product.Id, Quantity: 1));
+
+        addResp.StatusCode.Should().BeOneOf(
+            HttpStatusCode.UnprocessableEntity,
+            HttpStatusCode.BadRequest);
+    }
+
+    /// <summary>
+    /// Cancelling a DineIn order releases the table (SetAvailable),
+    /// allowing a new order to be opened on the same table.
+    /// </summary>
+    [Fact]
+    public async Task CancelOrder_DineIn_TableBecomesAvailable()
+    {
+        await ResetFoodServiceSettingsAsync();
+
+        var area  = await CreateAreaAsync($"Área CancelDineIn {Interlocked.Increment(ref _tableSeq)}");
+        var table = await CreateTableAsync(area.Id);
+
+        var order = await OpenOrderAsync(table.Id);
+
+        var cancelResp = await _client.PostAsync(
+            $"/api/restaurante/orders/{order.Id}/cancel", null);
+        cancelResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var cancelled = await cancelResp.Content.ReadFromJsonAsync<OrderDto>();
+        cancelled!.Status.Should().Be("Cancelled");
+
+        // Prove table is free: we can open another order on the same table
+        var reopenResp = await _client.PostAsJsonAsync("/api/restaurante/orders",
+            new OpenOrderRequest("DineIn", TableId: table.Id));
+        reopenResp.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    /// <summary>
+    /// Counter/Takeaway orders (no TableId) can be cancelled without table logic.
+    /// </summary>
+    [Fact]
+    public async Task CancelOrder_Counter_SucceedsWithoutTable()
+    {
+        await ResetFoodServiceSettingsAsync();
+
+        var openResp = await _client.PostAsJsonAsync("/api/restaurante/orders",
+            new OpenOrderRequest("Counter"));
+        openResp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var order = await openResp.Content.ReadFromJsonAsync<OrderDto>();
+        order!.TableId.Should().BeNull();
+
+        var cancelResp = await _client.PostAsync(
+            $"/api/restaurante/orders/{order.Id}/cancel", null);
+        cancelResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var cancelled = await cancelResp.Content.ReadFromJsonAsync<OrderDto>();
+        cancelled!.Status.Should().Be("Cancelled");
+        cancelled.TableId.Should().BeNull();
+    }
+
+    // Note: this test verifies positive visibility (this store sees its own orders).
+    // Full negative-visibility testing (another store cannot see these orders) requires
+    // a multi-store test client setup and is tracked as a Phase 2 integration test concern.
+    /// <summary>
+    /// Orders are scoped to the current store via the StoreEntity global query filter.
+    /// GET /tables/{id}/orders returns only the orders opened in this store context.
+    /// </summary>
+    [Fact]
+    public async Task OpenOrder_IsIsolatedToCurrentStore()
+    {
+        await ResetFoodServiceSettingsAsync();
+
+        var area  = await CreateAreaAsync($"Área Isolated {Interlocked.Increment(ref _tableSeq)}");
+        var table = await CreateTableAsync(area.Id);
+
+        var openResp = await _client.PostAsJsonAsync("/api/restaurante/orders",
+            new OpenOrderRequest("DineIn", TableId: table.Id));
+        openResp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var order = await openResp.Content.ReadFromJsonAsync<OrderDto>();
+
+        // Retrieve orders for this table — should contain the one we just opened
+        var historyResp = await _client.GetAsync($"/api/restaurante/tables/{table.Id}/orders");
+        historyResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var orders = await historyResp.Content.ReadFromJsonAsync<List<OrderDto>>();
+
+        // All returned orders belong to the same table and are accessible in this store context
+        orders.Should().NotBeEmpty();
+        orders!.All(o => o.TableId == table.Id).Should().BeTrue();
+
+        // The order we opened must be present
+        orders!.Any(o => o.Id == order!.Id).Should().BeTrue();
     }
 }

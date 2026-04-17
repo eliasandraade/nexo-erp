@@ -12,8 +12,13 @@ namespace Nexo.Api.Controllers.Modules.Restaurante;
 public class TablesController : ControllerBase
 {
     private readonly TableService _service;
+    private readonly OrderService _orderService;
 
-    public TablesController(TableService service) => _service = service;
+    public TablesController(TableService service, OrderService orderService)
+    {
+        _service = service;
+        _orderService = orderService;
+    }
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TableDto>>> GetAll(
@@ -49,4 +54,8 @@ public class TablesController : ControllerBase
     public async Task<ActionResult<TableDto>> UpdateStatus(
         Guid id, [FromBody] UpdateTableStatusRequest request, CancellationToken ct)
         => Ok(await _service.UpdateStatusAsync(id, request, ct));
+
+    [HttpGet("{id:guid}/orders")]
+    public async Task<IActionResult> GetOrders(Guid id, CancellationToken ct)
+        => Ok(await _orderService.GetByTableIdAsync(id, ct));
 }

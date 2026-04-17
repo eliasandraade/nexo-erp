@@ -27,36 +27,45 @@ namespace Nexo.Application.Modules.Restaurante;
 /// </summary>
 public class OrderService
 {
-    private readonly IOrderRepository      _orders;
-    private readonly ITableRepository      _tables;
-    private readonly IRecipeCardRepository _recipes;
-    private readonly IProductRepository    _products;
-    private readonly IStockRepository      _stock;
-    private readonly SaleService           _saleService;
-    private readonly IUnitOfWork           _uow;
-    private readonly ICurrentTenant        _currentTenant;
-    private readonly ICurrentUser          _currentUser;
+    private readonly IOrderRepository              _orders;
+    private readonly ITableRepository              _tables;
+    private readonly IRecipeCardRepository         _recipes;
+    private readonly IProductRepository            _products;
+    private readonly IStockRepository              _stock;
+    private readonly SaleService                   _saleService;
+    private readonly IUnitOfWork                   _uow;
+    private readonly ICurrentTenant                _currentTenant;
+    private readonly ICurrentUser                  _currentUser;
+    private readonly IFoodServiceSettingsRepository _foodSettings;
+    private readonly IModifierGroupRepository      _modifierGroups;
+    private readonly IRestaurantNotificationService _notifications;
 
     public OrderService(
-        IOrderRepository      orders,
-        ITableRepository      tables,
-        IRecipeCardRepository recipes,
-        IProductRepository    products,
-        IStockRepository      stock,
-        SaleService           saleService,
-        IUnitOfWork           uow,
-        ICurrentTenant        currentTenant,
-        ICurrentUser          currentUser)
+        IOrderRepository               orders,
+        ITableRepository               tables,
+        IRecipeCardRepository          recipes,
+        IProductRepository             products,
+        IStockRepository               stock,
+        SaleService                    saleService,
+        IUnitOfWork                    uow,
+        ICurrentTenant                 currentTenant,
+        ICurrentUser                   currentUser,
+        IFoodServiceSettingsRepository foodSettings,
+        IModifierGroupRepository       modifierGroups,
+        IRestaurantNotificationService notifications)
     {
-        _orders        = orders;
-        _tables        = tables;
-        _recipes       = recipes;
-        _products      = products;
-        _stock         = stock;
-        _saleService   = saleService;
-        _uow           = uow;
-        _currentTenant = currentTenant;
-        _currentUser   = currentUser;
+        _orders         = orders;
+        _tables         = tables;
+        _recipes        = recipes;
+        _products       = products;
+        _stock          = stock;
+        _saleService    = saleService;
+        _uow            = uow;
+        _currentTenant  = currentTenant;
+        _currentUser    = currentUser;
+        _foodSettings   = foodSettings;
+        _modifierGroups = modifierGroups;
+        _notifications  = notifications;
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -74,53 +83,90 @@ public class OrderService
         return Map(order);
     }
 
+    public async Task<IReadOnlyList<OrderDto>> GetByTableIdAsync(Guid tableId, CancellationToken ct = default)
+    {
+        var orders = await _orders.GetOrdersByTableIdAsync(tableId, ct);
+        return orders.Select(Map).ToList();
+    }
+
     // ── Open ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Abre uma comanda para a mesa.
-    /// Usa SELECT FOR UPDATE para evitar dupla abertura concorrente.
+    /// Abre uma comanda.
+    /// Counter/Takeaway: caminho rápido sem transação.
+    /// DineIn: usa SELECT FOR UPDATE para evitar dupla abertura concorrente.
+    /// Quando CouvertAutomatic=true, aplica couvert automaticamente via PartySize.
     /// </summary>
     public async Task<OrderDto> OpenAsync(OpenOrderRequest request, CancellationToken ct = default)
     {
-        await using var tx = await _uow.BeginTransactionAsync(ct);
-        try
+        var orderType = Enum.Parse<RestOrderType>(request.OrderType, ignoreCase: true);
+        var settings  = await _foodSettings.GetCurrentStoreAsync(ct);
+
+        // Validate PartySize when CouvertAutomatic = true
+        if (settings is { CouvertEnabled: true, CouvertAutomatic: true } && request.PartySize is null)
+            throw new DomainException("PartySize is required when CouvertAutomatic is enabled.");
+
+        // Counter/Takeaway: no table, no lock
+        if (orderType != RestOrderType.DineIn)
         {
-            // Row-level lock na mesa para serializar abertura de comandas concorrentes
-            var table = await _tables.GetByIdForUpdateAsync(request.TableId, ct)
-                ?? throw new NotFoundException("Table", request.TableId);
+            if (request.TableId.HasValue)
+                throw new DomainException($"{orderType} orders do not use a table.");
+
+            var number = await _orders.GetNextNumberAsync(ct);
+            decimal couvertAmount = 0;
+            if (settings is { CouvertEnabled: true, CouvertAutomatic: true } && request.PartySize.HasValue)
+                couvertAmount = (settings.CouvertPricePerPerson ?? 0) * request.PartySize.Value;
+
+            var order = RestOrder.Create(
+                _currentTenant.Id, number, orderType, null,
+                request.PartySize, _currentUser.UserId,
+                couvertAmount, request.CustomerId, request.Notes);
+
+            await _orders.AddAsync(order, ct);
+            await _orders.SaveChangesAsync(ct);
+            return Map(order);
+        }
+
+        // DineIn: require table, use SELECT FOR UPDATE
+        if (request.TableId is null)
+            throw new DomainException("DineIn orders require a TableId.");
+
+        OrderDto? dineInResult = null;
+        await _uow.ExecuteInTransactionAsync(async innerCt =>
+        {
+            var table = await _tables.GetByIdForUpdateAsync(request.TableId.Value, innerCt)
+                ?? throw new NotFoundException("Table", request.TableId.Value);
 
             if (!table.IsActive)
                 throw new DomainException("Table is inactive.");
 
-            // Verifica se já existe comanda aberta para esta mesa (segunda guarda)
-            var existing = await _orders.GetOpenOrderForTableAsync(request.TableId, ct);
+            var existing = await _orders.GetOpenOrderForTableAsync(request.TableId.Value, innerCt);
             if (existing is not null)
                 throw new ConflictException($"Table '{table.Number}' already has an open order (#{existing.OrderNumber}).");
 
-            var number = await _orders.GetNextNumberAsync(ct);
+            var number = await _orders.GetNextNumberAsync(innerCt);
+            decimal couvertAmount = 0;
+            if (settings is { CouvertEnabled: true, CouvertAutomatic: true } && request.PartySize.HasValue)
+                couvertAmount = (settings.CouvertPricePerPerson ?? 0) * request.PartySize.Value;
 
             var order = RestOrder.Create(
-                _currentTenant.Id, number,
-                request.TableId, _currentUser.UserId,
-                request.CustomerId, request.Notes);
+                _currentTenant.Id, number, orderType, request.TableId,
+                request.PartySize, _currentUser.UserId,
+                couvertAmount, request.CustomerId, request.Notes);
 
-            table.SetOccupied();  // automático
-
-            await _orders.AddAsync(order, ct);
-            await _orders.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-            return Map(order);
-        }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+            table.SetOccupied();
+            await _orders.AddAsync(order, innerCt);
+            await _orders.SaveChangesAsync(innerCt);
+            dineInResult = Map(order);
+        }, ct);
+        _ = _notifications.TableStatusChangedAsync(request.TableId!.Value, "Occupied");
+        return dineInResult!;
     }
 
     // ── Items ─────────────────────────────────────────────────────────────────
 
-    public async Task<OrderDto> AddItemAsync(Guid orderId, AddOrderItemRequest request, CancellationToken ct = default)
+    public async Task<OrderDto> AddItemAsync(
+        Guid orderId, AddOrderItemRequest request, CancellationToken ct = default)
     {
         var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
             ?? throw new NotFoundException("Order", orderId);
@@ -131,11 +177,39 @@ public class OrderService
         if (!product.IsActive)
             throw new DomainException($"Product '{product.Name}' is inactive.");
 
-        // snapshot do preço de venda atual
-        var item = order.AddItem(_currentTenant.Id, product.Id, request.Quantity, product.SalePrice, request.Notes);
+        // Validate required modifier groups
+        var groups = await _modifierGroups.GetByProductIdAsync(product.Id, ct);
+        var requestedModifierIds = (request.Modifiers ?? []).Select(m => m.ModifierId).ToHashSet();
 
+        foreach (var group in groups.Where(g => g.IsRequired))
+        {
+            var hasSelection = group.Modifiers.Any(m => requestedModifierIds.Contains(m.Id));
+            if (!hasSelection)
+                throw new DomainException(
+                    $"Modifier group '{group.Name}' is required. Select at least one option.");
+        }
+
+        var item = order.AddItem(
+            _currentTenant.Id, product.Id, request.Quantity, product.SalePrice, request.Notes);
         _orders.TrackItem(item);
+
+        // Apply modifier snapshots
+        foreach (var modReq in request.Modifiers ?? [])
+        {
+            var modifier = await _modifierGroups.GetModifierByIdAsync(modReq.ModifierId, ct)
+                ?? throw new NotFoundException("Modifier", modReq.ModifierId);
+
+            if (!modifier.IsActive)
+                throw new DomainException($"Modifier '{modifier.Name}' is not active.");
+
+            var snap = item.ApplyModifier(
+                _currentTenant.Id, modifier.Id, modifier.Name, modifier.PriceAdjustment);
+            _orders.TrackModifier(snap);
+        }
+
         await _orders.SaveChangesAsync(ct);
+        // Fire-and-forget: SignalR notification (UX complement; polling fallback is authoritative)
+        _ = _notifications.NewItemAddedAsync(order.Id, MapItem(item));
         return Map(order);
     }
 
@@ -173,6 +247,8 @@ public class OrderService
         }
 
         await _orders.SaveChangesAsync(ct);
+        _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, item.Status.ToString());
+        _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString());
         return Map(order);
     }
 
@@ -244,8 +320,6 @@ public class OrderService
         var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
             ?? throw new NotFoundException("Order", orderId);
 
-        // ── Idempotência: guarda 1 ────────────────────────────────────────────
-        // Paid = already processed; return 409 so the client knows it's idempotent.
         if (order.Status == RestOrderStatus.Paid)
             throw new ConflictException("This order has already been paid.");
 
@@ -256,49 +330,82 @@ public class OrderService
                     : $"Order must be Closed before payment (current: {order.Status}). Call /close first.");
 
         if (order.SaleId is null)
-            throw new DomainException("Order has no linked Sale. This is an inconsistent state — contact support.");
+            throw new DomainException("Order has no linked Sale. Inconsistent state — contact support.");
 
-        // ── Idempotência: guarda 2 ────────────────────────────────────────────
         var saleDto = await _saleService.GetByIdAsync(order.SaleId.Value, ct);
         if (saleDto.Status == "Paid")
             throw new ConflictException("This order has already been paid.");
 
-        await using var tx = await _uow.BeginTransactionAsync(ct);
-        try
+        var settings = await _foodSettings.GetCurrentStoreAsync(ct);
+
+        // Manual couvert: when CouvertAutomatic=false and PartySize is provided at payment time,
+        // recalculate couvert based on the actual party size. This supports restaurants that only
+        // know the party size at the end of the meal (e.g., after splitting tables).
+        if (settings is { CouvertEnabled: true, CouvertAutomatic: false } && request.PartySize.HasValue)
         {
-            // Products with active recipe cards are excluded from direct stock deduction
-            // in ConfirmAsync — ingredient stocks are deducted below via recipe cards.
+            order.SetPartySize(request.PartySize.Value);
+            var couvert = (settings.CouvertPricePerPerson ?? 0) * request.PartySize.Value;
+            order.SetCouvert(couvert);
+        }
+
+        // ─── Payment formula ─────────────────────────────────────────────────────────
+        // ItemsSubtotal   = Σ(item.Total) — already includes modifier price adjustments
+        // ServiceFeeAmount = ItemsSubtotal × (ServiceFeePercent / 100)
+        //                   ↑ service fee is applied ONLY to ItemsSubtotal, never to couvert
+        // CouvertAmount   = set at order open (auto) or recalculated here (manual, see above)
+        // SurchargesAmount = CouvertAmount + ServiceFeeAmount
+        // GrandTotal      = ItemsSubtotal + SurchargesAmount
+        // ─────────────────────────────────────────────────────────────────────────────
+        decimal serviceFeeAmount = 0;
+        if (settings is { ServiceFeeEnabled: true } && settings.ServiceFeePercent.HasValue)
+            serviceFeeAmount = Math.Round(order.ItemsSubtotal * (settings.ServiceFeePercent.Value / 100m), 2);
+
+        order.SetServiceFee(serviceFeeAmount);
+
+        decimal surchargesAmount = order.CouvertAmount + serviceFeeAmount;
+        decimal grandTotal       = order.ItemsSubtotal + surchargesAmount;
+        decimal paymentsTotal    = request.Payments.Sum(p => p.Amount);
+
+        if (paymentsTotal < grandTotal)
+            throw new DomainException(
+                $"Payment amount ({paymentsTotal:F2}) is less than order total ({grandTotal:F2}).");
+
+        OrderDto? payResult = null;
+        await _uow.ExecuteInTransactionAsync(async innerCt =>
+        {
             var recipeProductIds = new HashSet<Guid>();
             foreach (var item in order.ActiveItems)
             {
-                var recipe = await _recipes.GetByProductIdAsync(item.ProductId, ct);
+                var recipe = await _recipes.GetByProductIdAsync(item.ProductId, innerCt);
                 if (recipe is not null && recipe.IsActive)
                     recipeProductIds.Add(item.ProductId);
             }
 
-            // Confirma a venda no CORE (gera CashMovement / FinancialTransaction)
             var payments = request.Payments
                 .Select(p => new PaymentInput(p.Method, p.Type, p.Amount, p.DueDate))
                 .ToList();
 
             await _saleService.ConfirmAsync(order.SaleId.Value,
-                new ConfirmSaleRequest(payments, SkipStockProductIds: recipeProductIds.Count > 0 ? recipeProductIds : null), ct);
+                new ConfirmSaleRequest(
+                    payments,
+                    SurchargesAmount: surchargesAmount > 0 ? surchargesAmount : 0,
+                    SkipStockProductIds: recipeProductIds.Count > 0 ? recipeProductIds : null),
+                innerCt);
 
-            // Baixa de ingredientes por ficha técnica
+            // Ingredient deduction via recipe cards
             foreach (var item in order.ActiveItems)
             {
-                var recipe = await _recipes.GetByProductIdWithIngredientsAsync(item.ProductId, ct);
+                var recipe = await _recipes.GetByProductIdWithIngredientsAsync(item.ProductId, innerCt);
                 if (recipe is null || !recipe.IsActive) continue;
 
                 foreach (var ingredient in recipe.Ingredients)
                 {
-                    var ingProduct = await _products.GetByIdAsync(ingredient.IngredientProductId, ct);
+                    var ingProduct = await _products.GetByIdAsync(ingredient.IngredientProductId, innerCt);
                     if (ingProduct is null || !ingProduct.TrackStock) continue;
 
-                    var stockItem = await _stock.GetByProductIdAsync(ingredient.IngredientProductId, ct);
+                    var stockItem = await _stock.GetByProductIdAsync(ingredient.IngredientProductId, innerCt);
                     if (stockItem is null) continue;
 
-                    // consumo real = (qty vendida / rendimento da ficha) × qty do ingrediente
                     var consumption = (item.Quantity / recipe.Yield) * ingredient.Quantity;
                     var qtyBefore   = stockItem.CurrentQuantity;
                     stockItem.ApplyMovement(-consumption);
@@ -314,26 +421,27 @@ public class OrderService
                         referenceType:     "Order",
                         referenceId:       order.Id,
                         notes:             $"Ficha técnica — Comanda #{order.OrderNumber} — {ingProduct.Name}",
-                        costPriceSnapshot: ingProduct.CostPrice);  // snapshot para CMV histórico
+                        costPriceSnapshot: ingProduct.CostPrice);
 
-                    await _stock.AddMovementAsync(movement, ct);
+                    await _stock.AddMovementAsync(movement, innerCt);
                 }
             }
 
-            // Libera a mesa automaticamente e marca comanda como Paid
-            var table = await _tables.GetByIdAsync(order.TableId, ct);
-            table?.SetAvailable();
-            order.MarkPaid();
+            // Release table — only DineIn orders have a table
+            if (order.TableId.HasValue)
+            {
+                var table = await _tables.GetByIdAsync(order.TableId.Value, innerCt);
+                table?.SetAvailable();
+            }
 
-            await _orders.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-            return Map(order);
-        }
-        catch
-        {
-            await tx.RollbackAsync(ct);
-            throw;
-        }
+            order.MarkPaid();
+            await _orders.SaveChangesAsync(innerCt);
+            payResult = Map(order);
+        }, ct);
+        if (order.TableId.HasValue)
+            _ = _notifications.TableStatusChangedAsync(order.TableId.Value, "Available");
+        _ = _notifications.OrderStatusChangedAsync(order.Id, "Paid");
+        return payResult!;
     }
 
     // ── Cancel ────────────────────────────────────────────────────────────────
@@ -345,8 +453,11 @@ public class OrderService
 
         order.Cancel();  // throws if Closed or already Cancelled
 
-        var table = await _tables.GetByIdAsync(order.TableId, ct);
-        table?.SetAvailable();
+        if (order.TableId.HasValue)
+        {
+            var table = await _tables.GetByIdAsync(order.TableId.Value, ct);
+            table?.SetAvailable();
+        }
 
         await _orders.SaveChangesAsync(ct);
         return Map(order);
@@ -355,20 +466,25 @@ public class OrderService
     // ── Mapping ───────────────────────────────────────────────────────────────
 
     private static OrderDto Map(RestOrder o) => new(
-        Id:          o.Id,
-        OrderNumber: o.OrderNumber,
-        Status:      o.Status.ToString(),
-        TableId:     o.TableId,
-        TableNumber: o.Table?.Number ?? string.Empty,
-        WaiterId:    o.WaiterId,
-        CustomerId:  o.CustomerId,
-        SaleId:      o.SaleId,
-        Subtotal:    o.Subtotal,
-        Notes:       o.Notes,
-        OpenedAt:    o.OpenedAt,
-        ClosedAt:    o.ClosedAt,
-        CancelledAt: o.CancelledAt,
-        Items:       o.Items.Select(MapItem).ToList());
+        Id:               o.Id,
+        OrderNumber:      o.OrderNumber,
+        Status:           o.Status.ToString(),
+        OrderType:        o.OrderType.ToString(),
+        TableId:          o.TableId,
+        TableNumber:      o.Table?.Number,
+        PartySize:        o.PartySize,
+        WaiterId:         o.WaiterId,
+        CustomerId:       o.CustomerId,
+        SaleId:           o.SaleId,
+        ItemsSubtotal:    o.ItemsSubtotal,
+        CouvertAmount:    o.CouvertAmount,
+        ServiceFeeAmount: o.ServiceFeeAmount,
+        Total:            o.Total,
+        Notes:            o.Notes,
+        OpenedAt:         o.OpenedAt,
+        ClosedAt:         o.ClosedAt,
+        CancelledAt:      o.CancelledAt,
+        Items:            o.Items.Select(MapItem).ToList());
 
     private static OrderItemDto MapItem(RestOrderItem i) => new(
         Id:              i.Id,
@@ -379,6 +495,7 @@ public class OrderService
         Total:           i.Total,
         Status:          i.Status.ToString(),
         Notes:           i.Notes,
+        Modifiers:       i.Modifiers.Select(m => new OrderItemModifierDto(m.ModifierId, m.LabelSnapshot, m.PriceSnapshot)).ToList(),
         SentToKitchenAt: i.SentToKitchenAt,
         PreparedAt:      i.PreparedAt,
         DeliveredAt:     i.DeliveredAt,

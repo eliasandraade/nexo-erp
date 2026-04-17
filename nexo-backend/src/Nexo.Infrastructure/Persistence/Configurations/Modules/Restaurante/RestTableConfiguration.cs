@@ -12,6 +12,7 @@ public class RestTableConfiguration : IEntityTypeConfiguration<RestTable>
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id");
         builder.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        builder.Property(x => x.StoreId).HasColumnName("store_id").IsRequired();
         builder.Property(x => x.AreaId).HasColumnName("area_id").IsRequired();
         builder.Property(x => x.Number).HasColumnName("number").HasMaxLength(50).IsRequired();
         builder.Property(x => x.Capacity).HasColumnName("capacity").IsRequired();
@@ -36,15 +37,23 @@ public class RestTableConfiguration : IEntityTypeConfiguration<RestTable>
             .HasConstraintName("fk_rest_tables_tenants")
             .OnDelete(DeleteBehavior.Cascade);
 
-        // Número de mesa único por tenant
-        builder.HasIndex(x => new { x.TenantId, x.Number })
+        builder.HasOne<Nexo.Domain.Entities.Store>()
+            .WithMany()
+            .HasForeignKey(x => x.StoreId)
+            .HasConstraintName("fk_rest_tables_stores")
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(x => x.StoreId).HasDatabaseName("ix_rest_tables_store_id");
+
+        // Número de mesa único por tenant + store
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Number })
             .IsUnique()
-            .HasDatabaseName("ix_rest_tables_tenant_number");
+            .HasDatabaseName("ix_rest_tables_tenant_store_number");
 
-        builder.HasIndex(x => new { x.TenantId, x.AreaId })
-            .HasDatabaseName("ix_rest_tables_tenant_area");
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.AreaId })
+            .HasDatabaseName("ix_rest_tables_tenant_store_area");
 
-        builder.HasIndex(x => new { x.TenantId, x.Status })
-            .HasDatabaseName("ix_rest_tables_tenant_status");
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.Status })
+            .HasDatabaseName("ix_rest_tables_tenant_store_status");
     }
 }

@@ -1,0 +1,16 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexo_dev_postgres
+    environment:
+      POSTGRES_USER: nexo_user
+      POSTGRES_PASSWORD: nexo_password
+      POSTGRES_DB: nexo_dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - nexo_dev_pgdata:/var/lib/postgresql/data
+
+volumes:
+  nexo_dev_pgdata:

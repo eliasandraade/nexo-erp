@@ -6,7 +6,7 @@ namespace Nexo.Domain.Modules.Restaurante;
 /// Área física do restaurante (Salão, Varanda, Deck, etc.).
 /// Agrupa mesas para organização operacional.
 /// </summary>
-public class RestArea : TenantEntity
+public class RestArea : StoreEntity
 {
     private RestArea() { }
     private RestArea(Guid tenantId) : base(tenantId) { }

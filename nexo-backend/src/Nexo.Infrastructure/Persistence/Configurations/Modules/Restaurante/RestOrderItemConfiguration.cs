@@ -48,5 +48,13 @@ public class RestOrderItemConfiguration : IEntityTypeConfiguration<RestOrderItem
             .HasDatabaseName("ix_rest_order_items_tenant_product");
         builder.HasIndex(x => new { x.TenantId, x.Status })
             .HasDatabaseName("ix_rest_order_items_tenant_status");
+        builder.HasIndex(x => x.OrderId)
+            .HasDatabaseName("ix_rest_order_items_order_id");
+
+        builder.HasMany(x => x.Modifiers)
+            .WithOne()
+            .HasForeignKey(x => x.OrderItemId)
+            .HasConstraintName("fk_rest_order_item_modifiers_items")
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

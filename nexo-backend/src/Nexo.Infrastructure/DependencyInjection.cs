@@ -15,6 +15,7 @@ using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
 using Nexo.Infrastructure.Repositories;
 using Nexo.Application.Modules.Restaurante.Interfaces;
+using Nexo.Infrastructure.Hubs;
 using Nexo.Infrastructure.Repositories.Modules.Restaurante;
 using Nexo.Infrastructure.Repositories.Modules.Varejo;
 using StackExchange.Redis;
@@ -45,7 +46,7 @@ public static class DependencyInjection
                 npgsql =>
                 {
                     npgsql.MigrationsHistoryTable("__ef_migrations_history", "nexo");
-                    npgsql.EnableRetryOnFailure(3);
+                    npgsql.MigrationsAssembly(typeof(NexoDbContext).Assembly.GetName().Name);
                 });
 
             // Register the tenant isolation interceptor
@@ -114,6 +115,8 @@ public static class DependencyInjection
         services.AddScoped<ITableRepository, TableRepository>();
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IRecipeCardRepository, RecipeCardRepository>();
+        services.AddScoped<IModifierGroupRepository, ModifierGroupRepository>();
+        services.AddScoped<IFoodServiceSettingsRepository, FoodServiceSettingsRepository>();
 
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<IPurchaseRepository, PurchaseRepository>();
@@ -146,6 +149,10 @@ public static class DependencyInjection
 
         // ── Seed ─────────────────────────────────────────────────────────────
         services.AddScoped<DataSeeder>();
+
+        // ── SignalR ───────────────────────────────────────────────────────────
+        services.AddSignalR();
+        services.AddScoped<IRestaurantNotificationService, RestaurantNotificationService>();
 
         return services;
     }
