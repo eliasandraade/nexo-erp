@@ -131,20 +131,20 @@ public class OrderService
         if (request.TableId is null)
             throw new DomainException("DineIn orders require a TableId.");
 
-        await using var tx = await _uow.BeginTransactionAsync(ct);
-        try
+        OrderDto? dineInResult = null;
+        await _uow.ExecuteInTransactionAsync(async innerCt =>
         {
-            var table = await _tables.GetByIdForUpdateAsync(request.TableId.Value, ct)
+            var table = await _tables.GetByIdForUpdateAsync(request.TableId.Value, innerCt)
                 ?? throw new NotFoundException("Table", request.TableId.Value);
 
             if (!table.IsActive)
                 throw new DomainException("Table is inactive.");
 
-            var existing = await _orders.GetOpenOrderForTableAsync(request.TableId.Value, ct);
+            var existing = await _orders.GetOpenOrderForTableAsync(request.TableId.Value, innerCt);
             if (existing is not null)
                 throw new ConflictException($"Table '{table.Number}' already has an open order (#{existing.OrderNumber}).");
 
-            var number = await _orders.GetNextNumberAsync(ct);
+            var number = await _orders.GetNextNumberAsync(innerCt);
             decimal couvertAmount = 0;
             if (settings is { CouvertEnabled: true, CouvertAutomatic: true } && request.PartySize.HasValue)
                 couvertAmount = (settings.CouvertPricePerPerson ?? 0) * request.PartySize.Value;
@@ -155,13 +155,12 @@ public class OrderService
                 couvertAmount, request.CustomerId, request.Notes);
 
             table.SetOccupied();
-            await _orders.AddAsync(order, ct);
-            await _orders.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-            _ = _notifications.TableStatusChangedAsync(request.TableId!.Value, "Occupied");
-            return Map(order);
-        }
-        catch { await tx.RollbackAsync(ct); throw; }
+            await _orders.AddAsync(order, innerCt);
+            await _orders.SaveChangesAsync(innerCt);
+            dineInResult = Map(order);
+        }, ct);
+        _ = _notifications.TableStatusChangedAsync(request.TableId!.Value, "Occupied");
+        return dineInResult!;
     }
 
     // ── Items ─────────────────────────────────────────────────────────────────
@@ -371,13 +370,13 @@ public class OrderService
             throw new DomainException(
                 $"Payment amount ({paymentsTotal:F2}) is less than order total ({grandTotal:F2}).");
 
-        await using var tx = await _uow.BeginTransactionAsync(ct);
-        try
+        OrderDto? payResult = null;
+        await _uow.ExecuteInTransactionAsync(async innerCt =>
         {
             var recipeProductIds = new HashSet<Guid>();
             foreach (var item in order.ActiveItems)
             {
-                var recipe = await _recipes.GetByProductIdAsync(item.ProductId, ct);
+                var recipe = await _recipes.GetByProductIdAsync(item.ProductId, innerCt);
                 if (recipe is not null && recipe.IsActive)
                     recipeProductIds.Add(item.ProductId);
             }
@@ -391,20 +390,20 @@ public class OrderService
                     payments,
                     SurchargesAmount: surchargesAmount > 0 ? surchargesAmount : 0,
                     SkipStockProductIds: recipeProductIds.Count > 0 ? recipeProductIds : null),
-                ct);
+                innerCt);
 
             // Ingredient deduction via recipe cards
             foreach (var item in order.ActiveItems)
             {
-                var recipe = await _recipes.GetByProductIdWithIngredientsAsync(item.ProductId, ct);
+                var recipe = await _recipes.GetByProductIdWithIngredientsAsync(item.ProductId, innerCt);
                 if (recipe is null || !recipe.IsActive) continue;
 
                 foreach (var ingredient in recipe.Ingredients)
                 {
-                    var ingProduct = await _products.GetByIdAsync(ingredient.IngredientProductId, ct);
+                    var ingProduct = await _products.GetByIdAsync(ingredient.IngredientProductId, innerCt);
                     if (ingProduct is null || !ingProduct.TrackStock) continue;
 
-                    var stockItem = await _stock.GetByProductIdAsync(ingredient.IngredientProductId, ct);
+                    var stockItem = await _stock.GetByProductIdAsync(ingredient.IngredientProductId, innerCt);
                     if (stockItem is null) continue;
 
                     var consumption = (item.Quantity / recipe.Yield) * ingredient.Quantity;
@@ -424,26 +423,25 @@ public class OrderService
                         notes:             $"Ficha técnica — Comanda #{order.OrderNumber} — {ingProduct.Name}",
                         costPriceSnapshot: ingProduct.CostPrice);
 
-                    await _stock.AddMovementAsync(movement, ct);
+                    await _stock.AddMovementAsync(movement, innerCt);
                 }
             }
 
             // Release table — only DineIn orders have a table
             if (order.TableId.HasValue)
             {
-                var table = await _tables.GetByIdAsync(order.TableId.Value, ct);
+                var table = await _tables.GetByIdAsync(order.TableId.Value, innerCt);
                 table?.SetAvailable();
             }
 
             order.MarkPaid();
-            await _orders.SaveChangesAsync(ct);
-            await tx.CommitAsync(ct);
-            if (order.TableId.HasValue)
-                _ = _notifications.TableStatusChangedAsync(order.TableId.Value, "Available");
-            _ = _notifications.OrderStatusChangedAsync(order.Id, "Paid");
-            return Map(order);
-        }
-        catch { await tx.RollbackAsync(ct); throw; }
+            await _orders.SaveChangesAsync(innerCt);
+            payResult = Map(order);
+        }, ct);
+        if (order.TableId.HasValue)
+            _ = _notifications.TableStatusChangedAsync(order.TableId.Value, "Available");
+        _ = _notifications.OrderStatusChangedAsync(order.Id, "Paid");
+        return payResult!;
     }
 
     // ── Cancel ────────────────────────────────────────────────────────────────

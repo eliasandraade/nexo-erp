@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Nexo.Application.Common.Interfaces;
 
@@ -28,6 +29,26 @@ public class EfUnitOfWork : IUnitOfWork
 
         var tx = await _context.Database.BeginTransactionAsync(ct);
         return new EfTransactionScope(tx);
+    }
+
+    /// <inheritdoc/>
+    public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken ct = default)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteInTransactionAsync(
+            operation: async () => await operation(ct),
+            verifySucceeded: () => Task.FromResult(false));
+    }
+
+    /// <inheritdoc/>
+    public async Task<T> ExecuteInTransactionAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken ct = default)
+    {
+        var strategy = _context.Database.CreateExecutionStrategy();
+        T result = default!;
+        await strategy.ExecuteInTransactionAsync(
+            operation: async () => { result = await operation(ct); },
+            verifySucceeded: () => Task.FromResult(false));
+        return result;
     }
 }
 
