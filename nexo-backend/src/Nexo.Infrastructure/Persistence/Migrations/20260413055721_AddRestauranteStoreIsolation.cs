@@ -87,7 +87,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 nullable: true);
 
             // ── Step 3: Backfill store_id — active store preferred, falls back to inactive ──
-            // Uses ORDER BY is_active DESC so active stores are picked first.
+            // Uses ORDER BY status='Active' first so active stores are picked first.
             // If a tenant has only inactive stores the inactive one is used as fallback,
             // preventing NULL rows that would cause the NOT NULL step to fail.
             migrationBuilder.Sql(@"
@@ -95,7 +95,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 SET store_id = (
                     SELECT s.id FROM nexo.stores s
                     WHERE s.tenant_id = ra.tenant_id
-                    ORDER BY s.is_active DESC, s.created_at ASC
+                    ORDER BY CASE WHEN s.status = 'Active' THEN 0 ELSE 1 END, s.created_at ASC
                     LIMIT 1
                 )
                 WHERE ra.store_id IS NULL;
@@ -106,7 +106,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 SET store_id = (
                     SELECT s.id FROM nexo.stores s
                     WHERE s.tenant_id = rt.tenant_id
-                    ORDER BY s.is_active DESC, s.created_at ASC
+                    ORDER BY CASE WHEN s.status = 'Active' THEN 0 ELSE 1 END, s.created_at ASC
                     LIMIT 1
                 )
                 WHERE rt.store_id IS NULL;
@@ -117,7 +117,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 SET store_id = (
                     SELECT s.id FROM nexo.stores s
                     WHERE s.tenant_id = ro.tenant_id
-                    ORDER BY s.is_active DESC, s.created_at ASC
+                    ORDER BY CASE WHEN s.status = 'Active' THEN 0 ELSE 1 END, s.created_at ASC
                     LIMIT 1
                 )
                 WHERE ro.store_id IS NULL;
@@ -128,7 +128,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 SET store_id = (
                     SELECT s.id FROM nexo.stores s
                     WHERE s.tenant_id = rrc.tenant_id
-                    ORDER BY s.is_active DESC, s.created_at ASC
+                    ORDER BY CASE WHEN s.status = 'Active' THEN 0 ELSE 1 END, s.created_at ASC
                     LIMIT 1
                 )
                 WHERE rrc.store_id IS NULL;
