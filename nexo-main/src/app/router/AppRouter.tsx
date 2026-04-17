@@ -43,6 +43,13 @@ import NotFoundPage from "@/pages/NotFoundPage";
 // Varejo module pages
 import PdvPage from "@/modules/sales/pages/PdvPage";
 
+// Restaurante module pages + layouts
+import { WaiterLayout }  from "@/app/layouts/WaiterLayout";
+import { KitchenLayout } from "@/app/layouts/KitchenLayout";
+import FloorPage   from "@/modules/restaurante/pages/FloorPage";
+import OrderPage   from "@/modules/restaurante/pages/OrderPage";
+import KitchenPage from "@/modules/restaurante/pages/KitchenPage";
+
 /**
  * AuthProvider lives inside BrowserRouter so it can call useNavigate() for
  * the logout redirect. Route guards are nested in order:
@@ -70,6 +77,20 @@ export function AppRouter() {
             <Route element={<ModuleRoute moduleKey="varejo" />}>
               <Route element={<PosLayout />}>
                 <Route path="/pdv" element={<PdvPage />} />
+              </Route>
+            </Route>
+          </Route>
+
+          {/* Restaurante — waiter pages (mobile-first, no sidebar) */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<ModuleRoute moduleKey="restaurante" />}>
+              <Route element={<WaiterLayout />}>
+                <Route path="/restaurante" element={<FloorPage />} />
+                <Route path="/restaurante/mesa/:tableId" element={<OrderPage />} />
+                <Route path="/restaurante/comanda/:orderId" element={<OrderPage />} />
+              </Route>
+              <Route element={<KitchenLayout />}>
+                <Route path="/restaurante/cozinha" element={<KitchenPage />} />
               </Route>
             </Route>
           </Route>

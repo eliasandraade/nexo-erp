@@ -10,6 +10,7 @@ import {
   Wallet,
   Shield,
   Settings,
+  UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
 
@@ -38,5 +39,8 @@ export const appRoutes: AppRoute[] = [
   { path: "/configuracoes",label: "Configurações", icon: Settings },
 
   // ── Varejo ───────────────────────────────────────────────────────────────
-  { path: "/pdv",          label: "PDV",           icon: ShoppingCart, moduleKey: "varejo" },
+  { path: "/pdv",          label: "PDV",           icon: ShoppingCart,    moduleKey: "varejo" },
+
+  // ── Restaurante ──────────────────────────────────────────────────────────
+  { path: "/restaurante",  label: "Restaurante",   icon: UtensilsCrossed, moduleKey: "restaurante" },
 ];
