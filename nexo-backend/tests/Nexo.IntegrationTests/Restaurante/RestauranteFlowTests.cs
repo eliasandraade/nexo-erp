@@ -628,7 +628,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         await ResetFoodServiceSettingsAsync();
 
         var product = await CreateProductWithStockAsync(
-            $"PLAIN-{Interlocked.Increment(ref _tableSeq)}", salePrice: 50m, costPrice: 10m, initialStock: 0m);
+            $"PLAIN-{Interlocked.Increment(ref _tableSeq)}", salePrice: 50m, costPrice: 10m, initialStock: 5m);
         var area    = await CreateAreaAsync($"Área Plain {Interlocked.Increment(ref _tableSeq)}");
         var table   = await CreateTableAsync(area.Id);
 
@@ -701,7 +701,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         try
         {
             var product = await CreateProductWithStockAsync(
-                $"MANUAL-{Interlocked.Increment(ref _tableSeq)}", salePrice: 40m, costPrice: 10m, initialStock: 0m);
+                $"MANUAL-{Interlocked.Increment(ref _tableSeq)}", salePrice: 40m, costPrice: 10m, initialStock: 5m);
             var area    = await CreateAreaAsync($"Área Manual {Interlocked.Increment(ref _tableSeq)}");
             var table   = await CreateTableAsync(area.Id);
 
@@ -751,7 +751,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         try
         {
             var product = await CreateProductWithStockAsync(
-                $"FEE-{Interlocked.Increment(ref _tableSeq)}", salePrice: 100m, costPrice: 10m, initialStock: 0m);
+                $"FEE-{Interlocked.Increment(ref _tableSeq)}", salePrice: 100m, costPrice: 10m, initialStock: 5m);
             var area    = await CreateAreaAsync($"Área Fee {Interlocked.Increment(ref _tableSeq)}");
             var table   = await CreateTableAsync(area.Id);
 
@@ -798,7 +798,7 @@ public class RestauranteFlowTests : IAsyncLifetime
         try
         {
             var product = await CreateProductWithStockAsync(
-                $"DISH-{Interlocked.Increment(ref _tableSeq)}", salePrice: 60m, costPrice: 10m, initialStock: 0m);
+                $"DISH-{Interlocked.Increment(ref _tableSeq)}", salePrice: 60m, costPrice: 10m, initialStock: 5m);
             var area    = await CreateAreaAsync($"Área Dish {Interlocked.Increment(ref _tableSeq)}");
             var table   = await CreateTableAsync(area.Id);
 
@@ -839,7 +839,7 @@ public class RestauranteFlowTests : IAsyncLifetime
     public async Task AddItem_WithRequiredModifierGroupMissing_Returns422()
     {
         var product = await CreateProductWithStockAsync(
-            $"BURGER-{Interlocked.Increment(ref _tableSeq)}", salePrice: 30m, costPrice: 10m, initialStock: 0m);
+            $"BURGER-{Interlocked.Increment(ref _tableSeq)}", salePrice: 30m, costPrice: 10m, initialStock: 5m);
 
         // Create a required modifier group
         var groupResp = await _client.PostAsJsonAsync("/api/restaurante/modifier-groups",

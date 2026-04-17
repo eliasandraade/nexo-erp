@@ -46,7 +46,7 @@ public static class DependencyInjection
                 npgsql =>
                 {
                     npgsql.MigrationsHistoryTable("__ef_migrations_history", "nexo");
-                    npgsql.EnableRetryOnFailure(3);
+                    npgsql.MigrationsAssembly(typeof(NexoDbContext).Assembly.GetName().Name);
                 });
 
             // Register the tenant isolation interceptor

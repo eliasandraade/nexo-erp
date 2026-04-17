@@ -34,21 +34,34 @@ public class EfUnitOfWork : IUnitOfWork
     /// <inheritdoc/>
     public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken ct = default)
     {
-        var strategy = _context.Database.CreateExecutionStrategy();
-        await strategy.ExecuteInTransactionAsync(
-            operation: async () => await operation(ct),
-            verifySucceeded: () => Task.FromResult(false));
+        await using var tx = await _context.Database.BeginTransactionAsync(ct);
+        try
+        {
+            await operation(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
     }
 
     /// <inheritdoc/>
     public async Task<T> ExecuteInTransactionAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken ct = default)
     {
-        var strategy = _context.Database.CreateExecutionStrategy();
-        T result = default!;
-        await strategy.ExecuteInTransactionAsync(
-            operation: async () => { result = await operation(ct); },
-            verifySucceeded: () => Task.FromResult(false));
-        return result;
+        await using var tx = await _context.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var result = await operation(ct);
+            await tx.CommitAsync(ct);
+            return result;
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
     }
 }
 
