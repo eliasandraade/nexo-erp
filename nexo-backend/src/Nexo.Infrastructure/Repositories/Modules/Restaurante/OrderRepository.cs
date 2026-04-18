@@ -26,13 +26,14 @@ public class OrderRepository : IOrderRepository
             .FirstOrDefaultAsync(x => x.Id == id, ct);
 
     /// <summary>
-    /// Retorna a comanda aberta para a mesa (status ∈ Open, InPreparation, Ready, Closed).
-    /// Closed está incluído porque a mesa ainda está Occupied enquanto aguarda pagamento.
+    /// Retorna a comanda ativa para a mesa (status ∈ Open, Closed-awaiting-payment).
+    /// Paid e Cancelled são excluídos — mesa já está livre nesses casos.
     /// </summary>
     public async Task<RestOrder?> GetOpenOrderForTableAsync(Guid tableId, CancellationToken ct = default)
         => await _context.RestOrders
             .Where(x => x.TableId == tableId &&
-                        x.Status != RestOrderStatus.Cancelled)
+                        x.Status != RestOrderStatus.Cancelled &&
+                        x.Status != RestOrderStatus.Paid)
             .OrderByDescending(x => x.OpenedAt)
             .FirstOrDefaultAsync(ct);
 
