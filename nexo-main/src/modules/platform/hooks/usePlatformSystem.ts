@@ -1,5 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchApiEndpoints, fetchPlatformHealth, fetchPlatformStats } from "../services/platformApi";
+import {
+  fetchApiEndpoints,
+  fetchAuditLog,
+  fetchPlatformHealth,
+  fetchPlatformStats,
+} from "../services/platformApi";
+import type { AuditLogParams } from "../services/platformApi";
 
 export function usePlatformStats() {
   return useQuery({
@@ -23,5 +29,14 @@ export function useApiEndpoints() {
     queryKey: ["platform", "endpoints"],
     queryFn: fetchApiEndpoints,
     staleTime: 5 * 60_000, // 5 min — routes don't change often
+  });
+}
+
+export function useAuditLog(params: AuditLogParams) {
+  return useQuery({
+    queryKey: ["platform", "audit", params],
+    queryFn: () => fetchAuditLog(params),
+    staleTime: 15_000,
+    placeholderData: (prev) => prev,
   });
 }

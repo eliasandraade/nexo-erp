@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Store, Users, Package, ExternalLink,
-  Check, X, AlertTriangle, Edit2, Save,
+  ArrowLeft, Store, Users, ExternalLink,
+  Check, X, Edit2, Save, Pin, Trash2,
+  KeyRound, LogOut as LogOutIcon, StickyNote, PinOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,11 +14,17 @@ import {
   useGrantModule,
   useRevokeModule,
   useImpersonate,
+  useTenantNotes,
+  useCreateNote,
+  useDeleteNote,
+  useToggleNotePin,
+  useResetUserPassword,
+  useForceLogout,
 } from "../hooks/usePlatformTenants";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS = ["Geral", "Módulos", "Usuários", "Lojas"] as const;
+const TABS = ["Geral", "Módulos", "Usuários", "Notas", "Lojas"] as const;
 type Tab = typeof TABS[number];
 
 const MODULE_LABELS: Record<string, string> = {
@@ -44,17 +51,31 @@ export default function PlatformTenantDetailPage() {
   const navigate = useNavigate();
   const { data: tenant, isLoading } = usePlatformTenant(tenantId ?? "");
 
-  const setStatusMut  = useSetTenantStatus(tenantId ?? "");
-  const updateMut     = useUpdateTenant(tenantId ?? "");
-  const grantMut      = useGrantModule(tenantId ?? "");
-  const revokeMut     = useRevokeModule(tenantId ?? "");
+  const setStatusMut   = useSetTenantStatus(tenantId ?? "");
+  const updateMut      = useUpdateTenant(tenantId ?? "");
+  const grantMut       = useGrantModule(tenantId ?? "");
+  const revokeMut      = useRevokeModule(tenantId ?? "");
   const impersonateMut = useImpersonate();
+  const resetPwMut     = useResetUserPassword(tenantId ?? "");
+  const forceLogoutMut = useForceLogout(tenantId ?? "");
+  const createNoteMut  = useCreateNote(tenantId ?? "");
+  const deleteNoteMut  = useDeleteNote(tenantId ?? "");
+  const togglePinMut   = useToggleNotePin(tenantId ?? "");
+  const { data: notes = [] } = useTenantNotes(tenantId ?? "");
 
   const [tab, setTab] = useState<Tab>("Geral");
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     companyName: "", tradeName: "", taxId: "", email: "", phone: "", businessType: "",
   });
+
+  // User action state
+  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+
+  // Note compose state
+  const [noteText, setNoteText]   = useState("");
+  const [notePinned, setNotePinned] = useState(false);
 
   if (isLoading) return <div className="p-6 text-sm text-muted-foreground">Carregando...</div>;
   if (!tenant) return <div className="p-6 text-sm text-muted-foreground">Tenant não encontrado.</div>;
@@ -285,58 +306,223 @@ export default function PlatformTenantDetailPage() {
 
       {/* ── Tab: Usuários ────────────────────────────────────────────────────── */}
       {tab === "Usuários" && (
-        <div className="bg-card border border-border rounded-lg overflow-hidden">
-          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-medium text-foreground">Usuários</h2>
+        <div className="space-y-3">
+          {/* Reset password inline panel */}
+          {resetTarget && (
+            <div className="bg-amber-500/5 border border-amber-500/30 rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-foreground">
+                  Redefinir senha — <span className="text-muted-foreground font-normal">{resetTarget.name}</span>
+                </p>
+                <button
+                  onClick={() => { setResetTarget(null); setNewPassword(""); }}
+                  className="p-1 rounded hover:bg-muted transition-colors"
+                >
+                  <X className="h-3.5 w-3.5 text-muted-foreground" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  placeholder="Nova senha..."
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className="flex-1 h-8 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <button
+                  disabled={!newPassword || resetPwMut.isPending}
+                  onClick={async () => {
+                    await resetPwMut.mutateAsync({ userId: resetTarget.id, newPassword });
+                    setResetTarget(null);
+                    setNewPassword("");
+                  }}
+                  className="h-8 px-3 rounded-md bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                >
+                  {resetPwMut.isPending ? "Salvando..." : "Confirmar"}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                O usuário será obrigado a trocar a senha no próximo login.
+              </p>
             </div>
-            <span className="text-xs text-muted-foreground">{tenant.users.length} usuário{tenant.users.length !== 1 ? "s" : ""}</span>
-          </div>
-          {tenant.users.length === 0 ? (
-            <div className="p-6 text-center text-sm text-muted-foreground">Nenhum usuário cadastrado.</div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Nome</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Login</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Role</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Status</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Último acesso</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {tenant.users.map(u => (
-                  <tr key={u.id}>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-foreground">{u.name}</p>
-                      <p className="text-xs text-muted-foreground">{u.email}</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{u.login}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn(
-                        "px-1.5 py-0.5 rounded text-[10px] font-medium",
-                        ROLE_COLORS[u.role] ?? "bg-muted text-muted-foreground"
-                      )}>
-                        {u.role}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={cn(
-                        "px-1.5 py-0.5 rounded text-[10px] font-medium",
-                        u.status === "Active" ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"
-                      )}>
-                        {u.status === "Active" ? "Ativo" : u.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {u.lastAccessAt ? new Date(u.lastAccessAt).toLocaleString("pt-BR") : "—"}
-                    </td>
+          )}
+
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                <h2 className="text-sm font-medium text-foreground">Usuários</h2>
+              </div>
+              <span className="text-xs text-muted-foreground">{tenant.users.length} usuário{tenant.users.length !== 1 ? "s" : ""}</span>
+            </div>
+            {tenant.users.length === 0 ? (
+              <div className="p-6 text-center text-sm text-muted-foreground">Nenhum usuário cadastrado.</div>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Nome</th>
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Login</th>
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Role</th>
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Status</th>
+                    <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Último acesso</th>
+                    <th className="text-right px-4 py-2 text-xs font-medium text-muted-foreground">Ações</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {tenant.users.map(u => (
+                    <tr key={u.id} className="hover:bg-muted/20 transition-colors">
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-foreground">{u.name}</p>
+                        <p className="text-xs text-muted-foreground">{u.email}</p>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{u.login}</td>
+                      <td className="px-4 py-3">
+                        <span className={cn(
+                          "px-1.5 py-0.5 rounded text-[10px] font-medium",
+                          ROLE_COLORS[u.role] ?? "bg-muted text-muted-foreground"
+                        )}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={cn(
+                          "px-1.5 py-0.5 rounded text-[10px] font-medium",
+                          u.status === "Active" ? "bg-green-500/10 text-green-600" : "bg-muted text-muted-foreground"
+                        )}>
+                          {u.status === "Active" ? "Ativo" : u.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {u.lastAccessAt ? new Date(u.lastAccessAt).toLocaleString("pt-BR") : "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            title="Redefinir senha"
+                            onClick={() => { setResetTarget({ id: u.id, name: u.name }); setNewPassword(""); }}
+                            className="flex items-center gap-1 h-7 px-2 rounded-md border border-amber-500/40 text-amber-600 text-xs hover:bg-amber-500/10 transition-colors"
+                          >
+                            <KeyRound className="h-3 w-3" /> Senha
+                          </button>
+                          <button
+                            title="Forçar logout"
+                            disabled={forceLogoutMut.isPending}
+                            onClick={() => {
+                              if (confirm(`Forçar logout de ${u.name}?`)) {
+                                forceLogoutMut.mutate(u.id);
+                              }
+                            }}
+                            className="flex items-center gap-1 h-7 px-2 rounded-md border border-destructive/40 text-destructive text-xs hover:bg-destructive/10 transition-colors disabled:opacity-50"
+                          >
+                            <LogOutIcon className="h-3 w-3" /> Logout
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab: Notas ───────────────────────────────────────────────────────── */}
+      {tab === "Notas" && (
+        <div className="space-y-4">
+          {/* Compose */}
+          <div className="bg-card border border-border rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <StickyNote className="h-4 w-4 text-primary" />
+              <h2 className="text-sm font-medium text-foreground">Nova nota</h2>
+            </div>
+            <textarea
+              rows={3}
+              placeholder="Escreva uma nota interna sobre este cliente..."
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              className="w-full px-3 py-2 rounded-md border border-border bg-muted/20 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+            <div className="flex items-center justify-between">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={notePinned}
+                  onChange={e => setNotePinned(e.target.checked)}
+                  className="rounded"
+                />
+                Fixar nota
+              </label>
+              <button
+                disabled={!noteText.trim() || createNoteMut.isPending}
+                onClick={async () => {
+                  await createNoteMut.mutateAsync({ content: noteText, isPinned: notePinned });
+                  setNoteText("");
+                  setNotePinned(false);
+                }}
+                className="h-8 px-4 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {createNoteMut.isPending ? "Salvando..." : "Adicionar nota"}
+              </button>
+            </div>
+          </div>
+
+          {/* Notes list */}
+          {notes.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
+              Nenhuma nota ainda. Adicione contexto, histórico ou lembretes sobre este cliente.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {/* Pinned first */}
+              {[...notes].sort((a, b) => (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0)).map(note => (
+                <div
+                  key={note.id}
+                  className={cn(
+                    "bg-card border rounded-lg p-4",
+                    note.isPinned ? "border-primary/30 bg-primary/5" : "border-border"
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm text-foreground flex-1 whitespace-pre-wrap">{note.content}</p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        title={note.isPinned ? "Desafixar" : "Fixar"}
+                        onClick={() => togglePinMut.mutate(note.id)}
+                        disabled={togglePinMut.isPending}
+                        className={cn(
+                          "p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-50",
+                          note.isPinned ? "text-primary" : "text-muted-foreground"
+                        )}
+                      >
+                        {note.isPinned ? <Pin className="h-3.5 w-3.5" /> : <PinOff className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        title="Excluir nota"
+                        onClick={() => {
+                          if (confirm("Excluir esta nota?")) deleteNoteMut.mutate(note.id);
+                        }}
+                        disabled={deleteNoteMut.isPending}
+                        className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-muted transition-colors disabled:opacity-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    {note.isPinned && (
+                      <span className="flex items-center gap-0.5 text-[10px] text-primary font-medium">
+                        <Pin className="h-2.5 w-2.5" /> Fixada
+                      </span>
+                    )}
+                    <span className="text-[10px] text-muted-foreground">
+                      {note.authorName} · {new Date(note.createdAt).toLocaleString("pt-BR")}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}

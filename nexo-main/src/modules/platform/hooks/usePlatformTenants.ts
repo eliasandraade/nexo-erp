@@ -8,6 +8,12 @@ import {
   revokeModule,
   setTenantStatus,
   updatePlatformTenant,
+  fetchTenantNotes,
+  createTenantNote,
+  deleteTenantNote,
+  toggleNotePin,
+  resetUserPassword,
+  forceLogout,
 } from "../services/platformApi";
 import type { CreateTenantInput } from "../types";
 
@@ -82,5 +88,55 @@ export function useRevokeModule(tenantId: string) {
 export function useImpersonate() {
   return useMutation({
     mutationFn: (tenantId: string) => impersonateTenant(tenantId),
+  });
+}
+
+// ─── Notes ────────────────────────────────────────────────────────────────────
+
+export function useTenantNotes(tenantId: string) {
+  return useQuery({
+    queryKey: ["platform", "tenants", tenantId, "notes"],
+    queryFn: () => fetchTenantNotes(tenantId),
+    enabled: !!tenantId,
+  });
+}
+
+export function useCreateNote(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ content, isPinned }: { content: string; isPinned: boolean }) =>
+      createTenantNote(tenantId, content, isPinned),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "notes"] }),
+  });
+}
+
+export function useDeleteNote(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (noteId: string) => deleteTenantNote(tenantId, noteId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "notes"] }),
+  });
+}
+
+export function useToggleNotePin(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (noteId: string) => toggleNotePin(tenantId, noteId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "notes"] }),
+  });
+}
+
+// ─── User actions ─────────────────────────────────────────────────────────────
+
+export function useResetUserPassword(tenantId: string) {
+  return useMutation({
+    mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
+      resetUserPassword(tenantId, userId, newPassword),
+  });
+}
+
+export function useForceLogout(tenantId: string) {
+  return useMutation({
+    mutationFn: (userId: string) => forceLogout(tenantId, userId),
   });
 }
