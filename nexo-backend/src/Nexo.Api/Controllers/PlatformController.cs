@@ -242,7 +242,7 @@ public class PlatformController : ControllerBase
 
         _db.Users.Add(adminUser);
 
-        // Grant modules
+        // Grant modules + record history events
         foreach (var moduleKey in req.Modules)
         {
             var sub = ModuleSubscription.CreateAdminGrant(
@@ -251,6 +251,15 @@ public class PlatformController : ControllerBase
                 grantedById: platformUserId,
                 notes:       "Criado via plataforma admin");
             _db.ModuleSubscriptions.Add(sub);
+
+            var evt = ModuleSubscriptionEvent.Create(
+                tenantId:  tenant.Id,
+                moduleKey: moduleKey,
+                eventType: "granted",
+                actorId:   platformUserId,
+                notes:     "Criado via plataforma admin",
+                planType:  "AdminGrant");
+            _db.ModuleSubscriptionEvents.Add(evt);
         }
 
         await _db.SaveChangesAsync(ct);
@@ -326,6 +335,8 @@ public class PlatformController : ControllerBase
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.ModuleKey == req.ModuleKey.ToLowerInvariant(), ct);
 
+        var eventType = existing is not null ? "renewed" : "granted";
+
         if (existing is not null)
         {
             existing.Renew(req.ExpiresAt ?? DateTime.UtcNow.AddYears(10));
@@ -340,6 +351,16 @@ public class PlatformController : ControllerBase
                 notes:       req.Notes ?? "Concedido via plataforma admin");
             _db.ModuleSubscriptions.Add(sub);
         }
+
+        var grantEvt = ModuleSubscriptionEvent.Create(
+            tenantId:  tenantId,
+            moduleKey: req.ModuleKey,
+            eventType: eventType,
+            actorId:   GetPlatformUserId(),
+            notes:     req.Notes,
+            planType:  "AdminGrant",
+            periodEnd: req.ExpiresAt);
+        _db.ModuleSubscriptionEvents.Add(grantEvt);
 
         await _db.SaveChangesAsync(ct);
         return NoContent();
@@ -357,6 +378,14 @@ public class PlatformController : ControllerBase
         if (sub is null) return NotFound();
 
         sub.Cancel();
+
+        var revokeEvt = ModuleSubscriptionEvent.Create(
+            tenantId:  tenantId,
+            moduleKey: moduleKey,
+            eventType: "revoked",
+            actorId:   GetPlatformUserId());
+        _db.ModuleSubscriptionEvents.Add(revokeEvt);
+
         await _db.SaveChangesAsync(ct);
 
         return NoContent();
@@ -860,6 +889,162 @@ public class PlatformController : ControllerBase
             .ToList();
 
         return Ok(all);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PLAN HISTORY
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the subscription event history for a tenant, newest first.
+    /// Events are recorded on: grant, renew, revoke.
+    /// </summary>
+    [HttpGet("tenants/{tenantId:guid}/plan-history")]
+    public async Task<IActionResult> GetPlanHistory(Guid tenantId, CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var events = await _db.ModuleSubscriptionEvents
+            .IgnoreQueryFilters()
+            .Where(e => e.TenantId == tenantId)
+            .OrderByDescending(e => e.CreatedAt)
+            .Select(e => new
+            {
+                id        = e.Id,
+                moduleKey = e.ModuleKey,
+                eventType = e.EventType,
+                planType  = e.PlanType,
+                periodEnd = e.PeriodEnd,
+                notes     = e.Notes,
+                actorId   = e.ActorId,
+                createdAt = e.CreatedAt,
+            })
+            .ToListAsync(ct);
+
+        return Ok(events);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // MRR / ARR
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Calculates MRR and ARR from active subscriptions joined with ModuleDefinition pricing.
+    ///
+    /// Active = Status == Active AND (CurrentPeriodEnd == null OR CurrentPeriodEnd &gt; now).
+    /// Monthly normalization:
+    ///   Monthly     → PriceMonthly
+    ///   Quarterly   → PriceQuarterly / 3
+    ///   Semiannual  → PriceSemiannual / 6
+    ///   Annual      → PriceAnnual / 12
+    ///   Lifetime / AdminGrant / Trial → R$ 0 (counted separately as non-paying)
+    /// ARR = MRR × 12.
+    /// </summary>
+    [HttpGet("mrr")]
+    public async Task<IActionResult> GetMrr(CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var now = DateTime.UtcNow;
+
+        var activeSubs = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .Where(s => s.Status == SubscriptionStatus.Active
+                     && (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd > now))
+            .ToListAsync(ct);
+
+        var definitions = await _db.ModuleDefinitions
+            .ToDictionaryAsync(d => d.Key, ct);
+
+        decimal totalMrr = 0m;
+        var byModule = new Dictionary<string, decimal>();
+
+        foreach (var sub in activeSubs)
+        {
+            if (!definitions.TryGetValue(sub.ModuleKey, out var def)) continue;
+
+            decimal monthlyEquivalent = sub.PlanType switch
+            {
+                PlanType.Monthly    => def.PriceMonthly    ?? 0m,
+                PlanType.Quarterly  => (def.PriceQuarterly ?? 0m) / 3m,
+                PlanType.Semiannual => (def.PriceSemiannual ?? 0m) / 6m,
+                PlanType.Annual     => (def.PriceAnnual    ?? 0m) / 12m,
+                _                   => 0m,   // Lifetime, AdminGrant, Trial
+            };
+
+            totalMrr += monthlyEquivalent;
+            byModule[sub.ModuleKey] = byModule.GetValueOrDefault(sub.ModuleKey) + monthlyEquivalent;
+        }
+
+        var nonPayingCount = activeSubs.Count(s =>
+            s.PlanType is PlanType.AdminGrant or PlanType.Trial or PlanType.Lifetime);
+
+        return Ok(new
+        {
+            mrr                    = Math.Round(totalMrr, 2),
+            arr                    = Math.Round(totalMrr * 12m, 2),
+            activeSubscriptions    = activeSubs.Count,
+            payingSubscriptions    = activeSubs.Count - nonPayingCount,
+            nonPayingSubscriptions = nonPayingCount,
+            byModule = byModule
+                .Select(kv => new { moduleKey = kv.Key, mrr = Math.Round(kv.Value, 2) })
+                .OrderByDescending(x => x.mrr)
+                .ToList(),
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // CHURN
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns churn metrics for the given period (default 30 days).
+    ///
+    /// Churn rate = subscriptions canceled in period / (active now + canceled in period).
+    /// Also returns previous-period canceled count for trend comparison.
+    /// </summary>
+    [HttpGet("churn")]
+    public async Task<IActionResult> GetChurn(
+        [FromQuery] int period = 30,
+        CancellationToken ct = default)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        period = Math.Clamp(period, 1, 365);
+        var now   = DateTime.UtcNow;
+        var since = now.AddDays(-period);
+        var prevSince = since.AddDays(-period);
+
+        var canceledCount = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .CountAsync(s => s.Status == SubscriptionStatus.Canceled
+                          && s.CanceledAt >= since, ct);
+
+        var activeCount = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .CountAsync(s => s.Status == SubscriptionStatus.Active
+                          && (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd > now), ct);
+
+        var totalInPeriod = activeCount + canceledCount;
+        var churnRate = totalInPeriod > 0
+            ? Math.Round((double)canceledCount / totalInPeriod * 100.0, 1)
+            : 0.0;
+
+        var prevCanceledCount = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .CountAsync(s => s.Status == SubscriptionStatus.Canceled
+                          && s.CanceledAt >= prevSince
+                          && s.CanceledAt < since, ct);
+
+        return Ok(new
+        {
+            period,
+            canceledSubscriptions  = canceledCount,
+            activeSubscriptions    = activeCount,
+            churnRate,
+            previousPeriodCanceled = prevCanceledCount,
+            trend = canceledCount - prevCanceledCount,  // positive = more churn than prev period
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────────

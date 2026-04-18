@@ -44,6 +44,7 @@ public class NexoDbContext : DbContext
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<ModuleSubscription> ModuleSubscriptions => Set<ModuleSubscription>();
+    public DbSet<ModuleSubscriptionEvent> ModuleSubscriptionEvents => Set<ModuleSubscriptionEvent>();
 
     // ── Store (tenant-scoped but not store-scoped — stores ARE the isolation unit) ──
     public DbSet<Store> Stores => Set<Store>();
