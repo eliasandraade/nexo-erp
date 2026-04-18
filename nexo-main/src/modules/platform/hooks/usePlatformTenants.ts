@@ -17,6 +17,9 @@ import {
   fetchUserSessions,
   revokeAllSessions,
   fetchTrialExpired,
+  fetchPlanHistory,
+  fetchMrr,
+  fetchChurn,
 } from "../services/platformApi";
 import type { CreateTenantInput } from "../types";
 
@@ -171,6 +174,37 @@ export function useTrialExpired() {
   return useQuery({
     queryKey: ["platform", "trial-expired"],
     queryFn: fetchTrialExpired,
+    staleTime: 60_000,
+  });
+}
+
+// ─── Plan history ─────────────────────────────────────────────────────────────
+
+export function usePlanHistory(tenantId: string) {
+  return useQuery({
+    queryKey: ["platform", "tenants", tenantId, "plan-history"],
+    queryFn: () => fetchPlanHistory(tenantId),
+    enabled: !!tenantId,
+    staleTime: 30_000,
+  });
+}
+
+// ─── MRR / ARR ────────────────────────────────────────────────────────────────
+
+export function useMrr() {
+  return useQuery({
+    queryKey: ["platform", "mrr"],
+    queryFn: fetchMrr,
+    staleTime: 60_000,
+  });
+}
+
+// ─── Churn ────────────────────────────────────────────────────────────────────
+
+export function useChurn(period = 30) {
+  return useQuery({
+    queryKey: ["platform", "churn", period],
+    queryFn: () => fetchChurn(period),
     staleTime: 60_000,
   });
 }

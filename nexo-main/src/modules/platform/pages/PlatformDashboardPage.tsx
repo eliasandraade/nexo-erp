@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
-import { Building2, Store, Users, Package, Zap, ChevronRight, Activity } from "lucide-react";
-import { usePlatformStats } from "../hooks/usePlatformSystem";
-import { usePlatformHealth } from "../hooks/usePlatformSystem";
+import { Building2, Store, Users, Package, Zap, ChevronRight, Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { usePlatformStats, usePlatformHealth } from "../hooks/usePlatformSystem";
+import { useMrr, useChurn } from "../hooks/usePlatformTenants";
 
 const MODULE_LABELS: Record<string, string> = {
   varejo:      "Varejo",
@@ -16,10 +16,16 @@ function StatusDot({ status }: { status: string }) {
   return <span className={`inline-block w-2 h-2 rounded-full ${color} shrink-0`} />;
 }
 
+function fmt(n: number) {
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function PlatformDashboardPage() {
   const navigate = useNavigate();
   const { data: stats, isLoading: statsLoading } = usePlatformStats();
   const { data: health } = usePlatformHealth();
+  const { data: mrr } = useMrr();
+  const { data: churn } = useChurn(30);
 
   const stat = (v: number | undefined) => statsLoading ? "—" : (v ?? 0);
 
@@ -68,6 +74,62 @@ export default function PlatformDashboardPage() {
             <p className="text-2xl font-semibold text-foreground">{value}</p>
           </div>
         ))}
+      </div>
+
+      {/* Financial KPIs */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* MRR */}
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-muted-foreground">MRR</p>
+            <TrendingUp className="h-4 w-4 text-primary" />
+          </div>
+          <p className="text-2xl font-semibold text-foreground">
+            {mrr ? `R$ ${fmt(mrr.mrr)}` : "—"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            ARR: {mrr ? `R$ ${fmt(mrr.arr)}` : "—"}
+          </p>
+        </div>
+
+        {/* Paying vs non-paying */}
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-muted-foreground">Assinaturas pagas</p>
+            <Package className="h-4 w-4 text-primary" />
+          </div>
+          <p className="text-2xl font-semibold text-foreground">
+            {mrr?.payingSubscriptions ?? "—"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {mrr?.nonPayingSubscriptions ?? "—"} admin/trial/lifetime
+          </p>
+        </div>
+
+        {/* Churn */}
+        <div className="bg-card border border-border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-1">
+            <p className="text-xs text-muted-foreground">Churn (30d)</p>
+            {churn
+              ? churn.trend > 0 ? <TrendingDown className="h-4 w-4 text-destructive" />
+              : churn.trend < 0 ? <TrendingUp className="h-4 w-4 text-green-600" />
+              : <Minus className="h-4 w-4 text-muted-foreground" />
+              : <Minus className="h-4 w-4 text-muted-foreground" />}
+          </div>
+          <p className="text-2xl font-semibold text-foreground">
+            {churn ? `${churn.churnRate}%` : "—"}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {churn ? `${churn.canceledSubscriptions} cancelamentos` : "—"}
+            {churn && churn.trend !== 0 && (
+              <span className={churn.trend > 0 ? " text-destructive" : " text-green-600"}>
+                {" "}({churn.trend > 0 ? "+" : ""}{churn.trend} vs. período anterior)
+              </span>
+            )}
+          </p>
+        </div>
+
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

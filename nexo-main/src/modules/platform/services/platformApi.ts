@@ -160,6 +160,53 @@ export async function revokeAllSessions(tenantId: string, userId: string): Promi
   await apiClient.delete(`/platform/tenants/${tenantId}/users/${userId}/sessions`);
 }
 
+// ─── Plan history ─────────────────────────────────────────────────────────────
+
+export interface PlanHistoryEvent {
+  id: string;
+  moduleKey: string;
+  eventType: "granted" | "revoked" | "renewed" | "plan_changed";
+  planType: string | null;
+  periodEnd: string | null;
+  notes: string | null;
+  actorId: string | null;
+  createdAt: string;
+}
+
+export async function fetchPlanHistory(tenantId: string): Promise<PlanHistoryEvent[]> {
+  return apiClient.get<PlanHistoryEvent[]>(`/platform/tenants/${tenantId}/plan-history`);
+}
+
+// ─── MRR / ARR ────────────────────────────────────────────────────────────────
+
+export interface MrrData {
+  mrr: number;
+  arr: number;
+  activeSubscriptions: number;
+  payingSubscriptions: number;
+  nonPayingSubscriptions: number;
+  byModule: { moduleKey: string; mrr: number }[];
+}
+
+export async function fetchMrr(): Promise<MrrData> {
+  return apiClient.get<MrrData>("/platform/mrr");
+}
+
+// ─── Churn ────────────────────────────────────────────────────────────────────
+
+export interface ChurnData {
+  period: number;
+  canceledSubscriptions: number;
+  activeSubscriptions: number;
+  churnRate: number;
+  previousPeriodCanceled: number;
+  trend: number;
+}
+
+export async function fetchChurn(period = 30): Promise<ChurnData> {
+  return apiClient.get<ChurnData>(`/platform/churn?period=${period}`);
+}
+
 // ─── Trial expired ────────────────────────────────────────────────────────────
 
 export interface TrialExpiredTenant {

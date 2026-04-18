@@ -4,7 +4,7 @@ import {
   ArrowLeft, Store, Users, ExternalLink,
   Check, X, Edit2, Save, Pin, Trash2,
   KeyRound, LogOut as LogOutIcon, StickyNote, PinOff,
-  ChevronDown, ChevronUp, Monitor, Wifi,
+  ChevronDown, ChevronUp, Monitor, Wifi, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -24,11 +24,12 @@ import {
   useForceLogout,
   useUserSessions,
   useRevokeAllSessions,
+  usePlanHistory,
 } from "../hooks/usePlatformTenants";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS = ["Geral", "Módulos", "Usuários", "Notas", "Lojas"] as const;
+const TABS = ["Geral", "Módulos", "Histórico", "Usuários", "Notas", "Lojas"] as const;
 type Tab = typeof TABS[number];
 
 const MODULE_LABELS: Record<string, string> = {
@@ -67,6 +68,7 @@ export default function PlatformTenantDetailPage() {
   const deleteNoteMut     = useDeleteNote(tenantId ?? "");
   const togglePinMut      = useToggleNotePin(tenantId ?? "");
   const { data: notes = [] } = useTenantNotes(tenantId ?? "");
+  const { data: planHistory = [], isLoading: historyLoading } = usePlanHistory(tenantId ?? "");
 
   const [tab, setTab] = useState<Tab>("Geral");
   const [editing, setEditing] = useState(false);
@@ -329,6 +331,74 @@ export default function PlatformTenantDetailPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── Tab: Histórico ───────────────────────────────────────────────────── */}
+      {tab === "Histórico" && (
+        <div className="bg-card border border-border rounded-lg overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-medium text-foreground">Histórico de plano</h2>
+            <span className="ml-auto text-xs text-muted-foreground">{planHistory.length} evento{planHistory.length !== 1 ? "s" : ""}</span>
+          </div>
+          {historyLoading ? (
+            <div className="p-6 text-center text-sm text-muted-foreground">Carregando...</div>
+          ) : planHistory.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              Nenhum evento registrado ainda.<br />
+              <span className="text-xs">Eventos são criados ao ativar ou revogar módulos.</span>
+            </div>
+          ) : (
+            <div className="divide-y divide-border">
+              {planHistory.map(evt => (
+                <div key={evt.id} className="flex items-start gap-3 px-4 py-3">
+                  {/* Event type badge */}
+                  <span className={cn(
+                    "mt-0.5 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap shrink-0",
+                    evt.eventType === "granted"      ? "bg-green-500/10 text-green-700" :
+                    evt.eventType === "renewed"      ? "bg-blue-500/10 text-blue-700" :
+                    evt.eventType === "revoked"      ? "bg-destructive/10 text-destructive" :
+                    evt.eventType === "plan_changed" ? "bg-amber-500/10 text-amber-700" :
+                    "bg-muted text-muted-foreground"
+                  )}>
+                    {evt.eventType === "granted"      ? "Ativado" :
+                     evt.eventType === "renewed"      ? "Renovado" :
+                     evt.eventType === "revoked"      ? "Revogado" :
+                     evt.eventType === "plan_changed" ? "Plano alterado" :
+                     evt.eventType}
+                  </span>
+
+                  {/* Details */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground font-medium">
+                      {MODULE_LABELS[evt.moduleKey] ?? evt.moduleKey}
+                      {evt.planType && (
+                        <span className="text-muted-foreground font-normal"> · {evt.planType}</span>
+                      )}
+                    </p>
+                    <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                      {evt.periodEnd && (
+                        <span className="text-xs text-muted-foreground">
+                          Expira: {new Date(evt.periodEnd).toLocaleDateString("pt-BR")}
+                        </span>
+                      )}
+                      {evt.notes && (
+                        <span className="text-xs text-muted-foreground italic truncate max-w-[240px]">
+                          {evt.notes}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Date */}
+                  <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                    {new Date(evt.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
