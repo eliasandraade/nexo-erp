@@ -6,7 +6,7 @@ export const AREAS_KEY = (storeId: string) => ["areas", storeId] as const;
 export function useRestauranteAreas(storeId: string) {
   return useQuery({
     queryKey: AREAS_KEY(storeId),
-    queryFn: listAreas,
+    queryFn: () => listAreas(false),
     staleTime: 60_000,
   });
 }
