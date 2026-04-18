@@ -4,6 +4,7 @@ import type { TableDto, TableStatus } from "../types";
 interface TableCardProps {
   table: TableDto;
   onClick: () => void;
+  readyCount?: number;
 }
 
 const statusStyles: Record<TableStatus, string> = {
@@ -20,7 +21,7 @@ const statusLabel: Record<TableStatus, string> = {
   Maintenance: "Manutenção",
 };
 
-export function TableCard({ table, onClick }: TableCardProps) {
+export function TableCard({ table, onClick, readyCount = 0 }: TableCardProps) {
   return (
     <button
       onClick={onClick}
@@ -34,8 +35,17 @@ export function TableCard({ table, onClick }: TableCardProps) {
       <span className="text-xs font-medium opacity-70">
         {statusLabel[table.status]}
       </span>
-      {table.status === "Occupied" && (
+
+      {/* Occupied pulse indicator */}
+      {table.status === "Occupied" && readyCount === 0 && (
         <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary animate-pulse" />
+      )}
+
+      {/* Ready badge — shown when kitchen has items ready for this table */}
+      {readyCount > 0 && (
+        <span className="absolute top-2 right-2 flex items-center justify-center min-w-[20px] h-5 rounded-full bg-green-500 text-white text-[10px] font-bold px-1 animate-pulse shadow-md shadow-green-500/40">
+          {readyCount}
+        </span>
       )}
     </button>
   );

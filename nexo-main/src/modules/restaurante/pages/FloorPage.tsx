@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { TableCard } from "../components/TableCard";
 import { AreaTabs } from "../components/AreaTabs";
@@ -8,16 +9,46 @@ import { OpenOrderSheet } from "../components/OpenOrderSheet";
 import { useRestauranteTables } from "../hooks/useRestauranteTables";
 import { useRestauranteAreas } from "../hooks/useRestauranteAreas";
 import { useOpenOrder } from "../hooks/useOrderMutations";
+import { useKitchenSocket } from "../hooks/useKitchenSocket";
+import { useKitchenItems } from "../hooks/useKitchenItems";
 import type { OrderType, TableDto } from "../types";
 
 export default function FloorPage() {
   const { session } = useAuth();
   const storeId     = session?.storeId ?? "";
+  const token       = session ? localStorage.getItem("nexo:access_token") ?? undefined : undefined;
   const navigate    = useNavigate();
 
   const { data: tables = [], isLoading: tablesLoading } = useRestauranteTables(storeId);
   const { data: areas  = [] }                           = useRestauranteAreas(storeId);
   const openOrderMut                                    = useOpenOrder(storeId);
+
+  // Kitchen ready notifications
+  const handleItemReady = useCallback((tableNumber: string | null, productName: string) => {
+    const label = tableNumber ? `Mesa ${tableNumber}` : "Balcão";
+    toast.success(`${productName} pronto!`, {
+      description: label,
+      duration: 6000,
+    });
+  }, []);
+
+  const { connectionMode } = useKitchenSocket(storeId, token, { onItemReady: handleItemReady });
+
+  const { data: kitchenItems = [] } = useKitchenItems(
+    storeId,
+    connectionMode === "polling" ? 10_000 : undefined
+  );
+
+  // Count "Ready" items per table number so TableCard can show the badge
+  const readyCountByTable = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of kitchenItems) {
+      if (item.status === "Ready" && item.tableNumber) {
+        map.set(item.tableNumber, (map.get(item.tableNumber) ?? 0) + 1);
+      }
+    }
+    return map;
+  }, [kitchenItems]);
 
   const [activeAreaId, setActiveAreaId]   = useState<string | null>(null);
   const [selectedTable, setSelectedTable] = useState<TableDto | null>(null);
@@ -91,6 +122,7 @@ export default function FloorPage() {
                 key={table.id}
                 table={table}
                 onClick={() => handleTableClick(table)}
+                readyCount={readyCountByTable.get(table.number) ?? 0}
               />
             ))}
           </div>

@@ -5,18 +5,29 @@ import { useQueryClient } from "@tanstack/react-query";
 import { KITCHEN_KEY } from "./useKitchenItems";
 import { TABLES_KEY } from "./useRestauranteTables";
 import { ORDERS_KEY } from "./useActiveOrder";
-import type { ConnectionMode } from "../types";
+import type { ConnectionMode, KitchenItem } from "../types";
 
 const RECONNECT_DELAYS = [0, 2000, 5000];
 const POLLING_INTERVAL = 10_000;
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:5000";
 
-export function useKitchenSocket(storeId: string, token: string | undefined) {
-  const qc              = useQueryClient();
-  const connectionRef   = useRef<signalR.HubConnection | null>(null);
-  const retryCountRef   = useRef(0);
-  const [mode, setMode] = useState<ConnectionMode>("realtime");
-  const pollingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+interface UseKitchenSocketOptions {
+  onItemReady?: (tableNumber: string | null, productName: string) => void;
+}
+
+export function useKitchenSocket(
+  storeId: string,
+  token: string | undefined,
+  options: UseKitchenSocketOptions = {}
+) {
+  const { onItemReady } = options;
+  const qc               = useQueryClient();
+  const connectionRef    = useRef<signalR.HubConnection | null>(null);
+  const retryCountRef    = useRef(0);
+  const [mode, setMode]  = useState<ConnectionMode>("realtime");
+  const pollingTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onItemReadyRef   = useRef(onItemReady);
+  onItemReadyRef.current = onItemReady;
 
   const invalidateAll = useCallback(() => {
     qc.invalidateQueries({ queryKey: KITCHEN_KEY(storeId) });
@@ -50,7 +61,15 @@ export function useKitchenSocket(storeId: string, token: string | undefined) {
     connectionRef.current = connection;
 
     connection.on("NewItemAdded", () => invalidateAll());
-    connection.on("OrderItemStatusChanged", () => invalidateAll());
+    connection.on("OrderItemStatusChanged", (_orderId: string, itemId: string, status: string) => {
+      // Fire the onItemReady callback BEFORE invalidating so we read current cache data
+      if (status === "Ready" && onItemReadyRef.current) {
+        const cached = qc.getQueryData<KitchenItem[]>(KITCHEN_KEY(storeId));
+        const item   = cached?.find(i => i.itemId === itemId);
+        onItemReadyRef.current(item?.tableNumber ?? null, item?.productName ?? "Item");
+      }
+      invalidateAll();
+    });
     connection.on("OrderStatusChanged", () => invalidateAll());
     connection.on("TableStatusChanged", () => invalidateAll());
 
