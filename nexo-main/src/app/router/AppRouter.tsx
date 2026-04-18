@@ -13,6 +13,7 @@ import PlatformTenantDetailPage from "@/modules/platform/pages/PlatformTenantDet
 import PlatformSystemPage from "@/modules/platform/pages/PlatformSystemPage";
 import PlatformActivityPage from "@/modules/platform/pages/PlatformActivityPage";
 import PlatformTrialPage from "@/modules/platform/pages/PlatformTrialPage";
+import PlatformFlagsPage from "@/modules/platform/pages/PlatformFlagsPage";
 import ImpersonatePage from "@/pages/ImpersonatePage";
 import LandingPage from "@/modules/landing/pages/LandingPage";
 
@@ -145,6 +146,7 @@ export function AppRouter() {
               <Route path="/platform/trial"    element={<PlatformTrialPage />} />
               <Route path="/platform/activity" element={<PlatformActivityPage />} />
               <Route path="/platform/system" element={<PlatformSystemPage />} />
+              <Route path="/platform/flags"  element={<PlatformFlagsPage />} />
             </Route>
           </Route>
 

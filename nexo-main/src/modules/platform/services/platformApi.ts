@@ -225,6 +225,76 @@ export async function fetchTrialExpired(): Promise<TrialExpiredTenant[]> {
   return apiClient.get<TrialExpiredTenant[]>("/platform/tenants/trial-expired");
 }
 
+// ─── Feature Flags ────────────────────────────────────────────────────────────
+
+export interface FeatureFlagDto {
+  key: string;
+  name: string;
+  description: string | null;
+  defaultEnabled: boolean;
+  category: string;
+  overrideCount: number;
+  /** Resolved value for a specific tenant (present only when ?tenantId= was sent) */
+  tenantValue: boolean | null;
+  hasOverride: boolean;
+  updatedAt: string;
+}
+
+export interface TenantFlagResolved {
+  key: string;
+  name: string;
+  category: string;
+  defaultEnabled: boolean;
+  resolved: boolean;
+  hasOverride: boolean;
+  overrideValue: boolean | null;
+  notes: string | null;
+}
+
+export interface FlagOverride {
+  tenantId: string;
+  tenantName: string;
+  isEnabled: boolean;
+  notes: string | null;
+  updatedAt: string;
+}
+
+export async function fetchFlags(tenantId?: string): Promise<FeatureFlagDto[]> {
+  const qs = tenantId ? `?tenantId=${tenantId}` : "";
+  return apiClient.get<FeatureFlagDto[]>(`/platform/flags${qs}`);
+}
+
+export async function createFlag(input: {
+  key: string; name: string; description?: string;
+  defaultEnabled: boolean; category: string;
+}): Promise<void> {
+  await apiClient.post("/platform/flags", input);
+}
+
+export async function updateFlag(key: string, input: {
+  name: string; description?: string; defaultEnabled: boolean; category: string;
+}): Promise<void> {
+  await apiClient.put(`/platform/flags/${key}`, input);
+}
+
+export async function toggleFlagDefault(key: string): Promise<{ key: string; defaultEnabled: boolean }> {
+  return apiClient.patch<{ key: string; defaultEnabled: boolean }>(`/platform/flags/${key}/toggle`, {});
+}
+
+export async function fetchTenantFlags(tenantId: string): Promise<TenantFlagResolved[]> {
+  return apiClient.get<TenantFlagResolved[]>(`/platform/tenants/${tenantId}/flags`);
+}
+
+export async function setTenantFlagOverride(
+  tenantId: string, key: string, isEnabled: boolean, notes?: string
+): Promise<void> {
+  await apiClient.post(`/platform/tenants/${tenantId}/flags/${key}`, { isEnabled, notes });
+}
+
+export async function deleteTenantFlagOverride(tenantId: string, key: string): Promise<void> {
+  await apiClient.delete(`/platform/tenants/${tenantId}/flags/${key}`);
+}
+
 // ─── Stats / Health / Endpoints ───────────────────────────────────────────────
 
 export async function fetchPlatformStats(): Promise<PlatformStats> {

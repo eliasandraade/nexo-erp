@@ -20,6 +20,12 @@ import {
   fetchPlanHistory,
   fetchMrr,
   fetchChurn,
+  fetchFlags,
+  createFlag,
+  toggleFlagDefault,
+  fetchTenantFlags,
+  setTenantFlagOverride,
+  deleteTenantFlagOverride,
 } from "../services/platformApi";
 import type { CreateTenantInput } from "../types";
 
@@ -206,5 +212,63 @@ export function useChurn(period = 30) {
     queryKey: ["platform", "churn", period],
     queryFn: () => fetchChurn(period),
     staleTime: 60_000,
+  });
+}
+
+// ─── Feature Flags ────────────────────────────────────────────────────────────
+
+export function useFlags(tenantId?: string) {
+  return useQuery({
+    queryKey: ["platform", "flags", tenantId ?? "global"],
+    queryFn: () => fetchFlags(tenantId),
+    staleTime: 30_000,
+  });
+}
+
+export function useCreateFlag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createFlag>[0]) => createFlag(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "flags"] }),
+  });
+}
+
+export function useToggleFlagDefault() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => toggleFlagDefault(key),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "flags"] }),
+  });
+}
+
+export function useTenantFlags(tenantId: string) {
+  return useQuery({
+    queryKey: ["platform", "tenants", tenantId, "flags"],
+    queryFn: () => fetchTenantFlags(tenantId),
+    enabled: !!tenantId,
+    staleTime: 30_000,
+  });
+}
+
+export function useSetTenantFlagOverride(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, isEnabled, notes }: { key: string; isEnabled: boolean; notes?: string }) =>
+      setTenantFlagOverride(tenantId, key, isEnabled, notes),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["platform", "flags"] });
+      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "flags"] });
+    },
+  });
+}
+
+export function useDeleteTenantFlagOverride(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => deleteTenantFlagOverride(tenantId, key),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["platform", "flags"] });
+      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "flags"] });
+    },
   });
 }

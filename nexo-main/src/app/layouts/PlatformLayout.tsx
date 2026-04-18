@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom";
-import { Building2, LayoutDashboard, LogOut, ShieldCheck, Activity, ScrollText, Clock } from "lucide-react";
+import { Building2, LayoutDashboard, LogOut, ShieldCheck, Activity, ScrollText, Clock, Flag } from "lucide-react";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 
 export function PlatformLayout() {
@@ -74,6 +74,19 @@ export function PlatformLayout() {
           >
             <ScrollText className="h-4 w-4" />
             Atividade
+          </NavLink>
+          <NavLink
+            to="/platform/flags"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`
+            }
+          >
+            <Flag className="h-4 w-4" />
+            Flags
           </NavLink>
           <NavLink
             to="/platform/system"
