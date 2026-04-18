@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { OrderItemRow } from "../components/OrderItemRow";
@@ -8,7 +8,17 @@ import { AddItemDrawer } from "../components/AddItemDrawer";
 import { PaymentDrawer } from "../components/PaymentDrawer";
 import { useActiveOrder, useOrder } from "../hooks/useActiveOrder";
 import { useAddItem, useCloseOrder, useCancelOrder } from "../hooks/useOrderMutations";
-import type { AddOrderItemRequest } from "../types";
+import type { AddOrderItemRequest, OrderStatus } from "../types";
+
+// ── Status label map ──────────────────────────────────────────────────────────
+const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  Open:          "Aberta",
+  InPreparation: "Em preparo",
+  Ready:         "Pronta",
+  Closed:        "Fechada",
+  Paid:          "Paga",
+  Cancelled:     "Cancelada",
+};
 
 export default function OrderPage() {
   const { session }  = useAuth();
@@ -28,6 +38,9 @@ export default function OrderPage() {
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
   const [payDrawerOpen, setPayDrawerOpen] = useState(false);
 
+  // "cancel" | "close" | null — which destructive action is awaiting confirmation
+  const [confirmState, setConfirmState] = useState<"cancel" | "close" | null>(null);
+
   if (!order) {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-3">
@@ -40,23 +53,25 @@ export default function OrderPage() {
   }
 
   const isOpen = ["Open", "InPreparation", "Ready"].includes(order.status);
+  const hasActiveItems = order.items.filter((i) => i.status !== "Cancelled").length > 0;
 
-  const handleAddItem = (req: AddOrderItemRequest) => {
-    addItemMut.mutate(
-      { orderId: order.id, req },
-      { onSuccess: () => setAddDrawerOpen(false) }
-    );
-  };
-
+  // Fechar conta: confirma antes de chamar a API
   const handleCloseOrder = async () => {
+    setConfirmState(null);
     await closeOrderMut.mutateAsync(order.id);
     setPayDrawerOpen(true);
   };
 
   const handleCancel = () => {
-    if (!window.confirm("Cancelar esta comanda? Esta ação não pode ser desfeita.")) return;
+    setConfirmState(null);
     cancelMut.mutate(order.id, { onSuccess: () => navigate("/restaurante") });
   };
+
+  // ── Total display (inclui taxa de serviço quando presente) ────────────────
+  const showServiceFee = order.serviceFeeAmount > 0;
+  const displayTotal   = order.total > 0
+    ? order.total
+    : order.itemsSubtotal + order.couvertAmount;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -74,7 +89,7 @@ export default function OrderPage() {
           </h1>
           <p className="text-xs text-muted-foreground">
             {order.partySize ? `${order.partySize} pessoa(s) · ` : ""}
-            {order.status}
+            {ORDER_STATUS_LABEL[order.status] ?? order.status}
           </p>
         </div>
         {isOpen && (
@@ -101,48 +116,110 @@ export default function OrderPage() {
       {/* Totals + action bar */}
       {isOpen && (
         <div className="border-t border-border px-4 pt-3 pb-5">
+          {/* Totals */}
           <div className="space-y-1 mb-4 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal</span>
-              <span>R$ {order.itemsSubtotal.toFixed(2)}</span>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Subtotal</span>
+              <span className="text-foreground">R$ {order.itemsSubtotal.toFixed(2)}</span>
             </div>
             {order.couvertAmount > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">
-                  Couvert ({order.partySize ?? "?"} pessoas)
-                </span>
-                <span>R$ {order.couvertAmount.toFixed(2)}</span>
+              <div className="flex justify-between text-muted-foreground">
+                <span>Couvert ({order.partySize ?? "?"} pessoas)</span>
+                <span className="text-foreground">R$ {order.couvertAmount.toFixed(2)}</span>
+              </div>
+            )}
+            {showServiceFee && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Taxa de serviço</span>
+                <span className="text-foreground">R$ {order.serviceFeeAmount.toFixed(2)}</span>
+              </div>
+            )}
+            {(order.couvertAmount > 0 || showServiceFee) && (
+              <div className="flex justify-between font-semibold border-t border-border pt-1.5 mt-1">
+                <span>Total</span>
+                <span>R$ {displayTotal.toFixed(2)}</span>
               </div>
             )}
           </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-destructive border-destructive/50"
-              onClick={handleCancel}
-              disabled={cancelMut.isPending}
-            >
-              <AlertTriangle className="h-4 w-4" />
-            </Button>
-            <Button
-              className="flex-1 h-12"
-              onClick={handleCloseOrder}
-              disabled={
-                order.items.filter((i) => i.status !== "Cancelled").length === 0 ||
-                closeOrderMut.isPending
-              }
-            >
-              Fechar conta
-            </Button>
-          </div>
+
+          {/* Action bar — normal / confirm cancel / confirm close */}
+          {confirmState === "cancel" ? (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive font-medium text-center">
+                Cancelar esta comanda? Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setConfirmState(null)}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="flex-1 h-12"
+                  onClick={handleCancel}
+                  disabled={cancelMut.isPending}
+                >
+                  {cancelMut.isPending ? "Cancelando..." : "Sim, cancelar"}
+                </Button>
+              </div>
+            </div>
+          ) : confirmState === "close" ? (
+            <div className="space-y-2">
+              <p className="text-sm text-foreground font-medium text-center">
+                Fechar a conta e ir para o pagamento?
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setConfirmState(null)}
+                >
+                  Voltar
+                </Button>
+                <Button
+                  className="flex-1 h-12"
+                  onClick={handleCloseOrder}
+                  disabled={closeOrderMut.isPending}
+                >
+                  {closeOrderMut.isPending ? "Fechando..." : "Sim, fechar conta"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive border-destructive/40 hover:bg-destructive/5 px-3 text-xs"
+                onClick={() => setConfirmState("cancel")}
+                disabled={cancelMut.isPending}
+              >
+                Cancelar comanda
+              </Button>
+              <Button
+                className="flex-1 h-12"
+                onClick={() => setConfirmState("close")}
+                disabled={!hasActiveItems || closeOrderMut.isPending}
+              >
+                Fechar conta
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
       <AddItemDrawer
         open={addDrawerOpen}
         onClose={() => setAddDrawerOpen(false)}
-        onAdd={handleAddItem}
+        onAdd={(req: AddOrderItemRequest) =>
+          addItemMut.mutate(
+            { orderId: order.id, req },
+            { onSuccess: () => setAddDrawerOpen(false) }
+          )
+        }
         isLoading={addItemMut.isPending}
       />
 

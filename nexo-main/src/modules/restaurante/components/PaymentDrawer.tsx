@@ -51,8 +51,9 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
   const [amount, setAmount]     = useState(displayTotal.toFixed(2));
   const [partySize, setPartySize] = useState(order.partySize?.toString() ?? "");
 
-  const paid   = parseFloat(amount) || 0;
-  const change = Math.max(0, paid - displayTotal);
+  const paid              = parseFloat(amount) || 0;
+  const change            = Math.max(0, paid - displayTotal);
+  const amountInsufficient = amount !== "" && paid < displayTotal;
 
   const splitSuggestion =
     order.partySize && order.partySize > 1
@@ -152,15 +153,27 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
         </div>
 
         {method === "cash" && change > 0 && (
-          <p className="text-sm text-green-600 font-medium mb-4">
+          <p className="text-sm text-green-600 font-medium mb-2">
             Troco: R$ {change.toFixed(2)}
+          </p>
+        )}
+
+        {amountInsufficient && (
+          <p className="text-xs text-destructive mb-2">
+            Valor insuficiente. O total é R$ {displayTotal.toFixed(2)}.
+          </p>
+        )}
+
+        {payMut.isError && (
+          <p className="text-xs text-destructive mb-2">
+            Erro ao processar pagamento. Verifique a conexão e tente novamente.
           </p>
         )}
 
         <Button
           className="w-full h-12 text-base mt-2"
           onClick={handlePay}
-          disabled={paid < displayTotal || payMut.isPending}
+          disabled={amountInsufficient || paid === 0 || payMut.isPending}
         >
           {payMut.isPending ? "Processando..." : "Confirmar pagamento"}
         </Button>

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { KitchenItem } from "../types";
 import { useUpdateItemStatus } from "../hooks/useOrderMutations";
@@ -28,9 +29,24 @@ export function KitchenCard({
   item: KitchenItem;
   storeId: string;
 }) {
-  const updateMut  = useUpdateItemStatus(storeId);
-  const { label, color } = elapsed(item.sentToKitchenAt);
-  const nextStatus = STATUS_SEQUENCE[item.status];
+  const updateMut          = useUpdateItemStatus(storeId);
+  const [pending, setPending] = useState(false);
+  const { label, color }   = elapsed(item.sentToKitchenAt);
+  const nextStatus         = STATUS_SEQUENCE[item.status];
+
+  const handleAdvance = async () => {
+    if (!nextStatus || pending) return;
+    setPending(true);
+    try {
+      await updateMut.mutateAsync({
+        orderId: item.orderId,
+        itemId:  item.itemId,
+        status:  nextStatus,
+      });
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <div className="bg-gray-900 rounded-xl p-4 border border-gray-700 flex flex-col gap-2">
@@ -57,13 +73,11 @@ export function KitchenCard({
 
       {nextStatus && (
         <button
-          onClick={() =>
-            updateMut.mutate({ orderId: item.orderId, itemId: item.itemId, status: nextStatus })
-          }
-          disabled={updateMut.isPending}
-          className="mt-1 w-full rounded-lg bg-gray-700 hover:bg-gray-600 py-2 text-sm font-medium transition-colors"
+          onClick={handleAdvance}
+          disabled={pending}
+          className="mt-1 w-full rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 py-2 text-sm font-medium transition-colors"
         >
-          {STATUS_ACTION[item.status]}
+          {pending ? "..." : STATUS_ACTION[item.status]}
         </button>
       )}
     </div>

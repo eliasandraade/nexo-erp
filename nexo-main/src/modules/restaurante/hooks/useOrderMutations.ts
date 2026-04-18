@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   openOrder,
   addOrderItem,
@@ -33,6 +34,7 @@ export function useOpenOrder(storeId: string) {
   return useMutation({
     mutationFn: (req: OpenOrderRequest) => openOrder(req),
     onSuccess: invalidate,
+    onError: () => toast.error("Erro ao abrir comanda. Tente novamente."),
   });
 }
 
@@ -44,6 +46,7 @@ export function useAddItem(storeId: string) {
     mutationFn: ({ orderId, req }: { orderId: string; req: AddOrderItemRequest }) =>
       addOrderItem(orderId, req),
     onSuccess: invalidate,
+    onError: () => toast.error("Erro ao adicionar item. Tente novamente."),
   });
 }
 
@@ -62,6 +65,7 @@ export function useUpdateItemStatus(storeId: string) {
       status: string;
     }) => updateItemStatus(orderId, itemId, status),
     onSuccess: invalidate,
+    onError: () => toast.error("Erro ao atualizar status. Tente novamente."),
   });
 }
 
@@ -72,6 +76,7 @@ export function useCloseOrder(storeId: string) {
   return useMutation({
     mutationFn: (orderId: string) => closeOrder(orderId),
     onSuccess: invalidate,
+    onError: () => toast.error("Erro ao fechar a conta. Tente novamente."),
   });
 }
 
@@ -89,6 +94,7 @@ export function usePayOrder(storeId: string) {
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["cash"] });
     },
+    onError: () => toast.error("Erro ao processar pagamento. Tente novamente."),
   });
 }
 
@@ -99,5 +105,6 @@ export function useCancelOrder(storeId: string) {
   return useMutation({
     mutationFn: (orderId: string) => cancelOrder(orderId),
     onSuccess: invalidate,
+    onError: () => toast.error("Erro ao cancelar comanda. Tente novamente."),
   });
 }
