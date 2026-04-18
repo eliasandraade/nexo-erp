@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
@@ -505,7 +506,7 @@ public class PlatformController : ControllerBase
             checks = new[]
             {
                 new { name = "database", status = dbOk ? "healthy" : "unhealthy", latencyMs = dbLatMs },
-                new { name = "api",      status = "healthy",                       latencyMs = 0L      },
+                new { name = "api",      status = "healthy",                       latencyMs = 1L      },
             }
         });
     }
@@ -515,11 +516,12 @@ public class PlatformController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────
 
     [HttpGet("system/endpoints")]
-    public IActionResult GetEndpoints([FromServices] IEnumerable<ControllerActionDescriptor> descriptors)
+    public IActionResult GetEndpoints([FromServices] IActionDescriptorCollectionProvider provider)
     {
         if (!IsPlatformUser()) return Forbid();
 
-        var endpoints = descriptors
+        var endpoints = provider.ActionDescriptors.Items
+            .OfType<ControllerActionDescriptor>()
             .Where(d => d.AttributeRouteInfo?.Template is not null)
             .Select(d =>
             {
@@ -528,16 +530,19 @@ public class PlatformController : ControllerBase
                     .SelectMany(c => c.HttpMethods)
                     .ToArray() ?? Array.Empty<string>();
 
+                // Extract XML summary from [HttpGet/Post/...] or method attributes
+                var xmlDoc = d.MethodInfo
+                    .GetCustomAttributes(typeof(System.ComponentModel.DescriptionAttribute), false)
+                    .Cast<System.ComponentModel.DescriptionAttribute>()
+                    .FirstOrDefault()?.Description ?? "";
+
                 return new
                 {
                     method      = methods.FirstOrDefault() ?? "GET",
-                    path        = "/" + d.AttributeRouteInfo!.Template,
+                    path        = "/api/" + d.AttributeRouteInfo!.Template,
                     controller  = d.ControllerName,
                     action      = d.ActionName,
-                    description = d.MethodInfo
-                        .GetCustomAttributes(typeof(System.ComponentModel.DescriptionAttribute), false)
-                        .Cast<System.ComponentModel.DescriptionAttribute>()
-                        .FirstOrDefault()?.Description ?? "",
+                    description = xmlDoc,
                 };
             })
             .OrderBy(e => e.path)

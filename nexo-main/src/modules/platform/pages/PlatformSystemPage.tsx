@@ -51,7 +51,9 @@ function EndpointRow({ endpoint }: { endpoint: ApiEndpoint }) {
     setResult(null);
     const t0 = Date.now();
     try {
-      const body = await apiClient.get<unknown>(endpoint.path.replace("/api", ""));
+      // apiClient prepends the base URL which already has /api — strip it
+      const relPath = endpoint.path.replace(/^\/api/, "");
+      const body = await apiClient.get<unknown>(relPath);
       setResult({ status: 200, body: JSON.stringify(body, null, 2), latencyMs: Date.now() - t0 });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -188,7 +190,7 @@ export default function PlatformSystemPage() {
                       <span className="text-sm text-foreground capitalize">{c.name}</span>
                     </div>
                     <span className="text-xs text-muted-foreground tabular-nums">
-                      {c.latencyMs > 0 ? `${c.latencyMs}ms` : "—"}
+                      {c.latencyMs > 1 ? `${c.latencyMs}ms` : c.latencyMs === 1 ? "< 1ms" : "—"}
                     </span>
                   </div>
                 ))}

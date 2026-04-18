@@ -116,7 +116,7 @@ export default function PlatformDashboardPage() {
                     <span className="text-sm text-foreground capitalize">{c.name}</span>
                   </div>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {c.latencyMs > 0 ? `${c.latencyMs}ms` : "—"}
+                    {c.latencyMs > 1 ? `${c.latencyMs}ms` : c.latencyMs === 1 ? "< 1ms" : "—"}
                   </span>
                 </div>
               ))}
