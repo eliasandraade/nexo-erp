@@ -1,4 +1,4 @@
-const SIGNUP_URL = "https://app.orken.com.br/auth/register";
+const SIGNUP_URL = "https://app.orken.com.br/register";
 
 export function LandingCtaBlock() {
   return (

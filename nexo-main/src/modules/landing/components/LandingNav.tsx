@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 
-const SIGNUP_URL = "https://app.orken.com.br/auth/register";
+const SIGNUP_URL = "https://app.orken.com.br/register";
 
 const NAV_LINKS = [
   { label: "Como funciona", href: "#como-funciona" },

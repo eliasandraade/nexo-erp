@@ -1,5 +1,5 @@
-const SIGNUP_URL = "https://app.orken.com.br/auth/register";
-const LOGIN_URL  = "https://app.orken.com.br/auth/login";
+const SIGNUP_URL = "https://app.orken.com.br/register";
+const LOGIN_URL  = "https://app.orken.com.br/login";
 
 export function LandingFooter() {
   return (
