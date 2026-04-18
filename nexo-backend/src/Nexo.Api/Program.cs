@@ -57,11 +57,14 @@ try
                 ValidateLifetime         = true,
                 ValidateIssuerSigningKey = true,
                 ValidIssuer              = builder.Configuration["Jwt:Issuer"]   ?? "nexo-api",
-                // Only accept access tokens (audience "nexo-frontend") as Bearer.
-                // Refresh tokens have audience "nexo-refresh" and are validated
-                // exclusively by JwtTokenService.ValidateRefreshToken() inside
-                // AuthService.RefreshAsync() — they never pass through this middleware.
-                ValidAudience            = builder.Configuration["Jwt:Audience"] ?? "nexo-frontend",
+                // Accept tenant access tokens ("nexo-frontend") and platform admin
+                // tokens ("nexo-platform"). Refresh tokens ("nexo-refresh") are
+                // validated exclusively by JwtTokenService.ValidateRefreshToken().
+                ValidAudiences           = new[]
+                {
+                    builder.Configuration["Jwt:Audience"]         ?? "nexo-frontend",
+                    builder.Configuration["Jwt:PlatformAudience"] ?? "nexo-platform",
+                },
                 IssuerSigningKey         = new SymmetricSecurityKey(
                                                Encoding.UTF8.GetBytes(jwtSecret)),
                 ClockSkew                = TimeSpan.FromMinutes(1),
