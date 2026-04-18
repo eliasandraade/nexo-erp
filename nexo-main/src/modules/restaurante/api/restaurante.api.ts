@@ -21,12 +21,24 @@ export const updateFoodSettings = (
   apiClient.put<FoodServiceSettingsDto>("/restaurante/settings", req);
 
 // ── Areas ─────────────────────────────────────────────────────────────────────
-export const listAreas = (): Promise<AreaDto[]> =>
-  apiClient.get<AreaDto[]>("/restaurante/areas");
+export const listAreas = (includeInactive = false): Promise<AreaDto[]> =>
+  apiClient.get<AreaDto[]>(`/restaurante/areas?includeInactive=${includeInactive}`);
+
+export const createArea = (req: { name: string; description?: string }): Promise<AreaDto> =>
+  apiClient.post<AreaDto>("/restaurante/areas", req);
+
+export const updateArea = (id: string, req: { name: string; description?: string; isActive: boolean }): Promise<AreaDto> =>
+  apiClient.put<AreaDto>(`/restaurante/areas/${id}`, req);
 
 // ── Tables ────────────────────────────────────────────────────────────────────
-export const listTables = (): Promise<TableDto[]> =>
-  apiClient.get<TableDto[]>("/restaurante/tables");
+export const listTables = (includeInactive = false): Promise<TableDto[]> =>
+  apiClient.get<TableDto[]>(`/restaurante/tables?includeInactive=${includeInactive}`);
+
+export const createTable = (req: { areaId: string; number: string; capacity: number }): Promise<TableDto> =>
+  apiClient.post<TableDto>("/restaurante/tables", req);
+
+export const updateTable = (id: string, req: { areaId: string; number: string; capacity: number; isActive: boolean }): Promise<TableDto> =>
+  apiClient.put<TableDto>(`/restaurante/tables/${id}`, req);
 
 export const getTableOrders = (tableId: string): Promise<OrderDto[]> =>
   apiClient.get<OrderDto[]>(`/restaurante/tables/${tableId}/orders`);

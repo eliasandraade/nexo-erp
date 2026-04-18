@@ -5,7 +5,7 @@ namespace Nexo.Application.Modules.Restaurante;
 // ═══════════════════════════════════════════════════════════
 
 public record CreateAreaRequest(string Name, string? Description = null);
-public record UpdateAreaRequest(string Name, string? Description = null);
+public record UpdateAreaRequest(string Name, string? Description = null, bool IsActive = true);
 
 public record AreaDto(
     Guid Id, string Name, string? Description,
@@ -16,7 +16,7 @@ public record AreaDto(
 // ═══════════════════════════════════════════════════════════
 
 public record CreateTableRequest(Guid AreaId, string Number, int Capacity = 4);
-public record UpdateTableRequest(Guid AreaId, string Number, int Capacity);
+public record UpdateTableRequest(Guid AreaId, string Number, int Capacity, bool IsActive = true);
 public record UpdateTableStatusRequest(string Status);  // "Available"|"Reserved"|"Maintenance"
 
 public record TableDto(

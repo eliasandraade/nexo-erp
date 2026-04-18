@@ -42,6 +42,7 @@ public class AreaService
         var area = await _areas.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("Area", id);
         area.Update(request.Name, request.Description);
+        if (request.IsActive) area.Activate(); else area.Deactivate();
         await _areas.SaveChangesAsync(ct);
         return Map(area);
     }

@@ -46,9 +46,10 @@ import PdvPage from "@/modules/sales/pages/PdvPage";
 // Restaurante module pages + layouts
 import { WaiterLayout }  from "@/app/layouts/WaiterLayout";
 import { KitchenLayout } from "@/app/layouts/KitchenLayout";
-import FloorPage   from "@/modules/restaurante/pages/FloorPage";
-import OrderPage   from "@/modules/restaurante/pages/OrderPage";
-import KitchenPage from "@/modules/restaurante/pages/KitchenPage";
+import FloorPage            from "@/modules/restaurante/pages/FloorPage";
+import OrderPage            from "@/modules/restaurante/pages/OrderPage";
+import KitchenPage          from "@/modules/restaurante/pages/KitchenPage";
+import RestauranteSetupPage from "@/modules/restaurante/pages/RestauranteSetupPage";
 
 /**
  * AuthProvider lives inside BrowserRouter so it can call useNavigate() for
@@ -91,6 +92,10 @@ export function AppRouter() {
               </Route>
               <Route element={<KitchenLayout />}>
                 <Route path="/restaurante/cozinha" element={<KitchenPage />} />
+              </Route>
+              {/* Setup — with main sidebar */}
+              <Route element={<MainAppLayout />}>
+                <Route path="/restaurante/configurar" element={<RestauranteSetupPage />} />
               </Route>
             </Route>
           </Route>

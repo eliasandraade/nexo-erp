@@ -58,6 +58,7 @@ public class TableService
             ?? throw new NotFoundException("Area", request.AreaId);
 
         table.Update(request.Number, request.Capacity, request.AreaId);
+        if (request.IsActive) table.Activate(); else table.Deactivate();
         await _tables.SaveChangesAsync(ct);
         return Map(table);
     }
