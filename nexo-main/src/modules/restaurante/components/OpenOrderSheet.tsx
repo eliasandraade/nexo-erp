@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -24,11 +24,21 @@ const ORDER_TYPES: { value: OrderType; label: string }[] = [
 export function OpenOrderSheet({
   open, tableNumber, onClose, onSubmit, isLoading
 }: OpenOrderSheetProps) {
-  const defaultType: OrderType = tableNumber ? "DineIn" : "Counter";
-  const [orderType, setOrderType] = useState<OrderType>(defaultType);
+  const [orderType, setOrderType] = useState<OrderType>(tableNumber ? "DineIn" : "Counter");
   const [partySize, setPartySize] = useState("");
 
+  // Reset state every time the sheet opens or the selected table changes
+  useEffect(() => {
+    if (open) {
+      setOrderType(tableNumber ? "DineIn" : "Counter");
+      setPartySize("");
+    }
+  }, [open, tableNumber]);
+
+  const canSubmit = orderType !== "DineIn" || !!tableNumber;
+
   const handleSubmit = () => {
+    if (!canSubmit) return;
     const ps = partySize ? parseInt(partySize, 10) : null;
     onSubmit(orderType, ps);
   };
@@ -73,10 +83,16 @@ export function OpenOrderSheet({
           />
         </div>
 
+        {orderType === "DineIn" && !tableNumber && (
+          <p className="text-xs text-destructive mb-3 text-center">
+            Selecione uma mesa no salão para abrir comanda de mesa.
+          </p>
+        )}
+
         <Button
           className="w-full h-12 text-base"
           onClick={handleSubmit}
-          disabled={isLoading}
+          disabled={isLoading || !canSubmit}
         >
           {isLoading ? "Abrindo..." : "Abrir comanda"}
         </Button>
