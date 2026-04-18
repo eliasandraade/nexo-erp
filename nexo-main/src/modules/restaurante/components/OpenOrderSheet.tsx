@@ -3,7 +3,6 @@ import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { OrderType } from "../types";
 
@@ -16,83 +15,105 @@ interface OpenOrderSheetProps {
 }
 
 const ORDER_TYPES: { value: OrderType; label: string }[] = [
-  { value: "DineIn",   label: "Mesa" },
   { value: "Counter",  label: "Balcão" },
   { value: "Takeaway", label: "Retirada" },
 ];
 
-export function OpenOrderSheet({
-  open, tableNumber, onClose, onSubmit, isLoading
-}: OpenOrderSheetProps) {
-  const [orderType, setOrderType] = useState<OrderType>(tableNumber ? "DineIn" : "Counter");
-  const [partySize, setPartySize] = useState("");
+// Stepper for party size — faster than typing on mobile under pressure
+function PartyStepper({
+  value, onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={() => onChange(Math.max(1, value - 1))}
+        disabled={value <= 1}
+        className="h-11 w-11 rounded-lg border border-border flex items-center justify-center text-foreground disabled:opacity-30 hover:bg-muted transition-colors text-xl leading-none"
+      >
+        –
+      </button>
+      <span className="text-xl font-semibold w-8 text-center tabular-nums">{value}</span>
+      <button
+        type="button"
+        onClick={() => onChange(value + 1)}
+        className="h-11 w-11 rounded-lg border border-border flex items-center justify-center text-foreground hover:bg-muted transition-colors text-xl leading-none"
+      >
+        +
+      </button>
+    </div>
+  );
+}
 
-  // Reset state every time the sheet opens or the selected table changes
+export function OpenOrderSheet({
+  open, tableNumber, onClose, onSubmit, isLoading,
+}: OpenOrderSheetProps) {
+  const tableMode = !!tableNumber;
+
+  const [orderType, setOrderType] = useState<OrderType>(tableMode ? "DineIn" : "Counter");
+  const [partySize, setPartySize] = useState(1);
+
   useEffect(() => {
     if (open) {
-      setOrderType(tableNumber ? "DineIn" : "Counter");
-      setPartySize("");
+      setOrderType(tableMode ? "DineIn" : "Counter");
+      setPartySize(1);
     }
-  }, [open, tableNumber]);
-
-  const canSubmit = orderType !== "DineIn" || !!tableNumber;
+  }, [open, tableMode]);
 
   const handleSubmit = () => {
-    if (!canSubmit) return;
-    const ps = partySize ? parseInt(partySize, 10) : null;
-    onSubmit(orderType, ps);
+    onSubmit(orderType, partySize > 0 ? partySize : null);
   };
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
       <SheetContent side="bottom" className="rounded-t-2xl pb-8">
-        <SheetHeader className="mb-4">
+        <SheetHeader className="mb-5">
           <SheetTitle>
-            {tableNumber ? `Abrir comanda — Mesa ${tableNumber}` : "Nova comanda"}
+            {tableMode ? `Mesa ${tableNumber}` : "Nova comanda"}
           </SheetTitle>
+          {tableMode && (
+            <p className="text-sm text-muted-foreground -mt-1">
+              Abrindo comanda de mesa
+            </p>
+          )}
         </SheetHeader>
 
-        <div className="flex gap-2 mb-4">
-          {ORDER_TYPES.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setOrderType(t.value)}
-              className={cn(
-                "flex-1 rounded-lg py-2 text-sm font-medium border transition-colors",
-                orderType === t.value
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground"
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="mb-6">
-          <label className="text-sm text-muted-foreground mb-1 block">
-            Pessoas (opcional)
-          </label>
-          <Input
-            type="number"
-            min={1}
-            placeholder="Ex: 4"
-            value={partySize}
-            onChange={(e) => setPartySize(e.target.value)}
-            className="w-full"
-          />
-        </div>
-
-        {orderType === "DineIn" && !tableNumber && (
-          <p className="text-xs text-destructive mb-3 text-center">
-            Selecione uma mesa no salão para abrir comanda de mesa.
-          </p>
+        {/* Type selector — only shown when no table is pre-selected */}
+        {!tableMode && (
+          <div className="flex gap-2 mb-5">
+            {ORDER_TYPES.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setOrderType(t.value)}
+                className={cn(
+                  "flex-1 rounded-lg py-2.5 text-sm font-medium border transition-colors",
+                  orderType === t.value
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground"
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         )}
+
+        {/* Party size stepper */}
+        <div className="mb-6">
+          <label className="text-sm text-muted-foreground mb-3 block">
+            Número de pessoas
+            <span className="ml-1 text-xs opacity-60">(opcional)</span>
+          </label>
+          <PartyStepper value={partySize} onChange={setPartySize} />
+        </div>
 
         <Button
           className="w-full h-12 text-base"
           onClick={handleSubmit}
-          disabled={isLoading || !canSubmit}
+          disabled={isLoading}
         >
           {isLoading ? "Abrindo..." : "Abrir comanda"}
         </Button>

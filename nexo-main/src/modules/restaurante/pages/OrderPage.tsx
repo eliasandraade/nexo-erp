@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { OrderItemRow } from "../components/OrderItemRow";
@@ -200,18 +201,18 @@ export default function OrderPage() {
               </div>
             </div>
           ) : (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive border-destructive/40 hover:bg-destructive/5 px-3 text-xs"
+            <div className="flex items-center gap-3">
+              {/* Destructive trigger — ghost, clearly secondary, no competing border */}
+              <button
                 onClick={() => setConfirmState("cancel")}
                 disabled={cancelMut.isPending}
+                className="text-sm text-destructive/70 hover:text-destructive disabled:opacity-40 transition-colors whitespace-nowrap"
               >
                 Cancelar comanda
-              </Button>
+              </button>
+              {/* Primary CTA — full weight, full height */}
               <Button
-                className="flex-1 h-12"
+                className="flex-1 h-12 text-base"
                 onClick={() => setConfirmState("close")}
                 disabled={!hasActiveItems || closeOrderMut.isPending}
               >
@@ -228,7 +229,12 @@ export default function OrderPage() {
         onAdd={(req: AddOrderItemRequest) =>
           addItemMut.mutate(
             { orderId: order.id, req },
-            { onSuccess: () => setAddDrawerOpen(false) }
+            {
+              onSuccess: () => {
+                toast.success("Item adicionado à comanda");
+                setAddDrawerOpen(false);
+              },
+            }
           )
         }
         isLoading={addItemMut.isPending}

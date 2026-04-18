@@ -15,12 +15,25 @@ const STATUS_ACTION: Record<string, string> = {
   Ready:     "Entregue",
 };
 
-function elapsed(since: string | null): { label: string; color: string } {
-  if (!since) return { label: "", color: "text-gray-400" };
+function elapsed(since: string | null): { mins: number; label: string; textColor: string } {
+  if (!since) return { mins: 0, label: "", textColor: "text-gray-400" };
   const mins = Math.floor((Date.now() - new Date(since).getTime()) / 60_000);
-  const label = mins < 1 ? "<1 min" : `${mins} min`;
-  const color = mins < 5 ? "text-green-400" : mins < 10 ? "text-amber-400" : "text-red-400";
-  return { label, color };
+  const label     = mins < 1 ? "<1 min" : `${mins} min`;
+  const textColor = mins < 5 ? "text-green-400" : mins < 10 ? "text-amber-400" : "text-red-400";
+  return { mins, label, textColor };
+}
+
+// Card border + background vary with status and urgency
+function cardStyle(status: string, mins: number): string {
+  if (status === "Ready") {
+    // Ready cards get a green tint — waiting to be picked up
+    return "border-green-500/50 bg-green-950/20";
+  }
+  if (status === "Preparing") {
+    if (mins >= 15) return "border-red-500/60 bg-red-950/15";  // critically late
+    if (mins >= 10) return "border-amber-500/40";               // running late
+  }
+  return "border-gray-700"; // default
 }
 
 export function KitchenCard({
@@ -29,10 +42,10 @@ export function KitchenCard({
   item: KitchenItem;
   storeId: string;
 }) {
-  const updateMut          = useUpdateItemStatus(storeId);
+  const updateMut             = useUpdateItemStatus(storeId);
   const [pending, setPending] = useState(false);
-  const { label, color }   = elapsed(item.sentToKitchenAt);
-  const nextStatus         = STATUS_SEQUENCE[item.status];
+  const { mins, label, textColor } = elapsed(item.sentToKitchenAt);
+  const nextStatus            = STATUS_SEQUENCE[item.status];
 
   const handleAdvance = async () => {
     if (!nextStatus || pending) return;
@@ -49,14 +62,23 @@ export function KitchenCard({
   };
 
   return (
-    <div className="bg-gray-900 rounded-xl p-4 border border-gray-700 flex flex-col gap-2">
+    <div className={cn(
+      "bg-gray-900 rounded-xl p-4 border-2 flex flex-col gap-2 transition-colors",
+      cardStyle(item.status, mins),
+    )}>
+      {/* Meta row */}
       <div className="flex justify-between items-start">
         <span className="text-xs text-gray-400">
           {item.tableNumber ? `Mesa ${item.tableNumber}` : item.orderType} · #{item.orderNumber}
         </span>
-        {label && <span className={cn("text-xs font-medium", color)}>{label}</span>}
+        {label && (
+          <span className={cn("text-xs font-semibold tabular-nums", textColor)}>
+            {label}
+          </span>
+        )}
       </div>
 
+      {/* Product */}
       <p className="text-lg font-bold leading-tight">
         {item.quantity}× {item.productName}
       </p>
@@ -71,11 +93,17 @@ export function KitchenCard({
         <p className="text-sm text-amber-300 italic">"{item.notes}"</p>
       )}
 
+      {/* Action button */}
       {nextStatus && (
         <button
           onClick={handleAdvance}
           disabled={pending}
-          className="mt-1 w-full rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 py-2 text-sm font-medium transition-colors"
+          className={cn(
+            "mt-1 w-full rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50",
+            item.status === "Ready"
+              ? "bg-green-700/60 hover:bg-green-700/80"
+              : "bg-gray-700 hover:bg-gray-600"
+          )}
         >
           {pending ? "..." : STATUS_ACTION[item.status]}
         </button>
