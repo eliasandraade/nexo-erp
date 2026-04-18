@@ -17,6 +17,16 @@ export default {
         sans: ["Inter", "system-ui", "sans-serif"],
       },
       colors: {
+        // ── Orken brand colors (landing page design system) ──────────────────
+        orken: {
+          indigo:      "#5B4DFF",
+          "indigo-dark": "#4338CA",
+          "indigo-soft": "#E9E7FF",
+          navy:        "#0B1020",
+          graphite:    "#111827",
+          slate:       "#475569",
+          cloud:       "#F8FAFC",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
