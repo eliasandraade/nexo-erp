@@ -10,6 +10,8 @@ import { PlatformRoute } from "./PlatformRoute";
 import PlatformDashboardPage from "@/modules/platform/pages/PlatformDashboardPage";
 import PlatformTenantsPage from "@/modules/platform/pages/PlatformTenantsPage";
 import PlatformTenantDetailPage from "@/modules/platform/pages/PlatformTenantDetailPage";
+import PlatformSystemPage from "@/modules/platform/pages/PlatformSystemPage";
+import ImpersonatePage from "@/pages/ImpersonatePage";
 import LandingPage from "@/modules/landing/pages/LandingPage";
 
 // Auth pages
@@ -64,6 +66,9 @@ export function AppRouter() {
         <Routes>
           {/* Public: landing page */}
           <Route path="/" element={<LandingPage />} />
+
+          {/* Public: impersonation entry (opened in new tab by platform admin) */}
+          <Route path="/impersonate" element={<ImpersonatePage />} />
 
           {/* Public: auth pages */}
           <Route element={<AuthLayout />}>
@@ -135,6 +140,7 @@ export function AppRouter() {
               <Route path="/platform" element={<PlatformDashboardPage />} />
               <Route path="/platform/tenants" element={<PlatformTenantsPage />} />
               <Route path="/platform/tenants/:tenantId" element={<PlatformTenantDetailPage />} />
+              <Route path="/platform/system" element={<PlatformSystemPage />} />
             </Route>
           </Route>
 
