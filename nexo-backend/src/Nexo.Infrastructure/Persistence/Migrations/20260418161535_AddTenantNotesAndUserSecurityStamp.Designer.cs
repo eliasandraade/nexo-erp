@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexo.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    partial class NexoDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260418161535_AddTenantNotesAndUserSecurityStamp")]
+    partial class AddTenantNotesAndUserSecurityStamp
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1681,60 +1684,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("users", "nexo");
                 });
 
-            modelBuilder.Entity("Nexo.Domain.Entities.UserSession", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("ExpiresAt")
-                        .HasColumnType("timestamptz");
-
-                    b.Property<string>("IpAddress")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)");
-
-                    b.Property<bool>("IsRevoked")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
-                    b.Property<DateTime>("LastUsedAt")
-                        .HasColumnType("timestamptz");
-
-                    b.Property<string>("RefreshJti")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("UserAgent")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("RefreshJti")
-                        .IsUnique();
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("TenantId", "IsRevoked");
-
-                    b.ToTable("user_sessions", "nexo");
-                });
-
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.FoodServiceSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3045,17 +2994,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasOne("Nexo.Domain.Entities.Tenant", "Tenant")
                         .WithMany()
                         .HasForeignKey("TenantId1");
-
-                    b.Navigation("Tenant");
-                });
-
-            modelBuilder.Entity("Nexo.Domain.Entities.UserSession", b =>
-                {
-                    b.HasOne("Nexo.Domain.Entities.Tenant", "Tenant")
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
 
                     b.Navigation("Tenant");
                 });

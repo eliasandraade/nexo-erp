@@ -25,6 +25,13 @@ public class User : TenantEntity
     public DateTime? LastAccessAt { get; private set; }
     public DateTime? PasswordChangedAt { get; private set; }
 
+    /// <summary>
+    /// Opaque stamp that changes on password reset or force-logout.
+    /// Included in JWT claims. If the stored stamp differs from the token's,
+    /// the session is considered revoked.
+    /// </summary>
+    public string SecurityStamp { get; private set; } = Guid.NewGuid().ToString("N");
+
     // Navigation
     public Tenant? Tenant { get; private set; }
 
@@ -93,6 +100,16 @@ public class User : TenantEntity
     public void RecordAccess()
     {
         LastAccessAt = DateTime.UtcNow;
+        SetUpdatedAt();
+    }
+
+    /// <summary>
+    /// Rotates the SecurityStamp, invalidating all existing JWTs for this user.
+    /// Call on password reset or forced logout.
+    /// </summary>
+    public void BumpSecurityStamp()
+    {
+        SecurityStamp = Guid.NewGuid().ToString("N");
         SetUpdatedAt();
     }
 

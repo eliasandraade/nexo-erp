@@ -24,12 +24,14 @@ public class PlatformController : ControllerBase
     private readonly NexoDbContext _db;
     private readonly IJwtTokenService _jwt;
     private readonly IPasswordHasher _hasher;
+    private readonly ICacheService _cache;
 
-    public PlatformController(NexoDbContext db, IJwtTokenService jwt, IPasswordHasher hasher)
+    public PlatformController(NexoDbContext db, IJwtTokenService jwt, IPasswordHasher hasher, ICacheService cache)
     {
         _db     = db;
         _jwt    = jwt;
         _hasher = hasher;
+        _cache  = cache;
     }
 
     private bool IsPlatformUser() =>
@@ -550,5 +552,339 @@ public class PlatformController : ControllerBase
             .ToList();
 
         return Ok(endpoints);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // AUDIT LOG
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns audit records, optionally filtered by tenant, action type, severity, or free-text.
+    /// Returns the 200 most recent records when no filters are applied.
+    /// </summary>
+    [HttpGet("audit")]
+    public async Task<IActionResult> GetAuditLog(
+        [FromQuery] Guid? tenantId,
+        [FromQuery] string? search,
+        [FromQuery] string? severity,
+        [FromQuery] string? actionType,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        page     = Math.Max(page, 1);
+
+        var query = _db.AuditRecords
+            .IgnoreQueryFilters()
+            .AsQueryable();
+
+        if (tenantId.HasValue)
+            query = query.Where(a => a.TenantId == tenantId);
+
+        if (!string.IsNullOrWhiteSpace(severity))
+            query = query.Where(a => a.Severity == severity.ToLowerInvariant());
+
+        if (!string.IsNullOrWhiteSpace(actionType))
+            query = query.Where(a => a.ActionType == actionType.ToLowerInvariant());
+
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(a =>
+                a.Description.Contains(search) ||
+                (a.ActorName != null && a.ActorName.Contains(search)) ||
+                a.ActionType.Contains(search) ||
+                a.EntityType.Contains(search));
+
+        var total = await query.CountAsync(ct);
+
+        var records = await query
+            .OrderByDescending(a => a.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(a => new
+            {
+                id          = a.Id,
+                tenantId    = a.TenantId,
+                actionType  = a.ActionType,
+                severity    = a.Severity,
+                actorId     = a.ActorId,
+                actorName   = a.ActorName,
+                actorType   = a.ActorType,
+                entityType  = a.EntityType,
+                entityId    = a.EntityId,
+                description = a.Description,
+                ipAddress   = a.IpAddress,
+                createdAt   = a.CreatedAt,
+            })
+            .ToListAsync(ct);
+
+        return Ok(new { total, page, pageSize, records });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TENANT NOTES (internal CRM)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [HttpGet("tenants/{tenantId:guid}/notes")]
+    public async Task<IActionResult> GetNotes(Guid tenantId, CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var notes = await _db.TenantNotes
+            .Where(n => n.TenantId == tenantId)
+            .OrderByDescending(n => n.CreatedAt)
+            .Select(n => new
+            {
+                id           = n.Id,
+                content      = n.Content,
+                authorName   = n.AuthorName,
+                authorId     = n.AuthorId,
+                isPinned     = n.IsPinned,
+                createdAt    = n.CreatedAt,
+            })
+            .ToListAsync(ct);
+
+        return Ok(notes);
+    }
+
+    public record CreateNoteRequest(string Content, bool IsPinned = false);
+
+    [HttpPost("tenants/{tenantId:guid}/notes")]
+    public async Task<IActionResult> CreateNote(Guid tenantId, [FromBody] CreateNoteRequest req, CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var platformUserId   = GetPlatformUserId();
+        var platformUserEmail = User.FindFirstValue(ClaimTypes.Email)
+                                ?? User.FindFirstValue("email") ?? "admin";
+
+        var note = TenantNote.Create(tenantId, req.Content, platformUserId, platformUserEmail, req.IsPinned);
+        _db.TenantNotes.Add(note);
+        await _db.SaveChangesAsync(ct);
+
+        return CreatedAtAction(nameof(GetNotes), new { tenantId }, new { id = note.Id });
+    }
+
+    [HttpDelete("tenants/{tenantId:guid}/notes/{noteId:guid}")]
+    public async Task<IActionResult> DeleteNote(Guid tenantId, Guid noteId, CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var note = await _db.TenantNotes.FirstOrDefaultAsync(n => n.Id == noteId && n.TenantId == tenantId, ct);
+        if (note is null) return NotFound();
+
+        _db.TenantNotes.Remove(note);
+        await _db.SaveChangesAsync(ct);
+
+        return NoContent();
+    }
+
+    [HttpPatch("tenants/{tenantId:guid}/notes/{noteId:guid}/pin")]
+    public async Task<IActionResult> TogglePin(Guid tenantId, Guid noteId, CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var note = await _db.TenantNotes.FirstOrDefaultAsync(n => n.Id == noteId && n.TenantId == tenantId, ct);
+        if (note is null) return NotFound();
+
+        note.TogglePin();
+        await _db.SaveChangesAsync(ct);
+
+        return NoContent();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PASSWORD RESET
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public record ResetPasswordRequest(string NewPassword);
+
+    [HttpPost("tenants/{tenantId:guid}/users/{userId:guid}/reset-password")]
+    public async Task<IActionResult> ResetPassword(
+        Guid tenantId, Guid userId,
+        [FromBody] ResetPasswordRequest req,
+        CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
+            return BadRequest(new { error = "Senha deve ter pelo menos 6 caracteres." });
+
+        var user = await _db.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+
+        if (user is null) return NotFound();
+
+        var hash = _hasher.Hash(req.NewPassword);
+        user.ChangePasswordHash(hash, clearRequireChange: false);
+        user.BumpSecurityStamp();
+
+        // Purge all active sessions for this user from Redis + DB
+        await RevokeUserSessionsAsync(userId, ct);
+
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // FORCE LOGOUT (session revocation via SecurityStamp)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [HttpPost("tenants/{tenantId:guid}/users/{userId:guid}/force-logout")]
+    public async Task<IActionResult> ForceLogout(Guid tenantId, Guid userId, CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var user = await _db.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+
+        if (user is null) return NotFound();
+
+        user.BumpSecurityStamp();
+        await RevokeUserSessionsAsync(userId, ct);
+        await _db.SaveChangesAsync(ct);
+
+        return NoContent();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // SESSIONS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Lists active (non-expired, non-revoked) sessions for a user.</summary>
+    [HttpGet("tenants/{tenantId:guid}/users/{userId:guid}/sessions")]
+    public async Task<IActionResult> GetSessions(Guid tenantId, Guid userId, CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var sessions = await _db.UserSessions
+            .IgnoreQueryFilters()
+            .Where(s => s.UserId == userId
+                     && s.TenantId == tenantId
+                     && !s.IsRevoked
+                     && s.ExpiresAt > DateTime.UtcNow)
+            .OrderByDescending(s => s.LastUsedAt)
+            .Select(s => new
+            {
+                id          = s.Id,
+                ipAddress   = s.IpAddress,
+                userAgent   = s.UserAgent,
+                lastUsedAt  = s.LastUsedAt,
+                createdAt   = s.CreatedAt,
+                expiresAt   = s.ExpiresAt,
+            })
+            .ToListAsync(ct);
+
+        return Ok(sessions);
+    }
+
+    /// <summary>
+    /// Revokes ALL sessions for a user: bumps SecurityStamp, removes refresh tokens
+    /// from Redis, and marks DB session rows as revoked.
+    /// </summary>
+    [HttpDelete("tenants/{tenantId:guid}/users/{userId:guid}/sessions")]
+    public async Task<IActionResult> RevokeAllSessions(Guid tenantId, Guid userId, CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var user = await _db.Users
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == userId && u.TenantId == tenantId, ct);
+
+        if (user is null) return NotFound();
+
+        user.BumpSecurityStamp();
+        await RevokeUserSessionsAsync(userId, ct);
+        await _db.SaveChangesAsync(ct);
+
+        return NoContent();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // TRIAL EXPIRED
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns tenants whose trial period has expired (TrialEndsAt &lt; now)
+    /// or whose active subscriptions have a past CurrentPeriodEnd.
+    /// </summary>
+    [HttpGet("tenants/trial-expired")]
+    public async Task<IActionResult> GetTrialExpired(CancellationToken ct)
+    {
+        if (!IsPlatformUser()) return Forbid();
+
+        var now = DateTime.UtcNow;
+
+        // Tenants with explicit TrialEndsAt in the past
+        var trialExpired = await _db.Tenants
+            .IgnoreQueryFilters()
+            .Where(t => t.TrialEndsAt != null && t.TrialEndsAt < now && t.Status == TenantStatus.Active)
+            .Select(t => new
+            {
+                t.Id, t.CompanyName, t.TradeName, t.Email, t.Status,
+                t.TrialEndsAt, t.CreatedAt,
+                expiredDaysAgo = (int)Math.Floor((now - t.TrialEndsAt!.Value).TotalDays),
+                expiredReason  = "trial",
+            })
+            .ToListAsync(ct);
+
+        // Tenants with active subscriptions whose period has ended
+        var subExpired = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .Where(s => s.Status == SubscriptionStatus.Active
+                     && s.CurrentPeriodEnd != null
+                     && s.CurrentPeriodEnd < now)
+            .Join(_db.Tenants.IgnoreQueryFilters(),
+                  s => s.TenantId,
+                  t => t.Id,
+                  (s, t) => new
+                  {
+                      t.Id, t.CompanyName, t.TradeName, t.Email, t.Status,
+                      t.TrialEndsAt, t.CreatedAt,
+                      expiredDaysAgo = (int)Math.Floor((now - s.CurrentPeriodEnd!.Value).TotalDays),
+                      expiredReason  = "subscription:" + s.ModuleKey,
+                  })
+            .ToListAsync(ct);
+
+        // Merge, deduplicate by tenant id (keep most-expired entry)
+        var all = trialExpired
+            .Cast<dynamic>()
+            .Concat(subExpired.Cast<dynamic>())
+            .GroupBy(x => (Guid)x.Id)
+            .Select(g => g.OrderByDescending(x => (int)x.expiredDaysAgo).First())
+            .OrderByDescending(x => (int)x.expiredDaysAgo)
+            .ToList();
+
+        return Ok(all);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // PRIVATE HELPERS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Removes all active session Redis entries for a user and marks DB rows as revoked.
+    /// Does NOT save changes — caller must call SaveChangesAsync.
+    /// Also invalidates the SecurityStamp Redis cache so the middleware reloads from DB.
+    /// </summary>
+    private async Task RevokeUserSessionsAsync(Guid userId, CancellationToken ct)
+    {
+        var sessions = await _db.UserSessions
+            .IgnoreQueryFilters()
+            .Where(s => s.UserId == userId && !s.IsRevoked)
+            .ToListAsync(ct);
+
+        foreach (var s in sessions)
+        {
+            s.Revoke();
+            await _cache.RemoveAsync($"refresh:valid:{s.RefreshJti}", ct);
+        }
+
+        // Clear stamp cache so middleware reloads the new stamp from DB on next request
+        await _cache.RemoveAsync($"user:stamp:{userId}", ct);
     }
 }

@@ -11,6 +11,7 @@ public class AuthService
     private readonly IPasswordHasher _hasher;
     private readonly IJwtTokenService _jwt;
     private readonly ICacheService _cache;
+    private readonly ISessionStore _sessions;
 
     public AuthService(
         IUserRepository users,
@@ -18,21 +19,27 @@ public class AuthService
         IStoreRepository stores,
         IPasswordHasher hasher,
         IJwtTokenService jwt,
-        ICacheService cache)
+        ICacheService cache,
+        ISessionStore sessions)
     {
-        _users = users;
-        _tenants = tenants;
-        _stores = stores;
-        _hasher = hasher;
-        _jwt = jwt;
-        _cache = cache;
+        _users    = users;
+        _tenants  = tenants;
+        _stores   = stores;
+        _hasher   = hasher;
+        _jwt      = jwt;
+        _cache    = cache;
+        _sessions = sessions;
     }
 
     /// <summary>
     /// Authenticates a user and returns access + refresh tokens wrapped in LoginOutcome.
     /// Returns LoginOutcome.Fail with an error code if credentials are invalid or account is blocked/pending.
     /// </summary>
-    public async Task<LoginOutcome> LoginAsync(LoginRequest request, CancellationToken ct = default)
+    public async Task<LoginOutcome> LoginAsync(
+        LoginRequest request,
+        string? ipAddress = null,
+        string? userAgent = null,
+        CancellationToken ct = default)
     {
         var user = await _users.GetByLoginAsync(request.Login.Trim().ToLowerInvariant(), ct);
         if (user is null) return LoginOutcome.Fail("invalid_credentials");
@@ -73,6 +80,13 @@ public class AuthService
                 $"refresh:valid:{refreshClaims.Jti}",
                 new RefreshTokenEntry(user.Id, user.TenantId),
                 ttl, ct);
+
+            // Track session for platform admin visibility
+            await _sessions.CreateAsync(
+                user.Id, user.TenantId,
+                refreshClaims.Jti,
+                ipAddress, userAgent,
+                tokens.RefreshTokenExpiresAt, ct);
         }
 
         var session = new SessionDto(
@@ -98,7 +112,9 @@ public class AuthService
     /// Rotates a refresh token: validates the old one, issues a new access token.
     /// Returns null if the refresh token is invalid, expired, or already revoked.
     /// </summary>
-    public async Task<RefreshResponse?> RefreshAsync(RefreshTokenRequest request, CancellationToken ct = default)
+    public async Task<RefreshResponse?> RefreshAsync(
+        RefreshTokenRequest request,
+        CancellationToken ct = default)
     {
         var claims = _jwt.ValidateRefreshToken(request.RefreshToken);
         if (claims is null) return null;
@@ -137,6 +153,9 @@ public class AuthService
                 $"refresh:valid:{newClaims.Jti}",
                 new RefreshTokenEntry(user.Id, user.TenantId),
                 ttl, ct);
+
+            // Update session JTI so platform can still revoke if needed
+            await _sessions.TouchAsync(claims.Jti, newClaims.Jti, ct);
         }
 
         return new RefreshResponse(

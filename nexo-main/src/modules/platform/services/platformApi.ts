@@ -141,6 +141,43 @@ export async function forceLogout(tenantId: string, userId: string): Promise<voi
   await apiClient.post(`/platform/tenants/${tenantId}/users/${userId}/force-logout`, {});
 }
 
+// ─── Sessions ─────────────────────────────────────────────────────────────────
+
+export interface UserSessionDto {
+  id: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  lastUsedAt: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export async function fetchUserSessions(tenantId: string, userId: string): Promise<UserSessionDto[]> {
+  return apiClient.get<UserSessionDto[]>(`/platform/tenants/${tenantId}/users/${userId}/sessions`);
+}
+
+export async function revokeAllSessions(tenantId: string, userId: string): Promise<void> {
+  await apiClient.delete(`/platform/tenants/${tenantId}/users/${userId}/sessions`);
+}
+
+// ─── Trial expired ────────────────────────────────────────────────────────────
+
+export interface TrialExpiredTenant {
+  id: string;
+  companyName: string;
+  tradeName: string | null;
+  email: string;
+  status: string;
+  trialEndsAt: string | null;
+  createdAt: string;
+  expiredDaysAgo: number;
+  expiredReason: string;
+}
+
+export async function fetchTrialExpired(): Promise<TrialExpiredTenant[]> {
+  return apiClient.get<TrialExpiredTenant[]>("/platform/tenants/trial-expired");
+}
+
 // ─── Stats / Health / Endpoints ───────────────────────────────────────────────
 
 export async function fetchPlatformStats(): Promise<PlatformStats> {

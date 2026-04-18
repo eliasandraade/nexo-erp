@@ -129,6 +129,7 @@ public static class DependencyInjection
         // ── Auth ─────────────────────────────────────────────────────────────
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<ISessionStore, SessionStoreService>();
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, CurrentUserService>();
         // Use Resend when API key is configured; fall back to console logging.

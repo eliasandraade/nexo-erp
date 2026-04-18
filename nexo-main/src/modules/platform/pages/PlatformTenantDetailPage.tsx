@@ -4,8 +4,10 @@ import {
   ArrowLeft, Store, Users, ExternalLink,
   Check, X, Edit2, Save, Pin, Trash2,
   KeyRound, LogOut as LogOutIcon, StickyNote, PinOff,
+  ChevronDown, ChevronUp, Monitor, Wifi,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 import {
   usePlatformTenant,
@@ -20,6 +22,8 @@ import {
   useToggleNotePin,
   useResetUserPassword,
   useForceLogout,
+  useUserSessions,
+  useRevokeAllSessions,
 } from "../hooks/usePlatformTenants";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -51,16 +55,17 @@ export default function PlatformTenantDetailPage() {
   const navigate = useNavigate();
   const { data: tenant, isLoading } = usePlatformTenant(tenantId ?? "");
 
-  const setStatusMut   = useSetTenantStatus(tenantId ?? "");
-  const updateMut      = useUpdateTenant(tenantId ?? "");
-  const grantMut       = useGrantModule(tenantId ?? "");
-  const revokeMut      = useRevokeModule(tenantId ?? "");
-  const impersonateMut = useImpersonate();
-  const resetPwMut     = useResetUserPassword(tenantId ?? "");
-  const forceLogoutMut = useForceLogout(tenantId ?? "");
-  const createNoteMut  = useCreateNote(tenantId ?? "");
-  const deleteNoteMut  = useDeleteNote(tenantId ?? "");
-  const togglePinMut   = useToggleNotePin(tenantId ?? "");
+  const setStatusMut      = useSetTenantStatus(tenantId ?? "");
+  const updateMut         = useUpdateTenant(tenantId ?? "");
+  const grantMut          = useGrantModule(tenantId ?? "");
+  const revokeMut         = useRevokeModule(tenantId ?? "");
+  const impersonateMut    = useImpersonate();
+  const resetPwMut        = useResetUserPassword(tenantId ?? "");
+  const forceLogoutMut    = useForceLogout(tenantId ?? "");
+  const revokeSessionsMut = useRevokeAllSessions(tenantId ?? "");
+  const createNoteMut     = useCreateNote(tenantId ?? "");
+  const deleteNoteMut     = useDeleteNote(tenantId ?? "");
+  const togglePinMut      = useToggleNotePin(tenantId ?? "");
   const { data: notes = [] } = useTenantNotes(tenantId ?? "");
 
   const [tab, setTab] = useState<Tab>("Geral");
@@ -70,11 +75,26 @@ export default function PlatformTenantDetailPage() {
   });
 
   // User action state
-  const [resetTarget, setResetTarget] = useState<{ id: string; name: string } | null>(null);
-  const [newPassword, setNewPassword] = useState("");
+  const [resetTarget, setResetTarget]   = useState<{ id: string; name: string } | null>(null);
+  const [newPassword, setNewPassword]   = useState("");
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
+
+  // Confirm dialog state
+  const [confirm, setConfirm] = useState<{
+    open: boolean;
+    title: string;
+    description: string;
+    variant: "danger" | "warning" | "default";
+    onConfirm: () => void;
+  }>({ open: false, title: "", description: "", variant: "danger", onConfirm: () => {} });
+
+  const openConfirm = (opts: Omit<typeof confirm, "open">) =>
+    setConfirm({ ...opts, open: true });
+  const closeConfirm = () =>
+    setConfirm(c => ({ ...c, open: false }));
 
   // Note compose state
-  const [noteText, setNoteText]   = useState("");
+  const [noteText, setNoteText]     = useState("");
   const [notePinned, setNotePinned] = useState(false);
 
   if (isLoading) return <div className="p-6 text-sm text-muted-foreground">Carregando...</div>;
@@ -117,6 +137,14 @@ export default function PlatformTenantDetailPage() {
 
   return (
     <div className="p-6 space-y-5 max-w-4xl">
+      <ConfirmDialog
+        open={confirm.open}
+        title={confirm.title}
+        description={confirm.description}
+        variant={confirm.variant}
+        onConfirm={() => { closeConfirm(); confirm.onConfirm(); }}
+        onCancel={closeConfirm}
+      />
 
       {/* Header */}
       <div className="flex items-start gap-3">
@@ -371,6 +399,7 @@ export default function PlatformTenantDetailPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {tenant.users.map(u => (
+                    <>
                     <tr key={u.id} className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3">
                         <p className="font-medium text-foreground">{u.name}</p>
@@ -406,20 +435,38 @@ export default function PlatformTenantDetailPage() {
                             <KeyRound className="h-3 w-3" /> Senha
                           </button>
                           <button
-                            title="Forçar logout"
-                            disabled={forceLogoutMut.isPending}
-                            onClick={() => {
-                              if (confirm(`Forçar logout de ${u.name}?`)) {
-                                forceLogoutMut.mutate(u.id);
-                              }
-                            }}
+                            title="Revogar todas sessões"
+                            disabled={revokeSessionsMut.isPending}
+                            onClick={() => openConfirm({
+                              title: "Revogar sessões",
+                              description: `Isso vai desconectar ${u.name} imediatamente e invalidar todos os tokens ativos. Confirmar?`,
+                              variant: "danger",
+                              onConfirm: () => revokeSessionsMut.mutate(u.id),
+                            })}
                             className="flex items-center gap-1 h-7 px-2 rounded-md border border-destructive/40 text-destructive text-xs hover:bg-destructive/10 transition-colors disabled:opacity-50"
                           >
                             <LogOutIcon className="h-3 w-3" /> Logout
                           </button>
+                          <button
+                            title={expandedUser === u.id ? "Ocultar sessões" : "Ver sessões"}
+                            onClick={() => setExpandedUser(v => v === u.id ? null : u.id)}
+                            className="flex items-center gap-1 h-7 px-2 rounded-md border border-border text-muted-foreground text-xs hover:bg-muted transition-colors"
+                          >
+                            <Monitor className="h-3 w-3" />
+                            {expandedUser === u.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                          </button>
                         </div>
                       </td>
                     </tr>
+                    {expandedUser === u.id && (
+                      <SessionsRow
+                        key={`sessions-${u.id}`}
+                        userId={u.id}
+                        tenantId={tenantId!}
+                        colSpan={6}
+                      />
+                    )}
+                    </>
                   ))}
                 </tbody>
               </table>
@@ -500,9 +547,12 @@ export default function PlatformTenantDetailPage() {
                       </button>
                       <button
                         title="Excluir nota"
-                        onClick={() => {
-                          if (confirm("Excluir esta nota?")) deleteNoteMut.mutate(note.id);
-                        }}
+                        onClick={() => openConfirm({
+                          title: "Excluir nota",
+                          description: "Esta nota será removida permanentemente.",
+                          variant: "danger",
+                          onConfirm: () => deleteNoteMut.mutate(note.id),
+                        })}
                         disabled={deleteNoteMut.isPending}
                         className="p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-muted transition-colors disabled:opacity-50"
                       >
@@ -600,5 +650,50 @@ function InfoField({ label, children, className }: {
 
 function editInput() {
   return "w-full h-8 px-2.5 rounded-md border border-border bg-muted/30 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20";
+}
+
+// ─── Sessions expandable row ──────────────────────────────────────────────────
+
+function SessionsRow({ userId, tenantId, colSpan }: {
+  userId: string; tenantId: string; colSpan: number;
+}) {
+  const { data: sessions = [], isLoading } = useUserSessions(tenantId, userId, true);
+
+  return (
+    <tr className="bg-muted/10">
+      <td colSpan={colSpan} className="px-6 py-3">
+        {isLoading ? (
+          <p className="text-xs text-muted-foreground">Carregando sessões...</p>
+        ) : sessions.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nenhuma sessão ativa.</p>
+        ) : (
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide mb-2">
+              {sessions.length} sessão{sessions.length !== 1 ? "ões" : ""} ativa{sessions.length !== 1 ? "s" : ""}
+            </p>
+            {sessions.map(s => (
+              <div key={s.id} className="flex items-center gap-3 text-xs text-muted-foreground bg-background border border-border rounded-md px-3 py-2">
+                <Wifi className="h-3 w-3 shrink-0 text-green-500" />
+                <span className="font-mono text-foreground">{s.ipAddress ?? "IP desconhecido"}</span>
+                <span className="flex-1 truncate">{parseUserAgent(s.userAgent)}</span>
+                <span className="shrink-0 text-[10px]">
+                  Último uso: {new Date(s.lastUsedAt).toLocaleString("pt-BR")}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function parseUserAgent(ua: string | null): string {
+  if (!ua) return "Dispositivo desconhecido";
+  if (ua.includes("Mobile")) return "Mobile";
+  if (ua.includes("Chrome"))  return "Chrome";
+  if (ua.includes("Firefox")) return "Firefox";
+  if (ua.includes("Safari"))  return "Safari";
+  return ua.length > 60 ? ua.slice(0, 60) + "…" : ua;
 }
 

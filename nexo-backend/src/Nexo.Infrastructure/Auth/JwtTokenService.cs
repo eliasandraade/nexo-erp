@@ -103,12 +103,13 @@ public class JwtTokenService : IJwtTokenService
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-            new("userId",      user.Id.ToString()),
-            new("tenantId",    user.TenantId.ToString()),
-            new("tenantSlug",  tenantSlug),
-            new("companyName", companyName),
-            new("name",        user.FullName),
-            new("role",        user.Role.ToString().ToLowerInvariant()),
+            new("userId",         user.Id.ToString()),
+            new("tenantId",       user.TenantId.ToString()),
+            new("tenantSlug",     tenantSlug),
+            new("companyName",    companyName),
+            new("name",           user.FullName),
+            new("role",           user.Role.ToString().ToLowerInvariant()),
+            new("security_stamp", user.SecurityStamp),
             new(ClaimTypes.Role, user.Role.ToString()),
         };
 

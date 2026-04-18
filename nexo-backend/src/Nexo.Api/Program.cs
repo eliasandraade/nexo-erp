@@ -187,6 +187,7 @@ try
     app.UseCors("NexoFrontend");
     app.UseAuthentication();
     app.UseMiddleware<TenantResolutionMiddleware>();
+    app.UseMiddleware<SecurityStampValidationMiddleware>();
     app.UseAuthorization();
     app.MapHub<RestaurantHub>("/hubs/restaurant");
     app.MapControllers();

@@ -14,6 +14,9 @@ import {
   toggleNotePin,
   resetUserPassword,
   forceLogout,
+  fetchUserSessions,
+  revokeAllSessions,
+  fetchTrialExpired,
 } from "../services/platformApi";
 import type { CreateTenantInput } from "../types";
 
@@ -138,5 +141,36 @@ export function useResetUserPassword(tenantId: string) {
 export function useForceLogout(tenantId: string) {
   return useMutation({
     mutationFn: (userId: string) => forceLogout(tenantId, userId),
+  });
+}
+
+// ─── Sessions ─────────────────────────────────────────────────────────────────
+
+export function useUserSessions(tenantId: string, userId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["platform", "tenants", tenantId, "users", userId, "sessions"],
+    queryFn: () => fetchUserSessions(tenantId, userId),
+    enabled: enabled && !!tenantId && !!userId,
+    staleTime: 30_000,
+  });
+}
+
+export function useRevokeAllSessions(tenantId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => revokeAllSessions(tenantId, userId),
+    onSuccess: (_, userId) => {
+      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "users", userId, "sessions"] });
+    },
+  });
+}
+
+// ─── Trial expired ────────────────────────────────────────────────────────────
+
+export function useTrialExpired() {
+  return useQuery({
+    queryKey: ["platform", "trial-expired"],
+    queryFn: fetchTrialExpired,
+    staleTime: 60_000,
   });
 }

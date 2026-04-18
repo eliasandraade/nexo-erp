@@ -59,7 +59,11 @@ public class AuthController : ControllerBase
     {
         await _loginValidator.ValidateAndThrowAsync(request, ct);
 
-        var outcome = await _authService.LoginAsync(request, ct);
+        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString();
+        var userAgentRaw = Request.Headers.UserAgent.ToString();
+        var userAgent = string.IsNullOrWhiteSpace(userAgentRaw) ? null
+            : userAgentRaw.Length > 500 ? userAgentRaw[..500] : userAgentRaw;
+        var outcome = await _authService.LoginAsync(request, ipAddress, userAgent, ct);
 
         if (outcome.IsSuccess)
             return Ok(outcome.Response!);

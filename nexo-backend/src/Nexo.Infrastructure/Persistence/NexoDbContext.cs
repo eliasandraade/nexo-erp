@@ -52,6 +52,8 @@ public class NexoDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<AuditRecord> AuditRecords => Set<AuditRecord>();
+    public DbSet<TenantNote> TenantNotes => Set<TenantNote>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
 
     // ── CORE business entities (store-scoped via StoreEntity) ────────────────
     public DbSet<Customer> Customers => Set<Customer>();
