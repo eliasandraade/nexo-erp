@@ -36,7 +36,7 @@ export function ModifierSelector({
                   key={mod.id}
                   onClick={() => onToggle(group.id, mod.id, group.maxSelections)}
                   className={cn(
-                    "rounded-full border px-3 py-1 text-sm transition-colors",
+                    "rounded-full border px-4 py-2.5 text-sm transition-colors",
                     isSelected
                       ? "border-primary bg-primary/10 text-primary font-medium"
                       : "border-border text-muted-foreground"

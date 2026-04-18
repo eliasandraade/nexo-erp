@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,17 @@ export default function OrderPage() {
   const isOpen = ["Open", "InPreparation", "Ready"].includes(order.status);
   const hasActiveItems = order.items.filter((i) => i.status !== "Cancelled").length > 0;
 
+  // Ready items float to the top so the waiter sees what to deliver immediately
+  const STATUS_SORT: Record<string, number> = {
+    Ready: 0, Preparing: 1, Pending: 2, Delivered: 3, Cancelled: 4,
+  };
+  const sortedItems = useMemo(
+    () => [...order.items].sort(
+      (a, b) => (STATUS_SORT[a.status] ?? 9) - (STATUS_SORT[b.status] ?? 9)
+    ),
+    [order.items] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   // Fechar conta: confirma antes de chamar a API
   const handleCloseOrder = async () => {
     setConfirmState(null);
@@ -109,7 +120,7 @@ export default function OrderPage() {
             Nenhum item adicionado.
           </p>
         ) : (
-          order.items.map((item) => <OrderItemRow key={item.id} item={item} />)
+          sortedItems.map((item) => <OrderItemRow key={item.id} item={item} />)
         )}
       </div>
 

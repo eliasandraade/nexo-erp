@@ -5,6 +5,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Minus, Plus } from "lucide-react";
 import { useProducts } from "@/modules/products/hooks/use-products";
 import { useStockItems } from "@/modules/inventory/hooks/use-stock";
 import { ModifierSelector } from "./ModifierSelector";
@@ -22,12 +23,14 @@ export function AddItemDrawer({ open, onClose, onAdd, isLoading }: AddItemDrawer
   const { data: products = [] } = useProducts(false);
   const { data: stockItems = [] } = useStockItems();
 
-  const [search, setSearch]         = useState("");
+  // search is kept alive across the product→modifier→product flow
+  const [search, setSearch]                   = useState("");
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
-  const [quantity, setQuantity]     = useState("1");
-  const [notes, setNotes]           = useState("");
-  const [selected, setSelected]     = useState<Record<string, string[]>>({});
-  const [errors, setErrors]         = useState<Record<string, string>>({});
+  const [quantity, setQuantity]               = useState(1);
+  const [notes, setNotes]                     = useState("");
+  const [showNotes, setShowNotes]             = useState(false);
+  const [selected, setSelected]               = useState<Record<string, string[]>>({});
+  const [errors, setErrors]                   = useState<Record<string, string>>({});
 
   const { data: modifierGroups = [] } = useModifierGroups(selectedProduct);
 
@@ -62,7 +65,6 @@ export function AddItemDrawer({ open, onClose, onAdd, isLoading }: AddItemDrawer
 
   const handleAdd = () => {
     if (!selectedProduct) return;
-    // Validate required groups
     const newErrors: Record<string, string> = {};
     for (const g of modifierGroups) {
       if (g.isRequired && !(selected[g.id]?.length)) {
@@ -77,43 +79,58 @@ export function AddItemDrawer({ open, onClose, onAdd, isLoading }: AddItemDrawer
     const modifiers = Object.values(selected).flat().map((id) => ({ modifierId: id }));
     onAdd({
       productId: selectedProduct,
-      quantity:  parseFloat(quantity) || 1,
+      quantity,
       notes:     notes || null,
       modifiers: modifiers.length > 0 ? modifiers : undefined,
     });
-    // Reset
-    setSearch(""); setSelectedProduct(null); setQuantity("1");
-    setNotes(""); setSelected({}); setErrors({});
+    // Reset — preserve search so the waiter can quickly add another item
+    setSelectedProduct(null);
+    setQuantity(1);
+    setNotes("");
+    setShowNotes(false);
+    setSelected({});
+    setErrors({});
+  };
+
+  // Back arrow: return to product list keeping the search term
+  const handleBack = () => {
+    setSelectedProduct(null);
+    setQuantity(1);
+    setNotes("");
+    setShowNotes(false);
+    setSelected({});
+    setErrors({});
   };
 
   const selectedProductName = products.find((p) => p.id === selectedProduct)?.name;
 
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
-      <SheetContent side="bottom" className="rounded-t-2xl max-h-[90vh] overflow-y-auto pb-8">
-        <SheetHeader className="mb-4">
+      <SheetContent side="bottom" className="rounded-t-2xl flex flex-col max-h-[90vh] pb-8">
+        <SheetHeader className="mb-4 shrink-0">
           <SheetTitle>Adicionar item</SheetTitle>
         </SheetHeader>
 
-        {/* Product search or modifier selection */}
         {!selectedProduct ? (
+          /* ── Product search ────────────────────────────────────────────── */
           <>
             <Input
-              placeholder="Buscar produto por nome ou código..."
+              placeholder="Buscar por nome ou código..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="mb-3"
+              className="mb-3 shrink-0"
               autoFocus
             />
-            <div className="space-y-1 max-h-60 overflow-y-auto">
+            {/* List fills remaining sheet height */}
+            <div className="flex-1 overflow-y-auto min-h-0">
               {filtered.map((p) => {
-                const stock = stockMap.get(p.id);
+                const stock   = stockMap.get(p.id);
                 const lowStock = stock !== undefined && stock <= 0;
                 return (
                   <button
                     key={p.id}
                     onClick={() => setSelectedProduct(p.id)}
-                    className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 text-left hover:bg-muted transition-colors"
+                    className="w-full flex items-center justify-between rounded-lg px-3 py-3 text-left hover:bg-muted transition-colors"
                   >
                     <div>
                       <p className="text-sm font-medium">{p.name}</p>
@@ -133,10 +150,12 @@ export function AddItemDrawer({ open, onClose, onAdd, isLoading }: AddItemDrawer
             </div>
           </>
         ) : (
-          <>
+          /* ── Product configuration ─────────────────────────────────────── */
+          <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-4">
+            {/* Back link — keeps search intact */}
             <button
-              onClick={() => setSelectedProduct(null)}
-              className="text-sm text-muted-foreground mb-3 hover:text-foreground"
+              onClick={handleBack}
+              className="text-sm text-muted-foreground hover:text-foreground text-left shrink-0"
             >
               ← {selectedProductName}
             </button>
@@ -149,32 +168,60 @@ export function AddItemDrawer({ open, onClose, onAdd, isLoading }: AddItemDrawer
               errors={errors}
             />
 
-            {/* Quantity */}
-            <div className="mt-4 mb-3">
-              <label className="text-sm text-muted-foreground mb-1 block">Quantidade</label>
-              <Input
-                type="number" min={1} value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-              />
+            {/* Quantity stepper */}
+            <div className="shrink-0">
+              <label className="text-sm text-muted-foreground mb-2 block">Quantidade</label>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                  disabled={quantity <= 1}
+                  className="h-11 w-11 rounded-lg border border-border flex items-center justify-center text-foreground disabled:opacity-30 hover:bg-muted transition-colors"
+                >
+                  <Minus className="h-4 w-4" />
+                </button>
+                <span className="text-xl font-semibold w-8 text-center tabular-nums">
+                  {quantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setQuantity((q) => q + 1)}
+                  className="h-11 w-11 rounded-lg border border-border flex items-center justify-center text-foreground hover:bg-muted transition-colors"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
-            {/* Notes */}
-            <Textarea
-              placeholder="Observação (opcional)"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              className="mb-5"
-            />
+            {/* Notes — collapsed by default */}
+            <div className="shrink-0">
+              {showNotes ? (
+                <Textarea
+                  placeholder="Observação (opcional)"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  autoFocus
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowNotes(true)}
+                  className="text-sm text-primary hover:underline"
+                >
+                  + Adicionar observação
+                </button>
+              )}
+            </div>
 
             <Button
-              className="w-full h-12 text-base"
+              className="w-full h-12 text-base shrink-0"
               onClick={handleAdd}
               disabled={isLoading}
             >
               {isLoading ? "Adicionando..." : "Adicionar à comanda"}
             </Button>
-          </>
+          </div>
         )}
       </SheetContent>
     </Sheet>
