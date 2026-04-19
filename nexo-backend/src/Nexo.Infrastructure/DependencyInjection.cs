@@ -147,6 +147,7 @@ public static class DependencyInjection
 
         // ── Audit ─────────────────────────────────────────────────────────────
         services.AddScoped<IAuditWriter, AuditWriterService>();
+        services.AddScoped<AuditQueryService>();
 
         // ── Seed ─────────────────────────────────────────────────────────────
         services.AddScoped<DataSeeder>();
