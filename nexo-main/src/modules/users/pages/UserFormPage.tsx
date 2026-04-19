@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "../services/userService";
+import { adminResetPassword } from "../api/users.api";
 import type { UserFormInput } from "../types";
 import { UserMainDataSection, UserAccessSection, UserSecuritySection } from "../components/UserFormSections";
 import { UserSummaryCard } from "../components/UserSummaryCard";
@@ -83,6 +84,9 @@ export default function UserFormPage() {
         await userService.create(form);
       } else {
         await userService.update(id!, form);
+        if (form.password && form.password === form.passwordConfirm) {
+          await adminResetPassword(id!, form.password);
+        }
       }
       toast({ title: isNew ? "Usuário criado com sucesso" : "Usuário atualizado com sucesso" });
       navigate("/usuarios");
