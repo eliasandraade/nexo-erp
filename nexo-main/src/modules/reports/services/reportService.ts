@@ -1,4 +1,5 @@
-import { posService } from "@/modules/sales/services/posService";
+import { listSales } from "@/modules/sales/api/sales.api";
+import { saleToLegacy } from "@/modules/sales/utils/saleAdapter";
 import { cashService } from "@/modules/cash/services/cashService";
 import { inventoryService } from "@/modules/inventory/services/inventoryService";
 import { commissionService } from "@/modules/commissions/services/commissionService";
@@ -16,6 +17,11 @@ import type {
 
 const delay = (ms = 200) => new Promise((r) => setTimeout(r, ms));
 
+async function getAllSales(): Promise<CompletedSale[]> {
+  const dtos = await listSales();
+  return dtos.map(saleToLegacy);
+}
+
 function applyFilters(sales: CompletedSale[], filters?: ReportFilters): CompletedSale[] {
   if (!filters) return sales;
   return sales.filter((sale) => {
@@ -31,7 +37,7 @@ function applyFilters(sales: CompletedSale[], filters?: ReportFilters): Complete
 export const reportService = {
   async getOperationalSummary(filters?: ReportFilters): Promise<SalesOperationalSummary> {
     await delay();
-    const allSales = await posService.getRecentSales();
+    const allSales = await getAllSales();
     const sales = applyFilters(allSales, filters);
 
     // Revenue from non-fully-cancelled sales only
@@ -57,7 +63,7 @@ export const reportService = {
 
   async getSalesByOperator(filters?: ReportFilters): Promise<SalesByOperatorRow[]> {
     await delay();
-    const allSales = await posService.getRecentSales();
+    const allSales = await getAllSales();
     const sales = applyFilters(allSales, filters);
 
     const byOp = new Map<string, { count: number; revenue: number; cancelled: number }>();
@@ -90,7 +96,7 @@ export const reportService = {
     filters?: ReportFilters
   ): Promise<TopProductRow[]> {
     await delay();
-    const allSales = await posService.getRecentSales();
+    const allSales = await getAllSales();
     const sales = applyFilters(allSales, filters);
 
     const byProduct = new Map<
@@ -129,7 +135,7 @@ export const reportService = {
 
   async getCancellationSummary(filters?: ReportFilters): Promise<CancellationSummary> {
     await delay();
-    const allSales = await posService.getRecentSales();
+    const allSales = await getAllSales();
     const sales = applyFilters(allSales, filters);
 
     const cancelledSales = sales.filter((s) => s.status === "cancelled");
@@ -219,7 +225,7 @@ export const reportService = {
 
   async listOperators(): Promise<string[]> {
     await delay(50);
-    const sales = await posService.getRecentSales();
+    const sales = await getAllSales();
     const ops = new Set(sales.map((s) => s.operator));
     return Array.from(ops).sort();
   },
