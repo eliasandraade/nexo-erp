@@ -149,6 +149,9 @@ public static class DependencyInjection
         services.AddScoped<IAuditWriter, AuditWriterService>();
         services.AddScoped<AuditQueryService>();
 
+        // ── Reports ───────────────────────────────────────────────────────────
+        services.AddScoped<Nexo.Infrastructure.Reports.ReportsService>();
+
         // ── Seed ─────────────────────────────────────────────────────────────
         services.AddScoped<DataSeeder>();
 
