@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, BarChart2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { TableCard } from "../components/TableCard";
@@ -91,13 +91,22 @@ export default function FloorPage() {
             {tables.filter((t) => t.status === "Occupied").length} mesa(s) ocupada(s)
           </p>
         </div>
-        <button
-          onClick={handleCounterClick}
-          className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
-        >
-          <Plus className="h-4 w-4" />
-          Balcão
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("/restaurante/relatorios")}
+            title="Relatórios"
+            className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <BarChart2 className="h-4.5 w-4.5" />
+          </button>
+          <button
+            onClick={handleCounterClick}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+          >
+            <Plus className="h-4 w-4" />
+            Balcão
+          </button>
+        </div>
       </div>
 
       <div className="px-4 pt-3 pb-2">

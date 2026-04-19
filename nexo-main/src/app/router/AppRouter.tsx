@@ -55,6 +55,7 @@ import FloorPage            from "@/modules/restaurante/pages/FloorPage";
 import OrderPage            from "@/modules/restaurante/pages/OrderPage";
 import KitchenPage          from "@/modules/restaurante/pages/KitchenPage";
 import RestauranteSetupPage from "@/modules/restaurante/pages/RestauranteSetupPage";
+import RelatoriosPage       from "@/modules/restaurante/pages/RelatoriosPage";
 
 /**
  * AuthProvider lives inside BrowserRouter so it can call useNavigate() for
@@ -97,6 +98,7 @@ export function AppRouter() {
                 <Route path="/restaurante" element={<FloorPage />} />
                 <Route path="/restaurante/mesa/:tableId" element={<OrderPage />} />
                 <Route path="/restaurante/comanda/:orderId" element={<OrderPage />} />
+                <Route path="/restaurante/relatorios" element={<RelatoriosPage />} />
               </Route>
               <Route element={<KitchenLayout />}>
                 <Route path="/restaurante/cozinha" element={<KitchenPage />} />

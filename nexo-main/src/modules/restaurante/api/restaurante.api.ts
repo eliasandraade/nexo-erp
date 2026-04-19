@@ -95,3 +95,24 @@ export const getModifierGroups = (productId: string): Promise<ModifierGroupDto[]
 // ── Kitchen (polling path) ────────────────────────────────────────────────────
 export const listKitchenOrders = (): Promise<OrderDto[]> =>
   apiClient.get<OrderDto[]>("/restaurante/orders");
+
+// ── Reports ───────────────────────────────────────────────────────────────────
+
+export interface RestauranteSummaryDto {
+  ordersCount:         number;
+  revenue:             number;
+  averageTicket:       number;
+  averageTableMinutes: number;
+  from:                string;
+  to:                  string;
+}
+
+export function fetchRestauranteSummary(
+  from: string,
+  to: string
+): Promise<RestauranteSummaryDto> {
+  return apiClient.get<RestauranteSummaryDto>(
+    `/restaurante/reports/summary?from=${from}&to=${to}`
+  );
+}
+
