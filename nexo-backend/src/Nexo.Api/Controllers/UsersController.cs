@@ -101,4 +101,17 @@ public class UsersController : ControllerBase
         await _userService.AdminChangePasswordAsync(id, request, ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Validates manager-level credentials for authorizing sensitive POS operations.
+    /// Accessible to all authenticated users (Vendedor needs manager approval).
+    /// </summary>
+    [HttpPost("validate-manager")]
+    public async Task<ActionResult<ValidateManagerResponse>> ValidateManager(
+        [FromBody] ValidateManagerRequest request,
+        CancellationToken ct)
+    {
+        var result = await _userService.ValidateManagerAsync(request, ct);
+        return Ok(result);
+    }
 }

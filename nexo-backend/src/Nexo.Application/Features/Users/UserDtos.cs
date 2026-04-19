@@ -45,3 +45,11 @@ public record UserDto(
     DateTime? PasswordChangedAt,
     DateTime CreatedAt,
     DateTime UpdatedAt);
+
+public record ValidateManagerRequest(string Login, string Password);
+
+public record ValidateManagerResponse(
+    bool Success,
+    string? ErrorMessage,
+    string? FullName,
+    string? Role);

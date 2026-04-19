@@ -158,6 +158,52 @@ public class UserService
         await _users.SaveChangesAsync(ct);
     }
 
+    public async Task<ValidateManagerResponse> ValidateManagerAsync(
+        ValidateManagerRequest request,
+        CancellationToken ct = default)
+    {
+        var users = await _users.GetAllAsync(ct);
+        var user = users.FirstOrDefault(u => u.Login == request.Login);
+
+        if (user is null)
+            return new ValidateManagerResponse(false, "Usuário não encontrado.", null, null);
+
+        if (user.Status != UserStatus.Active)
+            return new ValidateManagerResponse(false, "Usuário inativo ou bloqueado.", null, null);
+
+        if (user.Role != UserRole.Gerente && user.Role != UserRole.Diretoria)
+            return new ValidateManagerResponse(false, "Usuário não possui autorização gerencial.", null, null);
+
+        if (!_hasher.Verify(request.Password, user.PasswordHash))
+        {
+            _audit.Stage(
+                actionType:  AuditActions.ManagerAuthorization,
+                severity:    AuditSeverity.Critical,
+                entityType:  "User",
+                entityId:    user.Id.ToString(),
+                description: $"Failed manager authorization for '{request.Login}'.",
+                tenantId:    _currentTenant.Id,
+                actorId:     user.Id,
+                actorName:   user.FullName);
+            await _users.SaveChangesAsync(ct);
+            return new ValidateManagerResponse(false, "Senha incorreta.", null, null);
+        }
+
+        _audit.Stage(
+            actionType:  AuditActions.ManagerAuthorization,
+            severity:    AuditSeverity.Warning,
+            entityType:  "User",
+            entityId:    user.Id.ToString(),
+            description: $"Manager authorization granted to '{user.FullName}'.",
+            tenantId:    _currentTenant.Id,
+            actorId:     user.Id,
+            actorName:   user.FullName);
+        await _users.SaveChangesAsync(ct);
+
+        return new ValidateManagerResponse(
+            true, null, user.FullName, user.Role.ToString().ToLower());
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static UserRole ParseRole(string role) =>
