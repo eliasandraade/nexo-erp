@@ -84,7 +84,27 @@ export const userService = {
     _login: string,
     _password: string
   ): { success: true; user: User } | { success: false; error: string } {
-    // TODO Task 9: replace with POST /api/users/validate-manager
-    return { success: false, error: "Autorização gerencial via backend será implementada em breve." };
+    // Kept for backward compatibility — use validateManagerAuthorizationAsync instead.
+    return { success: false, error: "Use validateManagerAuthorizationAsync." };
+  },
+
+  async validateManagerAuthorizationAsync(
+    login: string,
+    password: string
+  ): Promise<{ success: true; user: User } | { success: false; error: string }> {
+    const { validateManager } = await import("../api/users.api");
+    const result = await validateManager(login, password);
+    if (!result.success) {
+      return { success: false, error: result.errorMessage ?? "Autorização negada." };
+    }
+    const user: User = {
+      id: "", name: result.fullName ?? login, email: "", login,
+      phone: "", role: result.role as UserRole,
+      company: "", store: "", status: "active",
+      lastAccess: null, lastPasswordChange: null,
+      requirePasswordChange: false, notes: "",
+      createdAt: "", createdBy: "", updatedAt: "",
+    };
+    return { success: true, user };
   },
 };

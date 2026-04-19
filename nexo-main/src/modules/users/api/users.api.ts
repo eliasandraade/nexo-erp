@@ -54,3 +54,16 @@ export const changePassword = (id: string, currentPassword: string, newPassword:
 
 export const adminResetPassword = (id: string, newPassword: string): Promise<void> =>
   apiClient.post<void>(`/users/${id}/admin-reset-password`, { newPassword });
+
+export interface ValidateManagerResult {
+  success: boolean;
+  errorMessage: string | null;
+  fullName: string | null;
+  role: string | null;
+}
+
+export const validateManager = (
+  login: string,
+  password: string
+): Promise<ValidateManagerResult> =>
+  apiClient.post<ValidateManagerResult>("/users/validate-manager", { login, password });
