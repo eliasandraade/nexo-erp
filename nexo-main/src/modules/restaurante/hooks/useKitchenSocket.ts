@@ -9,7 +9,9 @@ import type { ConnectionMode, KitchenItem } from "../types";
 
 const RECONNECT_DELAYS = [0, 2000, 5000];
 const POLLING_INTERVAL = 10_000;
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:5000";
+// VITE_API_BASE_URL ends with "/api" (e.g. "https://api.example.com/api").
+// SignalR hubs live at the root, so strip the "/api" suffix.
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/api").replace(/\/api$/, "");
 
 interface UseKitchenSocketOptions {
   onItemReady?: (tableNumber: string | null, productName: string) => void;

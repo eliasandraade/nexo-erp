@@ -42,6 +42,20 @@ export default function OrderPage() {
   // "cancel" | "close" | null — which destructive action is awaiting confirmation
   const [confirmState, setConfirmState] = useState<"cancel" | "close" | null>(null);
 
+  // useMemo must be called unconditionally — before any early return
+  const STATUS_SORT: Record<string, number> = {
+    Ready: 0, Preparing: 1, Pending: 2, Delivered: 3, Cancelled: 4,
+  };
+  const sortedItems = useMemo(
+    () => order
+      ? [...order.items].sort(
+          (a, b) => (STATUS_SORT[a.status] ?? 9) - (STATUS_SORT[b.status] ?? 9)
+        )
+      : [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [order]
+  );
+
   if (!order) {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-3">
@@ -55,17 +69,6 @@ export default function OrderPage() {
 
   const isOpen = ["Open", "InPreparation", "Ready"].includes(order.status);
   const hasActiveItems = order.items.filter((i) => i.status !== "Cancelled").length > 0;
-
-  // Ready items float to the top so the waiter sees what to deliver immediately
-  const STATUS_SORT: Record<string, number> = {
-    Ready: 0, Preparing: 1, Pending: 2, Delivered: 3, Cancelled: 4,
-  };
-  const sortedItems = useMemo(
-    () => [...order.items].sort(
-      (a, b) => (STATUS_SORT[a.status] ?? 9) - (STATUS_SORT[b.status] ?? 9)
-    ),
-    [order.items] // eslint-disable-line react-hooks/exhaustive-deps
-  );
 
   // Fechar conta: confirma antes de chamar a API
   const handleCloseOrder = async () => {
