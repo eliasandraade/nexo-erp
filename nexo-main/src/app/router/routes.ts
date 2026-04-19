@@ -12,6 +12,7 @@ import {
   Settings,
   UtensilsCrossed,
   SlidersHorizontal,
+  BarChart2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -43,6 +44,7 @@ export const appRoutes: AppRoute[] = [
   { path: "/pdv",          label: "PDV",           icon: ShoppingCart,    moduleKey: "varejo" },
 
   // ── Restaurante ──────────────────────────────────────────────────────────
-  { path: "/restaurante",           label: "Restaurante",   icon: UtensilsCrossed,    moduleKey: "restaurante" },
-  { path: "/restaurante/configurar",label: "Config. Mesas", icon: SlidersHorizontal,  moduleKey: "restaurante" },
+  { path: "/restaurante",            label: "Restaurante",   icon: UtensilsCrossed,   moduleKey: "restaurante" },
+  { path: "/restaurante/configurar", label: "Config. Mesas", icon: SlidersHorizontal, moduleKey: "restaurante" },
+  { path: "/restaurante/relatorios", label: "Relatórios",    icon: BarChart2,          moduleKey: "restaurante" },
 ];

@@ -98,14 +98,14 @@ export function AppRouter() {
                 <Route path="/restaurante" element={<FloorPage />} />
                 <Route path="/restaurante/mesa/:tableId" element={<OrderPage />} />
                 <Route path="/restaurante/comanda/:orderId" element={<OrderPage />} />
-                <Route path="/restaurante/relatorios" element={<RelatoriosPage />} />
               </Route>
               <Route element={<KitchenLayout />}>
                 <Route path="/restaurante/cozinha" element={<KitchenPage />} />
               </Route>
-              {/* Setup — with main sidebar */}
+              {/* Management pages — with main sidebar */}
               <Route element={<MainAppLayout />}>
                 <Route path="/restaurante/configurar" element={<RestauranteSetupPage />} />
+                <Route path="/restaurante/relatorios" element={<RelatoriosPage />} />
               </Route>
             </Route>
           </Route>
