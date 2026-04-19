@@ -82,7 +82,7 @@ public class ReportsService
             .CountAsync(c => c.IsActive, ct);
 
         var newThisMonth = await _db.Customers
-            .CountAsync(c => c.CreatedAt >= monthStart, ct);
+            .CountAsync(c => c.IsActive && c.CreatedAt >= monthStart, ct);
 
         var withPurchases = await _db.Sales
             .Where(s => s.Status == SaleStatus.Paid && s.CustomerId != null)
