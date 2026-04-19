@@ -14,14 +14,31 @@ import type { OrderDto } from "../types";
 
 const BASE_STYLE = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /*
+   * @page size hint: tells the print dialog to pre-select 80mm thermal paper.
+   * Most thermal printer drivers (Epson TM, Bematech, Elgin, Daruma, etc.)
+   * expose a "80mm x Roll" or similar page size — the browser will pick it
+   * automatically when this declaration is present, instead of defaulting to A4.
+   * The operator only needs to select the correct printer once.
+   */
+  @page {
+    size: 80mm auto;
+    margin: 2mm 3mm;
+  }
+
   body {
     font-family: 'Courier New', Courier, monospace;
     font-size: 13px;
+    line-height: 1.4;
     color: #000;
     background: #fff;
     width: 80mm;
     max-width: 100%;
-    padding: 6px 8px 24px;
+    padding: 4px 6px 16px;
+    /* Prevent any colored background from bleeding into print */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   h1  { font-size: 15px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 1px; }
   h2  { font-size: 13px; font-weight: bold; text-align: center; }
@@ -33,9 +50,14 @@ const BASE_STYLE = `
   .small  { font-size: 11px; }
   .indent { padding-left: 10px; }
   .row { display: flex; justify-content: space-between; }
-  @media print {
-    body { width: 100%; padding: 0 4px 0; }
-    @page { margin: 4mm; }
+
+  /* Screen preview — shows 80mm column centered */
+  @media screen {
+    body {
+      margin: 12px auto;
+      border: 1px dashed #ccc;
+      min-height: 200px;
+    }
   }
 `;
 
