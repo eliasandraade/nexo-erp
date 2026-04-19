@@ -11,6 +11,8 @@ import { TopProductsTable } from "../components/TopProductsTable";
 import { reportService } from "../services/reportService";
 import { formatCurrency } from "@/lib/formatters";
 import type { ReportFilters } from "../types";
+import { fetchSalesReport, fetchInventoryReport, fetchCustomerReport } from "../api/reports.api";
+import type { SalesReportDto, InventoryReportDto, CustomerReportDto } from "../api/reports.api";
 
 const defaultFilters: ReportFilters = {
   operator: "all",
@@ -61,6 +63,24 @@ export default function RelatoriosPage() {
     queryFn: () => reportService.getInventorySummary(),
   });
 
+  const { data: apiSales } = useQuery({
+    queryKey: ["api-report-sales"],
+    queryFn:  () => fetchSalesReport(),
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: apiInventory } = useQuery({
+    queryKey: ["api-report-inventory"],
+    queryFn:  fetchInventoryReport,
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: apiCustomers } = useQuery({
+    queryKey: ["api-report-customers"],
+    queryFn:  fetchCustomerReport,
+    staleTime: 5 * 60_000,
+  });
+
   return (
     <div className="space-y-6">
       <PageHeader title="Relatórios" />
@@ -86,6 +106,37 @@ export default function RelatoriosPage() {
           cancelledCount={operational?.cancelledCount ?? 0}
           stockAlerts={inventory?.totalAlertCount ?? 0}
         />
+      )}
+
+      {(apiSales || apiInventory || apiCustomers) && (
+        <SectionCard title="Resumo do Servidor">
+          <dl className="grid sm:grid-cols-3 gap-4 text-sm">
+            {apiSales && (
+              <div className="space-y-1">
+                <dt className="text-muted-foreground">Receita total (API)</dt>
+                <dd className="font-semibold tabular-nums text-lg">
+                  {formatCurrency(apiSales.totalRevenue)}
+                </dd>
+              </div>
+            )}
+            {apiInventory && (
+              <div className="space-y-1">
+                <dt className="text-muted-foreground">Alertas de estoque (API)</dt>
+                <dd className="font-semibold tabular-nums text-lg">
+                  {apiInventory.alertCount}
+                </dd>
+              </div>
+            )}
+            {apiCustomers && (
+              <div className="space-y-1">
+                <dt className="text-muted-foreground">Total de clientes (API)</dt>
+                <dd className="font-semibold tabular-nums text-lg">
+                  {apiCustomers.totalCustomers}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </SectionCard>
       )}
 
       <SectionCard title="Vendas por Operador">
