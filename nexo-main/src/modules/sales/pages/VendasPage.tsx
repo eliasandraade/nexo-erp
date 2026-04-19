@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { AlertCircle, Receipt } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
-import { salesHistoryService } from "../services/salesHistoryService";
+import { listSales } from "../api/sales.api";
+import { saleToLegacy } from "../utils/saleAdapter";
 import { SalesFilters } from "../components/SalesFilters";
 import { SalesTable } from "../components/SalesTable";
 import type { SaleListFilters } from "../types";
@@ -19,13 +20,40 @@ const defaultFilters: SaleListFilters = {
 export default function VendasPage() {
   const [filters, setFilters] = useState<SaleListFilters>(defaultFilters);
 
-  // Filtering is handled by the service layer, consistent with future API integration.
-  // Query key includes filters so TanStack Query caches per filter combination and
-  // refetches when the filter state changes.
-  const { data: sales = [], isLoading, isError } = useQuery({
-    queryKey: ["sales", filters],
-    queryFn: () => salesHistoryService.listSales(filters),
+  const { data: allSales = [], isLoading, isError } = useQuery({
+    queryKey: ["sales"],
+    queryFn: () => listSales().then((dtos) => dtos.map(saleToLegacy)),
+    staleTime: 30_000,
   });
+
+  const sales = useMemo(() => {
+    return allSales.filter((sale) => {
+      if (filters.search && filters.search.trim()) {
+        const q = filters.search.trim().toLowerCase();
+        const matchesId = sale.id.toLowerCase().includes(q);
+        const matchesOperator = sale.operator.toLowerCase().includes(q);
+        const matchesItem = sale.items.some(
+          (i) =>
+            i.description.toLowerCase().includes(q) ||
+            i.code.toLowerCase().includes(q)
+        );
+        const matchesCustomer = sale.customerName
+          ? sale.customerName.toLowerCase().includes(q)
+          : false;
+        if (!matchesId && !matchesOperator && !matchesItem && !matchesCustomer) return false;
+      }
+
+      if (filters.paymentMethod && filters.paymentMethod !== "all") {
+        if (!sale.payments.some((p) => p.method === filters.paymentMethod)) return false;
+      }
+
+      if (filters.status && filters.status !== "all") {
+        if (sale.status !== filters.status) return false;
+      }
+
+      return true;
+    });
+  }, [allSales, filters]);
 
   return (
     <div className="space-y-6">
