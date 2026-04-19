@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Plus, Printer } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/modules/auth/context/AuthContext";
@@ -9,6 +9,7 @@ import { AddItemDrawer } from "../components/AddItemDrawer";
 import { PaymentDrawer } from "../components/PaymentDrawer";
 import { useActiveOrder, useOrder } from "../hooks/useActiveOrder";
 import { useAddItem, useCloseOrder, useCancelOrder } from "../hooks/useOrderMutations";
+import { printKitchen, printReceipt } from "../utils/print";
 import type { AddOrderItemRequest, OrderStatus } from "../types";
 
 // ── Status label map ──────────────────────────────────────────────────────────
@@ -107,6 +108,18 @@ export default function OrderPage() {
             {ORDER_STATUS_LABEL[order.status] ?? order.status}
           </p>
         </div>
+        {/* Print buttons — always visible when order has items */}
+        {order.items.some(i => i.status !== "Cancelled") && (
+          <div className="flex gap-1">
+            <button
+              onClick={() => printKitchen(order)}
+              title="Imprimir cozinha"
+              className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <Printer className="h-4.5 w-4.5" />
+            </button>
+          </div>
+        )}
         {isOpen && (
           <button
             onClick={() => setAddDrawerOpen(true)}
@@ -205,13 +218,21 @@ export default function OrderPage() {
             </div>
           ) : (
             <div className="flex items-center gap-3">
-              {/* Destructive trigger — ghost, clearly secondary, no competing border */}
+              {/* Destructive trigger — ghost, clearly secondary */}
               <button
                 onClick={() => setConfirmState("cancel")}
                 disabled={cancelMut.isPending}
                 className="text-sm text-destructive/70 hover:text-destructive disabled:opacity-40 transition-colors whitespace-nowrap"
               >
                 Cancelar comanda
+              </button>
+              {/* Print receipt — icon only, doesn't compete with primary CTA */}
+              <button
+                onClick={() => printReceipt(order)}
+                title="Imprimir comanda"
+                className="p-2.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+              >
+                <Printer className="h-4 w-4" />
               </button>
               {/* Primary CTA — full weight, full height */}
               <Button
