@@ -7,7 +7,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { salesHistoryService } from "../services/salesHistoryService";
+import { getSale, cancelSale } from "../api/sales.api";
+import { saleToLegacy } from "../utils/saleAdapter";
 import { posService } from "../services/posService";
 import { SaleSummaryCard } from "../components/SaleSummaryCard";
 import { SalePaymentSummaryCard } from "../components/SalePaymentSummaryCard";
@@ -24,18 +25,12 @@ export default function VendaDetailPage() {
 
   const { data: sale, isLoading, isError } = useQuery({
     queryKey: ["sale", id],
-    queryFn: () => salesHistoryService.getSaleById(id!),
+    queryFn: () => getSale(id!).then(saleToLegacy),
     enabled: !!id,
   });
 
   const cancelSaleMutation = useMutation({
-    mutationFn: (payload: CancellationConfirmPayload) =>
-      posService.cancelSale(
-        id!,
-        sale?.operator ?? "Operador",
-        payload.authorizedBy,
-        payload.reason
-      ),
+    mutationFn: (_payload: CancellationConfirmPayload) => cancelSale(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sale", id] });
       queryClient.invalidateQueries({ queryKey: ["sales"] });
