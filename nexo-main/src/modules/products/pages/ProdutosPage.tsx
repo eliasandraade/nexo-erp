@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Package, AlertCircle } from "lucide-react";
+import { Plus, Package, AlertCircle, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -8,14 +8,16 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProductFilters } from "../components/ProductFilters";
 import { ProductTable } from "../components/ProductTable";
+import { ManageCategoriesDialog } from "../components/ManageCategoriesDialog";
 import { useCategories, useProducts } from "../hooks/use-products";
 
 export default function ProdutosPage() {
   const navigate = useNavigate();
-  const [search, setSearch]       = useState("");
-  const [categoryId, setCategoryId] = useState("all");
-  const [status, setStatus]       = useState("all");
-  const [unit, setUnit]           = useState("all");
+  const [search, setSearch]           = useState("");
+  const [categoryId, setCategoryId]   = useState("all");
+  const [status, setStatus]           = useState("all");
+  const [unit, setUnit]               = useState("all");
+  const [manageCatsOpen, setManageCatsOpen] = useState(false);
 
   const { data: products = [], isLoading: loadingProducts, isError } = useProducts();
   const { data: categories = [] } = useCategories();
@@ -44,9 +46,14 @@ export default function ProdutosPage() {
         title="Produtos"
         description="Gerencie o cadastro e as informações comerciais dos produtos."
         actions={
-          <Button onClick={() => navigate("/produtos/novo")}>
-            <Plus className="h-4 w-4 mr-1" /> Novo produto
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setManageCatsOpen(true)}>
+              <Tags className="h-4 w-4 mr-1" /> Categorias
+            </Button>
+            <Button onClick={() => navigate("/produtos/novo")}>
+              <Plus className="h-4 w-4 mr-1" /> Novo produto
+            </Button>
+          </div>
         }
       />
 
@@ -88,6 +95,11 @@ export default function ProdutosPage() {
           )}
         </div>
       </SectionCard>
+
+      <ManageCategoriesDialog
+        open={manageCatsOpen}
+        onClose={() => setManageCatsOpen(false)}
+      />
     </div>
   );
 }

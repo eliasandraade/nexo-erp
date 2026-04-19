@@ -61,3 +61,20 @@ export function deactivateProduct(id: string): Promise<void> {
 export function fetchCategories(): Promise<CategoryDto[]> {
   return apiClient.get<CategoryDto[]>("/categories");
 }
+
+export interface CategoryPayload {
+  name: string;
+  description?: string | null;
+}
+
+export function createCategory(payload: CategoryPayload): Promise<CategoryDto> {
+  return apiClient.post<CategoryDto>("/categories", payload);
+}
+
+export function updateCategory(id: string, payload: CategoryPayload): Promise<CategoryDto> {
+  return apiClient.put<CategoryDto>(`/categories/${id}`, payload);
+}
+
+export function deleteCategory(id: string): Promise<void> {
+  return apiClient.delete<void>(`/categories/${id}`);
+}

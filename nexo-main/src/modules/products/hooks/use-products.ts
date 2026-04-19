@@ -7,8 +7,12 @@ import {
   fetchProductById,
   fetchProducts,
   updateProduct,
+  createCategory,
+  updateCategory,
+  deleteCategory,
   type CreateProductPayload,
   type UpdateProductPayload,
+  type CategoryPayload,
 } from "../api/products.api";
 
 export const PRODUCTS_KEY = ["products"] as const;
@@ -69,6 +73,35 @@ export function useSetProductActive(id: string) {
       active ? activateProduct(id) : deactivateProduct(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [...PRODUCTS_KEY, id] });
+      qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
+    },
+  });
+}
+
+// ── Category mutations ────────────────────────────────────────────────────────
+
+export function useCreateCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CategoryPayload) => createCategory(payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CATEGORIES_KEY }),
+  });
+}
+
+export function useUpdateCategory(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CategoryPayload) => updateCategory(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: CATEGORIES_KEY }),
+  });
+}
+
+export function useDeleteCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteCategory(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: CATEGORIES_KEY });
       qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
     },
   });
