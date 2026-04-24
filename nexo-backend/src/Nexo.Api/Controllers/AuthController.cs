@@ -174,14 +174,11 @@ public class AuthController : ControllerBase
         if (!Guid.TryParse(request.StoreId, out var storeId))
             return BadRequest(new { error = "Invalid storeId format." });
 
-        var refreshToken = HttpContext.Request.Headers.Authorization
-            .FirstOrDefault()?.Replace("Bearer ", string.Empty);
-
         var result = await _authService.SwitchStoreAsync(
             _currentUser.UserId,
             _currentUser.TenantId,
             storeId,
-            refreshToken ?? string.Empty,
+            request.RefreshToken,
             ct);
 
         if (result is null)

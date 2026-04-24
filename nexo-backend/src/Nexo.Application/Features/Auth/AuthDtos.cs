@@ -10,7 +10,11 @@ public record RefreshTokenRequest(string RefreshToken);
 
 public record LogoutRequest(string RefreshToken);
 
-public record SwitchStoreRequest(string StoreId);
+/// <summary>
+/// Client must include the current refresh token so the server can revoke it
+/// atomically when issuing the new store-scoped token pair.
+/// </summary>
+public record SwitchStoreRequest(string StoreId, string RefreshToken);
 
 // ── Responses ───────────────────────────────────────────────────────────────
 

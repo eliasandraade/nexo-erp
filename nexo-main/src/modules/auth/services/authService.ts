@@ -91,7 +91,8 @@ export async function logout(): Promise<void> {
  * Updates stored tokens and session on success.
  */
 export async function switchStore(storeId: string): Promise<AuthSession> {
-  const data = await apiClient.post<BackendSwitchStoreResponse>("/auth/switch-store", { storeId });
+  const refreshToken = localStorage.getItem(TOKEN_KEYS.refresh) ?? "";
+  const data = await apiClient.post<BackendSwitchStoreResponse>("/auth/switch-store", { storeId, refreshToken });
   const session = toAuthSession(data.session);
   setTokens(data.accessToken, data.refreshToken);
   persistSession(session);
