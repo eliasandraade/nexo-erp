@@ -17,6 +17,14 @@ public class ModifierGroupRepository : IModifierGroupRepository
             .OrderBy(g => g.SortOrder)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<ProductModifierGroup>> GetByProductIdAsync(Guid productId, Guid tenantId, CancellationToken ct = default)
+        => await _context.ProductModifierGroups
+            .IgnoreQueryFilters()
+            .Include(g => g.Modifiers)
+            .Where(g => g.ProductId == productId && g.TenantId == tenantId && g.IsActive)
+            .OrderBy(g => g.SortOrder)
+            .ToListAsync(ct);
+
     public async Task<ProductModifierGroup?> GetByIdWithModifiersAsync(Guid id, CancellationToken ct = default)
         => await _context.ProductModifierGroups
             .Include(g => g.Modifiers)
@@ -24,6 +32,13 @@ public class ModifierGroupRepository : IModifierGroupRepository
 
     public async Task<ProductModifier?> GetModifierByIdAsync(Guid modifierId, CancellationToken ct = default)
         => await _context.ProductModifiers.FirstOrDefaultAsync(m => m.Id == modifierId, ct);
+
+    public async Task<ProductModifier?> GetActiveModifierAsync(Guid modifierId, Guid tenantId, CancellationToken ct = default)
+        => await _context.ProductModifiers
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(m => m.Id == modifierId
+                                   && m.TenantId == tenantId
+                                   && m.IsActive, ct);
 
     public async Task AddGroupAsync(ProductModifierGroup group, CancellationToken ct = default)
         => await _context.ProductModifierGroups.AddAsync(group, ct);
