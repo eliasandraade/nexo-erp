@@ -53,7 +53,8 @@ public class FoodServiceSettingsService
         }
         settings.UpdatePortalInfo(
             req.DisplayName, req.LogoUrl, req.CoverImageUrl,
-            req.Description, req.WhatsAppPhone, req.BusinessHoursJson);
+            req.Description, req.WhatsAppPhone, req.BusinessHoursJson,
+            req.AcceptingOrders, req.DeliveryEnabled, req.TakeawayEnabled);
         await _repo.SaveChangesAsync(ct);
         return Map(settings);
     }
@@ -64,5 +65,6 @@ public class FoodServiceSettingsService
         s.ServiceFeeEnabled, s.ServiceFeePercent,
         s.OrderTypesEnabled,
         s.DisplayName, s.LogoUrl, s.CoverImageUrl,
-        s.Description, s.WhatsAppPhone, s.BusinessHoursJson);
+        s.Description, s.WhatsAppPhone, s.BusinessHoursJson,
+        s.AcceptingOrders, s.DeliveryEnabled, s.TakeawayEnabled);
 }

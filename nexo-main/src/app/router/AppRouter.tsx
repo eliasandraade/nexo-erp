@@ -16,6 +16,8 @@ import PlatformTrialPage from "@/modules/platform/pages/PlatformTrialPage";
 import PlatformFlagsPage from "@/modules/platform/pages/PlatformFlagsPage";
 import ImpersonatePage from "@/pages/ImpersonatePage";
 import LandingPage from "@/modules/landing/pages/LandingPage";
+import PortalMenuPage from "@/modules/portal/pages/PortalMenuPage";
+import PortalTrackingPage from "@/modules/portal/pages/PortalTrackingPage";
 
 // Auth pages
 import LoginPage from "@/modules/auth/pages/LoginPage";
@@ -71,6 +73,10 @@ export function AppRouter() {
         <Routes>
           {/* Public: landing page */}
           <Route path="/" element={<LandingPage />} />
+
+          {/* Public: restaurant portal */}
+          <Route path="/menu/:slug"        element={<PortalMenuPage />} />
+          <Route path="/rastrear/:token"   element={<PortalTrackingPage />} />
 
           {/* Public: impersonation entry (opened in new tab by platform admin) */}
           <Route path="/impersonate" element={<ImpersonatePage />} />

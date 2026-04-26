@@ -22,6 +22,15 @@ public class ProductRepository : IProductRepository
                                    && x.IsActive
                                    && x.IsMenuVisible, ct);
 
+    public async Task<IReadOnlyList<Product>> GetAllMenuItemsAsync(Guid storeId, Guid tenantId, CancellationToken ct = default)
+        => await _context.Products
+            .IgnoreQueryFilters()
+            .Include(p => p.Category)
+            .Where(p => p.StoreId == storeId && p.TenantId == tenantId && p.IsActive && p.IsMenuVisible)
+            .OrderBy(p => p.Category != null ? p.Category.SortOrder : int.MaxValue)
+            .ThenBy(p => p.Name)
+            .ToListAsync(ct);
+
     public async Task<Product?> GetByCodeAsync(string code, CancellationToken ct = default)
         => await _context.Products.FirstOrDefaultAsync(x => x.Code == code.ToUpperInvariant(), ct);
 

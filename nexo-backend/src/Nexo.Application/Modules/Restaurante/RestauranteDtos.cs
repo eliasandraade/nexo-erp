@@ -158,7 +158,10 @@ public record FoodServiceSettingsDto(
     string?  CoverImageUrl,
     string?  Description,
     string?  WhatsAppPhone,
-    string?  BusinessHoursJson);
+    string?  BusinessHoursJson,
+    bool     AcceptingOrders,
+    bool     DeliveryEnabled,
+    bool     TakeawayEnabled);
 
 public record UpdatePortalInfoRequest(
     string?  DisplayName,
@@ -166,4 +169,7 @@ public record UpdatePortalInfoRequest(
     string?  CoverImageUrl,
     string?  Description,
     string?  WhatsAppPhone,
-    string?  BusinessHoursJson);
+    string?  BusinessHoursJson,
+    bool     AcceptingOrders = true,
+    bool     DeliveryEnabled = true,
+    bool     TakeawayEnabled = true);

@@ -14,6 +14,11 @@ public class FoodServiceSettingsRepository : IFoodServiceSettingsRepository
     public async Task<FoodServiceSettings?> GetCurrentStoreAsync(CancellationToken ct = default)
         => await _context.FoodServiceSettings.FirstOrDefaultAsync(ct);
 
+    public async Task<FoodServiceSettings?> GetByStoreIdAsync(Guid storeId, Guid tenantId, CancellationToken ct = default)
+        => await _context.FoodServiceSettings
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.StoreId == storeId && s.TenantId == tenantId, ct);
+
     public async Task AddAsync(FoodServiceSettings settings, CancellationToken ct = default)
         => await _context.FoodServiceSettings.AddAsync(settings, ct);
 

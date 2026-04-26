@@ -11,6 +11,12 @@ public interface IProductRepository
     /// Returns only active + menu-visible products belonging to the given store.
     /// </summary>
     Task<Product?> GetActiveMenuItemAsync(Guid id, Guid storeId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Bypasses query filters. Returns all active + IsMenuVisible products for the store,
+    /// including their Category navigation property. Used by the public menu endpoint.
+    /// </summary>
+    Task<IReadOnlyList<Product>> GetAllMenuItemsAsync(Guid storeId, Guid tenantId, CancellationToken ct = default);
     Task<Product?> GetByCodeAsync(string code, CancellationToken ct = default);
     Task<Product?> GetByBarcodeAsync(string barcode, CancellationToken ct = default);
     Task<IReadOnlyList<Product>> GetAllAsync(bool includeInactive = false, CancellationToken ct = default);

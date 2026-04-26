@@ -32,6 +32,12 @@ public class FoodServiceSettings : StoreEntity
     public string? WhatsAppPhone    { get; private set; }
     /// <summary>JSON: array de 7 objetos { dayOfWeek, isOpen, openTime, closeTime }.</summary>
     public string? BusinessHoursJson { get; private set; }
+    /// <summary>Abre/fecha o portal para novos pedidos sem remover o slug.</summary>
+    public bool    AcceptingOrders   { get; private set; } = true;
+    /// <summary>Habilita pedidos de entrega no portal.</summary>
+    public bool    DeliveryEnabled   { get; private set; } = true;
+    /// <summary>Habilita retirada no balcão no portal.</summary>
+    public bool    TakeawayEnabled   { get; private set; } = true;
 
     public static FoodServiceSettings CreateDefault(Guid tenantId)
         => new FoodServiceSettings(tenantId)
@@ -65,7 +71,10 @@ public class FoodServiceSettings : StoreEntity
         string? coverImageUrl,
         string? description,
         string? whatsAppPhone,
-        string? businessHoursJson)
+        string? businessHoursJson,
+        bool    acceptingOrders = true,
+        bool    deliveryEnabled = true,
+        bool    takeawayEnabled = true)
     {
         DisplayName       = displayName?.Trim();
         LogoUrl           = logoUrl?.Trim();
@@ -73,6 +82,9 @@ public class FoodServiceSettings : StoreEntity
         Description       = description?.Trim();
         WhatsAppPhone     = whatsAppPhone?.Trim();
         BusinessHoursJson = businessHoursJson;
+        AcceptingOrders   = acceptingOrders;
+        DeliveryEnabled   = deliveryEnabled;
+        TakeawayEnabled   = takeawayEnabled;
         SetUpdatedAt();
     }
 }
