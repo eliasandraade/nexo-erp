@@ -23,24 +23,26 @@ namespace Nexo.Application.Modules.Restaurante;
 /// </summary>
 public class DeliveryOrderService : IDeliveryOrderSyncService
 {
-    private readonly IDeliveryOrderRepository   _repo;
-    private readonly IOrderRepository           _orders;
-    private readonly ICurrentTenant             _currentTenant;
-    private readonly ICurrentUser               _currentUser;
-    private readonly IProductRepository         _products;
-    private readonly IStoreRepository           _stores;
-    private readonly IModifierGroupRepository   _modifierGroups;
+    private readonly IDeliveryOrderRepository      _repo;
+    private readonly IOrderRepository              _orders;
+    private readonly ICurrentTenant                _currentTenant;
+    private readonly ICurrentUser                  _currentUser;
+    private readonly IProductRepository            _products;
+    private readonly IStoreRepository              _stores;
+    private readonly IModifierGroupRepository      _modifierGroups;
+    private readonly IFoodServiceSettingsRepository _settings;
     private readonly ILogger<DeliveryOrderService> _logger;
 
     public DeliveryOrderService(
-        IDeliveryOrderRepository      repo,
-        IOrderRepository              orders,
-        ICurrentTenant                currentTenant,
-        ICurrentUser                  currentUser,
-        IProductRepository            products,
-        IStoreRepository              stores,
-        IModifierGroupRepository      modifierGroups,
-        ILogger<DeliveryOrderService> logger)
+        IDeliveryOrderRepository       repo,
+        IOrderRepository               orders,
+        ICurrentTenant                 currentTenant,
+        ICurrentUser                   currentUser,
+        IProductRepository             products,
+        IStoreRepository               stores,
+        IModifierGroupRepository       modifierGroups,
+        IFoodServiceSettingsRepository settings,
+        ILogger<DeliveryOrderService>  logger)
     {
         _repo           = repo;
         _orders         = orders;
@@ -49,6 +51,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         _products       = products;
         _stores         = stores;
         _modifierGroups = modifierGroups;
+        _settings       = settings;
         _logger         = logger;
     }
 
@@ -251,7 +254,16 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         if (store.PublicSlug is null)
             throw new DomainException("O portal deste restaurante não está ativo.");
 
+        var foodSettings = await _settings.GetByStoreIdAsync(store.Id, store.TenantId, ct);
+        if (foodSettings is not null && !foodSettings.AcceptingOrders)
+            throw new DomainException("O restaurante não está aceitando pedidos no momento.");
+
         var orderType = Enum.Parse<DeliveryOrderType>(request.OrderType, ignoreCase: true);
+
+        if (foodSettings is not null && orderType == DeliveryOrderType.Delivery && !foodSettings.DeliveryEnabled)
+            throw new DomainException("Entrega não está disponível no momento.");
+        if (foodSettings is not null && orderType == DeliveryOrderType.Takeaway && !foodSettings.TakeawayEnabled)
+            throw new DomainException("Retirada não está disponível no momento.");
 
         // Delivery fee is never trusted from the client.
         // Takeaway is always 0. Delivery is also 0 for now — no per-store fee configuration yet.

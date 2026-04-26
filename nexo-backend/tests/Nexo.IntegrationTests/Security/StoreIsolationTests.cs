@@ -60,7 +60,8 @@ public class StoreIsolationTests
 
         // Accept 201 Created or 409 Conflict (session already open in this store from a prior run)
         openResponse.StatusCode.Should()
-            .BeOneOf(HttpStatusCode.Created, HttpStatusCode.Conflict,
+            .BeOneOf(
+                new[] { HttpStatusCode.Created, HttpStatusCode.Conflict },
                 "expected either a new session or an already-open session in Store B");
 
         Guid storeBSessionId;

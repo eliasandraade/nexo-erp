@@ -155,6 +155,104 @@ export interface ModifierGroupDto {
   modifiers: ModifierDto[];
 }
 
+// ── Delivery Orders ───────────────────────────────────────────────────────────
+
+export type DeliveryChannel =
+  | "Portal" | "PhoneCall" | "InPerson" | "WhatsApp"
+  | "IFood" | "Rappi" | "Anotaai" | "Other";
+
+export type DeliveryOrderType = "Delivery" | "Takeaway";
+
+export type DeliveryOrderStatus =
+  | "Received" | "Accepted" | "InPreparation"
+  | "ReadyForPickup" | "OutForDelivery"
+  | "Delivered" | "Rejected" | "Cancelled";
+
+export interface DeliveryItemModifierDto {
+  modifierId: string | null;
+  label: string;
+  price: number;
+}
+
+export interface DeliveryItemDto {
+  id: string;
+  productId: string | null;
+  productName: string;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+  notes: string | null;
+  modifiers: DeliveryItemModifierDto[];
+}
+
+export interface DeliveryOrderDto {
+  id: string;
+  orderNumber: number;
+  trackingToken: string;
+  channel: DeliveryChannel;
+  orderType: DeliveryOrderType;
+  status: DeliveryOrderStatus;
+  rejectionReason: string | null;
+  customerName: string;
+  customerPhone: string;
+  customerEmail: string | null;
+  customerId: string | null;
+  deliveryAddressJson: string | null;
+  deliveryFee: number;
+  itemsSubtotal: number;
+  total: number;
+  estimatedMinutes: number | null;
+  riderName: string | null;
+  riderPhone: string | null;
+  restOrderId: string | null;
+  externalOrderId: string | null;
+  notes: string | null;
+  receivedAt: string;
+  acceptedAt: string | null;
+  readyAt: string | null;
+  dispatchedAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  items: DeliveryItemDto[];
+}
+
+export interface AcceptDeliveryRequest {
+  estimatedMinutes?: number | null;
+}
+
+export interface RejectDeliveryRequest {
+  reason?: string | null;
+}
+
+export interface UpdateDeliveryStatusRequest {
+  status: "OutForDelivery" | "Delivered";
+  riderName?: string | null;
+  riderPhone?: string | null;
+}
+
+export interface AssignRiderRequest {
+  name: string;
+  phone?: string | null;
+}
+
+export interface CreateManualItemRequest {
+  productId: string;
+  quantity: number;
+  notes?: string | null;
+}
+
+export interface CreateManualDeliveryRequest {
+  orderType: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string | null;
+  deliveryAddressJson?: string | null;
+  estimatedMinutes?: number | null;
+  notes?: string | null;
+  channel?: string;
+  items?: CreateManualItemRequest[];
+}
+
 // ── Kitchen ───────────────────────────────────────────────────────────────────
 export type ConnectionMode = "realtime" | "polling";
 
