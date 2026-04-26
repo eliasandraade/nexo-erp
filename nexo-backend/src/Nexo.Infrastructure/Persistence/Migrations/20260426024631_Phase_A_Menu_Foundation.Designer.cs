@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexo.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    partial class NexoDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260426024631_Phase_A_Menu_Foundation")]
+    partial class Phase_A_Menu_Foundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2180,297 +2183,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("rest_areas", "nexo");
                 });
 
-            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestDeliveryOrder", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime?>("AcceptedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("accepted_at");
-
-                    b.Property<DateTime?>("CancelledAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("cancelled_at");
-
-                    b.Property<string>("Channel")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("channel");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("CustomerEmail")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("customer_email");
-
-                    b.Property<Guid?>("CustomerId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("customer_id");
-
-                    b.Property<string>("CustomerName")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("customer_name");
-
-                    b.Property<string>("CustomerPhone")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("customer_phone");
-
-                    b.Property<DateTime?>("DeliveredAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("delivered_at");
-
-                    b.Property<string>("DeliveryAddressJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("delivery_address_json");
-
-                    b.Property<decimal>("DeliveryFee")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric(18,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("delivery_fee");
-
-                    b.Property<DateTime?>("DispatchedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("dispatched_at");
-
-                    b.Property<int?>("EstimatedMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("estimated_minutes");
-
-                    b.Property<string>("ExternalEventType")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("external_event_type");
-
-                    b.Property<string>("ExternalOrderId")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("external_order_id");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("notes");
-
-                    b.Property<int>("OrderNumber")
-                        .HasColumnType("integer")
-                        .HasColumnName("order_number");
-
-                    b.Property<string>("OrderType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("order_type");
-
-                    b.Property<string>("RawPayload")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("raw_payload");
-
-                    b.Property<DateTime?>("ReadyAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("ready_at");
-
-                    b.Property<DateTime>("ReceivedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("received_at");
-
-                    b.Property<string>("RejectionReason")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("rejection_reason");
-
-                    b.Property<Guid?>("RestOrderId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("rest_order_id");
-
-                    b.Property<string>("RiderName")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("rider_name");
-
-                    b.Property<string>("RiderPhone")
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("rider_phone");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("status");
-
-                    b.Property<Guid>("StoreId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("store_id");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<string>("TrackingToken")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("tracking_token");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("StoreId");
-
-                    b.HasIndex("TenantId")
-                        .HasDatabaseName("ix_rest_delivery_orders_tenant_id");
-
-                    b.HasIndex("TrackingToken")
-                        .IsUnique()
-                        .HasDatabaseName("ix_rest_delivery_orders_tracking_token");
-
-                    b.HasIndex("TenantId", "StoreId", "Channel")
-                        .HasDatabaseName("ix_rest_delivery_orders_store_channel");
-
-                    b.HasIndex("TenantId", "StoreId", "OrderNumber")
-                        .IsUnique()
-                        .HasDatabaseName("ix_rest_delivery_orders_store_number");
-
-                    b.HasIndex("TenantId", "StoreId", "Status")
-                        .HasDatabaseName("ix_rest_delivery_orders_store_status");
-
-                    b.HasIndex("TenantId", "StoreId", "Channel", "ExternalOrderId")
-                        .HasDatabaseName("ix_rest_delivery_orders_external_dedup")
-                        .HasFilter("external_order_id IS NOT NULL");
-
-                    b.ToTable("rest_delivery_orders", "nexo");
-                });
-
-            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestDeliveryOrderItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("DeliveryOrderId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("delivery_order_id");
-
-                    b.Property<string>("ExternalProductId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("external_product_id");
-
-                    b.Property<string>("Notes")
-                        .HasMaxLength(500)
-                        .HasColumnType("character varying(500)")
-                        .HasColumnName("notes");
-
-                    b.Property<Guid?>("ProductId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("product_id");
-
-                    b.Property<string>("ProductNameSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
-                        .HasColumnName("product_name_snapshot");
-
-                    b.Property<decimal>("Quantity")
-                        .HasColumnType("numeric(18,4)")
-                        .HasColumnName("quantity");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<decimal>("UnitPriceSnapshot")
-                        .HasColumnType("numeric(18,4)")
-                        .HasColumnName("unit_price_snapshot");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeliveryOrderId")
-                        .HasDatabaseName("ix_rest_delivery_order_items_delivery_order_id");
-
-                    b.HasIndex("TenantId")
-                        .HasDatabaseName("ix_rest_delivery_order_items_tenant_id");
-
-                    b.ToTable("rest_delivery_order_items", "nexo");
-                });
-
-            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestDeliveryOrderItemModifier", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("created_at");
-
-                    b.Property<Guid>("DeliveryOrderItemId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("delivery_order_item_id");
-
-                    b.Property<string>("ExternalModifierId")
-                        .HasMaxLength(100)
-                        .HasColumnType("character varying(100)")
-                        .HasColumnName("external_modifier_id");
-
-                    b.Property<string>("LabelSnapshot")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("label_snapshot");
-
-                    b.Property<Guid?>("ModifierId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("modifier_id");
-
-                    b.Property<decimal>("PriceSnapshot")
-                        .HasColumnType("numeric(18,4)")
-                        .HasColumnName("price_snapshot");
-
-                    b.Property<Guid>("TenantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("tenant_id");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamptz")
-                        .HasColumnName("updated_at");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DeliveryOrderItemId")
-                        .HasDatabaseName("ix_rest_delivery_order_item_modifiers_item_id");
-
-                    b.HasIndex("TenantId")
-                        .HasDatabaseName("ix_rest_delivery_order_item_modifiers_tenant_id");
-
-                    b.ToTable("rest_delivery_order_item_modifiers", "nexo");
-                });
-
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestOrder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3640,53 +3352,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_rest_areas_tenants");
                 });
 
-            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestDeliveryOrder", b =>
-                {
-                    b.HasOne("Nexo.Domain.Entities.Store", null)
-                        .WithMany()
-                        .HasForeignKey("StoreId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_rest_delivery_orders_stores");
-
-                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("fk_rest_delivery_orders_tenants");
-                });
-
-            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestDeliveryOrderItem", b =>
-                {
-                    b.HasOne("Nexo.Domain.Modules.Restaurante.RestDeliveryOrder", null)
-                        .WithMany("Items")
-                        .HasForeignKey("DeliveryOrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestDeliveryOrderItemModifier", b =>
-                {
-                    b.HasOne("Nexo.Domain.Modules.Restaurante.RestDeliveryOrderItem", null)
-                        .WithMany("Modifiers")
-                        .HasForeignKey("DeliveryOrderItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
-                        .WithMany()
-                        .HasForeignKey("TenantId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestOrder", b =>
                 {
                     b.HasOne("Nexo.Domain.Entities.Sale", null)
@@ -3990,16 +3655,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestArea", b =>
                 {
                     b.Navigation("Tables");
-                });
-
-            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestDeliveryOrder", b =>
-                {
-                    b.Navigation("Items");
-                });
-
-            modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestDeliveryOrderItem", b =>
-                {
-                    b.Navigation("Modifiers");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Restaurante.RestOrder", b =>

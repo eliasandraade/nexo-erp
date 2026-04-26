@@ -43,9 +43,26 @@ public class FoodServiceSettingsService
         return Map(settings);
     }
 
+    public async Task<FoodServiceSettingsDto> UpdatePortalInfoAsync(UpdatePortalInfoRequest req, CancellationToken ct = default)
+    {
+        var settings = await _repo.GetCurrentStoreAsync(ct);
+        if (settings is null)
+        {
+            settings = FoodServiceSettings.CreateDefault(_currentTenant.Id);
+            await _repo.AddAsync(settings, ct);
+        }
+        settings.UpdatePortalInfo(
+            req.DisplayName, req.LogoUrl, req.CoverImageUrl,
+            req.Description, req.WhatsAppPhone, req.BusinessHoursJson);
+        await _repo.SaveChangesAsync(ct);
+        return Map(settings);
+    }
+
     private static FoodServiceSettingsDto Map(FoodServiceSettings s) => new(
         s.Id, s.StoreType,
         s.CouvertEnabled, s.CouvertPricePerPerson, s.CouvertAutomatic,
         s.ServiceFeeEnabled, s.ServiceFeePercent,
-        s.OrderTypesEnabled);
+        s.OrderTypesEnabled,
+        s.DisplayName, s.LogoUrl, s.CoverImageUrl,
+        s.Description, s.WhatsAppPhone, s.BusinessHoursJson);
 }

@@ -29,6 +29,10 @@ public class CategoryConfiguration : IEntityTypeConfiguration<Category>
         builder.Property(x => x.ParentCategoryId)
             .HasColumnName("parent_category_id");
 
+        builder.Property(x => x.SortOrder)
+            .HasColumnName("sort_order")
+            .HasDefaultValue(0);
+
         builder.Property(x => x.IsActive)
             .HasColumnName("is_active")
             .HasDefaultValue(true);

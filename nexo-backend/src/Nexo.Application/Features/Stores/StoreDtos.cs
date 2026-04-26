@@ -1,5 +1,7 @@
 namespace Nexo.Application.Features.Stores;
 
+public record SetPublicSlugRequest(string? PublicSlug);
+
 /// <summary>
 /// Store (galpão) descriptor returned to authenticated users.
 /// Only stores accessible to the current user (from JWT store[] claims) are returned.
@@ -8,6 +10,7 @@ public record StoreDto(
     string Id,
     string Name,
     string Slug,
+    string? PublicSlug,
     string? ModuleKey,
     string Status);
 

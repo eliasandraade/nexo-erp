@@ -151,4 +151,19 @@ public record FoodServiceSettingsDto(
     bool     CouvertAutomatic,
     bool     ServiceFeeEnabled,
     decimal? ServiceFeePercent,
-    string   OrderTypesEnabled);
+    string   OrderTypesEnabled,
+    // portal
+    string?  DisplayName,
+    string?  LogoUrl,
+    string?  CoverImageUrl,
+    string?  Description,
+    string?  WhatsAppPhone,
+    string?  BusinessHoursJson);
+
+public record UpdatePortalInfoRequest(
+    string?  DisplayName,
+    string?  LogoUrl,
+    string?  CoverImageUrl,
+    string?  Description,
+    string?  WhatsAppPhone,
+    string?  BusinessHoursJson);

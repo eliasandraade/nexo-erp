@@ -24,6 +24,15 @@ public class FoodServiceSettings : StoreEntity
     /// <summary>Comma-separated enabled order types, e.g. "DineIn,Counter,Takeaway".</summary>
     public string OrderTypesEnabled    { get; private set; } = "DineIn,Counter,Takeaway";
 
+    // ── Portal de pedidos públicos ────────────────────────────────────────────
+    public string? DisplayName      { get; private set; }   // nome de exibição no portal
+    public string? LogoUrl          { get; private set; }
+    public string? CoverImageUrl    { get; private set; }
+    public string? Description      { get; private set; }
+    public string? WhatsAppPhone    { get; private set; }
+    /// <summary>JSON: array de 7 objetos { dayOfWeek, isOpen, openTime, closeTime }.</summary>
+    public string? BusinessHoursJson { get; private set; }
+
     public static FoodServiceSettings CreateDefault(Guid tenantId)
         => new FoodServiceSettings(tenantId)
         {
@@ -47,6 +56,23 @@ public class FoodServiceSettings : StoreEntity
         ServiceFeeEnabled     = serviceFeeEnabled;
         ServiceFeePercent     = serviceFeeEnabled ? serviceFeePercent : null;
         OrderTypesEnabled     = orderTypesEnabled;
+        SetUpdatedAt();
+    }
+
+    public void UpdatePortalInfo(
+        string? displayName,
+        string? logoUrl,
+        string? coverImageUrl,
+        string? description,
+        string? whatsAppPhone,
+        string? businessHoursJson)
+    {
+        DisplayName       = displayName?.Trim();
+        LogoUrl           = logoUrl?.Trim();
+        CoverImageUrl     = coverImageUrl?.Trim();
+        Description       = description?.Trim();
+        WhatsAppPhone     = whatsAppPhone?.Trim();
+        BusinessHoursJson = businessHoursJson;
         SetUpdatedAt();
     }
 }

@@ -10,6 +10,7 @@ public class Category : TenantEntity
     public string Name { get; private set; } = string.Empty;
     public string? Description { get; private set; }
     public Guid? ParentCategoryId { get; private set; }
+    public int SortOrder { get; private set; }                      // ordem de exibição no cardápio
     public bool IsActive { get; private set; }
 
     // Navigation
@@ -21,22 +22,25 @@ public class Category : TenantEntity
         Guid tenantId,
         string name,
         string? description = null,
-        Guid? parentCategoryId = null)
+        Guid? parentCategoryId = null,
+        int sortOrder = 0)
     {
         return new Category(tenantId)
         {
             Name             = name.Trim(),
             Description      = description?.Trim(),
             ParentCategoryId = parentCategoryId,
+            SortOrder        = sortOrder,
             IsActive         = true,
         };
     }
 
-    public void Update(string name, string? description, Guid? parentCategoryId)
+    public void Update(string name, string? description, Guid? parentCategoryId, int sortOrder = 0)
     {
         Name             = name.Trim();
         Description      = description?.Trim();
         ParentCategoryId = parentCategoryId;
+        SortOrder        = sortOrder;
         SetUpdatedAt();
     }
 

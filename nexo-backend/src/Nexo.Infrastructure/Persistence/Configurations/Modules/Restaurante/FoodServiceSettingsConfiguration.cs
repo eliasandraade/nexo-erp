@@ -27,6 +27,15 @@ public class FoodServiceSettingsConfiguration : IEntityTypeConfiguration<FoodSer
             .HasColumnType("numeric(5,2)");
         builder.Property(x => x.OrderTypesEnabled).HasColumnName("order_types_enabled")
             .HasMaxLength(100).HasDefaultValue("DineIn,Counter,Takeaway").IsRequired();
+
+        builder.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(200);
+        builder.Property(x => x.LogoUrl).HasColumnName("logo_url").HasMaxLength(2000);
+        builder.Property(x => x.CoverImageUrl).HasColumnName("cover_image_url").HasMaxLength(2000);
+        builder.Property(x => x.Description).HasColumnName("description").HasMaxLength(1000);
+        builder.Property(x => x.WhatsAppPhone).HasColumnName("whatsapp_phone").HasMaxLength(30);
+        builder.Property(x => x.BusinessHoursJson).HasColumnName("business_hours_json")
+            .HasColumnType("jsonb");
+
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 

@@ -45,5 +45,7 @@ public record ProductDto(
     decimal? MinStockQuantity,
     decimal? MaxStockQuantity,
     bool IsActive,
+    bool IsMenuVisible,
+    string? ImageUrl,
     DateTime CreatedAt,
     DateTime UpdatedAt);

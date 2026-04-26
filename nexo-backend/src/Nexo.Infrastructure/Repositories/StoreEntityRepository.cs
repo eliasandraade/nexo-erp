@@ -23,6 +23,24 @@ public class StoreEntityRepository : IStoreRepository
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == id, ct);
 
+    public async Task<Store?> GetByIdTrackedAsync(Guid id, CancellationToken ct = default)
+        => await _context.Stores
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.Id == id, ct);
+
+    public async Task<Store?> GetByPublicSlugAsync(string publicSlug, CancellationToken ct = default)
+        => await _context.Stores
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Include(s => s.ModuleSubscription)
+            .FirstOrDefaultAsync(s => s.PublicSlug == publicSlug, ct);
+
+    public async Task<bool> PublicSlugExistsAsync(string publicSlug, Guid? excludeStoreId, CancellationToken ct = default)
+        => await _context.Stores
+            .IgnoreQueryFilters()
+            .AnyAsync(s => s.PublicSlug == publicSlug
+                        && (excludeStoreId == null || s.Id != excludeStoreId), ct);
+
     public async Task<IReadOnlyList<Store>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default)
         => await _context.Stores
             .IgnoreQueryFilters()

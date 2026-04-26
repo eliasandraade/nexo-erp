@@ -13,6 +13,7 @@ import {
   UtensilsCrossed,
   SlidersHorizontal,
   BarChart2,
+  Bike,
   type LucideIcon,
 } from "lucide-react";
 
@@ -45,6 +46,7 @@ export const appRoutes: AppRoute[] = [
 
   // ── Restaurante ──────────────────────────────────────────────────────────
   { path: "/restaurante",            label: "Restaurante",   icon: UtensilsCrossed,   moduleKey: "restaurante" },
+  { path: "/restaurante/delivery",   label: "Entregas",      icon: Bike,              moduleKey: "restaurante" },
   { path: "/restaurante/configurar", label: "Config. Mesas", icon: SlidersHorizontal, moduleKey: "restaurante" },
   { path: "/restaurante/relatorios", label: "Relatórios",    icon: BarChart2,          moduleKey: "restaurante" },
 ];

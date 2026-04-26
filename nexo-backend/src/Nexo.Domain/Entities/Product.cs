@@ -20,6 +20,8 @@ public class Product : StoreEntity
     public decimal? MinStockQuantity { get; private set; }
     public decimal? MaxStockQuantity { get; private set; }
     public bool IsActive { get; private set; }
+    public bool IsMenuVisible { get; private set; }                 // exibe no portal público
+    public string? ImageUrl { get; private set; }                   // URL externa de imagem do produto
 
     // Navigation
     public Category? Category { get; private set; }
@@ -55,6 +57,7 @@ public class Product : StoreEntity
             MinStockQuantity = minStockQuantity,
             MaxStockQuantity = maxStockQuantity,
             IsActive         = true,
+            IsMenuVisible    = true,
         };
     }
 
@@ -89,6 +92,9 @@ public class Product : StoreEntity
         SalePrice = salePrice;
         SetUpdatedAt();
     }
+
+    public void SetMenuVisibility(bool visible) { IsMenuVisible = visible; SetUpdatedAt(); }
+    public void SetImageUrl(string? url)        { ImageUrl = url?.Trim();  SetUpdatedAt(); }
 
     public void Deactivate() { IsActive = false; SetUpdatedAt(); }
     public void Activate()   { IsActive = true;  SetUpdatedAt(); }

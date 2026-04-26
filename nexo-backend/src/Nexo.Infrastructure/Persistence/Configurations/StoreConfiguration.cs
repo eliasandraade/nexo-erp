@@ -30,6 +30,10 @@ public class StoreConfiguration : IEntityTypeConfiguration<Store>
             .HasMaxLength(100)
             .IsRequired();
 
+        builder.Property(x => x.PublicSlug)
+            .HasColumnName("public_slug")
+            .HasMaxLength(100);
+
         builder.Property(x => x.Status)
             .HasColumnName("status")
             .HasConversion<string>()
@@ -51,6 +55,7 @@ public class StoreConfiguration : IEntityTypeConfiguration<Store>
             .IsRequired();
 
         builder.HasIndex(x => new { x.TenantId, x.Slug }).IsUnique();
+        builder.HasIndex(x => x.PublicSlug).IsUnique().HasFilter("public_slug IS NOT NULL");
         builder.HasIndex(x => x.TenantId);
 
         builder.HasOne<Nexo.Domain.Entities.Tenant>()

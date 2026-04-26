@@ -10,6 +10,9 @@ namespace Nexo.Application.Common.Interfaces;
 public interface IStoreRepository
 {
     Task<Store?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<Store?> GetByIdTrackedAsync(Guid id, CancellationToken ct = default);
+    Task<Store?> GetByPublicSlugAsync(string publicSlug, CancellationToken ct = default);
+    Task<bool> PublicSlugExistsAsync(string publicSlug, Guid? excludeStoreId, CancellationToken ct = default);
     Task<IReadOnlyList<Store>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
 
     /// <summary>

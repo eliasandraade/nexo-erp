@@ -117,6 +117,11 @@ public static class DependencyInjection
         services.AddScoped<IRecipeCardRepository, RecipeCardRepository>();
         services.AddScoped<IModifierGroupRepository, ModifierGroupRepository>();
         services.AddScoped<IFoodServiceSettingsRepository, FoodServiceSettingsRepository>();
+        services.AddScoped<IDeliveryOrderRepository, DeliveryOrderRepository>();
+        // Single instance per scope — shared between controller injection and IDeliveryOrderSyncService.
+        services.AddScoped<Nexo.Application.Modules.Restaurante.DeliveryOrderService>();
+        services.AddScoped<IDeliveryOrderSyncService>(sp =>
+            sp.GetRequiredService<Nexo.Application.Modules.Restaurante.DeliveryOrderService>());
 
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<IPurchaseRepository, PurchaseRepository>();

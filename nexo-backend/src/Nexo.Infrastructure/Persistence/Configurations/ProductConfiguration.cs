@@ -74,6 +74,14 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasColumnName("is_active")
             .HasDefaultValue(true);
 
+        builder.Property(x => x.IsMenuVisible)
+            .HasColumnName("is_menu_visible")
+            .HasDefaultValue(true);
+
+        builder.Property(x => x.ImageUrl)
+            .HasColumnName("image_url")
+            .HasMaxLength(2000);
+
         builder.Property(x => x.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamptz")

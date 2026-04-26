@@ -1,3 +1,6 @@
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 using Nexo.Domain.Common;
 using Nexo.Domain.Enums;
 
@@ -20,6 +23,7 @@ public class Store : TenantEntity
     public Guid? ModuleSubscriptionId { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Slug { get; private set; } = string.Empty;       // unique per tenant, e.g. "filial-centro"
+    public string? PublicSlug { get; private set; }                // globally unique; null = portal disabled
     public StoreStatus Status { get; private set; }
     public string? SettingsJson { get; private set; }
 
@@ -47,6 +51,28 @@ public class Store : TenantEntity
     {
         Name = name.Trim();
         SetUpdatedAt();
+    }
+
+    public void SetPublicSlug(string? slug)
+    {
+        PublicSlug = slug is null ? null : NormalizeSlug(slug);
+        SetUpdatedAt();
+    }
+
+    // lowercase, sem acentos, só letras/números/hífen
+    public static string NormalizeSlug(string input)
+    {
+        var decomposed = input.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(decomposed.Length);
+        foreach (var c in decomposed)
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+
+        var slug = sb.ToString().ToLowerInvariant();
+        slug = Regex.Replace(slug, @"[\s_]+", "-");
+        slug = Regex.Replace(slug, @"[^a-z0-9\-]", "");
+        slug = Regex.Replace(slug, @"-{2,}", "-");
+        return slug.Trim('-');
     }
 
     public void Deactivate() { Status = StoreStatus.Inactive; SetUpdatedAt(); }

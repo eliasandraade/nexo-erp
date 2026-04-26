@@ -14,6 +14,14 @@ public class ProductRepository : IProductRepository
     public async Task<Product?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _context.Products.FirstOrDefaultAsync(x => x.Id == id, ct);
 
+    public async Task<Product?> GetActiveMenuItemAsync(Guid id, Guid storeId, CancellationToken ct = default)
+        => await _context.Products
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(x => x.Id == id
+                                   && x.StoreId == storeId
+                                   && x.IsActive
+                                   && x.IsMenuVisible, ct);
+
     public async Task<Product?> GetByCodeAsync(string code, CancellationToken ct = default)
         => await _context.Products.FirstOrDefaultAsync(x => x.Code == code.ToUpperInvariant(), ct);
 

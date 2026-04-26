@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Sales;
 using Nexo.Application.Modules.Restaurante.Interfaces;
@@ -39,6 +40,8 @@ public class OrderService
     private readonly IFoodServiceSettingsRepository _foodSettings;
     private readonly IModifierGroupRepository      _modifierGroups;
     private readonly IRestaurantNotificationService _notifications;
+    private readonly IDeliveryOrderSyncService      _deliverySync;
+    private readonly ILogger<OrderService>          _logger;
 
     public OrderService(
         IOrderRepository               orders,
@@ -52,7 +55,9 @@ public class OrderService
         ICurrentUser                   currentUser,
         IFoodServiceSettingsRepository foodSettings,
         IModifierGroupRepository       modifierGroups,
-        IRestaurantNotificationService notifications)
+        IRestaurantNotificationService notifications,
+        IDeliveryOrderSyncService      deliverySync,
+        ILogger<OrderService>          logger)
     {
         _orders         = orders;
         _tables         = tables;
@@ -66,6 +71,8 @@ public class OrderService
         _foodSettings   = foodSettings;
         _modifierGroups = modifierGroups;
         _notifications  = notifications;
+        _deliverySync   = deliverySync;
+        _logger         = logger;
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -249,6 +256,8 @@ public class OrderService
         await _orders.SaveChangesAsync(ct);
         _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, item.Status.ToString());
         _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString());
+        try { await _deliverySync.SyncFromRestOrderAsync(order.Id, order.Status, ct); }
+        catch (Exception ex) { _logger.LogError(ex, "DeliveryOrder sync failed for RestOrder {Id} → {Status}", order.Id, order.Status); }
         return Map(order);
     }
 
@@ -460,6 +469,8 @@ public class OrderService
         }
 
         await _orders.SaveChangesAsync(ct);
+        try { await _deliverySync.SyncFromRestOrderAsync(orderId, RestOrderStatus.Cancelled, ct); }
+        catch (Exception ex) { _logger.LogError(ex, "DeliveryOrder sync failed for cancelled RestOrder {Id}", orderId); }
         return Map(order);
     }
 

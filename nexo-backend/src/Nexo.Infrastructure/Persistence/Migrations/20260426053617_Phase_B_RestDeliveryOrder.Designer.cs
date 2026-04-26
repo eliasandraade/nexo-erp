@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexo.Infrastructure.Persistence;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    partial class NexoDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260426053617_Phase_B_RestDeliveryOrder")]
+    partial class Phase_B_RestDeliveryOrder
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2343,7 +2346,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_rest_delivery_orders_store_channel");
 
                     b.HasIndex("TenantId", "StoreId", "OrderNumber")
-                        .IsUnique()
                         .HasDatabaseName("ix_rest_delivery_orders_store_number");
 
                     b.HasIndex("TenantId", "StoreId", "Status")

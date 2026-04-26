@@ -5,12 +5,14 @@ namespace Nexo.Application.Features.Categories;
 public record CreateCategoryRequest(
     string Name,
     string? Description = null,
-    Guid? ParentCategoryId = null);
+    Guid? ParentCategoryId = null,
+    int SortOrder = 0);
 
 public record UpdateCategoryRequest(
     string Name,
     string? Description,
-    Guid? ParentCategoryId);
+    Guid? ParentCategoryId,
+    int SortOrder = 0);
 
 // ── Responses ───────────────────────────────────────────────────────────────
 
@@ -19,6 +21,7 @@ public record CategoryDto(
     string Name,
     string? Description,
     Guid? ParentCategoryId,
+    int SortOrder,
     bool IsActive,
     DateTime CreatedAt,
     DateTime UpdatedAt);

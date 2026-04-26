@@ -96,6 +96,78 @@ export const getModifierGroups = (productId: string): Promise<ModifierGroupDto[]
 export const listKitchenOrders = (): Promise<OrderDto[]> =>
   apiClient.get<OrderDto[]>("/restaurante/orders");
 
+// ── Delivery Orders ───────────────────────────────────────────────────────────
+import type {
+  DeliveryOrderDto,
+  AcceptDeliveryRequest,
+  RejectDeliveryRequest,
+  UpdateDeliveryStatusRequest,
+  AssignRiderRequest,
+  CreateManualDeliveryRequest,
+} from "../types";
+
+export const listDeliveryOrders = (opts?: {
+  status?: string[];
+  channel?: string[];
+  date?: string;
+}): Promise<DeliveryOrderDto[]> => {
+  const p = new URLSearchParams();
+  opts?.status?.forEach((s) => p.append("status", s));
+  opts?.channel?.forEach((c) => p.append("channel", c));
+  if (opts?.date) p.set("date", opts.date);
+  const qs = p.toString();
+  return apiClient.get<DeliveryOrderDto[]>(
+    `/restaurante/delivery-orders${qs ? `?${qs}` : ""}`
+  );
+};
+
+export const acceptDeliveryOrder = (
+  id: string,
+  req: AcceptDeliveryRequest
+): Promise<DeliveryOrderDto> =>
+  apiClient.post<DeliveryOrderDto>(
+    `/restaurante/delivery-orders/${id}/accept`,
+    req
+  );
+
+export const rejectDeliveryOrder = (
+  id: string,
+  req: RejectDeliveryRequest
+): Promise<DeliveryOrderDto> =>
+  apiClient.post<DeliveryOrderDto>(
+    `/restaurante/delivery-orders/${id}/reject`,
+    req
+  );
+
+export const updateDeliveryStatus = (
+  id: string,
+  req: UpdateDeliveryStatusRequest
+): Promise<DeliveryOrderDto> =>
+  apiClient.patch<DeliveryOrderDto>(
+    `/restaurante/delivery-orders/${id}/status`,
+    req
+  );
+
+export const assignDeliveryRider = (
+  id: string,
+  req: AssignRiderRequest
+): Promise<DeliveryOrderDto> =>
+  apiClient.post<DeliveryOrderDto>(
+    `/restaurante/delivery-orders/${id}/rider`,
+    req
+  );
+
+export const cancelDeliveryOrder = (id: string): Promise<DeliveryOrderDto> =>
+  apiClient.post<DeliveryOrderDto>(
+    `/restaurante/delivery-orders/${id}/cancel`,
+    {}
+  );
+
+export const createManualDeliveryOrder = (
+  req: CreateManualDeliveryRequest
+): Promise<DeliveryOrderDto> =>
+  apiClient.post<DeliveryOrderDto>("/restaurante/delivery-orders/manual", req);
+
 // ── Reports ───────────────────────────────────────────────────────────────────
 
 export interface RestauranteSummaryDto {

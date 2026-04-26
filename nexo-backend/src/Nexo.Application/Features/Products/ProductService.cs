@@ -117,5 +117,7 @@ public class ProductService
     private static ProductDto MapToDto(Product p) => new(
         p.Id, p.Code, p.Barcode, p.Name, p.Description, p.CategoryId,
         p.Unit.ToString(), p.CostPrice, p.SalePrice, p.TrackStock,
-        p.MinStockQuantity, p.MaxStockQuantity, p.IsActive, p.CreatedAt, p.UpdatedAt);
+        p.MinStockQuantity, p.MaxStockQuantity, p.IsActive,
+        p.IsMenuVisible, p.ImageUrl,
+        p.CreatedAt, p.UpdatedAt);
 }

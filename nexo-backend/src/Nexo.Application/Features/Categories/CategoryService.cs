@@ -40,7 +40,8 @@ public class CategoryService
             _currentTenant.Id,
             request.Name,
             request.Description,
-            request.ParentCategoryId);
+            request.ParentCategoryId,
+            request.SortOrder);
 
         await _categories.AddAsync(category, ct);
         await _categories.SaveChangesAsync(ct);
@@ -55,7 +56,7 @@ public class CategoryService
         if (request.ParentCategoryId.HasValue && request.ParentCategoryId.Value == id)
             throw new DomainException("A category cannot be its own parent.");
 
-        category.Update(request.Name, request.Description, request.ParentCategoryId);
+        category.Update(request.Name, request.Description, request.ParentCategoryId, request.SortOrder);
         await _categories.SaveChangesAsync(ct);
         return MapToDto(category);
     }
@@ -81,5 +82,5 @@ public class CategoryService
     }
 
     private static CategoryDto MapToDto(Category c) => new(
-        c.Id, c.Name, c.Description, c.ParentCategoryId, c.IsActive, c.CreatedAt, c.UpdatedAt);
+        c.Id, c.Name, c.Description, c.ParentCategoryId, c.SortOrder, c.IsActive, c.CreatedAt, c.UpdatedAt);
 }
