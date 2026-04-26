@@ -1,14 +1,29 @@
-import axios from "axios";
 import type { PublicMenuDto, OrderTrackingDto } from "../types";
 
-// Portal uses raw axios — no auth headers, no tenant context
+// Portal uses plain fetch — no auth headers, no tenant context
 const BASE = import.meta.env.VITE_API_URL ?? "";
 
+async function get<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
+async function post<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<T>;
+}
+
 export const getPublicMenu = (slug: string): Promise<PublicMenuDto> =>
-  axios.get<PublicMenuDto>(`${BASE}/api/public/menu/${slug}`).then((r) => r.data);
+  get<PublicMenuDto>(`${BASE}/api/public/menu/${slug}`);
 
 export const trackOrder = (token: string): Promise<OrderTrackingDto> =>
-  axios.get<OrderTrackingDto>(`${BASE}/api/public/orders/${token}`).then((r) => r.data);
+  get<OrderTrackingDto>(`${BASE}/api/public/orders/${token}`);
 
 export interface CreatePortalOrderItemModifier { modifierId: string }
 
@@ -39,4 +54,4 @@ export interface PortalOrderCreatedDto {
 }
 
 export const createPortalOrder = (req: CreatePortalOrderRequest): Promise<PortalOrderCreatedDto> =>
-  axios.post<PortalOrderCreatedDto>(`${BASE}/api/public/orders`, req).then((r) => r.data);
+  post<PortalOrderCreatedDto>(`${BASE}/api/public/orders`, req);
