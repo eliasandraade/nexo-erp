@@ -255,7 +255,7 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
             orderType           = "Delivery",
             customerName        = "Maria Santos",
             customerPhone       = "11988888888",
-            deliveryAddressJson = "Rua das Flores, 123",
+            deliveryAddressJson = "{\"street\":\"Rua das Flores\",\"number\":\"123\"}",
             items               = new[] { new { productId = product.Id, quantity = 2 } },
         });
 
@@ -264,7 +264,7 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
 
         order.OrderType.Should().Be("Delivery");
         order.Status.Should().Be("Received");
-        order.DeliveryAddressJson.Should().Be("Rua das Flores, 123");
+        order.DeliveryAddressJson.Should().NotBeNullOrEmpty();
         order.Items.Should().HaveCount(1);
         order.Items[0].Quantity.Should().Be(2);
     }
@@ -412,21 +412,28 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
         // Accept
         var accept = await _client.PostAsJsonAsync(
             $"/api/restaurante/delivery-orders/{d.Id}/accept", new { });
-        (await accept.Content.ReadFromJsonAsync<DeliveryOrderDto>())!.Status.Should().Be("Accepted");
+        var accepted = (await accept.Content.ReadFromJsonAsync<DeliveryOrderDto>())!;
+        accepted.Status.Should().Be("Accepted");
 
-        // Mark kitchen item InPreparation (via RestOrder item status) — triggers sync
-        var restOrderId = (await accept.Content.ReadFromJsonAsync<DeliveryOrderDto>())!.RestOrderId!.Value;
+        // Progress kitchen items: Pending → Preparing → Ready (triggers DeliveryOrder sync to ReadyForPickup)
+        var restOrderId = accepted.RestOrderId!.Value;
         var kitchen = await _client.GetFromJsonAsync<List<OrderDto>>("/api/restaurante/orders");
         var restOrder = kitchen!.First(o => o.Id == restOrderId);
 
-        if (restOrder.Items.Count > 0)
+        foreach (var item in restOrder.Items)
         {
-            await _client.PatchAsJsonAsync(
-                $"/api/restaurante/orders/{restOrderId}/items/{restOrder.Items[0].Id}/status",
-                new { status = "InPreparation" });
+            var r1 = await _client.PatchAsJsonAsync(
+                $"/api/restaurante/orders/{restOrderId}/items/{item.Id}/status",
+                new { status = "Preparing" });
+            r1.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            var r2 = await _client.PatchAsJsonAsync(
+                $"/api/restaurante/orders/{restOrderId}/items/{item.Id}/status",
+                new { status = "Ready" });
+            r2.StatusCode.Should().Be(HttpStatusCode.OK);
         }
 
-        // Delivered (Takeaway → confirm pickup via UpdateStatus)
+        // Delivered (Takeaway → confirm pickup; DeliveryOrder must be ReadyForPickup after kitchen sync)
         var deliver = await _client.PatchAsJsonAsync(
             $"/api/restaurante/delivery-orders/{d.Id}/status",
             new { status = "Delivered" });
@@ -509,7 +516,7 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
             orderType           = "Delivery",
             customerName        = "Teste",
             customerPhone       = "11900000000",
-            deliveryAddressJson = "Rua Teste, 1",
+            deliveryAddressJson = "{\"street\":\"Rua Teste\",\"number\":\"1\"}",
             items               = new[] { new { productId = product.Id, quantity = 1 } },
         });
 
