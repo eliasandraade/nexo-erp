@@ -1,7 +1,11 @@
 import type { PublicMenuDto, OrderTrackingDto } from "../types";
 
-// Portal uses plain fetch — no auth headers, no tenant context
-const BASE = import.meta.env.VITE_API_URL ?? "";
+// Portal uses plain fetch — no auth headers, no tenant context.
+// Derives the backend root from VITE_API_BASE_URL (same var as apiClient) so
+// we don't need a second env var and Railway deploys work automatically.
+// VITE_API_BASE_URL is e.g. "https://backend.railway.app/api" — we keep the
+// /api prefix since every path below already starts with /api/public/...
+const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/api";
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -20,10 +24,10 @@ async function post<T>(url: string, body: unknown): Promise<T> {
 }
 
 export const getPublicMenu = (slug: string): Promise<PublicMenuDto> =>
-  get<PublicMenuDto>(`${BASE}/api/public/menu/${slug}`);
+  get<PublicMenuDto>(`${BASE}/public/menu/${slug}`);
 
 export const trackOrder = (token: string): Promise<OrderTrackingDto> =>
-  get<OrderTrackingDto>(`${BASE}/api/public/orders/${token}`);
+  get<OrderTrackingDto>(`${BASE}/public/orders/${token}`);
 
 export interface CreatePortalOrderItemModifier { modifierId: string }
 
@@ -54,4 +58,4 @@ export interface PortalOrderCreatedDto {
 }
 
 export const createPortalOrder = (req: CreatePortalOrderRequest): Promise<PortalOrderCreatedDto> =>
-  post<PortalOrderCreatedDto>(`${BASE}/api/public/orders`, req);
+  post<PortalOrderCreatedDto>(`${BASE}/public/orders`, req);
