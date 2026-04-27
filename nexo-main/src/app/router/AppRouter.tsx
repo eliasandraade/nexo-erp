@@ -18,6 +18,7 @@ import ImpersonatePage from "@/pages/ImpersonatePage";
 import LandingPage from "@/modules/landing/pages/LandingPage";
 import PortalMenuPage from "@/modules/portal/pages/PortalMenuPage";
 import PortalTrackingPage from "@/modules/portal/pages/PortalTrackingPage";
+import PortalSetupPage from "@/modules/restaurante/pages/PortalSetupPage";
 
 // Auth pages
 import LoginPage from "@/modules/auth/pages/LoginPage";
@@ -74,9 +75,9 @@ export function AppRouter() {
           {/* Public: landing page */}
           <Route path="/" element={<LandingPage />} />
 
-          {/* Public: restaurant portal */}
-          <Route path="/menu/:slug"        element={<PortalMenuPage />} />
-          <Route path="/rastrear/:token"   element={<PortalTrackingPage />} />
+          {/* Public: restaurant portal — slug at root, e.g. app.orken.com.br/meu-restaurante */}
+          <Route path="/:slug"           element={<PortalMenuPage />} />
+          <Route path="/rastrear/:token" element={<PortalTrackingPage />} />
 
           {/* Public: impersonation entry (opened in new tab by platform admin) */}
           <Route path="/impersonate" element={<ImpersonatePage />} />
@@ -112,6 +113,7 @@ export function AppRouter() {
               </Route>
               {/* Management pages — with main sidebar */}
               <Route element={<MainAppLayout />}>
+                <Route path="/restaurante/portal"     element={<PortalSetupPage />} />
                 <Route path="/restaurante/configurar" element={<RestauranteSetupPage />} />
                 <Route path="/restaurante/relatorios" element={<RelatoriosPage />} />
               </Route>

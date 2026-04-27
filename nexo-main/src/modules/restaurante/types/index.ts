@@ -8,6 +8,16 @@ export interface FoodServiceSettingsDto {
   serviceFeeEnabled: boolean;
   serviceFeePercent: number | null;
   orderTypesEnabled: string;
+  // portal
+  displayName: string | null;
+  logoUrl: string | null;
+  coverImageUrl: string | null;
+  description: string | null;
+  whatsAppPhone: string | null;
+  businessHoursJson: string | null;
+  acceptingOrders: boolean;
+  deliveryEnabled: boolean;
+  takeawayEnabled: boolean;
 }
 
 export interface UpdateFoodServiceSettingsRequest {
@@ -18,6 +28,18 @@ export interface UpdateFoodServiceSettingsRequest {
   serviceFeeEnabled: boolean;
   serviceFeePercent: number | null;
   orderTypesEnabled: string;
+}
+
+export interface UpdatePortalInfoRequest {
+  displayName: string | null;
+  logoUrl: string | null;
+  coverImageUrl: string | null;
+  description: string | null;
+  whatsAppPhone: string | null;
+  businessHoursJson: string | null;
+  acceptingOrders: boolean;
+  deliveryEnabled: boolean;
+  takeawayEnabled: boolean;
 }
 
 // ── Areas ─────────────────────────────────────────────────────────────────────
