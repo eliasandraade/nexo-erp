@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/modules/auth/context/AuthContext";
 import { AuthLayout } from "@/app/layouts/AuthLayout";
 import { MainAppLayout } from "@/app/layouts/MainAppLayout";
@@ -61,6 +61,12 @@ import RestauranteSetupPage from "@/modules/restaurante/pages/RestauranteSetupPa
 import RelatoriosPage       from "@/modules/restaurante/pages/RelatoriosPage";
 import DeliveryPage         from "@/modules/restaurante/pages/DeliveryPage";
 
+/** Redirects legacy /menu/:slug links to /:slug */
+function MenuSlugRedirect() {
+  const { slug } = useParams<{ slug: string }>();
+  return <Navigate to={`/${slug ?? ""}`} replace />;
+}
+
 /**
  * AuthProvider lives inside BrowserRouter so it can call useNavigate() for
  * the logout redirect. Route guards are nested in order:
@@ -78,6 +84,9 @@ export function AppRouter() {
           {/* Public: restaurant portal — slug at root, e.g. app.orken.com.br/meu-restaurante */}
           <Route path="/:slug"           element={<PortalMenuPage />} />
           <Route path="/rastrear/:token" element={<PortalTrackingPage />} />
+
+          {/* Legacy: redirect old /menu/:slug links to /:slug */}
+          <Route path="/menu/:slug" element={<MenuSlugRedirect />} />
 
           {/* Public: impersonation entry (opened in new tab by platform admin) */}
           <Route path="/impersonate" element={<ImpersonatePage />} />

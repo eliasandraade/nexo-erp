@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Globe, Link2, Eye, EyeOff, Truck, ShoppingBag,
-  Check, Loader2, AlertCircle, ExternalLink, Copy,
+  Check, Loader2, AlertCircle, ExternalLink, Copy, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchMyStores, setPublicSlug } from "@/modules/stores/services/storesApi";
+import { fetchMyStores, setPublicSlug, checkSlugAvailability } from "@/modules/stores/services/storesApi";
 import { getFoodSettings, updatePortalInfo } from "../api/restaurante.api";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import type { UpdatePortalInfoRequest } from "../types";
@@ -133,6 +133,25 @@ export default function PortalSetupPage() {
   const portalUrl   = `${PORTAL_BASE}/${previewSlug}`;
   const hasSlug     = !!previewSlug && previewSlug.length >= 3;
 
+  // ── Slug availability (debounced) ─────────────────────────────────────────
+  const [debouncedSlug, setDebouncedSlug] = useState("");
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => setDebouncedSlug(previewSlug), 500);
+    return () => { if (debounceTimer.current) clearTimeout(debounceTimer.current); };
+  }, [previewSlug]);
+
+  const slugAlreadySaved = debouncedSlug === currentStore?.publicSlug;
+
+  const { data: slugCheck, isFetching: checkingSlug } = useQuery({
+    queryKey: ["slug-check", debouncedSlug, storeId],
+    queryFn: () => checkSlugAvailability(debouncedSlug, storeId || undefined),
+    enabled: hasSlug && debouncedSlug.length >= 3 && !slugAlreadySaved,
+    staleTime: 10_000,
+  });
+
   useEffect(() => {
     if (currentStore?.publicSlug) setSlugInput(currentStore.publicSlug);
   }, [currentStore?.publicSlug]);
@@ -222,7 +241,16 @@ export default function PortalSetupPage() {
         <div className="space-y-3">
           <Field label="Nome do restaurante (para o link)">
             <div className="flex gap-2">
-              <div className="flex items-center flex-1 rounded-lg border border-border bg-muted/40 overflow-hidden focus-within:ring-1 focus-within:ring-primary focus-within:border-primary transition-all">
+              <div className={cn(
+                "flex items-center flex-1 rounded-lg border bg-muted/40 overflow-hidden focus-within:ring-1 transition-all",
+                hasSlug && debouncedSlug === previewSlug && !slugAlreadySaved
+                  ? slugCheck?.available === false
+                    ? "border-destructive focus-within:ring-destructive focus-within:border-destructive"
+                    : slugCheck?.available === true
+                      ? "border-primary/60 focus-within:ring-primary focus-within:border-primary"
+                      : "border-border focus-within:ring-primary focus-within:border-primary"
+                  : "border-border focus-within:ring-primary focus-within:border-primary",
+              )}>
                 <span className="pl-3 pr-1 text-xs text-muted-foreground whitespace-nowrap select-none shrink-0">
                   {PORTAL_BASE}/
                 </span>
@@ -231,12 +259,33 @@ export default function PortalSetupPage() {
                   value={slugInput}
                   onChange={(e) => setSlugInput(e.target.value)}
                   placeholder="meu-restaurante"
-                  className="flex-1 bg-transparent py-2 pr-3 text-sm outline-none placeholder:text-muted-foreground/50"
+                  className="flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground/50"
                 />
+                {/* Availability indicator */}
+                <span className="pr-2 shrink-0">
+                  {hasSlug && checkingSlug && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  )}
+                  {hasSlug && !checkingSlug && slugAlreadySaved && (
+                    <Check className="h-3.5 w-3.5 text-primary" />
+                  )}
+                  {hasSlug && !checkingSlug && !slugAlreadySaved && slugCheck?.available === true && (
+                    <Check className="h-3.5 w-3.5 text-primary" />
+                  )}
+                  {hasSlug && !checkingSlug && !slugAlreadySaved && slugCheck?.available === false && (
+                    <X className="h-3.5 w-3.5 text-destructive" />
+                  )}
+                </span>
               </div>
               <Button
                 size="sm"
-                disabled={!hasSlug || slugMut.isPending || previewSlug === currentStore?.publicSlug}
+                disabled={
+                  !hasSlug ||
+                  slugMut.isPending ||
+                  checkingSlug ||
+                  previewSlug === currentStore?.publicSlug ||
+                  slugCheck?.available === false
+                }
                 onClick={() => slugMut.mutate()}
                 className="shrink-0"
               >
@@ -249,6 +298,21 @@ export default function PortalSetupPage() {
                 )}
               </Button>
             </div>
+
+            {/* Availability feedback */}
+            {hasSlug && !checkingSlug && !slugAlreadySaved && debouncedSlug === previewSlug && (
+              slugCheck?.available === false ? (
+                <div className="flex items-center gap-2 text-xs text-destructive mt-1">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  {slugCheck.reason ?? "Este endereço já está em uso. Escolha outro."}
+                </div>
+              ) : slugCheck?.available === true ? (
+                <div className="flex items-center gap-2 text-xs text-primary mt-1">
+                  <Check className="h-3.5 w-3.5 shrink-0" />
+                  Endereço disponível!
+                </div>
+              ) : null
+            )}
 
             {slugMut.isError && (
               <div className="flex items-center gap-2 text-xs text-destructive mt-1">

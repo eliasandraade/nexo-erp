@@ -52,6 +52,33 @@ public class StoreController : ControllerBase
     }
 
     /// <summary>
+    /// Verifica se um slug está disponível antes de salvar.
+    /// Retorna { available, normalized } — pode ser chamado sem autenticação para slugs públicos.
+    /// Passe excludeStoreId para ignorar a própria store (útil ao editar um slug já salvo).
+    /// </summary>
+    [HttpGet("check-slug")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CheckSlugAvailability(
+        [FromQuery] string slug,
+        [FromQuery] Guid? excludeStoreId,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+            return BadRequest(new { error = "Slug é obrigatório." });
+
+        var normalized = Store.NormalizeSlug(slug);
+
+        if (normalized.Length < 3)
+            return Ok(new { available = false, normalized, reason = "Muito curto (mínimo 3 caracteres)." });
+
+        if (normalized.Length > 100)
+            return Ok(new { available = false, normalized, reason = "Muito longo (máximo 100 caracteres)." });
+
+        var exists = await _stores.PublicSlugExistsAsync(normalized, excludeStoreId: excludeStoreId, ct);
+        return Ok(new { available = !exists, normalized });
+    }
+
+    /// <summary>
     /// Define o slug público do portal. null desativa o portal para esta store.
     /// O slug é normalizado: lowercase, sem acentos, só letras/números/hífen.
     /// Retorna 409 se o slug já estiver em uso por outra store.

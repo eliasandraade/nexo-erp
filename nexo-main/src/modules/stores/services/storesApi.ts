@@ -14,3 +14,18 @@ export async function setPublicSlug(
     { publicSlug },
   );
 }
+
+export interface SlugCheckResult {
+  available: boolean;
+  normalized: string;
+  reason?: string;
+}
+
+export async function checkSlugAvailability(
+  slug: string,
+  excludeStoreId?: string,
+): Promise<SlugCheckResult> {
+  const params = new URLSearchParams({ slug });
+  if (excludeStoreId) params.set("excludeStoreId", excludeStoreId);
+  return apiClient.get<SlugCheckResult>(`/stores/check-slug?${params}`);
+}
