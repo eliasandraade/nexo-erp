@@ -47,6 +47,8 @@ export interface CreatePortalOrderRequest {
   deliveryAddressJson?: string | null;
   notes?:              string | null;
   items?:              CreatePortalOrderItem[];
+  deliveryZoneId?:     string | null;
+  couponCode?:         string | null;
 }
 
 export interface PortalOrderCreatedDto {
@@ -59,3 +61,36 @@ export interface PortalOrderCreatedDto {
 
 export const createPortalOrder = (req: CreatePortalOrderRequest): Promise<PortalOrderCreatedDto> =>
   post<PortalOrderCreatedDto>(`${BASE}/public/orders`, req);
+
+// ── Delivery Zones ────────────────────────────────────────────────────────────
+
+export interface DeliveryZoneDto {
+  id:           string;
+  neighborhood: string;
+  fee:          number;
+}
+
+export const getDeliveryZones = (slug: string): Promise<DeliveryZoneDto[]> =>
+  get<DeliveryZoneDto[]>(`${BASE}/public/delivery-zones/${slug}`);
+
+// ── Coupon validation ─────────────────────────────────────────────────────────
+
+export interface ValidateCouponRequest {
+  publicSlug:    string;
+  couponCode:    string;
+  customerPhone: string;
+  itemsSubtotal: number;
+  deliveryFee:   number;
+  neighborhood?: string;
+}
+
+export interface ValidateCouponResponse {
+  valid:          boolean;
+  error?:         string;
+  discountAmount: number;
+  discountType:   string;
+  discountValue:  number;
+}
+
+export const validateCoupon = (req: ValidateCouponRequest): Promise<ValidateCouponResponse> =>
+  post<ValidateCouponResponse>(`${BASE}/public/coupons/validate`, req);

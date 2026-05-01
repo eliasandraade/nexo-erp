@@ -194,3 +194,72 @@ export function fetchRestauranteSummary(
   );
 }
 
+// ── Delivery Zones ────────────────────────────────────────────────────────────
+
+export interface RestauranteDeliveryZoneDto {
+  id:           string;
+  neighborhood: string;
+  fee:          number;
+}
+
+export interface UpsertDeliveryZonesRequest {
+  zones: Array<{ neighborhood: string; fee: number }>;
+}
+
+export const getRestauranteDeliveryZones = (): Promise<RestauranteDeliveryZoneDto[]> =>
+  apiClient.get<RestauranteDeliveryZoneDto[]>("/restaurante/delivery-zones");
+
+export const upsertDeliveryZones = (req: UpsertDeliveryZonesRequest): Promise<RestauranteDeliveryZoneDto[]> =>
+  apiClient.put<RestauranteDeliveryZoneDto[]>("/restaurante/delivery-zones", req);
+
+// ── Coupons ───────────────────────────────────────────────────────────────────
+
+export interface CouponDto {
+  id:                       string;
+  code:                     string;
+  description?:             string;
+  discountType:             "Percentage" | "FixedAmount" | "DeliveryFee";
+  discountValue:            number;
+  isActive:                 boolean;
+  minOrderAmount?:          number;
+  minDeliveryFee?:          number;
+  restrictToNeighborhoods?: string[];
+  restrictToProductIds?:    string[];
+  isFirstOrderOnly:         boolean;
+  restrictToCustomerPhone?: string;
+  maxUses?:                 number;
+  usedCount:                number;
+  validFrom?:               string;
+  validUntil?:              string;
+}
+
+export interface CreateCouponRequest {
+  code:                     string;
+  discountType:             string;
+  discountValue:            number;
+  description?:             string;
+  minOrderAmount?:          number;
+  minDeliveryFee?:          number;
+  restrictToNeighborhoods?: string[];
+  restrictToProductIds?:    string[];
+  isFirstOrderOnly?:        boolean;
+  restrictToCustomerPhone?: string;
+  maxUses?:                 number;
+  validFrom?:               string;
+  validUntil?:              string;
+}
+
+export type UpdateCouponRequest = Omit<CreateCouponRequest, "code">;
+
+export const getCoupons = (): Promise<CouponDto[]> =>
+  apiClient.get<CouponDto[]>("/restaurante/coupons");
+
+export const createCoupon = (req: CreateCouponRequest): Promise<CouponDto> =>
+  apiClient.post<CouponDto>("/restaurante/coupons", req);
+
+export const updateCoupon = (id: string, req: UpdateCouponRequest): Promise<CouponDto> =>
+  apiClient.put<CouponDto>(`/restaurante/coupons/${id}`, req);
+
+export const revokeCoupon = (id: string): Promise<void> =>
+  apiClient.delete<void>(`/restaurante/coupons/${id}`);
+
