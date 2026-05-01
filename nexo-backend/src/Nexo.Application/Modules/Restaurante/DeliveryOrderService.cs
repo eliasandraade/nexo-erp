@@ -31,6 +31,8 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
     private readonly IStoreRepository              _stores;
     private readonly IModifierGroupRepository      _modifierGroups;
     private readonly IFoodServiceSettingsRepository _settings;
+    private readonly IDeliveryZoneRepository       _deliveryZones;
+    private readonly ICouponRepository             _coupons;
     private readonly ILogger<DeliveryOrderService> _logger;
 
     public DeliveryOrderService(
@@ -42,6 +44,8 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         IStoreRepository               stores,
         IModifierGroupRepository       modifierGroups,
         IFoodServiceSettingsRepository settings,
+        IDeliveryZoneRepository        deliveryZones,
+        ICouponRepository              coupons,
         ILogger<DeliveryOrderService>  logger)
     {
         _repo           = repo;
@@ -52,6 +56,8 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         _stores         = stores;
         _modifierGroups = modifierGroups;
         _settings       = settings;
+        _deliveryZones  = deliveryZones;
+        _coupons        = coupons;
         _logger         = logger;
     }
 
@@ -265,14 +271,19 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         if (foodSettings is not null && orderType == DeliveryOrderType.Takeaway && !foodSettings.TakeawayEnabled)
             throw new DomainException("Retirada não está disponível no momento.");
 
-        // Delivery fee is never trusted from the client.
-        // Takeaway is always 0. Delivery is also 0 for now — no per-store fee configuration yet.
+        // Resolve delivery fee from zone (never trusted from client)
         var deliveryFee = 0m;
+        DeliveryZone? resolvedZone = null;
         if (orderType == DeliveryOrderType.Delivery)
-            _logger.LogWarning(
-                "Portal: taxa de entrega definida como 0 — configuração por loja não implementada (Slug: {Slug}). " +
-                "Implementar FoodServiceSettings.DeliveryFee quando disponível.",
-                store.PublicSlug);
+        {
+            if (!request.DeliveryZoneId.HasValue)
+                throw new DomainException("Informe o bairro de entrega.");
+
+            var zones = await _deliveryZones.GetAllByStoreIdPublicAsync(store.Id, store.TenantId, ct);
+            resolvedZone = zones.FirstOrDefault(z => z.Id == request.DeliveryZoneId.Value)
+                ?? throw new DomainException("Bairro de entrega não disponível.");
+            deliveryFee = resolvedZone.Fee;
+        }
 
         var order = RestDeliveryOrder.Create(
             tenantId:            store.TenantId,
@@ -328,6 +339,33 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
                     modifier.Id);
                 _repo.TrackModifier(snap);
             }
+        }
+
+        // Apply coupon if provided
+        if (!string.IsNullOrWhiteSpace(request.CouponCode))
+        {
+            var coupon = await _coupons.GetByCodePublicAsync(
+                request.CouponCode, store.Id, store.TenantId, ct)
+                ?? throw new DomainException("Cupom inválido.");
+
+            var normalizedPhone = RestDeliveryOrder.NormalizePhone(request.CustomerPhone);
+            var orderCount = await _coupons.CountOrdersByPhonePublicAsync(
+                normalizedPhone, store.Id, store.TenantId, ct);
+            var isFirstOrder = orderCount == 0;
+
+            var discountAmount = coupon.CalculateDiscount(
+                order.ItemsSubtotal,
+                deliveryFee,
+                request.CustomerPhone,
+                resolvedZone?.Neighborhood,
+                isFirstOrder);
+
+            order.ApplyCoupon(coupon.Code, discountAmount);
+            coupon.IncrementUsedCount();
+
+            var usage = CouponUsage.Create(
+                store.TenantId, store.Id, coupon.Id, normalizedPhone, order.Id);
+            _coupons.AddUsage(usage);
         }
 
         await _repo.SaveChangesAsync(ct);
@@ -676,7 +714,9 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         DeliveryAddressJson: o.DeliveryAddressJson,
         DeliveryFee:         o.DeliveryFee,
         ItemsSubtotal:       o.ItemsSubtotal,
+        DiscountAmount:      o.DiscountAmount,
         Total:               o.Total,
+        CouponCode:          o.CouponCode,
         EstimatedMinutes:    o.EstimatedMinutes,
         RiderName:           o.RiderName,
         RiderPhone:          o.RiderPhone,

@@ -73,15 +73,16 @@ public record CreateManualOrderItemModifierRequest(Guid ModifierId);
 // Prices taken from catalog — never trusted from client.
 
 public record CreatePortalOrderRequest(
-    string  PublicSlug,             // identifies the store (no JWT)
-    string  OrderType,              // "Delivery" | "Takeaway"
+    string  PublicSlug,
+    string  OrderType,
     string  CustomerName,
     string  CustomerPhone,
     string? CustomerEmail        = null,
     string? DeliveryAddressJson  = null,
-    decimal DeliveryFee          = 0,
     int?    EstimatedMinutes     = null,
     string? Notes                = null,
+    Guid?   DeliveryZoneId       = null,
+    string? CouponCode           = null,
     List<CreatePortalOrderItemRequest>? Items = null);
 
 public record CreatePortalOrderItemRequest(
@@ -126,7 +127,9 @@ public record DeliveryOrderDto(
     // financeiro
     decimal  DeliveryFee,
     decimal  ItemsSubtotal,
+    decimal  DiscountAmount,
     decimal  Total,
+    string?  CouponCode,
     // logística
     int?     EstimatedMinutes,
     string?  RiderName,
