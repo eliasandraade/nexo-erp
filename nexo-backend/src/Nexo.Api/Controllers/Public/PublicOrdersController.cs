@@ -14,11 +14,19 @@ public class PublicOrdersController : ControllerBase
 {
     private readonly DeliveryOrderService _orders;
     private readonly PublicMenuService    _menu;
+    private readonly DeliveryZoneService  _zones;
+    private readonly CouponService        _couponSvc;
 
-    public PublicOrdersController(DeliveryOrderService orders, PublicMenuService menu)
+    public PublicOrdersController(
+        DeliveryOrderService orders,
+        PublicMenuService menu,
+        DeliveryZoneService zones,
+        CouponService couponSvc)
     {
-        _orders = orders;
-        _menu   = menu;
+        _orders    = orders;
+        _menu      = menu;
+        _zones     = zones;
+        _couponSvc = couponSvc;
     }
 
     // ── Menu ──────────────────────────────────────────────────────────────────
@@ -52,4 +60,19 @@ public class PublicOrdersController : ControllerBase
         var result = await _orders.CreateFromPortalAsync(request, ct);
         return CreatedAtAction(nameof(Track), new { trackingToken = result.TrackingToken }, result);
     }
+
+    // ── Delivery Zones ────────────────────────────────────────────────────────
+
+    [HttpGet("api/public/delivery-zones/{slug}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetDeliveryZones(string slug, CancellationToken ct)
+        => Ok(await _zones.GetAllBySlugPublicAsync(slug, ct));
+
+    // ── Coupons ───────────────────────────────────────────────────────────────
+
+    [HttpPost("api/public/coupons/validate")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ValidateCoupon(
+        [FromBody] ValidateCouponRequest req, CancellationToken ct)
+        => Ok(await _couponSvc.ValidatePublicAsync(req, ct));
 }
