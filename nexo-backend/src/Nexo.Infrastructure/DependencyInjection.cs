@@ -125,6 +125,8 @@ public static class DependencyInjection
         services.AddScoped<IDeliveryOrderSyncService>(sp =>
             sp.GetRequiredService<Nexo.Application.Modules.Restaurante.DeliveryOrderService>());
         services.AddScoped<Nexo.Application.Modules.Restaurante.PublicMenuService>();
+        services.AddScoped<Nexo.Application.Modules.Restaurante.DeliveryZoneService>();
+        services.AddScoped<Nexo.Application.Modules.Restaurante.CouponService>();
 
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<IPurchaseRepository, PurchaseRepository>();
