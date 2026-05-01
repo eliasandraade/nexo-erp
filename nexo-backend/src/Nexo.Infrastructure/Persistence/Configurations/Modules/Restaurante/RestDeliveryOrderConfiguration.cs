@@ -44,6 +44,11 @@ public class RestDeliveryOrderConfiguration : IEntityTypeConfiguration<RestDeliv
         // ── Financeiro ────────────────────────────────────────────────────────
         builder.Property(x => x.DeliveryFee).HasColumnName("delivery_fee")
             .HasColumnType("numeric(18,2)").HasDefaultValue(0m).IsRequired();
+        builder.Property(x => x.CouponCode).HasColumnName("coupon_code").HasMaxLength(50);
+        builder.Property(x => x.DiscountAmount).HasColumnName("discount_amount")
+            .HasColumnType("numeric(18,2)").HasDefaultValue(0m).IsRequired();
+        builder.Ignore(x => x.ItemsSubtotal);
+        builder.Ignore(x => x.Total);
 
         // ── Logística ─────────────────────────────────────────────────────────
         builder.Property(x => x.EstimatedMinutes).HasColumnName("estimated_minutes");

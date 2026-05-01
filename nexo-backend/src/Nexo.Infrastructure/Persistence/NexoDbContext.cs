@@ -87,6 +87,9 @@ public class NexoDbContext : DbContext
     public DbSet<RestDeliveryOrder>             RestDeliveryOrders           => Set<RestDeliveryOrder>();
     public DbSet<RestDeliveryOrderItem>         RestDeliveryOrderItems       => Set<RestDeliveryOrderItem>();
     public DbSet<RestDeliveryOrderItemModifier> RestDeliveryOrderItemModifiers => Set<RestDeliveryOrderItemModifier>();
+    public DbSet<DeliveryZone>                  DeliveryZones                => Set<DeliveryZone>();
+    public DbSet<Coupon>                        Coupons                      => Set<Coupon>();
+    public DbSet<CouponUsage>                   CouponUsages                 => Set<CouponUsage>();
 
     // ── Módulo Varejo ─────────────────────────────────────────────────────────
     public DbSet<RetPurchase> RetPurchases => Set<RetPurchase>();
