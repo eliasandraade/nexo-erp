@@ -62,7 +62,9 @@ export function CartSheet({
       customerName:        name.trim(),
       customerPhone:       phone.trim(),
       customerEmail:       email.trim() || null,
-      deliveryAddressJson: orderType === "Delivery" ? address.trim() : null,
+      deliveryAddressJson: orderType === "Delivery"
+        ? JSON.stringify({ address: address.trim() })
+        : null,
       notes:               notes.trim() || null,
       items: items.map((i) => ({
         productId: i.productId,
