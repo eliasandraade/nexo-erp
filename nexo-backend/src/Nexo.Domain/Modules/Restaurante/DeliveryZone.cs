@@ -1,4 +1,5 @@
 using Nexo.Domain.Common;
+using Nexo.Domain.Exceptions;
 
 namespace Nexo.Domain.Modules.Restaurante;
 
@@ -17,9 +18,9 @@ public class DeliveryZone : StoreEntity
     public static DeliveryZone Create(Guid tenantId, string neighborhood, decimal fee)
     {
         if (string.IsNullOrWhiteSpace(neighborhood))
-            throw new ArgumentException("Neighborhood is required.", nameof(neighborhood));
+            throw new DomainException("Neighborhood is required.");
         if (fee < 0)
-            throw new ArgumentException("Fee cannot be negative.", nameof(fee));
+            throw new DomainException("Fee cannot be negative.");
 
         return new DeliveryZone(tenantId)
         {
@@ -31,9 +32,9 @@ public class DeliveryZone : StoreEntity
     public void Update(string neighborhood, decimal fee)
     {
         if (string.IsNullOrWhiteSpace(neighborhood))
-            throw new ArgumentException("Neighborhood is required.", nameof(neighborhood));
+            throw new DomainException("Neighborhood is required.");
         if (fee < 0)
-            throw new ArgumentException("Fee cannot be negative.", nameof(fee));
+            throw new DomainException("Fee cannot be negative.");
 
         Neighborhood = neighborhood.Trim();
         Fee          = fee;
