@@ -40,6 +40,8 @@ public class RestDeliveryOrder : StoreEntity
 
     // ── Financeiro ───────────────────────────────────────────────────────────
     public decimal DeliveryFee { get; private set; }    // 0 para Takeaway
+    public string?  CouponCode      { get; private set; }
+    public decimal  DiscountAmount  { get; private set; }
 
     // ── Logística ────────────────────────────────────────────────────────────
     public int?    EstimatedMinutes { get; private set; }
@@ -62,7 +64,7 @@ public class RestDeliveryOrder : StoreEntity
 
     // ── Computed ─────────────────────────────────────────────────────────────
     public decimal ItemsSubtotal => _items.Sum(i => i.LineTotal);
-    public decimal Total         => ItemsSubtotal + DeliveryFee;
+    public decimal Total         => ItemsSubtotal + DeliveryFee - DiscountAmount;
 
     private readonly List<RestDeliveryOrderItem> _items = [];
     public IReadOnlyList<RestDeliveryOrderItem> Items => _items.AsReadOnly();
@@ -220,6 +222,13 @@ public class RestDeliveryOrder : StoreEntity
     public void SetCustomer(Guid customerId)
     {
         CustomerId = customerId;
+        SetUpdatedAt();
+    }
+
+    public void ApplyCoupon(string code, decimal discountAmount)
+    {
+        CouponCode     = code;
+        DiscountAmount = discountAmount >= 0 ? discountAmount : 0;
         SetUpdatedAt();
     }
 
