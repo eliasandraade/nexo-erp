@@ -47,8 +47,8 @@ public class CouponService
             req.IsFirstOrderOnly,
             req.RestrictToCustomerPhone,
             req.MaxUses,
-            req.ValidFrom,
-            req.ValidUntil);
+            ToUtc(req.ValidFrom),
+            ToUtc(req.ValidUntil));
         _repo.Add(coupon);
         await _repo.SaveChangesAsync(ct);
         return Map(coupon);
@@ -68,7 +68,7 @@ public class CouponService
             req.RestrictToProductIds is not null
                 ? JsonSerializer.Serialize(req.RestrictToProductIds) : null,
             req.IsFirstOrderOnly, req.RestrictToCustomerPhone,
-            req.MaxUses, req.ValidFrom, req.ValidUntil);
+            req.MaxUses, ToUtc(req.ValidFrom), ToUtc(req.ValidUntil));
         await _repo.SaveChangesAsync(ct);
         return Map(coupon);
     }
@@ -113,6 +113,9 @@ public class CouponService
             return new ValidateCouponResponse(false, ex.Message, 0, "", 0);
         }
     }
+
+    private static DateTime? ToUtc(DateTime? dt) =>
+        dt.HasValue ? DateTime.SpecifyKind(dt.Value, DateTimeKind.Utc) : null;
 
     private static CouponDto Map(Coupon c) => new(
         c.Id, c.Code, c.Description, c.DiscountType.ToString(), c.DiscountValue,
