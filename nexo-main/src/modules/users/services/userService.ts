@@ -1,7 +1,7 @@
 import type { User, UserFormInput, PermissionMatrix, UserRole } from "../types";
 import { rolePresets } from "../data/mockUsers";
 import {
-  listUsers, getUserById, createUser, updateUser,
+  listUsers, getUserById, createUser, updateUser, listAvailableStores,
   type UserApiDto,
 } from "../api/users.api";
 
@@ -67,7 +67,8 @@ export const userService = {
   },
 
   async listStores(): Promise<string[]> {
-    return [];
+    const stores = await listAvailableStores();
+    return stores.map((s) => s.name);
   },
 
   async getPermissionsByRole(role: UserRole): Promise<PermissionMatrix> {

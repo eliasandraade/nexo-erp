@@ -89,7 +89,8 @@ public class ReportsController : ControllerBase
         if (string.IsNullOrWhiteSpace(value)) return null;
         return DateTime.TryParseExact(value, "yyyy-MM-dd",
             System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None,
+            System.Globalization.DateTimeStyles.AssumeUniversal |
+            System.Globalization.DateTimeStyles.AdjustToUniversal,
             out var dt)
             ? dt
             : null;

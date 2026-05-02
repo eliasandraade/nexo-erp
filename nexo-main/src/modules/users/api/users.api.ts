@@ -67,3 +67,14 @@ export const validateManager = (
   password: string
 ): Promise<ValidateManagerResult> =>
   apiClient.post<ValidateManagerResult>("/users/validate-manager", { login, password });
+
+// ── Stores ────────────────────────────────────────────────────────────────────
+
+export interface StoreBriefDto {
+  id:     string;
+  name:   string;
+  status: string;
+}
+
+export const listAvailableStores = (): Promise<StoreBriefDto[]> =>
+  apiClient.get<StoreBriefDto[]>("/stores");
