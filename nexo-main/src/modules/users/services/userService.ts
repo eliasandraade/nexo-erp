@@ -42,9 +42,9 @@ export const userService = {
 
   async create(input: UserFormInput): Promise<User> {
     return dtoToUser(await createUser({
-      fullName:              input.name,
-      email:                 input.email,
-      login:                 input.login,
+      fullName:              input.name.trim(),
+      email:                 input.email.trim(),
+      login:                 input.login.trim(),
       password:              input.password ?? "nexo@temp",
       role:                  input.role,
       phone:                 input.phone || null,
@@ -57,8 +57,8 @@ export const userService = {
     const current = await this.getById(id);
     if (!current) throw new Error("Usuário não encontrado");
     return dtoToUser(await updateUser(id, {
-      fullName: input.name   ?? current.name,
-      email:    input.email  ?? current.email,
+      fullName: (input.name  ?? current.name).trim(),
+      email:    (input.email ?? current.email).trim(),
       role:     input.role   ?? current.role,
       phone:    input.phone  != null ? (input.phone || null) : (current.phone || null),
       notes:    input.notes  != null ? (input.notes || null) : (current.notes || null),

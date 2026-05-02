@@ -58,16 +58,25 @@ export default function UserFormPage() {
     });
   }, []);
 
+  const LOGIN_REGEX = /^[a-zA-Z0-9._-]+$/;
+
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     if (!form.name.trim()) e.name = "Nome é obrigatório";
     if (!form.email.trim() || !form.email.includes("@")) e.email = "E-mail inválido";
-    if (!form.login.trim()) e.login = "Login é obrigatório";
+    if (!form.login.trim()) {
+      e.login = "Login é obrigatório";
+    } else if (form.login.trim().length < 3) {
+      e.login = "Login deve ter ao menos 3 caracteres";
+    } else if (!LOGIN_REGEX.test(form.login.trim())) {
+      e.login = "Login inválido: use apenas letras, números, ponto, _ ou -";
+    }
     if (!form.role) e.role = "Perfil é obrigatório";
     if ((form.role === "gerente" || form.role === "vendedor") && (!form.store || form.store === "none")) {
       e.store = "Loja é obrigatória para este perfil";
     }
     if (isNew && !form.password) e.password = "Senha é obrigatória";
+    if (isNew && form.password && form.password.length < 6) e.password = "Senha deve ter ao menos 6 caracteres";
     if (form.password && form.password !== form.passwordConfirm) e.passwordConfirm = "Senhas não conferem";
     setErrors(e);
     return Object.keys(e).length === 0;
