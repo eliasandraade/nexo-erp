@@ -29,7 +29,10 @@ export function UserMainDataSection({ form, onChange, errors }: Props) {
       <div className="space-y-1.5">
         <Label>Login *</Label>
         <Input value={form.login} onChange={(e) => onChange({ login: e.target.value })} className={errors.login ? "border-destructive" : ""} />
-        {errors.login && <p className="text-xs text-destructive">{errors.login}</p>}
+        {errors.login
+          ? <p className="text-xs text-destructive">{errors.login}</p>
+          : <p className="text-xs text-muted-foreground">Apenas letras, números, ponto, _ e - (sem espaços)</p>
+        }
       </div>
       <div className="space-y-1.5">
         <Label>Telefone</Label>

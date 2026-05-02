@@ -90,8 +90,13 @@ export default function UserFormPage() {
       }
       toast({ title: isNew ? "Usuário criado com sucesso" : "Usuário atualizado com sucesso" });
       navigate("/usuarios");
-    } catch {
-      toast({ title: "Erro ao salvar usuário", variant: "destructive" });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : undefined;
+      toast({
+        title: "Erro ao salvar usuário",
+        description: detail,
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }

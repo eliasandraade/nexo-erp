@@ -99,7 +99,11 @@ async function request<T>(
     let message = res.statusText;
     try {
       const err = await res.json();
-      message = err?.error ?? err?.message ?? message;
+      if (Array.isArray(err?.details) && err.details.length > 0) {
+        message = err.details.join(" | ");
+      } else {
+        message = err?.error ?? err?.message ?? message;
+      }
     } catch {
       // ignore parse failure
     }
