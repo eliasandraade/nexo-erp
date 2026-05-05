@@ -7,6 +7,7 @@ import { PlatformLayout } from "@/app/layouts/PlatformLayout";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ModuleRoute } from "./ModuleRoute";
 import { PlatformRoute } from "./PlatformRoute";
+import { RoleRoute } from "./RoleRoute";
 import PlatformDashboardPage from "@/modules/platform/pages/PlatformDashboardPage";
 import PlatformTenantsPage from "@/modules/platform/pages/PlatformTenantsPage";
 import PlatformTenantDetailPage from "@/modules/platform/pages/PlatformTenantDetailPage";
@@ -72,6 +73,7 @@ function MenuSlugRedirect() {
  * the logout redirect. Route guards are nested in order:
  *   ProtectedRoute → verifies authentication (waits for isReady)
  *   ModuleRoute    → verifies module subscription
+ *   RoleRoute      → verifies role-based access, redirects to homeRoute on failure
  */
 export function AppRouter() {
   return (
@@ -81,7 +83,7 @@ export function AppRouter() {
           {/* Public: landing page */}
           <Route path="/" element={<LandingPage />} />
 
-          {/* Public: restaurant portal — slug at root, e.g. app.orken.com.br/meu-restaurante */}
+          {/* Public: restaurant portal — slug at root */}
           <Route path="/:slug"           element={<PortalMenuPage />} />
           <Route path="/rastrear/:token" element={<PortalTrackingPage />} />
 
@@ -99,75 +101,113 @@ export function AppRouter() {
             <Route path="/verify-email" element={<VerifyEmailPage />} />
           </Route>
 
-          {/* Protected: varejo — PDV uses its own full-screen layout */}
+          {/* ── Varejo: PDV — vendedor + management ────────────────────────── */}
           <Route element={<ProtectedRoute />}>
             <Route element={<ModuleRoute moduleKey="varejo" />}>
-              <Route element={<PosLayout />}>
-                <Route path="/pdv" element={<PdvPage />} />
+              <Route element={<RoleRoute path="/pdv" />}>
+                <Route element={<PosLayout />}>
+                  <Route path="/pdv" element={<PdvPage />} />
+                </Route>
               </Route>
             </Route>
           </Route>
 
-          {/* Restaurante — waiter pages (mobile-first, no sidebar) */}
+          {/* ── Restaurante: operação — vendedor + cozinha + management ──────── */}
           <Route element={<ProtectedRoute />}>
             <Route element={<ModuleRoute moduleKey="restaurante" />}>
-              <Route element={<WaiterLayout />}>
-                <Route path="/restaurante" element={<FloorPage />} />
-                <Route path="/restaurante/mesa/:tableId" element={<OrderPage />} />
-                <Route path="/restaurante/comanda/:orderId" element={<OrderPage />} />
-                <Route path="/restaurante/delivery" element={<DeliveryPage />} />
+
+              {/* Floor + waiter routes — vendedor + management */}
+              <Route element={<RoleRoute path="/restaurante" />}>
+                <Route element={<WaiterLayout />}>
+                  <Route path="/restaurante"                  element={<FloorPage />} />
+                  <Route path="/restaurante/mesa/:tableId"    element={<OrderPage />} />
+                  <Route path="/restaurante/comanda/:orderId" element={<OrderPage />} />
+                  <Route path="/restaurante/delivery"         element={<DeliveryPage />} />
+                </Route>
               </Route>
-              <Route element={<KitchenLayout />}>
-                <Route path="/restaurante/cozinha" element={<KitchenPage />} />
+
+              {/* Cozinha — role cozinha + management */}
+              <Route element={<RoleRoute path="/restaurante/cozinha" />}>
+                <Route element={<KitchenLayout />}>
+                  <Route path="/restaurante/cozinha" element={<KitchenPage />} />
+                </Route>
               </Route>
-              {/* Management pages — with main sidebar */}
+
+              {/* Gestão restaurante — management only */}
+              <Route element={<RoleRoute path="/restaurante/portal" />}>
+                <Route element={<MainAppLayout />}>
+                  <Route path="/restaurante/portal"     element={<PortalSetupPage />} />
+                  <Route path="/restaurante/configurar" element={<RestauranteSetupPage />} />
+                  <Route path="/restaurante/relatorios" element={<RelatoriosPage />} />
+                </Route>
+              </Route>
+
+            </Route>
+          </Route>
+
+          {/* ── Dashboard + core management — diretoria + gerente ──────────── */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<RoleRoute path="/dashboard" />}>
               <Route element={<MainAppLayout />}>
-                <Route path="/restaurante/portal"     element={<PortalSetupPage />} />
-                <Route path="/restaurante/configurar" element={<RestauranteSetupPage />} />
-                <Route path="/restaurante/relatorios" element={<RelatoriosPage />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/vendas"    element={<VendasPage />} />
+                <Route path="/vendas/:id" element={<VendaDetailPage />} />
+                <Route path="/clientes"       element={<ClientesPage />} />
+                <Route path="/clientes/novo"  element={<CustomerFormPage />} />
+                <Route path="/clientes/:id"   element={<CustomerFormPage />} />
+                <Route path="/fornecedores"       element={<FornecedoresPage />} />
+                <Route path="/fornecedores/novo"  element={<SupplierFormPage />} />
+                <Route path="/fornecedores/:id"   element={<SupplierFormPage />} />
+                <Route path="/caixa"         element={<CaixaPage />} />
+                <Route path="/configuracoes" element={<ConfiguracoesPage />} />
               </Route>
             </Route>
           </Route>
 
-          {/* Protected: core routes — no module gate */}
+          {/* ── Usuários + Auditoria — diretoria only ──────────────────────── */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<RoleRoute path="/usuarios" />}>
+              <Route element={<MainAppLayout />}>
+                <Route path="/usuarios"            element={<UsuariosPage />} />
+                <Route path="/usuarios/novo"       element={<UserFormPage />} />
+                <Route path="/usuarios/:id"        element={<UserFormPage />} />
+                <Route path="/usuarios/permissoes" element={<PermissoesPage />} />
+                <Route path="/auditoria"           element={<AuditoriaPage />} />
+              </Route>
+            </Route>
+          </Route>
+
+          {/* ── Estoque + Produtos — management + estoquista ───────────────── */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<RoleRoute path="/estoque" />}>
+              <Route element={<MainAppLayout />}>
+                <Route path="/produtos"              element={<ProdutosPage />} />
+                <Route path="/produtos/novo"         element={<ProductFormPage />} />
+                <Route path="/produtos/:id"          element={<ProductFormPage />} />
+                <Route path="/estoque"               element={<EstoquePage />} />
+                <Route path="/estoque/movimentacoes" element={<MovimentacoesPage />} />
+                <Route path="/estoque/ajustes"       element={<AjustesPage />} />
+              </Route>
+            </Route>
+          </Route>
+
+          {/* ── Perfil — todos os roles autenticados ───────────────────────── */}
           <Route element={<ProtectedRoute />}>
             <Route element={<MainAppLayout />}>
-              <Route path="/dashboard"              element={<DashboardPage />} />
-              <Route path="/vendas"                 element={<VendasPage />} />
-              <Route path="/vendas/:id"             element={<VendaDetailPage />} />
-              <Route path="/produtos"               element={<ProdutosPage />} />
-              <Route path="/produtos/novo"          element={<ProductFormPage />} />
-              <Route path="/produtos/:id"           element={<ProductFormPage />} />
-              <Route path="/estoque"                element={<EstoquePage />} />
-              <Route path="/estoque/movimentacoes"  element={<MovimentacoesPage />} />
-              <Route path="/estoque/ajustes"        element={<AjustesPage />} />
-              <Route path="/clientes"               element={<ClientesPage />} />
-              <Route path="/clientes/novo"          element={<CustomerFormPage />} />
-              <Route path="/clientes/:id"           element={<CustomerFormPage />} />
-              <Route path="/fornecedores"           element={<FornecedoresPage />} />
-              <Route path="/fornecedores/novo"      element={<SupplierFormPage />} />
-              <Route path="/fornecedores/:id"       element={<SupplierFormPage />} />
-              <Route path="/usuarios"               element={<UsuariosPage />} />
-              <Route path="/usuarios/novo"          element={<UserFormPage />} />
-              <Route path="/usuarios/:id"           element={<UserFormPage />} />
-              <Route path="/usuarios/permissoes"    element={<PermissoesPage />} />
-              <Route path="/caixa"                  element={<CaixaPage />} />
-              <Route path="/auditoria"              element={<AuditoriaPage />} />
-              <Route path="/configuracoes"          element={<ConfiguracoesPage />} />
-              <Route path="/perfil"                 element={<PerfilPage />} />
+              <Route path="/perfil" element={<PerfilPage />} />
             </Route>
           </Route>
 
           {/* Platform admin — requires type: "platform" in session */}
           <Route element={<PlatformRoute />}>
             <Route element={<PlatformLayout />}>
-              <Route path="/platform" element={<PlatformDashboardPage />} />
-              <Route path="/platform/tenants" element={<PlatformTenantsPage />} />
-              <Route path="/platform/tenants/:tenantId" element={<PlatformTenantDetailPage />} />
-              <Route path="/platform/trial"    element={<PlatformTrialPage />} />
-              <Route path="/platform/activity" element={<PlatformActivityPage />} />
-              <Route path="/platform/system" element={<PlatformSystemPage />} />
-              <Route path="/platform/flags"  element={<PlatformFlagsPage />} />
+              <Route path="/platform"                          element={<PlatformDashboardPage />} />
+              <Route path="/platform/tenants"                  element={<PlatformTenantsPage />} />
+              <Route path="/platform/tenants/:tenantId"        element={<PlatformTenantDetailPage />} />
+              <Route path="/platform/trial"                    element={<PlatformTrialPage />} />
+              <Route path="/platform/activity"                 element={<PlatformActivityPage />} />
+              <Route path="/platform/system"                   element={<PlatformSystemPage />} />
+              <Route path="/platform/flags"                    element={<PlatformFlagsPage />} />
             </Route>
           </Route>
 
