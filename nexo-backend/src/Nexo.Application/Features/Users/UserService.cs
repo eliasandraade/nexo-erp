@@ -213,6 +213,7 @@ public class UserService
             "gerente"    => UserRole.Gerente,
             "vendedor"   => UserRole.Vendedor,
             "estoquista" => UserRole.Estoquista,
+            "cozinha"    => UserRole.Cozinha,
             _ => throw new DomainException($"Unknown role '{role}'."),
         };
 

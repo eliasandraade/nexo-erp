@@ -9,5 +9,6 @@ public enum UserRole
     Diretoria,
     Gerente,
     Vendedor,
-    Estoquista
+    Estoquista,
+    Cozinha,
 }

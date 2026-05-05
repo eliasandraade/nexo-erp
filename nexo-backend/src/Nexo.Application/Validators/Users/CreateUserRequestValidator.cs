@@ -6,7 +6,7 @@ namespace Nexo.Application.Validators.Users;
 public class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
 {
     private static readonly string[] ValidRoles =
-        ["diretoria", "gerente", "vendedor", "estoquista"];
+        ["diretoria", "gerente", "vendedor", "estoquista", "cozinha"];
 
     public CreateUserRequestValidator()
     {
