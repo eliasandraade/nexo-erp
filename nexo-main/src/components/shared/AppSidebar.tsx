@@ -6,9 +6,13 @@ import { useAuth } from "@/modules/auth/context/AuthContext";
 export function AppSidebar() {
   const { session } = useAuth();
 
-  const visibleRoutes = appRoutes.filter((route) =>
-    !route.moduleKey || session?.modules.includes(route.moduleKey)
-  );
+  const visibleRoutes = appRoutes.filter((route) => {
+    // Module gate — hide if tenant doesn't have the required module
+    if (route.moduleKey && !session?.modules.includes(route.moduleKey)) return false;
+    // Role gate — hide if current role is not in the allowed list
+    if (route.roles && session?.role && !route.roles.includes(session.role)) return false;
+    return true;
+  });
 
   return (
     <aside className="w-60 min-h-screen bg-sidebar flex flex-col shrink-0">
