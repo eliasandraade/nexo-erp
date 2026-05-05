@@ -1,5 +1,5 @@
 export type UserStatus = "active" | "inactive" | "blocked";
-export type UserRole = "diretoria" | "gerente" | "vendedor" | "estoquista";
+export type UserRole = "diretoria" | "gerente" | "vendedor" | "estoquista" | "cozinha";
 
 export interface User {
   id: string;
@@ -62,10 +62,11 @@ export interface RolePreset {
 }
 
 export const roleLabels: Record<UserRole, string> = {
-  diretoria: "Diretoria",
-  gerente: "Gerente",
-  vendedor: "Vendedor",
+  diretoria:  "Diretoria",
+  gerente:    "Gerente",
+  vendedor:   "Vendedor",
   estoquista: "Estoquista",
+  cozinha:    "Cozinha",
 };
 
 export const statusLabels: Record<UserStatus, string> = {
