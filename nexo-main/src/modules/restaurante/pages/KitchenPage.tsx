@@ -4,6 +4,7 @@ import { KitchenBoard } from "../components/KitchenBoard";
 import { KitchenConnectionBadge } from "../components/KitchenConnectionBadge";
 import { useKitchenSocket } from "../hooks/useKitchenSocket";
 import { useKitchenItems } from "../hooks/useKitchenItems";
+import { UserDropdown } from "@/components/shared/UserDropdown";
 
 export default function KitchenPage() {
   const { session }     = useAuth();
@@ -32,7 +33,10 @@ export default function KitchenPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold text-white">Cozinha</h1>
-        <KitchenConnectionBadge mode={connectionMode} />
+        <div className="flex items-center gap-3">
+          <KitchenConnectionBadge mode={connectionMode} />
+          <UserDropdown variant="dark" />
+        </div>
       </div>
 
       {/* Board */}

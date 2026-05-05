@@ -1,10 +1,7 @@
-import { Outlet, useNavigate } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Outlet } from "react-router-dom";
+import { UserDropdown } from "@/components/shared/UserDropdown";
 
 export function PosLayout() {
-  const navigate = useNavigate();
-
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Minimal top bar */}
@@ -13,15 +10,7 @@ export function PosLayout() {
           <img src="/orken_darkmode.png" alt="Orken" className="h-5 w-auto object-contain" />
           <span className="text-xs text-sidebar-muted">PDV — Ponto de Venda</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate("/dashboard")}
-          className="text-sidebar-foreground hover:bg-sidebar-accent/50 text-xs"
-        >
-          <ArrowLeft className="h-3.5 w-3.5 mr-1.5" />
-          Voltar ao sistema
-        </Button>
+        <UserDropdown />
       </header>
 
       {/* Main POS content */}
