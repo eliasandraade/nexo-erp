@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "../context/AuthContext";
+import { homeRoute } from "../hooks/useRoleAccess";
+import { getCurrentSession } from "../services/authService";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -35,8 +37,11 @@ export default function LoginPage() {
 
     if (err) {
       setError(err);
+    } else if (type === "platform") {
+      navigate("/platform", { replace: true });
     } else {
-      navigate(type === "platform" ? "/platform" : "/dashboard", { replace: true });
+      const session = getCurrentSession();
+      navigate(session ? homeRoute(session) : "/dashboard", { replace: true });
     }
   }
 
