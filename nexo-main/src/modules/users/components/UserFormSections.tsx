@@ -53,6 +53,14 @@ export function UserMainDataSection({ form, onChange, errors }: Props) {
   );
 }
 
+const roleHints: Partial<Record<UserRole, string>> = {
+  diretoria:  "Acesso total ao sistema",
+  gerente:    "Controle completo da loja vinculada",
+  vendedor:   "PDV (varejo) ou piso/delivery (restaurante)",
+  estoquista: "Acessa apenas Produtos e Estoque",
+  cozinha:    "Acessa apenas a visão de Cozinha (módulo restaurante)",
+};
+
 export function UserAccessSection({ form, onChange, errors, stores }: Props & { stores: string[] }) {
   const requiresStore = form.role === "gerente" || form.role === "vendedor";
 
@@ -68,7 +76,12 @@ export function UserAccessSection({ form, onChange, errors, stores }: Props & { 
             ))}
           </SelectContent>
         </Select>
-        {errors.role && <p className="text-xs text-destructive">{errors.role}</p>}
+        {errors.role
+          ? <p className="text-xs text-destructive">{errors.role}</p>
+          : form.role && roleHints[form.role] && (
+              <p className="text-xs text-muted-foreground">{roleHints[form.role]}</p>
+            )
+        }
       </div>
       <div className="space-y-1.5">
         <Label>Empresa</Label>
