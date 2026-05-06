@@ -115,14 +115,55 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+async function requestForm<T>(path: string, form: FormData): Promise<T> {
+  const url = `${BASE_URL}${path}`;
+  const token = getAccessToken();
+
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+
+  if (res.status === 401) {
+    const refreshed = await attemptRefresh();
+    if (refreshed) return requestForm<T>(path, form);
+    clearTokens();
+    throw new ApiError(401, "Unauthorized");
+  }
+
+  if (!res.ok) {
+    let message = res.statusText;
+    try {
+      const err = await res.json();
+      if (Array.isArray(err?.details) && err.details.length > 0) {
+        message = err.details.join(" | ");
+      } else {
+        message = err?.error ?? err?.message ?? message;
+      }
+    } catch {
+      // ignore parse failure
+    }
+    throw new ApiError(res.status, message);
+  }
+
+  if (res.status === 204) return undefined as unknown as T;
+
+  return res.json() as Promise<T>;
+}
+
 // ── Public client ─────────────────────────────────────────────────────────────
 
 export const apiClient = {
-  get:    <T>(path: string)                 => request<T>("GET",    path),
-  post:   <T>(path: string, body?: unknown) => request<T>("POST",   path, body),
-  put:    <T>(path: string, body: unknown)  => request<T>("PUT",    path, body),
-  patch:  <T>(path: string, body: unknown)  => request<T>("PATCH",  path, body),
-  delete: <T>(path: string)                 => request<T>("DELETE", path),
+  get:      <T>(path: string)                   => request<T>("GET",    path),
+  post:     <T>(path: string, body?: unknown)   => request<T>("POST",   path, body),
+  put:      <T>(path: string, body: unknown)    => request<T>("PUT",    path, body),
+  patch:    <T>(path: string, body: unknown)    => request<T>("PATCH",  path, body),
+  delete:   <T>(path: string)                   => request<T>("DELETE", path),
+  postForm: <T>(path: string, form: FormData)   => requestForm<T>(path, form),
 };
 
 // ── Error type ────────────────────────────────────────────────────────────────
