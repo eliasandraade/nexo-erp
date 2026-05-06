@@ -199,7 +199,10 @@ public record FoodServiceSettingsDto(
     string?  BusinessHoursJson,
     bool     AcceptingOrders,
     bool     DeliveryEnabled,
-    bool     TakeawayEnabled);
+    bool     TakeawayEnabled,
+    // operational costs
+    decimal  CostPerMinuteGas,
+    decimal  CostPerMinuteLaborRate);
 
 public record UpdatePortalInfoRequest(
     string?  DisplayName,
@@ -211,3 +214,5 @@ public record UpdatePortalInfoRequest(
     bool     AcceptingOrders = true,
     bool     DeliveryEnabled = true,
     bool     TakeawayEnabled = true);
+
+public record UpdateOperationalCostsRequest(decimal CostPerMinuteGas, decimal CostPerMinuteLaborRate);

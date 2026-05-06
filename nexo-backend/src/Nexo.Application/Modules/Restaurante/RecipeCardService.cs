@@ -158,10 +158,8 @@ public class RecipeCardService
                 lineCost));
         }
 
-        // TODO (Task 7): replace 0m with config?.CostPerMinuteGas and config?.CostPerMinuteLaborRate
-        // once those fields are added to FoodServiceSettings.
-        var gasRate   = 0m;
-        var laborRate = 0m;
+        var gasRate   = config?.CostPerMinuteGas       ?? 0m;
+        var laborRate = config?.CostPerMinuteLaborRate  ?? 0m;
         var prepMin   = (decimal)(card.TotalPrepTimeMin ?? 0);
 
         var unitIngCost = card.Yield > 0 ? totalIngCost / card.Yield : 0m;

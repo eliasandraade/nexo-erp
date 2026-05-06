@@ -59,6 +59,20 @@ public class FoodServiceSettingsService
         return Map(settings);
     }
 
+    public async Task<FoodServiceSettingsDto> UpdateOperationalCostsAsync(
+        UpdateOperationalCostsRequest req, CancellationToken ct = default)
+    {
+        var settings = await _repo.GetCurrentStoreAsync(ct);
+        if (settings is null)
+        {
+            settings = FoodServiceSettings.CreateDefault(_currentTenant.Id);
+            await _repo.AddAsync(settings, ct);
+        }
+        settings.UpdateOperationalCosts(req.CostPerMinuteGas, req.CostPerMinuteLaborRate);
+        await _repo.SaveChangesAsync(ct);
+        return Map(settings);
+    }
+
     private static FoodServiceSettingsDto Map(FoodServiceSettings s) => new(
         s.Id, s.StoreType,
         s.CouvertEnabled, s.CouvertPricePerPerson, s.CouvertAutomatic,
@@ -66,5 +80,6 @@ public class FoodServiceSettingsService
         s.OrderTypesEnabled,
         s.DisplayName, s.LogoUrl, s.CoverImageUrl,
         s.Description, s.WhatsAppPhone, s.BusinessHoursJson,
-        s.AcceptingOrders, s.DeliveryEnabled, s.TakeawayEnabled);
+        s.AcceptingOrders, s.DeliveryEnabled, s.TakeawayEnabled,
+        s.CostPerMinuteGas, s.CostPerMinuteLaborRate);
 }

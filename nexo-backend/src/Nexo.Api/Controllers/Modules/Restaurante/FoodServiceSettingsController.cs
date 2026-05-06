@@ -25,4 +25,9 @@ public class FoodServiceSettingsController : ControllerBase
     [HttpPut("portal")]
     public async Task<IActionResult> UpdatePortalInfo([FromBody] UpdatePortalInfoRequest req, CancellationToken ct)
         => Ok(await _service.UpdatePortalInfoAsync(req, ct));
+
+    [HttpPut("costs")]
+    public async Task<IActionResult> UpdateCosts(
+        [FromBody] UpdateOperationalCostsRequest req, CancellationToken ct)
+        => Ok(await _service.UpdateOperationalCostsAsync(req, ct));
 }

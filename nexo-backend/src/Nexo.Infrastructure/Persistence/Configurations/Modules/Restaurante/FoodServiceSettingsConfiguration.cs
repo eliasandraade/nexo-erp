@@ -36,6 +36,13 @@ public class FoodServiceSettingsConfiguration : IEntityTypeConfiguration<FoodSer
         builder.Property(x => x.BusinessHoursJson).HasColumnName("business_hours_json")
             .HasColumnType("jsonb");
 
+        builder.Property(x => x.CostPerMinuteGas)
+            .HasColumnName("cost_per_minute_gas")
+            .HasColumnType("numeric(18,4)").HasDefaultValue(0m).IsRequired();
+        builder.Property(x => x.CostPerMinuteLaborRate)
+            .HasColumnName("cost_per_minute_labor")
+            .HasColumnType("numeric(18,4)").HasDefaultValue(0m).IsRequired();
+
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 

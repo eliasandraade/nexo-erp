@@ -39,6 +39,10 @@ public class FoodServiceSettings : StoreEntity
     /// <summary>Habilita retirada no balcão no portal.</summary>
     public bool    TakeawayEnabled   { get; private set; } = true;
 
+    // ── Custos operacionais (CMV) ─────────────────────────────────────────────
+    public decimal CostPerMinuteGas       { get; private set; }
+    public decimal CostPerMinuteLaborRate { get; private set; }
+
     public static FoodServiceSettings CreateDefault(Guid tenantId)
         => new FoodServiceSettings(tenantId)
         {
@@ -47,6 +51,8 @@ public class FoodServiceSettings : StoreEntity
             CouvertAutomatic     = false,
             ServiceFeeEnabled    = false,
             OrderTypesEnabled    = "DineIn,Counter,Takeaway",
+            CostPerMinuteGas       = 0m,
+            CostPerMinuteLaborRate = 0m,
         };
 
     public void Update(
@@ -85,6 +91,13 @@ public class FoodServiceSettings : StoreEntity
         AcceptingOrders   = acceptingOrders;
         DeliveryEnabled   = deliveryEnabled;
         TakeawayEnabled   = takeawayEnabled;
+        SetUpdatedAt();
+    }
+
+    public void UpdateOperationalCosts(decimal costPerMinuteGas, decimal costPerMinuteLaborRate)
+    {
+        CostPerMinuteGas       = costPerMinuteGas       >= 0 ? costPerMinuteGas       : 0;
+        CostPerMinuteLaborRate = costPerMinuteLaborRate  >= 0 ? costPerMinuteLaborRate : 0;
         SetUpdatedAt();
     }
 }
