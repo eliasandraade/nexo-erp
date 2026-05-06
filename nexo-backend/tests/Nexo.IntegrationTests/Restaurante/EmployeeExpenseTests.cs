@@ -177,4 +177,56 @@ public class EmployeeExpenseTests : IAsyncLifetime
         resp!.Should().Contain(e => e.Description == $"Água maio {suffix}");
         resp.Should().NotContain(e => e.Description == $"Água junho {suffix}");
     }
+
+    [Fact]
+    public async Task FinanceiroSummary_IncludesPersonnelAndExpenses()
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+
+        // Create employee (salary = 3000)
+        await _client.PostAsJsonAsync("/api/restaurante/employees",
+            new CreateEmployeeRequest(
+                Name:          $"Chef {suffix}",
+                Role:          "Cozinheiro",
+                AdmissionDate: new DateOnly(2024, 1, 1),
+                MonthlySalary: 3000m,
+                Notes:         null));
+
+        // Create expense in May 2026 (amount = 500)
+        await _client.PostAsJsonAsync("/api/restaurante/expenses",
+            new CreateExpenseRequest(
+                Description:    $"Luz {suffix}",
+                Category:       "Energia",
+                Amount:         500m,
+                CompetenceDate: new DateOnly(2026, 5, 1),
+                PaymentDate:    null,
+                IsRecurring:    false));
+
+        // Act — summary for May 2026 (no orders, so revenue = 0)
+        var resp = await _client.GetFromJsonAsync<FinanceiroSummaryDtoFase3>(
+            "/api/restaurante/financeiro/summary?from=2026-05-01&to=2026-05-31");
+
+        resp.Should().NotBeNull();
+        resp!.TotalPersonnelCost.Should().BeGreaterThanOrEqualTo(3000m,
+            "the new employee's salary must be included");
+        resp.TotalFixedExpenses.Should().BeGreaterThanOrEqualTo(500m,
+            "the May expense must be included");
+        resp.OperationalProfit.Should().BeLessThanOrEqualTo(
+            resp.GrossMargin - 3000m - 500m + 0.01m,
+            "operational profit = gross margin - personnel - expenses");
+    }
 }
+
+// Mirrors FinanceiroSummaryDto after Fase 3 extension
+public record FinanceiroSummaryDtoFase3(
+    int     OrdersCount,
+    decimal Revenue,
+    decimal TotalCostOfGoodsSold,
+    decimal WeightedCmvPercent,
+    decimal GrossMargin,
+    decimal TotalPersonnelCost,
+    decimal TotalFixedExpenses,
+    decimal OperationalProfit,
+    decimal BreakEvenRevenue,
+    string  From,
+    string  To);

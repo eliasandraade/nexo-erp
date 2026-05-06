@@ -110,8 +110,12 @@ public class FinanceiroController : ControllerBase
     {
         var today   = DateTime.UtcNow.Date;
         var fromUtc = TryParseDate(from) ?? new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var toUtc   = (TryParseDate(to) ?? today).AddDays(1);
+        var toUtc   = (TryParseDate(to) ?? today).AddDays(1); // exclusive upper bound
 
+        var fromDate = DateOnly.FromDateTime(fromUtc);
+        var toDate   = DateOnly.FromDateTime(toUtc.AddDays(-1));
+
+        // ── Step 1: Revenue from Paid orders in period ─────────────────────────
         var orderRows = await _db.RestOrders
             .Where(o => o.Status == RestOrderStatus.Paid
                      && o.ClosedAt >= fromUtc
@@ -130,77 +134,87 @@ public class FinanceiroController : ControllerBase
         var ordersCount = orderRows.Count;
         var revenue     = orderRows.Sum(r => r.ItemsTotal + r.CouvertAmount + r.ServiceFeeAmount);
 
-        if (ordersCount == 0)
-            return Ok(new FinanceiroSummaryDto(
-                OrdersCount:          0,
-                Revenue:              0m,
-                TotalCostOfGoodsSold: 0m,
-                WeightedCmvPercent:   0m,
-                GrossMargin:          0m,
-                From:                 fromUtc.ToString("yyyy-MM-dd"),
-                To:                   toUtc.AddDays(-1).ToString("yyyy-MM-dd")));
+        // ── Step 2: Personnel cost (all active employees, full month) ──────────
+        var personnelCost = await _db.RestEmployees
+            .Where(e => e.IsActive)
+            .SumAsync(e => (decimal?)e.MonthlySalary, ct) ?? 0m;
 
-        var orderIds = orderRows.Select(r => r.Id).ToList();
+        // ── Step 3: Fixed expenses for the period ─────────────────────────────
+        var fixedExpenses = await _db.RestExpenses
+            .Where(e => e.CompetenceDate >= fromDate && e.CompetenceDate <= toDate)
+            .SumAsync(e => (decimal?)e.Amount, ct) ?? 0m;
 
-        var itemsGrouped = await _db.RestOrderItems
-            .Where(oi => orderIds.Contains(oi.OrderId)
-                      && oi.Status != RestOrderItemStatus.Cancelled)
-            .GroupBy(oi => oi.ProductId)
-            .Select(g => new { ProductId = g.Key, TotalQty = g.Sum(i => i.Quantity) })
-            .ToListAsync(ct);
+        // ── Step 4: COGS (if no orders, skip heavy queries) ───────────────────
+        decimal totalCogs   = 0m;
+        decimal weightedCmv = 0m;
 
-        var soldProductIds = itemsGrouped.Select(g => g.ProductId).ToList();
-
-        var recipeCards = await _db.RestRecipeCards
-            .Where(rc => soldProductIds.Contains(rc.ProductId))
-            .ToListAsync(ct);
-
-        var rcIds = recipeCards.Select(rc => rc.Id).ToList();
-        var allIngredients = await _db.RestRecipeIngredients
-            .Where(i => rcIds.Contains(i.RecipeCardId))
-            .ToListAsync(ct);
-
-        var ingredientsByCard = allIngredients
-            .GroupBy(i => i.RecipeCardId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        var cardsByProduct = recipeCards.ToDictionary(rc => rc.ProductId);
-
-        var allProductIds = recipeCards.Select(rc => rc.ProductId)
-            .Concat(allIngredients.Select(i => i.IngredientProductId))
-            .Distinct().ToList();
-
-        var products = await _db.Products
-            .Where(p => allProductIds.Contains(p.Id))
-            .ToDictionaryAsync(p => p.Id, ct);
-
-        var settings  = await _db.FoodServiceSettings.FirstOrDefaultAsync(ct);
-        var gasRate   = settings?.CostPerMinuteGas      ?? 0m;
-        var laborRate = settings?.CostPerMinuteLaborRate ?? 0m;
-
-        decimal totalCogs = 0m;
-        foreach (var row in itemsGrouped)
+        if (ordersCount > 0)
         {
-            if (!cardsByProduct.TryGetValue(row.ProductId, out var card)) continue;
+            var orderIds = orderRows.Select(r => r.Id).ToList();
 
-            var cardIngs     = ingredientsByCard.GetValueOrDefault(card.Id, []);
-            var totalIngCost = cardIngs.Sum(ing =>
+            var itemsGrouped = await _db.RestOrderItems
+                .Where(oi => orderIds.Contains(oi.OrderId)
+                          && oi.Status != RestOrderItemStatus.Cancelled)
+                .GroupBy(oi => oi.ProductId)
+                .Select(g => new { ProductId = g.Key, TotalQty = g.Sum(i => i.Quantity) })
+                .ToListAsync(ct);
+
+            var soldProductIds = itemsGrouped.Select(g => g.ProductId).ToList();
+
+            var recipeCards = await _db.RestRecipeCards
+                .Where(rc => soldProductIds.Contains(rc.ProductId))
+                .ToListAsync(ct);
+
+            var rcIds = recipeCards.Select(rc => rc.Id).ToList();
+            var allIngredients = await _db.RestRecipeIngredients
+                .Where(i => rcIds.Contains(i.RecipeCardId))
+                .ToListAsync(ct);
+
+            var ingredientsByCard = allIngredients
+                .GroupBy(i => i.RecipeCardId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            var cardsByProduct = recipeCards.ToDictionary(rc => rc.ProductId);
+
+            var allProductIds = recipeCards.Select(rc => rc.ProductId)
+                .Concat(allIngredients.Select(i => i.IngredientProductId))
+                .Distinct().ToList();
+
+            var products = await _db.Products
+                .Where(p => allProductIds.Contains(p.Id))
+                .ToDictionaryAsync(p => p.Id, ct);
+
+            var settings  = await _db.FoodServiceSettings.FirstOrDefaultAsync(ct);
+            var gasRate   = settings?.CostPerMinuteGas      ?? 0m;
+            var laborRate = settings?.CostPerMinuteLaborRate ?? 0m;
+
+            foreach (var row in itemsGrouped)
             {
-                products.TryGetValue(ing.IngredientProductId, out var ingProd);
-                return ing.Quantity * (ingProd?.CostPrice ?? 0m);
-            });
+                if (!cardsByProduct.TryGetValue(row.ProductId, out var card)) continue;
 
-            var prepMin     = (decimal)(card.TotalPrepTimeMin ?? 0);
-            var unitIngCost = card.Yield > 0 ? totalIngCost / card.Yield : 0m;
-            var gasCost     = prepMin * gasRate;
-            var laborCost   = prepMin * laborRate;
-            var unitCost    = unitIngCost + gasCost + laborCost;
+                var cardIngs     = ingredientsByCard.GetValueOrDefault(card.Id, []);
+                var totalIngCost = cardIngs.Sum(ing =>
+                {
+                    products.TryGetValue(ing.IngredientProductId, out var ingProd);
+                    return ing.Quantity * (ingProd?.CostPrice ?? 0m);
+                });
 
-            totalCogs += row.TotalQty * unitCost;
+                var prepMin     = (decimal)(card.TotalPrepTimeMin ?? 0);
+                var unitIngCost = card.Yield > 0 ? totalIngCost / card.Yield : 0m;
+                var unitCost    = unitIngCost + prepMin * gasRate + prepMin * laborRate;
+
+                totalCogs += row.TotalQty * unitCost;
+            }
+
+            weightedCmv = revenue > 0 ? totalCogs / revenue * 100m : 0m;
         }
 
-        var weightedCmv = revenue > 0 ? totalCogs / revenue * 100m : 0m;
-        var grossMargin = revenue - totalCogs;
+        var grossMargin       = revenue - totalCogs;
+        var operationalProfit = grossMargin - personnelCost - fixedExpenses;
+        var cmvRatio          = weightedCmv / 100m;
+        var breakEven         = cmvRatio < 1m
+            ? Math.Round((personnelCost + fixedExpenses) / (1m - cmvRatio), 2)
+            : 0m;
 
         return Ok(new FinanceiroSummaryDto(
             OrdersCount:          ordersCount,
@@ -208,6 +222,10 @@ public class FinanceiroController : ControllerBase
             TotalCostOfGoodsSold: Math.Round(totalCogs, 2),
             WeightedCmvPercent:   Math.Round(weightedCmv, 2),
             GrossMargin:          Math.Round(grossMargin, 2),
+            TotalPersonnelCost:   Math.Round(personnelCost, 2),
+            TotalFixedExpenses:   Math.Round(fixedExpenses, 2),
+            OperationalProfit:    Math.Round(operationalProfit, 2),
+            BreakEvenRevenue:     breakEven,
             From:                 fromUtc.ToString("yyyy-MM-dd"),
             To:                   toUtc.AddDays(-1).ToString("yyyy-MM-dd")));
     }
@@ -247,5 +265,9 @@ public record FinanceiroSummaryDto(
     decimal TotalCostOfGoodsSold,
     decimal WeightedCmvPercent,
     decimal GrossMargin,
+    decimal TotalPersonnelCost,
+    decimal TotalFixedExpenses,
+    decimal OperationalProfit,
+    decimal BreakEvenRevenue,
     string  From,
     string  To);
