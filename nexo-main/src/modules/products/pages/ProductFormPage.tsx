@@ -1,13 +1,18 @@
 import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { ChefHat, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProductForm } from "../components/ProductForm";
+import { IngredientPriceSection } from "../components/IngredientPriceSection";
 import { emptyProduct, dtoToProduct } from "../types";
 import type { Product } from "../types";
 import { useProduct, useCategories, useCreateProduct, useUpdateProduct, useSetProductActive } from "../hooks/use-products";
+import { useAuth } from "@/modules/auth/context/AuthContext";
 import { toast } from "sonner";
 
 function validate(data: Partial<Product>): string[] {
@@ -25,7 +30,10 @@ function validate(data: Partial<Product>): string[] {
 export default function ProductFormPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { session } = useAuth();
   const isNew = !id;
+  const hasRestauranteModule = session?.modules?.includes("restaurante") ?? false;
 
   const { data: dto, isLoading: loadingProduct } = useProduct(id);
   const { data: categories = [] } = useCategories();
@@ -39,6 +47,13 @@ export default function ProductFormPage() {
   useEffect(() => {
     if (dto) setFormData(dtoToProduct(dto));
   }, [dto]);
+
+  // Pre-set isIngredient when URL has ?tipo=ingrediente
+  useEffect(() => {
+    if (isNew && location.search.includes("tipo=ingrediente")) {
+      setFormData((prev) => ({ ...prev, isIngredient: true }));
+    }
+  }, [isNew, location.search]);
 
   const saving =
     createMutation.isPending ||
@@ -58,6 +73,7 @@ export default function ProductFormPage() {
       salePrice:        formData.salePrice ?? 0,
       costPrice:        formData.costPrice ?? 0,
       trackStock:       formData.trackStock ?? true,
+      isIngredient:     formData.isIngredient ?? false,
       barcode:          formData.barcode || null,
       description:      formData.description || null,
       categoryId:       formData.categoryId || null,
@@ -114,12 +130,50 @@ export default function ProductFormPage() {
         }
       />
       <SectionCard>
+        {/* Toggle ingrediente / cardápio */}
+        <div className="flex items-center gap-4 pb-4 border-b mb-4">
+          <div className="flex items-center gap-2">
+            <Package className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm font-medium">Item do cardápio</Label>
+          </div>
+          <Switch
+            checked={formData.isIngredient ?? false}
+            onCheckedChange={(v) => setFormData((prev) => ({ ...prev, isIngredient: v }))}
+          />
+          <div className="flex items-center gap-2">
+            <ChefHat className="h-4 w-4 text-muted-foreground" />
+            <Label className="text-sm font-medium">Ingrediente de estoque</Label>
+          </div>
+        </div>
+
         <ProductForm
           data={formData}
           onChange={setFormData}
           isNew={isNew}
           categories={categories}
         />
+
+        {/* Seção de preços de compra — apenas para ingredientes salvos */}
+        {!isNew && formData.isIngredient && id && (
+          <div className="mt-6 pt-6 border-t space-y-3">
+            <h3 className="text-sm font-semibold">Histórico de preços de compra</h3>
+            <IngredientPriceSection productId={id} />
+          </div>
+        )}
+
+        {/* Link para ficha técnica — apenas para cardápio com restaurante */}
+        {!isNew && !formData.isIngredient && hasRestauranteModule && id && (
+          <div className="mt-6 pt-6 border-t flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Ficha Técnica</h3>
+              <p className="text-xs text-muted-foreground">CMV, ingredientes e modo de preparo.</p>
+            </div>
+            <Button variant="outline" onClick={() => navigate(`/produtos/${id}/ficha`)}>
+              <ChefHat className="h-4 w-4 mr-2" />
+              Abrir Ficha Técnica
+            </Button>
+          </div>
+        )}
       </SectionCard>
     </div>
   );
