@@ -61,6 +61,7 @@ import KitchenPage          from "@/modules/restaurante/pages/KitchenPage";
 import RestauranteSetupPage from "@/modules/restaurante/pages/RestauranteSetupPage";
 import RelatoriosPage       from "@/modules/restaurante/pages/RelatoriosPage";
 import DeliveryPage         from "@/modules/restaurante/pages/DeliveryPage";
+import RecipeCardPage       from "@/modules/restaurante/pages/RecipeCardPage";
 
 /** Redirects legacy /menu/:slug links to /:slug */
 function MenuSlugRedirect() {
@@ -184,6 +185,7 @@ export function AppRouter() {
                 <Route path="/produtos"              element={<ProdutosPage />} />
                 <Route path="/produtos/novo"         element={<ProductFormPage />} />
                 <Route path="/produtos/:id"          element={<ProductFormPage />} />
+                <Route path="/produtos/:id/ficha"    element={<RecipeCardPage />} />
                 <Route path="/estoque"               element={<EstoquePage />} />
                 <Route path="/estoque/movimentacoes" element={<MovimentacoesPage />} />
                 <Route path="/estoque/ajustes"       element={<AjustesPage />} />

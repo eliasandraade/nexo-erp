@@ -18,6 +18,9 @@ export interface FoodServiceSettingsDto {
   acceptingOrders: boolean;
   deliveryEnabled: boolean;
   takeawayEnabled: boolean;
+  // Operational costs for CMV calculation
+  costPerMinuteGas: number;
+  costPerMinuteLaborRate: number;
 }
 
 export interface UpdateFoodServiceSettingsRequest {
@@ -28,6 +31,11 @@ export interface UpdateFoodServiceSettingsRequest {
   serviceFeeEnabled: boolean;
   serviceFeePercent: number | null;
   orderTypesEnabled: string;
+}
+
+export interface UpdateOperationalCostsRequest {
+  costPerMinuteGas: number;
+  costPerMinuteLaborRate: number;
 }
 
 export interface UpdatePortalInfoRequest {

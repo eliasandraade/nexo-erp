@@ -8,6 +8,7 @@ import type {
   PayOrderRequest,
   FoodServiceSettingsDto,
   UpdateFoodServiceSettingsRequest,
+  UpdateOperationalCostsRequest,
   UpdatePortalInfoRequest,
   ModifierGroupDto,
 } from "../types";
@@ -25,6 +26,11 @@ export const updatePortalInfo = (
   req: UpdatePortalInfoRequest
 ): Promise<FoodServiceSettingsDto> =>
   apiClient.put<FoodServiceSettingsDto>("/restaurante/settings/portal", req);
+
+export const updateOperationalCosts = (
+  req: UpdateOperationalCostsRequest
+): Promise<FoodServiceSettingsDto> =>
+  apiClient.put<FoodServiceSettingsDto>("/restaurante/settings/costs", req);
 
 // ── Areas ─────────────────────────────────────────────────────────────────────
 export const listAreas = (includeInactive = false): Promise<AreaDto[]> =>
