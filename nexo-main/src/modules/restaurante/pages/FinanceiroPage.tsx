@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import { useCmvReport, useFinanceiroSummary } from "../hooks/use-financeiro";
 import {
   useEmployees, useCreateEmployee, useUpdateEmployee,
-  useExpenses, useCreateExpense, useDeleteExpense,
+  useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense,
 } from "../hooks/use-employees-expenses";
 import { EXPENSE_CATEGORIES } from "../api/employees-expenses.api";
 import type { CmvReportItemDto, FinanceiroSummaryDto } from "../api/financeiro.api";
@@ -373,13 +373,20 @@ function EmployeesSection() {
 function ExpensesSection({ from, to }: { from: string; to: string }) {
   const { data: expenses = [], isLoading } = useExpenses(from, to);
   const createMut = useCreateExpense();
+  const updateMut = useUpdateExpense();
   const deleteMut = useDeleteExpense();
 
-  const [adding, setAdding]           = useState(false);
-  const [desc, setDesc]               = useState("");
-  const [cat, setCat]                 = useState<string>(EXPENSE_CATEGORIES[0]);
-  const [amount, setAmount]           = useState("");
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [adding, setAdding]               = useState(false);
+  const [desc, setDesc]                   = useState("");
+  const [cat, setCat]                     = useState<string>(EXPENSE_CATEGORIES[0]);
+  const [amount, setAmount]               = useState("");
+  const [isRecurring, setIsRecurring]     = useState(false);
+
+  const [editId, setEditId]               = useState<string | null>(null);
+  const [editDesc, setEditDesc]           = useState("");
+  const [editCat, setEditCat]             = useState<string>(EXPENSE_CATEGORIES[0]);
+  const [editAmount, setEditAmount]       = useState("");
+  const [editRecurring, setEditRecurring] = useState(false);
 
   const handleAdd = () => {
     if (!desc.trim() || !amount) return;
@@ -388,6 +395,24 @@ function ExpensesSection({ from, to }: { from: string; to: string }) {
         competenceDate: from, paymentDate: null, isRecurring },
       { onSuccess: () => { setAdding(false); setDesc(""); setAmount(""); setIsRecurring(false); toast.success("Despesa adicionada!"); },
         onError:   () => toast.error("Erro ao adicionar despesa.") });
+  };
+
+  const startEdit = (exp: { id: string; description: string; category: string; amount: number; isRecurring: boolean; competenceDate: string; paymentDate: string | null }) => {
+    setEditId(exp.id);
+    setEditDesc(exp.description);
+    setEditCat(exp.category);
+    setEditAmount(String(exp.amount));
+    setEditRecurring(exp.isRecurring);
+  };
+
+  const handleSaveEdit = (exp: { id: string; competenceDate: string; paymentDate: string | null }) => {
+    if (!editDesc.trim() || !editAmount) return;
+    updateMut.mutate(
+      { id: exp.id, req: { description: editDesc.trim(), category: editCat,
+          amount: parseFloat(editAmount) || 0, competenceDate: exp.competenceDate,
+          paymentDate: exp.paymentDate, isRecurring: editRecurring } },
+      { onSuccess: () => { setEditId(null); toast.success("Despesa atualizada!"); },
+        onError:   () => toast.error("Erro ao atualizar despesa.") });
   };
 
   const handleDelete = (id: string) => {
@@ -472,18 +497,58 @@ function ExpensesSection({ from, to }: { from: string; to: string }) {
       ) : (
         <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
           {expenses.map(exp => (
-            <div key={exp.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-              <div className="flex-1">
-                <p className="font-medium">{exp.description}</p>
-                <p className="text-xs text-muted-foreground">
-                  {exp.category}{exp.isRecurring ? " · recorrente" : ""}
-                </p>
-              </div>
-              <span className="tabular-nums font-medium">{fmt(exp.amount)}</span>
-              <button onClick={() => handleDelete(exp.id)}
-                className="text-muted-foreground hover:text-destructive transition-colors">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+            <div key={exp.id} className="flex items-center gap-2 px-4 py-3 text-sm">
+              {editId === exp.id ? (
+                <>
+                  <Input value={editDesc} onChange={e => setEditDesc(e.target.value)}
+                    className="h-7 text-xs flex-1" />
+                  <Select value={editCat} onValueChange={v => setEditCat(v)}>
+                    <SelectTrigger className="h-7 text-xs w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EXPENSE_CATEGORIES.map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="relative w-28">
+                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
+                    <Input value={editAmount} onChange={e => setEditAmount(e.target.value)}
+                      type="number" className="h-7 text-xs pl-7" />
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <input type="checkbox" checked={editRecurring}
+                      onChange={e => setEditRecurring(e.target.checked)} className="h-3.5 w-3.5" />
+                    <span className="text-xs text-muted-foreground">Rec.</span>
+                  </div>
+                  <button onClick={() => handleSaveEdit(exp)} disabled={updateMut.isPending}
+                    className="text-primary disabled:opacity-40">
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => setEditId(null)} className="text-muted-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex-1">
+                    <p className="font-medium">{exp.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {exp.category}{exp.isRecurring ? " · recorrente" : ""}
+                    </p>
+                  </div>
+                  <span className="tabular-nums font-medium">{fmt(exp.amount)}</span>
+                  <button onClick={() => startEdit(exp)}
+                    className="text-muted-foreground hover:text-foreground transition-colors">
+                    <Pencil className="h-3 w-3" />
+                  </button>
+                  <button onClick={() => handleDelete(exp.id)}
+                    className="text-muted-foreground hover:text-destructive transition-colors">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              )}
             </div>
           ))}
         </div>
