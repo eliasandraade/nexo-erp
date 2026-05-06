@@ -13,6 +13,7 @@ import {
   UtensilsCrossed,
   SlidersHorizontal,
   BarChart2,
+  TrendingUp,
   Bike,
   Globe,
   ChefHat,
@@ -63,6 +64,7 @@ export const appRoutes: AppRoute[] = [
   { path: "/restaurante/portal",     label: "Portal",        icon: Globe,             moduleKey: "restaurante", roles: MGMT },
   { path: "/restaurante/configurar", label: "Config. Mesas", icon: SlidersHorizontal, moduleKey: "restaurante", roles: MGMT },
   { path: "/restaurante/relatorios", label: "Relatórios",    icon: BarChart2,         moduleKey: "restaurante", roles: MGMT },
+  { path: "/restaurante/financeiro", label: "Financeiro",    icon: TrendingUp,        moduleKey: "restaurante", roles: MGMT },
 
   // ── Cozinha — role exclusivo + management pode acessar também ────────────
   { path: "/restaurante/cozinha",    label: "Cozinha",       icon: ChefHat,           moduleKey: "restaurante", roles: [...MGMT, "cozinha"] },

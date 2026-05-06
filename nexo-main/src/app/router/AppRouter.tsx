@@ -60,6 +60,7 @@ import OrderPage            from "@/modules/restaurante/pages/OrderPage";
 import KitchenPage          from "@/modules/restaurante/pages/KitchenPage";
 import RestauranteSetupPage from "@/modules/restaurante/pages/RestauranteSetupPage";
 import RelatoriosPage       from "@/modules/restaurante/pages/RelatoriosPage";
+import FinanceiroPage      from "@/modules/restaurante/pages/FinanceiroPage";
 import DeliveryPage         from "@/modules/restaurante/pages/DeliveryPage";
 import RecipeCardPage       from "@/modules/restaurante/pages/RecipeCardPage";
 
@@ -140,6 +141,7 @@ export function AppRouter() {
                   <Route path="/restaurante/portal"     element={<PortalSetupPage />} />
                   <Route path="/restaurante/configurar" element={<RestauranteSetupPage />} />
                   <Route path="/restaurante/relatorios" element={<RelatoriosPage />} />
+                  <Route path="/restaurante/financeiro" element={<FinanceiroPage />} />
                 </Route>
               </Route>
 
