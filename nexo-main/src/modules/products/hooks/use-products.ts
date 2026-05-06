@@ -20,10 +20,11 @@ export const CATEGORIES_KEY = ["categories"] as const;
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
-export function useProducts(includeInactive = false) {
+export function useProducts(options?: { includeInactive?: boolean; isIngredient?: boolean }) {
+  const { includeInactive = false, isIngredient } = options ?? {};
   return useQuery({
-    queryKey: [...PRODUCTS_KEY, { includeInactive }],
-    queryFn: () => fetchProducts(includeInactive),
+    queryKey: [...PRODUCTS_KEY, { includeInactive, isIngredient }],
+    queryFn: () => fetchProducts(includeInactive, isIngredient),
   });
 }
 

@@ -27,7 +27,7 @@ interface AddItemDrawerProps {
 }
 
 export function AddItemDrawer({ open, onClose, onAdd, isLoading }: AddItemDrawerProps) {
-  const { data: products  = [] } = useProducts(false);
+  const { data: products  = [] } = useProducts();
   const { data: categories = [] } = useCategories();
   const { data: stockItems = [] } = useStockItems();
 

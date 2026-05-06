@@ -3,10 +3,15 @@ import type { CategoryDto, ProductDto } from "../types";
 
 // ── Products ─────────────────────────────────────────────────────────────────
 
-export function fetchProducts(includeInactive = false): Promise<ProductDto[]> {
-  return apiClient.get<ProductDto[]>(
-    `/products${includeInactive ? "?includeInactive=true" : ""}`
-  );
+export function fetchProducts(
+  includeInactive = false,
+  isIngredient?: boolean
+): Promise<ProductDto[]> {
+  const params = new URLSearchParams();
+  if (includeInactive) params.set("includeInactive", "true");
+  if (isIngredient !== undefined) params.set("isIngredient", String(isIngredient));
+  const qs = params.toString();
+  return apiClient.get<ProductDto[]>(`/products${qs ? `?${qs}` : ""}`);
 }
 
 export function fetchProductById(id: string): Promise<ProductDto> {
@@ -25,6 +30,7 @@ export interface CreateProductPayload {
   trackStock?: boolean;
   minStockQuantity?: number | null;
   maxStockQuantity?: number | null;
+  isIngredient?: boolean;
 }
 
 export function createProduct(payload: CreateProductPayload): Promise<ProductDto> {
@@ -42,6 +48,7 @@ export interface UpdateProductPayload {
   categoryId?: string | null;
   minStockQuantity?: number | null;
   maxStockQuantity?: number | null;
+  isIngredient?: boolean;
 }
 
 export function updateProduct(id: string, payload: UpdateProductPayload): Promise<ProductDto> {

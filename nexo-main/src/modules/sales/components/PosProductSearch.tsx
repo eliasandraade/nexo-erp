@@ -22,7 +22,7 @@ export function PosProductSearch({ onAdd }: PosProductSearchProps) {
   const [open, setOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { data: products = [] } = useProducts(false);          // active only
+  const { data: products = [] } = useProducts();          // active only
   const { data: stockItems = [] } = useStockItems();
 
   useEffect(() => {

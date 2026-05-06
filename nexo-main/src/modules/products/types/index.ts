@@ -36,6 +36,7 @@ export interface ProductDto {
   minStockQuantity: number | null;
   maxStockQuantity: number | null;
   isActive: boolean;
+  isIngredient: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +52,7 @@ export interface Product {
   categoryId: string | null;
   unit: ProductUnit;
   isActive: boolean;
+  isIngredient: boolean;
   costPrice: number;
   salePrice: number;
   trackStock: boolean;
@@ -70,6 +72,7 @@ export function dtoToProduct(dto: ProductDto): Product {
     categoryId:       dto.categoryId,
     unit:             (dto.unit as ProductUnit) ?? "Un",
     isActive:         dto.isActive,
+    isIngredient:     dto.isIngredient,
     costPrice:        dto.costPrice,
     salePrice:        dto.salePrice,
     trackStock:       dto.trackStock,
@@ -88,6 +91,7 @@ export const emptyProduct: Omit<Product, "id" | "createdAt" | "updatedAt"> = {
   categoryId:       null,
   unit:             "Un",
   isActive:         true,
+  isIngredient:     false,
   costPrice:        0,
   salePrice:        0,
   trackStock:       true,

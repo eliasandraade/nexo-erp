@@ -36,7 +36,7 @@ function ProductPicker({
   onAdd: (item: CartItem) => void;
   onClose: () => void;
 }) {
-  const { data: products = [] } = useProducts(false);
+  const { data: products = [] } = useProducts();
   const [search,   setSearch]   = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [qty,      setQty]      = useState(1);
