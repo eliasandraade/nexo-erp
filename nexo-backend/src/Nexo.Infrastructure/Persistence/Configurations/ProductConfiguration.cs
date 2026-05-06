@@ -78,6 +78,11 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasColumnName("is_menu_visible")
             .HasDefaultValue(true);
 
+        builder.Property(x => x.IsIngredient)
+            .HasColumnName("is_ingredient")
+            .HasDefaultValue(false)
+            .IsRequired();
+
         builder.Property(x => x.ImageUrl)
             .HasColumnName("image_url")
             .HasMaxLength(2000);

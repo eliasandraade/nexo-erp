@@ -21,6 +21,7 @@ public class Product : StoreEntity
     public decimal? MaxStockQuantity { get; private set; }
     public bool IsActive { get; private set; }
     public bool IsMenuVisible { get; private set; }                 // exibe no portal público
+    public bool IsIngredient { get; private set; }                  // true = insumo de estoque do restaurante
     public string? ImageUrl { get; private set; }                   // URL externa de imagem do produto
 
     // Navigation
@@ -41,7 +42,8 @@ public class Product : StoreEntity
         Guid? categoryId = null,
         bool trackStock = true,
         decimal? minStockQuantity = null,
-        decimal? maxStockQuantity = null)
+        decimal? maxStockQuantity = null,
+        bool isIngredient = false)
     {
         return new Product(tenantId)
         {
@@ -58,6 +60,7 @@ public class Product : StoreEntity
             MaxStockQuantity = maxStockQuantity,
             IsActive         = true,
             IsMenuVisible    = true,
+            IsIngredient     = isIngredient,
         };
     }
 
@@ -94,6 +97,7 @@ public class Product : StoreEntity
     }
 
     public void SetMenuVisibility(bool visible) { IsMenuVisible = visible; SetUpdatedAt(); }
+    public void SetIsIngredient(bool value)     { IsIngredient = value;    SetUpdatedAt(); }
     public void SetImageUrl(string? url)        { ImageUrl = url?.Trim();  SetUpdatedAt(); }
 
     public void Deactivate() { IsActive = false; SetUpdatedAt(); }
