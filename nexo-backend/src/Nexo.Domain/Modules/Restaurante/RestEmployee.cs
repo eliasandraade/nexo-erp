@@ -25,6 +25,8 @@ public class RestEmployee : StoreEntity
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Employee name is required.");
+        if (string.IsNullOrWhiteSpace(role))
+            throw new DomainException("Employee role is required.");
         if (monthlySalary < 0)
             throw new DomainException("Monthly salary cannot be negative.");
 
@@ -43,6 +45,8 @@ public class RestEmployee : StoreEntity
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Employee name is required.");
+        if (string.IsNullOrWhiteSpace(role))
+            throw new DomainException("Employee role is required.");
         if (monthlySalary < 0)
             throw new DomainException("Monthly salary cannot be negative.");
 

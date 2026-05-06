@@ -25,6 +25,8 @@ public class RestExpense : StoreEntity
     {
         if (string.IsNullOrWhiteSpace(description))
             throw new DomainException("Expense description is required.");
+        if (string.IsNullOrWhiteSpace(category))
+            throw new DomainException("Expense category is required.");
         if (amount < 0)
             throw new DomainException("Expense amount cannot be negative.");
 
@@ -44,6 +46,8 @@ public class RestExpense : StoreEntity
     {
         if (string.IsNullOrWhiteSpace(description))
             throw new DomainException("Expense description is required.");
+        if (string.IsNullOrWhiteSpace(category))
+            throw new DomainException("Expense category is required.");
         if (amount < 0)
             throw new DomainException("Expense amount cannot be negative.");
 
