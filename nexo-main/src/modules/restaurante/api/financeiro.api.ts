@@ -38,7 +38,7 @@ export const fetchCmvReport = (): Promise<CmvReportDto> =>
 export const fetchFinanceiroSummary = (
   from: string,
   to:   string,
-): Promise<FinanceiroSummaryDto> =>
-  apiClient.get<FinanceiroSummaryDto>(
-    `/restaurante/financeiro/summary?from=${from}&to=${to}`,
-  );
+): Promise<FinanceiroSummaryDto> => {
+  const p = new URLSearchParams({ from, to });
+  return apiClient.get<FinanceiroSummaryDto>(`/restaurante/financeiro/summary?${p}`);
+};
