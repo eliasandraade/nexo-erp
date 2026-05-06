@@ -26,6 +26,10 @@ export interface FinanceiroSummaryDto {
   totalCostOfGoodsSold: number;
   weightedCmvPercent:   number;
   grossMargin:          number;
+  totalPersonnelCost:   number;
+  totalFixedExpenses:   number;
+  operationalProfit:    number;
+  breakEvenRevenue:     number;
   from:                 string;
   to:                   string;
 }
