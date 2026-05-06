@@ -10,6 +10,7 @@ using Nexo.Application.Modules.Restaurante;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
+using Nexo.Api.Controllers.Modules.Restaurante;
 using Nexo.IntegrationTests.Helpers;
 
 namespace Nexo.IntegrationTests.Restaurante;
@@ -124,29 +125,3 @@ public class FinanceiroReportTests : IAsyncLifetime
     }
 }
 
-public record CmvReportItemDto(
-    Guid    ProductId,
-    string  ProductName,
-    string  ProductCode,
-    decimal SalePrice,
-    decimal UnitIngredientCost,
-    decimal GasCost,
-    decimal LaborCost,
-    decimal UnitCost,
-    decimal CmvPercent,
-    decimal Margin,
-    decimal MarginPercent);
-
-public record CmvReportDto(
-    IReadOnlyList<CmvReportItemDto> Items,
-    string From,
-    string To);
-
-public record FinanceiroSummaryDto(
-    int     OrdersCount,
-    decimal Revenue,
-    decimal TotalCostOfGoodsSold,
-    decimal WeightedCmvPercent,
-    decimal GrossMargin,
-    string  From,
-    string  To);

@@ -37,7 +37,7 @@ public class FinanceiroController : ControllerBase
             .ToListAsync(ct);
 
         if (cards.Count == 0)
-            return Ok(new CmvReportDto([], string.Empty, string.Empty));
+            return Ok(new CmvReportDto([]));
 
         var cardIds = cards.Select(c => c.Id).ToList();
 
@@ -95,7 +95,7 @@ public class FinanceiroController : ControllerBase
         }
 
         var sorted = items.OrderByDescending(i => i.CmvPercent).ToList();
-        return Ok(new CmvReportDto(sorted, string.Empty, string.Empty));
+        return Ok(new CmvReportDto(sorted));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -239,9 +239,7 @@ public record CmvReportItemDto(
     decimal MarginPercent);
 
 public record CmvReportDto(
-    IReadOnlyList<CmvReportItemDto> Items,
-    string From,
-    string To);
+    IReadOnlyList<CmvReportItemDto> Items);
 
 public record FinanceiroSummaryDto(
     int     OrdersCount,
