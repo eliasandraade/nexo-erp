@@ -19,7 +19,7 @@ export default function ProdutosPage() {
   const [unit, setUnit]               = useState("all");
   const [manageCatsOpen, setManageCatsOpen] = useState(false);
 
-  const { data: products = [], isLoading: loadingProducts, isError } = useProducts();
+  const { data: products = [], isLoading: loadingProducts, isError } = useProducts({ isIngredient: false });
   const { data: categories = [] } = useCategories();
 
   const filtered = useMemo(() => {

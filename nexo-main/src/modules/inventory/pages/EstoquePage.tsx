@@ -23,7 +23,7 @@ export default function EstoquePage() {
   const [status, setStatus] = useState("all");
 
   const { data: stockItems = [], isLoading: loadingStock, isError } = useStockItems();
-  const { data: products = [] } = useProducts();
+  const { data: products = [] } = useProducts({ isIngredient: true });
   const { data: categories = [] } = useCategories();
 
   // Build enriched list by joining stock items with product details
@@ -65,11 +65,11 @@ export default function EstoquePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Estoque"
-        description="Acompanhe saldos e movimentações de produtos com rastreio ativo."
+        title="Ingredientes"
+        description="Insumos e ingredientes usados nos pratos. Controle de estoque e histórico de preços."
         actions={
-          <Button onClick={() => navigate("/estoque/ajustes")}>
-            <Plus className="h-4 w-4 mr-1" /> Novo ajuste
+          <Button onClick={() => navigate("/produtos/novo?tipo=ingrediente")}>
+            <Plus className="h-4 w-4 mr-1" /> Novo ingrediente
           </Button>
         }
       />
