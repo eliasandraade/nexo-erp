@@ -70,7 +70,10 @@ public class RecipeCardService
     {
         var card = await _recipes.GetByIdWithIngredientsAsync(id, ct)
             ?? throw new NotFoundException("RecipeCard", id);
-        card.Update(request.Yield, request.YieldUnit, request.Notes);
+        card.Update(request.Yield, request.YieldUnit, request.Notes,
+            hasPrep: true, prepSteps: [],
+            assemblyNotes: null, requiresPackaging: false,
+            packagingProductId: null, imageUrl: null);
         await _recipes.SaveChangesAsync(ct);
         return await MapAsync(card, ct);
     }
