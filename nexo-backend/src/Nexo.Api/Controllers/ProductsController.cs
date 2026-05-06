@@ -16,8 +16,9 @@ public class ProductsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ProductDto>>> GetAll(
         [FromQuery] bool includeInactive = false,
+        [FromQuery] bool? isIngredient = null,
         CancellationToken ct = default)
-        => Ok(await _service.GetAllAsync(includeInactive, ct));
+        => Ok(await _service.GetAllAsync(includeInactive, isIngredient, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProductDto>> GetById(Guid id, CancellationToken ct)

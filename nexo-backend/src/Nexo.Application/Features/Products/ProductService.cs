@@ -18,9 +18,12 @@ public class ProductService
         _currentTenant = currentTenant;
     }
 
-    public async Task<IReadOnlyList<ProductDto>> GetAllAsync(bool includeInactive = false, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ProductDto>> GetAllAsync(
+        bool includeInactive = false,
+        bool? isIngredient = null,
+        CancellationToken ct = default)
     {
-        var list = await _products.GetAllAsync(includeInactive, ct);
+        var list = await _products.GetAllAsync(includeInactive, isIngredient, ct);
         return list.Select(MapToDto).ToList();
     }
 
@@ -50,7 +53,8 @@ public class ProductService
             request.CategoryId,
             request.TrackStock,
             request.MinStockQuantity,
-            request.MaxStockQuantity);
+            request.MaxStockQuantity,
+            request.IsIngredient);
 
         await _products.AddAsync(product, ct);
         await _products.SaveChangesAsync(ct);
@@ -83,6 +87,8 @@ public class ProductService
             request.TrackStock,
             request.MinStockQuantity,
             request.MaxStockQuantity);
+
+        product.SetIsIngredient(request.IsIngredient);
 
         await _products.SaveChangesAsync(ct);
         return MapToDto(product);
@@ -118,6 +124,6 @@ public class ProductService
         p.Id, p.Code, p.Barcode, p.Name, p.Description, p.CategoryId,
         p.Unit.ToString(), p.CostPrice, p.SalePrice, p.TrackStock,
         p.MinStockQuantity, p.MaxStockQuantity, p.IsActive,
-        p.IsMenuVisible, p.ImageUrl,
+        p.IsMenuVisible, p.IsIngredient, p.ImageUrl,
         p.CreatedAt, p.UpdatedAt);
 }

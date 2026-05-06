@@ -13,7 +13,8 @@ public record CreateProductRequest(
     Guid? CategoryId = null,
     bool TrackStock = true,
     decimal? MinStockQuantity = null,
-    decimal? MaxStockQuantity = null);
+    decimal? MaxStockQuantity = null,
+    bool IsIngredient = false);
 
 public record UpdateProductRequest(
     string Name,
@@ -25,7 +26,8 @@ public record UpdateProductRequest(
     string? Description = null,
     Guid? CategoryId = null,
     decimal? MinStockQuantity = null,
-    decimal? MaxStockQuantity = null);
+    decimal? MaxStockQuantity = null,
+    bool IsIngredient = false);
 
 public record UpdateProductPricesRequest(decimal CostPrice, decimal SalePrice);
 
@@ -46,6 +48,7 @@ public record ProductDto(
     decimal? MaxStockQuantity,
     bool IsActive,
     bool IsMenuVisible,
+    bool IsIngredient,
     string? ImageUrl,
     DateTime CreatedAt,
     DateTime UpdatedAt);

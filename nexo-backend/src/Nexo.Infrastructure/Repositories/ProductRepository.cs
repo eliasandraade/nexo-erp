@@ -37,9 +37,13 @@ public class ProductRepository : IProductRepository
     public async Task<Product?> GetByBarcodeAsync(string barcode, CancellationToken ct = default)
         => await _context.Products.FirstOrDefaultAsync(x => x.Barcode == barcode, ct);
 
-    public async Task<IReadOnlyList<Product>> GetAllAsync(bool includeInactive = false, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Product>> GetAllAsync(
+        bool includeInactive = false,
+        bool? isIngredient = null,
+        CancellationToken ct = default)
         => await _context.Products
             .Where(x => includeInactive || x.IsActive)
+            .Where(x => isIngredient == null || x.IsIngredient == isIngredient)
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
 
