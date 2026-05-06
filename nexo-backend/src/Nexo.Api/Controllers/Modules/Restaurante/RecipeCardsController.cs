@@ -56,4 +56,34 @@ public class RecipeCardsController : ControllerBase
     public async Task<ActionResult<RecipeCardDto>> RemoveIngredient(
         Guid id, Guid ingredientId, CancellationToken ct)
         => Ok(await _service.RemoveIngredientAsync(id, ingredientId, ct));
+
+    /// <summary>Upload ou substituição da imagem da ficha técnica. Máximo 5 MB; JPEG, PNG ou WebP.</summary>
+    [HttpPost("{id:guid}/image")]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<RecipeCardDto>> UploadImage(
+        Guid id, IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest("No file uploaded.");
+
+        var allowed = new[] { "image/jpeg", "image/png", "image/webp" };
+        if (!allowed.Contains(file.ContentType))
+            return BadRequest("Only JPEG, PNG, and WebP images are accepted.");
+
+        if (file.Length > 5 * 1024 * 1024)
+            return BadRequest("Image must be smaller than 5 MB.");
+
+        var ext      = Path.GetExtension(file.FileName).ToLowerInvariant();
+        var fileName = $"{id:N}{ext}";
+        var wwwroot  = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "recipes");
+        Directory.CreateDirectory(wwwroot);
+        var fullPath = Path.Combine(wwwroot, fileName);
+
+        await using var stream = System.IO.File.Create(fullPath);
+        await file.CopyToAsync(stream, ct);
+
+        var imageUrl = $"/images/recipes/{fileName}";
+        var dto      = await _service.SetImageAsync(id, imageUrl, ct);
+        return Ok(dto);
+    }
 }

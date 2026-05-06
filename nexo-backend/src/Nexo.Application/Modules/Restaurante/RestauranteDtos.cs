@@ -83,25 +83,63 @@ public record CloseOrderResponse(
 // ═══════════════════════════════════════════════════════════
 
 public record CreateRecipeCardRequest(
-    Guid ProductId, decimal Yield, string YieldUnit, string? Notes = null);
+    Guid    ProductId,
+    decimal Yield,
+    string  YieldUnit,
+    bool    HasPrep = true,
+    string? Notes   = null);
 
-public record UpdateRecipeCardRequest(decimal Yield, string YieldUnit, string? Notes = null);
+public record PrepStepDto(int Order, string Description, int? DurationMinutes);
+
+public record UpdateRecipeCardRequest(
+    decimal           Yield,
+    string            YieldUnit,
+    bool              HasPrep,
+    List<PrepStepDto> PrepSteps,
+    string?           AssemblyNotes,
+    bool              RequiresPackaging,
+    Guid?             PackagingProductId,
+    string?           Notes = null);
 
 public record AddIngredientRequest(
-    Guid IngredientProductId, decimal Quantity, string Unit);
+    Guid    IngredientProductId,
+    decimal Quantity,
+    string  Unit);
 
 public record RecipeIngredientDto(
-    Guid Id, Guid IngredientProductId, string IngredientName, string IngredientCode,
-    decimal Quantity, string Unit,
+    Guid    Id,
+    Guid    IngredientProductId,
+    string  IngredientName,
+    string  IngredientCode,
+    decimal Quantity,
+    string  Unit,
     decimal CurrentCostPrice,
-    decimal LineCost);   // Qty × CostPrice
+    decimal LineCost);
 
 public record RecipeCardDto(
-    Guid Id, Guid ProductId, string ProductName, string ProductCode,
-    decimal Yield, string YieldUnit,
-    bool IsActive, string? Notes,
-    decimal CalculatedCost,      // custo total dos ingredientes / rendimento
-    decimal CmvPercent,          // (calculatedCost / product.SalePrice) × 100
+    Guid    Id,
+    Guid    ProductId,
+    string  ProductName,
+    string  ProductCode,
+    decimal SalePrice,
+    string? ImageUrl,
+    decimal Yield,
+    string  YieldUnit,
+    bool    HasPrep,
+    IReadOnlyList<PrepStepDto> PrepSteps,
+    int?    TotalPrepTimeMin,
+    string? AssemblyNotes,
+    bool    RequiresPackaging,
+    Guid?   PackagingProductId,
+    string? PackagingProductName,
+    bool    IsActive,
+    string? Notes,
+    // CMV breakdown
+    decimal IngredientCost,
+    decimal GasCost,
+    decimal LaborCost,
+    decimal CalculatedCost,
+    decimal CmvPercent,
     IReadOnlyList<RecipeIngredientDto> Ingredients,
     DateTime CreatedAt);
 
