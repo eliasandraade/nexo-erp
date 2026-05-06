@@ -105,6 +105,7 @@ public static class DependencyInjection
         services.AddScoped<ISupplierRepository, SupplierRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
+        services.AddScoped<IProductPurchasePriceRepository, ProductPurchasePriceRepository>();
         services.AddScoped<IStockRepository, StockRepository>();
         services.AddScoped<ISaleRepository, SaleRepository>();
         services.AddScoped<ICashRepository, CashRepository>();
