@@ -15,6 +15,7 @@ using Nexo.Application.Features.Users;
 using Nexo.Application.Modules.Restaurante;
 using Nexo.Application.Modules.Interpreter;
 using Nexo.Application.Modules.Varejo;
+using Nexo.Application.Modules.Build;
 
 namespace Nexo.Application;
 
@@ -56,6 +57,13 @@ public static class DependencyInjection
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<PurchaseService>();
         services.AddScoped<PriceListService>();
+
+        // ── Módulo Build (Orken Build — Gestão de Obras) ─────────────────────
+        services.AddScoped<BuildProjectService>();
+        services.AddScoped<BuildStageService>();
+        services.AddScoped<BuildBudgetService>();
+        services.AddScoped<BuildDailyLogService>();
+        services.AddScoped<BuildFinancialSummaryService>();
 
         // FluentValidation — scan this assembly for all validators
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
