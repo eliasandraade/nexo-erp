@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Common;
 using Nexo.Domain.Entities;
+using Nexo.Domain.Modules.Interpreter;
 using Nexo.Domain.Modules.Restaurante;
 using Nexo.Domain.Modules.Varejo;
 
@@ -100,6 +101,17 @@ public class NexoDbContext : DbContext
     public DbSet<RetPriceList> RetPriceLists => Set<RetPriceList>();
     public DbSet<RetPriceListItem> RetPriceListItems => Set<RetPriceListItem>();
     public DbSet<RetCustomerPriceList> RetCustomerPriceLists => Set<RetCustomerPriceList>();
+
+    // ── Operational Interpretation Engine ────────────────────────────────────
+    public DbSet<FinancialMovement>        IntMovements         => Set<FinancialMovement>();
+    public DbSet<MovementAttachment>       IntAttachments       => Set<MovementAttachment>();
+    public DbSet<ExtractionResult>         IntExtractionResults => Set<ExtractionResult>();
+    public DbSet<InterpretationSuggestion> IntSuggestions       => Set<InterpretationSuggestion>();
+    public DbSet<UserCorrection>           IntUserCorrections   => Set<UserCorrection>();
+    public DbSet<ReprocessLog>             IntReprocessLogs     => Set<ReprocessLog>();
+    public DbSet<MovementMemoryProfile>    IntMemoryProfiles    => Set<MovementMemoryProfile>();
+    public DbSet<TenantStopword>           IntStopwords         => Set<TenantStopword>();
+    public DbSet<MovementAuditLog>         IntAuditLogs         => Set<MovementAuditLog>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {

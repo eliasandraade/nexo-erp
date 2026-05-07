@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from "react-router-dom";
-import { Building2, LayoutDashboard, LogOut, ShieldCheck, Activity, ScrollText, Clock, Flag } from "lucide-react";
+import { Building2, LayoutDashboard, LogOut, ShieldCheck, Activity, ScrollText, Clock, Flag, Brain, FlaskConical, Plug, Radio, DollarSign, FileCode } from "lucide-react";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 
 export function PlatformLayout() {
@@ -100,6 +100,94 @@ export function PlatformLayout() {
           >
             <Activity className="h-4 w-4" />
             Sistema
+          </NavLink>
+
+          {/* ── AI Operations ───────────────────────────────── */}
+          <div className="pt-3 pb-1 px-3">
+            <div className="border-t border-border" />
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mt-3 mb-1">
+              AI Operations
+            </p>
+          </div>
+
+          <NavLink
+            to="/platform/ai"
+            end
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`
+            }
+          >
+            <Brain className="h-4 w-4" />
+            AI Dashboard
+          </NavLink>
+          <NavLink
+            to="/platform/ai/playground"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`
+            }
+          >
+            <FlaskConical className="h-4 w-4" />
+            Playground
+          </NavLink>
+          <NavLink
+            to="/platform/ai/providers"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`
+            }
+          >
+            <Plug className="h-4 w-4" />
+            Providers
+          </NavLink>
+          <NavLink
+            to="/platform/ai/telemetry"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`
+            }
+          >
+            <Radio className="h-4 w-4" />
+            Telemetry
+          </NavLink>
+          <NavLink
+            to="/platform/ai/costs"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`
+            }
+          >
+            <DollarSign className="h-4 w-4" />
+            Custos
+          </NavLink>
+          <NavLink
+            to="/platform/ai/prompts"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                isActive
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`
+            }
+          >
+            <FileCode className="h-4 w-4" />
+            Prompts
           </NavLink>
         </nav>
 

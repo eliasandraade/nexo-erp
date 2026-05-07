@@ -13,6 +13,7 @@ using Nexo.Application.Features.Stores;
 using Nexo.Application.Features.Suppliers;
 using Nexo.Application.Features.Users;
 using Nexo.Application.Modules.Restaurante;
+using Nexo.Application.Modules.Interpreter;
 using Nexo.Application.Modules.Varejo;
 
 namespace Nexo.Application;
@@ -44,6 +45,13 @@ public static class DependencyInjection
         services.AddScoped<RecipeCardService>();
         services.AddScoped<ModifierGroupService>();
         services.AddScoped<FoodServiceSettingsService>();
+
+        // ── Operational Interpretation Engine ────────────────────────────────
+        services.AddScoped<AnalyzeMovementUseCase>();
+        services.AddScoped<ConfirmMovementUseCase>();
+        services.AddScoped<ReprocessMovementUseCase>();
+        services.AddScoped<VoidMovementUseCase>();
+        services.AddScoped<RebuildMovementMemoryProfileUseCase>();
 
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<PurchaseService>();

@@ -15,6 +15,12 @@ import PlatformSystemPage from "@/modules/platform/pages/PlatformSystemPage";
 import PlatformActivityPage from "@/modules/platform/pages/PlatformActivityPage";
 import PlatformTrialPage from "@/modules/platform/pages/PlatformTrialPage";
 import PlatformFlagsPage from "@/modules/platform/pages/PlatformFlagsPage";
+import AiDashboardPage from "@/modules/platform/pages/ai/AiDashboardPage";
+import AiPlaygroundPage from "@/modules/platform/pages/ai/AiPlaygroundPage";
+import AiProvidersPage from "@/modules/platform/pages/ai/AiProvidersPage";
+import AiTelemetryPage from "@/modules/platform/pages/ai/AiTelemetryPage";
+import AiCostsPage from "@/modules/platform/pages/ai/AiCostsPage";
+import AiPromptsPage from "@/modules/platform/pages/ai/AiPromptsPage";
 import ImpersonatePage from "@/pages/ImpersonatePage";
 import LandingPage from "@/modules/landing/pages/LandingPage";
 import PortalMenuPage from "@/modules/portal/pages/PortalMenuPage";
@@ -212,6 +218,13 @@ export function AppRouter() {
               <Route path="/platform/activity"                 element={<PlatformActivityPage />} />
               <Route path="/platform/system"                   element={<PlatformSystemPage />} />
               <Route path="/platform/flags"                    element={<PlatformFlagsPage />} />
+              {/* AI Operations */}
+              <Route path="/platform/ai"                       element={<AiDashboardPage />} />
+              <Route path="/platform/ai/playground"            element={<AiPlaygroundPage />} />
+              <Route path="/platform/ai/providers"             element={<AiProvidersPage />} />
+              <Route path="/platform/ai/telemetry"             element={<AiTelemetryPage />} />
+              <Route path="/platform/ai/costs"                 element={<AiCostsPage />} />
+              <Route path="/platform/ai/prompts"               element={<AiPromptsPage />} />
             </Route>
           </Route>
 

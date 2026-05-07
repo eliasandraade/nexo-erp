@@ -9,14 +9,15 @@ namespace Nexo.UnitTests.Auth;
 
 public class AuthServiceTests
 {
-    private readonly IUserRepository    _users   = Substitute.For<IUserRepository>();
-    private readonly ITenantRepository  _tenants = Substitute.For<ITenantRepository>();
-    private readonly IStoreRepository   _stores  = Substitute.For<IStoreRepository>();
-    private readonly IPasswordHasher    _hasher  = Substitute.For<IPasswordHasher>();
-    private readonly IJwtTokenService   _jwt     = Substitute.For<IJwtTokenService>();
-    private readonly ICacheService      _cache   = Substitute.For<ICacheService>();
+    private readonly IUserRepository    _users    = Substitute.For<IUserRepository>();
+    private readonly ITenantRepository  _tenants  = Substitute.For<ITenantRepository>();
+    private readonly IStoreRepository   _stores   = Substitute.For<IStoreRepository>();
+    private readonly IPasswordHasher    _hasher   = Substitute.For<IPasswordHasher>();
+    private readonly IJwtTokenService   _jwt      = Substitute.For<IJwtTokenService>();
+    private readonly ICacheService      _cache    = Substitute.For<ICacheService>();
+    private readonly ISessionStore      _sessions = Substitute.For<ISessionStore>();
 
-    private AuthService CreateSut() => new(_users, _tenants, _stores, _hasher, _jwt, _cache);
+    private AuthService CreateSut() => new(_users, _tenants, _stores, _hasher, _jwt, _cache, _sessions);
 
     // ── LoginAsync ────────────────────────────────────────────────────────────
 

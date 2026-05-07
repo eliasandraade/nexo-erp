@@ -2,9 +2,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Modules.Interpreter.Interfaces;
 using Nexo.Application.Modules.Varejo.Interfaces;
+using Nexo.Domain.Modules.Interpreter;
 using Nexo.Infrastructure.Audit;
 using Nexo.Infrastructure.Auth;
 using Nexo.Infrastructure.Email;
@@ -16,6 +19,8 @@ using Nexo.Infrastructure.Persistence.Seed;
 using Nexo.Infrastructure.Repositories;
 using Nexo.Application.Modules.Restaurante.Interfaces;
 using Nexo.Infrastructure.Hubs;
+using Nexo.Infrastructure.Modules.Interpreter;
+using Nexo.Infrastructure.Repositories.Modules.Interpreter;
 using Nexo.Infrastructure.Repositories.Modules.Restaurante;
 using Nexo.Infrastructure.Repositories.Modules.Varejo;
 using StackExchange.Redis;
@@ -132,6 +137,46 @@ public static class DependencyInjection
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<IPurchaseRepository, PurchaseRepository>();
         services.AddScoped<IPriceListRepository, PriceListRepository>();
+
+        // ── Operational Interpretation Engine ─────────────────────────────────
+        // Repositories
+        services.AddScoped<IFinancialMovementRepository, FinancialMovementRepository>();
+        services.AddScoped<IExtractionResultRepository, ExtractionResultRepository>();
+        services.AddScoped<IInterpretationSuggestionRepository, InterpretationSuggestionRepository>();
+        services.AddScoped<IUserCorrectionRepository, UserCorrectionRepository>();
+        services.AddScoped<IReprocessLogRepository, ReprocessLogRepository>();
+        services.AddScoped<IMovementMemoryProfileRepository, MovementMemoryProfileRepository>();
+        services.AddScoped<ITenantStopwordRepository, TenantStopwordRepository>();
+        services.AddScoped<IMovementAttachmentRepository, MovementAttachmentRepository>();
+        services.AddScoped<IMovementAuditLogRepository, MovementAuditLogRepository>();
+
+        // Domain services
+        services.AddScoped<IDescriptionNormalizer, DescriptionNormalizer>();
+        services.AddScoped<IMovementMemoryService, MovementMemoryServiceImpl>();
+
+        // Analyzers (registered individually for IEnumerable<IDocumentAnalyzer> injection)
+        services.AddScoped<IDocumentAnalyzer, RuleBasedAnalyzer>();
+        services.AddScoped<IDocumentAnalyzer, ClaudeAnalyzerStub>();
+
+        // Feature flags — controls which analyzers/features are active
+        services.AddSingleton<IInterpreterFeatureFlags>(
+            new InterpreterFeatureFlags(configuration));
+
+        // Application services
+        services.AddScoped<IAnalyzerSelector, AnalyzerSelectorService>();
+        services.AddScoped<IInterpretationService, RuleBasedInterpretationService>();
+
+        // Attachment storage — local filesystem for MVP
+        var attachmentsDir = configuration["Interpreter:AttachmentsDir"]
+                             ?? Path.Combine(AppContext.BaseDirectory, "wwwroot", "attachments");
+        services.AddSingleton<IAttachmentStorage>(new LocalAttachmentStorage(attachmentsDir));
+
+        // Health checks
+        services.AddHealthChecks()
+            .AddCheck<InterpreterStorageHealthCheck>(
+                "interpreter-storage",
+                HealthStatus.Degraded,
+                tags: ["interpreter", "storage"]);
 
         // ── Module Access (cache em memória + DB) ─────────────────────────────
         services.AddMemoryCache();
