@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Common;
 using Nexo.Domain.Entities;
+using Nexo.Domain.Modules.Build;
 using Nexo.Domain.Modules.Interpreter;
 using Nexo.Domain.Modules.Restaurante;
 using Nexo.Domain.Modules.Varejo;
@@ -101,6 +102,14 @@ public class NexoDbContext : DbContext
     public DbSet<RetPriceList> RetPriceLists => Set<RetPriceList>();
     public DbSet<RetPriceListItem> RetPriceListItems => Set<RetPriceListItem>();
     public DbSet<RetCustomerPriceList> RetCustomerPriceLists => Set<RetCustomerPriceList>();
+
+    // ── Módulo Build (Orken Build — Gestão de Obras) ─────────────────────────
+    public DbSet<BuildProject>        BldProjects      => Set<BuildProject>();
+    public DbSet<BuildStage>          BldStages        => Set<BuildStage>();
+    public DbSet<BuildBudget>         BldBudgets       => Set<BuildBudget>();
+    public DbSet<BuildBudgetItem>     BldBudgetItems   => Set<BuildBudgetItem>();
+    public DbSet<BuildDailyLog>       BldDailyLogs     => Set<BuildDailyLog>();
+    public DbSet<BuildDailyLogPhoto>  BldDailyLogPhotos => Set<BuildDailyLogPhoto>();
 
     // ── Operational Interpretation Engine ────────────────────────────────────
     public DbSet<FinancialMovement>        IntMovements         => Set<FinancialMovement>();

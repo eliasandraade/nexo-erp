@@ -9,6 +9,10 @@ build/
 .next/
 out/
 
+# Exception: C# module named Build is not a build output
+!nexo-backend/src/**/Modules/Build/
+!nexo-backend/src/**/Build/
+
 # .NET build outputs
 **/bin/
 **/obj/
