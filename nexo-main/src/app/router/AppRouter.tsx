@@ -58,6 +58,10 @@ import NotFoundPage from "@/pages/NotFoundPage";
 // Varejo module pages
 import PdvPage from "@/modules/sales/pages/PdvPage";
 
+// Build module pages
+import BuildProjectsPage    from "@/modules/build/pages/BuildProjectsPage";
+import BuildProjectDetailPage from "@/modules/build/pages/BuildProjectDetailPage";
+
 // Restaurante module pages + layouts
 import { WaiterLayout }  from "@/app/layouts/WaiterLayout";
 import { KitchenLayout } from "@/app/layouts/KitchenLayout";
@@ -115,6 +119,18 @@ export function AppRouter() {
               <Route element={<RoleRoute path="/pdv" />}>
                 <Route element={<PosLayout />}>
                   <Route path="/pdv" element={<PdvPage />} />
+                </Route>
+              </Route>
+            </Route>
+          </Route>
+
+          {/* ── Build (Obras) — management only ───────────────────────────────── */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<ModuleRoute moduleKey="build" />}>
+              <Route element={<RoleRoute path="/build" />}>
+                <Route element={<MainAppLayout />}>
+                  <Route path="/build"              element={<BuildProjectsPage />} />
+                  <Route path="/build/projetos/:id" element={<BuildProjectDetailPage />} />
                 </Route>
               </Route>
             </Route>

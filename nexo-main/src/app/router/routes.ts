@@ -17,6 +17,7 @@ import {
   Bike,
   Globe,
   ChefHat,
+  HardHat,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
@@ -68,4 +69,7 @@ export const appRoutes: AppRoute[] = [
 
   // ── Cozinha — role exclusivo + management pode acessar também ────────────
   { path: "/restaurante/cozinha",    label: "Cozinha",       icon: ChefHat,           moduleKey: "restaurante", roles: [...MGMT, "cozinha"] },
+
+  // ── Build (Obras) — management only ─────────────────────────────────────
+  { path: "/build",                  label: "Obras",         icon: HardHat,           moduleKey: "build",       roles: MGMT },
 ];

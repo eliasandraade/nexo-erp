@@ -13,6 +13,10 @@ out/
 !nexo-backend/src/**/Modules/Build/
 !nexo-backend/src/**/Build/
 
+# Exception: frontend Build module (src/modules/build/) is not a build output
+!nexo-main/src/modules/build/
+!nexo-main/src/modules/build/**
+
 # .NET build outputs
 **/bin/
 **/obj/
