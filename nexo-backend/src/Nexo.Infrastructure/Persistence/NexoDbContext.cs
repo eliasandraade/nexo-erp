@@ -113,6 +113,12 @@ public class NexoDbContext : DbContext
     public DbSet<TenantStopword>           IntStopwords         => Set<TenantStopword>();
     public DbSet<MovementAuditLog>         IntAuditLogs         => Set<MovementAuditLog>();
 
+    // ── AI Operations (platform-global — no tenant query filter) ─────────────
+    public DbSet<AiProvider>              AiProviders          => Set<AiProvider>();
+    public DbSet<InterpreterTelemetry>    InterpreterTelemetry => Set<InterpreterTelemetry>();
+    public DbSet<TenantAiLimit>           TenantAiLimits       => Set<TenantAiLimit>();
+    public DbSet<StoredPromptVersion>     StoredPromptVersions => Set<StoredPromptVersion>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

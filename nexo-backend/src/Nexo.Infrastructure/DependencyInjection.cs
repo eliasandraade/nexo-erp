@@ -166,6 +166,9 @@ public static class DependencyInjection
         services.AddScoped<IAnalyzerSelector, AnalyzerSelectorService>();
         services.AddScoped<IInterpretationService, RuleBasedInterpretationService>();
 
+        // Telemetry writer — singleton so it can hold IServiceProvider safely
+        services.AddSingleton<ITelemetryWriter, TelemetryWriterService>();
+
         // Attachment storage — local filesystem for MVP
         var attachmentsDir = configuration["Interpreter:AttachmentsDir"]
                              ?? Path.Combine(AppContext.BaseDirectory, "wwwroot", "attachments");

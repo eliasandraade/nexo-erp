@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
+using Nexo.Domain.Modules.Interpreter;
 using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Infrastructure.Persistence.Seed;
@@ -37,6 +38,8 @@ public class DataSeeder
         await SeedDefaultStoreAsync(ct);
         await SeedTestUsersAsync(ct);
         await SeedPlatformUserAsync(ct);
+        await SeedAiProvidersAsync(ct);
+        await SeedStoredPromptVersionsAsync(ct);
     }
 
     // ── Tenant ────────────────────────────────────────────────────────────────
@@ -309,6 +312,83 @@ public class DataSeeder
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Seed: platform superuser created. Email: elias@nexo.com / elias@2026");
+    }
+
+    // ── AI Providers ─────────────────────────────────────────────────────────
+
+    private async Task SeedAiProvidersAsync(CancellationToken ct)
+    {
+        if (await _context.AiProviders.AnyAsync(ct))
+        {
+            _logger.LogDebug("Seed: AI providers already exist, skipping.");
+            return;
+        }
+
+        var providers = new[]
+        {
+            AiProvider.Create(
+                name: "RuleBased (Motor de Regras)", provider: "RuleBased",
+                isEnabled: true, isDefault: true, priority: 1,
+                modelId: null, costPerInputTokenMicros: 0, costPerOutputTokenMicros: 0),
+            AiProvider.Create(
+                name: "Claude 3 Haiku (Anthropic)", provider: "Claude",
+                isEnabled: false, isDefault: false, priority: 2,
+                modelId: "claude-haiku-20240307", costPerInputTokenMicros: 250, costPerOutputTokenMicros: 1250),
+            AiProvider.Create(
+                name: "GPT-4o Mini (OpenAI)", provider: "OpenAI",
+                isEnabled: false, isDefault: false, priority: 3,
+                modelId: "gpt-4o-mini", costPerInputTokenMicros: 150, costPerOutputTokenMicros: 600),
+        };
+
+        _context.AiProviders.AddRange(providers);
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Seed: {Count} AI providers created.", providers.Length);
+    }
+
+    // ── Stored prompt versions ────────────────────────────────────────────────
+
+    private async Task SeedStoredPromptVersionsAsync(CancellationToken ct)
+    {
+        if (await _context.StoredPromptVersions.AnyAsync(ct))
+        {
+            _logger.LogDebug("Seed: stored prompt versions already exist, skipping.");
+            return;
+        }
+
+        var prompts = new[]
+        {
+            StoredPromptVersion.Create(
+                promptType:  "extraction",
+                version:     "1.0.0",
+                hash:        "seed0001",
+                content:     "Extraia do texto: valor numérico, data no formato ISO, nome do pagador/recebedor e conta bancária. Responda em JSON com campos: amount, date, payee, account.",
+                description: "Prompt base de extração de dados financeiros v1",
+                createdBy:   "system",
+                isActive:    true),
+            StoredPromptVersion.Create(
+                promptType:  "interpretation",
+                version:     "1.0.0",
+                hash:        "seed0002",
+                content:     "Com base nos dados extraídos e no contexto do tenant, sugira: direção (entrada/saída), natureza, categoria e conta contábil. Responda em JSON com campos: direction, nature, categoryId, accountId.",
+                description: "Prompt base de interpretação de movimentos v1",
+                createdBy:   "system",
+                isActive:    true),
+            StoredPromptVersion.Create(
+                promptType:  "memory",
+                version:     "1.0.0",
+                hash:        "seed0003",
+                content:     "Resumo compacto do perfil de uso do tenant para contextualizar sugestões de categorias e contas frequentes.",
+                description: "Prompt base de memória contextual v1",
+                createdBy:   "system",
+                isActive:    true),
+        };
+        // isActive already set to true via Create() param above — no further Activate() call needed.
+
+        _context.StoredPromptVersions.AddRange(prompts);
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Seed: {Count} stored prompt versions created (all active).", prompts.Length);
     }
 
     // ── Default store ─────────────────────────────────────────────────────────

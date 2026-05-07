@@ -22,6 +22,7 @@ public class AnalyzeMovementUseCase
     private readonly ICurrentTenant                 _currentTenant;
     private readonly ICurrentUser                   _currentUser;
     private readonly ILogger<AnalyzeMovementUseCase> _logger;
+    private readonly ITelemetryWriter? _telemetry;
 
     public AnalyzeMovementUseCase(
         IAnalyzerSelector                    analyzerSelector,
@@ -35,7 +36,8 @@ public class AnalyzeMovementUseCase
         IUnitOfWork                          uow,
         ICurrentTenant                       currentTenant,
         ICurrentUser                         currentUser,
-        ILogger<AnalyzeMovementUseCase>      logger)
+        ILogger<AnalyzeMovementUseCase>      logger,
+        ITelemetryWriter?                    telemetry = null)
     {
         _analyzerSelector      = analyzerSelector;
         _interpretationService = interpretationService;
@@ -49,6 +51,7 @@ public class AnalyzeMovementUseCase
         _currentTenant         = currentTenant;
         _currentUser           = currentUser;
         _logger                = logger;
+        _telemetry             = telemetry;
     }
 
     public async Task<AnalyzeMovementResponse> ExecuteAsync(
@@ -154,12 +157,37 @@ public class AnalyzeMovementUseCase
             await _movementRepo.SaveChangesAsync(innerCt);
         }, ct);
 
-        var elapsedMs = (DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
+        var elapsedMs = (int)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
         _logger.LogInformation(
-            "Interpreter.Analyze completed. DraftId={DraftId} ElapsedMs={ElapsedMs:F0} " +
+            "Interpreter.Analyze completed. DraftId={DraftId} ElapsedMs={ElapsedMs} " +
             "Direction={Direction} DirectionSource={DirectionSource} CategoryId={CategoryId}",
             movement.Id, elapsedMs,
             interpretation.Direction, interpretation.DirectionSource, interpretation.CategoryId);
+
+        if (_telemetry is not null)
+        {
+            _ = _telemetry.WriteAsync(new TelemetryEntry(
+                TenantId:             tenantId,
+                UserId:               userId,
+                MovementId:           movement.Id,
+                OperationType:        "Analyze",
+                Provider:             analyzer.Provider.ToString(),
+                PromptType:           analysisOutput.PromptMetadata.PromptType,
+                PromptVersion:        analysisOutput.PromptMetadata.PromptVersion,
+                PromptHash:           analysisOutput.PromptMetadata.PromptHash,
+                InputTokens:          analysisOutput.InputTokens,
+                OutputTokens:         analysisOutput.OutputTokens,
+                EstimatedCostMicros:  analysisOutput.EstimatedCostMicros,
+                DurationMs:           elapsedMs,
+                Success:              true,
+                ErrorMessage:         null,
+                FallbackUsed:         false,
+                FallbackFromProvider: null,
+                AnalyzerChain:        [analyzer.Provider.ToString()],
+                RequiresInputCount:   requiresInputCount,
+                AmountConfidence:     analysisOutput.Amount.Confidence,
+                DateConfidence:       analysisOutput.Date.Confidence));
+        }
 
         return BuildResponse(movement.Id, analysisOutput, extractionResult, interpretation, suggestion);
     }

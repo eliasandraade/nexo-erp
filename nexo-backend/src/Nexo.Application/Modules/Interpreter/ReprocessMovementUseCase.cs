@@ -26,6 +26,7 @@ public class ReprocessMovementUseCase
     private readonly ICurrentTenant                      _currentTenant;
     private readonly ICurrentUser                        _currentUser;
     private readonly ILogger<ReprocessMovementUseCase>  _logger;
+    private readonly ITelemetryWriter?                  _telemetry;
 
     public ReprocessMovementUseCase(
         IAnalyzerSelector                    analyzerSelector,
@@ -40,7 +41,8 @@ public class ReprocessMovementUseCase
         IUnitOfWork                          uow,
         ICurrentTenant                       currentTenant,
         ICurrentUser                         currentUser,
-        ILogger<ReprocessMovementUseCase>    logger)
+        ILogger<ReprocessMovementUseCase>    logger,
+        ITelemetryWriter?                    telemetry = null)
     {
         _analyzerSelector      = analyzerSelector;
         _interpretationService = interpretationService;
@@ -55,6 +57,7 @@ public class ReprocessMovementUseCase
         _currentTenant         = currentTenant;
         _currentUser           = currentUser;
         _logger                = logger;
+        _telemetry             = telemetry;
     }
 
     public async Task<ReprocessMovementResponse> ExecuteAsync(
@@ -160,11 +163,36 @@ public class ReprocessMovementUseCase
             await _movementRepo.SaveChangesAsync(innerCt);
         }, ct);
 
-        var elapsedMs = (DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
+        var elapsedMs = (int)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
         _logger.LogInformation(
             "Interpreter.Reprocess completed. MovementId={MovementId} ReprocessLogId={LogId} " +
             "Provider={Provider} ElapsedMs={ElapsedMs:F0}",
             movement.Id, reprocessLog.Id, analyzer.Provider, elapsedMs);
+
+        if (_telemetry is not null)
+        {
+            _ = _telemetry.WriteAsync(new TelemetryEntry(
+                TenantId:             tenantId,
+                UserId:               userId,
+                MovementId:           movement.Id,
+                OperationType:        "Reprocess",
+                Provider:             analyzer.Provider.ToString(),
+                PromptType:           analysisOutput.PromptMetadata.PromptType,
+                PromptVersion:        analysisOutput.PromptMetadata.PromptVersion,
+                PromptHash:           analysisOutput.PromptMetadata.PromptHash,
+                InputTokens:          analysisOutput.InputTokens,
+                OutputTokens:         analysisOutput.OutputTokens,
+                EstimatedCostMicros:  analysisOutput.EstimatedCostMicros,
+                DurationMs:           elapsedMs,
+                Success:              true,
+                ErrorMessage:         null,
+                FallbackUsed:         false,
+                FallbackFromProvider: null,
+                AnalyzerChain:        [analyzer.Provider.ToString()],
+                RequiresInputCount:   0,
+                AmountConfidence:     analysisOutput.Amount.Confidence,
+                DateConfidence:       analysisOutput.Date.Confidence));
+        }
 
         var analyzeResponse = AnalyzeMovementUseCase.BuildResponse(
             movement.Id, analysisOutput, newExtraction, interpretation, newSuggestion);

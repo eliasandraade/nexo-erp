@@ -29,4 +29,12 @@ public sealed record AnalysisOutput(
     ExtractedField<string?>   Payee,
     ExtractedField<string?>   Account,
     string                    RawProviderResponse,   // LlmRawResponse — never treated as contract
-    PromptMetadata            Prompt);
+    PromptMetadata            Prompt,
+    // Token usage — zero for RuleBased; populated by LLM analyzers.
+    int  InputTokens          = 0,
+    int  OutputTokens         = 0,
+    long EstimatedCostMicros  = 0)
+{
+    // Convenience alias for existing code that reads Prompt
+    public PromptMetadata PromptMetadata => Prompt;
+}
