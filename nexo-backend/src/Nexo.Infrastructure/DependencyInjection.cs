@@ -18,8 +18,11 @@ using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
 using Nexo.Infrastructure.Repositories;
 using Nexo.Application.Modules.Restaurante.Interfaces;
+using Nexo.Application.Modules.Build.Interfaces;
 using Nexo.Infrastructure.Hubs;
+using Nexo.Infrastructure.Modules.Build;
 using Nexo.Infrastructure.Modules.Interpreter;
+using Nexo.Infrastructure.Repositories.Modules.Build;
 using Nexo.Infrastructure.Repositories.Modules.Interpreter;
 using Nexo.Infrastructure.Repositories.Modules.Restaurante;
 using Nexo.Infrastructure.Repositories.Modules.Varejo;
@@ -137,6 +140,15 @@ public static class DependencyInjection
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<IPurchaseRepository, PurchaseRepository>();
         services.AddScoped<IPriceListRepository, PriceListRepository>();
+
+        // ── Módulo Build (Orken Build — Gestão de Obras) ─────────────────────
+        services.AddScoped<IBuildProjectRepository, BuildProjectRepository>();
+        services.AddScoped<IBuildStageRepository, BuildStageRepository>();
+        services.AddScoped<IBuildBudgetRepository, BuildBudgetRepository>();
+        services.AddScoped<IBuildBudgetItemRepository, BuildBudgetItemRepository>();
+        services.AddScoped<IBuildDailyLogRepository, BuildDailyLogRepository>();
+        services.AddScoped<IBuildDailyLogPhotoRepository, BuildDailyLogPhotoRepository>();
+        services.AddScoped<IBuildFinancialQueryService, BuildFinancialQueryService>();
 
         // ── Operational Interpretation Engine ─────────────────────────────────
         // Repositories
