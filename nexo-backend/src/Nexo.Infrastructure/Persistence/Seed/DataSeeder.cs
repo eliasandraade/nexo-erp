@@ -40,6 +40,9 @@ public class DataSeeder
         await SeedPlatformUserAsync(ct);
         await SeedAiProvidersAsync(ct);
         await SeedStoredPromptVersionsAsync(ct);
+
+        // Per-module idempotent seeds — safe to run even if the bulk seed above was skipped.
+        await SeedBuildModuleAsync(ct);
     }
 
     // ── Tenant ────────────────────────────────────────────────────────────────
@@ -140,6 +143,9 @@ public class DataSeeder
         {
             ModuleDefinition.Create("varejo",               "Comércio em Geral (Varejo)",        priceMonthly: 79m,  priceAnnual: 710m,  priceLifetime: 1290m),
             ModuleDefinition.Create("restaurante",          "Restaurantes e Bares",               priceMonthly: 97m,  priceAnnual: 870m,  priceLifetime: 1490m),
+            ModuleDefinition.Create("build",                "Orken Build — Gestão de Obras",
+                description:   "Gestão completa de obras e projetos de construção: etapas, orçamentos, diários de obra e acompanhamento financeiro.",
+                priceMonthly:  97m,  priceAnnual: 870m,  priceLifetime: 1490m),
             ModuleDefinition.Create("academia-musculacao",  "Academias de Musculação",            priceMonthly: 79m,  priceAnnual: 710m,  priceLifetime: 1290m),
             ModuleDefinition.Create("academia-artes-marciais", "Academias de Artes Marciais",    priceMonthly: 79m,  priceAnnual: 710m,  priceLifetime: 1290m),
             ModuleDefinition.Create("clinica-medica",       "Clínicas Médicas e Odontológicas",   priceMonthly: 97m,  priceAnnual: 870m,  priceLifetime: 1490m),
@@ -200,17 +206,15 @@ public class DataSeeder
         var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for module subscriptions.");
 
-        // Grant the "varejo" module to the default tenant as an admin grant
-        // grantedById is null for system-seeded grants (no platform user exists at seed time)
-        var subscription = ModuleSubscription.CreateAdminGrant(
-            tenantId:  tenant.Id,
-            moduleKey: "varejo");
+        // Grant "varejo" and "build" to the default tenant (no platform user at seed time)
+        var subVarejo = ModuleSubscription.CreateAdminGrant(tenantId: tenant.Id, moduleKey: "varejo");
+        var subBuild  = ModuleSubscription.CreateAdminGrant(tenantId: tenant.Id, moduleKey: "build");
 
-        _context.ModuleSubscriptions.Add(subscription);
+        _context.ModuleSubscriptions.AddRange(subVarejo, subBuild);
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Seed: 'varejo' module subscription granted to tenant {TenantId}.",
+            "Seed: 'varejo' and 'build' module subscriptions granted to tenant {TenantId}.",
             tenant.Id);
     }
 
@@ -389,6 +393,67 @@ public class DataSeeder
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation("Seed: {Count} stored prompt versions created (all active).", prompts.Length);
+    }
+
+    // ── Build module (idempotent per-key — runs even on already-seeded DBs) ────
+
+    /// <summary>
+    /// Ensures the "build" ModuleDefinition exists and that the default dev tenant
+    /// has an active "build" ModuleSubscription.
+    /// Safe to re-run on databases that were seeded before the Build module existed.
+    /// </summary>
+    private async Task SeedBuildModuleAsync(CancellationToken ct)
+    {
+        // 1. ModuleDefinition
+        var buildDef = await _context.ModuleDefinitions
+            .FirstOrDefaultAsync(m => m.Key == "build", ct);
+
+        if (buildDef is null)
+        {
+            buildDef = ModuleDefinition.Create(
+                key:           "build",
+                name:          "Orken Build — Gestão de Obras",
+                description:   "Gestão completa de obras e projetos de construção: etapas, orçamentos, diários de obra e acompanhamento financeiro.",
+                priceMonthly:  97m,
+                priceAnnual:   870m,
+                priceLifetime: 1490m);
+
+            _context.ModuleDefinitions.Add(buildDef);
+            await _context.SaveChangesAsync(ct);
+
+            _logger.LogInformation("Seed: 'build' ModuleDefinition created.");
+        }
+        else
+        {
+            _logger.LogDebug("Seed: 'build' ModuleDefinition already exists, skipping.");
+        }
+
+        // 2. ModuleSubscription for the default tenant (Andrade Systems)
+        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct);
+        if (tenant is null)
+        {
+            _logger.LogDebug("Seed: no tenant found — skipping 'build' subscription.");
+            return;
+        }
+
+        var alreadySubscribed = await _context.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .AnyAsync(s => s.TenantId == tenant.Id && s.ModuleKey == "build", ct);
+
+        if (!alreadySubscribed)
+        {
+            var sub = ModuleSubscription.CreateAdminGrant(tenant.Id, "build");
+            _context.ModuleSubscriptions.Add(sub);
+            await _context.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Seed: 'build' subscription granted to tenant {TenantId}.", tenant.Id);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "Seed: tenant {TenantId} already has 'build' subscription, skipping.", tenant.Id);
+        }
     }
 
     // ── Default store ─────────────────────────────────────────────────────────
