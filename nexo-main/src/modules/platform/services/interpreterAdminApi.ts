@@ -72,11 +72,11 @@ export async function updateAiProvider(
 
 export async function rotateAiProviderKey(
   id: string,
-  apiKey: string
+  apiKey?: string
 ): Promise<{ lastFour: string | null }> {
   return apiClient.post<{ lastFour: string | null }>(
     `${BASE}/providers/${id}/rotate-key`,
-    { apiKey }
+    { apiKey: apiKey ?? null }
   );
 }
 

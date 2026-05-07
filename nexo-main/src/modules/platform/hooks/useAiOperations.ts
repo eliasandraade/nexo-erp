@@ -35,7 +35,8 @@ export function useUpdateAiProvider() {
 export function useRotateAiProviderKey() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => rotateAiProviderKey(id),
+    mutationFn: ({ id, apiKey }: { id: string; apiKey?: string }) =>
+      rotateAiProviderKey(id, apiKey),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "ai", "providers"] }),
   });
 }
