@@ -106,7 +106,13 @@ try
     builder.Services.AddHealthChecks();
 
     // ── Controllers ───────────────────────────────────────────────────────────
-    builder.Services.AddControllers();
+    // JsonStringEnumConverter: serializes all enums as their string names
+    // ("Planning" instead of 0, "Draft" instead of 0, etc.).
+    // Consistent with the restaurante pattern where services map Status.ToString().
+    builder.Services.AddControllers()
+        .AddJsonOptions(o =>
+            o.JsonSerializerOptions.Converters.Add(
+                new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
     // ── Swagger ───────────────────────────────────────────────────────────────
     builder.Services.AddEndpointsApiExplorer();
