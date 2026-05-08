@@ -200,7 +200,8 @@ public class AnalyzeMovementUseCase
         InterpretationSuggestion suggestion)
     {
         return new AnalyzeMovementResponse(
-            DraftId: draftId,
+            DraftId:      draftId,
+            SuggestionId: suggestion.Id,
             Extraction: new ExtractionSummaryDto(
                 Amount: new DecimalFieldDto(
                     extraction.DetectedAmount,

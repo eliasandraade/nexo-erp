@@ -21,8 +21,10 @@ import {
   useAddBudgetItem,
   useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto,
 } from "../hooks/use-build";
+import { useProjectMovements } from "../hooks/use-interpreter";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { BudgetStatusBadge } from "../components/BudgetStatusBadge";
+import { BuildExpenseDialog } from "../components/BuildExpenseDialog";
 import type {
   BuildProjectDetailsDto, BuildStageDto, BuildBudgetDto, BuildDailyLogDto,
 } from "../api/build.api";
@@ -876,7 +878,12 @@ function TabDiario({ projectId }: { projectId: string }) {
 // ── Tab: Financeiro ───────────────────────────────────────────────────────────
 
 function TabFinanceiro({ projectId }: { projectId: string }) {
+  const [expenseOpen, setExpenseOpen] = useState(false);
+
   const { data: financial, isLoading, isError } = useProjectFinancial(projectId);
+  const { data: movementsData, isLoading: movLoading } = useProjectMovements(projectId);
+
+  const movements = movementsData?.items ?? [];
 
   if (isLoading) {
     return (
@@ -896,68 +903,110 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
     );
   }
 
-  const varianceIsOver = financial.varianceAmount > 0;
-  const varianceIsNeutral = financial.varianceAmount === 0;
+  const isOverBudget    = financial.budgetApproved != null &&
+                          financial.totalRealizedExpenses > financial.budgetApproved;
+  const varianceIsOver  = financial.varianceAmount > 0;
+  const varianceIsEqual = financial.varianceAmount === 0;
 
   const coveragePercent = financial.budgetApproved
-    ? Math.min(100, (financial.totalRealizedExpenses / financial.budgetApproved) * 100)
+    ? Math.min(150, (financial.totalRealizedExpenses / financial.budgetApproved) * 100)
     : null;
 
   return (
-    <div className="space-y-6">
-      {/* KPI grid */}
+    <div className="space-y-5">
+
+      {/* ── Alert: over budget ─────────────────────────────────────────── */}
+      {isOverBudget && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3">
+          <TrendingUp className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700 dark:text-red-300 font-medium">
+            Realizado supera o orçamento aprovado em{" "}
+            {fmt(financial.totalRealizedExpenses - (financial.budgetApproved ?? 0))}.
+          </p>
+        </div>
+      )}
+
+      {/* ── KPI grid ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
-        {[
-          {
-            label: "Orçamento aprovado",
-            value: fmt(financial.budgetApproved),
-            icon: FileText,
-            color: "text-blue-600 dark:text-blue-400",
-          },
-          {
-            label: "Realizado",
-            value: fmt(financial.totalRealizedExpenses),
-            icon: DollarSign,
-            sub: `${financial.movementCount} movimentação${financial.movementCount !== 1 ? "ões" : ""}`,
-            color: "text-foreground",
-          },
-          {
-            label: "Desvio",
-            value: fmt(financial.varianceAmount),
-            icon: varianceIsOver ? TrendingUp : varianceIsNeutral ? BarChart2 : TrendingDown,
-            sub: financial.variancePercent !== 0 ? fmtPct(Math.abs(financial.variancePercent)) : undefined,
-            color: varianceIsOver
-              ? "text-red-600 dark:text-red-400"
-              : varianceIsNeutral
-                ? "text-muted-foreground"
-                : "text-emerald-600 dark:text-emerald-400",
-          },
-          {
-            label: "Orçamento estimado",
-            value: fmt(financial.budgetEstimated),
-            icon: FileText,
-            color: "text-muted-foreground",
-          },
-        ].map(({ label, value, icon: Icon, sub, color }) => (
-          <div key={label} className="rounded-xl border border-border bg-card p-4 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className={cn("p-1.5 rounded-lg bg-muted/60", color)}>
-                <Icon className="h-3.5 w-3.5" />
-              </div>
-              <span className="text-xs text-muted-foreground">{label}</span>
-            </div>
-            <p className={cn("text-xl font-bold tabular-nums", color)}>{value}</p>
-            {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="h-3.5 w-3.5 text-blue-500" />
+            <span className="text-xs text-muted-foreground">Orçamento aprovado</span>
           </div>
-        ))}
+          <p className="text-xl font-bold tabular-nums text-blue-600 dark:text-blue-400">
+            {fmt(financial.budgetApproved)}
+          </p>
+        </div>
+
+        <div className={cn(
+          "rounded-xl border p-4",
+          isOverBudget
+            ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/10"
+            : "border-border bg-card",
+        )}>
+          <div className="flex items-center gap-2 mb-2">
+            <DollarSign className={cn("h-3.5 w-3.5", isOverBudget ? "text-red-500" : "text-foreground")} />
+            <span className="text-xs text-muted-foreground">Realizado</span>
+          </div>
+          <p className={cn(
+            "text-xl font-bold tabular-nums",
+            isOverBudget ? "text-red-600 dark:text-red-400" : "text-foreground",
+          )}>
+            {fmt(financial.totalRealizedExpenses)}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {financial.movementCount} movimentaç{financial.movementCount !== 1 ? "ões" : "ão"}
+          </p>
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            {varianceIsOver
+              ? <TrendingUp className="h-3.5 w-3.5 text-red-500" />
+              : varianceIsEqual
+                ? <BarChart2 className="h-3.5 w-3.5 text-muted-foreground" />
+                : <TrendingDown className="h-3.5 w-3.5 text-emerald-500" />}
+            <span className="text-xs text-muted-foreground">Desvio</span>
+          </div>
+          <p className={cn(
+            "text-xl font-bold tabular-nums",
+            varianceIsOver  ? "text-red-600 dark:text-red-400" :
+            varianceIsEqual ? "text-muted-foreground" :
+                              "text-emerald-600 dark:text-emerald-400",
+          )}>
+            {varianceIsOver ? "+" : ""}{fmt(financial.varianceAmount)}
+          </p>
+          {financial.variancePercent !== 0 && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {Math.abs(financial.variancePercent).toFixed(1)}% do aprovado
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Estimado</span>
+          </div>
+          <p className="text-xl font-bold tabular-nums text-muted-foreground">
+            {fmt(financial.budgetEstimated)}
+          </p>
+        </div>
       </div>
 
-      {/* Budget coverage bar */}
+      {/* ── Coverage bar ───────────────────────────────────────────────── */}
       {coveragePercent != null && (
         <div className="rounded-xl border border-border bg-card p-4 space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">Consumo do orçamento</span>
-            <span className="tabular-nums text-muted-foreground">{fmtPct(coveragePercent)}</span>
+            <span className={cn(
+              "tabular-nums text-sm font-semibold",
+              coveragePercent >= 100 ? "text-red-600 dark:text-red-400" :
+              coveragePercent >= 80  ? "text-yellow-600 dark:text-yellow-400" :
+                                       "text-muted-foreground",
+            )}>
+              {fmtPct(Math.min(100, coveragePercent))}
+            </span>
           </div>
           <div className="h-3 rounded-full bg-muted overflow-hidden">
             <div
@@ -965,26 +1014,88 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
                 "h-full rounded-full transition-all",
                 coveragePercent >= 100 ? "bg-red-500" :
                 coveragePercent >= 80  ? "bg-yellow-500" :
-                "bg-primary",
+                                         "bg-primary",
               )}
               style={{ width: `${Math.min(100, coveragePercent)}%` }}
             />
           </div>
           <p className="text-xs text-muted-foreground">
             {fmt(financial.totalRealizedExpenses)} de {fmt(financial.budgetApproved)} utilizados
-            {financial.lastMovementDate && ` · última movimentação ${fmtDate(financial.lastMovementDate)}`}
+            {financial.lastMovementDate && (
+              <> · última movimentação {fmtDate(financial.lastMovementDate)}</>
+            )}
           </p>
         </div>
       )}
 
-      {/* Note about Core integration */}
-      <div className="rounded-xl border border-border bg-muted/30 p-4">
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          📌 As despesas refletem movimentações financeiras do Core com{" "}
-          <strong>ContextType = Obra</strong> e <strong>ContextId = {projectId.slice(0, 8)}…</strong>.
-          Para registrar despesas, use o módulo Financeiro e associe ao projeto.
+      {/* ── CTA: registrar despesa ─────────────────────────────────────── */}
+      <Button
+        className="w-full"
+        onClick={() => setExpenseOpen(true)}
+      >
+        <Plus className="h-4 w-4 mr-1.5" />
+        Registrar despesa
+      </Button>
+
+      {/* ── Movement list ──────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Despesas confirmadas
         </p>
+        {movLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : movements.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border p-6 text-center">
+            <DollarSign className="h-7 w-7 mx-auto text-muted-foreground opacity-30 mb-2" />
+            <p className="text-sm text-muted-foreground">
+              Nenhuma despesa registrada ainda.
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Use o botão acima para registrar a primeira despesa.
+            </p>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border overflow-hidden">
+            {movements.map((m, idx) => (
+              <div
+                key={m.id}
+                className={cn(
+                  "flex items-center justify-between p-3 gap-3",
+                  idx !== 0 && "border-t border-border",
+                  "hover:bg-muted/20 transition-colors",
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{m.description}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(m.date + "T12:00:00").toLocaleDateString("pt-BR", {
+                      day: "2-digit", month: "short", year: "numeric",
+                    })}
+                    {" · "}
+                    {m.nature === "Expense" ? "Despesa" :
+                     m.nature === "Transfer" ? "Transferência" :
+                     m.nature === "Reimbursement" ? "Reembolso" : "Adiantamento"}
+                  </p>
+                </div>
+                <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400 shrink-0">
+                  -{fmt(m.amount)}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* ── Expense dialog ─────────────────────────────────────────────── */}
+      <BuildExpenseDialog
+        open={expenseOpen}
+        onClose={() => setExpenseOpen(false)}
+        projectId={projectId}
+      />
     </div>
   );
 }

@@ -95,6 +95,7 @@ public record MovementSuggestionDto(
 
 public record AnalyzeMovementResponse(
     Guid                  DraftId,
+    Guid                  SuggestionId,   // required for ConfirmMovementRequest.OriginalSuggestionId
     ExtractionSummaryDto  Extraction,
     MovementSuggestionDto Suggestion);
 
