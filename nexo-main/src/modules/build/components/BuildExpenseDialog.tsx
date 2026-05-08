@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,6 +151,9 @@ export function BuildExpenseDialog({ open, onClose, projectId }: Props) {
             <Sparkles className="h-4 w-4 text-primary" />
             {step === "done" ? "Despesa registrada" : "Registrar despesa"}
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Registre uma despesa da obra usando linguagem natural. O Interpreter extrai os dados automaticamente.
+          </DialogDescription>
         </DialogHeader>
 
         {/* ── Step: input ─────────────────────────────────────────────────── */}
