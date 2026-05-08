@@ -31,20 +31,22 @@ export type BuildBudgetStatus =
 // ── DTOs ──────────────────────────────────────────────────────────────────────
 
 export interface BuildProjectDto {
-  id:              string;
-  name:            string;
-  clientName:      string;
-  location:        string | null;
-  status:          BuildProjectStatus;
-  type:            BuildProjectType;
-  startDate:       string | null;
-  expectedEndDate: string | null;
-  actualEndDate:   string | null;
-  budgetEstimated: number | null;
-  budgetApproved:  number | null;
-  createdBy:       string;
-  createdAt:       string;
-  updatedAt:       string;
+  id:                   string;
+  name:                 string;
+  clientName:           string;
+  location:             string | null;
+  status:               BuildProjectStatus;
+  type:                 BuildProjectType;
+  startDate:            string | null;
+  expectedEndDate:      string | null;
+  actualEndDate:        string | null;
+  budgetEstimated:      number | null;
+  budgetApproved:       number | null;
+  stageCount:           number;
+  completedStageCount:  number;
+  logCount:             number;
+  createdAt:            string;
+  updatedAt:            string;
 }
 
 export interface BuildStageDto {
@@ -81,7 +83,6 @@ export interface BuildBudgetDto {
   totalCost:     number;
   marginPercent: number;
   finalPrice:    number;
-  createdBy:     string;
   createdAt:     string;
   updatedAt:     string;
   items:         BuildBudgetItemDto[];

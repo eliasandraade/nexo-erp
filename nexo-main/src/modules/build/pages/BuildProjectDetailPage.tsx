@@ -101,10 +101,11 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
   };
 
   const typeLabel: Record<string, string> = {
-    Residential:    "Residencial",
-    Commercial:     "Comercial",
-    Industrial:     "Industrial",
-    Infrastructure: "Infraestrutura",
+    House:      "Residencial",
+    Commercial: "Comercial",
+    Renovation: "Reforma",
+    Building:   "Edifício",
+    Other:      "Outro",
   };
 
   return (
@@ -527,7 +528,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
               </div>
 
               {/* Actions */}
-              {budget.status !== "Cancelled" && budget.status !== "Converted" && (
+              {budget.status !== "Rejected" && budget.status !== "Converted" && (
                 <div className="flex gap-2 flex-wrap">
                   {budget.status === "Draft" && (
                     <Button size="sm" variant="outline"

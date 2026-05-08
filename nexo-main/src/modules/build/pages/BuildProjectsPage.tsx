@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Plus, HardHat, Search, TrendingUp, TrendingDown, Minus,
-  AlertCircle, CheckCircle2, PauseCircle, XCircle, Clock,
-} from "lucide-react";
+import { Plus, HardHat, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,23 +31,6 @@ function fmtDate(d: string | null | undefined): string {
   });
 }
 
-function projectProgress(project: BuildProjectDto): number {
-  // If the project has stages, progress comes from them.
-  // For the list view we estimate from status.
-  if (project.status === "Completed") return 100;
-  if (project.status === "Cancelled") return 0;
-  if (project.status === "Planning")  return 0;
-  if (project.status === "Paused")    return 50;
-  return 60; // InProgress baseline — detail view shows real %
-}
-
-function varianceColor(variance: number | null): string {
-  if (variance == null) return "text-muted-foreground";
-  if (variance > 0)  return "text-red-600 dark:text-red-400";
-  if (variance < 0)  return "text-emerald-600 dark:text-emerald-400";
-  return "text-muted-foreground";
-}
-
 function StatusFilterBtn({
   label, active, onClick,
 }: { label: string; active: boolean; onClick: () => void }) {
@@ -69,24 +49,25 @@ function StatusFilterBtn({
   );
 }
 
+// ── Type label map ────────────────────────────────────────────────────────────
+
+const TYPE_LABELS: Record<string, string> = {
+  House:      "Residencial",
+  Commercial: "Comercial",
+  Renovation: "Reforma",
+  Building:   "Edifício",
+  Other:      "Outro",
+};
+
 // ── Project card ──────────────────────────────────────────────────────────────
 
 function ProjectCard({ project, onClick }: { project: BuildProjectDto; onClick: () => void }) {
-  const budgetRef = project.budgetApproved ?? project.budgetEstimated;
-  const hasFinancial = budgetRef != null;
+  const budgetRef  = project.budgetApproved ?? project.budgetEstimated;
 
-  // placeholder realized — will be real on detail page
-  const realized = null as number | null;
-  const variance = (realized != null && budgetRef != null)
-    ? realized - budgetRef
+  // Stage progress — real from API
+  const stageProgress = project.stageCount > 0
+    ? Math.round((project.completedStageCount / project.stageCount) * 100)
     : null;
-
-  const StatusIcon =
-    project.status === "Completed" ? CheckCircle2 :
-    project.status === "Cancelled" ? XCircle :
-    project.status === "Paused"    ? PauseCircle :
-    project.status === "Planning"  ? Clock :
-    AlertCircle;
 
   return (
     <button
@@ -101,64 +82,68 @@ function ProjectCard({ project, onClick }: { project: BuildProjectDto; onClick: 
           </p>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">{project.clientName}</p>
         </div>
-        <ProjectStatusBadge status={project.status} className="shrink-0" />
+        <ProjectStatusBadge status={project.status} className="shrink-0 mt-0.5" />
       </div>
 
-      {/* Row 2: financials */}
-      {hasFinancial ? (
-        <div className="grid grid-cols-3 gap-2">
+      {/* Row 2: budget */}
+      {budgetRef != null ? (
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Previsto</p>
-            <p className="text-sm font-semibold tabular-nums">{fmt(budgetRef)}</p>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
+              {project.budgetApproved != null ? "Orçamento aprovado" : "Orçamento estimado"}
+            </p>
+            <p className="text-sm font-bold tabular-nums">{fmt(budgetRef)}</p>
           </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Realizado</p>
-            <p className="text-sm font-semibold tabular-nums">{fmt(realized)}</p>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+            {TYPE_LABELS[project.type] ?? project.type}
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground italic">Sem orçamento definido</p>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground font-medium">
+            {TYPE_LABELS[project.type] ?? project.type}
+          </span>
+        </div>
+      )}
+
+      {/* Row 3: stage progress bar */}
+      {stageProgress !== null ? (
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>{project.completedStageCount}/{project.stageCount} etapas</span>
+            <span className="tabular-nums">{stageProgress}%</span>
           </div>
-          <div>
-            <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Desvio</p>
-            <div className="flex items-center gap-1">
-              {variance != null && (
-                variance > 0
-                  ? <TrendingUp className="h-3 w-3 text-red-500 shrink-0" />
-                  : variance < 0
-                    ? <TrendingDown className="h-3 w-3 text-emerald-500 shrink-0" />
-                    : <Minus className="h-3 w-3 text-muted-foreground shrink-0" />
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className={cn(
+                "h-full rounded-full transition-all",
+                stageProgress === 100 ? "bg-emerald-500" :
+                stageProgress > 0    ? "bg-primary" : "bg-muted-foreground/20",
               )}
-              <p className={cn("text-sm font-semibold tabular-nums", varianceColor(variance))}>
-                {fmt(variance)}
-              </p>
-            </div>
+              style={{ width: `${stageProgress}%` }}
+            />
           </div>
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground italic">Sem orçamento definido</p>
+        <p className="text-[11px] text-muted-foreground">Sem etapas cadastradas</p>
       )}
 
-      {/* Row 3: dates + status icon */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          {project.startDate && (
-            <span>Início: {fmtDate(project.startDate)}</span>
-          )}
-          {project.expectedEndDate && (
-            <span>Prev.: {fmtDate(project.expectedEndDate)}</span>
+      {/* Row 4: meta info */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center gap-2.5">
+          {project.startDate && <span>Início {fmtDate(project.startDate)}</span>}
+          {project.logCount > 0 && (
+            <span className="flex items-center gap-1">
+              <span>·</span>
+              <span>{project.logCount} registro{project.logCount !== 1 ? "s" : ""}</span>
+            </span>
           )}
         </div>
-        <StatusIcon className={cn(
-          "h-4 w-4 shrink-0",
-          project.status === "Completed" ? "text-emerald-500" :
-          project.status === "Cancelled" ? "text-red-500" :
-          project.status === "Paused"    ? "text-yellow-500" :
-          project.status === "InProgress"? "text-blue-500" :
-          "text-muted-foreground",
-        )} />
+        {project.location && (
+          <span className="truncate max-w-[140px]">📍 {project.location}</span>
+        )}
       </div>
-
-      {/* Row 4: location if present */}
-      {project.location && (
-        <p className="text-xs text-muted-foreground truncate">📍 {project.location}</p>
-      )}
     </button>
   );
 }

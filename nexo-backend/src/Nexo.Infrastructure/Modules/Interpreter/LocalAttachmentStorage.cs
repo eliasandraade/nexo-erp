@@ -50,9 +50,8 @@ public sealed class LocalAttachmentStorage : IAttachmentStorage
 
     public Task PingAsync(CancellationToken ct = default)
     {
-        // Verify the base directory is accessible.
-        if (!Directory.Exists(_baseDir))
-            throw new DirectoryNotFoundException($"Attachment base directory not found: {_baseDir}");
+        // Ensure the base directory exists (creates it on first run if missing).
+        Directory.CreateDirectory(_baseDir);
         return Task.CompletedTask;
     }
 }
