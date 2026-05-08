@@ -17,6 +17,10 @@ out/
 !nexo-main/src/modules/build/
 !nexo-main/src/modules/build/**
 
+# Exception: frontend dist/ is tracked for deployment
+!nexo-main/dist/
+!nexo-main/dist/**
+
 # .NET build outputs
 **/bin/
 **/obj/
