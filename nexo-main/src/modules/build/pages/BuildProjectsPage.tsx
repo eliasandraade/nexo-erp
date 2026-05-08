@@ -18,7 +18,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { toast } from "sonner";
 import { useProjects, useCreateProject } from "../hooks/use-build";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
-import type { BuildProjectDto, BuildProjectStatus } from "../api/build.api";
+import type { BuildProjectDto, BuildProjectStatus, BuildProjectType } from "../api/build.api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -165,12 +165,13 @@ function ProjectCard({ project, onClick }: { project: BuildProjectDto; onClick: 
 
 // ── New project dialog ────────────────────────────────────────────────────────
 
-type ProjectTypeOption = { value: number; label: string };
+type ProjectTypeOption = { value: BuildProjectType; label: string };
 const PROJECT_TYPES: ProjectTypeOption[] = [
-  { value: 0, label: "Residencial" },
-  { value: 1, label: "Comercial" },
-  { value: 2, label: "Industrial" },
-  { value: 3, label: "Infraestrutura" },
+  { value: "House",      label: "Residencial" },
+  { value: "Commercial", label: "Comercial" },
+  { value: "Renovation", label: "Reforma" },
+  { value: "Building",   label: "Edifício" },
+  { value: "Other",      label: "Outro" },
 ];
 
 function NewProjectDialog({
@@ -186,12 +187,12 @@ function NewProjectDialog({
   const [name,      setName]      = useState("");
   const [client,    setClient]    = useState("");
   const [location,  setLocation]  = useState("");
-  const [typeVal,   setTypeVal]   = useState<number>(0);
+  const [typeVal,   setTypeVal]   = useState<BuildProjectType>("House");
   const [budget,    setBudget]    = useState("");
   const [startDate, setStartDate] = useState("");
 
   const reset = () => {
-    setName(""); setClient(""); setLocation(""); setTypeVal(0);
+    setName(""); setClient(""); setLocation(""); setTypeVal("House");
     setBudget(""); setStartDate("");
   };
 
@@ -251,13 +252,13 @@ function NewProjectDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label className="text-xs">Tipo</Label>
-              <Select value={String(typeVal)} onValueChange={(v) => setTypeVal(Number(v))}>
+              <Select value={typeVal} onValueChange={(v) => setTypeVal(v as BuildProjectType)}>
                 <SelectTrigger className="text-sm">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {PROJECT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={String(t.value)}>{t.label}</SelectItem>
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

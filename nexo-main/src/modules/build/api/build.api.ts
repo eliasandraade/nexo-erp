@@ -10,10 +10,11 @@ export type BuildProjectStatus =
   | "Cancelled";
 
 export type BuildProjectType =
-  | "Residential"
+  | "House"
   | "Commercial"
-  | "Industrial"
-  | "Infrastructure";
+  | "Renovation"
+  | "Building"
+  | "Other";
 
 export type BuildStageStatus =
   | "Pending"
