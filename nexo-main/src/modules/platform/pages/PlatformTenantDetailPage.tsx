@@ -35,11 +35,13 @@ type Tab = typeof TABS[number];
 const MODULE_LABELS: Record<string, string> = {
   varejo:      "Varejo",
   restaurante: "Restaurante",
+  build:       "ORKEN Build",
 };
 
 const AVAILABLE_MODULES = [
   { key: "varejo",      label: "Varejo" },
   { key: "restaurante", label: "Restaurante" },
+  { key: "build",       label: "ORKEN Build" },
 ];
 
 const ROLE_COLORS: Record<string, string> = {
