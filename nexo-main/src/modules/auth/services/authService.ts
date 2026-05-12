@@ -75,9 +75,12 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
 }
 
 export async function logout(): Promise<void> {
-  // Always call the server so it clears the httpOnly cookies (tokens live in cookies, not localStorage)
-  apiClient.post("/auth/logout", {}).catch(() => undefined);
-  clearTokens();
+  try {
+    const refreshToken = localStorage.getItem(TOKEN_KEYS.refresh);
+    apiClient.post("/auth/logout", { refreshToken: refreshToken ?? "" }).catch(() => undefined);
+  } finally {
+    clearTokens();
+  }
 }
 
 /**

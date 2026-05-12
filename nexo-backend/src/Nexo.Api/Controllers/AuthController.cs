@@ -99,7 +99,7 @@ public class AuthController : ControllerBase
             
             Response.Cookies.Append("nexo_access", outcome.Response!.AccessToken, accessCookieOptions);
             Response.Cookies.Append("nexo_refresh", outcome.Response!.RefreshToken, refreshCookieOptions);
-            return Ok(new LoginResponse("", "", outcome.Response.AccessTokenExpiresAt, outcome.Response.Session));
+            return Ok(new LoginResponse(outcome.Response.AccessToken, outcome.Response.RefreshToken, outcome.Response.AccessTokenExpiresAt, outcome.Response.Session));
         }
 
         if (outcome.ErrorCode == "email_not_verified")
@@ -161,8 +161,7 @@ public class AuthController : ControllerBase
         Response.Cookies.Append("nexo_access", result.AccessToken, accessCookieOptions);
         Response.Cookies.Append("nexo_refresh", result.RefreshToken, refreshCookieOptions);
 
-        // Tokens are in httpOnly cookies — return empty strings in body (mirrors login behavior)
-        return Ok(new RefreshResponse("", result.AccessTokenExpiresAt, "", result.RefreshTokenExpiresAt));
+        return Ok(new RefreshResponse(result.AccessToken, result.AccessTokenExpiresAt, result.RefreshToken, result.RefreshTokenExpiresAt));
     }
 
     /// <summary>Returns the current user's session info from the database.</summary>
@@ -249,8 +248,7 @@ public class AuthController : ControllerBase
         Response.Cookies.Append("nexo_refresh", result.RefreshToken,
             new CookieOptions(cookieOptions) { Expires = result.RefreshTokenExpiresAt });
 
-        // Return empty token strings in body — tokens are in cookies
-        return Ok(result with { AccessToken = "", RefreshToken = "" });
+        return Ok(result);
     }
 
     /// <summary>
