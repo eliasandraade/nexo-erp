@@ -217,17 +217,40 @@ public class AuthController : ControllerBase
         if (!Guid.TryParse(request.StoreId, out var storeId))
             return BadRequest(new { error = "Invalid storeId format." });
 
+        // Prefer body refresh token; fall back to cookie (cookie-based auth flow)
+        var refreshToken = request.RefreshToken;
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            refreshToken = Request.Cookies["nexo_refresh"] ?? "";
+
         var result = await _authService.SwitchStoreAsync(
             _currentUser.UserId,
             _currentUser.TenantId,
             storeId,
-            request.RefreshToken,
+            refreshToken,
             ct);
 
         if (result is null)
             return Forbid();
 
-        return Ok(result);
+        // Issue new cookies so the SPA immediately uses the store-scoped tokens
+        var isSecure = !string.Equals(
+            HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().EnvironmentName,
+            "Development", StringComparison.OrdinalIgnoreCase);
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure   = isSecure,
+            SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+            Path     = "/",
+            Domain   = null
+        };
+        Response.Cookies.Append("nexo_access",  result.AccessToken,
+            new CookieOptions(cookieOptions) { Expires = result.AccessTokenExpiresAt });
+        Response.Cookies.Append("nexo_refresh", result.RefreshToken,
+            new CookieOptions(cookieOptions) { Expires = result.RefreshTokenExpiresAt });
+
+        // Return empty token strings in body — tokens are in cookies
+        return Ok(result with { AccessToken = "", RefreshToken = "" });
     }
 
     /// <summary>

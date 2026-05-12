@@ -79,6 +79,16 @@ try
                     var path = ctx.HttpContext.Request.Path;
                     if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
                         ctx.Token = accessToken;
+
+                    // Cookie-based auth: read nexo_access httpOnly cookie when no
+                    // Authorization header is present (cross-origin SPA with credentials:include)
+                    if (string.IsNullOrEmpty(ctx.Token))
+                    {
+                        var cookieToken = ctx.Request.Cookies["nexo_access"];
+                        if (!string.IsNullOrEmpty(cookieToken))
+                            ctx.Token = cookieToken;
+                    }
+
                     return Task.CompletedTask;
                 }
             };
