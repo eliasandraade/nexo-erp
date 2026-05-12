@@ -91,10 +91,21 @@ try
     {
         options.AddPolicy("NexoFrontend", policy =>
         {
-            var origins = builder.Configuration
+            // Always include known origins; Railway env Cors:AllowedOrigins can add more.
+            var builtInOrigins = new[]
+            {
+                "http://localhost:3000",
+                "http://localhost:8080",
+                "http://localhost:5173",
+                "https://app.orken.com.br",
+                "https://www.orken.com.br",
+            };
+
+            var configOrigins = builder.Configuration
                 .GetSection("Cors:AllowedOrigins")
-                .Get<string[]>()
-                ?? ["http://localhost:3000", "http://localhost:8080", "http://localhost:5173"];
+                .Get<string[]>() ?? [];
+
+            var origins = builtInOrigins.Concat(configOrigins).Distinct().ToArray();
 
             policy.WithOrigins(origins)
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
@@ -196,6 +207,10 @@ try
     }
 
     // ── Middleware pipeline ───────────────────────────────────────────────────
+    // CORS must be first so every response (including errors and rate-limit
+    // rejections) carries the Access-Control-Allow-Origin header.
+    app.UseCors("NexoFrontend");
+
     app.UseMiddleware<ExceptionHandlingMiddleware>();
     app.UseMiddleware<RequestLoggingRedactionMiddleware>();
 
@@ -217,7 +232,6 @@ try
 
     app.UseRateLimiter();
     app.UseAuthentication();
-    app.UseCors("NexoFrontend");
     app.UseMiddleware<TenantResolutionMiddleware>();
     app.UseMiddleware<SecurityStampValidationMiddleware>();
     app.UseAuthorization();
