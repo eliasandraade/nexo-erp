@@ -314,24 +314,28 @@ public class DataSeeder
 
     private async Task SeedPlatformUserAsync(CancellationToken ct)
     {
-        var seedPlatformEmail = _config["Seed:PlatformEmail"]
-            ?? throw new InvalidOperationException("Seed:PlatformEmail is not configured.");
-        if (await _context.PlatformUsers.AnyAsync(u => u.Email == seedPlatformEmail, ct))
-        {
-            _logger.LogDebug("Seed: platform user already exists, skipping.");
-            return;
-        }
-
-        // Seed:PlatformEmail and Seed:PlatformPassword must be provided via config.
-        // No fallback in source — set in appsettings.Development.json locally
-        // and in Railway env vars for production.
         var platformEmail    = _config["Seed:PlatformEmail"]
             ?? throw new InvalidOperationException("Seed:PlatformEmail is not configured.");
         var platformPassword = _config["Seed:PlatformPassword"]
             ?? throw new InvalidOperationException("Seed:PlatformPassword is not configured.");
 
+        var normalizedEmail = platformEmail.Trim().ToLowerInvariant();
+
+        var existing = await _context.PlatformUsers
+            .FirstOrDefaultAsync(u => u.Email == normalizedEmail, ct);
+
+        if (existing is not null)
+        {
+            // Always sync the password hash to the current env var value so that
+            // changing Seed:PlatformPassword in Railway takes effect on next deploy.
+            existing.ChangePasswordHash(_hasher.Hash(platformPassword));
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation("Seed: platform superuser password synced.");
+            return;
+        }
+
         var platformUser = PlatformUser.Create(
-            email:        platformEmail,
+            email:        normalizedEmail,
             passwordHash: _hasher.Hash(platformPassword),
             role:         "super_admin");
 
