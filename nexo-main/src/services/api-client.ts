@@ -16,37 +16,35 @@ const BASE_URL =
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 
+// Tokens are now stored in httpOnly cookies, not accessible via JS
 export function getAccessToken(): string | null {
-  return localStorage.getItem(TOKEN_KEYS.access);
+  return null; // Not accessible
 }
 
 export function setTokens(access: string, refresh: string): void {
-  localStorage.setItem(TOKEN_KEYS.access, access);
-  localStorage.setItem(TOKEN_KEYS.refresh, refresh);
+  // Not needed, handled by server
 }
 
 export function clearTokens(): void {
-  localStorage.removeItem(TOKEN_KEYS.access);
-  localStorage.removeItem(TOKEN_KEYS.refresh);
-  localStorage.removeItem(TOKEN_KEYS.session);
+  // Not needed, handled by server
 }
 
 // ── Core request ─────────────────────────────────────────────────────────────
 
 let refreshPromise: Promise<boolean> | null = null;
+const MAX_REFRESH_ATTEMPTS = 1; // Prevent refresh loops
 
 async function attemptRefresh(): Promise<boolean> {
+  // Prevent multiple concurrent refresh attempts (race condition)
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
     try {
-      const refreshToken = localStorage.getItem(TOKEN_KEYS.refresh);
-      if (!refreshToken) return false;
-
       const res = await fetch(`${BASE_URL}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({}), // Empty body, refresh token from cookie
+        credentials: "include",
       });
 
       if (!res.ok) {
@@ -54,10 +52,10 @@ async function attemptRefresh(): Promise<boolean> {
         return false;
       }
 
-      const data = await res.json();
-      setTokens(data.accessToken, data.refreshToken);
+      // Cookies updated by server
       return true;
-    } catch {
+    } catch (error) {
+      console.error("Token refresh failed:", error);
       clearTokens();
       return false;
     } finally {
@@ -75,22 +73,25 @@ async function request<T>(
   isRetry = false
 ): Promise<T> {
   const url = `${BASE_URL}${path}`;
-  const token = getAccessToken();
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(url, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    credentials: "include", // Include cookies automatically
   });
 
   if (res.status === 401 && !isRetry) {
+    // Attempt refresh only once to prevent infinite loops
     const refreshed = await attemptRefresh();
-    if (refreshed) return request<T>(method, path, body, true);
+    if (refreshed) {
+      return request<T>(method, path, body, true);
+    }
+    // If refresh fails, treat as permanent auth failure
     clearTokens();
     throw new ApiError(401, "Unauthorized");
   }
@@ -117,20 +118,19 @@ async function request<T>(
 
 async function requestForm<T>(path: string, form: FormData): Promise<T> {
   const url = `${BASE_URL}${path}`;
-  const token = getAccessToken();
-
-  const headers: Record<string, string> = {};
-  if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(url, {
     method: "POST",
-    headers,
     body: form,
+    credentials: "include", // Include cookies
   });
 
   if (res.status === 401) {
+    // Attempt refresh only once
     const refreshed = await attemptRefresh();
-    if (refreshed) return requestForm<T>(path, form);
+    if (refreshed) {
+      return requestForm<T>(path, form);
+    }
     clearTokens();
     throw new ApiError(401, "Unauthorized");
   }

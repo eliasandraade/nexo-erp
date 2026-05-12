@@ -57,3 +57,46 @@ nexo-main/bun.lock
 nexo-main/bun.lockb
 .gstack/
 .worktrees/
+
+# Added by ggshield
+.cache_ggshield
+
+# =========================
+# TESTS / COVERAGE
+# =========================
+TestResults/
+**/TestResults/
+
+coverage/
+coverage-report/
+coverage-final.json
+
+*.coverage
+*.trx
+*.snap
+
+# Vitest
+.vitest/
+
+# Jest
+jest-cache/
+
+# =========================
+# PLAYWRIGHT
+# =========================
+playwright-report/
+test-results/
+
+# Playwright artifacts
+screenshots/
+videos/
+downloads/
+
+# Snapshots
+__snapshots__/
+
+# =========================
+# SECURITY / SCANNERS
+# =========================
+semgrep-report.json
+secret-scan-results.json

@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +7,7 @@ using Nexo.Application.Features.Auth;
 using Nexo.Application.Features.Cash;
 using Nexo.Domain.Entities;
 using Nexo.Infrastructure.Persistence;
+using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
 namespace Nexo.IntegrationTests.Security;
@@ -40,7 +40,7 @@ public class StoreIsolationTests
         var (storeAId, storeBId) = await EnsureTwoStoresAsync();
 
         // Login — default token has storeA (alphabetically first; storeA name < "Z-Store-B")
-        var (loginClient, loginBody) = await LoginAsync("admin", "nexo@2026");
+        var (loginClient, loginBody) = await LoginAsync();
         var storeAToken = loginBody.AccessToken;
         loginBody.Session.StoreId.Should().Be(storeAId.ToString(),
             "default store after login must be Store A — if not, store seeding order is wrong");
@@ -99,7 +99,7 @@ public class StoreIsolationTests
     {
         var (storeAId, storeBId) = await EnsureTwoStoresAsync();
 
-        var (client, loginBody) = await LoginAsync("admin", "nexo@2026");
+        var (client, loginBody) = await LoginAsync();
         var storeAToken = loginBody.AccessToken;
 
         // Verify starting store
@@ -133,7 +133,7 @@ public class StoreIsolationTests
     {
         var tenantBStoreId = await SeedCrossTenantStoreAsync();
 
-        var (client, loginBody) = await LoginAsync("admin", "nexo@2026");
+        var (client, loginBody) = await LoginAsync();
 
         var response = await client.WithBearer(loginBody.AccessToken)
             .PostAsJsonAsync("/api/auth/switch-store",
@@ -149,7 +149,7 @@ public class StoreIsolationTests
     [Fact]
     public async Task SwitchStore_InvalidStoreIdFormat_ReturnsBadRequest()
     {
-        var (client, loginBody) = await LoginAsync("admin", "nexo@2026");
+        var (client, loginBody) = await LoginAsync();
 
         var response = await client.WithBearer(loginBody.AccessToken)
             .PostAsJsonAsync("/api/auth/switch-store", new { storeId = "not-a-guid" });
@@ -159,15 +159,8 @@ public class StoreIsolationTests
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private async Task<(HttpClient Client, LoginResponse Body)> LoginAsync(
-        string login, string password)
-    {
-        var client = _factory.CreateApiClient();
-        var r = await client.PostAsJsonAsync("/api/auth/login", new { login, password });
-        r.StatusCode.Should().Be(HttpStatusCode.OK, $"login as '{login}' must succeed");
-        var body = await r.Content.ReadFromJsonAsync<LoginResponse>();
-        return (client, body!);
-    }
+    private Task<(HttpClient Client, LoginResponse Body)> LoginAsync()
+        => AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
 
     /// <summary>
     /// Ensures the seeded tenant has exactly two active stores:
@@ -242,15 +235,5 @@ public class StoreIsolationTests
         await db.SaveChangesAsync();
 
         return store.Id;
-    }
-}
-
-file static class HttpClientExtensions
-{
-    public static HttpClient WithBearer(this HttpClient client, string token)
-    {
-        client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", token);
-        return client;
     }
 }

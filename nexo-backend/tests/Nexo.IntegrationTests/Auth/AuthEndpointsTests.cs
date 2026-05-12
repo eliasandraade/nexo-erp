@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Nexo.Application.Features.Auth;
+using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
 namespace Nexo.IntegrationTests.Auth;
@@ -9,7 +10,7 @@ namespace Nexo.IntegrationTests.Auth;
 /// <summary>
 /// Integration tests for the /api/auth endpoints.
 /// Runs against a real PostgreSQL container provisioned by TestWebApplicationFactory.
-/// Seed data (admin / nexo@2026) is applied by DataSeeder on startup.
+/// Seed data (admin / IntegrationTestOnly!123) is applied by DataSeeder on startup.
 /// </summary>
 [Collection("Integration")]
 public class AuthEndpointsTests
@@ -29,7 +30,7 @@ public class AuthEndpointsTests
     public async Task Login_WithValidAdminCredentials_Returns200WithToken()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { login = "admin", password = "nexo@2026" });
+            TestCredentials.AdminLoginPayload());
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -44,7 +45,7 @@ public class AuthEndpointsTests
     public async Task Login_WithWrongPassword_Returns401()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { login = "admin", password = "wrong-password" });
+            TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrong-password"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -53,7 +54,7 @@ public class AuthEndpointsTests
     public async Task Login_WithNonExistentUser_Returns401()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { login = "ghost_user", password = "anypassword" });
+            TestCredentials.LoginPayload("ghost_user", "anypassword"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
@@ -62,7 +63,7 @@ public class AuthEndpointsTests
     public async Task Login_WithEmptyCredentials_Returns400()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { login = "", password = "" });
+            TestCredentials.LoginPayload("", ""));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -72,12 +73,9 @@ public class AuthEndpointsTests
     [Fact]
     public async Task Me_WithValidToken_Returns200WithSession()
     {
-        var token = await GetAdminTokenAsync();
+        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
 
-        _client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-
-        var response = await _client.GetAsync("/api/auth/me");
+        var response = await client.GetAsync("/api/auth/me");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -99,28 +97,15 @@ public class AuthEndpointsTests
     [Fact]
     public async Task VerifyManager_WithAdminCredentials_ReturnsAuthorized()
     {
-        var token = await GetAdminTokenAsync();
-        _client.DefaultRequestHeaders.Authorization =
-            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
 
-        var response = await _client.PostAsJsonAsync("/api/auth/verify-manager",
-            new { login = "admin", password = "nexo@2026" });
+        var response = await client.PostAsJsonAsync("/api/auth/verify-manager",
+            TestCredentials.AdminLoginPayload());
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = await response.Content.ReadFromJsonAsync<VerifyManagerResponse>();
         body!.Authorized.Should().BeTrue();
         body.Role.Should().Be("diretoria");
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private async Task<string> GetAdminTokenAsync()
-    {
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { login = "admin", password = "nexo@2026" });
-
-        var body = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        return body!.AccessToken;
     }
 }

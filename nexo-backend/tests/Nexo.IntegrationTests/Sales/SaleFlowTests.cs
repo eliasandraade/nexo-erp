@@ -7,6 +7,7 @@ using Nexo.Application.Features.Cash;
 using Nexo.Application.Features.Products;
 using Nexo.Application.Features.Sales;
 using Nexo.Application.Features.Stock;
+using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
 namespace Nexo.IntegrationTests.Sales;
@@ -33,7 +34,7 @@ public class SaleFlowTests
     private async Task AuthenticateAsync()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login",
-            new { login = "admin", password = "nexo@2026" });
+            TestCredentials.AdminLoginPayload());
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var body = await response.Content.ReadFromJsonAsync<LoginResponse>();

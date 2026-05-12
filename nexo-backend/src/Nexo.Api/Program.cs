@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -96,14 +97,25 @@ try
                 ?? ["http://localhost:3000", "http://localhost:8080", "http://localhost:5173"];
 
             policy.WithOrigins(origins)
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials();
+                  .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+                  .WithHeaders("Authorization", "Content-Type", "Accept", "Accept-Language")
+                  .AllowCredentials()
+                  .WithExposedHeaders("Content-Disposition", "Content-Length");
         });
     });
 
-    // ── Health checks ────────────────────────────────────────────────────────
-    builder.Services.AddHealthChecks();
+    // ── Rate Limiting ────────────────────────────────────────────────────────
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.AddFixedWindowLimiter("auth-login", opt =>
+        {
+            opt.PermitLimit = 5;
+            opt.Window = TimeSpan.FromMinutes(15);
+            opt.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+            opt.QueueLimit = 0;
+        });
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    });
 
     // ── Controllers ───────────────────────────────────────────────────────────
     // JsonStringEnumConverter: serializes all enums as their string names
@@ -173,6 +185,7 @@ try
 
     // ── Middleware pipeline ───────────────────────────────────────────────────
     app.UseMiddleware<ExceptionHandlingMiddleware>();
+    app.UseMiddleware<RequestLoggingRedactionMiddleware>();
 
     app.UseSerilogRequestLogging(opts =>
     {
@@ -190,11 +203,41 @@ try
         });
     }
 
-    app.UseCors("NexoFrontend");
+    app.UseRateLimiter();
     app.UseAuthentication();
+    app.UseCors("NexoFrontend");
     app.UseMiddleware<TenantResolutionMiddleware>();
     app.UseMiddleware<SecurityStampValidationMiddleware>();
     app.UseAuthorization();
+
+    // Security headers
+    app.Use(async (context, next) =>
+    {
+        // Prevent clickjacking
+        context.Response.Headers["X-Frame-Options"] = "DENY";
+        
+        // Prevent MIME type sniffing
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        
+        // Referrer policy
+        context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+        
+        // Restrict permissions
+        context.Response.Headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()";
+        
+        // Content Security Policy - permissive enough for app functionality
+        context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; " +
+            "script-src 'self'; " +
+            "style-src 'self' 'unsafe-inline'; " +
+            "img-src 'self' data: https:; " +
+            "font-src 'self'; " +
+            "connect-src 'self'; " +
+            "frame-ancestors 'none'; " +
+            "base-uri 'self'; " +
+            "form-action 'self'";
+        
+        await next();
+    });
     app.MapHub<RestaurantHub>("/hubs/restaurant");
     app.MapControllers();
     app.MapHealthChecks("/health");

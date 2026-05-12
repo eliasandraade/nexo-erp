@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexo.Api.Attributes;
 using Nexo.Application.Features.Sales;
 
 namespace Nexo.Api.Controllers;
@@ -7,6 +8,7 @@ namespace Nexo.Api.Controllers;
 [ApiController]
 [Route("api/sales")]
 [Authorize]
+[RequireModule("varejo")]
 public class SalesController : ControllerBase
 {
     private readonly SaleService _service;

@@ -2,6 +2,8 @@ using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Auth;
@@ -53,6 +55,7 @@ public class AuthController : ControllerBase
     /// <summary>Authenticate and receive access + refresh tokens.</summary>
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-login")]
     public async Task<ActionResult<LoginResponse>> Login(
         [FromBody] LoginRequest request,
         CancellationToken ct)
@@ -66,37 +69,42 @@ public class AuthController : ControllerBase
         var outcome = await _authService.LoginAsync(request, ipAddress, userAgent, ct);
 
         if (outcome.IsSuccess)
-            return Ok(outcome.Response!);
+        {
+            // Set httpOnly cookies for tokens
+            // Secure=true always except local Development — Railway terminates TLS at proxy,
+            // so IsHttps is false inside the container even on production HTTPS.
+            var isSecure = !string.Equals(
+                HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().EnvironmentName,
+                "Development", StringComparison.OrdinalIgnoreCase);
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = isSecure,
+                SameSite = SameSiteMode.Strict,
+                Path = "/",
+                Domain = null
+            };
+            
+            var accessCookieOptions = new CookieOptions(cookieOptions)
+            {
+                Expires = outcome.Response.AccessTokenExpiresAt
+            };
+            var refreshCookieOptions = new CookieOptions(cookieOptions)
+            {
+                // Refresh token cookie expires after 7 days (server controls actual expiry via Redis)
+                Expires = DateTimeOffset.UtcNow.AddDays(7)
+            };
+            
+            Response.Cookies.Append("nexo_access", outcome.Response!.AccessToken, accessCookieOptions);
+            Response.Cookies.Append("nexo_refresh", outcome.Response!.RefreshToken, refreshCookieOptions);
+            return Ok(new LoginResponse("", "", outcome.Response.AccessTokenExpiresAt, outcome.Response.Session));
+        }
 
         if (outcome.ErrorCode == "email_not_verified")
             return Unauthorized(new { error = "E-mail não verificado. Verifique sua caixa de entrada.", code = "email_not_verified" });
 
         if (outcome.ErrorCode == "account_blocked")
             return Unauthorized(new { error = "Conta bloqueada. Entre em contato com o suporte." });
-
-        // Fallback: check platform users (login field accepted as email)
-        var platformUser = await _db.PlatformUsers
-            .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Email == request.Login.Trim().ToLowerInvariant(), ct);
-
-        if (platformUser is not null && _hasher.Verify(request.Password, platformUser.PasswordHash))
-        {
-            var token = _jwt.GeneratePlatformToken(platformUser);
-            var session = new SessionDto(
-                UserId:        platformUser.Id.ToString(),
-                TenantId:      "",
-                Name:          platformUser.Email,
-                Role:          platformUser.Role,
-                Login:         platformUser.Email,
-                Email:         platformUser.Email,
-                ActiveModules: new List<string>(),
-                StoreId:       null,
-                StoreIds:      new List<string>(),
-                CompanyName:   "NexoERP",
-                Type:          "platform");
-
-            return Ok(new LoginResponse(token.AccessToken, "", token.ExpiresAt, session));
-        }
 
         return Unauthorized(new { error = "Invalid login or password." });
     }
@@ -107,19 +115,52 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [EnableRateLimiting("auth-login")]
     public async Task<ActionResult<RefreshResponse>> Refresh(
         [FromBody] RefreshTokenRequest request,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(request.RefreshToken))
-            return BadRequest(new { error = "Refresh token is required." });
+        string refreshToken = request.RefreshToken;
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            // Try to get from cookie
+            refreshToken = Request.Cookies["nexo_refresh"];
+            if (string.IsNullOrWhiteSpace(refreshToken))
+                return BadRequest(new { error = "Refresh token is required." });
+        }
 
-        var result = await _authService.RefreshAsync(request, ct);
+        var result = await _authService.RefreshAsync(new RefreshTokenRequest(refreshToken), ct);
 
         if (result is null)
             return Unauthorized(new { error = "Invalid or expired refresh token." });
 
-        return Ok(result);
+        // Update cookies — same Secure logic as login
+        var isSecure = !string.Equals(
+            HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().EnvironmentName,
+            "Development", StringComparison.OrdinalIgnoreCase);
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = isSecure,
+            SameSite = SameSiteMode.Strict,
+            Path = "/",
+            Domain = null
+        };
+
+        var accessCookieOptions = new CookieOptions(cookieOptions)
+        {
+            Expires = result.AccessTokenExpiresAt
+        };
+        var refreshCookieOptions = new CookieOptions(cookieOptions)
+        {
+            Expires = result.RefreshTokenExpiresAt
+        };
+
+        Response.Cookies.Append("nexo_access", result.AccessToken, accessCookieOptions);
+        Response.Cookies.Append("nexo_refresh", result.RefreshToken, refreshCookieOptions);
+
+        // Tokens are in httpOnly cookies — return empty strings in body (mirrors login behavior)
+        return Ok(new RefreshResponse("", result.AccessTokenExpiresAt, "", result.RefreshTokenExpiresAt));
     }
 
     /// <summary>Returns the current user's session info from the database.</summary>
@@ -194,10 +235,37 @@ public class AuthController : ControllerBase
     [HttpPost("logout")]
     [Authorize]
     public async Task<IActionResult> Logout(
-        [FromBody] LogoutRequest request,
+        [FromBody] LogoutRequest? request,
         CancellationToken ct)
     {
-        await _authService.LogoutAsync(request.RefreshToken, ct);
+        string refreshToken = request?.RefreshToken;
+        if (string.IsNullOrWhiteSpace(refreshToken))
+        {
+            // Try to get from cookie
+            refreshToken = Request.Cookies["nexo_refresh"];
+        }
+        
+        if (!string.IsNullOrWhiteSpace(refreshToken))
+        {
+            await _authService.LogoutAsync(refreshToken, ct);
+        }
+        
+        // Clear cookies — same Secure logic as login/refresh
+        var isSecure = !string.Equals(
+            HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().EnvironmentName,
+            "Development", StringComparison.OrdinalIgnoreCase);
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = isSecure,
+            SameSite = SameSiteMode.Strict,
+            Path = "/",
+            Domain = null,
+            Expires = DateTimeOffset.UtcNow.AddSeconds(-1)
+        };
+        Response.Cookies.Append("nexo_access", "", cookieOptions);
+        Response.Cookies.Append("nexo_refresh", "", cookieOptions);
+        
         return NoContent();
     }
 

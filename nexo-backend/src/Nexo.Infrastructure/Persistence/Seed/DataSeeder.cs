@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
@@ -19,12 +20,18 @@ public class DataSeeder
     private readonly NexoDbContext _context;
     private readonly IPasswordHasher _hasher;
     private readonly ILogger<DataSeeder> _logger;
+    private readonly IConfiguration _config;
 
-    public DataSeeder(NexoDbContext context, IPasswordHasher hasher, ILogger<DataSeeder> logger)
+    public DataSeeder(
+        NexoDbContext context,
+        IPasswordHasher hasher,
+        ILogger<DataSeeder> logger,
+        IConfiguration config)
     {
         _context = context;
         _hasher = hasher;
         _logger = logger;
+        _config = config;
     }
 
     public async Task SeedAsync(CancellationToken ct = default)
@@ -83,12 +90,16 @@ public class DataSeeder
         var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for admin user.");
 
+        // Seed:AdminPassword can be overridden by TestWebApplicationFactory in the Testing
+        // environment. In Development / Production the fallback keeps the original value.
+        var adminPassword = _config["Seed:AdminPassword"] ?? "nexo@2026";
+
         var admin = User.Create(
             tenantId:               tenant.Id,
             fullName:               "Administrador do Sistema",
             email:                  "admin@nexo.local",
             login:                  "admin",
-            passwordHash:           _hasher.Hash("nexo@2026"),
+            passwordHash:           _hasher.Hash(adminPassword),
             role:                   UserRole.Diretoria,
             notes:                  "Usuário administrador criado automaticamente pelo sistema.");
 
@@ -96,7 +107,7 @@ public class DataSeeder
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Seed: admin user created (Id: {UserId}). Login: admin / Password: nexo@2026",
+            "Seed: admin user created (Id: {UserId}).",
             admin.Id);
     }
 
@@ -301,21 +312,27 @@ public class DataSeeder
 
     private async Task SeedPlatformUserAsync(CancellationToken ct)
     {
-        if (await _context.PlatformUsers.AnyAsync(u => u.Email == "elias@nexo.com", ct))
+        var seedPlatformEmail = _config["Seed:PlatformEmail"] ?? "elias@nexo.com";
+        if (await _context.PlatformUsers.AnyAsync(u => u.Email == seedPlatformEmail, ct))
         {
             _logger.LogDebug("Seed: platform user already exists, skipping.");
             return;
         }
 
+        // Seed:PlatformEmail and Seed:PlatformPassword can be overridden by
+        // TestWebApplicationFactory in the Testing environment.
+        var platformEmail    = _config["Seed:PlatformEmail"]    ?? "elias@nexo.com";
+        var platformPassword = _config["Seed:PlatformPassword"] ?? "elias@2026";
+
         var platformUser = PlatformUser.Create(
-            email:        "elias@nexo.com",
-            passwordHash: _hasher.Hash("elias@2026"),
+            email:        platformEmail,
+            passwordHash: _hasher.Hash(platformPassword),
             role:         "super_admin");
 
         _context.PlatformUsers.Add(platformUser);
         await _context.SaveChangesAsync(ct);
 
-        _logger.LogInformation("Seed: platform superuser created. Email: elias@nexo.com / elias@2026");
+        _logger.LogInformation("Seed: platform superuser created.");
     }
 
     // ── AI Providers ─────────────────────────────────────────────────────────

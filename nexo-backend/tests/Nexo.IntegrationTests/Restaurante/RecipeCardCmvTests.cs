@@ -10,6 +10,7 @@ using Nexo.Application.Modules.Restaurante;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
+using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
 namespace Nexo.IntegrationTests.Restaurante;
@@ -48,7 +49,7 @@ public class RecipeCardCmvTests : IAsyncLifetime
     private async Task AuthenticateAsync(HttpClient client)
     {
         var r = await client.PostAsJsonAsync("/api/auth/login",
-            new { login = "admin", password = "nexo@2026" });
+            TestCredentials.AdminLoginPayload());
         r.StatusCode.Should().Be(HttpStatusCode.OK);
         var body = await r.Content.ReadFromJsonAsync<LoginResponse>();
         client.DefaultRequestHeaders.Authorization =

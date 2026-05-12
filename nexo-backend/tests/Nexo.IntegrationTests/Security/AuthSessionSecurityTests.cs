@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Features.Auth;
 using Nexo.Domain.Entities;
 using Nexo.Infrastructure.Persistence;
+using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
 namespace Nexo.IntegrationTests.Security;
@@ -50,7 +51,7 @@ public class AuthSessionSecurityTests
 
         // Step 1: login → obtain initial token pair
         var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
-            new { login = "admin", password = "nexo@2026" });
+            TestCredentials.AdminLoginPayload());
         loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
         var originalRefreshToken = loginBody!.RefreshToken;
@@ -58,7 +59,7 @@ public class AuthSessionSecurityTests
 
         // Step 2: rotate — old JTI deleted from Redis, new JTI inserted
         var firstRefreshResponse = await client.PostAsJsonAsync("/api/auth/refresh",
-            new { refreshToken = originalRefreshToken });
+            TestCredentials.RefreshPayload(originalRefreshToken));
         firstRefreshResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             "first refresh must succeed");
         var firstRefreshBody = await firstRefreshResponse.Content
@@ -70,7 +71,7 @@ public class AuthSessionSecurityTests
 
         // Step 3: replay the original (now revoked) token → must be rejected
         var replayResponse = await client.PostAsJsonAsync("/api/auth/refresh",
-            new { refreshToken = originalRefreshToken });
+            TestCredentials.RefreshPayload(originalRefreshToken));
 
         replayResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             "a used refresh token must be rejected — replay protection must be active");
@@ -86,17 +87,17 @@ public class AuthSessionSecurityTests
         var client = _factory.CreateApiClient();
 
         var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
-            new { login = "admin", password = "nexo@2026" });
+            TestCredentials.AdminLoginPayload());
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
 
         var firstRefresh = await client.PostAsJsonAsync("/api/auth/refresh",
-            new { refreshToken = loginBody!.RefreshToken });
+            TestCredentials.RefreshPayload(loginBody!.RefreshToken));
         firstRefresh.StatusCode.Should().Be(HttpStatusCode.OK);
         var firstBody = await firstRefresh.Content.ReadFromJsonAsync<RefreshResponse>();
 
         // The new token must also be usable
         var secondRefresh = await client.PostAsJsonAsync("/api/auth/refresh",
-            new { refreshToken = firstBody!.RefreshToken });
+            TestCredentials.RefreshPayload(firstBody!.RefreshToken));
 
         secondRefresh.StatusCode.Should().Be(HttpStatusCode.OK,
             "the newly issued refresh token must be valid for subsequent refreshes");
@@ -113,14 +114,11 @@ public class AuthSessionSecurityTests
     {
         var client = _factory.CreateApiClient();
 
-        // A syntactically valid JWT with a different signing key — signature validation must reject it
-        const string fabricatedToken =
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" +
-            ".eyJzdWIiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ1c2VySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJ0ZW5hbnRJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMSIsImp0aSI6ImZha2UtanRpIiwiZXhwIjo5OTk5OTk5OTk5fQ" +
-            ".INVALID_SIGNATURE_THAT_WILL_NOT_VERIFY";
-
+        // A syntactically 3-part token with an invalid signature.
+        // Uses TestCredentials.FakeJwtToken — clearly labelled as fake,
+        // no real key material, no GitGuardian triggers.
         var response = await client.PostAsJsonAsync("/api/auth/refresh",
-            new { refreshToken = fabricatedToken });
+            TestCredentials.RefreshPayload(TestCredentials.FakeJwtToken));
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             "a JWT with an invalid signature must always be rejected");
@@ -143,7 +141,7 @@ public class AuthSessionSecurityTests
 
         // Step 1: login → obtain initial token pair
         var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
-            new { login = "admin", password = "nexo@2026" });
+            TestCredentials.AdminLoginPayload());
         loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
         var originalRefreshToken = loginBody!.RefreshToken;
@@ -159,7 +157,7 @@ public class AuthSessionSecurityTests
 
         // Step 3: replay the original refresh token — it must be rejected
         var replayResponse = await client.PostAsJsonAsync("/api/auth/refresh",
-            new { refreshToken = originalRefreshToken });
+            TestCredentials.RefreshPayload(originalRefreshToken));
 
         replayResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             "original refresh token must be revoked after switch-store — replay must return 401");

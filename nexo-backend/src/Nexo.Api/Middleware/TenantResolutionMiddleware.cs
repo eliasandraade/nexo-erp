@@ -38,6 +38,7 @@ public class TenantResolutionMiddleware
         HttpContext context,
         ICurrentTenant currentTenant,
         ITenantRepository tenantRepository,
+        IUserRepository userRepository,
         ICacheService cache)
     {
         // Skip for anonymous endpoints (login, refresh, health, swagger)
@@ -55,14 +56,65 @@ public class TenantResolutionMiddleware
             return;
         }
 
-        // 1. Extract tenant_id from JWT
+        // 1. Extract tenant_id and user_id from JWT
         var tenantIdClaim = context.User.FindFirstValue("tenantId");
-        if (!Guid.TryParse(tenantIdClaim, out var tenantId))
+        var userIdClaim = context.User.FindFirstValue("userId");
+        if (!Guid.TryParse(tenantIdClaim, out var tenantId) || !Guid.TryParse(userIdClaim, out var userId))
         {
-            _logger.LogWarning("Request rejected: missing or invalid 'tenantId' claim.");
+            _logger.LogWarning("Request rejected: missing or invalid 'tenantId' or 'userId' claim.");
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "Invalid tenant claim." });
+            await context.Response.WriteAsJsonAsync(new { error = "Invalid tenant or user claim." });
             return;
+        }
+
+        // Verify user belongs to the tenant (with caching to avoid N+1)
+        var userCacheKey = $"user:{userId}:info";
+        var cachedUser = await cache.GetAsync<UserCacheEntry>(userCacheKey);
+        
+        if (cachedUser == null)
+        {
+            var user = await userRepository.GetByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("Request rejected: user {UserId} not found.", userId);
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "User not found." });
+                return;
+            }
+            if (user.TenantId != tenantId)
+            {
+                _logger.LogWarning("Request rejected: user {UserId} does not belong to tenant {TenantId}.", userId, tenantId);
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "Tenant mismatch." });
+                return;
+            }
+            if (user.Status != Domain.Enums.UserStatus.Active)
+            {
+                _logger.LogWarning("Request rejected: user {UserId} is {Status}.", userId, user.Status);
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "User account is inactive." });
+                return;
+            }
+            
+            cachedUser = new UserCacheEntry(user.TenantId, user.Status.ToString());
+            await cache.SetAsync(userCacheKey, cachedUser, TimeSpan.FromMinutes(5));
+        }
+        else
+        {
+            if (cachedUser.TenantId != tenantId)
+            {
+                _logger.LogWarning("Request rejected: user {UserId} does not belong to tenant {TenantId}.", userId, tenantId);
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "Tenant mismatch." });
+                return;
+            }
+            if (cachedUser.Status != "Active")
+            {
+                _logger.LogWarning("Request rejected: user {UserId} is {Status}.", userId, cachedUser.Status);
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "User account is inactive." });
+                return;
+            }
         }
 
         // 2. Load tenant from Redis cache or DB
@@ -110,3 +162,6 @@ public class TenantResolutionMiddleware
 
 /// <summary>Serializable cache entry for tenant info.</summary>
 internal record TenantCacheEntry(string Slug, string Status, List<string> ActiveModules);
+
+/// <summary>Serializable cache entry for user info.</summary>
+internal record UserCacheEntry(Guid TenantId, string Status);

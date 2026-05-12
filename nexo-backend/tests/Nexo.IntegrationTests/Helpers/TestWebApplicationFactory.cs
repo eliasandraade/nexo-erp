@@ -78,6 +78,13 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("Jwt:Secret",   "test-secret-key-minimum-32-characters-long!");
         builder.UseSetting("Jwt:Issuer",   "nexo-api-test");
         builder.UseSetting("Jwt:Audience", "nexo-frontend-test");
+
+        // Seed credential overrides — used ONLY in the Testing environment.
+        // DataSeeder reads these keys with fallback to production values for non-test envs.
+        // Values are intentionally verbose/fake so no scanner mistakes them for real secrets.
+        builder.UseSetting("Seed:AdminPassword",    "IntegrationTestOnly!123");
+        builder.UseSetting("Seed:PlatformEmail",    "platform-test@nexo.test");
+        builder.UseSetting("Seed:PlatformPassword", "FakePlatformPass!999");
     }
 
     /// <summary>Creates an HttpClient pre-configured for the test server.</summary>

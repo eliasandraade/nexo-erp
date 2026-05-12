@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +9,7 @@ using Nexo.Application.Features.Users;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
+using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
 namespace Nexo.IntegrationTests.Security;
@@ -43,7 +43,7 @@ public class TenantIsolationTests
         var (_, managerLogin, managerPassword) =
             await SeedTenantWithManagerAsync("cross-tenant-corp", "11222333000188");
 
-        var client = await AuthenticatedClientAsync("admin", "nexo@2026");
+        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
 
         var response = await client.PostAsJsonAsync("/api/auth/verify-manager",
             new { login = managerLogin, password = managerPassword });
@@ -62,14 +62,14 @@ public class TenantIsolationTests
     [Fact]
     public async Task VerifyManager_SameTenant_ManagerCredentials_AreAccepted()
     {
-        var client = await AuthenticatedClientAsync("admin", "nexo@2026");
+        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
 
         var login    = $"gerente_{Guid.NewGuid():N}"[..20];
-        var password = "Manager@1234!";
+        var password = TestCredentials.SameTenantManagerPassword;
 
         var createResponse = await client.PostAsJsonAsync("/api/users", new CreateUserRequest(
             FullName:              "Test Manager",
-            Email:                 $"{login}@nexo-test.com",
+            Email:                 $"{login}@{TestCredentials.TestDomain}",
             Login:                 login,
             Password:              password,
             Role:                  "gerente",
@@ -104,7 +104,7 @@ public class TenantIsolationTests
         // Positive control: confirm product exists in DB (test is not vacuously 404)
         await AssertProductExistsInDbAsync(tenantBProductId);
 
-        var client = await AuthenticatedClientAsync("admin", "nexo@2026");
+        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
 
         var response = await client.GetAsync($"/api/products/{tenantBProductId}");
 
@@ -120,7 +120,7 @@ public class TenantIsolationTests
     {
         var client = _factory.CreateApiClient();
         var response = await client.PostAsJsonAsync("/api/auth/verify-manager",
-            new { login = "admin", password = "nexo@2026" });
+            TestCredentials.AdminLoginPayload());
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
@@ -142,7 +142,7 @@ public class TenantIsolationTests
         var (_, managerLogin, _) =
             await SeedTenantWithManagerAsync("isolation-corp", "99888777000100");
 
-        var client = await AuthenticatedClientAsync("admin", "nexo@2026");
+        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
 
         var response = await client.GetAsync("/api/users");
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -165,16 +165,8 @@ public class TenantIsolationTests
     /// Creates a fresh HttpClient and sets its Authorization header by logging in.
     /// Each test gets its own client — no shared auth state.
     /// </summary>
-    private async Task<HttpClient> AuthenticatedClientAsync(string login, string password)
-    {
-        var client = _factory.CreateApiClient();
-        var r = await client.PostAsJsonAsync("/api/auth/login", new { login, password });
-        r.StatusCode.Should().Be(HttpStatusCode.OK, $"login as '{login}' failed");
-        var body = await r.Content.ReadFromJsonAsync<LoginResponse>();
-        client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", body!.AccessToken);
-        return client;
-    }
+    private Task<HttpClient> AuthenticatedClientAsync(string login, string password)
+        => AuthClientFactory.LoginAsync(_factory, login, password);
 
     /// <summary>
     /// Seeds Tenant B + an active Gerente user directly via DbContext.
@@ -189,7 +181,7 @@ public class TenantIsolationTests
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
 
         var login    = $"mgr_{taxId[..8]}";
-        var password = "TenantB@1234!";
+        var password = TestCredentials.TenantBManagerPassword;
 
         // CROSS-TENANT: seeder context — no HTTP request, no tenant filter
         var existing = await db.Tenants
@@ -214,7 +206,7 @@ public class TenantIsolationTests
         db.Users.Add(User.Create(
             tenantId:     tenant.Id,
             fullName:     "Tenant B Manager",
-            email:        $"{login}@tenantb.test",
+            email:        $"{login}@{TestCredentials.TestLocalDomain}",
             login:        login,
             passwordHash: hasher.Hash(password),
             role:         UserRole.Gerente));
