@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Api.Middleware;
 
@@ -38,7 +40,6 @@ public class TenantResolutionMiddleware
         HttpContext context,
         ICurrentTenant currentTenant,
         ITenantRepository tenantRepository,
-        IUserRepository userRepository,
         ICacheService cache)
     {
         // Skip for anonymous endpoints (login, refresh, health, swagger)
@@ -67,36 +68,44 @@ public class TenantResolutionMiddleware
             return;
         }
 
-        // Verify user belongs to the tenant (with caching to avoid N+1)
+        // Verify user belongs to the tenant (with caching to avoid N+1).
+        // MUST use IgnoreQueryFilters(): the global EF filter requires ICurrentTenant.IsResolved,
+        // which is false at this point — we are the middleware that sets it.
         var userCacheKey = $"user:{userId}:info";
         var cachedUser = await cache.GetAsync<UserCacheEntry>(userCacheKey);
-        
+
         if (cachedUser == null)
         {
-            var user = await userRepository.GetByIdAsync(userId);
-            if (user == null)
+            var db = context.RequestServices.GetRequiredService<NexoDbContext>();
+            var userInfo = await db.Users
+                .IgnoreQueryFilters()
+                .Where(u => u.Id == userId)
+                .Select(u => new { u.TenantId, u.Status })
+                .FirstOrDefaultAsync();
+
+            if (userInfo == null)
             {
                 _logger.LogWarning("Request rejected: user {UserId} not found.", userId);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsJsonAsync(new { error = "User not found." });
                 return;
             }
-            if (user.TenantId != tenantId)
+            if (userInfo.TenantId != tenantId)
             {
                 _logger.LogWarning("Request rejected: user {UserId} does not belong to tenant {TenantId}.", userId, tenantId);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsJsonAsync(new { error = "Tenant mismatch." });
                 return;
             }
-            if (user.Status != Domain.Enums.UserStatus.Active)
+            if (userInfo.Status != Domain.Enums.UserStatus.Active)
             {
-                _logger.LogWarning("Request rejected: user {UserId} is {Status}.", userId, user.Status);
+                _logger.LogWarning("Request rejected: user {UserId} is {Status}.", userId, userInfo.Status);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsJsonAsync(new { error = "User account is inactive." });
                 return;
             }
-            
-            cachedUser = new UserCacheEntry(user.TenantId, user.Status.ToString());
+
+            cachedUser = new UserCacheEntry(userInfo.TenantId, userInfo.Status.ToString());
             await cache.SetAsync(userCacheKey, cachedUser, TimeSpan.FromMinutes(5));
         }
         else
