@@ -108,6 +108,34 @@ public class AuthController : ControllerBase
         if (outcome.ErrorCode == "account_blocked")
             return Unauthorized(new { error = "Conta bloqueada. Entre em contato com o suporte." });
 
+        // Platform user fallback: if login looks like an email, try PlatformUsers table.
+        if (outcome.ErrorCode == "invalid_credentials" && request.Login.Contains('@'))
+        {
+            var email = request.Login.Trim().ToLowerInvariant();
+            var platformUser = await _db.PlatformUsers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Email == email, ct);
+
+            if (platformUser is not null && _hasher.Verify(request.Password, platformUser.PasswordHash))
+            {
+                var platformResult = _jwt.GeneratePlatformToken(platformUser);
+                var platformSession = new SessionDto(
+                    UserId:        platformUser.Id.ToString(),
+                    TenantId:      string.Empty,
+                    Name:          platformUser.Email,
+                    Role:          platformUser.Role,
+                    Login:         platformUser.Email,
+                    Email:         platformUser.Email,
+                    ActiveModules: [],
+                    StoreId:       null,
+                    StoreIds:      [],
+                    CompanyName:   "NexoERP Platform",
+                    Type:          "platform");
+
+                return Ok(new LoginResponse(platformResult.AccessToken, string.Empty, platformResult.ExpiresAt, platformSession));
+            }
+        }
+
         return Unauthorized(new { error = "Invalid login or password." });
     }
 
