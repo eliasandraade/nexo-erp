@@ -79,12 +79,14 @@ public class AuthController : ControllerBase
             var cookieOptions = new CookieOptions
             {
                 HttpOnly = true,
-                Secure = isSecure,
-                SameSite = SameSiteMode.Strict,
-                Path = "/",
-                Domain = null
+                Secure   = isSecure,
+                // SameSite=None required for cross-site cookies (frontend on orken.com.br, backend on railway.app)
+                // Strict would silently drop cookies on cross-origin requests even with credentials:include
+                SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+                Path     = "/",
+                Domain   = null
             };
-            
+
             var accessCookieOptions = new CookieOptions(cookieOptions)
             {
                 Expires = outcome.Response.AccessTokenExpiresAt
@@ -134,17 +136,17 @@ public class AuthController : ControllerBase
         if (result is null)
             return Unauthorized(new { error = "Invalid or expired refresh token." });
 
-        // Update cookies — same Secure logic as login
+        // Update cookies — same Secure/SameSite logic as login
         var isSecure = !string.Equals(
             HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().EnvironmentName,
             "Development", StringComparison.OrdinalIgnoreCase);
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = isSecure,
-            SameSite = SameSiteMode.Strict,
-            Path = "/",
-            Domain = null
+            Secure   = isSecure,
+            SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+            Path     = "/",
+            Domain   = null
         };
 
         var accessCookieOptions = new CookieOptions(cookieOptions)
@@ -250,18 +252,18 @@ public class AuthController : ControllerBase
             await _authService.LogoutAsync(refreshToken, ct);
         }
         
-        // Clear cookies — same Secure logic as login/refresh
+        // Clear cookies — same Secure/SameSite logic as login/refresh
         var isSecure = !string.Equals(
             HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().EnvironmentName,
             "Development", StringComparison.OrdinalIgnoreCase);
         var cookieOptions = new CookieOptions
         {
             HttpOnly = true,
-            Secure = isSecure,
-            SameSite = SameSiteMode.Strict,
-            Path = "/",
-            Domain = null,
-            Expires = DateTimeOffset.UtcNow.AddSeconds(-1)
+            Secure   = isSecure,
+            SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+            Path     = "/",
+            Domain   = null,
+            Expires  = DateTimeOffset.UtcNow.AddSeconds(-1)
         };
         Response.Cookies.Append("nexo_access", "", cookieOptions);
         Response.Cookies.Append("nexo_refresh", "", cookieOptions);

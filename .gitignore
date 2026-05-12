@@ -30,6 +30,11 @@ out/
 .env.local
 .env.*.local
 
+# Local dev secrets — never commit real credentials
+**/appsettings.Development.json
+**/appsettings.Local.json
+**/appsettings.*.local.json
+
 # Logs
 logs/
 *.log
