@@ -314,7 +314,8 @@ public class DataSeeder
 
     private async Task SeedPlatformUserAsync(CancellationToken ct)
     {
-        var seedPlatformEmail = _config["Seed:PlatformEmail"] ?? "elias@nexo.com";
+        var seedPlatformEmail = _config["Seed:PlatformEmail"]
+            ?? throw new InvalidOperationException("Seed:PlatformEmail is not configured.");
         if (await _context.PlatformUsers.AnyAsync(u => u.Email == seedPlatformEmail, ct))
         {
             _logger.LogDebug("Seed: platform user already exists, skipping.");
