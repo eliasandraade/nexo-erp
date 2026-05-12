@@ -90,9 +90,11 @@ public class DataSeeder
         var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for admin user.");
 
-        // Seed:AdminPassword can be overridden by TestWebApplicationFactory in the Testing
-        // environment. In Development / Production the fallback keeps the original value.
-        var adminPassword = _config["Seed:AdminPassword"] ?? "nexo@2026";
+        // Seed:AdminPassword must be provided via config (appsettings / env var / test override).
+        // No fallback in source — set Seed:AdminPassword in appsettings.Development.json locally
+        // and in Railway env vars for production.
+        var adminPassword = _config["Seed:AdminPassword"]
+            ?? throw new InvalidOperationException("Seed:AdminPassword is not configured.");
 
         var admin = User.Create(
             tenantId:               tenant.Id,
@@ -319,10 +321,13 @@ public class DataSeeder
             return;
         }
 
-        // Seed:PlatformEmail and Seed:PlatformPassword can be overridden by
-        // TestWebApplicationFactory in the Testing environment.
-        var platformEmail    = _config["Seed:PlatformEmail"]    ?? "elias@nexo.com";
-        var platformPassword = _config["Seed:PlatformPassword"] ?? "elias@2026";
+        // Seed:PlatformEmail and Seed:PlatformPassword must be provided via config.
+        // No fallback in source — set in appsettings.Development.json locally
+        // and in Railway env vars for production.
+        var platformEmail    = _config["Seed:PlatformEmail"]
+            ?? throw new InvalidOperationException("Seed:PlatformEmail is not configured.");
+        var platformPassword = _config["Seed:PlatformPassword"]
+            ?? throw new InvalidOperationException("Seed:PlatformPassword is not configured.");
 
         var platformUser = PlatformUser.Create(
             email:        platformEmail,
