@@ -214,12 +214,25 @@ public class AuthService
                 ttl, ct);
         }
 
+        var session = new SessionDto(
+            UserId:        user.Id.ToString(),
+            TenantId:      user.TenantId.ToString(),
+            Name:          user.FullName,
+            Role:          user.Role.ToString().ToLowerInvariant(),
+            Login:         user.Login,
+            Email:         user.Email,
+            ActiveModules: activeModules.ToList(),
+            StoreId:       requestedStoreId.ToString(),
+            StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
+            CompanyName:   tenant.TradeName ?? tenant.CompanyName);
+
         return new SwitchStoreResponse(
             tokens.AccessToken,
             tokens.RefreshToken,
             tokens.AccessTokenExpiresAt,
             tokens.RefreshTokenExpiresAt,
-            requestedStoreId.ToString());
+            requestedStoreId.ToString(),
+            session);
     }
 
     /// <summary>
