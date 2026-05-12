@@ -59,7 +59,8 @@ public record SwitchStoreResponse(
     string RefreshToken,
     DateTime AccessTokenExpiresAt,
     DateTime RefreshTokenExpiresAt,
-    string StoreId);
+    string StoreId,
+    SessionDto Session);
 
 // ── Register / Verify ──────────────────────────────────────────────────────────
 

@@ -111,8 +111,20 @@ try
     // Consistent with the restaurante pattern where services map Status.ToString().
     builder.Services.AddControllers()
         .AddJsonOptions(o =>
+        {
+            // Serialize responses in camelCase so the frontend (TypeScript) can read them
+            // without needing PascalCase field access (e.g. data.accessToken, not data.AccessToken).
+            o.JsonSerializerOptions.PropertyNamingPolicy =
+                System.Text.Json.JsonNamingPolicy.CamelCase;
+
+            // Accept camelCase request bodies from the frontend (e.g. { "refreshToken": "..." }
+            // binds correctly to RefreshTokenRequest.RefreshToken).
+            o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+
+            // Serialize enums as their string names ("Planning", not 0).
             o.JsonSerializerOptions.Converters.Add(
-                new System.Text.Json.Serialization.JsonStringEnumConverter()));
+                new System.Text.Json.Serialization.JsonStringEnumConverter());
+        });
 
     // ── Swagger ───────────────────────────────────────────────────────────────
     builder.Services.AddEndpointsApiExplorer();
