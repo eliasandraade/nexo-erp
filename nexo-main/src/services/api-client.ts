@@ -94,13 +94,6 @@ async function request<T>(
   };
 
   const token = getAccessToken();
-  // TEMP DEBUG — remove after diagnosing 401s
-  console.log('[nexo-auth]', method, path, {
-    hasToken: !!token,
-    tokenPrefix: token ? token.substring(0, 20) + '...' : null,
-    lsAccess: localStorage.getItem(TOKEN_KEYS.access)?.substring(0, 20),
-    lsRefresh: !!localStorage.getItem(TOKEN_KEYS.refresh),
-  });
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(url, {
