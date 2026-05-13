@@ -30,7 +30,7 @@ public class AppSettingsRepository : IAppSettingsRepository
         // Auto-create defaults on first access for this tenant
         settings = AppSettings.CreateForTenant(
             tenantId:      _currentTenant.Id,
-            companyJson:   """{"name":"","tradeName":"","cnpj":"","email":"","phone":""}""",
+            companyJson:   """{"name":"Minha Empresa","tradeName":"","cnpj":"","email":"","phone":""}""",
             operationJson: """{"defaultOperator":""}""",
             inventoryJson: """{"noMovementAlertDays":30,"minStockBehavior":"alert","enableLowStockAlerts":true,"enableZeroStockAlerts":true,"enableHighRotationAlerts":false}""",
             commissionJson:"""{"defaultCommissionRate":3,"enableProductCommission":false,"policyNotes":""}""",

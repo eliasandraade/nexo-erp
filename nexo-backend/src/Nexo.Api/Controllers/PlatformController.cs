@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Controllers;
@@ -261,6 +262,26 @@ public class PlatformController : ControllerBase
                 planType:  "AdminGrant");
             _db.ModuleSubscriptionEvents.Add(evt);
         }
+
+        // Create default app settings so the tenant doesn't get an empty-name fallback
+        var companyName  = req.TradeName ?? req.CompanyName;
+        var companyJson  = JsonSerializer.Serialize(new
+        {
+            name      = companyName,
+            tradeName = companyName,
+            cnpj      = req.TaxId,
+            email     = req.Email,
+            phone     = req.Phone ?? "",
+        });
+        var defaultSettings = AppSettings.CreateForTenant(
+            tenantId:      tenant.Id,
+            companyJson:   companyJson,
+            operationJson: """{"defaultOperator":""}""",
+            inventoryJson: """{"noMovementAlertDays":30,"minStockBehavior":"alert","enableLowStockAlerts":true,"enableZeroStockAlerts":true,"enableHighRotationAlerts":false}""",
+            commissionJson:"""{"defaultCommissionRate":3,"enableProductCommission":false,"policyNotes":""}""",
+            posJson:       """{"allowValueDiscount":true,"allowPercentDiscount":true,"requireManagerAuth":true,"maxDiscountPercent":20}""",
+            systemJson:    """{"language":"pt-BR","dateFormat":"dd/MM/yyyy","currencySymbol":"R$"}""");
+        _db.AppSettings.Add(defaultSettings);
 
         await _db.SaveChangesAsync(ct);
 

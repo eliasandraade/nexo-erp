@@ -54,6 +54,7 @@ export function CreateTenantDrawer({ open, onClose, onCreated }: Props) {
     if (!form.companyName.trim()) e.companyName = "Obrigatório";
     if (!form.taxId.trim()) e.taxId = "Obrigatório";
     if (!form.email.trim()) e.email = "Obrigatório";
+    if (form.modules.length === 0) e.modules = "Selecione pelo menos um módulo.";
     if (!form.adminName.trim()) e.adminName = "Obrigatório";
     if (!form.adminLogin.trim()) e.adminLogin = "Obrigatório";
     if (!form.adminPassword.trim()) e.adminPassword = "Obrigatório";
@@ -140,7 +141,7 @@ export function CreateTenantDrawer({ open, onClose, onCreated }: Props) {
 
           {/* Módulos */}
           <section>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Módulos</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Módulos *</p>
             <div className="flex flex-wrap gap-2">
               {AVAILABLE_MODULES.map(m => (
                 <button
@@ -158,6 +159,7 @@ export function CreateTenantDrawer({ open, onClose, onCreated }: Props) {
                 </button>
               ))}
             </div>
+            {errors.modules && <p className="text-xs text-destructive mt-1">{errors.modules}</p>}
             <p className="text-xs text-muted-foreground mt-2">Módulos concedidos imediatamente via admin grant.</p>
           </section>
 

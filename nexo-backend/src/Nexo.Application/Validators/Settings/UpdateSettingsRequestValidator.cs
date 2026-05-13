@@ -16,11 +16,10 @@ public class UpdateSettingsRequestValidator : AbstractValidator<UpdateSettingsRe
         RuleFor(x => x.Pos).NotNull().WithMessage("POS settings are required.");
         RuleFor(x => x.System).NotNull().WithMessage("System settings are required.");
 
-        When(x => x.Company is not null, () =>
-        {
-            RuleFor(x => x.Company.Name)
-                .NotEmpty().WithMessage("Company name is required.");
-        });
+        // Company.Name validation is intentionally omitted here:
+        // updateSettings always sends a full merged payload (all sections), so any
+        // section save would fail if Company.Name happens to be empty in the database.
+        // Name formatting is enforced in the frontend settings form instead.
 
         When(x => x.Inventory is not null, () =>
         {
