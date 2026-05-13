@@ -276,7 +276,7 @@ public class PlatformController : ControllerBase
         var defaultSettings = AppSettings.CreateForTenant(
             tenantId:      tenant.Id,
             companyJson:   companyJson,
-            operationJson: """{"defaultOperator":""}""",
+            operationJson: """{"defaultStore":"","defaultOperator":""}""",
             inventoryJson: """{"noMovementAlertDays":30,"minStockBehavior":"alert","enableLowStockAlerts":true,"enableZeroStockAlerts":true,"enableHighRotationAlerts":false}""",
             commissionJson:"""{"defaultCommissionRate":3,"enableProductCommission":false,"policyNotes":""}""",
             posJson:       """{"allowValueDiscount":true,"allowPercentDiscount":true,"requireManagerAuth":true,"maxDiscountPercent":20}""",

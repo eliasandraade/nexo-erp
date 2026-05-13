@@ -10,7 +10,7 @@ public record CompanySettingsDto(
     string Phone);
 
 public record OperationSettingsDto(
-    string DefaultStore,
+    string? DefaultStore,       // nullable: legacy tenants may not have this field in stored JSON
     string DefaultOperator);
 
 public record InventorySettingsDto(
