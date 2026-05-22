@@ -6,7 +6,7 @@ export function LandingCtaFinal() {
       <div className="max-w-2xl mx-auto">
 
         {/* Headline — the relief moment */}
-        <h2 className="font-display text-[2.25rem] sm:text-[3rem] md:text-[3.5rem] font-extrabold text-white leading-[1.08] tracking-normal mb-6">
+        <h2 className="font-display text-[2.25rem] sm:text-[3rem] md:text-[3.5rem] font-bold text-white leading-[1.08] tracking-normal mb-6">
           A operação que você
           <br />
           sempre quis ter.

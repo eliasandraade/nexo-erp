@@ -175,7 +175,7 @@ export function LandingHero() {
             </div>
 
             {/* Headline */}
-            <h1 className="font-display text-[2.75rem] sm:text-[3.5rem] md:text-[4rem] font-extrabold leading-[1.05] tracking-[-0.03em] text-white mb-6">
+            <h1 className="font-display text-[2.75rem] sm:text-[3.5rem] md:text-[4rem] font-extrabold leading-[1.05] tracking-normal text-white mb-6">
               Vendeu.
               <br />
               <span className="text-orken-indigo">Já está registrado.</span>

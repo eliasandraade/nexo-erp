@@ -105,7 +105,7 @@ export function LandingMenu() {
             <p className="text-xs font-semibold uppercase tracking-widest text-orken-indigo mb-5">
               Orken Menu
             </p>
-            <h2 className="font-display text-[2rem] sm:text-[2.5rem] md:text-[2.75rem] font-extrabold text-white leading-[1.1] tracking-normal mb-6">
+            <h2 className="font-display text-[2rem] sm:text-[2.5rem] md:text-[2.75rem] font-bold text-white leading-[1.1] tracking-normal mb-6">
               Da comanda ao prato.
               <br />
               <span className="text-orken-indigo">Em tempo real.</span>

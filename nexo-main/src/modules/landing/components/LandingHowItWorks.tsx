@@ -27,7 +27,7 @@ export function LandingHowItWorks() {
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-5">
             Como funciona
           </p>
-          <h2 className="font-display text-[2rem] sm:text-[2.5rem] md:text-[2.75rem] font-extrabold text-white leading-[1.1] tracking-normal max-w-lg">
+          <h2 className="font-display text-[2rem] sm:text-[2.5rem] md:text-[2.75rem] font-bold text-white leading-[1.1] tracking-normal max-w-lg">
             Três minutos para começar.
             <br />
             <span className="text-white font-bold">Uma operação para controlar.</span>
