@@ -30,7 +30,7 @@ export function LandingHowItWorks() {
           <h2 className="font-display text-[2rem] sm:text-[2.5rem] md:text-[2.75rem] font-extrabold text-white leading-[1.1] tracking-normal max-w-lg">
             Três minutos para começar.
             <br />
-            <span className="text-slate-400 font-bold">Uma operação para controlar.</span>
+            <span className="text-white font-bold">Uma operação para controlar.</span>
           </h2>
         </div>
 

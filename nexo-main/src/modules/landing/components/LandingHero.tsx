@@ -212,8 +212,8 @@ export function LandingHero() {
             <ProofStrip />
           </div>
 
-          {/* ── Right: mockup (desktop only) ── */}
-          <div className="hidden lg:block">
+          {/* ── Right: mockup ── */}
+          <div className="mt-4 lg:mt-0">
             <DashboardMockup />
           </div>
         </div>

@@ -44,7 +44,9 @@ function FaqItem({ q, a }: { q: string; a: string }) {
         />
       </button>
       {open && (
-        <p className="text-slate-400 text-sm leading-relaxed pb-5">{a}</p>
+        <div className="animate-slide-down">
+          <p className="text-slate-400 text-sm leading-relaxed pb-5">{a}</p>
+        </div>
       )}
     </div>
   );
@@ -55,10 +57,10 @@ export function LandingFaq() {
     <section id="sobre" className="bg-orken-navy py-20 px-5 md:px-8 border-t border-white/5">
       <div className="max-w-2xl mx-auto">
 
-        <p className="text-center text-xs font-bold uppercase tracking-widest text-orken-indigo mb-3">
+        <p className="text-xs font-semibold uppercase tracking-widest text-orken-indigo mb-4">
           Dúvidas
         </p>
-        <h2 className="text-center text-2xl sm:text-3xl font-bold text-white mb-10">
+        <h2 className="font-display text-2xl sm:text-3xl font-bold text-white mb-10">
           Perguntas frequentes
         </h2>
 

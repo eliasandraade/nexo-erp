@@ -24,7 +24,7 @@ export function LandingBridge() {
         {/* Closing line */}
         <p className="mt-10 pl-6 text-sm leading-relaxed max-w-lg">
           <span className="text-slate-500">O Orken acontece no fundo. </span>
-          <span className="text-slate-400 font-medium">Para você aparecer na frente.</span>
+          <span className="text-white font-semibold">Para você aparecer na frente.</span>
         </p>
       </div>
     </section>
