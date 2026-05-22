@@ -30,7 +30,7 @@ export function LandingPain() {
         </p>
 
         {/* Headline */}
-        <h2 className="font-display text-2xl sm:text-3xl md:text-[2.25rem] font-bold text-white leading-[1.15] tracking-tight mb-16 max-w-2xl">
+        <h2 className="font-display text-2xl sm:text-3xl md:text-[2.25rem] font-bold text-white leading-[1.15] tracking-normal mb-16 max-w-2xl">
           O fim do dia não deveria ser o momento mais estressante da operação.
         </h2>
 

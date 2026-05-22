@@ -55,7 +55,7 @@ export function LandingCore() {
             <p className="text-xs font-semibold uppercase tracking-widest text-orken-indigo mb-5">
               Core
             </p>
-            <h2 className="font-display text-[2rem] sm:text-[2.5rem] md:text-[3rem] font-extrabold text-white leading-[1.1] tracking-tight mb-6">
+            <h2 className="font-display text-[2rem] sm:text-[2.5rem] md:text-[3rem] font-extrabold text-white leading-[1.1] tracking-normal mb-6">
               Tudo conversa.
               <br />
               <span className="text-orken-indigo">Sem você precisar pedir.</span>
