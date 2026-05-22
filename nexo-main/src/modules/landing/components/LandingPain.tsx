@@ -1,49 +1,76 @@
 const PAINS = [
   {
-    emoji: "📊",
-    headline: "Planilha que ninguém mais entende",
-    body: "O estoque vive desatualizado. Quando você percebe a falta, o cliente já foi embora.",
+    number: "01",
+    question: "Você sabe exatamente onde foi parar a diferença de R$ 200 no caixa?",
+    detail:
+      "Sangria não anotada, troco errado, venda sem registro — ao final do dia, a conta não fecha e você não sabe por quê.",
   },
   {
-    emoji: "🔌",
-    headline: "PDV que não fala com o estoque",
-    body: "Cada venda precisa de ajuste manual. Erro humano é só questão de tempo.",
+    number: "02",
+    question: "Ainda abre planilha depois de fechar o dia para saber se lucrou?",
+    detail:
+      "Cada venda deveria atualizar o estoque. Mas alguém esqueceu, digitou errado, ou o sistema simplesmente não se comunicou.",
   },
   {
-    emoji: "💸",
-    headline: "Não sei se estou lucrando",
-    body: "Caixa fecha, mas o dinheiro some. Não tem como saber onde está indo.",
+    number: "03",
+    question: "Você confia no número de estoque que o sistema mostra — ou sempre faz a contagem manual antes de comprar?",
+    detail:
+      "Cada venda que não baixa o estoque cria uma divergência. Com o tempo, o número não significa mais nada — e o reabastecimento vira chute.",
   },
 ];
 
 export function LandingPain() {
   return (
-    <section className="bg-orken-graphite py-20 px-5 md:px-8 border-t border-white/5">
+    <section className="bg-orken-graphite py-24 px-5 md:px-8 border-t border-white/5">
       <div className="max-w-4xl mx-auto">
 
-        <p className="text-center text-xs font-bold uppercase tracking-widest text-orken-indigo mb-3">
-          Parece familiar?
+        {/* Section label */}
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-4">
+          O problema
         </p>
-        <h2 className="text-center text-2xl sm:text-3xl font-bold text-white mb-12">
-          A realidade de quem opera sem sistema
+
+        {/* Headline */}
+        <h2 className="font-display text-2xl sm:text-3xl md:text-[2.25rem] font-bold text-white leading-[1.15] tracking-tight mb-16 max-w-2xl">
+          O fim do dia não deveria ser o momento mais estressante da operação.
         </h2>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {PAINS.map(({ emoji, headline, body }) => (
+        {/* Numbered items — editorial layout, no cards */}
+        <div className="space-y-12">
+          {PAINS.map(({ number, question, detail }) => (
             <div
-              key={headline}
-              className="bg-white/4 border border-white/8 rounded-2xl p-6 space-y-3"
+              key={number}
+              className="grid grid-cols-[3rem_1fr] sm:grid-cols-[5rem_1fr] gap-4 sm:gap-8 items-start"
             >
-              <span className="text-3xl">{emoji}</span>
-              <p className="font-semibold text-white text-sm leading-snug">{headline}</p>
-              <p className="text-slate-400 text-sm leading-relaxed">{body}</p>
+              {/* Number */}
+              <span className="font-display text-3xl sm:text-4xl font-extrabold text-white/10 leading-none pt-1">
+                {number}
+              </span>
+
+              {/* Content */}
+              <div className="border-t border-white/6 pt-5">
+                <p className="text-white font-semibold text-base sm:text-lg leading-snug mb-3">
+                  {question}
+                </p>
+                <p className="text-slate-500 text-sm leading-relaxed">
+                  {detail}
+                </p>
+              </div>
             </div>
           ))}
         </div>
 
-        <p className="text-center text-slate-500 text-sm mt-10">
-          O Orken foi construído para resolver exatamente isso — de uma vez.
-        </p>
+        {/* Resolution */}
+        <div className="mt-16 pt-10 border-t border-white/5">
+          <p className="text-slate-400 text-sm leading-relaxed max-w-2xl">
+            O Orken foi construído para eliminar esses momentos.{" "}
+            <span className="text-white font-medium">
+              Cada venda atualiza o estoque. Cada movimento registra o caixa.
+              Cada pedido chega à cozinha sem papel.
+            </span>{" "}
+            Automático, integrado, sem retrabalho.
+          </p>
+        </div>
+
       </div>
     </section>
   );

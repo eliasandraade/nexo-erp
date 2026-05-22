@@ -9,7 +9,7 @@ export function LandingFooter() {
         {/* Brand */}
         <span className="text-base font-bold tracking-tight text-white/60">
           Ork<span className="text-orken-indigo">en</span>
-          <span className="ml-2 text-white/25 font-normal text-sm">— Um sistema. Seus negócios.</span>
+          <span className="ml-2 text-white/25 font-normal text-sm">— Gestão operacional para negócios reais.</span>
         </span>
 
         {/* Links */}
