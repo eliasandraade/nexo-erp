@@ -9,7 +9,7 @@ function TransactionRipple() {
           Venda confirmada · 14:32
         </p>
         <p className="text-white font-semibold text-sm mb-0.5">Arroz 5kg × 2</p>
-        <p className="font-display text-2xl font-extrabold text-white tracking-tight">R$ 42,00</p>
+        <p className="font-display text-2xl font-bold text-white tracking-normal">R$ 42,00</p>
       </div>
 
       {/* Connector */}
