@@ -18,7 +18,7 @@ export function LandingCtaFinal() {
           Sem diferença inexplicável no caixa.
           Sem contar estoque na mão antes de fazer pedido.
         </p>
-        <p className="text-slate-600 text-base mb-12">
+        <p className="text-slate-500 text-base mb-12">
           Só a operação rodando — e você com tempo pra pensar no negócio.
         </p>
 

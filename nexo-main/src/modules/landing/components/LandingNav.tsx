@@ -134,7 +134,7 @@ export function LandingNav() {
             </a>
 
             <div className="px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-widest text-slate-600 mb-2">
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-500 mb-2">
                 Módulos
               </p>
               {MODULES.map((m) => (

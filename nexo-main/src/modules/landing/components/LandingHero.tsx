@@ -128,9 +128,9 @@ function DashboardMockup() {
 
 function ProofStrip() {
   const items = [
-    { dot: "bg-emerald-500", text: "Estoque atualizado a cada venda" },
-    { dot: "bg-orken-indigo", text: "Caixa fechado com histórico completo" },
-    { dot: "bg-amber-400", text: "Alertas automáticos de estoque baixo" },
+    { dot: "bg-emerald-500", text: "Estoque que você pode confiar"    },
+    { dot: "bg-orken-indigo", text: "Caixa que fecha sem surpresa"    },
+    { dot: "bg-amber-400",    text: "Reabastecimento na hora certa"   },
   ];
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-8 pt-10 border-t border-white/5">
@@ -183,8 +183,9 @@ export function LandingHero() {
 
             {/* Subheadline */}
             <p className="text-base sm:text-lg text-slate-400 leading-relaxed max-w-xl mb-10">
-              PDV, estoque e caixa integrados num sistema que atualiza tudo
-              a cada venda — sem planilha, sem digitação extra, sem retrabalho.
+              Cada venda atualiza o estoque, registra no caixa e alimenta o
+              relatório — sem planilha, sem digitação extra, sem descobrir
+              uma diferença às 23h.
             </p>
 
             {/* CTAs */}
@@ -204,7 +205,7 @@ export function LandingHero() {
             </div>
 
             <p className="mt-4 text-xs text-slate-600">
-              Sem cartão de crédito · Configuração em minutos
+              Sem cartão · Sem contrato · Está operando hoje
             </p>
 
             {/* Proof strip */}

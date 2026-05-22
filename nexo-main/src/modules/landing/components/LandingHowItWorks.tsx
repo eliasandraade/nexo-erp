@@ -19,7 +19,7 @@ const STEPS = [
 
 export function LandingHowItWorks() {
   return (
-    <section className="bg-orken-graphite py-24 px-5 md:px-8 border-t border-white/5">
+    <section className="bg-orken-graphite py-28 px-5 md:px-8 border-t border-white/5">
       <div className="max-w-4xl mx-auto">
 
         {/* Header */}

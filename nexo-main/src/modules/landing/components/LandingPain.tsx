@@ -59,15 +59,14 @@ export function LandingPain() {
           ))}
         </div>
 
-        {/* Resolution */}
+        {/* Resolution — cliffhanger that leads into the Bridge */}
         <div className="mt-16 pt-10 border-t border-white/5">
-          <p className="text-slate-400 text-sm leading-relaxed max-w-2xl">
-            O Orken foi construído para eliminar esses momentos.{" "}
+          <p className="text-slate-400 text-sm leading-relaxed max-w-xl">
+            O Orken foi construído para eliminar exatamente isso.{" "}
             <span className="text-white font-medium">
-              Cada venda atualiza o estoque. Cada movimento registra o caixa.
-              Cada pedido chega à cozinha sem papel.
-            </span>{" "}
-            Automático, integrado, sem retrabalho.
+              Não como promessa — como consequência de cada venda,
+              cada pedido, cada movimento.
+            </span>
           </p>
         </div>
 

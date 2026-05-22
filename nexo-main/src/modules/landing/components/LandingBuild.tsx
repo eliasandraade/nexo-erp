@@ -11,7 +11,7 @@ function SmartEntryDemo() {
             Ork<span className="text-orken-indigo">en</span>
           </span>
           <span className="text-white/15 mx-1 text-xs">|</span>
-          <span className="text-[11px] text-slate-500">Build · Registrar despesa</span>
+          <span className="text-[11px] text-slate-500">Build · Acompanhar obra</span>
         </div>
 
         <div className="p-4 space-y-3">
@@ -49,7 +49,7 @@ function SmartEntryDemo() {
 
           {/* Confirm button */}
           <div className="bg-orken-indigo rounded-xl py-2.5 text-center">
-            <span className="text-[11px] font-semibold text-white">Confirmar lançamento →</span>
+            <span className="text-[11px] font-semibold text-white">Confirmar registro →</span>
           </div>
         </div>
       </div>
@@ -98,30 +98,30 @@ export function LandingBuild() {
               Orken Build
             </p>
             <h2 className="font-display text-[2rem] sm:text-[2.5rem] md:text-[2.75rem] font-extrabold text-white leading-[1.1] tracking-normal mb-6">
-              Cada real gasto,
+              Cada obra,
               <br />
-              <span className="text-orken-indigo">no contexto certo.</span>
+              <span className="text-orken-indigo">visível em tempo real.</span>
             </h2>
             <p className="text-slate-400 text-base leading-relaxed max-w-lg mb-8">
-              Controle de despesas por obra, sem planilha.
-              Você descreve o que aconteceu — o Orken categoriza, associa
-              à obra e lança no relatório da semana.
+              Materiais, mão de obra, imprevistos — cada movimentação
+              registrada no contexto certo. Você digita o que saiu.
+              O Orken já sabe pra qual obra.
             </p>
 
             {/* Operational questions as outcomes — editorial, no card */}
             <div className="space-y-0 border-t border-white/5 pt-8">
               {[
                 {
-                  question: "Qual obra está consumindo mais?",
-                  answer:   "Abra o painel. Já está lá, por categoria.",
+                  question: "Essa obra está dentro do esperado?",
+                  answer:   "Consulte o status em tempo real. Separado por categoria, sem montar filtro.",
                 },
                 {
-                  question: "Onde foi o dinheiro desta semana?",
-                  answer:   "Cada lançamento já está atribuído a uma obra.",
+                  question: "Está pesando mais em material ou mão de obra?",
+                  answer:   "Separado automaticamente a cada registro. Sem reclassificar nada.",
                 },
                 {
-                  question: "Quanto gastei em materiais no mês?",
-                  answer:   "Filtro pronto. Sem fórmula de Excel.",
+                  question: "Posso comprar cimento amanhã?",
+                  answer:   "Veja o saldo atual da obra agora. Decida com dado real.",
                 },
               ].map(({ question, answer }, i) => (
                 <div

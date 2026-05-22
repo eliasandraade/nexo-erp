@@ -1,6 +1,7 @@
 import { LandingNav }        from "../components/LandingNav";
 import { LandingHero }       from "../components/LandingHero";
 import { LandingPain }       from "../components/LandingPain";
+import { LandingBridge }     from "../components/LandingBridge";
 import { LandingCore }       from "../components/LandingSolution";
 import { LandingMenu }       from "../components/LandingForWhom";
 import { LandingBuild }      from "../components/LandingBuild";
@@ -16,6 +17,7 @@ export default function LandingPage() {
       <main className="flex-1 pt-[60px]">
         <LandingHero />
         <LandingPain />
+        <LandingBridge />
         <LandingCore />
         <LandingMenu />
         <LandingBuild />
