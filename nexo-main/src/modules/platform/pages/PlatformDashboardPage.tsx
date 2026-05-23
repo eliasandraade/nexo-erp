@@ -35,7 +35,7 @@ export default function PlatformDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
+          <h1 className="font-display text-[22px] font-bold text-foreground">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Visão geral da plataforma Orken</p>
         </div>
         {health && (
@@ -66,7 +66,7 @@ export default function PlatformDashboardPage() {
           { label: "Lojas / Filiais",    value: stat(stats?.storeCount),            icon: Store,     className: "text-primary"    },
           { label: "Usuários totais",    value: stat(stats?.userCount),             icon: Users,     className: "text-primary"    },
         ].map(({ label, value, icon: Icon, className }) => (
-          <div key={label} className="bg-card border border-border rounded-lg p-4">
+          <div key={label} className="bg-card border border-border rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs text-muted-foreground">{label}</p>
               <Icon className={`h-4 w-4 ${className}`} />
@@ -80,7 +80,7 @@ export default function PlatformDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* MRR */}
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-muted-foreground">MRR</p>
             <TrendingUp className="h-4 w-4 text-primary" />
@@ -94,7 +94,7 @@ export default function PlatformDashboardPage() {
         </div>
 
         {/* Paying vs non-paying */}
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-muted-foreground">Assinaturas pagas</p>
             <Package className="h-4 w-4 text-primary" />
@@ -108,7 +108,7 @@ export default function PlatformDashboardPage() {
         </div>
 
         {/* Churn */}
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-muted-foreground">Churn (30d)</p>
             {churn
@@ -135,7 +135,7 @@ export default function PlatformDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* Módulos ativos */}
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-4">
             <Package className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-medium text-foreground">Módulos ativos</h2>
@@ -162,7 +162,7 @@ export default function PlatformDashboardPage() {
         </div>
 
         {/* Health checks */}
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-4">
             <Activity className="h-4 w-4 text-primary" />
             <h2 className="text-sm font-medium text-foreground">Saúde do sistema</h2>
@@ -193,7 +193,7 @@ export default function PlatformDashboardPage() {
         </div>
 
         {/* Suspensos / inativos */}
-        <div className="bg-card border border-border rounded-lg p-4">
+        <div className="bg-card border border-border rounded-xl p-4">
           <div className="flex items-center gap-2 mb-4">
             <Zap className="h-4 w-4 text-amber-500" />
             <h2 className="text-sm font-medium text-foreground">Atenção</h2>

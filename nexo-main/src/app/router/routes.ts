@@ -22,10 +22,13 @@ import {
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
 
+export type RouteGroup = "core" | "inventario" | "varejo" | "restaurante" | "build" | "admin";
+
 export interface AppRoute {
   path: string;
   label: string;
   icon: LucideIcon;
+  group: RouteGroup;
   /**
    * If set, the route is only shown when `session.modules` includes this key.
    * Undefined = no module gate.
@@ -43,33 +46,33 @@ const MGMT: UserRole[] = ["diretoria", "gerente"];
 
 export const appRoutes: AppRoute[] = [
   // ── Core — management only ───────────────────────────────────────────────
-  { path: "/dashboard",     label: "Dashboard",     icon: LayoutDashboard,   roles: MGMT },
-  { path: "/vendas",        label: "Vendas",         icon: Receipt,           roles: MGMT },
-  { path: "/clientes",      label: "Clientes",       icon: Users,             roles: MGMT },
-  { path: "/fornecedores",  label: "Fornecedores",   icon: Truck,             roles: MGMT },
-  { path: "/caixa",         label: "Caixa",          icon: Wallet,            roles: MGMT },
-  { path: "/usuarios",      label: "Usuários",       icon: UserCog,           roles: ["diretoria"] },
-  { path: "/auditoria",     label: "Auditoria",      icon: Shield,            roles: ["diretoria"] },
-  { path: "/configuracoes", label: "Configurações",  icon: Settings,          roles: MGMT },
+  { path: "/dashboard",     label: "Dashboard",     icon: LayoutDashboard,   group: "core",        roles: MGMT },
+  { path: "/vendas",        label: "Vendas",         icon: Receipt,           group: "core",        roles: MGMT },
+  { path: "/clientes",      label: "Clientes",       icon: Users,             group: "core",        roles: MGMT },
+  { path: "/fornecedores",  label: "Fornecedores",   icon: Truck,             group: "core",        roles: MGMT },
+  { path: "/caixa",         label: "Caixa",          icon: Wallet,            group: "core",        roles: MGMT },
 
   // ── Estoque — management + estoquista ────────────────────────────────────
-  { path: "/produtos",      label: "Produtos",       icon: Package,           roles: [...MGMT, "estoquista"] },
-  { path: "/estoque",       label: "Estoque",        icon: Warehouse,         roles: [...MGMT, "estoquista"] },
+  { path: "/produtos",      label: "Produtos",       icon: Package,           group: "inventario",  roles: [...MGMT, "estoquista"] },
+  { path: "/estoque",       label: "Estoque",        icon: Warehouse,         group: "inventario",  roles: [...MGMT, "estoquista"] },
 
   // ── Varejo ───────────────────────────────────────────────────────────────
-  { path: "/pdv",           label: "PDV",            icon: ShoppingCart,      moduleKey: "varejo",      roles: [...MGMT, "vendedor"] },
+  { path: "/pdv",           label: "PDV",            icon: ShoppingCart,      group: "varejo",      moduleKey: "varejo",      roles: [...MGMT, "vendedor"] },
 
   // ── Restaurante — operação (vendedor) e gestão (gerente/diretoria) ───────
-  { path: "/restaurante",            label: "Restaurante",   icon: UtensilsCrossed,   moduleKey: "restaurante", roles: [...MGMT, "vendedor"] },
-  { path: "/restaurante/delivery",   label: "Entregas",      icon: Bike,              moduleKey: "restaurante", roles: [...MGMT, "vendedor"] },
-  { path: "/restaurante/portal",     label: "Portal",        icon: Globe,             moduleKey: "restaurante", roles: MGMT },
-  { path: "/restaurante/configurar", label: "Config. Mesas", icon: SlidersHorizontal, moduleKey: "restaurante", roles: MGMT },
-  { path: "/restaurante/relatorios", label: "Relatórios",    icon: BarChart2,         moduleKey: "restaurante", roles: MGMT },
-  { path: "/restaurante/financeiro", label: "Financeiro",    icon: TrendingUp,        moduleKey: "restaurante", roles: MGMT },
-
-  // ── Cozinha — role exclusivo + management pode acessar também ────────────
-  { path: "/restaurante/cozinha",    label: "Cozinha",       icon: ChefHat,           moduleKey: "restaurante", roles: [...MGMT, "cozinha"] },
+  { path: "/restaurante",            label: "Salão",         icon: UtensilsCrossed,   group: "restaurante", moduleKey: "restaurante", roles: [...MGMT, "vendedor"] },
+  { path: "/restaurante/delivery",   label: "Entregas",      icon: Bike,              group: "restaurante", moduleKey: "restaurante", roles: [...MGMT, "vendedor"] },
+  { path: "/restaurante/cozinha",    label: "Cozinha",       icon: ChefHat,           group: "restaurante", moduleKey: "restaurante", roles: [...MGMT, "cozinha"] },
+  { path: "/restaurante/portal",     label: "Portal",        icon: Globe,             group: "restaurante", moduleKey: "restaurante", roles: MGMT },
+  { path: "/restaurante/configurar", label: "Config. Mesas", icon: SlidersHorizontal, group: "restaurante", moduleKey: "restaurante", roles: MGMT },
+  { path: "/restaurante/relatorios", label: "Relatórios",    icon: BarChart2,         group: "restaurante", moduleKey: "restaurante", roles: MGMT },
+  { path: "/restaurante/financeiro", label: "Financeiro",    icon: TrendingUp,        group: "restaurante", moduleKey: "restaurante", roles: MGMT },
 
   // ── Build (Obras) — management only ─────────────────────────────────────
-  { path: "/build",                  label: "Obras",         icon: HardHat,           moduleKey: "build",       roles: MGMT },
+  { path: "/build",                  label: "Obras",         icon: HardHat,           group: "build",       moduleKey: "build",       roles: MGMT },
+
+  // ── Admin — diretoria only ───────────────────────────────────────────────
+  { path: "/usuarios",      label: "Usuários",       icon: UserCog,           group: "admin",       roles: ["diretoria"] },
+  { path: "/auditoria",     label: "Auditoria",      icon: Shield,            group: "admin",       roles: ["diretoria"] },
+  { path: "/configuracoes", label: "Configurações",  icon: Settings,          group: "admin",       roles: MGMT },
 ];

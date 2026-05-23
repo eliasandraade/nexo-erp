@@ -53,7 +53,7 @@ export default function AiCostsPage() {
     <div className="p-6 space-y-5 max-w-5xl">
 
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Controle de Custos</h1>
+        <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Controle de Custos</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Consumo de tokens e custo estimado por tenant. Mês atual.
         </p>

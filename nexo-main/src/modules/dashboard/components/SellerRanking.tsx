@@ -49,7 +49,7 @@ export function SellerRanking() {
 
   return (
     <div
-      className="bg-card rounded-lg border border-border p-5 shadow-sm animate-fade-in"
+      className="bg-card rounded-xl border border-border p-5 animate-fade-in"
       style={{ animationDelay: "450ms" }}
     >
       <h3 className="text-sm font-semibold text-foreground mb-4">Ranking de vendedores</h3>

@@ -230,7 +230,7 @@ export default function OrderPage() {
               <button
                 onClick={() => printReceipt(order)}
                 title="Imprimir comanda"
-                className="p-2.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
+                className="p-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors shrink-0"
               >
                 <Printer className="h-4 w-4" />
               </button>

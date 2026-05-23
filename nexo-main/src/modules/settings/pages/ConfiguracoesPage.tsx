@@ -77,7 +77,7 @@ function SettingsSkeleton() {
         <Skeleton className="h-4 w-72" />
       </div>
       <Skeleton className="h-9 w-full max-w-lg" />
-      <div className="bg-card rounded-lg border border-border p-5 space-y-4">
+      <div className="bg-card rounded-xl border border-border p-5 space-y-4">
         {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-9 w-full" />
         ))}

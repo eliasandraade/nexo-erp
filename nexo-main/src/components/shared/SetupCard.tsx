@@ -66,11 +66,11 @@ export function SetupCard({ onDismiss }: Props) {
   const completedCount = steps.filter((s) => s.done).length;
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4 shadow-sm animate-fade-in">
+    <div className="bg-card border border-border rounded-xl p-5 animate-fade-in">
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
-          <p className="text-sm font-semibold text-foreground">Configure o Orken</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="text-[13px] font-semibold text-foreground">Configure o Orken</p>
+          <p className="text-[12px] text-muted-foreground mt-0.5">
             {completedCount} de {steps.length} etapas concluídas
           </p>
         </div>

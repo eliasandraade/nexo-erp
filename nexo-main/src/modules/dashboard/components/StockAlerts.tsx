@@ -33,7 +33,7 @@ export function StockAlerts() {
 
   return (
     <div
-      className="bg-card rounded-lg border border-border p-5 shadow-sm animate-fade-in"
+      className="bg-card rounded-xl border border-border p-5 animate-fade-in"
       style={{ animationDelay: "600ms" }}
     >
       <div className="flex items-center justify-between mb-4">

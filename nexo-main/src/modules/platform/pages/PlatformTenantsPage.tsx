@@ -33,7 +33,7 @@ export default function PlatformTenantsPage() {
       <div className="p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-foreground">Clientes</h1>
+            <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Clientes</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {isLoading ? "Carregando..." : `${tenants?.length ?? 0} empresas cadastradas`}
             </p>

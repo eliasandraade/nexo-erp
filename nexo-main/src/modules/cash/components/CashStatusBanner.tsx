@@ -10,7 +10,7 @@ interface CashStatusBannerProps {
 export function CashStatusBanner({ session, expectedBalance }: CashStatusBannerProps) {
   if (!session || session.status !== "Open") {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-5 py-4">
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-5 py-4">
         <XCircle className="h-5 w-5 text-muted-foreground shrink-0" />
         <div>
           <p className="text-sm font-semibold text-foreground">Caixa fechado</p>

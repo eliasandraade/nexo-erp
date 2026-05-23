@@ -72,7 +72,7 @@ export default function AiPlaygroundPage() {
       <div>
         <div className="flex items-center gap-2 mb-0.5">
           <FlaskConical className="h-5 w-5 text-primary" />
-          <h1 className="text-xl font-semibold text-foreground">Playground Interno</h1>
+          <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Playground Interno</h1>
         </div>
         <p className="text-sm text-muted-foreground">
           Laboratório do Interpretation Engine — teste textos, analise extrações, inspecione resultados.

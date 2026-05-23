@@ -243,7 +243,7 @@ export default function RestauranteSetupPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-xl font-semibold">Configuração do Restaurante</h1>
+        <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Configuração do Restaurante</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Gerencie áreas e mesas do salão.</p>
       </div>
 

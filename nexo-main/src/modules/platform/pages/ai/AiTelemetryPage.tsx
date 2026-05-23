@@ -141,7 +141,7 @@ export default function AiTelemetryPage() {
     <div className="p-6 space-y-5 max-w-6xl">
 
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Telemetry Explorer</h1>
+        <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Telemetry Explorer</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Inspetor de requests — clique em uma linha para ver os detalhes completos.
         </p>

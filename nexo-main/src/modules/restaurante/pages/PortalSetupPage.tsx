@@ -295,7 +295,7 @@ function CouponDialog({
             </Field>
           )}
           {isEdit && (
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 flex items-center gap-2">
+            <div className="rounded-xl border border-border bg-muted/30 px-3 py-2 flex items-center gap-2">
               <Tag className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-sm font-mono font-medium">{editingCoupon!.code}</span>
             </div>
@@ -648,7 +648,7 @@ export default function PortalSetupPage() {
     <div className="p-6 max-w-2xl mx-auto space-y-6">
 
       <div>
-        <h1 className="text-xl font-semibold">Portal do Restaurante</h1>
+        <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Portal do Restaurante</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Configure o endereço, zonas de entrega e cupons do seu cardápio online.
         </p>

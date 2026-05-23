@@ -44,7 +44,7 @@ export default function AiDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">AI Operations — Dashboard</h1>
+          <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">AI Operations — Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Visão operacional do Interpretation Engine
           </p>

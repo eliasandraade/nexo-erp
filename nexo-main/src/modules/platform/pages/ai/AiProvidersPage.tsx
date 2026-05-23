@@ -254,7 +254,7 @@ export default function AiProvidersPage() {
 
       {/* Header */}
       <div>
-        <h1 className="text-xl font-semibold text-foreground">Gestão de Providers</h1>
+        <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Gestão de Providers</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           Configure analyzers, API Keys, fallback chain e limites de uso.
         </p>

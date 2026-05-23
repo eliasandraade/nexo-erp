@@ -13,7 +13,7 @@ export default function PlatformTrialPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">Trial Expirado</h1>
+          <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Trial Expirado</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Clientes com período de trial ou assinatura vencida
           </p>
@@ -21,7 +21,7 @@ export default function PlatformTrialPage() {
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 h-8 px-3 rounded-xl border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
           Atualizar

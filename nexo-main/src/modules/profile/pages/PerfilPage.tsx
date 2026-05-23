@@ -55,7 +55,7 @@ function PerfilSkeleton() {
           <Skeleton className="h-4 w-64" />
         </div>
       </div>
-      <div className="bg-card rounded-lg border border-border p-5 shadow-sm">
+      <div className="bg-card rounded-xl border border-border p-5">
         <div className="flex items-center gap-4">
           <Skeleton className="w-16 h-16 rounded-full" />
           <div className="space-y-2">
@@ -65,7 +65,7 @@ function PerfilSkeleton() {
         </div>
       </div>
       <div className="grid lg:grid-cols-2 gap-6">
-        <div className="bg-card rounded-lg border border-border p-5 shadow-sm space-y-1">
+        <div className="bg-card rounded-xl border border-border p-5 space-y-1">
           <Skeleton className="h-4 w-32 mb-4" />
           {Array.from({ length: 7 }).map((_, i) => (
             <div key={i} className="py-2.5 border-b border-border last:border-0 space-y-1">
@@ -74,7 +74,7 @@ function PerfilSkeleton() {
             </div>
           ))}
         </div>
-        <div className="bg-card rounded-lg border border-border p-5 shadow-sm space-y-1">
+        <div className="bg-card rounded-xl border border-border p-5 space-y-1">
           <Skeleton className="h-4 w-44 mb-4" />
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="py-2.5 border-b border-border last:border-0 space-y-1">
