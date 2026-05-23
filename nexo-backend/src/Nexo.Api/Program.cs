@@ -121,7 +121,7 @@ try
 
             policy.WithOrigins(origins)
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
-                  .WithHeaders("Authorization", "Content-Type", "Accept", "Accept-Language", "x-requested-with")
+                  .AllowAnyHeader()
                   .AllowCredentials()
                   .WithExposedHeaders("Content-Disposition", "Content-Length");
         });
