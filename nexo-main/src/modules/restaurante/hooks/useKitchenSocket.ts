@@ -8,8 +8,13 @@ import { TABLES_KEY } from "./useRestauranteTables";
 import { ORDERS_KEY } from "./useActiveOrder";
 import type { ConnectionMode, KitchenItem } from "../types";
 
-const RECONNECT_DELAYS = [0, 2000, 5000];
+const RECONNECT_DELAYS = [0, 2000, 5000, 10_000];
 const POLLING_INTERVAL = 10_000;
+
+// Delays between manual retry attempts before giving up and switching to polling.
+// Total wait before fallback: 1s + 3s + 5s = 9s.
+const INITIAL_RETRY_DELAYS_MS = [1_000, 3_000, 5_000];
+
 // VITE_API_BASE_URL ends with "/api" (e.g. "https://api.example.com/api").
 // SignalR hubs live at the root, so strip the "/api" suffix.
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/api").replace(/\/api$/, "");
@@ -25,7 +30,11 @@ interface UseKitchenSocketOptions {
  * component props. This prevents the useEffect from re-running when the token
  * refreshes mid-negotiation, which would cause "connection stopped during negotiation".
  *
- * Guard: only connects when storeId is non-empty (user is authenticated + store resolved).
+ * On initial connect failure, retries up to 3 times with backoff before switching
+ * to polling mode. Polling invalidates React Query caches every 10s.
+ *
+ * Guard: only connects when storeId is non-empty (user is authenticated + store resolved)
+ * AND a valid access token is present.
  */
 export function useKitchenSocket(
   storeId: string,
@@ -61,17 +70,27 @@ export function useKitchenSocket(
 
   useEffect(() => {
     // Only connect when a store is resolved (implies authenticated).
-    // We do NOT use the token as a dependency — getAccessToken() is called
-    // by SignalR's accessTokenFactory on each request, so token refreshes
-    // are transparent without causing the effect to re-run.
     if (!storeId) return;
+
+    // Do not attempt connection if there is no access token at hook mount time.
+    // This guards against the brief window between ProtectedRoute rendering and
+    // the token being available in memory / localStorage.
+    if (!getAccessToken()) return;
+
+    // Local cancellation flag — each effect run gets its own copy.
+    // Avoids race conditions if storeId changes while a retry delay is in flight.
+    let cancelled = false;
 
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(`${API_BASE}/hubs/restaurant`, {
         // Always reads the latest token at request time — survives refreshes.
         accessTokenFactory: () => getAccessToken() ?? "",
+        // Allow both transports so Railway's reverse proxy has a fallback
+        // if WebSocket upgrades are not available.
+        transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.LongPolling,
       })
       .withAutomaticReconnect(RECONNECT_DELAYS)
+      .configureLogging(signalR.LogLevel.Warning)
       .build();
 
     connectionRef.current = connection;
@@ -104,22 +123,47 @@ export function useKitchenSocket(
     });
 
     connection.onclose(() => {
-      startPolling();
+      if (!cancelled) {
+        startPolling();
+      }
     });
 
-    connection
-      .start()
-      .then(() => {
+    // Attempt initial connection with manual retry before falling back to polling.
+    // `cancelled` is captured in each effect's closure, so cleanup sets its own copy.
+    const attemptConnect = async (attempt: number): Promise<void> => {
+      if (cancelled) return;
+
+      try {
+        await connection.start();
+        if (cancelled) return;
+
         retryCountRef.current = 0;
         setMode("realtime");
         stopPolling();
-        return connection.invoke("JoinStore", storeId);
-      })
-      .catch(() => {
+        await connection.invoke("JoinStore", storeId);
+      } catch (err) {
+        if (cancelled) return;  // cleanup already ran — don't retry, don't poll
+
+        const nextDelay = INITIAL_RETRY_DELAYS_MS[attempt];
+        if (nextDelay !== undefined) {
+          console.warn(
+            `[SignalR] Connect attempt ${attempt + 1} failed, retrying in ${nextDelay}ms:`,
+            err
+          );
+          await new Promise<void>((resolve) => setTimeout(resolve, nextDelay));
+          return attemptConnect(attempt + 1);
+        }
+
+        // All retries exhausted — fall back to polling.
+        console.warn("[SignalR] All connection attempts failed, switching to polling:", err);
         startPolling();
-      });
+      }
+    };
+
+    attemptConnect(0);
 
     return () => {
+      cancelled = true;
       stopPolling();
       connection.stop();
     };
