@@ -65,6 +65,32 @@
   }
 }
 
+/* Reduced motion — disable entrance + shake + pulse for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  .animate-auth-enter {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .animate-auth-shake {
+    animation: none;
+  }
+  .animate-pulse-dot {
+    animation: none;
+  }
+}
+
+/* Auth layout — autofill override so dark inputs don't flash white */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #151a29 inset !important;
+  -webkit-text-fill-color: #ffffff !important;
+  caret-color: #ffffff;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
