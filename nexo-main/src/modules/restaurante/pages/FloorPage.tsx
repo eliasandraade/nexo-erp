@@ -16,7 +16,6 @@ import type { OrderType, TableDto } from "../types";
 export default function FloorPage() {
   const { session } = useAuth();
   const storeId     = session?.storeId ?? "";
-  const token       = session ? localStorage.getItem("nexo:access_token") ?? undefined : undefined;
   const navigate    = useNavigate();
 
   const { data: tables = [], isLoading: tablesLoading } = useRestauranteTables(storeId);
@@ -32,7 +31,7 @@ export default function FloorPage() {
     });
   }, []);
 
-  const { connectionMode } = useKitchenSocket(storeId, token, { onItemReady: handleItemReady });
+  const { connectionMode } = useKitchenSocket(storeId, { onItemReady: handleItemReady });
 
   const { data: kitchenItems = [] } = useKitchenItems(
     storeId,

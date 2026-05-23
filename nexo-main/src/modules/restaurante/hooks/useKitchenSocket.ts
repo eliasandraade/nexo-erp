@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as signalR from "@microsoft/signalr";
 import { useQueryClient } from "@tanstack/react-query";
+import { getAccessToken } from "@/services/api-client";
 import { KITCHEN_KEY } from "./useKitchenItems";
 import { TABLES_KEY } from "./useRestauranteTables";
 import { ORDERS_KEY } from "./useActiveOrder";
@@ -17,9 +18,17 @@ interface UseKitchenSocketOptions {
   onItemReady?: (tableNumber: string | null, productName: string) => void;
 }
 
+/**
+ * Manages a SignalR connection to /hubs/restaurant for real-time kitchen updates.
+ *
+ * Token is read via getAccessToken() inside accessTokenFactory — NOT captured from
+ * component props. This prevents the useEffect from re-running when the token
+ * refreshes mid-negotiation, which would cause "connection stopped during negotiation".
+ *
+ * Guard: only connects when storeId is non-empty (user is authenticated + store resolved).
+ */
 export function useKitchenSocket(
   storeId: string,
-  token: string | undefined,
   options: UseKitchenSocketOptions = {}
 ) {
   const { onItemReady } = options;
@@ -51,11 +60,16 @@ export function useKitchenSocket(
   }, []);
 
   useEffect(() => {
-    if (!token || !storeId) return;
+    // Only connect when a store is resolved (implies authenticated).
+    // We do NOT use the token as a dependency — getAccessToken() is called
+    // by SignalR's accessTokenFactory on each request, so token refreshes
+    // are transparent without causing the effect to re-run.
+    if (!storeId) return;
 
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(`${API_BASE}/hubs/restaurant`, {
-        accessTokenFactory: () => token,
+        // Always reads the latest token at request time — survives refreshes.
+        accessTokenFactory: () => getAccessToken() ?? "",
       })
       .withAutomaticReconnect(RECONNECT_DELAYS)
       .build();
@@ -109,7 +123,7 @@ export function useKitchenSocket(
       stopPolling();
       connection.stop();
     };
-  }, [token, storeId, invalidateAll, startPolling, stopPolling]);
+  }, [storeId, invalidateAll, startPolling, stopPolling]);
 
   return { connectionMode: mode };
 }

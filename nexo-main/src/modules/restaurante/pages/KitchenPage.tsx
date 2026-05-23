@@ -7,11 +7,10 @@ import { useKitchenItems } from "../hooks/useKitchenItems";
 import { UserDropdown } from "@/components/shared/UserDropdown";
 
 export default function KitchenPage() {
-  const { session }     = useAuth();
-  const storeId         = session?.storeId ?? "";
-  const token           = session ? localStorage.getItem("nexo:access_token") ?? undefined : undefined;
+  const { session } = useAuth();
+  const storeId     = session?.storeId ?? "";
 
-  const { connectionMode } = useKitchenSocket(storeId, token);
+  const { connectionMode } = useKitchenSocket(storeId);
 
   // Polling is only active when SignalR has failed; interval driven by hook
   const { data: items = [] } = useKitchenItems(
