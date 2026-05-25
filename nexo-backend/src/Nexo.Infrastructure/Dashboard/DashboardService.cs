@@ -63,27 +63,38 @@ public class DashboardService
 
     private async Task<IReadOnlyList<TopProductDto>> GetTopProductsAsync(CancellationToken ct)
     {
-        // Join SaleItems → Sales to filter cancelled, → Products to get name
+        // Project to anonymous type so EF can translate; map to DTO in memory.
+        // Guid.ToString() and Math.Round can't be translated inside GroupBy Select.
         var rows = await _db.SaleItems
             .AsNoTracking()
             .Where(i => i.Sale!.Status != SaleStatus.Cancelled)
             .GroupBy(i => new { i.ProductId, Name = i.Product!.Name })
-            .Select(g => new TopProductDto(
-                g.Key.ProductId.ToString(),
+            .Select(g => new
+            {
+                g.Key.ProductId,
                 g.Key.Name,
-                g.Sum(i => i.Quantity),
-                Math.Round(g.Sum(i => i.Total), 2)))
-            .OrderByDescending(p => p.Revenue)
+                Quantity = g.Sum(i => i.Quantity),
+                Revenue  = g.Sum(i => i.Total),
+            })
+            .OrderByDescending(g => g.Revenue)
             .Take(5)
             .ToListAsync(ct);
 
-        return rows;
+        return rows
+            .Select(r => new TopProductDto(
+                r.ProductId.ToString(),
+                r.Name,
+                r.Quantity,
+                Math.Round(r.Revenue, 2)))
+            .ToList();
     }
 
     // ── Top Sellers ───────────────────────────────────────────────────────────
 
     private async Task<IReadOnlyList<TopSellerDto>> GetTopSellersAsync(CancellationToken ct)
     {
+        // Project to anonymous type; OrderByDescending on DTO constructor property
+        // can't be translated by EF Core. Map to DTO in memory after query.
         var rows = await _db.Sales
             .AsNoTracking()
             .Where(s => s.Status != SaleStatus.Cancelled)
@@ -92,15 +103,19 @@ public class DashboardService
                   u => u.Id,
                   (s, u) => new { u.FullName, s.Total })
             .GroupBy(x => x.FullName)
-            .Select(g => new TopSellerDto(
-                g.Key,
-                g.Count(),
-                Math.Round(g.Sum(x => x.Total), 2)))
-            .OrderByDescending(x => x.Revenue)
+            .Select(g => new
+            {
+                Name    = g.Key,
+                Count   = g.Count(),
+                Revenue = g.Sum(x => x.Total),
+            })
+            .OrderByDescending(g => g.Revenue)
             .Take(4)
             .ToListAsync(ct);
 
-        return rows;
+        return rows
+            .Select(r => new TopSellerDto(r.Name, r.Count, Math.Round(r.Revenue, 2)))
+            .ToList();
     }
 
     // ── Sales by Day (last 30 days) ────────────────────────────────────────────
