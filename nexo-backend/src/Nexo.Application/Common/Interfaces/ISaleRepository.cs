@@ -1,3 +1,5 @@
+using Nexo.Application.Common;
+using Nexo.Application.Features.Sales;
 using Nexo.Domain.Entities;
 
 namespace Nexo.Application.Common.Interfaces;
@@ -8,6 +10,7 @@ public interface ISaleRepository
     Task<Sale?> GetByIdWithItemsAsync(Guid id, CancellationToken ct = default);
     Task<Sale?> GetByNumberAsync(int number, CancellationToken ct = default);
     Task<IReadOnlyList<Sale>> GetAllAsync(CancellationToken ct = default);
+    Task<PagedResult<SaleListItemDto>> GetPagedAsync(int page, int pageSize, string? search, string? status, string? paymentMethod, CancellationToken ct = default);
     Task<int> GetNextNumberAsync(CancellationToken ct = default);
     Task AddAsync(Sale sale, CancellationToken ct = default);
     Task AddPaymentAsync(SalePayment payment, CancellationToken ct = default);

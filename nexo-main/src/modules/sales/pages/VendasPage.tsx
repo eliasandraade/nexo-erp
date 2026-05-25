@@ -1,59 +1,55 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AlertCircle, Receipt } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
-import { listSales } from "../api/sales.api";
-import { saleToLegacy } from "../utils/saleAdapter";
-import { SalesFilters } from "../components/SalesFilters";
+import { DataPagination } from "@/components/shared/DataPagination";
+import { SalesFilters, type SalesServerFilters } from "../components/SalesFilters";
 import { SalesTable } from "../components/SalesTable";
-import type { SaleListFilters } from "../types";
+import { useSalesList } from "../hooks/useSalesList";
 
-const defaultFilters: SaleListFilters = {
-  search: "",
+const defaultFilters: SalesServerFilters = {
+  search:        "",
   paymentMethod: "all",
-  status: "all",
+  status:        "all",
 };
 
-export default function VendasPage() {
-  const [filters, setFilters] = useState<SaleListFilters>(defaultFilters);
+const PAGE_SIZE = 25;
 
-  const { data: allSales = [], isLoading, isError } = useQuery({
-    queryKey: ["sales"],
-    queryFn: () => listSales().then((dtos) => dtos.map(saleToLegacy)),
-    staleTime: 30_000,
+export default function VendasPage() {
+  const [filters, setFilters]   = useState<SalesServerFilters>(defaultFilters);
+  const [page, setPage]         = useState(1);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(filters.search);
+      setPage(1);
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [filters.search]);
+
+  const handleFiltersChange = (next: SalesServerFilters) => {
+    setFilters(next);
+    if (next.paymentMethod !== filters.paymentMethod || next.status !== filters.status) {
+      setPage(1);
+    }
+  };
+
+  const { data, isLoading, isError } = useSalesList({
+    page,
+    pageSize: PAGE_SIZE,
+    search:        debouncedSearch || undefined,
+    status:        filters.status        !== "all" ? filters.status        : undefined,
+    paymentMethod: filters.paymentMethod !== "all" ? filters.paymentMethod : undefined,
   });
 
-  const sales = useMemo(() => {
-    return allSales.filter((sale) => {
-      if (filters.search && filters.search.trim()) {
-        const q = filters.search.trim().toLowerCase();
-        const matchesId = sale.id.toLowerCase().includes(q);
-        const matchesOperator = sale.operator.toLowerCase().includes(q);
-        const matchesItem = sale.items.some(
-          (i) =>
-            i.description.toLowerCase().includes(q) ||
-            i.code.toLowerCase().includes(q)
-        );
-        const matchesCustomer = sale.customerName
-          ? sale.customerName.toLowerCase().includes(q)
-          : false;
-        if (!matchesId && !matchesOperator && !matchesItem && !matchesCustomer) return false;
-      }
-
-      if (filters.paymentMethod && filters.paymentMethod !== "all") {
-        if (!sale.payments.some((p) => p.method === filters.paymentMethod)) return false;
-      }
-
-      if (filters.status && filters.status !== "all") {
-        if (sale.status !== filters.status) return false;
-      }
-
-      return true;
-    });
-  }, [allSales, filters]);
+  const sales      = data?.items ?? [];
+  const totalPages = data?.totalPages ?? 1;
+  const totalCount = data?.totalCount ?? 0;
 
   return (
     <div className="space-y-6">
@@ -64,7 +60,7 @@ export default function VendasPage() {
 
       <SectionCard>
         <div className="space-y-4">
-          <SalesFilters filters={filters} onChange={setFilters} />
+          <SalesFilters filters={filters} onChange={handleFiltersChange} />
 
           {isLoading ? (
             <div className="space-y-3">
@@ -81,8 +77,11 @@ export default function VendasPage() {
           ) : sales.length > 0 ? (
             <>
               <SalesTable sales={sales} />
-              <div className="pt-2 text-xs text-muted-foreground">
-                {sales.length} venda(s) encontrada(s)
+              <div className="flex items-center justify-between pt-2">
+                <p className="text-xs text-muted-foreground">
+                  {totalCount} venda(s) encontrada(s)
+                </p>
+                <DataPagination page={page} totalPages={totalPages} onPageChange={setPage} />
               </div>
             </>
           ) : (
@@ -90,7 +89,7 @@ export default function VendasPage() {
               icon={Receipt}
               title="Nenhuma venda encontrada"
               description={
-                filters.search || filters.paymentMethod !== "all" || filters.status !== "all"
+                debouncedSearch || filters.paymentMethod !== "all" || filters.status !== "all"
                   ? "Nenhuma venda corresponde aos filtros selecionados."
                   : "As vendas registradas no PDV aparecerão aqui."
               }

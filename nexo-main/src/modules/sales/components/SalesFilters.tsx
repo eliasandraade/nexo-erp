@@ -7,15 +7,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { SaleListFilters } from "../types";
+
+export interface SalesServerFilters {
+  search: string;
+  paymentMethod: string;
+  status: string;
+}
 
 interface SalesFiltersProps {
-  filters: SaleListFilters;
-  onChange: (filters: SaleListFilters) => void;
+  filters: SalesServerFilters;
+  onChange: (filters: SalesServerFilters) => void;
 }
 
 export function SalesFilters({ filters, onChange }: SalesFiltersProps) {
-  function update(patch: Partial<SaleListFilters>) {
+  function update(patch: Partial<SalesServerFilters>) {
     onChange({ ...filters, ...patch });
   }
 
@@ -24,7 +29,7 @@ export function SalesFilters({ filters, onChange }: SalesFiltersProps) {
       <div className="relative flex-1 min-w-48">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
-          placeholder="Buscar por ID, operador ou produto..."
+          placeholder="Buscar por número, operador ou cliente..."
           value={filters.search}
           onChange={(e) => update({ search: e.target.value })}
           className="pl-9"
@@ -33,31 +38,32 @@ export function SalesFilters({ filters, onChange }: SalesFiltersProps) {
 
       <Select
         value={filters.paymentMethod}
-        onValueChange={(v) => update({ paymentMethod: v as SaleListFilters["paymentMethod"] })}
+        onValueChange={(v) => update({ paymentMethod: v })}
       >
         <SelectTrigger className="w-40">
           <SelectValue placeholder="Pagamento" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Todos pagamentos</SelectItem>
-          <SelectItem value="cash">Dinheiro</SelectItem>
-          <SelectItem value="pix">PIX</SelectItem>
-          <SelectItem value="card">Cartão</SelectItem>
+          <SelectItem value="Cash">Dinheiro</SelectItem>
+          <SelectItem value="Pix">PIX</SelectItem>
+          <SelectItem value="Card">Cartão</SelectItem>
         </SelectContent>
       </Select>
 
       <Select
         value={filters.status}
-        onValueChange={(v) => update({ status: v as SaleListFilters["status"] })}
+        onValueChange={(v) => update({ status: v })}
       >
         <SelectTrigger className="w-36">
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Todos status</SelectItem>
-          <SelectItem value="completed">Concluídas</SelectItem>
-          <SelectItem value="cancelled">Canceladas</SelectItem>
-          <SelectItem value="partially_cancelled">Parc. canceladas</SelectItem>
+          <SelectItem value="Paid">Pagas</SelectItem>
+          <SelectItem value="Confirmed">Confirmadas</SelectItem>
+          <SelectItem value="Cancelled">Canceladas</SelectItem>
+          <SelectItem value="Draft">Rascunho</SelectItem>
         </SelectContent>
       </Select>
     </div>

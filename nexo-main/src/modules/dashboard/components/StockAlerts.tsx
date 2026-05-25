@@ -1,47 +1,21 @@
 import { AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMemo } from "react";
-import { useStockItems } from "@/modules/inventory/hooks/use-stock";
-import { useProducts } from "@/modules/products/hooks/use-products";
-import { deriveStockStatus } from "@/modules/inventory/types";
+import { useDashboardSummary } from "@/modules/dashboard/hooks/useDashboardSummary";
 import { Link } from "react-router-dom";
 
 export function StockAlerts() {
-  const { data: stockItems = [], isLoading: loadingStock }    = useStockItems();
-  const { data: products   = [], isLoading: loadingProducts } = useProducts();
-
-  const isLoading = loadingStock || loadingProducts;
-
-  /** Enrich stock items with minStockQuantity from product data — same pattern as EstoquePage */
-  const alertItems = useMemo(() => {
-    return stockItems
-      .map((s) => {
-        const product      = products.find((p) => p.id === s.productId);
-        const minStock     = product?.minStockQuantity ?? null;
-        const status       = deriveStockStatus(s.availableQuantity, minStock);
-        return {
-          productId:    s.productId,
-          description:  s.productName,
-          currentStock: s.currentQuantity,
-          minStock:     minStock ?? 0,
-          status,
-        };
-      })
-      .filter((i) => i.status === "low" || i.status === "zero")
-      .slice(0, 4);
-  }, [stockItems, products]);
+  const { data: summary, isLoading } = useDashboardSummary();
+  const alertItems = summary?.stockAlerts ?? [];
+  const hasAlerts  = alertItems.length > 0;
 
   return (
-    <div
-      className="bg-card rounded-xl border border-border p-5 animate-fade-in"
-      style={{ animationDelay: "600ms" }}
-    >
+    <div className="bg-card rounded-xl border border-border p-5 animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-warning" />
           <h3 className="text-sm font-semibold text-foreground">Alertas de estoque</h3>
         </div>
-        {alertItems.length > 0 && (
+        {hasAlerts && (
           <Link
             to="/estoque"
             className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
@@ -57,7 +31,7 @@ export function StockAlerts() {
             <Skeleton key={i} className="h-8 w-full" />
           ))}
         </div>
-      ) : alertItems.length === 0 ? (
+      ) : !hasAlerts ? (
         <div className="py-4 text-center space-y-1">
           <p className="text-sm font-medium text-foreground">Estoque saudável.</p>
           <p className="text-xs text-muted-foreground">Nenhum produto abaixo do mínimo.</p>
@@ -75,7 +49,7 @@ export function StockAlerts() {
             return (
               <div key={a.productId}>
                 <div className="flex items-center justify-between mb-1">
-                  <p className="text-sm font-medium text-foreground truncate">{a.description}</p>
+                  <p className="text-sm font-medium text-foreground truncate">{a.productName}</p>
                   <span className="text-xs font-semibold text-destructive whitespace-nowrap ml-2">
                     {a.currentStock}/{a.minStock}
                   </span>

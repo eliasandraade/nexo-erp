@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, AlertCircle, Warehouse, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,61 +6,49 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useStockItems } from "../hooks/use-stock";
-import { useProducts } from "@/modules/products/hooks/use-products";
-import { useCategories } from "@/modules/products/hooks/use-products";
+import { DataPagination } from "@/components/shared/DataPagination";
+import { useStockPaged } from "../hooks/use-stock";
 import { InventoryKpiCards } from "../components/InventoryKpiCards";
 import { InventoryFilters } from "../components/InventoryFilters";
 import { InventoryTable } from "../components/InventoryTable";
 import { deriveStockStatus } from "../types";
 import type { StockItemEnriched } from "../types";
 
-const STALE_DAYS = 14;
-
 export default function EstoquePage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  const [search, setSearch]           = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [status, setStatus]           = useState("all");
+  const [page, setPage]               = useState(1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const { data: stockItems = [], isLoading: loadingStock, isError } = useStockItems();
-  const { data: products = [] } = useProducts({ isIngredient: true });
-  const { data: categories = [] } = useCategories();
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search]);
 
-  // Build enriched list by joining stock items with product details
-  const enriched = useMemo((): StockItemEnriched[] => {
-    return stockItems.map((s) => {
-      const product = products.find((p) => p.id === s.productId);
-      const category = categories.find((c) => c.id === product?.categoryId);
-      const minStock = product?.minStockQuantity ?? null;
-      return {
-        ...s,
-        unit:             product?.unit ?? "",
-        categoryName:     category?.name ?? "",
-        minStockQuantity: minStock,
-        status:           deriveStockStatus(s.availableQuantity, minStock),
-      };
-    });
-  }, [stockItems, products, categories]);
+  const { data, isLoading, isError } = useStockPaged({
+    page,
+    pageSize: 50,
+    search:  debouncedSearch || undefined,
+    status:  status !== "all" ? status : undefined,
+  });
 
-  const filtered = useMemo(() => {
-    return enriched.filter((i) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !q ||
-        i.productCode.toLowerCase().includes(q) ||
-        i.productName.toLowerCase().includes(q);
-      const matchStatus = status === "all" || i.status === status;
-      return matchSearch && matchStatus;
-    });
-  }, [enriched, search, status]);
+  // Add derived status field so InventoryTable gets StockItemEnriched shape
+  const items = useMemo((): StockItemEnriched[] =>
+    (data?.items ?? []).map(item => ({
+      ...item,
+      categoryName: item.categoryName ?? "",
+      status: deriveStockStatus(item.availableQuantity, item.minStockQuantity),
+    })),
+    [data?.items]
+  );
 
-  const belowMin = enriched.filter((i) => i.status === "low" || i.status === "zero").length;
-  const noTurnover = useMemo(() => {
-    const cutoff = Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000;
-    return enriched.filter(
-      (i) => !i.lastMovementAt || new Date(i.lastMovementAt).getTime() < cutoff
-    ).length;
-  }, [enriched]);
+  const totalPages = data?.totalPages ?? 1;
 
   return (
     <div className="space-y-6">
@@ -74,11 +62,11 @@ export default function EstoquePage() {
         }
       />
 
-      {!loadingStock && enriched.length > 0 && (
+      {!isLoading && (data?.totalCount ?? 0) > 0 && (
         <InventoryKpiCards
-          totalProducts={enriched.length}
-          belowMin={belowMin}
-          noTurnover={noTurnover}
+          totalProducts={data?.totalCount ?? 0}
+          belowMin={data?.belowMinCount ?? 0}
+          noTurnover={data?.noTurnoverCount ?? 0}
         />
       )}
 
@@ -90,11 +78,11 @@ export default function EstoquePage() {
           </div>
 
           <InventoryFilters
-            search={search} onSearchChange={setSearch}
-            status={status} onStatusChange={setStatus}
+            search={search} onSearchChange={(v) => { setSearch(v); }}
+            status={status} onStatusChange={(v) => { setStatus(v); setPage(1); }}
           />
 
-          {loadingStock ? (
+          {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Skeleton key={i} className="h-12 w-full" />
@@ -106,19 +94,22 @@ export default function EstoquePage() {
               title="Erro ao carregar estoque"
               description="Não foi possível carregar os dados de estoque. Tente novamente."
             />
-          ) : filtered.length > 0 ? (
+          ) : items.length > 0 ? (
             <>
-              <InventoryTable items={filtered} />
-              <p className="text-xs text-muted-foreground pt-1">
-                {filtered.length} item(ns) encontrado(s)
-              </p>
+              <InventoryTable items={items} />
+              <div className="flex items-center justify-between pt-1">
+                <p className="text-xs text-muted-foreground">
+                  {data?.totalCount ?? 0} item(ns) encontrado(s)
+                </p>
+                <DataPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+              </div>
             </>
           ) : (
             <EmptyState
               icon={Warehouse}
               title="Nenhum item encontrado"
               description={
-                enriched.length === 0
+                (data?.totalCount ?? 0) === 0
                   ? "Nenhum produto com rastreio de estoque ativo."
                   : "Tente ajustar os filtros."
               }

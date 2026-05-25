@@ -4,6 +4,8 @@ import {
   fetchProductMovements,
   fetchStockItem,
   fetchStockItems,
+  fetchStockPaged,
+  type StockPagedParams,
 } from "../api/stock.api";
 import type { AdjustStockRequest } from "../types";
 
@@ -13,6 +15,15 @@ export function useStockItems() {
   return useQuery({
     queryKey: STOCK_KEY,
     queryFn:  fetchStockItems,
+  });
+}
+
+export function useStockPaged(params: StockPagedParams) {
+  return useQuery({
+    queryKey: [...STOCK_KEY, "paged", params],
+    queryFn:  () => fetchStockPaged(params),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
   });
 }
 

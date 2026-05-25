@@ -1,6 +1,22 @@
 import { apiClient } from "@/services/api-client";
 import type { SupplierDto, SupplierFormInput } from "../types";
 import { serializeAddress, serializeBankInfo } from "../types";
+import type { PagedResult } from "@/modules/sales/api/sales.api";
+
+export interface SuppliersPagedParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  includeInactive?: boolean;
+}
+
+export function fetchSuppliersPaged(params: SuppliersPagedParams = {}): Promise<PagedResult<SupplierDto>> {
+  const { page = 1, pageSize = 25, search, includeInactive = false } = params;
+  const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (search)          qs.set("search", search);
+  if (includeInactive) qs.set("includeInactive", "true");
+  return apiClient.get<PagedResult<SupplierDto>>(`/suppliers/paged?${qs}`);
+}
 
 export function fetchSuppliers(includeInactive = false): Promise<SupplierDto[]> {
   return apiClient.get<SupplierDto[]>(

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
@@ -44,6 +45,10 @@ public class SaleService
         var list = await _sales.GetAllAsync(ct);
         return list.Select(s => MapToDto(s, [], [])).ToList();
     }
+
+    public Task<PagedResult<SaleListItemDto>> GetPagedAsync(
+        int page, int pageSize, string? search, string? status, string? paymentMethod, CancellationToken ct = default)
+        => _sales.GetPagedAsync(page, pageSize, search, status, paymentMethod, ct);
 
     public async Task<SaleDto> GetByIdAsync(Guid id, CancellationToken ct = default)
     {

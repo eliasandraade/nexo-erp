@@ -1,6 +1,22 @@
 import { apiClient } from "@/services/api-client";
 import type { CustomerDto, CustomerFormInput } from "../types";
 import { serializeAddress } from "../types";
+import type { PagedResult } from "@/modules/sales/api/sales.api";
+
+export interface CustomersPagedParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  includeInactive?: boolean;
+}
+
+export function fetchCustomersPaged(params: CustomersPagedParams = {}): Promise<PagedResult<CustomerDto>> {
+  const { page = 1, pageSize = 25, search, includeInactive = false } = params;
+  const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (search)          qs.set("search", search);
+  if (includeInactive) qs.set("includeInactive", "true");
+  return apiClient.get<PagedResult<CustomerDto>>(`/customers/paged?${qs}`);
+}
 
 export function fetchCustomers(includeInactive = false): Promise<CustomerDto[]> {
   return apiClient.get<CustomerDto[]>(

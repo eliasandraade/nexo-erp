@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Features.Suppliers;
 using Nexo.Domain.Entities;
 using Nexo.Infrastructure.Persistence;
 
@@ -22,6 +24,52 @@ public class SupplierRepository : ISupplierRepository
             .Where(x => includeInactive || x.IsActive)
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
+
+    public async Task<PagedResult<SupplierDto>> GetPagedAsync(
+        int page, int pageSize, string? search, bool includeInactive, CancellationToken ct = default)
+    {
+        var q = _context.Suppliers
+            .AsNoTracking()
+            .Where(x => includeInactive || x.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLower();
+            q = q.Where(x =>
+                x.Name.ToLower().Contains(term) ||
+                x.DocumentNumber.Contains(term) ||
+                (x.Email       != null && x.Email.ToLower().Contains(term)) ||
+                (x.Phone       != null && x.Phone.Contains(term)) ||
+                (x.ContactName != null && x.ContactName.ToLower().Contains(term)));
+        }
+
+        var total = await q.CountAsync(ct);
+
+        var items = await q
+            .OrderBy(x => x.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(s => new SupplierDto(
+                s.Id,
+                s.PersonType.ToString(),
+                s.Name,
+                s.TradeName,
+                s.DocumentType.ToString(),
+                s.DocumentNumber,
+                s.Email,
+                s.Phone,
+                s.ContactName,
+                s.AddressJson,
+                s.PaymentTermsDays,
+                s.BankInfoJson,
+                s.Notes,
+                s.IsActive,
+                s.CreatedAt,
+                s.UpdatedAt))
+            .ToListAsync(ct);
+
+        return new PagedResult<SupplierDto>(items, total, page, pageSize);
+    }
 
     public async Task<bool> DocumentExistsAsync(string documentNumber, Guid? excludeId = null, CancellationToken ct = default)
         => await _context.Suppliers.AnyAsync(

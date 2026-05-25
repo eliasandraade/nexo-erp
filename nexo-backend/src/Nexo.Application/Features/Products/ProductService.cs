@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
@@ -26,6 +27,13 @@ public class ProductService
         var list = await _products.GetAllAsync(includeInactive, isIngredient, ct);
         return list.Select(MapToDto).ToList();
     }
+
+    public Task<PagedResult<ProductDto>> GetPagedAsync(
+        int page, int pageSize,
+        string? search, bool includeInactive, bool? isIngredient,
+        Guid? categoryId, string? unit,
+        CancellationToken ct = default)
+        => _products.GetPagedAsync(page, pageSize, search, includeInactive, isIngredient, categoryId, unit, ct);
 
     public async Task<ProductDto> GetByIdAsync(Guid id, CancellationToken ct = default)
     {

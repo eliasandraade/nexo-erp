@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexo.Application.Common;
 using Nexo.Application.Features.Products;
 
 namespace Nexo.Api.Controllers;
@@ -19,6 +20,23 @@ public class ProductsController : ControllerBase
         [FromQuery] bool? isIngredient = null,
         CancellationToken ct = default)
         => Ok(await _service.GetAllAsync(includeInactive, isIngredient, ct));
+
+    [HttpGet("paged")]
+    public async Task<ActionResult<PagedResult<ProductDto>>> GetPaged(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        [FromQuery] string? search = null,
+        [FromQuery] bool includeInactive = false,
+        [FromQuery] bool? isIngredient = null,
+        [FromQuery] Guid? categoryId = null,
+        [FromQuery] string? unit = null,
+        CancellationToken ct = default)
+    {
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+        return Ok(await _service.GetPagedAsync(
+            page, pageSize, search, includeInactive, isIngredient, categoryId, unit, ct));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProductDto>> GetById(Guid id, CancellationToken ct)

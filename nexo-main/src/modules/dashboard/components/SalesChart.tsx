@@ -8,56 +8,35 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { listSales } from "@/modules/sales/api/sales.api";
+import { useDashboardSummary } from "@/modules/dashboard/hooks/useDashboardSummary";
 
-type Period = "7d" | "30d" | "Todos";
+type Period = "7d" | "30d";
 
-const PERIODS: Period[] = ["7d", "30d", "Todos"];
-
-function getDaysCutoff(period: Period): number {
-  if (period === "7d")  return 7;
-  if (period === "30d") return 30;
-  return 365;
-}
+const PERIODS: Period[] = ["7d", "30d"];
 
 export function SalesChart() {
   const [period, setPeriod] = useState<Period>("7d");
-
-  const { data: sales = [], isLoading } = useQuery({
-    queryKey: ["sales"],
-    queryFn:  listSales,
-  });
+  const { data: summary, isLoading } = useDashboardSummary();
 
   const chartData = useMemo(() => {
-    const cutoff = Date.now() - getDaysCutoff(period) * 24 * 60 * 60 * 1000;
+    const rows = summary?.salesByDay ?? [];
 
-    const byDate = new Map<string, number>();
-    for (const sale of sales) {
-      if (sale.status === "Cancelled") continue;
-      const timestamp = sale.confirmedAt ?? sale.createdAt;
-      const ts        = new Date(timestamp).getTime();
-      if (ts < cutoff) continue;
-      // Key as YYYY-MM-DD for deterministic sort
-      const isoDate = new Date(timestamp).toISOString().split("T")[0];
-      byDate.set(isoDate, (byDate.get(isoDate) ?? 0) + sale.total);
-    }
+    const cutoff = period === "7d"
+      ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+      : null;
 
-    return Array.from(byDate.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([isoDate, vendas]) => {
-        const d    = new Date(isoDate + "T12:00:00");
+    return rows
+      .filter((r) => cutoff === null || r.date >= cutoff)
+      .map((r) => {
+        const d    = new Date(r.date + "T12:00:00");
         const name = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-        return { name, vendas: Math.round(vendas * 100) / 100 };
+        return { name, vendas: r.revenue };
       });
-  }, [sales, period]);
+  }, [summary?.salesByDay, period]);
 
   return (
-    <div
-      className="bg-card rounded-xl border border-border p-5 animate-fade-in"
-      style={{ animationDelay: "300ms" }}
-    >
+    <div className="bg-card rounded-xl border border-border p-5 animate-fade-in">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h3 className="text-sm font-semibold text-foreground">Vendas</h3>

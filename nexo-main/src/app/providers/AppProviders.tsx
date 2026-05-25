@@ -9,11 +9,12 @@ import { Toaster } from "@/components/ui/sonner";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // 30-second freshness window prevents redundant refetches while
-      // navigating between pages. Mutations that change data call
-      // queryClient.invalidateQueries() explicitly to force immediate refresh.
       staleTime: 30_000,
       retry: 1,
+      // Disabling window-focus refetch prevents 4-6 simultaneous requests
+      // every time the user alt-tabs back to the app. Mutations still call
+      // invalidateQueries() explicitly when data actually changes.
+      refetchOnWindowFocus: false,
     },
   },
 });

@@ -32,6 +32,35 @@ export interface AdjustStockRequest {
   notes?: string;
 }
 
+// ── Server-side paged stock item (enriched from JOIN with Product + Category) ──
+
+export interface StockPagedItemDto {
+  id: string;
+  productId: string;
+  productName: string;
+  productCode: string;
+  unit: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  minStockQuantity: number | null;
+  currentQuantity: number;
+  reservedQuantity: number;
+  availableQuantity: number;
+  lastMovementAt: string | null;
+}
+
+export interface StockPagedResponse {
+  items: StockPagedItemDto[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+  belowMinCount: number;
+  noTurnoverCount: number;
+}
+
 // ── Enriched type (StockItemDto + Product fields for display) ─────────────────
 // Built client-side by joining StockItemDto with ProductDto from the products cache.
 

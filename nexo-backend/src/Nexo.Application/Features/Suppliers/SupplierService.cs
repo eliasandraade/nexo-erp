@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
@@ -21,6 +22,10 @@ public class SupplierService
         var list = await _suppliers.GetAllAsync(includeInactive, ct);
         return list.Select(MapToDto).ToList();
     }
+
+    public Task<PagedResult<SupplierDto>> GetPagedAsync(
+        int page, int pageSize, string? search, bool includeInactive, CancellationToken ct = default)
+        => _suppliers.GetPagedAsync(page, pageSize, search, includeInactive, ct);
 
     public async Task<SupplierDto> GetByIdAsync(Guid id, CancellationToken ct = default)
     {

@@ -10,19 +10,23 @@ import { ModuleRoute } from "./ModuleRoute";
 import { PlatformRoute } from "./PlatformRoute";
 import { RoleRoute } from "./RoleRoute";
 
-// ── Static imports: public-facing pages on the critical path ─────────────────
-// These must load immediately — no spinner before they appear.
-import LandingPage        from "@/modules/landing/pages/LandingPage";
-import LoginPage          from "@/modules/auth/pages/LoginPage";
-import RegisterPage       from "@/modules/auth/pages/RegisterPage";
-import CheckEmailPage     from "@/modules/auth/pages/CheckEmailPage";
-import VerifyEmailPage    from "@/modules/auth/pages/VerifyEmailPage";
-import PortalMenuPage     from "@/modules/portal/pages/PortalMenuPage";
-import PortalTrackingPage from "@/modules/portal/pages/PortalTrackingPage";
-import NotFoundPage       from "@/pages/NotFoundPage";
+// ── Static imports: auth pages only — absolute critical path ─────────────────
+// Login/Register must render without a spinner (auth redirect lands here).
+import LoginPage      from "@/modules/auth/pages/LoginPage";
+import RegisterPage   from "@/modules/auth/pages/RegisterPage";
+import CheckEmailPage from "@/modules/auth/pages/CheckEmailPage";
+import VerifyEmailPage from "@/modules/auth/pages/VerifyEmailPage";
+import NotFoundPage   from "@/pages/NotFoundPage";
 
-// ── Lazy imports: authenticated app pages ────────────────────────────────────
-// Each group becomes its own chunk. Loads only when the user navigates there.
+// ── Lazy imports: everything else ────────────────────────────────────────────
+// Public pages that aren't on the auth critical path (landing, portal) +
+// all authenticated app pages. Each group becomes its own chunk.
+
+// Public — lazy because app users never visit these
+const LandingPage        = lazy(() => import("@/modules/landing/pages/LandingPage"));
+const PortalMenuPage     = lazy(() => import("@/modules/portal/pages/PortalMenuPage"));
+const PortalTrackingPage = lazy(() => import("@/modules/portal/pages/PortalTrackingPage"));
+
 const ImpersonatePage       = lazy(() => import("@/pages/ImpersonatePage"));
 const PerfilPage            = lazy(() => import("@/modules/profile/pages/PerfilPage"));
 

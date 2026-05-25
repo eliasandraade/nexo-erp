@@ -1,62 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMemo } from "react";
-import { listSales } from "@/modules/sales/api/sales.api";
+import { useDashboardSummary } from "@/modules/dashboard/hooks/useDashboardSummary";
 import { formatCurrency } from "@/lib/formatters";
 import { Link } from "react-router-dom";
 
-interface TopProductRow {
-  productCode:       string;
-  productDescription: string;
-  quantitySold:      number;
-  revenueGenerated:  number;
-}
-
 export function TopProducts() {
-  const { data: sales = [], isLoading } = useQuery({
-    queryKey: ["sales"],
-    queryFn:  listSales,
-  });
-
-  const products = useMemo((): TopProductRow[] => {
-    const byProduct = new Map<
-      string,
-      { code: string; description: string; qty: number; revenue: number }
-    >();
-
-    for (const sale of sales) {
-      if (sale.status === "Cancelled") continue;
-      for (const item of sale.items) {
-        if (!byProduct.has(item.productId)) {
-          byProduct.set(item.productId, {
-            code:        item.productCode,
-            description: item.productName,
-            qty:         0,
-            revenue:     0,
-          });
-        }
-        const entry = byProduct.get(item.productId)!;
-        entry.qty     += item.quantity;
-        entry.revenue += item.total;
-      }
-    }
-
-    return Array.from(byProduct.values())
-      .map((p) => ({
-        productCode:        p.code,
-        productDescription: p.description,
-        quantitySold:       p.qty,
-        revenueGenerated:   Math.round(p.revenue * 100) / 100,
-      }))
-      .sort((a, b) => b.revenueGenerated - a.revenueGenerated)
-      .slice(0, 5);
-  }, [sales]);
+  const { data: summary, isLoading } = useDashboardSummary();
+  const products = summary?.topProducts ?? [];
 
   return (
-    <div
-      className="bg-card rounded-xl border border-border p-5 animate-fade-in"
-      style={{ animationDelay: "375ms" }}
-    >
+    <div className="bg-card rounded-xl border border-border p-5 animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-foreground">Produtos mais vendidos</h3>
         {products.length > 0 && (
@@ -83,18 +35,16 @@ export function TopProducts() {
       ) : (
         <div className="space-y-3">
           {products.map((p, i) => (
-            <div key={p.productCode} className="flex items-center gap-3">
+            <div key={p.productId} className="flex items-center gap-3">
               <span className="text-xs font-bold text-muted-foreground w-5 text-right shrink-0">
                 {i + 1}
               </span>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">
-                  {p.productDescription}
-                </p>
+                <p className="text-sm font-medium text-foreground truncate">{p.productName}</p>
                 <p className="text-xs text-muted-foreground">{p.quantitySold} un.</p>
               </div>
               <span className="text-sm font-semibold text-foreground whitespace-nowrap">
-                {formatCurrency(p.revenueGenerated)}
+                {formatCurrency(p.revenue)}
               </span>
             </div>
           ))}

@@ -15,6 +15,24 @@ const POLLING_INTERVAL = 10_000;
 // Total wait before fallback: 1s + 3s + 5s = 9s.
 const INITIAL_RETRY_DELAYS_MS = [1_000, 3_000, 5_000];
 
+/**
+ * Custom SignalR logger that suppresses the "stopped during negotiation" message.
+ *
+ * When the component unmounts while start() is still in progress, the cleanup
+ * calls stop(), which aborts the in-flight negotiation request. SignalR logs
+ * "Failed to start the connection: Error: The connection was stopped during
+ * negotiation." internally (before rejecting the Promise), producing console
+ * noise. Our cancelled-flag in attemptConnect already handles this correctly
+ * (no retry, no polling) — we just need to silence the log.
+ */
+const silentNegotiationLogger: signalR.ILogger = {
+  log(level: signalR.LogLevel, message: string) {
+    if (message.includes("stopped during negotiation")) return;
+    if (level >= signalR.LogLevel.Error)   console.error(`[SignalR] ${message}`);
+    else if (level >= signalR.LogLevel.Warning) console.warn(`[SignalR] ${message}`);
+  },
+};
+
 // VITE_API_BASE_URL ends with "/api" (e.g. "https://api.example.com/api").
 // SignalR hubs live at the root, so strip the "/api" suffix.
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/api").replace(/\/api$/, "");
@@ -90,7 +108,7 @@ export function useKitchenSocket(
         transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.LongPolling,
       })
       .withAutomaticReconnect(RECONNECT_DELAYS)
-      .configureLogging(signalR.LogLevel.Warning)
+      .configureLogging(silentNegotiationLogger)
       .build();
 
     connectionRef.current = connection;

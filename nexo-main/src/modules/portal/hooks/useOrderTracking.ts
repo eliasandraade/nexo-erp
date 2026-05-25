@@ -6,7 +6,7 @@ export function useOrderTracking(token: string) {
     queryKey: ["order-tracking", token],
     queryFn:  () => trackOrder(token),
     refetchInterval: 30_000,
-    staleTime: 0,
+    staleTime: 30_000,
     retry: false,
   });
 }

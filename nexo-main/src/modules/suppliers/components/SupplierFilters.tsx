@@ -7,16 +7,11 @@ interface SupplierFiltersProps {
   onSearchChange: (v: string) => void;
   isActive: string;
   onIsActiveChange: (v: string) => void;
-  city: string;
-  onCityChange: (v: string) => void;
-  cities: string[];
 }
 
 export function SupplierFilters({
   search, onSearchChange,
   isActive, onIsActiveChange,
-  city, onCityChange,
-  cities,
 }: SupplierFiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -35,15 +30,6 @@ export function SupplierFilters({
           <SelectItem value="all">Todos</SelectItem>
           <SelectItem value="true">Ativo</SelectItem>
           <SelectItem value="false">Inativo</SelectItem>
-        </SelectContent>
-      </Select>
-      <Select value={city} onValueChange={onCityChange}>
-        <SelectTrigger className="w-[180px]"><SelectValue placeholder="Cidade" /></SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">Todas as cidades</SelectItem>
-          {cities.map((c) => (
-            <SelectItem key={c} value={c}>{c}</SelectItem>
-          ))}
         </SelectContent>
       </Select>
     </div>

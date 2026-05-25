@@ -1,9 +1,9 @@
+import { useEffect } from "react";
 import { CheckCircle2, Circle, ChevronRight, X } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import { useProducts } from "@/modules/products/hooks/use-products";
 import { useOpenSession } from "@/modules/cash/hooks/use-cash";
-import { listSales } from "@/modules/sales/api/sales.api";
+import { useDashboardSummary } from "@/modules/dashboard/hooks/useDashboardSummary";
 
 interface Props {
   onDismiss: () => void;
@@ -20,24 +20,20 @@ interface Step {
 export function SetupCard({ onDismiss }: Props) {
   const { data: products = [],  isLoading: loadingProducts } = useProducts();
   const { data: cashSession,    isLoading: loadingCash }     = useOpenSession();
-  const { data: sales = [],     isLoading: loadingSales }    = useQuery({
-    queryKey: ["sales"],
-    queryFn:  listSales,
-  });
+  const { data: summary,        isLoading: loadingSummary }  = useDashboardSummary();
 
-  const isLoading = loadingProducts || loadingCash || loadingSales;
+  const isLoading = loadingProducts || loadingCash || loadingSummary;
 
   const hasProduct  = products.length > 0;
-  // Caixa is considered done if currently open OR if sales already exist (means caixa was opened before)
-  const hasCash     = cashSession?.status === "Open" || sales.length > 0;
-  const hasSale     = sales.length > 0;
+  const hasCash     = cashSession?.status === "Open" || (summary?.totalSales ?? 0) > 0;
+  const hasSale     = (summary?.totalSales ?? 0) > 0;
   const allDone     = hasProduct && hasCash && hasSale;
 
-  // Auto-dismiss silently once everything is set up
-  if (!isLoading && allDone) {
-    onDismiss();
-    return null;
-  }
+  useEffect(() => {
+    if (!isLoading && allDone) onDismiss();
+  }, [isLoading, allDone, onDismiss]);
+
+  if (!isLoading && allDone) return null;
 
   const steps: Step[] = [
     {

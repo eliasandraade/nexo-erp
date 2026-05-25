@@ -1,21 +1,34 @@
 import { Badge } from "@/components/ui/badge";
-import { saleStatusLabels } from "../types";
-import type { SaleStatus } from "../types";
 
-interface SaleStatusBadgeProps {
-  status: SaleStatus;
-}
+const labelMap: Record<string, string> = {
+  Draft:     "Rascunho",
+  Confirmed: "Confirmada",
+  Paid:      "Paga",
+  Cancelled: "Cancelada",
+  // legacy frontend values
+  completed:           "Concluída",
+  cancelled:           "Cancelada",
+  partially_cancelled: "Parc. cancelada",
+};
 
-const variantMap: Record<SaleStatus, "default" | "destructive" | "secondary"> = {
-  completed: "default",
-  cancelled: "destructive",
+const variantMap: Record<string, "default" | "destructive" | "secondary"> = {
+  Draft:     "secondary",
+  Confirmed: "default",
+  Paid:      "default",
+  Cancelled: "destructive",
+  completed:           "default",
+  cancelled:           "destructive",
   partially_cancelled: "secondary",
 };
 
+interface SaleStatusBadgeProps {
+  status: string;
+}
+
 export function SaleStatusBadge({ status }: SaleStatusBadgeProps) {
   return (
-    <Badge variant={variantMap[status]}>
-      {saleStatusLabels[status]}
+    <Badge variant={variantMap[status] ?? "secondary"}>
+      {labelMap[status] ?? status}
     </Badge>
   );
 }

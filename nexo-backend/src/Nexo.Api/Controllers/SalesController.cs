@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Attributes;
+using Nexo.Application.Common;
 using Nexo.Application.Features.Sales;
 
 namespace Nexo.Api.Controllers;
@@ -18,6 +19,20 @@ public class SalesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SaleDto>>> GetAll(CancellationToken ct)
         => Ok(await _service.GetAllAsync(ct));
+
+    [HttpGet("paged")]
+    public async Task<ActionResult<PagedResult<SaleListItemDto>>> GetPaged(
+        [FromQuery] int page            = 1,
+        [FromQuery] int pageSize        = 25,
+        [FromQuery] string? search      = null,
+        [FromQuery] string? status      = null,
+        [FromQuery] string? paymentMethod = null,
+        CancellationToken ct = default)
+    {
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        return Ok(await _service.GetPagedAsync(page, pageSize, search, status, paymentMethod, ct));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<SaleDto>> GetById(Guid id, CancellationToken ct)

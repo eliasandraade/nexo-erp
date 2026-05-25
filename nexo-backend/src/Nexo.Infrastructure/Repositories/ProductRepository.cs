@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Features.Products;
 using Nexo.Domain.Entities;
+using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Infrastructure.Repositories;
@@ -42,10 +45,53 @@ public class ProductRepository : IProductRepository
         bool? isIngredient = null,
         CancellationToken ct = default)
         => await _context.Products
+            .AsNoTracking()
             .Where(x => includeInactive || x.IsActive)
             .Where(x => isIngredient == null || x.IsIngredient == isIngredient)
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
+
+    public async Task<PagedResult<ProductDto>> GetPagedAsync(
+        int page, int pageSize,
+        string? search, bool includeInactive, bool? isIngredient,
+        Guid? categoryId, string? unit,
+        CancellationToken ct = default)
+    {
+        var q = _context.Products.AsNoTracking()
+            .Where(x => includeInactive || x.IsActive)
+            .Where(x => isIngredient == null || x.IsIngredient == isIngredient);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLower();
+            q = q.Where(x =>
+                x.Name.ToLower().Contains(s) ||
+                x.Code.ToLower().Contains(s) ||
+                (x.Barcode != null && x.Barcode.ToLower().Contains(s)));
+        }
+
+        if (categoryId.HasValue)
+            q = q.Where(x => x.CategoryId == categoryId.Value);
+
+        if (!string.IsNullOrWhiteSpace(unit) &&
+            Enum.TryParse<ProductUnit>(unit, ignoreCase: true, out var unitEnum))
+            q = q.Where(x => x.Unit == unitEnum);
+
+        var total = await q.CountAsync(ct);
+        var items = await q
+            .OrderBy(x => x.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(p => new ProductDto(
+                p.Id, p.Code, p.Barcode, p.Name, p.Description, p.CategoryId,
+                p.Unit.ToString(), p.CostPrice, p.SalePrice, p.TrackStock,
+                p.MinStockQuantity, p.MaxStockQuantity, p.IsActive,
+                p.IsMenuVisible, p.IsIngredient, p.ImageUrl,
+                p.CreatedAt, p.UpdatedAt))
+            .ToListAsync(ct);
+
+        return new PagedResult<ProductDto>(items, total, page, pageSize);
+    }
 
     public async Task<bool> CodeExistsAsync(string code, Guid? excludeId = null, CancellationToken ct = default)
         => await _context.Products.AnyAsync(

@@ -10,27 +10,35 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { SaleStatusBadge } from "./SaleStatusBadge";
-import { paymentMethodLabels } from "../types";
-import type { CompletedSale } from "../types";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
+import type { SaleListItemDto } from "../api/sales.api";
+
+const backendMethodLabels: Record<string, string> = {
+  Cash:     "Dinheiro",
+  Pix:      "PIX",
+  Debit:    "Débito",
+  Credit:   "Crédito",
+  Transfer: "Transferência",
+  Check:    "Cheque",
+  Mixed:    "Misto",
+  Other:    "Outro",
+};
+
+function itemsSummary(dto: SaleListItemDto): string {
+  if (dto.itemCount === 0) return "—";
+  if (dto.itemCount === 1 && dto.firstItemName) {
+    return `${dto.totalQuantity}x ${dto.firstItemName}`;
+  }
+  return `${dto.totalQuantity} itens (${dto.itemCount} produtos)`;
+}
+
+function paymentSummary(dto: SaleListItemDto): string {
+  if (dto.paymentMethods.length === 0) return "—";
+  return dto.paymentMethods.map((m) => backendMethodLabels[m] ?? m).join(" + ");
+}
 
 interface SalesTableProps {
-  sales: CompletedSale[];
-}
-
-function itemsSummary(sale: CompletedSale): string {
-  const total = sale.items.reduce((acc, i) => acc + i.quantity, 0);
-  if (sale.items.length === 1) {
-    return `${total}x ${sale.items[0].description}`;
-  }
-  return `${total} itens (${sale.items.length} produtos)`;
-}
-
-function paymentSummary(sale: CompletedSale): string {
-  if (sale.payments.length === 1) {
-    return paymentMethodLabels[sale.payments[0].method];
-  }
-  return sale.payments.map((p) => paymentMethodLabels[p.method]).join(" + ");
+  sales: SaleListItemDto[];
 }
 
 export function SalesTable({ sales }: SalesTableProps) {
@@ -40,7 +48,7 @@ export function SalesTable({ sales }: SalesTableProps) {
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-32">ID</TableHead>
+          <TableHead className="w-20">#</TableHead>
           <TableHead>Data / Hora</TableHead>
           <TableHead>Operador</TableHead>
           <TableHead>Itens</TableHead>
@@ -58,12 +66,12 @@ export function SalesTable({ sales }: SalesTableProps) {
             onClick={() => navigate(`/vendas/${sale.id}`)}
           >
             <TableCell className="font-mono text-xs text-muted-foreground">
-              {sale.id}
+              #{sale.number}
             </TableCell>
             <TableCell className="text-sm tabular-nums">
               {formatDateTime(sale.timestamp)}
             </TableCell>
-            <TableCell className="text-sm">{sale.operator}</TableCell>
+            <TableCell className="text-sm">{sale.soldByName}</TableCell>
             <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
               {itemsSummary(sale)}
             </TableCell>
@@ -74,7 +82,7 @@ export function SalesTable({ sales }: SalesTableProps) {
               {paymentSummary(sale)}
             </TableCell>
             <TableCell>
-              <SaleStatusBadge status={sale.status} />
+              <SaleStatusBadge status={sale.status as never} />
             </TableCell>
             <TableCell onClick={(e) => e.stopPropagation()}>
               <Button

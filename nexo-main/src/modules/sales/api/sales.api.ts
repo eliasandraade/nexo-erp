@@ -84,7 +84,51 @@ export interface ConfirmSaleRequest {
   taxAmount?: number;
 }
 
+// ── Paginated list DTO ────────────────────────────────────────────────────────
+
+export interface SaleListItemDto {
+  id: string;
+  number: number;
+  status: string;
+  customerId?: string | null;
+  customerName?: string | null;
+  soldByName: string;
+  total: number;
+  timestamp: string;
+  itemCount: number;
+  totalQuantity: number;
+  firstItemName?: string | null;
+  paymentMethods: string[];
+}
+
+export interface PagedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+export interface SalesPagedParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: string;
+  paymentMethod?: string;
+}
+
 // ── API functions ─────────────────────────────────────────────────────────────
+
+export function listSalesPaged(params: SalesPagedParams = {}): Promise<PagedResult<SaleListItemDto>> {
+  const { page = 1, pageSize = 25, search, status, paymentMethod } = params;
+  const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (search)        qs.set("search", search);
+  if (status)        qs.set("status", status);
+  if (paymentMethod) qs.set("paymentMethod", paymentMethod);
+  return apiClient.get<PagedResult<SaleListItemDto>>(`/sales/paged?${qs}`);
+}
 
 export function listSales(): Promise<SaleDto[]> {
   return apiClient.get<SaleDto[]>("/sales");

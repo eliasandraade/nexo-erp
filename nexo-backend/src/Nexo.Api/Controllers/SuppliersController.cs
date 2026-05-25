@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexo.Application.Common;
 using Nexo.Application.Features.Suppliers;
 
 namespace Nexo.Api.Controllers;
@@ -18,6 +19,19 @@ public class SuppliersController : ControllerBase
         [FromQuery] bool includeInactive = false,
         CancellationToken ct = default)
         => Ok(await _service.GetAllAsync(includeInactive, ct));
+
+    [HttpGet("paged")]
+    public async Task<ActionResult<PagedResult<SupplierDto>>> GetPaged(
+        [FromQuery] int page             = 1,
+        [FromQuery] int pageSize         = 25,
+        [FromQuery] string? search       = null,
+        [FromQuery] bool includeInactive = false,
+        CancellationToken ct = default)
+    {
+        page     = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        return Ok(await _service.GetPagedAsync(page, pageSize, search, includeInactive, ct));
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<SupplierDto>> GetById(Guid id, CancellationToken ct)

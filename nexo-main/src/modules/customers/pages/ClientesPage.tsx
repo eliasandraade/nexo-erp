@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -6,49 +6,52 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Users } from "lucide-react";
-import { useCustomers } from "../hooks/use-customers";
-import { parseAddress } from "../types";
+import { DataPagination } from "@/components/shared/DataPagination";
 import { CustomerFilters } from "../components/CustomerFilters";
 import { CustomerTable } from "../components/CustomerTable";
+import { useCustomersList } from "../hooks/useCustomersList";
+
+const PAGE_SIZE = 25;
 
 export default function ClientesPage() {
   const navigate = useNavigate();
-  const { data: customers, isLoading, isError } = useCustomers(true);
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch]         = useState("");
   const [personType, setPersonType] = useState("all");
-  const [isActive, setIsActive] = useState("all");
-  const [city, setCity] = useState("all");
+  const [isActive, setIsActive]     = useState("all");
+  const [page, setPage]             = useState(1);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const cities = useMemo(() => {
-    if (!customers) return [];
-    const citySet = new Set<string>();
-    for (const c of customers) {
-      const addr = parseAddress(c.addressJson);
-      if (addr.city) citySet.add(addr.city);
-    }
-    return [...citySet].sort();
-  }, [customers]);
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search]);
 
-  const filtered = useMemo(() => {
-    if (!customers) return [];
-    return customers.filter((c) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        !q ||
-        c.name.toLowerCase().includes(q) ||
-        c.documentNumber.includes(q) ||
-        (c.phone ?? "").includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q);
-      const matchType = personType === "all" || c.personType === personType;
-      const matchActive =
-        isActive === "all" ||
-        (isActive === "true" ? c.isActive : !c.isActive);
-      const addr = parseAddress(c.addressJson);
-      const matchCity = city === "all" || addr.city === city;
-      return matchSearch && matchType && matchActive && matchCity;
-    });
-  }, [customers, search, personType, isActive, city]);
+  const { data, isLoading, isError } = useCustomersList({
+    page,
+    pageSize: PAGE_SIZE,
+    search:          debouncedSearch || undefined,
+    includeInactive: isActive === "all" || isActive === "false",
+  });
+
+  const allItems   = data?.items ?? [];
+  const totalPages = data?.totalPages ?? 1;
+  const totalCount = data?.totalCount ?? 0;
+
+  const customers = personType === "all"
+    ? allItems
+    : allItems.filter((c) => c.personType === personType);
+
+  const filtered = isActive === "false"
+    ? customers.filter((c) => !c.isActive)
+    : isActive === "true"
+    ? customers.filter((c) => c.isActive)
+    : customers;
 
   return (
     <div className="space-y-6">
@@ -65,11 +68,9 @@ export default function ClientesPage() {
       <SectionCard>
         <div className="space-y-4">
           <CustomerFilters
-            search={search} onSearchChange={setSearch}
-            personType={personType} onPersonTypeChange={setPersonType}
-            isActive={isActive} onIsActiveChange={setIsActive}
-            city={city} onCityChange={setCity}
-            cities={cities}
+            search={search} onSearchChange={(v) => { setSearch(v); }}
+            personType={personType} onPersonTypeChange={(v) => { setPersonType(v); setPage(1); }}
+            isActive={isActive} onIsActiveChange={(v) => { setIsActive(v); setPage(1); }}
           />
 
           {isLoading && (
@@ -97,8 +98,9 @@ export default function ClientesPage() {
 
           {!isLoading && !isError && filtered.length > 0 && (
             <>
-              <p className="text-xs text-muted-foreground">{filtered.length} cliente(s) encontrado(s)</p>
+              <p className="text-xs text-muted-foreground">{totalCount} cliente(s) encontrado(s)</p>
               <CustomerTable customers={filtered} />
+              <DataPagination page={page} totalPages={totalPages} onPageChange={setPage} />
             </>
           )}
         </div>

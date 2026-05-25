@@ -67,6 +67,20 @@ public record SalePaymentDto(
     decimal Amount,
     DateTime? DueDate);
 
+public record SaleListItemDto(
+    Guid Id,
+    int Number,
+    string Status,
+    Guid? CustomerId,
+    string? CustomerName,
+    string SoldByName,
+    decimal Total,
+    DateTime Timestamp,
+    int ItemCount,
+    decimal TotalQuantity,
+    string? FirstItemName,
+    IReadOnlyList<string> PaymentMethods);
+
 public record SaleDto(
     Guid Id,
     int Number,

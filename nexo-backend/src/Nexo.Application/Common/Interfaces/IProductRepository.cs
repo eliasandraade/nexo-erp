@@ -1,3 +1,5 @@
+using Nexo.Application.Common;
+using Nexo.Application.Features.Products;
 using Nexo.Domain.Entities;
 
 namespace Nexo.Application.Common.Interfaces;
@@ -22,6 +24,11 @@ public interface IProductRepository
     Task<IReadOnlyList<Product>> GetAllAsync(
         bool includeInactive = false,
         bool? isIngredient = null,
+        CancellationToken ct = default);
+    Task<PagedResult<ProductDto>> GetPagedAsync(
+        int page, int pageSize,
+        string? search, bool includeInactive, bool? isIngredient,
+        Guid? categoryId, string? unit,
         CancellationToken ct = default);
     Task<bool> CodeExistsAsync(string code, Guid? excludeId = null, CancellationToken ct = default);
     Task AddAsync(Product product, CancellationToken ct = default);

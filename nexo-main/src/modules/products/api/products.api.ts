@@ -1,6 +1,18 @@
 import { apiClient } from "@/services/api-client";
 import type { CategoryDto, ProductDto } from "../types";
 
+// ── Shared pagination type ────────────────────────────────────────────────────
+
+export interface PagedResult<T> {
+  items: T[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
 // ── Products ─────────────────────────────────────────────────────────────────
 
 export function fetchProducts(
@@ -12,6 +24,27 @@ export function fetchProducts(
   if (isIngredient !== undefined) params.set("isIngredient", String(isIngredient));
   const qs = params.toString();
   return apiClient.get<ProductDto[]>(`/products${qs ? `?${qs}` : ""}`);
+}
+
+export interface ProductsPagedParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  includeInactive?: boolean;
+  isIngredient?: boolean;
+  categoryId?: string;
+  unit?: string;
+}
+
+export function fetchProductsPaged(params: ProductsPagedParams = {}): Promise<PagedResult<ProductDto>> {
+  const { page = 1, pageSize = 50, search, includeInactive = false, isIngredient, categoryId, unit } = params;
+  const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+  if (includeInactive) qs.set("includeInactive", "true");
+  if (isIngredient !== undefined) qs.set("isIngredient", String(isIngredient));
+  if (search) qs.set("search", search);
+  if (categoryId) qs.set("categoryId", categoryId);
+  if (unit) qs.set("unit", unit);
+  return apiClient.get<PagedResult<ProductDto>>(`/products/paged?${qs}`);
 }
 
 export function fetchProductById(id: string): Promise<ProductDto> {

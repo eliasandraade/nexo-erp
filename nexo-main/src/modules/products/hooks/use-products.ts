@@ -6,6 +6,7 @@ import {
   fetchCategories,
   fetchProductById,
   fetchProducts,
+  fetchProductsPaged,
   updateProduct,
   createCategory,
   updateCategory,
@@ -13,6 +14,7 @@ import {
   type CreateProductPayload,
   type UpdateProductPayload,
   type CategoryPayload,
+  type ProductsPagedParams,
 } from "../api/products.api";
 
 export const PRODUCTS_KEY = ["products"] as const;
@@ -33,6 +35,15 @@ export function useProduct(id: string | undefined) {
     queryKey: [...PRODUCTS_KEY, id],
     queryFn: () => fetchProductById(id!),
     enabled: !!id,
+  });
+}
+
+export function useProductsPaged(params: ProductsPagedParams) {
+  return useQuery({
+    queryKey: [...PRODUCTS_KEY, "paged", params],
+    queryFn: () => fetchProductsPaged(params),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev,
   });
 }
 

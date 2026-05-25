@@ -30,6 +30,11 @@ public class StockService
         return items.Select(MapToDto).ToList();
     }
 
+    public Task<StockPagedResponse> GetPagedAsync(
+        int page, int pageSize, string? search, string? status,
+        CancellationToken ct = default)
+        => _stock.GetPagedAsync(page, pageSize, search, status, ct);
+
     public async Task<StockItemDto> GetByProductIdAsync(Guid productId, CancellationToken ct = default)
     {
         var item = await _stock.GetByProductIdAsync(productId, ct)
