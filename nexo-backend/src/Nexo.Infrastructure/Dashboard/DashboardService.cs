@@ -147,36 +147,45 @@ public class DashboardService
     private async Task<(int zero, int low, IReadOnlyList<StockAlertDto> alerts)>
         GetStockAlertsAsync(CancellationToken ct)
     {
-        // SQL-level filtering — only fetch items that are actually below threshold
-        var activeStock = _db.StockItems.AsNoTracking()
-            .Where(s => s.Product != null && s.Product.IsActive);
+        // Each query uses its own IQueryable — avoid reusing the same variable across
+        // multiple CountAsync/ToListAsync calls (EF expression tree reuse can fail).
+        // .HasValue/.Value replaced with != null / direct nullable comparison (PostgreSQL-safe).
+        // ?? 0m moved to in-memory mapping — null-coalescing inside SQL Select can fail.
 
-        var zero = await activeStock.CountAsync(s => s.AvailableQuantity <= 0, ct);
-        var low  = await activeStock.CountAsync(
-            s => s.AvailableQuantity > 0
-              && s.Product!.MinStockQuantity.HasValue
-              && s.AvailableQuantity < s.Product.MinStockQuantity.Value, ct);
+        var zero = await _db.StockItems.AsNoTracking()
+            .Where(s => s.Product != null && s.Product.IsActive && s.AvailableQuantity <= 0)
+            .CountAsync(ct);
 
-        // Fetch only items with issues for the alert list (capped at 4)
-        var zeroItems = await activeStock
-            .Where(s => s.AvailableQuantity <= 0)
+        var low = await _db.StockItems.AsNoTracking()
+            .Where(s => s.Product != null && s.Product.IsActive
+                     && s.AvailableQuantity > 0
+                     && s.Product.MinStockQuantity != null
+                     && s.AvailableQuantity < s.Product.MinStockQuantity)
+            .CountAsync(ct);
+
+        var zeroRows = await _db.StockItems.AsNoTracking()
+            .Where(s => s.Product != null && s.Product.IsActive && s.AvailableQuantity <= 0)
             .OrderBy(s => s.Product!.Name)
             .Take(4)
-            .Select(s => new { s.ProductId, Name = s.Product!.Name, s.CurrentQuantity, MinStock = s.Product!.MinStockQuantity ?? 0m, Status = "zero" })
+            .Select(s => new { s.ProductId, Name = s.Product!.Name, s.CurrentQuantity, s.Product.MinStockQuantity })
             .ToListAsync(ct);
 
-        var needed = 4 - zeroItems.Count;
-        var lowItems = needed > 0
-            ? await activeStock
-                .Where(s => s.AvailableQuantity > 0 && s.Product!.MinStockQuantity.HasValue && s.AvailableQuantity < s.Product.MinStockQuantity.Value)
+        var needed = 4 - zeroRows.Count;
+        var lowRows = needed > 0
+            ? await _db.StockItems.AsNoTracking()
+                .Where(s => s.Product != null && s.Product.IsActive
+                         && s.AvailableQuantity > 0
+                         && s.Product.MinStockQuantity != null
+                         && s.AvailableQuantity < s.Product.MinStockQuantity)
                 .OrderBy(s => s.Product!.Name)
                 .Take(needed)
-                .Select(s => new { s.ProductId, Name = s.Product!.Name, s.CurrentQuantity, MinStock = s.Product!.MinStockQuantity ?? 0m, Status = "low" })
+                .Select(s => new { s.ProductId, Name = s.Product!.Name, s.CurrentQuantity, s.Product.MinStockQuantity })
                 .ToListAsync(ct)
             : [];
 
-        var alerts = zeroItems.Concat(lowItems)
-            .Select(s => new StockAlertDto(s.ProductId.ToString(), s.Name, s.CurrentQuantity, s.MinStock, s.Status))
+        var alerts = zeroRows
+            .Select(r => new StockAlertDto(r.ProductId.ToString(), r.Name, r.CurrentQuantity, r.MinStockQuantity ?? 0m, "zero"))
+            .Concat(lowRows.Select(r => new StockAlertDto(r.ProductId.ToString(), r.Name, r.CurrentQuantity, r.MinStockQuantity ?? 0m, "low")))
             .ToList();
 
         return (zero, low, alerts);
