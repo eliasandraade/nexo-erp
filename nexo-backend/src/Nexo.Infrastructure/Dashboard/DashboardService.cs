@@ -152,19 +152,23 @@ public class DashboardService
         // .HasValue/.Value replaced with != null / direct nullable comparison (PostgreSQL-safe).
         // ?? 0m moved to in-memory mapping — null-coalescing inside SQL Select can fail.
 
+        // AvailableQuantity is a computed C# property (CurrentQuantity - ReservedQuantity) — not a DB column.
+        // Use the raw columns directly so EF Core can translate the expression to SQL.
         var zero = await _db.StockItems.AsNoTracking()
-            .Where(s => s.Product != null && s.Product.IsActive && s.AvailableQuantity <= 0)
+            .Where(s => s.Product != null && s.Product.IsActive
+                     && (s.CurrentQuantity - s.ReservedQuantity) <= 0)
             .CountAsync(ct);
 
         var low = await _db.StockItems.AsNoTracking()
             .Where(s => s.Product != null && s.Product.IsActive
-                     && s.AvailableQuantity > 0
+                     && (s.CurrentQuantity - s.ReservedQuantity) > 0
                      && s.Product.MinStockQuantity != null
-                     && s.AvailableQuantity < s.Product.MinStockQuantity)
+                     && (s.CurrentQuantity - s.ReservedQuantity) < s.Product.MinStockQuantity)
             .CountAsync(ct);
 
         var zeroRows = await _db.StockItems.AsNoTracking()
-            .Where(s => s.Product != null && s.Product.IsActive && s.AvailableQuantity <= 0)
+            .Where(s => s.Product != null && s.Product.IsActive
+                     && (s.CurrentQuantity - s.ReservedQuantity) <= 0)
             .OrderBy(s => s.Product!.Name)
             .Take(4)
             .Select(s => new { s.ProductId, Name = s.Product!.Name, s.CurrentQuantity, s.Product.MinStockQuantity })
@@ -174,9 +178,9 @@ public class DashboardService
         var lowRows = needed > 0
             ? await _db.StockItems.AsNoTracking()
                 .Where(s => s.Product != null && s.Product.IsActive
-                         && s.AvailableQuantity > 0
+                         && (s.CurrentQuantity - s.ReservedQuantity) > 0
                          && s.Product.MinStockQuantity != null
-                         && s.AvailableQuantity < s.Product.MinStockQuantity)
+                         && (s.CurrentQuantity - s.ReservedQuantity) < s.Product.MinStockQuantity)
                 .OrderBy(s => s.Product!.Name)
                 .Take(needed)
                 .Select(s => new { s.ProductId, Name = s.Product!.Name, s.CurrentQuantity, s.Product.MinStockQuantity })
