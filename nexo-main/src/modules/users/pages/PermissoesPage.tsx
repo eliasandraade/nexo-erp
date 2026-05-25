@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "../services/userService";
 import type { UserRole, PermissionAction, PermissionMatrix } from "../types";
@@ -62,6 +62,16 @@ export default function PermissoesPage() {
 
   return (
     <div className="space-y-6">
+      {/* ── Mock warning ─────────────────────────────────────────────────────── */}
+      <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3">
+        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <p className="text-sm text-amber-800 dark:text-amber-300">
+          <span className="font-semibold">Funcionalidade em desenvolvimento.</span>{" "}
+          As permissões exibidas são baseadas em configurações locais e não estão persistidas no servidor.
+          Alterações serão perdidas ao recarregar a página.
+        </p>
+      </div>
+
       <PageHeader
         title="Permissões"
         description="Defina os acessos disponíveis por perfil e operação."

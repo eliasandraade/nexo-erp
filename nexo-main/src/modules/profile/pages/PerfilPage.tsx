@@ -100,19 +100,23 @@ export default function PerfilPage() {
   });
 
   // Password form state
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   const changePasswordMutation = useMutation({
     mutationFn: () =>
       profileService.changePassword(session!.userId, {
+        currentPassword,
         newPassword,
         confirmPassword,
       }),
     onSuccess: () => {
       toast.success("Senha alterada com sucesso.");
+      setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     },
@@ -123,6 +127,10 @@ export default function PerfilPage() {
 
   function handlePasswordSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!currentPassword.trim()) {
+      toast.error("Informe a senha atual.");
+      return;
+    }
     if (!newPassword.trim()) {
       toast.error("Informe a nova senha.");
       return;
@@ -268,6 +276,36 @@ export default function PerfilPage() {
       >
         <form onSubmit={handlePasswordSubmit} noValidate>
           <div className="grid sm:grid-cols-2 gap-4 max-w-lg">
+            {/* Senha atual */}
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="currentPassword">Senha atual</Label>
+              <div className="relative max-w-xs">
+                <Input
+                  id="currentPassword"
+                  type={showCurrent ? "text" : "password"}
+                  placeholder="Sua senha atual"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  disabled={changePasswordMutation.isPending}
+                  className="pr-10"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrent((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                  aria-label={showCurrent ? "Ocultar" : "Mostrar"}
+                >
+                  {showCurrent ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
             {/* Nova senha */}
             <div className="space-y-1.5">
               <Label htmlFor="newPassword">Nova senha</Label>
