@@ -78,14 +78,18 @@ public static class DependencyInjection
                 var logger = sp.GetRequiredService<ILogger<RedisCacheService>>();
                 try
                 {
-                    return ConnectionMultiplexer.Connect(redisConnectionString);
+                    var options = ConfigurationOptions.Parse(redisConnectionString);
+                    // Fail-open fast: if Redis is unreachable, don't block each request for 5s.
+                    // 300ms means at most ~1.8s overhead (6 ops × 300ms) instead of 30s+.
+                    options.AbortOnConnectFail = false;
+                    options.ConnectTimeout     = 2000;
+                    options.AsyncTimeout       = 300;
+                    return ConnectionMultiplexer.Connect(options);
                 }
                 catch (Exception ex)
                 {
                     logger.LogWarning(ex,
                         "Redis connection failed. Cache will be degraded (fail-open).");
-                    // Return a fake/noop multiplexer fallback — requests continue without cache.
-                    // In production, this should alert (Redis is required for JWT blacklist).
                     throw;
                 }
             });
