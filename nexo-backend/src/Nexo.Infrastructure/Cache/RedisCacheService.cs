@@ -19,6 +19,11 @@ namespace Nexo.Infrastructure.Cache;
 /// </summary>
 public class RedisCacheService : ICacheService
 {
+    // Guard every Redis call: if SE.Redis ignores AsyncTimeout and keeps the backlog
+    // open for 5 seconds, this per-call timeout guarantees we bail in ≤200ms instead
+    // of blocking the request pipeline for 30s+ when redis.railway.internal is down.
+    private static readonly TimeSpan _callTimeout = TimeSpan.FromMilliseconds(200);
+
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisCacheService> _logger;
 
@@ -40,7 +45,7 @@ public class RedisCacheService : ICacheService
         try
         {
             var db = _redis.GetDatabase();
-            var value = await db.StringGetAsync(key);
+            var value = await db.StringGetAsync(key).WaitAsync(_callTimeout, ct);
 
             if (!value.HasValue) return null;
 
@@ -60,7 +65,7 @@ public class RedisCacheService : ICacheService
         {
             var db = _redis.GetDatabase();
             var json = JsonSerializer.Serialize(value, JsonOptions);
-            await db.StringSetAsync(key, json, ttl);
+            await db.StringSetAsync(key, json, ttl).WaitAsync(_callTimeout, ct);
         }
         catch (Exception ex)
         {
@@ -73,7 +78,7 @@ public class RedisCacheService : ICacheService
         try
         {
             var db = _redis.GetDatabase();
-            await db.KeyDeleteAsync(key);
+            await db.KeyDeleteAsync(key).WaitAsync(_callTimeout, ct);
         }
         catch (Exception ex)
         {
@@ -102,7 +107,7 @@ public class RedisCacheService : ICacheService
         try
         {
             var db = _redis.GetDatabase();
-            return await db.KeyExistsAsync(key);
+            return await db.KeyExistsAsync(key).WaitAsync(_callTimeout, ct);
         }
         catch (Exception ex)
         {
@@ -116,7 +121,7 @@ public class RedisCacheService : ICacheService
         try
         {
             var db = _redis.GetDatabase();
-            await db.StringSetAsync(key, "1", ttl);
+            await db.StringSetAsync(key, "1", ttl).WaitAsync(_callTimeout, ct);
         }
         catch (Exception ex)
         {
