@@ -19,22 +19,13 @@ public class DashboardService
 
     public async Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken ct = default)
     {
-        // Run all queries concurrently — each hits a different table or aggregation
-        var kpisTask        = GetSalesKpisAsync(ct);
-        var topProductsTask = GetTopProductsAsync(ct);
-        var topSellersTask  = GetTopSellersAsync(ct);
-        var salesByDayTask  = GetSalesByDayAsync(ct);
-        var stockTask       = GetStockAlertsAsync(ct);
-        var cashTask        = _db.CashSessions.AnyAsync(c => c.Status == CashSessionStatus.Open, ct);
-
-        await Task.WhenAll(kpisTask, topProductsTask, topSellersTask, salesByDayTask, stockTask, cashTask);
-
-        var (totalSales, cancelledCount, totalRevenue, averageTicket) = await kpisTask;
-        var topProducts    = await topProductsTask;
-        var topSellers     = await topSellersTask;
-        var salesByDay     = await salesByDayTask;
-        var (zeroCount, lowCount, alerts) = await stockTask;
-        var hasOpenCash    = await cashTask;
+        // Sequential — DbContext is not thread-safe for concurrent queries
+        var (totalSales, cancelledCount, totalRevenue, averageTicket) = await GetSalesKpisAsync(ct);
+        var topProducts    = await GetTopProductsAsync(ct);
+        var topSellers     = await GetTopSellersAsync(ct);
+        var salesByDay     = await GetSalesByDayAsync(ct);
+        var (zeroCount, lowCount, alerts) = await GetStockAlertsAsync(ct);
+        var hasOpenCash    = await _db.CashSessions.AnyAsync(c => c.Status == CashSessionStatus.Open, ct);
 
         return new DashboardSummaryDto(
             TotalSales:        totalSales,
