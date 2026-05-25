@@ -6,7 +6,6 @@ interface SectionCardProps {
   children: React.ReactNode;
   className?: string;
   actions?: React.ReactNode;
-  /** Remove padding (for tables that need full bleed) */
   noPadding?: boolean;
 }
 
@@ -21,31 +20,31 @@ export function SectionCard({
   return (
     <div
       className={cn(
-        "bg-card rounded-xl border border-border",
+        "bg-card rounded-lg border border-border shadow-sm",
         !noPadding && "p-5",
         className
       )}
     >
       {(title || actions) && (
-        <div className={cn("flex items-center justify-between", noPadding ? "px-5 pt-5 pb-4" : "mb-5")}>
+        <div className={cn(
+          "flex items-center justify-between",
+          noPadding ? "px-5 pt-4 pb-3" : "mb-4"
+        )}>
           <div>
             {title && (
               <h3 className="text-[13px] font-semibold text-foreground">{title}</h3>
             )}
             {description && (
-              <p className="text-[12px] text-muted-foreground mt-0.5">
-                {description}
-              </p>
+              <p className="text-[12px] text-muted-foreground mt-0.5">{description}</p>
             )}
           </div>
           {actions && <div className="flex items-center gap-2">{actions}</div>}
         </div>
       )}
-      {noPadding && (title || actions) ? (
-        <div className="border-t border-border">{children}</div>
-      ) : (
-        children
-      )}
+      {noPadding && (title || actions)
+        ? <div className="border-t border-border">{children}</div>
+        : children
+      }
     </div>
   );
 }

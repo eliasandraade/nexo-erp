@@ -1,20 +1,20 @@
 import { cn } from "@/lib/utils";
 
-type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral";
+export type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral";
 
 interface StatusBadgeProps {
   label: string;
   variant?: BadgeVariant;
   className?: string;
-  /** Show a colored dot before the label */
   dot?: boolean;
+  size?: "sm" | "md";
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
   success: "bg-success/10 text-success",
   warning: "bg-warning/10 text-warning",
   danger:  "bg-destructive/10 text-destructive",
-  info:    "bg-secondary/10 text-secondary",
+  info:    "bg-primary/10 text-primary",
   neutral: "bg-muted text-muted-foreground",
 };
 
@@ -22,7 +22,7 @@ const dotStyles: Record<BadgeVariant, string> = {
   success: "bg-success",
   warning: "bg-warning",
   danger:  "bg-destructive",
-  info:    "bg-secondary",
+  info:    "bg-primary",
   neutral: "bg-muted-foreground",
 };
 
@@ -31,15 +31,17 @@ export function StatusBadge({
   variant = "neutral",
   className,
   dot = false,
+  size = "sm",
 }: StatusBadgeProps) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium",
-        variantStyles[variant],
-        className
-      )}
-    >
+    <span className={cn(
+      "inline-flex items-center gap-1.5 rounded font-medium whitespace-nowrap",
+      size === "sm"
+        ? "px-1.5 py-0.5 text-[11px]"
+        : "px-2 py-1 text-[12px]",
+      variantStyles[variant],
+      className
+    )}>
       {dot && (
         <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", dotStyles[variant])} />
       )}

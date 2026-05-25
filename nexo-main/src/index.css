@@ -6,25 +6,26 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
+    /* ── Content area ───────────────────────────────────────────────────── */
+    --background: 210 20% 98%;       /* #f8fafc — operational surface     */
+    --foreground: 222 47% 11%;       /* #0f1b35 — near black text         */
 
-    --card: 0 0% 100%;
+    --card: 0 0% 100%;               /* pure white card/table surface     */
     --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 245 100% 65%;
+    --primary: 245 100% 65%;         /* #5B4DFF — brand indigo            */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 91% 60%;
+    --secondary: 217 91% 60%;        /* blue                              */
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted: 210 24% 96%;            /* #f1f4f9 — subtle fill             */
+    --muted-foreground: 215 20% 48%; /* #647d99 — secondary text          */
 
-    --accent: 210 40% 96%;
+    --accent: 210 24% 96%;
     --accent-foreground: 222 47% 11%;
 
     --destructive: 0 84% 60%;
@@ -36,21 +37,22 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
+    --border: 215 24% 90%;           /* #dde5f0 — subtle border           */
+    --input: 215 24% 90%;
     --ring: 245 100% 65%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;                /* 8px — operational, precise        */
 
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 213 31% 75%;
-    --sidebar-primary: 217 91% 60%;
+    /* ── Sidebar — deep navy ────────────────────────────────────────────── */
+    --sidebar-background: 222 54% 8%;     /* #09142c — true deep navy      */
+    --sidebar-foreground: 215 20% 54%;    /* #7d95b4 — idle nav text       */
+    --sidebar-primary: 245 100% 65%;      /* #5B4DFF — brand indigo        */
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 217 91% 60%;
-    --sidebar-muted: 215 16% 47%;
+    --sidebar-accent: 222 46% 13%;        /* #101f3a — hover bg            */
+    --sidebar-accent-foreground: 0 0% 96%;
+    --sidebar-border: 222 46% 12%;        /* #0e1c36 — dividers            */
+    --sidebar-ring: 245 100% 65%;
+    --sidebar-muted: 215 16% 38%;         /* #50698a — section labels      */
   }
 }
 
@@ -62,22 +64,19 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Tabular numbers for all metric/number displays */
+  .tabular-nums { font-variant-numeric: tabular-nums; }
 }
 
 /* Reduced motion — disable entrance + shake + pulse for users who prefer it */
 @media (prefers-reduced-motion: reduce) {
-  .animate-auth-enter {
-    animation: none;
-    opacity: 1;
-    transform: none;
-  }
-  .animate-auth-shake {
-    animation: none;
-  }
-  .animate-pulse-dot {
-    animation: none;
-  }
+  .animate-auth-enter  { animation: none; opacity: 1; transform: none; }
+  .animate-auth-shake  { animation: none; }
+  .animate-pulse-dot   { animation: none; }
 }
 
 /* Auth layout — autofill override so dark inputs don't flash white */
@@ -85,23 +84,25 @@ input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 1000px #151a29 inset !important;
+  -webkit-box-shadow: 0 0 0 1000px #0d1828 inset !important;
   -webkit-text-fill-color: #ffffff !important;
   caret-color: #ffffff;
   transition: background-color 5000s ease-in-out 0s;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
+/* Sidebar scrollbar — very subtle on dark bg */
+.sidebar-scroll::-webkit-scrollbar { width: 4px; }
+.sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--sidebar-border));
+  border-radius: 2px;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+
+/* Content scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--border));
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground));
-}
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }

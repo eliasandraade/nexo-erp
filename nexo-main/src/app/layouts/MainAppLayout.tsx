@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Outlet } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu } from "lucide-react";
 import { AppSidebar, SidebarContent } from "@/components/shared/AppSidebar";
 import { AppHeader } from "@/components/shared/AppHeader";
 
@@ -40,17 +40,20 @@ export function MainAppLayout() {
       {/* Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile hamburger — shown on md and below */}
-        <div className="md:hidden flex items-center h-14 px-4 border-b border-border bg-card shrink-0">
+        <div className="md:hidden flex items-center h-12 px-4 border-b border-border bg-card shrink-0">
           <button
             onClick={() => setDrawerOpen(true)}
-            className="p-2 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             aria-label="Abrir menu"
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-4 w-4" />
           </button>
-          <span className="ml-3 font-display font-bold text-[16px] text-foreground">
-            Ork<span className="text-[#5B4DFF]">en</span>
-          </span>
+          <div className="ml-3 flex items-center gap-1.5">
+            <div className="w-5 h-5 rounded bg-[#5B4DFF] flex items-center justify-center">
+              <span className="text-[9px] font-black text-white leading-none">N</span>
+            </div>
+            <span className="font-display font-bold text-[14px] text-foreground">Nexo</span>
+          </div>
         </div>
 
         {/* Desktop header */}
@@ -58,7 +61,7 @@ export function MainAppLayout() {
           <AppHeader />
         </div>
 
-        <main className="flex-1 p-4 md:p-6 overflow-auto">
+        <main className="flex-1 p-4 md:p-6 overflow-auto min-w-0">
           <Outlet />
         </main>
       </div>
