@@ -45,7 +45,6 @@ const FornecedoresPage      = lazy(() => import("@/modules/suppliers/pages/Forne
 const SupplierFormPage      = lazy(() => import("@/modules/suppliers/pages/SupplierFormPage"));
 const UsuariosPage          = lazy(() => import("@/modules/users/pages/UsuariosPage"));
 const UserFormPage          = lazy(() => import("@/modules/users/pages/UserFormPage"));
-const PermissoesPage        = lazy(() => import("@/modules/users/pages/PermissoesPage"));
 const CaixaPage             = lazy(() => import("@/modules/cash/pages/CaixaPage"));
 const AuditoriaPage         = lazy(() => import("@/modules/audit/pages/AuditoriaPage"));
 const ConfiguracoesPage     = lazy(() => import("@/modules/settings/pages/ConfiguracoesPage"));
@@ -218,7 +217,6 @@ export function AppRouter() {
                   <Route path="/usuarios"            element={<UsuariosPage />} />
                   <Route path="/usuarios/novo"       element={<UserFormPage />} />
                   <Route path="/usuarios/:id"        element={<UserFormPage />} />
-                  <Route path="/usuarios/permissoes" element={<PermissoesPage />} />
                   <Route path="/auditoria"           element={<AuditoriaPage />} />
                 </Route>
               </Route>

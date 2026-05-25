@@ -1,7 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboardSummary } from "@/modules/dashboard/hooks/useDashboardSummary";
 import { formatCurrency } from "@/lib/formatters";
-import { Link } from "react-router-dom";
 
 export function TopProducts() {
   const { data: summary, isLoading } = useDashboardSummary();
@@ -11,14 +10,6 @@ export function TopProducts() {
     <div className="bg-card rounded-xl border border-border p-5 animate-fade-in">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-foreground">Produtos mais vendidos</h3>
-        {products.length > 0 && (
-          <Link
-            to="/relatorios"
-            className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Ver relatório
-          </Link>
-        )}
       </div>
 
       {isLoading ? (

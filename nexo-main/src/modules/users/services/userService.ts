@@ -1,5 +1,4 @@
-import type { User, UserFormInput, PermissionMatrix, UserRole } from "../types";
-import { rolePresets } from "../data/mockUsers";
+import type { User, UserFormInput, UserRole } from "../types";
 import {
   listUsers, getUserById, createUser, updateUser, listAvailableStores,
   type UserApiDto,
@@ -69,16 +68,6 @@ export const userService = {
   async listStores(): Promise<string[]> {
     const stores = await listAvailableStores();
     return stores.map((s) => s.name);
-  },
-
-  async getPermissionsByRole(role: UserRole): Promise<PermissionMatrix> {
-    const preset = rolePresets.find((p) => p.role === role);
-    return preset ? { ...preset.permissions } : {};
-  },
-
-  async updatePermissions(role: UserRole, permissions: PermissionMatrix): Promise<void> {
-    const preset = rolePresets.find((p) => p.role === role);
-    if (preset) preset.permissions = { ...permissions };
   },
 
   validateManagerAuthorization(

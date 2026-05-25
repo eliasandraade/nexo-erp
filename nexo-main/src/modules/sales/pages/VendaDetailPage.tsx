@@ -9,7 +9,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { getSale, cancelSale } from "../api/sales.api";
 import { saleToLegacy } from "../utils/saleAdapter";
-import { posService } from "../services/posService";
 import { SaleSummaryCard } from "../components/SaleSummaryCard";
 import { SalePaymentSummaryCard } from "../components/SalePaymentSummaryCard";
 import { SaleItemsTable } from "../components/SaleItemsTable";
@@ -45,35 +44,6 @@ export default function VendaDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["insights"] });
       queryClient.invalidateQueries({ queryKey: ["insights-stats"] });
       setCancelDialogOpen(false);
-    },
-  });
-
-  const cancelItemMutation = useMutation({
-    mutationFn: ({
-      itemProductId,
-      payload,
-    }: {
-      itemProductId: string;
-      payload: CancellationConfirmPayload;
-    }) =>
-      posService.cancelSaleItem(
-        id!,
-        itemProductId,
-        sale?.operator ?? "Operador",
-        payload.authorizedBy,
-        payload.reason
-      ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sale", id] });
-      queryClient.invalidateQueries({ queryKey: ["sales"] });
-      queryClient.invalidateQueries({ queryKey: ["commissions-overall"] });
-      queryClient.invalidateQueries({ queryKey: ["commissions-by-seller"] });
-      queryClient.invalidateQueries({ queryKey: ["commission-records"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-operational"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-seller-ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-insights"] });
-      queryClient.invalidateQueries({ queryKey: ["insights"] });
-      queryClient.invalidateQueries({ queryKey: ["insights-stats"] });
     },
   });
 
@@ -152,9 +122,6 @@ export default function VendaDetailPage() {
         <SaleItemsTable
           items={sale.items}
           sale={sale}
-          onCancelItem={async (itemProductId, payload) => {
-            await cancelItemMutation.mutateAsync({ itemProductId, payload });
-          }}
         />
       </SectionCard>
 

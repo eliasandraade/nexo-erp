@@ -6,7 +6,7 @@ import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UserPlus, UserCog } from "lucide-react";
+import { UserPlus } from "lucide-react";
 import { userService } from "../services/userService";
 import { UserFilters } from "../components/UserFilters";
 import { UserTable } from "../components/UserTable";
@@ -48,14 +48,9 @@ export default function UsuariosPage() {
         title="Usuários"
         description="Gerencie usuários, perfis e acessos do sistema."
         actions={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => navigate("/usuarios/permissoes")}>
-              <UserCog className="h-4 w-4 mr-2" /> Permissões
-            </Button>
-            <Button onClick={() => navigate("/usuarios/novo")}>
-              <UserPlus className="h-4 w-4 mr-2" /> Novo usuário
-            </Button>
-          </div>
+          <Button onClick={() => navigate("/usuarios/novo")}>
+            <UserPlus className="h-4 w-4 mr-2" /> Novo usuário
+          </Button>
         }
       />
 
