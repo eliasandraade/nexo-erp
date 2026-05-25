@@ -46,17 +46,15 @@ public class DashboardService
     private async Task<(int total, int cancelled, decimal revenue, decimal avgTicket)>
         GetSalesKpisAsync(CancellationToken ct)
     {
-        var rows = await _db.Sales
-            .AsNoTracking()
-            .Select(s => new { s.Total, s.Status })
-            .ToListAsync(ct);
-
-        var active    = rows.Where(s => s.Status != SaleStatus.Cancelled).ToList();
-        var cancelled = rows.Count(s => s.Status == SaleStatus.Cancelled);
-        var revenue   = active.Sum(s => s.Total);
-        var avg       = active.Count > 0 ? Math.Round(revenue / active.Count, 2) : 0m;
-
-        return (rows.Count, cancelled, Math.Round(revenue, 2), avg);
+        // SQL aggregations — never load all rows into memory
+        var total     = await _db.Sales.AsNoTracking().CountAsync(ct);
+        var cancelled = await _db.Sales.AsNoTracking().CountAsync(s => s.Status == SaleStatus.Cancelled, ct);
+        var active    = total - cancelled;
+        var revenue   = await _db.Sales.AsNoTracking()
+            .Where(s => s.Status != SaleStatus.Cancelled)
+            .SumAsync(s => (decimal?)s.Total, ct) ?? 0m;
+        var avg = active > 0 ? Math.Round(revenue / active, 2) : 0m;
+        return (total, cancelled, Math.Round(revenue, 2), avg);
     }
 
     // ── Top Products ──────────────────────────────────────────────────────────
@@ -149,43 +147,36 @@ public class DashboardService
     private async Task<(int zero, int low, IReadOnlyList<StockAlertDto> alerts)>
         GetStockAlertsAsync(CancellationToken ct)
     {
-        var items = await _db.StockItems
-            .AsNoTracking()
-            .Where(s => s.Product != null && s.Product.IsActive)
-            .Select(s => new
-            {
-                s.ProductId,
-                ProductName      = s.Product!.Name,
-                s.CurrentQuantity,
-                s.AvailableQuantity,
-                MinStock         = s.Product!.MinStockQuantity,
-            })
+        // SQL-level filtering — only fetch items that are actually below threshold
+        var activeStock = _db.StockItems.AsNoTracking()
+            .Where(s => s.Product != null && s.Product.IsActive);
+
+        var zero = await activeStock.CountAsync(s => s.AvailableQuantity <= 0, ct);
+        var low  = await activeStock.CountAsync(
+            s => s.AvailableQuantity > 0
+              && s.Product!.MinStockQuantity.HasValue
+              && s.AvailableQuantity < s.Product.MinStockQuantity.Value, ct);
+
+        // Fetch only items with issues for the alert list (capped at 4)
+        var zeroItems = await activeStock
+            .Where(s => s.AvailableQuantity <= 0)
+            .OrderBy(s => s.Product!.Name)
+            .Take(4)
+            .Select(s => new { s.ProductId, Name = s.Product!.Name, s.CurrentQuantity, MinStock = s.Product!.MinStockQuantity ?? 0m, Status = "zero" })
             .ToListAsync(ct);
 
-        var alertItems = items
-            .Select(s =>
-            {
-                var status = s.AvailableQuantity <= 0
-                    ? "zero"
-                    : s.MinStock.HasValue && s.AvailableQuantity < s.MinStock.Value
-                        ? "low"
-                        : "ok";
-                return (s.ProductId, s.ProductName, s.CurrentQuantity, MinStock: s.MinStock ?? 0m, status);
-            })
-            .Where(s => s.status != "ok")
-            .ToList();
+        var needed = 4 - zeroItems.Count;
+        var lowItems = needed > 0
+            ? await activeStock
+                .Where(s => s.AvailableQuantity > 0 && s.Product!.MinStockQuantity.HasValue && s.AvailableQuantity < s.Product.MinStockQuantity.Value)
+                .OrderBy(s => s.Product!.Name)
+                .Take(needed)
+                .Select(s => new { s.ProductId, Name = s.Product!.Name, s.CurrentQuantity, MinStock = s.Product!.MinStockQuantity ?? 0m, Status = "low" })
+                .ToListAsync(ct)
+            : [];
 
-        var zero   = alertItems.Count(s => s.status == "zero");
-        var low    = alertItems.Count(s => s.status == "low");
-        var alerts = alertItems
-            .OrderByDescending(s => s.status == "zero")
-            .Take(4)
-            .Select(s => new StockAlertDto(
-                s.ProductId.ToString(),
-                s.ProductName,
-                s.CurrentQuantity,
-                s.MinStock,
-                s.status))
+        var alerts = zeroItems.Concat(lowItems)
+            .Select(s => new StockAlertDto(s.ProductId.ToString(), s.Name, s.CurrentQuantity, s.MinStock, s.Status))
             .ToList();
 
         return (zero, low, alerts);
