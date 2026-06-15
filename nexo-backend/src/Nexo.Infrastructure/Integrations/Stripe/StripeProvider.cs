@@ -56,9 +56,10 @@ public sealed class StripeProvider : IBillingProvider
         var service = new StripeCheckout.SessionService();
         var session = await service.CreateAsync(new StripeCheckout.SessionCreateOptions
         {
-            Customer   = request.StripeCustomerId,
-            Mode       = "subscription",
-            LineItems  =
+            Customer           = request.StripeCustomerId,
+            Mode               = "subscription",
+            PaymentMethodTypes = new List<string> { "card" },
+            LineItems          =
             [
                 new StripeCheckout.SessionLineItemOptions
                 {
