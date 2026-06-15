@@ -1,11 +1,15 @@
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "sonner";
 import type { CategoryDto, Product } from "../types";
 import { productUnitLabels } from "../types";
+import { ImageUploadButton } from "@/components/shared/ImageUploadButton";
+import { patchProductImage } from "../api/products.api";
 
 interface Props {
   data: Partial<Product>;
@@ -14,6 +18,16 @@ interface Props {
 }
 
 export function ProductMainDataSection({ data, onChange, categories }: Props) {
+  const handleImageChange = async (url: string | null) => {
+    onChange("imageUrl", url);
+    if (!data.id) return;
+    try {
+      await patchProductImage(data.id, url);
+    } catch {
+      toast.error("Falha ao salvar imagem. Tente novamente.");
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <div className="space-y-1.5">
@@ -98,6 +112,17 @@ export function ProductMainDataSection({ data, onChange, categories }: Props) {
         />
         <Label>Produto ativo</Label>
       </div>
+      {data.id && (
+        <div className="space-y-1.5 col-span-full">
+          <Label>Imagem do produto</Label>
+          <ImageUploadButton
+            context="product-image"
+            value={data.imageUrl ?? null}
+            onChange={handleImageChange}
+            label="Imagem"
+          />
+        </div>
+      )}
     </div>
   );
 }
