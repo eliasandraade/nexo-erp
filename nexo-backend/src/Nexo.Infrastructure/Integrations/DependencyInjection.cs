@@ -14,6 +14,8 @@ using Nexo.Infrastructure.Integrations.OpenFoodFacts;
 using Nexo.Infrastructure.Integrations.Pdf;
 using Nexo.Infrastructure.Integrations.Storage;
 using Nexo.Infrastructure.Integrations.ViaCep;
+using Nexo.Infrastructure.Integrations.Weather;
+using Nexo.Application.Integrations.Weather;
 
 namespace Nexo.Infrastructure.Integrations;
 
@@ -172,6 +174,43 @@ public static class IntegrationsDependencyInjection
         });
 
         services.AddScoped<IBarcodeProductLookupProvider, OpenFoodFactsProvider>();
+
+        // ── Open Meteo Weather ────────────────────────────────────────────────
+        var openMeteoOpts = configuration.GetSection(OpenMeteoOptions.SectionKey).Get<OpenMeteoOptions>() ?? new OpenMeteoOptions();
+
+        services.Configure<OpenMeteoOptions>(configuration.GetSection(OpenMeteoOptions.SectionKey));
+
+        services.AddHttpClient<OpenMeteoProvider>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(openMeteoOpts.TimeoutSeconds + 30);
+            // No base address — forecast and archive use different hosts
+        })
+        .AddHttpMessageHandler<IntegrationHttpClientHandler>()
+        .AddResilienceHandler("OpenMeteo", pipeline =>
+        {
+            pipeline.AddTimeout(TimeSpan.FromSeconds(openMeteoOpts.TimeoutSeconds));
+            pipeline.AddRetry(new HttpRetryStrategyOptions
+            {
+                MaxRetryAttempts = 2,
+                Delay            = TimeSpan.FromSeconds(1),
+                BackoffType      = DelayBackoffType.Exponential,
+                ShouldHandle     = new PredicateBuilder<HttpResponseMessage>()
+                    .Handle<TimeoutRejectedException>()
+                    .HandleResult(r => r.StatusCode is
+                        HttpStatusCode.TooManyRequests or
+                        HttpStatusCode.ServiceUnavailable or
+                        HttpStatusCode.GatewayTimeout)
+            });
+            pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+            {
+                SamplingDuration  = TimeSpan.FromSeconds(resilienceOpts.CircuitBreakerSamplingDurationSeconds),
+                BreakDuration     = TimeSpan.FromSeconds(resilienceOpts.CircuitBreakerBreakDurationSeconds),
+                FailureRatio      = 0.5,
+                MinimumThroughput = resilienceOpts.CircuitBreakerFailureThreshold,
+            });
+        });
+
+        services.AddScoped<IWeatherProvider, OpenMeteoProvider>();
 
         // ── PDF Rendering ─────────────────────────────────────────────────────────────
         services.AddSingleton<IPdfRenderer, QuestPdfRenderer>();
