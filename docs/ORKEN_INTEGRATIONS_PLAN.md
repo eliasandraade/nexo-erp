@@ -1144,3 +1144,24 @@ Polly circuit breaker para cada provider externo:
 ---
 
 *Documento gerado em 2026-06-14. Revisar antes da implementação de cada fase.*
+
+---
+
+## 11. Backlog Técnico — Dívidas conhecidas pós-implementação
+
+> Itens identificados durante a implementação que não bloqueiam o código atual mas devem ser resolvidos antes de ir para produção completa ou quando o pré-requisito estiver disponível.
+
+### P5 — PDF / QuestPDF
+
+| # | Item | Prioridade | Pré-requisito |
+|---|------|------------|---------------|
+| BK-PDF-1 | `tenantName` hardcoded como `"Orken"` em todos os templates de PDF. Corrigir quando houver serviço de configurações de tenant com nome real disponível (ex. `TenantSettingsService`). | Média | `TenantSettingsService` ou equivalente |
+| BK-PDF-2 | Botão "Baixar fechamento" em `CaixaPage` só aparece para sessão ativa. Criar acesso ao PDF de fechamento pelo histórico de sessões fechadas quando a tela de histórico de caixa existir. | Baixa | Tela de histórico de caixa |
+| BK-PDF-3 | Validar visual dos templates PDF (recibo, fechamento, ficha de produto) em staging com dados reais antes de liberar para tenants. Checar formatação de moeda, quebras de linha, tamanho de tabelas com muitos itens. | Alta | Ambiente staging + dados reais |
+
+### P3 — Storage / Cloudflare R2
+
+| # | Item | Prioridade | Pré-requisito |
+|---|------|------------|---------------|
+| BK-R2-1 | Live validation do R2 pendente. Testar upload real (JPG, PNG, WebP, inválidos, oversized) e confirmar `publicUrl` acessível no browser. Ver checklist completo em `docs/superpowers/plans/2026-06-15-phase3-storage-r2.md`. | Alta | Credenciais R2 configuradas no Railway |
+| BK-R2-2 | `RecipeCardsController` usa local filesystem (`/images/recipes/`) para imagens de fichas técnicas — inconsistente com a estratégia R2. Migrar para `IStorageProvider` quando validação R2 estiver concluída. | Baixa | BK-R2-1 concluído |

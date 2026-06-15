@@ -27,13 +27,20 @@ The Community License allows:
 
 ## Upgrade Condition
 
-When Orken's annual gross revenue **reaches or exceeds $1M USD**, the license must be upgraded to
-one of the paid tiers:
-- Professional License ($299/year per developer) — for organizations up to $5M revenue
-- Enterprise License ($599/year per developer) — for organizations above $5M revenue
+A Andrade Systems / Orken deverá migrar para uma licença paga do QuestPDF assim que a receita
+bruta anual da organização **ultrapassar US$1M USD**.
 
-Action required at that point: contact QuestPDF at https://www.questpdf.com/license/ and update
-the license type in `QuestPdfRenderer` from `LicenseType.Community` to the appropriate tier.
+**Obrigações:**
+- Ao atingir o limite, não é permitido continuar usando a Community License
+- A migração deve ser feita antes de continuar operando em produção com QuestPDF
+- Consultar a **pricing page oficial vigente no momento da contratação** para verificar os planos e
+  valores atuais — os preços não devem ser tratados como fixos neste documento
+
+**Ação requerida ao ultrapassar o limite:**
+1. Acessar https://www.questpdf.com/license/ para verificar os planos disponíveis e preços atuais
+2. Adquirir a licença adequada ao porte da organização naquele momento
+3. Atualizar `QuestPDF.Settings.License` em `QuestPdfRenderer.cs` para o tipo correspondente
+4. Atualizar este documento com a nova licença, data e valor contratado
 
 ## License Configuration in Code
 
