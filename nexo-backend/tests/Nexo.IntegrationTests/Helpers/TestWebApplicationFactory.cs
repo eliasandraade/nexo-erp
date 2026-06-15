@@ -85,6 +85,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("Seed:AdminPassword",    "IntegrationTestOnly!123");
         builder.UseSetting("Seed:PlatformEmail",    "platform-test@nexo.test");
         builder.UseSetting("Seed:PlatformPassword", "FakePlatformPass!999");
+
+        // Disable the auth-login rate limiter for the GENERAL integration suite.
+        // The whole suite shares ONE factory (collection fixture), and many tests
+        // log in — with the limiter on, the shared window is exhausted after 5
+        // logins and every later test gets 429 → empty body → JsonException
+        // cascade. RateLimitingTests re-enable it explicitly via
+        // WithRateLimitingEnabled() so the limiter itself stays under test.
+        builder.UseSetting("RateLimiting:AuthLogin:Enabled", "false");
     }
 
     /// <summary>Creates an HttpClient pre-configured for the test server.</summary>
@@ -92,4 +100,19 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
     {
         AllowAutoRedirect = false,
     });
+
+    /// <summary>
+    /// Returns a derived factory with the auth-login rate limiter ENABLED.
+    /// Each call builds a fresh host (fresh in-memory limiter state), so rate-limit
+    /// tests start from a clean window and don't contaminate one another.
+    /// Used only by RateLimitingTests; the base factory keeps it disabled.
+    /// </summary>
+    public WebApplicationFactory<Program> WithRateLimitingEnabled(
+        int permitLimit = 5, int windowSeconds = 900)
+        => WithWebHostBuilder(b =>
+        {
+            b.UseSetting("RateLimiting:AuthLogin:Enabled", "true");
+            b.UseSetting("RateLimiting:AuthLogin:PermitLimit", permitLimit.ToString());
+            b.UseSetting("RateLimiting:AuthLogin:WindowSeconds", windowSeconds.ToString());
+        });
 }

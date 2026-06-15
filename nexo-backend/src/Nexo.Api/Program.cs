@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -150,16 +151,50 @@ try
     builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
 
     // ── Rate Limiting ────────────────────────────────────────────────────────
+    // "auth-login" protects /auth/login and /auth/refresh from brute force.
+    //
+    // Config-driven (RateLimiting:AuthLogin:{Enabled,PermitLimit,WindowSeconds})
+    // so the integration suite can disable it (the previous global limiter caused
+    // a shared-window 429 cascade across the whole suite), while the dedicated
+    // RateLimitingTests re-enable it explicitly.
+    //
+    // PARTITIONED per (client IP + endpoint path) — the previous
+    // AddFixedWindowLimiter("auth-login") used a SINGLE GLOBAL bucket, so 5 failed
+    // logins from anyone locked out every user for 15 min. Now each client gets
+    // its own budget, and login vs refresh are counted separately.
+    var authLoginEnabled = builder.Configuration.GetValue("RateLimiting:AuthLogin:Enabled", true);
+    var authLoginPermit  = builder.Configuration.GetValue("RateLimiting:AuthLogin:PermitLimit", 5);
+    var authLoginWindow  = builder.Configuration.GetValue("RateLimiting:AuthLogin:WindowSeconds", 900);
+
     builder.Services.AddRateLimiter(options =>
     {
-        options.AddFixedWindowLimiter("auth-login", opt =>
-        {
-            opt.PermitLimit = 5;
-            opt.Window = TimeSpan.FromMinutes(15);
-            opt.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
-            opt.QueueLimit = 0;
-        });
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+        options.AddPolicy("auth-login", httpContext =>
+        {
+            if (!authLoginEnabled)
+                return RateLimitPartition.GetNoLimiter("auth-login:disabled");
+
+            // Prefer the client IP from X-Forwarded-For (Railway sits behind a
+            // proxy); fall back to the socket address. NOTE: a client could spoof
+            // X-Forwarded-For — to harden, configure ForwardedHeaders middleware
+            // with KnownProxies and partition on the resolved RemoteIpAddress.
+            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
+                ? forwardedFor.Split(',')[0].Trim()
+                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+            var partitionKey = $"{clientIp}|{httpContext.Request.Path}";
+
+            return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
+                new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit          = authLoginPermit,
+                    Window               = TimeSpan.FromSeconds(authLoginWindow),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit           = 0,
+                });
+        });
     });
 
     // ── Controllers ───────────────────────────────────────────────────────────

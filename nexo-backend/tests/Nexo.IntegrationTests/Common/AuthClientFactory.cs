@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using FluentAssertions;
 using Nexo.Application.Features.Auth;
 using Nexo.IntegrationTests.Helpers;
 
@@ -64,8 +63,19 @@ public static class AuthClientFactory
         var response = await client.PostAsJsonAsync("/api/auth/login",
             TestCredentials.LoginPayload(login, password));
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK,
-            $"Login as '{login}' failed — ensure the test DB is seeded correctly.");
+        // Validate the status code BEFORE parsing JSON. A 429/401/500 has an empty
+        // or non-JSON body, so ReadFromJsonAsync would throw the opaque
+        // "The input does not contain any JSON tokens". Surface the real status and
+        // body so the failure is immediately diagnosable (e.g. rate limited vs. bad
+        // seed vs. server error).
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync();
+            throw new InvalidOperationException(
+                $"Login as '{login}' expected 200 OK but got " +
+                $"{(int)response.StatusCode} {response.StatusCode}. " +
+                $"Body: {(string.IsNullOrWhiteSpace(errorBody) ? "<empty>" : errorBody)}");
+        }
 
         var body = await response.Content.ReadFromJsonAsync<LoginResponse>()
             ?? throw new InvalidOperationException($"Login as '{login}' returned null body.");
