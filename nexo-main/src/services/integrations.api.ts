@@ -46,3 +46,25 @@ export async function lookupCnpj(cnpj: string): Promise<CnpjLookupResult | null>
   if (!response.found || !response.data) return null;
   return response.data;
 }
+
+export interface BarcodeLookupResult {
+  barcode: string;
+  name: string;
+  brand?: string | null;
+  imageUrl?: string | null;
+  category?: string | null;
+  quantity?: string | null;
+  unit?: string | null;
+  sourceProvider: string;
+  confidence?: number | null;
+}
+
+export async function lookupBarcodeProduct(
+  barcode: string
+): Promise<{ found: boolean; data: BarcodeLookupResult | null; unavailable?: boolean }> {
+  const digits = barcode.replace(/\D/g, "");
+  if (digits.length < 8 || digits.length > 14) {
+    return { found: false, data: null };
+  }
+  return apiClient.get(`/integrations/barcode/${digits}`);
+}
