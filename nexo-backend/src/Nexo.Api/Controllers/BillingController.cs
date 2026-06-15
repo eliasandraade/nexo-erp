@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Integrations.Billing;
@@ -28,6 +29,7 @@ public class BillingController : ControllerBase
     private readonly IIntegrationFeatureFlags      _flags;
     private readonly StripeOptions                 _stripeOptions;
     private readonly ICurrentTenant                _currentTenant;
+    private readonly IConfiguration                _config;
     private readonly ILogger<BillingController>   _logger;
 
     public BillingController(
@@ -38,6 +40,7 @@ public class BillingController : ControllerBase
         IIntegrationFeatureFlags flags,
         IOptions<StripeOptions> stripeOptions,
         ICurrentTenant currentTenant,
+        IConfiguration config,
         ILogger<BillingController> logger)
     {
         _billing        = billing;
@@ -47,6 +50,7 @@ public class BillingController : ControllerBase
         _flags          = flags;
         _stripeOptions  = stripeOptions.Value;
         _currentTenant  = currentTenant;
+        _config         = config;
         _logger         = logger;
     }
 
@@ -68,7 +72,7 @@ public class BillingController : ControllerBase
         if (string.IsNullOrEmpty(moduleKey) || string.IsNullOrEmpty(billingPeriod))
             return BadRequest(new { error = "moduleKey e billingPeriod são obrigatórios." });
 
-        var priceKey = $"{moduleKey}:{billingPeriod}";
+        var priceKey = $"{moduleKey}_{billingPeriod}";
         if (!_stripeOptions.PriceIds.TryGetValue(priceKey, out var priceId))
             return BadRequest(new { error = $"Plano não encontrado: {priceKey}. Configure o PriceId no servidor." });
 
@@ -87,9 +91,9 @@ public class BillingController : ControllerBase
                 await _tenants.SaveChangesAsync(ct);
             }
 
-            var baseUrl   = $"{Request.Scheme}://{Request.Host}";
-            var successUrl = body.SuccessUrl ?? $"{baseUrl}/assinatura?sucesso=1";
-            var cancelUrl  = body.CancelUrl  ?? $"{baseUrl}/assinatura";
+            var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
+            var successUrl = body.SuccessUrl ?? $"{frontendUrl}/assinatura?sucesso=1";
+            var cancelUrl  = body.CancelUrl  ?? $"{frontendUrl}/assinatura";
 
             var result = await _billing.CreateCheckoutSessionAsync(new CreateCheckoutRequest(
                 tenant.Id, stripeCustomerId, moduleKey, priceId, successUrl, cancelUrl), ct);
@@ -122,7 +126,7 @@ public class BillingController : ControllerBase
 
         try
         {
-            var returnUrl = body?.ReturnUrl ?? $"{Request.Scheme}://{Request.Host}/assinatura";
+            var returnUrl = body?.ReturnUrl ?? $"{_config["App:FrontendUrl"] ?? "http://localhost:5173"}/assinatura";
             var result    = await _billing.CreatePortalSessionAsync(tenant.StripeCustomerId, returnUrl, ct);
             return Ok(new { portalUrl = result.PortalUrl });
         }

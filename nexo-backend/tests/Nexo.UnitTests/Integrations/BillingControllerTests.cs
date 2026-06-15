@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -44,13 +45,20 @@ public sealed class BillingControllerTests
             WebhookSecret = "whsec_dummy",
             PriceIds      = priceIds ?? new Dictionary<string, string>
             {
-                ["restaurante:monthly"] = "price_restaurante_monthly",
+                ["restaurante_monthly"] = "price_restaurante_monthly",
             },
         });
 
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["App:FrontendUrl"] = "http://localhost:5173",
+            })
+            .Build();
+
         var controller = new BillingController(
             billing, tenants, subscriptions, webhookService,
-            flags, options, currentTenant, logger);
+            flags, options, currentTenant, config, logger);
 
         // Set up HTTP context so Request.Scheme / Request.Host are available
         controller.ControllerContext = new ControllerContext
@@ -115,7 +123,7 @@ public sealed class BillingControllerTests
     {
         var sut    = Build();
         var result = await sut.Controller.CreateCheckout(
-            new BillingController.CreateCheckoutBody("build", "monthly", null, null), default);
+            new BillingController.CreateCheckoutBody("build", "monthly", null, null), default); // build_monthly not in PriceIds
         Assert.IsType<BadRequestObjectResult>(result);
     }
 
