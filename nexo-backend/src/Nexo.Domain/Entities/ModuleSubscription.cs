@@ -133,4 +133,21 @@ public class ModuleSubscription : BaseEntity
         StripePriceId = priceId;
         SetUpdatedAt();
     }
+
+    /// <summary>
+    /// Synchronises local state from a Stripe subscription event
+    /// (customer.subscription.updated / checkout.session.completed).
+    /// </summary>
+    public void SyncFromStripe(
+        SubscriptionStatus status,
+        DateTime periodStart,
+        DateTime? periodEnd,
+        bool cancelAtPeriodEnd)
+    {
+        Status             = status;
+        CurrentPeriodStart = periodStart;
+        CurrentPeriodEnd   = periodEnd;
+        CancelAtPeriodEnd  = cancelAtPeriodEnd;
+        SetUpdatedAt();
+    }
 }

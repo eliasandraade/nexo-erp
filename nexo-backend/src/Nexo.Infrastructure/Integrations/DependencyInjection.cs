@@ -4,18 +4,22 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
 using Polly.Timeout;
+using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Integrations.Billing;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.Options;
 using Nexo.Application.Integrations.Pdf;
+using Nexo.Application.Integrations.Weather;
 using Nexo.Infrastructure.Integrations.BrasilApi;
 using Nexo.Infrastructure.Integrations.Common;
 using Nexo.Infrastructure.Integrations.Composite;
 using Nexo.Infrastructure.Integrations.OpenFoodFacts;
 using Nexo.Infrastructure.Integrations.Pdf;
 using Nexo.Infrastructure.Integrations.Storage;
+using Nexo.Infrastructure.Integrations.Stripe;
 using Nexo.Infrastructure.Integrations.ViaCep;
 using Nexo.Infrastructure.Integrations.Weather;
-using Nexo.Application.Integrations.Weather;
+using Nexo.Infrastructure.Repositories;
 
 namespace Nexo.Infrastructure.Integrations;
 
@@ -214,6 +218,14 @@ public static class IntegrationsDependencyInjection
 
         // ── PDF Rendering ─────────────────────────────────────────────────────────────
         services.AddSingleton<IPdfRenderer, QuestPdfRenderer>();
+
+        // ── Stripe Billing ────────────────────────────────────────────────────────────
+        services.Configure<StripeOptions>(configuration.GetSection(StripeOptions.SectionKey));
+
+        services.AddScoped<IBillingProvider, StripeProvider>();
+        services.AddScoped<IStripeWebhookService, StripeWebhookService>();
+        services.AddScoped<IModuleSubscriptionRepository, ModuleSubscriptionRepository>();
+        services.AddScoped<IStripeProcessedEventRepository, StripeProcessedEventRepository>();
 
         return services;
     }

@@ -49,6 +49,7 @@ public class NexoDbContext : DbContext
     public DbSet<ModuleSubscriptionEvent> ModuleSubscriptionEvents => Set<ModuleSubscriptionEvent>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<TenantFeatureOverride> TenantFeatureOverrides => Set<TenantFeatureOverride>();
+    public DbSet<StripeProcessedEvent> StripeProcessedEvents => Set<StripeProcessedEvent>();
 
     // ── Store (tenant-scoped but not store-scoped — stores ARE the isolation unit) ──
     public DbSet<Store> Stores => Set<Store>();

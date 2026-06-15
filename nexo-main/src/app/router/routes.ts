@@ -10,6 +10,7 @@ import {
   Wallet,
   Shield,
   Settings,
+  CreditCard,
   UtensilsCrossed,
   SlidersHorizontal,
   BarChart2,
@@ -75,4 +76,5 @@ export const appRoutes: AppRoute[] = [
   { path: "/usuarios",      label: "Usuários",       icon: UserCog,           group: "admin",       roles: ["diretoria"] },
   { path: "/auditoria",     label: "Auditoria",      icon: Shield,            group: "admin",       roles: ["diretoria"] },
   { path: "/configuracoes", label: "Configurações",  icon: Settings,          group: "admin",       roles: MGMT },
+  { path: "/assinatura",    label: "Assinatura",     icon: CreditCard,        group: "admin",       roles: MGMT },
 ];

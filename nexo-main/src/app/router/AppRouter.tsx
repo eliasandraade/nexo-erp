@@ -48,6 +48,7 @@ const UserFormPage          = lazy(() => import("@/modules/users/pages/UserFormP
 const CaixaPage             = lazy(() => import("@/modules/cash/pages/CaixaPage"));
 const AuditoriaPage         = lazy(() => import("@/modules/audit/pages/AuditoriaPage"));
 const ConfiguracoesPage     = lazy(() => import("@/modules/settings/pages/ConfiguracoesPage"));
+const AssinaturaPage        = lazy(() => import("@/modules/billing/pages/AssinaturaPage"));
 
 // PDV (varejo)
 const PdvPage               = lazy(() => import("@/modules/sales/pages/PdvPage"));
@@ -206,6 +207,7 @@ export function AppRouter() {
                   <Route path="/fornecedores/:id"   element={<SupplierFormPage />} />
                   <Route path="/caixa"         element={<CaixaPage />} />
                   <Route path="/configuracoes" element={<ConfiguracoesPage />} />
+                  <Route path="/assinatura"   element={<AssinaturaPage />} />
                 </Route>
               </Route>
             </Route>
