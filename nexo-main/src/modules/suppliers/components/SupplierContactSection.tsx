@@ -1,5 +1,10 @@
+import { useState } from "react";
+import { Loader2, Search } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { lookupCep } from "@/services/integrations.api";
 import type { SupplierFormInput } from "../types";
 
 const STATES = [
@@ -14,6 +19,33 @@ interface Props {
 }
 
 export function SupplierContactSection({ data, onChange }: Props) {
+  const [cepLoading, setCepLoading] = useState(false);
+
+  const handleCepLookup = async () => {
+    const digits = data.zipCode.replace(/\D/g, "");
+    if (digits.length !== 8) {
+      toast.error("Digite um CEP com 8 dígitos para buscar.");
+      return;
+    }
+    setCepLoading(true);
+    try {
+      const result = await lookupCep(digits);
+      if (!result) {
+        toast.info("Não encontramos dados para este CEP. Preencha manualmente.");
+        return;
+      }
+      if (!data.street)       onChange("street",       result.street);
+      if (!data.neighborhood) onChange("neighborhood", result.neighborhood);
+      if (!data.city)         onChange("city",         result.city);
+      if (!data.state)        onChange("state",        result.state);
+      toast.success("Endereço preenchido automaticamente.");
+    } catch {
+      toast.error("Consulta de CEP indisponível. Preencha manualmente.");
+    } finally {
+      setCepLoading(false);
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <div className="space-y-1.5">
@@ -46,11 +78,24 @@ export function SupplierContactSection({ data, onChange }: Props) {
 
       <div className="space-y-1.5">
         <Label>CEP</Label>
-        <Input
-          value={data.zipCode}
-          onChange={(e) => onChange("zipCode", e.target.value)}
-          placeholder="00000-000"
-        />
+        <div className="flex gap-2">
+          <Input
+            value={data.zipCode}
+            onChange={(e) => onChange("zipCode", e.target.value)}
+            placeholder="00000-000"
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            onClick={handleCepLookup}
+            disabled={cepLoading}
+            title="Buscar endereço pelo CEP"
+          >
+            {cepLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-1.5 md:col-span-2">
