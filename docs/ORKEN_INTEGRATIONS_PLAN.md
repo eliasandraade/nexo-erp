@@ -581,10 +581,14 @@ GET /api/integrations/weather/history?lat={lat}&lon={lon}&date={date}
 
 **Variáveis de ambiente:**
 ```env
-Integrations__Weather__Provider=OpenMeteo
-Integrations__Weather__Enabled=true
-Integrations__Weather__OpenMeteo__BaseUrl=https://api.open-meteo.com/v1
-Integrations__Weather__OpenMeteo__TimeoutSeconds=8
+Integrations__Features__WeatherEnabled=false
+Integrations__OpenMeteo__ForecastBaseUrl=https://api.open-meteo.com/v1
+Integrations__OpenMeteo__ArchiveBaseUrl=https://archive-api.open-meteo.com/v1
+Integrations__OpenMeteo__TimeoutSeconds=10
+Integrations__OpenMeteo__Timezone=America/Sao_Paulo
+# Plano comercial — resolver BK-WEATHER-1 antes de ativar em produção:
+Integrations__OpenMeteo__UseCustomerApi=false
+Integrations__OpenMeteo__ApiKey=
 ```
 
 ---
@@ -786,10 +790,14 @@ Integrations__Pdf__Provider=QuestPdf
 Integrations__Pdf__Enabled=true
 
 # ── Clima ─────────────────────────────────────────────────────────────────────
-Integrations__Weather__Provider=OpenMeteo
-Integrations__Weather__Enabled=true
-Integrations__Weather__OpenMeteo__BaseUrl=https://api.open-meteo.com/v1
-Integrations__Weather__OpenMeteo__TimeoutSeconds=8
+Integrations__Features__WeatherEnabled=false
+Integrations__OpenMeteo__ForecastBaseUrl=https://api.open-meteo.com/v1
+Integrations__OpenMeteo__ArchiveBaseUrl=https://archive-api.open-meteo.com/v1
+Integrations__OpenMeteo__TimeoutSeconds=10
+Integrations__OpenMeteo__Timezone=America/Sao_Paulo
+# Plano comercial — resolver BK-WEATHER-1 antes de ativar em produção:
+Integrations__OpenMeteo__UseCustomerApi=false
+Integrations__OpenMeteo__ApiKey=
 
 # ── Email ─────────────────────────────────────────────────────────────────────
 Resend__ApiKey=re_...
