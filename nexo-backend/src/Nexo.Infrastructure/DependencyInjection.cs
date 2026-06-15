@@ -26,6 +26,7 @@ using Nexo.Infrastructure.Repositories.Modules.Build;
 using Nexo.Infrastructure.Repositories.Modules.Interpreter;
 using Nexo.Infrastructure.Repositories.Modules.Restaurante;
 using Nexo.Infrastructure.Repositories.Modules.Varejo;
+using Nexo.Infrastructure.Integrations;
 using StackExchange.Redis;
 
 namespace Nexo.Infrastructure;
@@ -236,6 +237,9 @@ public static class DependencyInjection
         // ── SignalR ───────────────────────────────────────────────────────────
         services.AddSignalR();
         services.AddScoped<IRestaurantNotificationService, RestaurantNotificationService>();
+
+        // ── Integrations ──────────────────────────────────────────────────────
+        services.AddIntegrations(configuration);
 
         return services;
     }
