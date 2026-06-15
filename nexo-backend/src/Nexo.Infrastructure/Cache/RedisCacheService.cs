@@ -20,9 +20,9 @@ namespace Nexo.Infrastructure.Cache;
 public class RedisCacheService : ICacheService
 {
     // Guard every Redis call: if SE.Redis ignores AsyncTimeout and keeps the backlog
-    // open for 5 seconds, this per-call timeout guarantees we bail in ≤200ms instead
-    // of blocking the request pipeline for 30s+ when redis.railway.internal is down.
-    private static readonly TimeSpan _callTimeout = TimeSpan.FromMilliseconds(200);
+    // open, this per-call timeout guarantees we bail rather than blocking the pipeline.
+    // 2000ms matches Railway internal Redis round-trip budget (was 200ms — too tight).
+    private static readonly TimeSpan _callTimeout = TimeSpan.FromMilliseconds(2000);
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisCacheService> _logger;

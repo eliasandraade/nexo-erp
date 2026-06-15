@@ -111,13 +111,10 @@ public class RegistrationService
         _db.AppSettings.Add(settings);
         await _db.SaveChangesAsync(ct);
 
-        // 8. Generate verification token and store in Redis (24h TTL)
+        // 8. Generate verification token and persist in PostgreSQL (immune to Redis failures).
         var token = Guid.NewGuid().ToString("N");
-        await _cache.SetAsync(
-            $"verify:token:{token}",
-            user.Id.ToString(),
-            TimeSpan.FromHours(24),
-            ct);
+        user.SetVerificationToken(token, DateTime.UtcNow.AddHours(24));
+        await _db.SaveChangesAsync(ct);
 
         // 9. Send verification email
         var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
@@ -137,25 +134,17 @@ public class RegistrationService
     /// </summary>
     public async Task<LoginResponse?> VerifyEmailAsync(string token, CancellationToken ct = default)
     {
-        var cacheKey = $"verify:token:{token}";
-        var userIdStr = await _cache.GetAsync<string>(cacheKey, ct);
-        if (userIdStr is null) return null;
-
-        if (!Guid.TryParse(userIdStr, out var userId)) return null;
-
-        // Load user (bypass query filters — no tenant context yet)
         var user = await _db.Users
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+            .FirstOrDefaultAsync(u => u.VerificationToken == token, ct);
 
         if (user is null || user.Status != UserStatus.PendingVerification) return null;
+        if (user.VerificationTokenExpiry is null || user.VerificationTokenExpiry < DateTime.UtcNow) return null;
 
-        // Activate user
+        // Activate user and clear the one-time token
         user.Activate();
+        user.ClearVerificationToken();
         await _db.SaveChangesAsync(ct);
-
-        // Remove token (one-time use)
-        await _cache.RemoveAsync(cacheKey, ct);
 
         // Build JWT (need tenant + stores)
         var tenant = await _db.Tenants
@@ -219,14 +208,14 @@ public class RegistrationService
     {
         var user = await _db.Users
             .IgnoreQueryFilters()
-            .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Email == email.ToLowerInvariant()
                                    && u.Status == UserStatus.PendingVerification, ct);
 
         if (user is null) return; // Silent — don't leak whether email exists
 
         var token = Guid.NewGuid().ToString("N");
-        await _cache.SetAsync($"verify:token:{token}", user.Id.ToString(), TimeSpan.FromHours(24), ct);
+        user.SetVerificationToken(token, DateTime.UtcNow.AddHours(24));
+        await _db.SaveChangesAsync(ct);
 
         var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
         var verificationUrl = $"{frontendUrl}/verify-email?token={token}";

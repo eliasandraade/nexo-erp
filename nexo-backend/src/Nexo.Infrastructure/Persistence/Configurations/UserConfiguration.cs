@@ -68,6 +68,18 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnName("password_changed_at")
             .HasColumnType("timestamptz");
 
+        builder.Property(x => x.VerificationToken)
+            .HasColumnName("verification_token")
+            .HasMaxLength(64);
+
+        builder.Property(x => x.VerificationTokenExpiry)
+            .HasColumnName("verification_token_expiry")
+            .HasColumnType("timestamptz");
+
+        builder.HasIndex(x => x.VerificationToken)
+            .IsUnique()
+            .HasFilter("verification_token IS NOT NULL");
+
         builder.Property(x => x.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamptz")

@@ -80,11 +80,10 @@ public static class DependencyInjection
                 try
                 {
                     var options = ConfigurationOptions.Parse(redisConnectionString);
-                    // Fail-open fast: if Redis is unreachable, don't block each request for 5s.
-                    // 300ms means at most ~1.8s overhead (6 ops × 300ms) instead of 30s+.
+                    // Fail-open: if Redis is unreachable, WaitAsync in RedisCacheService bails at 2s.
                     options.AbortOnConnectFail = false;
-                    options.ConnectTimeout     = 2000;
-                    options.AsyncTimeout       = 300;
+                    options.ConnectTimeout     = 3000;
+                    options.AsyncTimeout       = 2500;
                     return ConnectionMultiplexer.Connect(options);
                 }
                 catch (Exception ex)

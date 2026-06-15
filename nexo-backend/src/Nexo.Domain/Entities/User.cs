@@ -32,6 +32,10 @@ public class User : TenantEntity
     /// </summary>
     public string SecurityStamp { get; private set; } = Guid.NewGuid().ToString("N");
 
+    // Email verification — stored in PostgreSQL (not Redis) so token survives Redis failures.
+    public string? VerificationToken { get; private set; }
+    public DateTime? VerificationTokenExpiry { get; private set; }
+
     // Navigation
     public Tenant? Tenant { get; private set; }
 
@@ -110,6 +114,20 @@ public class User : TenantEntity
     public void BumpSecurityStamp()
     {
         SecurityStamp = Guid.NewGuid().ToString("N");
+        SetUpdatedAt();
+    }
+
+    public void SetVerificationToken(string token, DateTime expiry)
+    {
+        VerificationToken       = token;
+        VerificationTokenExpiry = expiry;
+        SetUpdatedAt();
+    }
+
+    public void ClearVerificationToken()
+    {
+        VerificationToken       = null;
+        VerificationTokenExpiry = null;
         SetUpdatedAt();
     }
 
