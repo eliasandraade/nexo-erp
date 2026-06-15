@@ -5,6 +5,8 @@ using Nexo.Application.Features.Products;
 
 namespace Nexo.Api.Controllers;
 
+public record SetProductImageRequest(string? ImageUrl);
+
 [ApiController]
 [Route("api/products")]
 [Authorize]
@@ -78,4 +80,11 @@ public class ProductsController : ControllerBase
         await _service.DeactivateAsync(id, ct);
         return NoContent();
     }
+
+    [HttpPatch("{id:guid}/image")]
+    public async Task<ActionResult<ProductDto>> SetImage(
+        Guid id,
+        [FromBody] SetProductImageRequest request,
+        CancellationToken ct)
+        => Ok(await _service.SetImageUrlAsync(id, request.ImageUrl, ct));
 }

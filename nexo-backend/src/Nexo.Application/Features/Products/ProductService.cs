@@ -128,6 +128,18 @@ public class ProductService
         await _products.SaveChangesAsync(ct);
     }
 
+    public async Task<ProductDto> SetImageUrlAsync(Guid id, string? imageUrl, CancellationToken ct = default)
+    {
+        var product = await _products.GetByIdAsync(id, ct)
+            ?? throw new NotFoundException("Product", id);
+
+        var cleanUrl = string.IsNullOrWhiteSpace(imageUrl) ? null : imageUrl.Trim();
+        product.SetImageUrl(cleanUrl);
+        await _products.SaveChangesAsync(ct);
+
+        return MapToDto(product);
+    }
+
     private static ProductDto MapToDto(Product p) => new(
         p.Id, p.Code, p.Barcode, p.Name, p.Description, p.CategoryId,
         p.Unit.ToString(), p.CostPrice, p.SalePrice, p.TrackStock,
