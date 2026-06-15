@@ -1052,9 +1052,9 @@ Polly circuit breaker para cada provider externo:
 ### 9.5 Open-Meteo
 | Item | Detalhe |
 |------|---------|
-| Custo | Gratuito para não-comercial; plano pago para uso comercial (verificar) |
-| Rate limit | 10k req/dia free; plano pago para mais |
-| Risco | **Verificar termos:** Orken é SaaS comercial — pode precisar de plano pago |
+| Custo | Gratuito **apenas para uso não comercial**. Orken é SaaS comercial — plano pago obrigatório para produção. |
+| Rate limit | 10k req/dia free; plano Customer API para uso comercial (verificar preços atuais em open-meteo.com) |
+| Risco | **BLOQUEADOR:** não ativar `WeatherEnabled=true` em produção sem contratar plano comercial. Ver `BK-WEATHER-1`. |
 | Ação | **Decisão pendente:** checar se API gratuita permite uso em SaaS comercial |
 
 ### 9.6 Stripe
@@ -1134,7 +1134,7 @@ Polly circuit breaker para cada provider externo:
 | Decisão | Impacto | Quem decide |
 |---------|---------|-------------|
 | QuestPDF: confirmar licença comercial aceitável | Bloqueia Fase 5 | Elias |
-| Open-Meteo: verificar termos para SaaS comercial | Bloqueia Fase 6 | Elias |
+| Open-Meteo: contratar plano comercial antes de ativar em produção (Free API = não comercial) | Bloqueia WeatherEnabled em prod | Elias |
 | Mercado Pago: modelo plataforma vs. conta por tenant | Bloqueia Fase 7b | Elias |
 | Stripe: criar conta e verificar identidade | Bloqueia Fase 7a | Elias |
 | Meta Business: criar conta e aprovar templates | Bloqueia Fase 8 | Elias |
@@ -1158,6 +1158,20 @@ Polly circuit breaker para cada provider externo:
 | BK-PDF-1 | `tenantName` hardcoded como `"Orken"` em todos os templates de PDF. Corrigir quando houver serviço de configurações de tenant com nome real disponível (ex. `TenantSettingsService`). | Média | `TenantSettingsService` ou equivalente |
 | BK-PDF-2 | Botão "Baixar fechamento" em `CaixaPage` só aparece para sessão ativa. Criar acesso ao PDF de fechamento pelo histórico de sessões fechadas quando a tela de histórico de caixa existir. | Baixa | Tela de histórico de caixa |
 | BK-PDF-3 | Validar visual dos templates PDF (recibo, fechamento, ficha de produto) em staging com dados reais antes de liberar para tenants. Checar formatação de moeda, quebras de linha, tamanho de tabelas com muitos itens. | Alta | Ambiente staging + dados reais |
+
+### P6 — Weather / Open-Meteo
+
+| # | Item | Prioridade | Pré-requisito |
+|---|------|------------|---------------|
+| BK-WEATHER-1 | **Open-Meteo Free API é para uso não comercial.** O Orken é SaaS comercial. Antes de ativar `WeatherEnabled=true` em produção, validar/contratar plano comercial da Open-Meteo (Customer API). Ao contratar: setar `UseCustomerApi=true`, `ApiKey` e `CustomerBaseUrl` via env vars no Railway. Enquanto não for contratado, manter `WeatherEnabled=false`. | Alta | Decisão comercial + plano Open-Meteo contratado |
+
+**Env vars para plano comercial (quando contratar):**
+```env
+Integrations__Features__WeatherEnabled=true
+Integrations__OpenMeteo__UseCustomerApi=true
+Integrations__OpenMeteo__ApiKey=<api-key-do-plano>
+Integrations__OpenMeteo__CustomerBaseUrl=https://customer-api.open-meteo.com/v1
+```
 
 ### P3 — Storage / Cloudflare R2
 
