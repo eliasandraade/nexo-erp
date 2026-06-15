@@ -6,10 +6,12 @@ using Polly;
 using Polly.Timeout;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.Options;
+using Nexo.Application.Integrations.Pdf;
 using Nexo.Infrastructure.Integrations.BrasilApi;
 using Nexo.Infrastructure.Integrations.Common;
 using Nexo.Infrastructure.Integrations.Composite;
 using Nexo.Infrastructure.Integrations.OpenFoodFacts;
+using Nexo.Infrastructure.Integrations.Pdf;
 using Nexo.Infrastructure.Integrations.Storage;
 using Nexo.Infrastructure.Integrations.ViaCep;
 
@@ -170,6 +172,9 @@ public static class IntegrationsDependencyInjection
         });
 
         services.AddScoped<IBarcodeProductLookupProvider, OpenFoodFactsProvider>();
+
+        // ── PDF Rendering ─────────────────────────────────────────────────────────────
+        services.AddSingleton<IPdfRenderer, QuestPdfRenderer>();
 
         return services;
     }
