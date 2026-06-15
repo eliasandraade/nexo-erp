@@ -214,9 +214,10 @@ public class AuthController : ControllerBase
         var user = await _users.GetByIdAsync(_currentUser.UserId, ct);
         if (user is null) return Unauthorized();
 
-        var tenant = await _tenants.GetByIdAsync(_currentUser.TenantId, ct);
+        var tenant        = await _tenants.GetByIdAsync(_currentUser.TenantId, ct);
         var activeModules = await _tenants.GetActiveModuleKeysAsync(_currentUser.TenantId, ct);
-        var stores = await _stores.GetByTenantIdAsync(_currentUser.TenantId, ct);
+        var trialEndsAt   = await _tenants.GetTrialEndsAtAsync(_currentUser.TenantId, ct);
+        var stores        = await _stores.GetByTenantIdAsync(_currentUser.TenantId, ct);
 
         return Ok(new SessionDto(
             UserId:        user.Id.ToString(),
@@ -228,7 +229,8 @@ public class AuthController : ControllerBase
             ActiveModules: activeModules.ToList(),
             StoreId:       _currentUser.StoreId == Guid.Empty ? null : _currentUser.StoreId.ToString(),
             StoreIds:      stores.Select(s => s.Id.ToString()).ToList(),
-            CompanyName:   tenant?.TradeName ?? tenant?.CompanyName ?? ""));
+            CompanyName:   tenant?.TradeName ?? tenant?.CompanyName ?? "",
+            TrialEndsAt:   trialEndsAt));
     }
 
     /// <summary>

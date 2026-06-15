@@ -34,7 +34,8 @@ public record SessionDto(
     List<string> StoreIds,
     string CompanyName = "",
     string Type = "tenant",
-    bool IsNewAccount = false);
+    bool IsNewAccount = false,
+    DateTime? TrialEndsAt = null);
 
 public record LoginResponse(
     string AccessToken,

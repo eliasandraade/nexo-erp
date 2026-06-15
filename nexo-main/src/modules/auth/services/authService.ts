@@ -33,6 +33,7 @@ function toAuthSession(dto: BackendSessionDto): AuthSession {
     companyName:  dto.companyName ?? "",
     type:         (dto.type === "platform" ? "platform" : "tenant"),
     isNewAccount: dto.isNewAccount ?? false,
+    trialEndsAt:  dto.trialEndsAt ?? undefined,
   };
 }
 

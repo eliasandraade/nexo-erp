@@ -61,6 +61,7 @@ public class AuthService
         if (tenant is null) return LoginOutcome.Fail("tenant_not_found");
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(user.TenantId, ct);
+        var trialEndsAt   = await _tenants.GetTrialEndsAtAsync(user.TenantId, ct);
 
         // Load stores for this tenant — active store defaults to the first one
         var stores = await _stores.GetByTenantIdAsync(user.TenantId, ct);
@@ -99,7 +100,8 @@ public class AuthService
             ActiveModules: activeModules.ToList(),
             StoreId:       storeId == Guid.Empty ? null : storeId.ToString(),
             StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
-            CompanyName:   companyName);
+            CompanyName:   companyName,
+            TrialEndsAt:   trialEndsAt);
 
         return LoginOutcome.Ok(new LoginResponse(
             tokens.AccessToken,
@@ -194,6 +196,7 @@ public class AuthService
         if (tenant is null) return null;
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(tenantId, ct);
+        var trialEndsAt   = await _tenants.GetTrialEndsAtAsync(tenantId, ct);
         var stores = await _stores.GetByTenantIdAsync(tenantId, ct);
         var storeIds = stores.Select(s => s.Id).ToList();
 
@@ -224,7 +227,8 @@ public class AuthService
             ActiveModules: activeModules.ToList(),
             StoreId:       requestedStoreId.ToString(),
             StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
-            CompanyName:   tenant.TradeName ?? tenant.CompanyName);
+            CompanyName:   tenant.TradeName ?? tenant.CompanyName,
+            TrialEndsAt:   trialEndsAt);
 
         return new SwitchStoreResponse(
             tokens.AccessToken,

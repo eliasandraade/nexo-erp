@@ -45,6 +45,14 @@ public class TenantRepository : ITenantRepository
             .ToListAsync(ct);
     }
 
+    public async Task<DateTime?> GetTrialEndsAtAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        return await _context.ModuleSubscriptions
+            .Where(s => s.TenantId == tenantId && s.PlanType == PlanType.Trial)
+            .Select(s => s.CurrentPeriodEnd)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task AddAsync(Tenant tenant, CancellationToken ct = default)
         => await _context.Tenants.AddAsync(tenant, ct);
 

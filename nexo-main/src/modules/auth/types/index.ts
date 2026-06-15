@@ -23,6 +23,8 @@ export interface AuthSession {
   type: "tenant" | "platform";
   /** True when this session was created via email verification (first login) */
   isNewAccount: boolean;
+  /** ISO date string when the trial ends; null if user has a paid subscription */
+  trialEndsAt?: string;
 }
 
 export interface LoginInput {
@@ -45,6 +47,7 @@ export interface BackendSessionDto {
   companyName?: string;
   type?: string;
   isNewAccount?: boolean;
+  trialEndsAt?: string;
 }
 
 export interface BackendSwitchStoreResponse {

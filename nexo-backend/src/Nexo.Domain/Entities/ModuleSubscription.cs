@@ -67,6 +67,22 @@ public class ModuleSubscription : BaseEntity
     }
 
     /// <summary>
+    /// Creates a time-limited trial subscription. Status = Trialing, expires after <paramref name="days"/> days.
+    /// </summary>
+    public static ModuleSubscription CreateTrial(Guid tenantId, string moduleKey, int days = 7)
+    {
+        return new ModuleSubscription
+        {
+            TenantId           = tenantId,
+            ModuleKey          = moduleKey.ToLowerInvariant(),
+            PlanType           = PlanType.Trial,
+            Status             = SubscriptionStatus.Trialing,
+            CurrentPeriodStart = DateTime.UtcNow,
+            CurrentPeriodEnd   = DateTime.UtcNow.AddDays(days),
+        };
+    }
+
+    /// <summary>
     /// Creates a subscription granted by a platform admin (no Stripe involved).
     /// </summary>
     public static ModuleSubscription CreateAdminGrant(

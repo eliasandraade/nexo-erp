@@ -72,8 +72,8 @@ public class RegistrationService
         _db.Tenants.Add(tenant);
         await _db.SaveChangesAsync(ct);
 
-        // 4. Create varejo module subscription
-        var subscription = ModuleSubscription.CreateAdminGrant(tenant.Id, "varejo");
+        // 4. Create varejo trial subscription (7-day free trial)
+        var subscription = ModuleSubscription.CreateTrial(tenant.Id, "varejo");
         _db.ModuleSubscriptions.Add(subscription);
         await _db.SaveChangesAsync(ct);
 
@@ -154,9 +154,18 @@ public class RegistrationService
         var activeModules = await _db.ModuleSubscriptions
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(s => s.TenantId == tenant.Id && s.Status == SubscriptionStatus.Active)
+            .Where(s => s.TenantId == tenant.Id
+                     && (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Trialing)
+                     && (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd > DateTime.UtcNow))
             .Select(s => s.ModuleKey)
             .ToListAsync(ct);
+
+        var trialEndsAt = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenant.Id && s.PlanType == PlanType.Trial)
+            .Select(s => s.CurrentPeriodEnd)
+            .FirstOrDefaultAsync(ct);
 
         var stores = await _db.Stores
             .IgnoreQueryFilters()
@@ -197,7 +206,8 @@ public class RegistrationService
                 StoreId:       storeId == Guid.Empty ? null : storeId.ToString(),
                 StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
                 CompanyName:   companyName,
-                IsNewAccount:  true));
+                IsNewAccount:  true,
+                TrialEndsAt:   trialEndsAt));
     }
 
     /// <summary>
