@@ -6,6 +6,7 @@ import {
   Tag, Plus, Pencil, Ban, MapPin,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ImageUploadButton } from "@/components/shared/ImageUploadButton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -854,41 +855,22 @@ export default function PortalSetupPage() {
                 />
               </Field>
 
-              <Field label="URL do logotipo" hint="Link direto para a imagem (JPEG ou PNG, quadrado recomendado).">
-                <div className="flex gap-2">
-                  <Input
-                    value={logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="flex-1"
-                  />
-                  {logoUrl && (
-                    <img
-                      src={logoUrl}
-                      alt="Logo preview"
-                      className="w-9 h-9 rounded-lg object-cover border border-border shrink-0"
-                      onError={(e) => (e.currentTarget.style.display = "none")}
-                    />
-                  )}
-                </div>
+              <Field label="Logotipo" hint="JPEG, PNG ou WebP. Quadrado recomendado.">
+                <ImageUploadButton
+                  context="restaurant-logo"
+                  value={logoUrl}
+                  onChange={(url) => setLogoUrl(url ?? "")}
+                  label="Logo"
+                />
               </Field>
 
-              <Field label="URL da imagem de capa" hint="Banner exibido no topo do cardápio (proporção 3:1 recomendada).">
-                <div className="space-y-2">
-                  <Input
-                    value={coverImageUrl}
-                    onChange={(e) => setCoverImageUrl(e.target.value)}
-                    placeholder="https://..."
-                  />
-                  {coverImageUrl && (
-                    <img
-                      src={coverImageUrl}
-                      alt="Cover preview"
-                      className="w-full h-20 rounded-lg object-cover border border-border"
-                      onError={(e) => (e.currentTarget.style.display = "none")}
-                    />
-                  )}
-                </div>
+              <Field label="Imagem de capa" hint="Banner exibido no topo do cardápio (proporção 3:1 recomendada).">
+                <ImageUploadButton
+                  context="restaurant-cover"
+                  value={coverImageUrl}
+                  onChange={(url) => setCoverImageUrl(url ?? "")}
+                  label="Capa"
+                />
               </Field>
 
               <Field label="WhatsApp para contato" hint="Número com DDD, sem espaços. Exibido no portal para dúvidas.">
