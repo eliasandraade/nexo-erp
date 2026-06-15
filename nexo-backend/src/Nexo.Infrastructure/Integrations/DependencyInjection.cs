@@ -9,6 +9,7 @@ using Nexo.Application.Integrations.Options;
 using Nexo.Infrastructure.Integrations.BrasilApi;
 using Nexo.Infrastructure.Integrations.Common;
 using Nexo.Infrastructure.Integrations.Composite;
+using Nexo.Infrastructure.Integrations.OpenFoodFacts;
 using Nexo.Infrastructure.Integrations.Storage;
 using Nexo.Infrastructure.Integrations.ViaCep;
 
@@ -131,6 +132,44 @@ public static class IntegrationsDependencyInjection
         services.Configure<StorageOptions>(
             configuration.GetSection(StorageOptions.SectionKey));
         services.AddSingleton<IStorageProvider, CloudflareR2Provider>();
+
+        // ── Open Food Facts ───────────────────────────────────────────────────
+        var offOpts = configuration.GetSection(OpenFoodFactsOptions.SectionKey).Get<OpenFoodFactsOptions>() ?? new OpenFoodFactsOptions();
+
+        services.Configure<OpenFoodFactsOptions>(configuration.GetSection(OpenFoodFactsOptions.SectionKey));
+
+        services.AddHttpClient<OpenFoodFactsProvider>(client =>
+        {
+            client.BaseAddress = new Uri(offOpts.BaseUrl);
+            client.Timeout     = TimeSpan.FromSeconds(offOpts.TimeoutSeconds + 30);
+            client.DefaultRequestHeaders.Add("User-Agent", offOpts.UserAgent);
+        })
+        .AddHttpMessageHandler<IntegrationHttpClientHandler>()
+        .AddResilienceHandler("OpenFoodFacts", pipeline =>
+        {
+            pipeline.AddTimeout(TimeSpan.FromSeconds(offOpts.TimeoutSeconds));
+            pipeline.AddRetry(new HttpRetryStrategyOptions
+            {
+                MaxRetryAttempts = 2,
+                Delay            = TimeSpan.FromSeconds(1),
+                BackoffType      = DelayBackoffType.Exponential,
+                ShouldHandle     = new PredicateBuilder<HttpResponseMessage>()
+                    .Handle<TimeoutRejectedException>()
+                    .HandleResult(r => r.StatusCode is
+                        HttpStatusCode.TooManyRequests or
+                        HttpStatusCode.ServiceUnavailable or
+                        HttpStatusCode.GatewayTimeout)
+            });
+            pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+            {
+                SamplingDuration  = TimeSpan.FromSeconds(resilienceOpts.CircuitBreakerSamplingDurationSeconds),
+                BreakDuration     = TimeSpan.FromSeconds(resilienceOpts.CircuitBreakerBreakDurationSeconds),
+                FailureRatio      = 0.5,
+                MinimumThroughput = resilienceOpts.CircuitBreakerFailureThreshold,
+            });
+        });
+
+        services.AddScoped<IBarcodeProductLookupProvider, OpenFoodFactsProvider>();
 
         return services;
     }
