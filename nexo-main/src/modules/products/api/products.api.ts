@@ -118,3 +118,7 @@ export function updateCategory(id: string, payload: CategoryPayload): Promise<Ca
 export function deleteCategory(id: string): Promise<void> {
   return apiClient.delete<void>(`/categories/${id}`);
 }
+
+export function patchProductImage(id: string, imageUrl: string | null): Promise<ProductDto> {
+  return apiClient.patch<ProductDto>(`/products/${id}/image`, { imageUrl });
+}

@@ -39,6 +39,7 @@ export interface ProductDto {
   isIngredient: boolean;
   createdAt: string;
   updatedAt: string;
+  imageUrl: string | null;
 }
 
 // ── Form / display model ──────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ export interface Product {
   maxStockQuantity: number | null;
   createdAt: string;
   updatedAt: string;
+  imageUrl: string | null;
 }
 
 export function dtoToProduct(dto: ProductDto): Product {
@@ -80,6 +82,7 @@ export function dtoToProduct(dto: ProductDto): Product {
     maxStockQuantity: dto.maxStockQuantity,
     createdAt:        dto.createdAt,
     updatedAt:        dto.updatedAt,
+    imageUrl:         dto.imageUrl,
   };
 }
 
@@ -97,4 +100,5 @@ export const emptyProduct: Omit<Product, "id" | "createdAt" | "updatedAt"> = {
   trackStock:       true,
   minStockQuantity: 0,
   maxStockQuantity: null,
+  imageUrl:         null,
 };
