@@ -4,11 +4,16 @@ import { useAuth } from "@/modules/auth/context/AuthContext";
 /**
  * Wraps all authenticated routes.
  *
- * Boot flow:
- * 1. `isReady = false` — localStorage session populated synchronously; background
- *    /auth/me validation is in flight. Return null to avoid flashing the login page.
- * 2. `isReady = true, session = null` — no valid session → redirect to /login.
- * 3. `isReady = true, session != null` — validated → render child routes.
+ * Boot flow (optimistic render):
+ * 1. Cached session present (read synchronously from localStorage) → render the
+ *    app IMMEDIATELY. `/auth/me` validation runs in the background and only
+ *    redirects to /login if the server rejects the token. This keeps the
+ *    cold-backend round-trip OFF the first-paint critical path — the #1 cause
+ *    of the long white screen after login. Security is unchanged: the API still
+ *    enforces every request, and a revoked/expired token still bounces to login.
+ * 2. No cached session + validation still pending (`!isReady`) → render null
+ *    briefly (resolves synchronously on next tick) to avoid flashing the app.
+ * 3. No cached session + ready → redirect to /login.
  *    3a. Trial expired + no active modules → redirect to /assinatura.
  *
  * The 401 + refresh-failure path is handled inside api-client.ts:
@@ -19,8 +24,7 @@ export function ProtectedRoute() {
   const { session, isReady } = useAuth();
   const location = useLocation();
 
-  if (!isReady) return null;
-  if (!session)  return <Navigate to="/login" replace />;
+  if (!session) return isReady ? <Navigate to="/login" replace /> : null;
 
   // If trial has expired and no paid modules are active, force the upgrade page.
   // Allow /assinatura and /perfil so the user can still manage their account.

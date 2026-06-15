@@ -1,0 +1,31 @@
+# Caddy static server for the Orken SPA (production).
+# Guarantees compression + correct cache headers regardless of platform
+# autodetection. Railway terminates TLS at its edge and injects $PORT, so Caddy
+# serves plain HTTP on that port.
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:8080} {
+	root * /srv
+
+	# Compress responses (zstd preferred, gzip fallback). Brotli needs a Caddy
+	# plugin; zstd+gzip covers all browsers and is built in.
+	encode zstd gzip
+
+	# Hashed asset filenames (e.g. index-BJE3iSeJ.js) change on every build, so
+	# they can be cached forever. This is the big first-vs-repeat-load win.
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	# Never cache the HTML entry point — so a new deploy is picked up on the next
+	# reload instead of serving a stale shell that references deleted chunks.
+	@html path / /index.html
+	header @html Cache-Control "no-cache"
+
+	# SPA fallback: client-side routes (/dashboard, /vendas, …) resolve to the
+	# app shell; real files (assets, favicon) are served directly.
+	try_files {path} /index.html
+	file_server
+}

@@ -1,0 +1,19 @@
+# Keep the build context small and reproducible. node_modules is reinstalled
+# via `npm ci` inside the image; dist is rebuilt. .env.production is NOT ignored
+# — it is intentionally baked into the bundle at build time.
+node_modules
+dist
+.git
+.gitignore
+.vercel
+.worktrees
+.claude
+*.log
+frontend-test-results.txt
+playwright-report
+test-results
+# Dev-only env overrides must NOT enter the production image. .env.production
+# (committed) is the only env file the build should see.
+.env.local
+.env*.local
+.env.development
