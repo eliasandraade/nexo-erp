@@ -1,6 +1,8 @@
+using System.IO.Compression;
 using System.Text;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -11,6 +13,7 @@ using Nexo.Infrastructure.Hubs;
 using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
 using Serilog;
+using StackExchange.Redis;
 
 // ── Bootstrap Serilog early so startup failures are logged ───────────────────
 Log.Logger = new LoggerConfiguration()
@@ -123,9 +126,28 @@ try
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                   .AllowAnyHeader()
                   .AllowCredentials()
+                  // Cache the CORS preflight (OPTIONS) for 24h. The SPA lives on a
+                  // different origin (app.orken.com.br) than the API, so without this
+                  // every non-simple request was preceded by a fresh OPTIONS round-trip,
+                  // doubling latency on the cold first load.
+                  .SetPreflightMaxAge(TimeSpan.FromHours(24))
                   .WithExposedHeaders("Content-Disposition", "Content-Length");
         });
     });
+
+    // ── Response Compression ───────────────────────────────────────────────────
+    // JSON payloads (sales/customers/product lists, dashboard summary) were sent
+    // uncompressed. Brotli/Gzip cut transfer size ~70-80% on the first load.
+    builder.Services.AddResponseCompression(options =>
+    {
+        options.EnableForHttps = true;
+        options.Providers.Add<BrotliCompressionProvider>();
+        options.Providers.Add<GzipCompressionProvider>();
+        options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+            new[] { "application/json", "application/json; charset=utf-8" });
+    });
+    builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+    builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
 
     // ── Rate Limiting ────────────────────────────────────────────────────────
     builder.Services.AddRateLimiter(options =>
@@ -218,8 +240,30 @@ try
         }
     }
 
+    // ── Warm the Redis connection at startup ──────────────────────────────────
+    // ConnectionMultiplexer.Connect() runs lazily on first resolution. Without
+    // this, the very first authenticated request paid the connect cost (up to
+    // ConnectTimeout = 3s) inside TenantResolutionMiddleware. Ping it now so the
+    // multiplexer is live before the first user hits the API. Fail-open.
+    if (!app.Environment.IsEnvironment("Testing"))
+    {
+        try
+        {
+            var mux = app.Services.GetService<IConnectionMultiplexer>();
+            mux?.GetDatabase().Ping();
+            if (mux is not null) Log.Information("Redis connection warmed.");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Redis warmup ping failed — cache will be degraded (fail-open).");
+        }
+    }
+
     // ── Middleware pipeline ───────────────────────────────────────────────────
-    // CORS must be first so every response (including errors and rate-limit
+    // Response compression first so it wraps every downstream response body.
+    app.UseResponseCompression();
+
+    // CORS next so every response (including errors and rate-limit
     // rejections) carries the Access-Control-Allow-Origin header.
     app.UseCors("NexoFrontend");
 

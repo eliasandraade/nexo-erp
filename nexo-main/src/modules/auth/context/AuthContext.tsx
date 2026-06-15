@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import * as authService from "../services/authService";
 import type { AuthSession, LoginInput } from "../types";
 
@@ -36,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
   const [isReady, setIsReady] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Background validation: confirm the stored session is still valid
   useEffect(() => {
@@ -53,8 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           navigate("/platform", { replace: true });
         }
       } else {
-        // Token rejected by server — force logout
+        // Token rejected by server — force logout. With optimistic render the
+        // app may already be mounted, so purge any data cached during the
+        // validation window before bouncing to /login.
         setSession(null);
+        queryClient.clear();
         navigate("/login", { replace: true });
       }
       setIsReady(true);
@@ -72,13 +77,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     authService.logout();
     setSession(null);
+    // Drop every cached query so the next user on this browser never sees the
+    // previous session's data (dashboard, customers, sales, …).
+    queryClient.clear();
     navigate("/login", { replace: true });
-  }, [navigate]);
+  }, [navigate, queryClient]);
 
   const switchStore = useCallback(async (storeId: string): Promise<void> => {
     const fresh = await authService.switchStore(storeId);
     setSession(fresh);
-  }, []);
+    // Store-scoped data (sales, products, customers, stock) belongs to the old
+    // store — clear it so the new store context refetches cleanly.
+    queryClient.clear();
+  }, [queryClient]);
 
   const setSessionFromVerify = useCallback((session: AuthSession) => {
     setSession(session);
@@ -86,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ session, isReady, login, logout, switchStore, setSessionFromVerify }),
-    [session, isReady, login, logout, switchStore, setSessionFromVerify]  // eslint-disable-line react-hooks/exhaustive-deps
+    [session, isReady, login, logout, switchStore, setSessionFromVerify]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

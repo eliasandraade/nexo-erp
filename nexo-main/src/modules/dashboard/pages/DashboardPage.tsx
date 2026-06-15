@@ -1,8 +1,15 @@
-import { useState, useMemo } from "react";
+import { lazy, Suspense, useState, useMemo } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { Skeleton } from "@/components/ui/skeleton";
 import { KpiCards } from "@/modules/dashboard/components/KpiCards";
-import { SalesChart } from "@/modules/dashboard/components/SalesChart";
 import { TopProducts } from "@/modules/dashboard/components/TopProducts";
+
+// Lazy: recharts + d3 (the ~374KB vendor-charts chunk) is the single biggest
+// dependency. Loading it lazily keeps it off the dashboard's first-paint path —
+// the KPIs render immediately while the chart streams in behind a skeleton.
+const SalesChart = lazy(() =>
+  import("@/modules/dashboard/components/SalesChart").then((m) => ({ default: m.SalesChart }))
+);
 import { SellerRanking } from "@/modules/dashboard/components/SellerRanking";
 import { RecentInsights } from "@/modules/dashboard/components/RecentInsights";
 import { StockAlerts } from "@/modules/dashboard/components/StockAlerts";
@@ -51,7 +58,9 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <SalesChart />
+          <Suspense fallback={<Skeleton className="h-[360px] rounded-xl" />}>
+            <SalesChart />
+          </Suspense>
         </div>
         <TopProducts />
       </div>

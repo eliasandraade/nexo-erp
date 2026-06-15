@@ -10,14 +10,47 @@ public class DashboardService
 {
     private readonly NexoDbContext _db;
     private readonly ICurrentTenant _currentTenant;
+    private readonly ICurrentStore _currentStore;
+    private readonly ICacheService _cache;
 
-    public DashboardService(NexoDbContext db, ICurrentTenant currentTenant)
+    // The summary is built from ~11 sequential DB round-trips. A short Redis TTL
+    // collapses that to a single cache GET on warm cache — for the same store,
+    // across reloads, devices and users.
+    //
+    // Staleness budget (be precise — the two layers ADD UP, they don't cap each
+    // other): a freshly fetched value can be up to 30s old (this Redis TTL), and
+    // the client (TanStack Query staleTime 60s) may then hold that value for up
+    // to 60s more before refetching. Worst case a user sees data ~90s old;
+    // typical case ≤60s. Acceptable for an at-a-glance dashboard. To tighten,
+    // lower this TTL and/or the client staleTime.
+    private static readonly TimeSpan _cacheTtl = TimeSpan.FromSeconds(30);
+
+    public DashboardService(
+        NexoDbContext db,
+        ICurrentTenant currentTenant,
+        ICurrentStore currentStore,
+        ICacheService cache)
     {
         _db            = db;
         _currentTenant = currentTenant;
+        _currentStore  = currentStore;
+        _cache         = cache;
     }
 
     public async Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken ct = default)
+    {
+        // Scope the cache to tenant + store so isolation is never crossed.
+        var cacheKey = $"dashboard:summary:{_currentTenant.Id}:{_currentStore.Id}";
+
+        var cached = await _cache.GetAsync<DashboardSummaryDto>(cacheKey, ct);
+        if (cached is not null) return cached;
+
+        var fresh = await ComputeSummaryAsync(ct);
+        await _cache.SetAsync(cacheKey, fresh, _cacheTtl, ct);
+        return fresh;
+    }
+
+    private async Task<DashboardSummaryDto> ComputeSummaryAsync(CancellationToken ct)
     {
         // Sequential — DbContext is not thread-safe for concurrent queries
         var (totalSales, cancelledCount, totalRevenue, averageTicket) = await GetSalesKpisAsync(ct);

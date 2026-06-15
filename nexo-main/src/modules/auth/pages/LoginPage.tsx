@@ -1,9 +1,12 @@
 import { useRef, useState, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { homeRoute } from "../hooks/useRoleAccess";
 import { getCurrentSession } from "../services/authService";
+import { DASHBOARD_SUMMARY_KEY } from "@/modules/dashboard/hooks/useDashboardSummary";
+import { getDashboardSummary } from "@/modules/dashboard/api/dashboard.api";
 
 // ─── Shared input styles ──────────────────────────────────────────────────────
 
@@ -22,6 +25,7 @@ const LABEL =
 export default function LoginPage() {
   const { login }  = useAuth();
   const navigate   = useNavigate();
+  const queryClient = useQueryClient();
   const formRef    = useRef<HTMLFormElement>(null);
 
   const [loginField,    setLoginField]    = useState("");
@@ -67,7 +71,18 @@ export default function LoginPage() {
       navigate("/platform", { replace: true });
     } else {
       const session = getCurrentSession();
-      navigate(session ? homeRoute(session) : "/dashboard", { replace: true });
+      const target  = session ? homeRoute(session) : "/dashboard";
+      // Warm the dashboard cache in parallel with the route transition + chunk
+      // download, so the first data is already in flight (or done) by the time
+      // DashboardPage mounts. Only when the user actually lands on /dashboard.
+      if (target === "/dashboard") {
+        void queryClient.prefetchQuery({
+          queryKey: DASHBOARD_SUMMARY_KEY,
+          queryFn:  getDashboardSummary,
+          staleTime: 60_000,
+        });
+      }
+      navigate(target, { replace: true });
     }
   }
 

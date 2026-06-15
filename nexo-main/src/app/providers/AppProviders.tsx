@@ -9,8 +9,19 @@ import { Toaster } from "@/components/ui/sonner";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      // Default freshness; per-hook staleTime overrides this (auth/tenant longer,
+      // dashboard/sales shorter). 30s avoids refetching on every remount.
       staleTime: 30_000,
-      retry: 1,
+      // Keep inactive cache for 5min so navigating back to a page is instant
+      // (served from cache) instead of refetching.
+      gcTime: 5 * 60_000,
+      // Don't retry client errors (401/403/404/422) — they won't succeed on
+      // retry and just add latency. Retry transient server/network errors once.
+      retry: (failureCount, error) => {
+        const status = (error as { status?: number })?.status;
+        if (status && status >= 400 && status < 500) return false;
+        return failureCount < 1;
+      },
       // Disabling window-focus refetch prevents 4-6 simultaneous requests
       // every time the user alt-tabs back to the app. Mutations still call
       // invalidateQueries() explicitly when data actually changes.

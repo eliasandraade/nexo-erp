@@ -20,7 +20,32 @@
 </head>
 
   <body>
-    <div id="root"></div>
+    <!--
+      Inline app shell: paints instantly from the static HTML, before the JS
+      bundle downloads/parses and React mounts. Eliminates the long white screen
+      on first load. createRoot().render() replaces these children on mount.
+      Background matches --background (#f8fafc) so there's no color jump into the
+      authenticated app.
+    -->
+    <style>
+      #app-shell {
+        position: fixed; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        background: #f8fafc;
+      }
+      #app-shell .nexo-spinner {
+        width: 28px; height: 28px; border-radius: 9999px;
+        border: 3px solid #e2e8f0; border-top-color: #5b4dff;
+        animation: nexo-spin 0.7s linear infinite;
+      }
+      @keyframes nexo-spin { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        #app-shell .nexo-spinner { animation-duration: 1.6s; }
+      }
+    </style>
+    <div id="root">
+      <div id="app-shell"><div class="nexo-spinner" role="status" aria-label="Carregando"></div></div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
