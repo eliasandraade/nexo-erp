@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Features.Cash;
+using Nexo.Application.Integrations.Pdf;
 
 namespace Nexo.Api.Controllers;
 
@@ -10,8 +11,13 @@ namespace Nexo.Api.Controllers;
 public class CashController : ControllerBase
 {
     private readonly CashService _service;
+    private readonly IPdfRenderer _pdfRenderer;
 
-    public CashController(CashService service) => _service = service;
+    public CashController(CashService service, IPdfRenderer pdfRenderer)
+    {
+        _service = service;
+        _pdfRenderer = pdfRenderer;
+    }
 
     [HttpGet("sessions")]
     public async Task<ActionResult<IReadOnlyList<CashSessionDto>>> GetAllSessions(CancellationToken ct)
@@ -47,4 +53,13 @@ public class CashController : ControllerBase
         [FromBody] AddCashMovementRequest request,
         CancellationToken ct)
         => Ok(await _service.AddMovementAsync(id, request, ct));
+
+    [HttpGet("sessions/{id:guid}/close-report.pdf")]
+    public async Task<IActionResult> GetCashCloseReport(Guid id, CancellationToken ct)
+    {
+        var session = await _service.GetByIdAsync(id, ct);
+        var request  = new CashCloseReportRequest(session, "Orken");
+        var result   = _pdfRenderer.RenderCashCloseReport(request);
+        return File(result.Bytes, "application/pdf", result.FileName);
+    }
 }

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Attributes;
 using Nexo.Application.Common;
 using Nexo.Application.Features.Sales;
+using Nexo.Application.Integrations.Pdf;
 
 namespace Nexo.Api.Controllers;
 
@@ -13,8 +14,13 @@ namespace Nexo.Api.Controllers;
 public class SalesController : ControllerBase
 {
     private readonly SaleService _service;
+    private readonly IPdfRenderer _pdfRenderer;
 
-    public SalesController(SaleService service) => _service = service;
+    public SalesController(SaleService service, IPdfRenderer pdfRenderer)
+    {
+        _service = service;
+        _pdfRenderer = pdfRenderer;
+    }
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SaleDto>>> GetAll(CancellationToken ct)
@@ -66,5 +72,14 @@ public class SalesController : ControllerBase
     {
         await _service.CancelAsync(id, ct);
         return NoContent();
+    }
+
+    [HttpGet("{id:guid}/receipt.pdf")]
+    public async Task<IActionResult> GetSaleReceipt(Guid id, CancellationToken ct)
+    {
+        var sale    = await _service.GetByIdAsync(id, ct);
+        var request = new SaleReceiptRequest(sale, "Orken");
+        var result  = _pdfRenderer.RenderSaleReceipt(request);
+        return File(result.Bytes, "application/pdf", result.FileName);
     }
 }

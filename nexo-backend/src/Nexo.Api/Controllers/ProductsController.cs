@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Common;
 using Nexo.Application.Features.Products;
+using Nexo.Application.Integrations.Pdf;
 
 namespace Nexo.Api.Controllers;
 
@@ -13,8 +14,13 @@ public record SetProductImageRequest(string? ImageUrl);
 public class ProductsController : ControllerBase
 {
     private readonly ProductService _service;
+    private readonly IPdfRenderer _pdfRenderer;
 
-    public ProductsController(ProductService service) => _service = service;
+    public ProductsController(ProductService service, IPdfRenderer pdfRenderer)
+    {
+        _service = service;
+        _pdfRenderer = pdfRenderer;
+    }
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ProductDto>>> GetAll(
@@ -87,4 +93,13 @@ public class ProductsController : ControllerBase
         [FromBody] SetProductImageRequest request,
         CancellationToken ct)
         => Ok(await _service.SetImageUrlAsync(id, request.ImageUrl, ct));
+
+    [HttpGet("{id:guid}/sheet.pdf")]
+    public async Task<IActionResult> GetProductSheet(Guid id, CancellationToken ct)
+    {
+        var product = await _service.GetByIdAsync(id, ct);
+        var request = new ProductSheetRequest(product, "Orken");
+        var result  = _pdfRenderer.RenderProductSheet(request);
+        return File(result.Bytes, "application/pdf", result.FileName);
+    }
 }
