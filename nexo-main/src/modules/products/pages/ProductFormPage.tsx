@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ChefHat, Package } from "lucide-react";
+import { ChefHat, Package, FileDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -14,6 +14,7 @@ import type { Product } from "../types";
 import { useProduct, useCategories, useCreateProduct, useUpdateProduct, useSetProductActive } from "../hooks/use-products";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { toast } from "sonner";
+import { downloadPdf } from "@/services/pdf.api";
 
 function validate(data: Partial<Product>): string[] {
   const errors: string[] = [];
@@ -54,6 +55,20 @@ export default function ProductFormPage() {
       setFormData((prev) => ({ ...prev, isIngredient: true }));
     }
   }, [isNew, location.search]);
+
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const handleDownloadSheet = async () => {
+    if (!id) return;
+    setPdfLoading(true);
+    try {
+      await downloadPdf(`/products/${id}/sheet.pdf`, `ficha-produto.pdf`);
+    } catch {
+      toast.error("Falha ao gerar PDF. Tente novamente.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   const saving =
     createMutation.isPending ||
@@ -116,6 +131,21 @@ export default function ProductFormPage() {
         description="Cadastre e configure as informações do produto."
         actions={
           <div className="flex items-center gap-2">
+            {!isNew && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadSheet}
+                disabled={pdfLoading || !id}
+              >
+                {pdfLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileDown className="mr-2 h-4 w-4" />
+                )}
+                Baixar ficha
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => navigate("/produtos")}

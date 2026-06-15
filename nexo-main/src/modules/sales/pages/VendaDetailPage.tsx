@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, AlertCircle, Store, User, XCircle } from "lucide-react";
+import { ArrowLeft, AlertCircle, Store, User, XCircle, FileDown, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -8,12 +8,14 @@ import { SectionCard } from "@/components/shared/SectionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { getSale, cancelSale } from "../api/sales.api";
+import { downloadPdf } from "@/services/pdf.api";
 import { saleToLegacy } from "../utils/saleAdapter";
 import { SaleSummaryCard } from "../components/SaleSummaryCard";
 import { SalePaymentSummaryCard } from "../components/SalePaymentSummaryCard";
 import { SaleItemsTable } from "../components/SaleItemsTable";
 import { SaleCancellationDialog } from "../components/SaleCancellationDialog";
 import type { CancellationConfirmPayload } from "../components/SaleCancellationDialog";
+import { toast } from "sonner";
 
 export default function VendaDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -21,6 +23,19 @@ export default function VendaDetailPage() {
   const queryClient = useQueryClient();
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const handleDownloadReceipt = async () => {
+    if (!id) return;
+    setPdfLoading(true);
+    try {
+      await downloadPdf(`/sales/${id}/receipt.pdf`, `recibo.pdf`);
+    } catch {
+      toast.error("Falha ao gerar PDF. Tente novamente.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   const { data: sale, isLoading, isError } = useQuery({
     queryKey: ["sale", id],
@@ -89,6 +104,19 @@ export default function VendaDetailPage() {
 
   const actions = (
     <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleDownloadReceipt}
+        disabled={pdfLoading}
+      >
+        {pdfLoading ? (
+          <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+        ) : (
+          <FileDown className="h-4 w-4 mr-1.5" />
+        )}
+        Baixar recibo
+      </Button>
       {canCancelSale && (
         <Button
           variant="destructive"

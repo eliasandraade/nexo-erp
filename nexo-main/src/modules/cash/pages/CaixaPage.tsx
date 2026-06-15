@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Wallet, X } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Wallet, X, FileDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -20,6 +20,7 @@ import { CashOpenModal } from "../components/CashOpenModal";
 import { CashMovementModal } from "../components/CashMovementModal";
 import { CashCloseModal } from "../components/CashCloseModal";
 import type { AddCashMovementRequest } from "../types";
+import { downloadPdf } from "@/services/pdf.api";
 
 export default function CaixaPage() {
   const [openModal, setOpenModal] = useState(false);
@@ -27,6 +28,19 @@ export default function CaixaPage() {
   const [movementDefaultType, setMovementDefaultType] =
     useState<AddCashMovementRequest["movementType"]>("Withdrawal");
   const [closeModal, setCloseModal] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const handleDownloadReport = async () => {
+    if (!openSession?.id) return;
+    setPdfLoading(true);
+    try {
+      await downloadPdf(`/cash/sessions/${openSession.id}/close-report.pdf`, `fechamento.pdf`);
+    } catch {
+      toast.error("Falha ao gerar PDF. Tente novamente.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   const { data: openSession, isLoading: sessionLoading } = useOpenSession();
   const { data: sessionDetail } = useSessionById(openSession?.id);
@@ -62,6 +76,18 @@ export default function CaixaPage() {
             )}
             {isOpen && (
               <>
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadReport}
+                  disabled={pdfLoading}
+                >
+                  {pdfLoading ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <FileDown className="h-4 w-4 mr-1.5" />
+                  )}
+                  Baixar fechamento
+                </Button>
                 <Button variant="outline" onClick={() => openMovementModal("Withdrawal")}>
                   <ArrowDownLeft className="h-4 w-4 mr-1.5" />
                   Sangria
