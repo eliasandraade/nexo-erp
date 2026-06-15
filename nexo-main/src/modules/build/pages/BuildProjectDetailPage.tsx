@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Trash2, Pencil,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
-  MapPin, User, DollarSign, BarChart2, BookOpen, HardHat,
+  MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,10 @@ import { BuildExpenseDialog } from "../components/BuildExpenseDialog";
 import type {
   BuildProjectDetailsDto, BuildStageDto, BuildBudgetDto, BuildDailyLogDto,
 } from "../api/build.api";
+import {
+  getWeatherCurrent, getWeatherHistory,
+  type WeatherResult,
+} from "@/services/weather.api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -699,6 +703,65 @@ function TabDiario({ projectId }: { projectId: string }) {
   const [logNotes, setLogNotes]     = useState("");
   const [logWeather, setLogWeather] = useState("");
 
+  // Weather lookup state
+  const [weatherLat, setWeatherLat]       = useState("");
+  const [weatherLon, setWeatherLon]       = useState("");
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherResult, setWeatherResult] = useState<WeatherResult | null>(null);
+  const [weatherStatus, setWeatherStatus] = useState<"idle" | "not_found" | "unavailable">("idle");
+
+  const handleGeolocate = () => {
+    if (!navigator.geolocation) {
+      toast.error("Geolocalização não suportada pelo navegador.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setWeatherLat(pos.coords.latitude.toFixed(4));
+        setWeatherLon(pos.coords.longitude.toFixed(4));
+      },
+      () => toast.error("Não foi possível obter localização."),
+    );
+  };
+
+  const handleFetchWeather = async () => {
+    const lat = parseFloat(weatherLat);
+    const lon = parseFloat(weatherLon);
+    if (isNaN(lat) || isNaN(lon)) {
+      toast.error("Informe latitude e longitude válidas.");
+      return;
+    }
+    setWeatherLoading(true);
+    setWeatherResult(null);
+    setWeatherStatus("idle");
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const isToday = logDate === today;
+      const response = isToday
+        ? await getWeatherCurrent(lat, lon)
+        : await getWeatherHistory(lat, lon, logDate);
+      if (response.unavailable) {
+        setWeatherStatus("unavailable");
+      } else if (!response.found || !response.data) {
+        setWeatherStatus("not_found");
+      } else {
+        setWeatherResult(response.data);
+      }
+    } catch {
+      setWeatherStatus("unavailable");
+    } finally {
+      setWeatherLoading(false);
+    }
+  };
+
+  const handleApplyWeather = () => {
+    if (!weatherResult) return;
+    setLogWeather(weatherResult.summary);
+    setWeatherResult(null);
+    setWeatherStatus("idle");
+    toast.success("Clima aplicado ao diário.");
+  };
+
   // Photo form
   const [photoLogId, setPhotoLogId] = useState<string | null>(null);
   const [photoKey, setPhotoKey]     = useState("");
@@ -759,7 +822,11 @@ function TabDiario({ projectId }: { projectId: string }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label className="text-xs">Data</Label>
-              <Input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)}
+              <Input type="date" value={logDate} onChange={(e) => {
+                setLogDate(e.target.value);
+                setWeatherResult(null);
+                setWeatherStatus("idle");
+              }}
                 className="mt-0.5 text-sm" />
             </div>
             <div>
@@ -768,6 +835,110 @@ function TabDiario({ projectId }: { projectId: string }) {
                 placeholder="Ensolarado 28°C" className="mt-0.5 text-sm" />
             </div>
           </div>
+
+          {/* Weather lookup section */}
+          <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+            <div className="flex items-center gap-1.5">
+              <Cloud className="h-3.5 w-3.5 text-muted-foreground" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Buscar clima automaticamente
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Latitude</Label>
+                <Input
+                  type="number"
+                  min={-90}
+                  max={90}
+                  step="any"
+                  value={weatherLat}
+                  onChange={(e) => setWeatherLat(e.target.value)}
+                  placeholder="-23.5505"
+                  className="mt-0.5 h-8 text-sm"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Longitude</Label>
+                <Input
+                  type="number"
+                  min={-180}
+                  max={180}
+                  step="any"
+                  value={weatherLon}
+                  onChange={(e) => setWeatherLon(e.target.value)}
+                  placeholder="-46.6333"
+                  className="mt-0.5 h-8 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={handleGeolocate}
+              >
+                <MapPin className="h-3 w-3 mr-1" />
+                Usar minha localização
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={handleFetchWeather}
+                disabled={weatherLoading}
+              >
+                {weatherLoading
+                  ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  : <Cloud className="h-3 w-3 mr-1" />}
+                {weatherLoading ? "Buscando…" : "Buscar clima"}
+              </Button>
+            </div>
+
+            {/* Result card */}
+            {weatherResult && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-semibold">
+                      {weatherResult.temperatureMax.toFixed(1)}°C / {weatherResult.temperatureMin.toFixed(1)}°C
+                    </p>
+                    <p className="text-xs text-muted-foreground">{weatherResult.description}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Chuva: {weatherResult.precipitationMm.toFixed(1)} mm
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-7 text-xs shrink-0"
+                    onClick={handleApplyWeather}
+                  >
+                    <Check className="h-3 w-3 mr-1" />
+                    Aplicar ao diário
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Status messages */}
+            {weatherStatus === "unavailable" && (
+              <p className="text-xs text-muted-foreground italic">
+                Consulta de clima indisponível. Preencha manualmente.
+              </p>
+            )}
+            {weatherStatus === "not_found" && (
+              <p className="text-xs text-muted-foreground italic">
+                Nenhum dado climático encontrado para essa localização.
+              </p>
+            )}
+          </div>
+
           <div>
             <Label className="text-xs">Notas *</Label>
             <Textarea
