@@ -24,5 +24,6 @@
     <PackageReference Include="Dapper" Version="2.1.35" />
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.414.0" />
   </ItemGroup>
 </Project>

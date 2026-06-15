@@ -9,6 +9,7 @@ using Nexo.Application.Integrations.Options;
 using Nexo.Infrastructure.Integrations.BrasilApi;
 using Nexo.Infrastructure.Integrations.Common;
 using Nexo.Infrastructure.Integrations.Composite;
+using Nexo.Infrastructure.Integrations.Storage;
 using Nexo.Infrastructure.Integrations.ViaCep;
 
 namespace Nexo.Infrastructure.Integrations;
@@ -125,6 +126,11 @@ public static class IntegrationsDependencyInjection
         // Composite and interface registrations
         services.AddScoped<ICepLookupProvider,  CompositeCepLookupProvider>();
         services.AddScoped<ICnpjLookupProvider, BrasilApiCnpjProvider>();
+
+        // ── Storage ───────────────────────────────────────────────────────────────────
+        services.Configure<StorageOptions>(
+            configuration.GetSection(StorageOptions.SectionKey));
+        services.AddSingleton<IStorageProvider, CloudflareR2Provider>();
 
         return services;
     }
