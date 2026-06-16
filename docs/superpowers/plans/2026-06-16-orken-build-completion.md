@@ -201,3 +201,23 @@ IReadOnlyList<RecentExpenseDto> RecentExpenses; // last N confirmed Obra movemen
 - P0.1 → Task 1. P1.1 → Task 2. P1.4 → Task 3. P1.2 → Task 4. P2.2 → Task 5. P1.3 → Task 6. P2.1+P2.3 → Task 7. P2.4 → Task 8. P1.5 → Task 9.
 - Backlog items (P3.x) explicitly deferred with rationale.
 - All migrations additive; no Core call site broken (optional params); dist gotcha handled.
+
+---
+
+## Delivery status — 2026-06-16
+
+**Landed & validated (green):**
+- Task 1 (P0.1) — financial-summary contract fixed; integration regression added.
+- Task 2 (P1.1) — Editar obra dialog + complete `UpdateBuildProjectRequest`.
+- Task 3 (P1.4) — budget item edit/remove, margin editor, approve→project.budgetApproved propagation (+ integration test).
+- Task 4 (P1.2) — real daily-log photo upload (storage service + additive `Url` migration); manual storage-key fake removed.
+- Task 5 (P2.2) — supplier on obra expenses (additive `FinancialMovement.SupplierId` migration); picker + Financeiro list name.
+- Task 6 (P1.3) — real Dashboard endpoint + section.
+- Task 9 (P1.5) — Build integration tests (4) + storage unit test; full validation run.
+
+**Validation:** `dotnet build` ✅ · UnitTests 171/171 ✅ · IntegrationTests 170 ✅ (166 existing + 4 new Build) · `tsc` ✅ · `npm run build` ✅ · `npm test` 37/38 (1 pre-existing JWT-decode unit failure + 1 mis-collected Playwright spec, both unrelated to Build).
+
+**Deferred to backlog (documented, not implemented this round):**
+- Task 7 (P2.1 Relatórios page + P2.3 stage estimated-cost rollup) — dashboard + per-obra Financeiro tab already cover portfolio and previsto×realizado; the dedicated reports page (despesas por categoria/fornecedor, andamento por etapa) and stage-cost rollup are net-new and sized for a follow-up. Supplier data is already captured (Task 5), so `despesas por fornecedor` is unblocked.
+- Task 8 (P2.4 stage description/dates/reorder UI).
+- P3.x as previously listed (realized-cost-per-stage, standalone budgets list, drag-drop reorder, R2 orphan cleanup, latent DTO cosmetics).
