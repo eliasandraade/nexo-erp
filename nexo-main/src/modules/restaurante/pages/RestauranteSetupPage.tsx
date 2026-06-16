@@ -1,14 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, ChevronDown, ChevronRight, Pencil, Check, X, Loader2 } from "lucide-react";
+import { Plus, ChevronDown, ChevronRight, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { toast } from "sonner";
-import { listAreas, createArea, updateArea, listTables, createTable, updateTable, getFoodSettings } from "../api/restaurante.api";
+import { listAreas, createArea, updateArea, listTables, createTable, updateTable } from "../api/restaurante.api";
 import type { AreaDto, TableDto } from "../types";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { useUpdateOperationalCosts } from "../hooks/useFoodSettings";
 
 // ── Inline editable area row ──────────────────────────────────────────────────
 function AreaRow({ area, tables }: { area: AreaDto; tables: TableDto[] }) {
@@ -200,34 +197,6 @@ export default function RestauranteSetupPage() {
     enabled: !!storeId,
   });
 
-  // ── Operational costs state
-  const { data: settings } = useQuery({
-    queryKey: ["food-settings", storeId],
-    queryFn: getFoodSettings,
-    enabled: !!storeId,
-    staleTime: 60_000,
-  });
-  const updateCostsMut = useUpdateOperationalCosts(storeId);
-  const [gasRate, setGasRate]     = useState<string>("");
-  const [laborRate, setLaborRate] = useState<string>("");
-
-  useEffect(() => {
-    if (settings) {
-      setGasRate(settings.costPerMinuteGas?.toString() ?? "0");
-      setLaborRate(settings.costPerMinuteLaborRate?.toString() ?? "0");
-    }
-  }, [settings]);
-
-  const handleSaveCosts = () => {
-    updateCostsMut.mutate(
-      { costPerMinuteGas: parseFloat(gasRate) || 0, costPerMinuteLaborRate: parseFloat(laborRate) || 0 },
-      {
-        onSuccess: () => toast.success("Custos operacionais salvos!"),
-        onError:   () => toast.error("Erro ao salvar custos operacionais."),
-      }
-    );
-  };
-
   const [addingArea, setAddingArea] = useState(false);
   const [newAreaName, setNewAreaName] = useState("");
 
@@ -295,61 +264,6 @@ export default function RestauranteSetupPage() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* ── Custos operacionais ──────────────────────────────────────────── */}
-      <div className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium text-foreground">Custos operacionais</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Usado no cálculo de CMV das fichas técnicas. Informe o custo por minuto de gás e mão de obra.
-          </p>
-        </div>
-
-        <div className="p-4 border border-border rounded-xl space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="gas-rate" className="text-sm">Custo de gás (por minuto)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
-                <Input
-                  id="gas-rate"
-                  type="number"
-                  min={0}
-                  step={0.0001}
-                  value={gasRate}
-                  onChange={(e) => setGasRate(e.target.value)}
-                  className="pl-9 text-sm"
-                  placeholder="0.0000"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="labor-rate" className="text-sm">Custo de mão de obra (por minuto)</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
-                <Input
-                  id="labor-rate"
-                  type="number"
-                  min={0}
-                  step={0.0001}
-                  value={laborRate}
-                  onChange={(e) => setLaborRate(e.target.value)}
-                  className="pl-9 text-sm"
-                  placeholder="0.0000"
-                />
-              </div>
-            </div>
-          </div>
-          <Button
-            size="sm"
-            onClick={handleSaveCosts}
-            disabled={updateCostsMut.isPending}
-          >
-            {updateCostsMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-            Salvar custos
-          </Button>
-        </div>
       </div>
     </div>
   );

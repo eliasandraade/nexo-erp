@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, AlertCircle, Warehouse, Info } from "lucide-react";
+import { Plus, Warehouse, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataPagination } from "@/components/shared/DataPagination";
 import { useStockPaged } from "../hooks/use-stock";
@@ -31,7 +32,7 @@ export default function EstoquePage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [search]);
 
-  const { data, isLoading, isError } = useStockPaged({
+  const { data, isLoading, isError, refetch } = useStockPaged({
     page,
     pageSize: 50,
     search:  debouncedSearch || undefined,
@@ -89,10 +90,10 @@ export default function EstoquePage() {
               ))}
             </div>
           ) : isError ? (
-            <EmptyState
-              icon={AlertCircle}
-              title="Erro ao carregar estoque"
-              description="Não foi possível carregar os dados de estoque. Tente novamente."
+            <ErrorState
+              title="Não foi possível carregar o estoque"
+              description="Não conseguimos buscar os dados agora. Tente novamente em instantes."
+              onRetry={() => refetch()}
             />
           ) : items.length > 0 ? (
             <>
