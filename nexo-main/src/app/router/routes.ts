@@ -64,8 +64,8 @@ export const appRoutes: AppRoute[] = [
   { path: "/restaurante",            label: "Salão",         icon: UtensilsCrossed,   group: "restaurante", moduleKey: "restaurante", roles: [...MGMT, "vendedor"] },
   { path: "/restaurante/delivery",   label: "Entregas",      icon: Bike,              group: "restaurante", moduleKey: "restaurante", roles: [...MGMT, "vendedor"] },
   { path: "/restaurante/cozinha",    label: "Cozinha",       icon: ChefHat,           group: "restaurante", moduleKey: "restaurante", roles: [...MGMT, "cozinha"] },
-  { path: "/restaurante/portal",     label: "Portal",        icon: Globe,             group: "restaurante", moduleKey: "restaurante", roles: MGMT },
-  { path: "/restaurante/configurar", label: "Config. Mesas", icon: SlidersHorizontal, group: "restaurante", moduleKey: "restaurante", roles: MGMT },
+  { path: "/restaurante/portal",     label: "Cardápio online", icon: Globe,           group: "restaurante", moduleKey: "restaurante", roles: MGMT },
+  { path: "/restaurante/configurar", label: "Mesas e áreas", icon: SlidersHorizontal, group: "restaurante", moduleKey: "restaurante", roles: MGMT },
   { path: "/restaurante/relatorios", label: "Relatórios",    icon: BarChart2,         group: "restaurante", moduleKey: "restaurante", roles: MGMT },
   { path: "/restaurante/financeiro", label: "Financeiro",    icon: TrendingUp,        group: "restaurante", moduleKey: "restaurante", roles: MGMT },
 
