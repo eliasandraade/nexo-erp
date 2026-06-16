@@ -24,11 +24,13 @@ export default function DeliveryPage() {
       {/* ── Header ── */}
       <div className="px-4 pt-5 pb-3 flex items-center justify-between border-b border-border shrink-0">
         <div>
-          <h1 className="text-lg font-semibold">Hub de Deliveries</h1>
+          <h1 className="text-lg font-semibold">Entregas</h1>
           <p className="text-xs text-muted-foreground">
             {isLoading
-              ? "Carregando..."
-              : `${activeCount} pedido(s) ativo(s)`}
+              ? "Carregando pedidos..."
+              : activeCount === 0
+                ? "Nenhum pedido em andamento"
+                : `${activeCount} pedido(s) em andamento`}
           </p>
         </div>
 

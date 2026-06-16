@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, ChevronDown, ChevronRight, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { listAreas, createArea, updateArea, listTables, createTable, updateTable } from "../api/restaurante.api";
 import type { AreaDto, TableDto } from "../types";
 import { useAuth } from "@/modules/auth/context/AuthContext";
@@ -211,10 +212,11 @@ export default function RestauranteSetupPage() {
 
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Configuração do Restaurante</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Gerencie áreas e mesas do salão.</p>
-      </div>
+      <PageHeader
+        eyebrow="Orken Menu"
+        title="Mesas e áreas"
+        description="Organize as áreas do salão e as mesas de cada uma. É o que aparece no Salão para o garçom."
+      />
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">

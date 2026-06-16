@@ -1,10 +1,10 @@
 import { KitchenCard } from "./KitchenCard";
 import type { KitchenItem } from "../types";
 
-const COLUMNS: { status: KitchenItem["status"]; label: string }[] = [
-  { status: "Pending",   label: "Pendente" },
-  { status: "Preparing", label: "Preparando" },
-  { status: "Ready",     label: "Pronto" },
+const COLUMNS: { status: KitchenItem["status"]; label: string; empty: string }[] = [
+  { status: "Pending",   label: "Pendente",   empty: "Sem novos pedidos" },
+  { status: "Preparing", label: "Preparando", empty: "Nada em preparo" },
+  { status: "Ready",     label: "Pronto",     empty: "Nada pronto ainda" },
 ];
 
 export function KitchenBoard({
@@ -15,7 +15,7 @@ export function KitchenBoard({
 }) {
   return (
     <div className="grid grid-cols-3 gap-4 h-full overflow-hidden">
-      {COLUMNS.map(({ status, label }) => {
+      {COLUMNS.map(({ status, label, empty }) => {
         const col = items.filter((i) => i.status === status);
         return (
           <div key={status} className="flex flex-col gap-2 overflow-y-auto">
@@ -29,7 +29,7 @@ export function KitchenBoard({
             </div>
             {col.length === 0 ? (
               <p className="text-xs text-gray-600 text-center mt-4">
-                {status === "Pending" ? "Tudo em ordem." : "Nenhum item aqui."}
+                {empty}
               </p>
             ) : (
               col.map((item) => (

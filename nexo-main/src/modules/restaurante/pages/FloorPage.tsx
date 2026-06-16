@@ -1,7 +1,9 @@
 import { useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, UtensilsCrossed, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { TableCard } from "../components/TableCard";
 import { AreaTabs } from "../components/AreaTabs";
@@ -17,6 +19,7 @@ export default function FloorPage() {
   const { session } = useAuth();
   const storeId     = session?.storeId ?? "";
   const navigate    = useNavigate();
+  const isManager   = session?.role === "diretoria" || session?.role === "gerente";
 
   const { data: tables = [], isLoading: tablesLoading } = useRestauranteTables(storeId);
   const { data: areas  = [] }                           = useRestauranteAreas(storeId);
@@ -110,9 +113,28 @@ export default function FloorPage() {
               <div key={i} className="h-[88px] rounded-xl bg-muted animate-pulse" />
             ))}
           </div>
+        ) : tables.length === 0 ? (
+          <EmptyState
+            className="mt-6"
+            icon={UtensilsCrossed}
+            title="Nenhuma mesa cadastrada"
+            description={
+              isManager
+                ? "Cadastre as áreas e mesas do salão para começar a abrir comandas. Pedidos de balcão já podem ser abertos pelo botão acima."
+                : "As mesas ainda não foram cadastradas. Você já pode abrir pedidos de balcão pelo botão acima."
+            }
+            action={
+              isManager ? (
+                <Button onClick={() => navigate("/restaurante/configurar")}>
+                  <SlidersHorizontal className="h-4 w-4 mr-1.5" />
+                  Configurar mesas
+                </Button>
+              ) : undefined
+            }
+          />
         ) : visibleTables.length === 0 ? (
           <p className="text-center text-muted-foreground mt-12 text-sm">
-            Nenhuma mesa cadastrada nesta área.
+            Nenhuma mesa nesta área.
           </p>
         ) : (
           <div className="grid grid-cols-3 gap-3 mt-2">

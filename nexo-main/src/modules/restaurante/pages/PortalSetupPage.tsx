@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { fetchMyStores, setPublicSlug, checkSlugAvailability } from "@/modules/stores/services/storesApi";
 import {
   getFoodSettings,
@@ -648,12 +649,11 @@ export default function PortalSetupPage() {
   return (
     <div className="p-6 max-w-2xl mx-auto space-y-6">
 
-      <div>
-        <h1 className="font-display text-[20px] font-bold text-foreground tracking-tight">Portal do Restaurante</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Configure o endereço, zonas de entrega e cupons do seu cardápio online.
-        </p>
-      </div>
+      <PageHeader
+        eyebrow="Orken Menu"
+        title="Cardápio online"
+        description="Endereço público, identidade, zonas de entrega e cupons do seu cardápio online."
+      />
 
       <Tabs defaultValue="portal" className="w-full">
         <TabsList className="w-full justify-start">

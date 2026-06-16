@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, LogOut, UserCircle } from "lucide-react";
+import { ChevronDown, LogOut, UserCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
@@ -32,17 +32,8 @@ export function AppHeader() {
         <StoreSwitcher />
       </div>
 
-      {/* Right: bell + user */}
+      {/* Right: user */}
       <div className="flex items-center gap-0.5 shrink-0">
-        <button
-          className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-          aria-label="Notificações"
-        >
-          <Bell className="h-3.5 w-3.5" />
-        </button>
-
-        <div className="w-px h-4 bg-border mx-1.5" />
-
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 hover:bg-muted rounded-md px-1.5 py-1 transition-colors">

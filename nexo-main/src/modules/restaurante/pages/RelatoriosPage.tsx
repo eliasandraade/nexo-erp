@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ShoppingBag, CircleDollarSign, Receipt, Clock } from "lucide-react";
+import { ShoppingBag, CircleDollarSign, Receipt, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { fetchRestauranteSummary } from "../api/restaurante.api";
 import type { RestauranteSummaryDto } from "../api/restaurante.api";
 
@@ -66,8 +66,6 @@ function KpiCard({ icon: Icon, label, value, sub, color = "text-primary" }: KpiC
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function RelatoriosPage() {
-  const navigate = useNavigate();
-
   const [preset,    setPreset]    = useState<Preset>("30d");
   const [customFrom, setCustomFrom] = useState(isoDate(new Date(Date.now() - 29 * 86400_000)));
   const [customTo,   setCustomTo]   = useState(isoDate(new Date()));
@@ -85,19 +83,14 @@ export default function RelatoriosPage() {
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      {/* Header */}
-      <div className="px-4 pt-5 pb-3 flex items-center gap-3 border-b border-border shrink-0">
-        <button onClick={() => navigate("/restaurante")} className="p-1 text-muted-foreground hover:text-foreground transition-colors">
-          <ArrowLeft className="h-5 w-5" />
-        </button>
-        <div>
-          <h1 className="text-base font-semibold">Relatórios</h1>
-          <p className="text-xs text-muted-foreground">Resumo operacional do restaurante</p>
-        </div>
-      </div>
+    <div className="p-6 space-y-6">
+      <PageHeader
+        eyebrow="Orken Menu"
+        title="Relatórios"
+        description="Resumo operacional do salão e das entregas no período."
+      />
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="space-y-4">
 
         {/* ── Period selector ──────────────────────────────────────────────── */}
         <div className="space-y-2">
