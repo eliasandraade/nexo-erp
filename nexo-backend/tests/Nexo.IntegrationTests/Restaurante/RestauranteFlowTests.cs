@@ -125,16 +125,18 @@ public class RestauranteFlowTests : IAsyncLifetime
     }
 
     private async Task<ProductDto> CreateProductWithStockAsync(
-        string code, decimal salePrice, decimal costPrice, decimal initialStock)
+        string code, decimal salePrice, decimal costPrice, decimal initialStock,
+        bool isIngredient = false)
     {
         var pr = await _client.PostAsJsonAsync("/api/products",
             new CreateProductRequest(
-                Code:       code,
-                Name:       $"Produto {code}",
-                Unit:       "Un",
-                SalePrice:  salePrice,
-                CostPrice:  costPrice,
-                TrackStock: true));
+                Code:         code,
+                Name:         $"Produto {code}",
+                Unit:         "Un",
+                SalePrice:    salePrice,
+                CostPrice:    costPrice,
+                TrackStock:   true,
+                IsIngredient: isIngredient));
         pr.StatusCode.Should().Be(HttpStatusCode.Created);
         var product = (await pr.Content.ReadFromJsonAsync<ProductDto>())!;
 
@@ -415,7 +417,7 @@ public class RestauranteFlowTests : IAsyncLifetime
     public async Task PayOrder_WithRecipe_DeductsIngredientStock()
     {
         var area       = await CreateAreaAsync("Área Deduct");
-        var ingredient = await CreateProductWithStockAsync("REST-ING-01", 0m, 5m, 500m);
+        var ingredient = await CreateProductWithStockAsync("REST-ING-01", 0m, 5m, 500m, isIngredient: true);
         var product    = await CreateProductWithStockAsync("REST-PROD-01", 30m, 10m, 0m);
         await CreateRecipeCardAsync(product.Id, yield: 1m, ingredient.Id, ingredientQty: 100m);
 
@@ -438,7 +440,7 @@ public class RestauranteFlowTests : IAsyncLifetime
     public async Task PayOrder_WithRecipe_YieldDivisionIsCorrect()
     {
         var area       = await CreateAreaAsync("Área Yield");
-        var ingredient = await CreateProductWithStockAsync("REST-ING-02", 0m, 3m, 1000m);
+        var ingredient = await CreateProductWithStockAsync("REST-ING-02", 0m, 3m, 1000m, isIngredient: true);
         var product    = await CreateProductWithStockAsync("REST-PROD-02", 25m, 8m, 0m);
         await CreateRecipeCardAsync(product.Id, yield: 2m, ingredient.Id, ingredientQty: 300m);
 
@@ -461,7 +463,7 @@ public class RestauranteFlowTests : IAsyncLifetime
     public async Task PayOrder_WithRecipe_CostPriceSnapshot_IsPopulated()
     {
         var area       = await CreateAreaAsync("Área Snapshot");
-        var ingredient = await CreateProductWithStockAsync("REST-ING-03", 0m, 7.50m, 500m);
+        var ingredient = await CreateProductWithStockAsync("REST-ING-03", 0m, 7.50m, 500m, isIngredient: true);
         var product    = await CreateProductWithStockAsync("REST-PROD-03", 40m, 15m, 0m);
         await CreateRecipeCardAsync(product.Id, yield: 1m, ingredient.Id, ingredientQty: 50m);
 
@@ -500,7 +502,7 @@ public class RestauranteFlowTests : IAsyncLifetime
     public async Task PayOrder_PaymentMismatch_RollsBackTableAndStock()
     {
         var area       = await CreateAreaAsync("Área Rollback");
-        var ingredient = await CreateProductWithStockAsync("REST-ING-04", 0m, 4m, 200m);
+        var ingredient = await CreateProductWithStockAsync("REST-ING-04", 0m, 4m, 200m, isIngredient: true);
         var product    = await CreateProductWithStockAsync("REST-PROD-04", 20m, 8m, 0m);
         await CreateRecipeCardAsync(product.Id, yield: 1m, ingredient.Id, ingredientQty: 50m);
 

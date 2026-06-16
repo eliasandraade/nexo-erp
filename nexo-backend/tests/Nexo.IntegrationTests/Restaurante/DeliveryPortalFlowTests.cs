@@ -159,6 +159,20 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
         return (await r.Content.ReadFromJsonAsync<FoodServiceSettingsDto>())!;
     }
 
+    /// <summary>
+    /// Creates a delivery zone for the operator's current store and returns its id.
+    /// Delivery (not Takeaway) portal orders REQUIRE a DeliveryZoneId so the server can
+    /// resolve the delivery fee from the zone (never trusted from the client).
+    /// </summary>
+    private async Task<Guid> CreateDeliveryZoneAsync(string neighborhood = "Centro", decimal fee = 7.50m)
+    {
+        var r = await _client.PutAsJsonAsync("/api/restaurante/delivery-zones",
+            new { zones = new[] { new { neighborhood, fee } } });
+        r.StatusCode.Should().Be(HttpStatusCode.OK);
+        var zones = (await r.Content.ReadFromJsonAsync<List<DeliveryZoneDto>>())!;
+        return zones.First(z => z.Neighborhood == neighborhood).Id;
+    }
+
     private record StoreDto(string Id, string Name, string Slug, string? PublicSlug, string? ModuleKey, string Status);
 
     // ── 1. GET /api/public/menu/{slug} — public, no auth ─────────────────────
@@ -248,6 +262,7 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
     {
         var slug    = await SetupPublicSlugAsync("delivery-test");
         var product = await CreateMenuProductAsync("DLV");
+        var zoneId  = await CreateDeliveryZoneAsync();   // Delivery requires a zone for the fee
         await SetPortalFlagsAsync();
 
         var r = await _publicClient.PostAsJsonAsync("/api/public/orders", new
@@ -257,6 +272,7 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
             customerName        = "Maria Santos",
             customerPhone       = "11988888888",
             deliveryAddressJson = "{\"street\":\"Rua das Flores\",\"number\":\"123\"}",
+            deliveryZoneId      = zoneId,
             items               = new[] { new { productId = product.Id, quantity = 2 } },
         });
 
