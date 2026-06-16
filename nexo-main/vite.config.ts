@@ -23,12 +23,29 @@ export default defineConfig({
         manualChunks(id) {
           // ── Vendor splits ─────────────────────────────────────────────────
           if (id.includes("node_modules")) {
+            // clsx + tailwind-merge back cn() (used by nearly every component,
+            // including eager layouts) AND are pulled in by recharts. Pin them to
+            // the base react chunk so they're a leaf everything depends ON — never
+            // a cross-edge. Otherwise Rollup parks clsx inside vendor-charts and
+            // vendor-react imports it back, forming a vendor-react <-> vendor-charts
+            // cycle that left React bindings in the temporal dead zone and
+            // white-screened cold loads ("Cannot access 'P'/'Q' before init").
+            if (
+              id.includes("/node_modules/clsx/") ||
+              id.includes("/node_modules/tailwind-merge/")
+            )
+              return "vendor-react";
+
             // SignalR: heavy, only loaded on restaurante/kitchen pages
             if (id.includes("@microsoft/signalr")) return "vendor-signalr";
 
-            // Recharts + its D3 sub-deps: only loaded on chart pages
-            if (id.includes("recharts") || id.includes("d3-") || id.includes("victory-"))
-              return "vendor-charts";
+            // NOTE: recharts/d3/victory are intentionally NOT pinned to a manual
+            // chunk. recharts imports React, and a binding shared between the React
+            // ecosystem and recharts ended up in that manual "vendor-charts" chunk,
+            // which vendor-react then imported back — a vendor-react <-> vendor-charts
+            // cycle that put React in the temporal dead zone and white-screened cold
+            // loads (e.g. the public portal). Letting Rollup auto-chunk recharts keeps
+            // it acyclic; it still loads lazily via SalesChart's dynamic import().
 
             // React Query — shared, small, cache separately
             if (id.includes("@tanstack/react-query")) return "vendor-query";
@@ -66,27 +83,19 @@ export default defineConfig({
             // - create a shared chunk if used by 2+ lazy chunks
           }
 
-          // ── App module splits ─────────────────────────────────────────────
-          // Group pages + hooks + components by module so navigating within
-          // a section needs only one chunk download instead of one per page.
-
-          if (id.includes("/src/modules/restaurante/")) return "app-restaurante";
-          if (id.includes("/src/modules/platform/"))   return "app-platform";
-          if (id.includes("/src/modules/portal/"))     return "app-portal";
-          if (id.includes("/src/modules/landing/"))    return "app-landing";
-          if (id.includes("/src/modules/dashboard/")) {
-            // SalesChart is the only dashboard file that pulls in recharts
-            // (vendor-charts, ~374KB). Keep it OUT of the eager app-dashboard
-            // chunk so its dynamic import() in DashboardPage creates a real lazy
-            // boundary — KPIs paint first, charts stream in afterwards.
-            if (id.includes("SalesChart")) return undefined;
-            return "app-dashboard";
-          }
-          if (id.includes("/src/modules/reports/"))    return "app-reports";
-
-          // All other app files (sales, products, customers, layouts, shared
-          // components, utilities) use Rollup's default splitting — each lazy
-          // page gets its own chunk, shared helpers go into a common chunk.
+          // ── App code: let Rollup chunk it automatically ───────────────────
+          // We intentionally do NOT manually group app code by feature folder.
+          // Grouping (app-dashboard, app-portal, app-restaurante, …) scattered
+          // shared leaf modules (UI primitives, cn, hooks) across those feature
+          // chunks, so each feature chunk imported the others to reach them — a
+          // CIRCULAR chunk graph. On a cold load of the public portal (/:slug),
+          // its circular partners weren't initialized yet, leaving React /
+          // React-Query bindings in the temporal dead zone → white screen
+          // ("Cannot access 'Q' before initialization" / createContext on
+          // undefined). Rollup's automatic per-dynamic-import chunking is acyclic
+          // by design and still code-splits every lazy route. SalesChart keeps
+          // its own lazy boundary via the dynamic import() in DashboardPage, so
+          // recharts (vendor-charts) still streams in after the KPIs.
         },
       },
     },
