@@ -184,10 +184,14 @@ public class AuthenticationLifecycleTests
             TestCredentials.AdminLoginPayload());
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
 
-        // 2. Logout
+        // 2. Logout — send the refresh token in the body. The test transport is HTTP, and
+        //    the nexo_refresh cookie is marked Secure, so it is NOT sent back over HTTP;
+        //    the cookie-fallback path can't see it. Passing the token explicitly exercises
+        //    the actual revocation logic (and matches a Bearer/token-based SPA client).
         _client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", loginBody!.AccessToken);
-        var logoutResponse = await _client.PostAsync("/api/auth/logout", null);
+        var logoutResponse = await _client.PostAsJsonAsync("/api/auth/logout",
+            new { refreshToken = loginBody.RefreshToken });
         logoutResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         // 3. Try to use the same refresh token — should fail

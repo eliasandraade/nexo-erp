@@ -11,10 +11,17 @@ public record RefreshTokenRequest(string RefreshToken);
 public record LogoutRequest(string RefreshToken);
 
 /// <summary>
-/// Client must include the current refresh token so the server can revoke it
-/// atomically when issuing the new store-scoped token pair.
+/// Switches the active store. The refresh token is OPTIONAL: when present (in the body),
+/// the server revokes it atomically while issuing the new store-scoped token pair; when
+/// absent, the controller falls back to the nexo_refresh cookie (cookie-based auth flow).
+///
+/// RefreshToken MUST stay nullable. With [ApiController] + nullable reference types, a
+/// non-nullable string here is treated as [Required], so a body carrying only { storeId }
+/// was rejected with an automatic 400 before the action ran — which is why switch-store
+/// returned 400 even for valid same-tenant stores and for cross-tenant stores that should
+/// return 403.
 /// </summary>
-public record SwitchStoreRequest(string StoreId, string RefreshToken);
+public record SwitchStoreRequest(string StoreId, string? RefreshToken);
 
 // ── Responses ───────────────────────────────────────────────────────────────
 

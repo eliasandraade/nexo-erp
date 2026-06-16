@@ -43,14 +43,16 @@ public class CookieSecurityTests
         var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
         var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
 
-        accessCookie.Should().Contain("HttpOnly",
+        // ContainEquivalentOf == case-insensitive Contains. RFC 6265 cookie attribute
+        // names are case-insensitive and ASP.NET Core emits them lowercase ("httponly").
+        accessCookie.Should().ContainEquivalentOf("HttpOnly",
             "access token cookie must be HttpOnly to prevent XSS theft");
-        refreshCookie.Should().Contain("HttpOnly",
+        refreshCookie.Should().ContainEquivalentOf("HttpOnly",
             "refresh token cookie must be HttpOnly to prevent XSS theft");
     }
 
     [Fact]
-    public async Task Login_SetsCookies_WithSameSiteStrict()
+    public async Task Login_SetsCookies_WithSameSiteNone()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login",
             TestCredentials.AdminLoginPayload());
@@ -61,10 +63,19 @@ public class CookieSecurityTests
         var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
         var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
 
-        accessCookie.Should().Contain("SameSite=Strict",
-            "SameSite=Strict prevents CSRF by not sending cookies in cross-site requests");
-        refreshCookie.Should().Contain("SameSite=Strict",
-            "SameSite=Strict prevents CSRF on refresh token rotation");
+        // SameSite=None is REQUIRED and correct for the production topology: the SPA is
+        // served from app.orken.com.br and calls the API on *.up.railway.app — a different
+        // registrable domain, i.e. a CROSS-SITE request. Browsers only attach cookies to
+        // cross-site fetches when SameSite=None; Secure. Strict/Lax would silently drop the
+        // auth cookies and break the session. CSRF is mitigated by (1) Bearer-header auth
+        // being the primary scheme — the Authorization header is immune to CSRF and always
+        // wins over the cookie, (2) the cookies being HttpOnly + Secure, and (3) the CORS
+        // allow-list with credentials. (If the API later moves to api.orken.com.br — same
+        // site — this should be tightened to SameSite=Lax/Strict.)
+        accessCookie.Should().ContainEquivalentOf("SameSite=None",
+            "cross-site (app.orken.com.br ↔ *.railway.app) cookies require SameSite=None");
+        refreshCookie.Should().ContainEquivalentOf("SameSite=None",
+            "cross-site refresh-token rotation requires SameSite=None");
     }
 
     [Fact]
@@ -79,9 +90,9 @@ public class CookieSecurityTests
         var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
         var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
 
-        accessCookie.Should().Contain("Path=/",
+        accessCookie.Should().ContainEquivalentOf("Path=/",
             "cookies must be sent to all paths under the domain");
-        refreshCookie.Should().Contain("Path=/",
+        refreshCookie.Should().ContainEquivalentOf("Path=/",
             "refresh cookie must be available to all paths for token rotation");
     }
 
@@ -105,11 +116,14 @@ public class CookieSecurityTests
         accessTtl.Should().BeGreaterThan(14.5).And.BeLessThan(15.5);
         // access token should expire in approximately 15 minutes
 
-        // Refresh token should expire much later (~7 days or more)
+        // Refresh token should expire ~7 days out. The cookie's Expires is set to
+        // UtcNow.AddDays(7) on the server and serialized to whole-second precision, so the
+        // span measured from beforeLogin lands a fraction under 168h — assert ≈7 days with
+        // a small tolerance rather than a strict > 168 (which fails by microseconds).
         var refreshExpiry = ExtractCookieExpiry(refreshCookie);
         var refreshTtl = (refreshExpiry - beforeLogin).TotalHours;
-        refreshTtl.Should().BeGreaterThan(168,
-            "refresh token should expire in at least 7 days");
+        refreshTtl.Should().BeGreaterThan(167.9,
+            "refresh token should expire in ~7 days");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -164,14 +178,15 @@ public class CookieSecurityTests
         var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
         var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
 
-        // Deleted cookies must have the same flags (for browser to match and replace)
-        accessCookie.Should().Contain("HttpOnly");
-        accessCookie.Should().Contain("SameSite=Strict");
-        accessCookie.Should().Contain("Path=/");
+        // Deleted cookies must have the same flags (for browser to match and replace).
+        // Case-insensitive checks + SameSite=None — see Login_SetsCookies_WithSameSiteNone.
+        accessCookie.Should().ContainEquivalentOf("HttpOnly");
+        accessCookie.Should().ContainEquivalentOf("SameSite=None");
+        accessCookie.Should().ContainEquivalentOf("Path=/");
 
-        refreshCookie.Should().Contain("HttpOnly");
-        refreshCookie.Should().Contain("SameSite=Strict");
-        refreshCookie.Should().Contain("Path=/");
+        refreshCookie.Should().ContainEquivalentOf("HttpOnly");
+        refreshCookie.Should().ContainEquivalentOf("SameSite=None");
+        refreshCookie.Should().ContainEquivalentOf("Path=/");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -220,14 +235,15 @@ public class CookieSecurityTests
         var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
         var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
 
-        // Verify security flags are still correct after rotation
-        accessCookie.Should().Contain("HttpOnly");
-        accessCookie.Should().Contain("SameSite=Strict");
-        accessCookie.Should().Contain("Path=/");
+        // Verify security flags are still correct after rotation.
+        // Case-insensitive checks + SameSite=None — see Login_SetsCookies_WithSameSiteNone.
+        accessCookie.Should().ContainEquivalentOf("HttpOnly");
+        accessCookie.Should().ContainEquivalentOf("SameSite=None");
+        accessCookie.Should().ContainEquivalentOf("Path=/");
 
-        refreshCookie.Should().Contain("HttpOnly");
-        refreshCookie.Should().Contain("SameSite=Strict");
-        refreshCookie.Should().Contain("Path=/");
+        refreshCookie.Should().ContainEquivalentOf("HttpOnly");
+        refreshCookie.Should().ContainEquivalentOf("SameSite=None");
+        refreshCookie.Should().ContainEquivalentOf("Path=/");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -247,7 +263,7 @@ public class CookieSecurityTests
         {
             if (setCookie.StartsWith("nexo_"))
             {
-                setCookie.Should().Contain("HttpOnly",
+                setCookie.Should().ContainEquivalentOf("HttpOnly",
                     $"Cookie must be HttpOnly to prevent XSS access: {setCookie}");
             }
         }
@@ -305,12 +321,16 @@ public class CookieSecurityTests
     private static DateTimeOffset ExtractCookieExpiry(string setCookieHeader)
     {
         var parts = setCookieHeader.Split(';');
-        var expiresLine = parts.FirstOrDefault(p => p.Trim().StartsWith("Expires="));
+        // Case-insensitive: ASP.NET Core emits "expires=" (lowercase) per its Set-Cookie
+        // serialization; RFC 6265 attribute names are case-insensitive.
+        var expiresLine = parts.FirstOrDefault(p =>
+            p.Trim().StartsWith("Expires=", StringComparison.OrdinalIgnoreCase));
 
         if (expiresLine == null)
             return DateTimeOffset.MinValue;
 
-        var expiryStr = expiresLine.Replace("Expires=", "").Trim();
+        var eq = expiresLine.IndexOf('=');
+        var expiryStr = expiresLine[(eq + 1)..].Trim();
         if (DateTimeOffset.TryParseExact(expiryStr, "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
             System.Globalization.CultureInfo.InvariantCulture,
             System.Globalization.DateTimeStyles.AssumeUniversal,

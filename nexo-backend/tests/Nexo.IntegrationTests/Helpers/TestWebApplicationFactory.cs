@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Nexo.Application.Common.Interfaces;
 using Nexo.Infrastructure.MultiTenancy;
 using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
@@ -72,6 +73,16 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
                 var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
                 opts.AddInterceptors(interceptor);
             });
+
+            // Replace the cache with a faithful in-memory implementation.
+            // With no Redis connection string, AddInfrastructure registers NoOpCacheService,
+            // which drops every write — so the refresh-token validity entry stored on login
+            // was never found on refresh and the first refresh always returned 401. The
+            // in-memory cache (backed by the singleton IMemoryCache) makes the refresh
+            // rotation / replay-protection / revocation logic genuinely testable, matching
+            // production's Redis-backed behaviour. See InMemoryCacheService for details.
+            services.RemoveAll<ICacheService>();
+            services.AddScoped<ICacheService, InMemoryCacheService>();
         });
 
         // JWT overrides so test tokens validate against the test server.

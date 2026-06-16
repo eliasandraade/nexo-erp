@@ -234,10 +234,21 @@ public class TenantIsolationTests
         {
             tenantB = Tenant.Create("Product Isolation Corp", taxId, "admin@pic.test");
             db.Tenants.Add(tenantB);
-            // Store required for middleware
+            // Store required for middleware AND for the product FK (Product is a StoreEntity).
             db.Stores.Add(Store.Create(tenantB.Id, "PIC Store", "pic-default"));
             await db.SaveChangesAsync();
         }
+
+        // Product is a StoreEntity → products.store_id is a NON-NULL FK to stores.
+        // In this seeding scope there is no HTTP request, so TenantSaveChangesInterceptor
+        // does not auto-inject StoreId (it only runs when a tenant/store is resolved from
+        // the JWT). Resolve Tenant B's store and assign StoreId explicitly; otherwise the
+        // INSERT fails with FK_products_stores_store_id on the empty-GUID default.
+        var storeBId = await db.Stores
+            .IgnoreQueryFilters()
+            .Where(s => s.TenantId == tenantB.Id)
+            .Select(s => s.Id)
+            .FirstAsync();
 
         // Always inserts a fresh product — the test needs a product guaranteed to belong to Tenant B
         var product = Product.Create(
@@ -250,6 +261,7 @@ public class TenantIsolationTests
             trackStock: false);
 
         db.Products.Add(product);
+        db.Entry(product).Property("StoreId").CurrentValue = storeBId;
         await db.SaveChangesAsync();
         return product.Id;
     }

@@ -162,8 +162,10 @@ public class SecurityHeadersTests
             }
         });
 
-        // Preflight should succeed
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        // Preflight should succeed. ASP.NET Core's CORS middleware short-circuits the
+        // OPTIONS preflight with 204 No Content (the framework default); 200 is also a
+        // valid preflight response. Either 2xx is acceptable per the CORS spec.
+        response.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent);
 
         // CORS headers should be present
         response.Headers.Should().Contain(h => h.Key == "Access-Control-Allow-Origin");
