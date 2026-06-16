@@ -92,6 +92,7 @@ export interface BuildDailyLogPhotoDto {
   id:         string;
   dailyLogId: string;
   storageKey: string;
+  url:        string | null;
   caption:    string | null;
   createdAt:  string;
 }
@@ -115,8 +116,8 @@ export interface BuildProjectDetailsDto extends BuildProjectDto {
 
 export interface BuildProjectFinancialSummaryDto {
   projectId:             string;
-  budgetEstimated:       number | null;
-  budgetApproved:        number | null;
+  estimatedBudget:       number | null;
+  approvedBudget:        number | null;
   totalRealizedExpenses: number;
   movementCount:         number;
   lastMovementDate:      string | null;
@@ -131,13 +132,39 @@ export interface BuildPagedResult<T> {
   pageSize: number;
 }
 
+// ── Dashboard ───────────────────────────────────────────────────────────────────
+
+export interface BuildRecentExpenseDto {
+  projectId:   string;
+  projectName: string;
+  amount:      number;
+  date:        string;
+  description: string;
+}
+
+export interface BuildDashboardDto {
+  totalProjects:    number;
+  planningCount:    number;
+  inProgressCount:  number;
+  pausedCount:      number;
+  completedCount:   number;
+  cancelledCount:   number;
+  overdueCount:     number;
+  totalEstimated:   number;
+  totalApproved:    number;
+  totalRealized:    number;
+  balance:          number;
+  avgStageProgress: number;
+  recentExpenses:   BuildRecentExpenseDto[];
+}
+
 // ── Request types ─────────────────────────────────────────────────────────────
 
 export interface CreateBuildProjectRequest {
   name:            string;
   clientName:      string;
   location?:       string;
-  type:            number;  // 0=Residential 1=Commercial 2=Industrial 3=Infrastructure
+  type:            BuildProjectType;  // enum name: House | Commercial | Renovation | Building | Other
   budgetEstimated?: number;
   startDate?:       string;
   expectedEndDate?: string;
@@ -146,8 +173,10 @@ export interface CreateBuildProjectRequest {
 export interface UpdateBuildProjectRequest {
   name:             string;
   clientName:       string;
+  type:             BuildProjectType;
   location?:        string;
   budgetEstimated?: number;
+  budgetApproved?:  number;
   startDate?:       string;
   expectedEndDate?: string;
 }
@@ -189,6 +218,7 @@ export interface UpdateBuildBudgetItemRequest {
   quantity: number;
   unit:     string;
   unitCost: number;
+  stageId?: string;
 }
 
 export interface SetBudgetMarginRequest {
@@ -239,6 +269,9 @@ export const fetchProjectDetails = (id: string): Promise<BuildProjectDetailsDto>
 
 export const fetchProjectFinancialSummary = (id: string): Promise<BuildProjectFinancialSummaryDto> =>
   apiClient.get(`/v1/build/projects/${id}/financial-summary`);
+
+export const fetchBuildDashboard = (): Promise<BuildDashboardDto> =>
+  apiClient.get(`/v1/build/dashboard`);
 
 export const createProject = (req: CreateBuildProjectRequest): Promise<BuildProjectDto> =>
   apiClient.post(`/v1/build/projects`, req);

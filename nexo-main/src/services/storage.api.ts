@@ -3,7 +3,8 @@ import { apiClient } from "@/services/api-client";
 export type StorageContext =
   | "product-image"
   | "restaurant-logo"
-  | "restaurant-cover";
+  | "restaurant-cover"
+  | "build-daily-log";
 
 export interface StorageUploadResult {
   key: string;

@@ -199,6 +199,20 @@ public class BuildBudgetService
             ?? throw new NotFoundException("BuildBudget", budgetId);
         budget.Approve();
         _budgets.Update(budget);
+
+        // When the budget is already linked to a project, approving it sets the
+        // project's approved budget to the budget's final price. Conversion to
+        // "Converted" status remains a separate, explicit step.
+        if (budget.ProjectId is Guid projectId)
+        {
+            var project = await _projects.GetByIdAsync(projectId, ct);
+            if (project is not null)
+            {
+                project.ApproveBudget(budget.FinalPrice);
+                _projects.Update(project);
+            }
+        }
+
         await _budgets.SaveChangesAsync(ct);
         return MapToDto(budget, budget.Items);
     }

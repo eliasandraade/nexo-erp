@@ -96,6 +96,7 @@ public record BuildDailyLogPhotoDto(
     Guid           Id,
     Guid           DailyLogId,
     string         StorageKey,
+    string?        Url,            // composed at read time from StorageKey — NOT persisted
     string?        Caption,
     DateTimeOffset CreatedAt);
 
@@ -108,6 +109,32 @@ public record BuildProjectFinancialSummaryDto(
     DateOnly? LastMovementDate,
     decimal  VarianceAmount,
     decimal  VariancePercent);
+
+// ═══════════════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════
+
+public record BuildDashboardDto(
+    int      TotalProjects,
+    int      PlanningCount,
+    int      InProgressCount,
+    int      PausedCount,
+    int      CompletedCount,
+    int      CancelledCount,
+    int      OverdueCount,            // ExpectedEndDate < today && status not Completed/Cancelled
+    decimal  TotalEstimated,         // Σ BudgetEstimated across all projects
+    decimal  TotalApproved,          // Σ BudgetApproved across all projects
+    decimal  TotalRealized,          // Σ confirmed Obra Out movements (Core)
+    decimal  Balance,                // TotalApproved - TotalRealized
+    double   AvgStageProgress,       // mean of all stages' ProgressPercent (0-100)
+    IReadOnlyList<BuildRecentExpenseDto> RecentExpenses);
+
+public record BuildRecentExpenseDto(
+    Guid     ProjectId,
+    string   ProjectName,
+    decimal  Amount,
+    DateOnly Date,
+    string   Description);
 
 // ═══════════════════════════════════════════════════════════════════════
 // PAGINATED WRAPPER (shared within module)

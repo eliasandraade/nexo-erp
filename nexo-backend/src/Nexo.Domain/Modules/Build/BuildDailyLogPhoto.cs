@@ -14,6 +14,11 @@ public class BuildDailyLogPhoto : TenantEntity
     private BuildDailyLogPhoto(Guid tenantId) : base(tenantId) { }
 
     public Guid    DailyLogId  { get; private set; }
+    /// <summary>
+    /// Durable storage object key. The public URL is composed from this at read time
+    /// (IStoragePublicUrlResolver) — never persisted — so the public domain / CDN /
+    /// bucket / provider can change without invalidating existing photos.
+    /// </summary>
     public string  StorageKey  { get; private set; } = string.Empty;
     public string? Caption     { get; private set; }
 

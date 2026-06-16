@@ -18,13 +18,14 @@ import {
   useStages, useCreateStage, useUpdateStageProgress, useDeleteStage,
   useBudgets, useBudget, useCreateBudget,
   useSendBudget, useApproveBudget, useRejectBudget,
-  useAddBudgetItem,
-  useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto,
+  useAddBudgetItem, useUpdateBudgetItem, useRemoveBudgetItem, useSetBudgetMargin,
+  useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto, useRemoveDailyLogPhoto,
 } from "../hooks/use-build";
 import { useProjectMovements } from "../hooks/use-interpreter";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { BudgetStatusBadge } from "../components/BudgetStatusBadge";
 import { BuildExpenseDialog } from "../components/BuildExpenseDialog";
+import { EditProjectDialog } from "../components/EditProjectDialog";
 import type {
   BuildProjectDetailsDto, BuildStageDto, BuildBudgetDto, BuildDailyLogDto,
 } from "../api/build.api";
@@ -32,6 +33,9 @@ import {
   getWeatherCurrent, getWeatherHistory,
   type WeatherResult,
 } from "@/services/weather.api";
+import { uploadFile } from "@/services/storage.api";
+import { useQuery } from "@tanstack/react-query";
+import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -94,6 +98,8 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
   const completeMut = useCompleteProject(project.id);
   const cancelMut   = useCancelProject(project.id);
 
+  const [editOpen, setEditOpen] = useState(false);
+
   const isActive = project.status === "InProgress" || project.status === "Planning" || project.status === "Paused";
 
   const handleAction = (
@@ -116,6 +122,15 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
 
   return (
     <div className="space-y-6">
+      {/* Edit action — only for non-terminal projects */}
+      {isActive && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar obra
+          </Button>
+        </div>
+      )}
+
       {/* Info cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {[
@@ -221,6 +236,8 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
           </div>
         </div>
       )}
+
+      <EditProjectDialog project={project} open={editOpen} onClose={() => setEditOpen(false)} />
     </div>
   );
 }
@@ -404,13 +421,19 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
   const [budgetName, setBudgetName]     = useState("");
   const [budgetMargin, setBudgetMargin] = useState("15");
 
-  // Item form
+  // Item form (shared between add + edit)
   const [addingItem, setAddingItem]     = useState(false);
+  const [editingItemId, setEditingItemId]           = useState<string | null>(null);
+  const [editingItemStageId, setEditingItemStageId] = useState<string | undefined>(undefined);
   const [itemName, setItemName]         = useState("");
   const [itemCat, setItemCat]           = useState("Materiais");
   const [itemQty, setItemQty]           = useState("1");
   const [itemUnit, setItemUnit]         = useState("un");
   const [itemCost, setItemCost]         = useState("");
+
+  // Margin edit
+  const [editingMargin, setEditingMargin] = useState(false);
+  const [marginInput, setMarginInput]     = useState("");
 
   const items = budgets?.items ?? [];
   const selectedBudget = items.find((b) => b.id === selectedBudgetId) ?? items[0];
@@ -418,7 +441,10 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
   const { data: budgetDetail } = useBudget(selectedBudget?.id ?? "");
   const budget = budgetDetail ?? selectedBudget;
 
-  const addItemMut = useAddBudgetItem(budget?.id ?? "");
+  const addItemMut    = useAddBudgetItem(budget?.id ?? "");
+  const updateItemMut = useUpdateBudgetItem(budget?.id ?? "");
+  const removeItemMut = useRemoveBudgetItem(budget?.id ?? "");
+  const setMarginMut  = useSetBudgetMargin();
 
   const handleCreateBudget = () => {
     if (!budgetName.trim()) return;
@@ -436,21 +462,57 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
     });
   };
 
-  const handleAddItem = () => {
+  const resetItemForm = () => {
+    setAddingItem(false); setEditingItemId(null); setEditingItemStageId(undefined);
+    setItemName(""); setItemCat("Materiais"); setItemQty("1"); setItemUnit("un"); setItemCost("");
+  };
+
+  const handleSaveItem = () => {
     if (!itemName.trim() || !itemCost) return;
-    addItemMut.mutate({
+    const req = {
       name:     itemName.trim(),
       category: itemCat,
       quantity: parseFloat(itemQty) || 1,
       unit:     itemUnit,
       unitCost: parseFloat(itemCost) || 0,
-    }, {
-      onSuccess: () => {
-        setAddingItem(false);
-        setItemName(""); setItemQty("1"); setItemCost("");
-        toast.success("Item adicionado!");
-      },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar item."),
+    };
+    if (editingItemId) {
+      updateItemMut.mutate({ id: editingItemId, req: { ...req, stageId: editingItemStageId } }, {
+        onSuccess: () => { resetItemForm(); toast.success("Item atualizado!"); },
+        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar item."),
+      });
+    } else {
+      addItemMut.mutate(req, {
+        onSuccess: () => { resetItemForm(); toast.success("Item adicionado!"); },
+        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar item."),
+      });
+    }
+  };
+
+  const startEditItem = (item: BuildBudgetDto["items"][number]) => {
+    setEditingItemId(item.id);
+    setEditingItemStageId(item.stageId ?? undefined);
+    setItemName(item.name); setItemCat(item.category);
+    setItemQty(String(item.quantity)); setItemUnit(item.unit);
+    setItemCost(String(item.unitCost));
+    setAddingItem(true);
+  };
+
+  const handleRemoveItem = (itemId: string) => {
+    if (!confirm("Remover este item do orçamento?")) return;
+    removeItemMut.mutate(itemId, {
+      onSuccess: () => toast.success("Item removido."),
+      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao remover item."),
+    });
+  };
+
+  const handleSaveMargin = () => {
+    if (!budget) return;
+    const m = parseFloat(marginInput);
+    if (isNaN(m) || m < 0) { toast.error("Margem inválida."); return; }
+    setMarginMut.mutate({ id: budget.id, req: { marginPercent: m } }, {
+      onSuccess: () => { setEditingMargin(false); toast.success("Margem atualizada!"); },
+      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar margem."),
     });
   };
 
@@ -525,7 +587,26 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margem</p>
-                  <p className="text-sm font-bold tabular-nums">{fmtPct(budget.marginPercent)}</p>
+                  {editingMargin ? (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Input value={marginInput} onChange={(e) => setMarginInput(e.target.value)}
+                        type="number" min={0} className="h-7 w-16 text-sm" autoFocus />
+                      <button onClick={handleSaveMargin} disabled={setMarginMut.isPending}
+                        className="text-primary disabled:opacity-40"><Check className="h-4 w-4" /></button>
+                      <button onClick={() => setEditingMargin(false)}
+                        className="text-muted-foreground"><X className="h-4 w-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-bold tabular-nums flex items-center gap-1">
+                      {fmtPct(budget.marginPercent)}
+                      {(budget.status === "Draft" || budget.status === "Sent") && (
+                        <button onClick={() => { setMarginInput(String(budget.marginPercent)); setEditingMargin(true); }}
+                          className="text-muted-foreground hover:text-foreground">
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Preço final</p>
@@ -567,7 +648,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Itens</p>
                   {(budget.status === "Draft" || budget.status === "Sent") && !addingItem && (
-                    <button onClick={() => setAddingItem(true)}
+                    <button onClick={() => { resetItemForm(); setAddingItem(true); }}
                       className="text-xs text-primary hover:underline">
                       + Adicionar item
                     </button>
@@ -609,12 +690,12 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                       </div>
                     </div>
                     <div className="flex gap-1.5 justify-end">
-                      <button onClick={handleAddItem}
-                        disabled={!itemName.trim() || !itemCost || addItemMut.isPending}
+                      <button onClick={handleSaveItem}
+                        disabled={!itemName.trim() || !itemCost || addItemMut.isPending || updateItemMut.isPending}
                         className="text-primary disabled:opacity-40">
                         <Check className="h-4 w-4" />
                       </button>
-                      <button onClick={() => { setAddingItem(false); setItemName(""); setItemCost(""); }}
+                      <button onClick={resetItemForm}
                         className="text-muted-foreground">
                         <X className="h-4 w-4" />
                       </button>
@@ -635,6 +716,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                           <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Qtd</th>
                           <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Unit.</th>
                           <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Total</th>
+                          <th className="px-3 py-2" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
@@ -649,6 +731,21 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">{fmt(item.unitCost)}</td>
                             <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(item.totalCost)}</td>
+                            <td className="px-2 py-2 text-right whitespace-nowrap">
+                              {(budget.status === "Draft" || budget.status === "Sent") && (
+                                <div className="flex items-center justify-end gap-1">
+                                  <button onClick={() => startEditItem(item)}
+                                    className="text-muted-foreground hover:text-foreground p-1">
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => handleRemoveItem(item.id)}
+                                    disabled={removeItemMut.isPending}
+                                    className="text-muted-foreground hover:text-destructive p-1 disabled:opacity-40">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -762,10 +859,9 @@ function TabDiario({ projectId }: { projectId: string }) {
     toast.success("Clima aplicado ao diário.");
   };
 
-  // Photo form
-  const [photoLogId, setPhotoLogId] = useState<string | null>(null);
-  const [photoKey, setPhotoKey]     = useState("");
-  const [photoCaption, setPhotoCaption] = useState("");
+  // Photo upload
+  const removePhotoMut = useRemoveDailyLogPhoto(projectId);
+  const [uploadingLogId, setUploadingLogId] = useState<string | null>(null);
 
   const logs = data?.items ?? [];
 
@@ -792,14 +888,36 @@ function TabDiario({ projectId }: { projectId: string }) {
     });
   };
 
-  const handleAddPhoto = (logId: string) => {
-    if (!photoKey.trim()) return;
-    addPhotoMut.mutate({ logId, req: { storageKey: photoKey.trim(), caption: photoCaption.trim() || undefined } }, {
-      onSuccess: () => {
-        setPhotoLogId(null); setPhotoKey(""); setPhotoCaption("");
-        toast.success("Foto adicionada!");
-      },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar foto."),
+  const handleUploadPhoto = async (logId: string, file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione uma imagem (JPG, PNG ou WebP).");
+      return;
+    }
+    setUploadingLogId(logId);
+    try {
+      // Persist only the durable storage key — the public URL is composed on read.
+      const { key } = await uploadFile(file, "build-daily-log");
+      addPhotoMut.mutate({ logId, req: { storageKey: key } }, {
+        onSuccess: () => toast.success("Foto adicionada!"),
+        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar foto."),
+      });
+    } catch (e) {
+      const msg = (e instanceof Error ? e.message : "").toLowerCase();
+      if (msg.includes("habilitado") || msg.includes("404") || msg.includes("não está")) {
+        toast.error("Upload de fotos indisponível neste ambiente.");
+      } else {
+        toast.error("Falha ao enviar foto. Tente novamente.");
+      }
+    } finally {
+      setUploadingLogId(null);
+    }
+  };
+
+  const handleRemovePhoto = (photoId: string) => {
+    if (!confirm("Remover esta foto?")) return;
+    removePhotoMut.mutate(photoId, {
+      onSuccess: () => toast.success("Foto removida."),
+      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao remover foto."),
     });
   };
 
@@ -990,13 +1108,25 @@ function TabDiario({ projectId }: { projectId: string }) {
                     <span className="text-xs text-muted-foreground">· {log.weatherSummary}</span>
                   )}
                 </div>
-                <button
-                  onClick={() => setPhotoLogId(log.id)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
-                >
-                  <Camera className="h-3.5 w-3.5" />
-                  <span>Foto</span>
-                </button>
+                <label className={cn(
+                  "flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer",
+                  uploadingLogId === log.id && "opacity-60 pointer-events-none",
+                )}>
+                  {uploadingLogId === log.id
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Camera className="h-3.5 w-3.5" />}
+                  <span>{uploadingLogId === log.id ? "Enviando…" : "Adicionar foto"}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) handleUploadPhoto(log.id, f);
+                    }}
+                  />
+                </label>
               </div>
 
               <p className="text-sm text-foreground/80 leading-relaxed">{log.notes}</p>
@@ -1005,37 +1135,28 @@ function TabDiario({ projectId }: { projectId: string }) {
               {log.photos.length > 0 && (
                 <div className="flex gap-2 flex-wrap pt-1">
                   {log.photos.map((photo) => (
-                    <div key={photo.id}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-muted text-xs text-muted-foreground max-w-[200px] truncate">
-                      <Camera className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{photo.caption ?? photo.storageKey.split("/").pop()}</span>
+                    <div key={photo.id} className="relative group/photo">
+                      {photo.url ? (
+                        <a href={photo.url} target="_blank" rel="noopener noreferrer">
+                          <img src={photo.url} alt={photo.caption ?? "Foto da obra"}
+                            className="h-16 w-16 rounded-lg object-cover border border-border" />
+                        </a>
+                      ) : (
+                        <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border border-border"
+                          title={photo.caption ?? photo.storageKey}>
+                          <Camera className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleRemovePhoto(photo.id)}
+                        disabled={removePhotoMut.isPending}
+                        className="absolute -top-1.5 -right-1.5 rounded-full bg-destructive text-destructive-foreground h-4 w-4 flex items-center justify-center opacity-0 group-hover/photo:opacity-100 transition-opacity disabled:opacity-40"
+                        title="Remover foto"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
                     </div>
                   ))}
-                </div>
-              )}
-
-              {/* Add photo inline */}
-              {photoLogId === log.id && (
-                <div className="flex items-end gap-2 pt-1 p-2 rounded-lg border border-dashed border-primary/30 flex-wrap">
-                  <div className="flex-1 min-w-[160px]">
-                    <Label className="text-xs">Storage key (após upload)</Label>
-                    <Input value={photoKey} onChange={(e) => setPhotoKey(e.target.value)}
-                      placeholder="uploads/2026/foto.jpg" className="h-8 text-xs mt-0.5" autoFocus />
-                  </div>
-                  <div className="w-36">
-                    <Label className="text-xs">Legenda</Label>
-                    <Input value={photoCaption} onChange={(e) => setPhotoCaption(e.target.value)}
-                      placeholder="Opcional" className="h-8 text-xs mt-0.5" />
-                  </div>
-                  <button onClick={() => handleAddPhoto(log.id)}
-                    disabled={!photoKey.trim() || addPhotoMut.isPending}
-                    className="text-primary disabled:opacity-40 pb-1">
-                    <Check className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => { setPhotoLogId(null); setPhotoKey(""); setPhotoCaption(""); }}
-                    className="text-muted-foreground pb-1">
-                    <X className="h-4 w-4" />
-                  </button>
                 </div>
               )}
             </div>
@@ -1056,6 +1177,14 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 
   const movements = movementsData?.items ?? [];
 
+  const { data: suppliers = [] } = useQuery({
+    queryKey:  ["suppliers", "list"],
+    queryFn:   () => fetchSuppliers(),
+    staleTime: 60_000,
+  });
+  const supplierName = (id: string | null) =>
+    id ? suppliers.find((s) => s.id === id)?.name ?? null : null;
+
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -1074,13 +1203,13 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
     );
   }
 
-  const isOverBudget    = financial.budgetApproved != null &&
-                          financial.totalRealizedExpenses > financial.budgetApproved;
+  const isOverBudget    = financial.approvedBudget != null &&
+                          financial.totalRealizedExpenses > financial.approvedBudget;
   const varianceIsOver  = financial.varianceAmount > 0;
   const varianceIsEqual = financial.varianceAmount === 0;
 
-  const coveragePercent = financial.budgetApproved
-    ? Math.min(150, (financial.totalRealizedExpenses / financial.budgetApproved) * 100)
+  const coveragePercent = financial.approvedBudget
+    ? Math.min(150, (financial.totalRealizedExpenses / financial.approvedBudget) * 100)
     : null;
 
   return (
@@ -1092,7 +1221,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
           <TrendingUp className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
           <p className="text-sm text-red-700 dark:text-red-300 font-medium">
             Realizado supera o orçamento aprovado em{" "}
-            {fmt(financial.totalRealizedExpenses - (financial.budgetApproved ?? 0))}.
+            {fmt(financial.totalRealizedExpenses - (financial.approvedBudget ?? 0))}.
           </p>
         </div>
       )}
@@ -1105,7 +1234,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             <span className="text-xs text-muted-foreground">Orçamento aprovado</span>
           </div>
           <p className="text-xl font-bold tabular-nums text-blue-600 dark:text-blue-400">
-            {fmt(financial.budgetApproved)}
+            {fmt(financial.approvedBudget)}
           </p>
         </div>
 
@@ -1160,7 +1289,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             <span className="text-xs text-muted-foreground">Estimado</span>
           </div>
           <p className="text-xl font-bold tabular-nums text-muted-foreground">
-            {fmt(financial.budgetEstimated)}
+            {fmt(financial.estimatedBudget)}
           </p>
         </div>
       </div>
@@ -1191,7 +1320,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            {fmt(financial.totalRealizedExpenses)} de {fmt(financial.budgetApproved)} utilizados
+            {fmt(financial.totalRealizedExpenses)} de {fmt(financial.approvedBudget)} utilizados
             {financial.lastMovementDate && (
               <> · última movimentação {fmtDate(financial.lastMovementDate)}</>
             )}
@@ -1250,6 +1379,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
                     {m.nature === "Expense" ? "Despesa" :
                      m.nature === "Transfer" ? "Transferência" :
                      m.nature === "Reimbursement" ? "Reembolso" : "Adiantamento"}
+                    {supplierName(m.supplierId) ? ` · ${supplierName(m.supplierId)}` : ""}
                   </p>
                 </div>
                 <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400 shrink-0">

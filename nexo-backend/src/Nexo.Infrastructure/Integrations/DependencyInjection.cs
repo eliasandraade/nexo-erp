@@ -140,6 +140,7 @@ public static class IntegrationsDependencyInjection
         services.Configure<StorageOptions>(
             configuration.GetSection(StorageOptions.SectionKey));
         services.AddSingleton<IStorageProvider, CloudflareR2Provider>();
+        services.AddSingleton<IStoragePublicUrlResolver, StoragePublicUrlResolver>();
 
         // ── Open Food Facts ───────────────────────────────────────────────────
         var offOpts = configuration.GetSection(OpenFoodFactsOptions.SectionKey).Get<OpenFoodFactsOptions>() ?? new OpenFoodFactsOptions();

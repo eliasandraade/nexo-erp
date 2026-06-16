@@ -144,7 +144,8 @@ public class MovementsController : ControllerBase
                 ContextType:         contextType,
                 ContextId:           request.ContextId,
                 AccountId:           request.AccountId,
-                OriginalSuggestionId: request.OriginalSuggestionId);
+                OriginalSuggestionId: request.OriginalSuggestionId,
+                SupplierId:          request.SupplierId);
 
             var response = await _confirmUseCase.ExecuteAsync(command, ct);
             return Ok(response);
@@ -270,6 +271,7 @@ public class MovementsController : ControllerBase
                 Description: m.Description,
                 ContextType: m.ContextType.ToString(),
                 ContextId:   m.ContextId,
+                SupplierId:  m.SupplierId,
                 Status:      m.Status.ToString(),
                 CreatedAt:   m.CreatedAt)).ToList(),
             TotalCount: total,

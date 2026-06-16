@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchProjects, fetchProject, fetchProjectDetails, fetchProjectFinancialSummary,
+  fetchBuildDashboard,
   createProject, updateProject,
   startProject, pauseProject, completeProject, cancelProject,
   fetchStages, createStage, updateStageProgress, reorderStages, deleteStage,
@@ -22,6 +23,7 @@ import {
 // ── Query keys ────────────────────────────────────────────────────────────────
 
 export const BUILD_KEYS = {
+  dashboard:         ()                            => ["build", "dashboard"] as const,
   projects:          (status?: BuildProjectStatus) => ["build", "projects", status] as const,
   project:           (id: string)                  => ["build", "project", id] as const,
   projectDetails:    (id: string)                  => ["build", "project", id, "details"] as const,
@@ -33,6 +35,16 @@ export const BUILD_KEYS = {
   dailyLogs:         (projectId: string)           => ["build", "daily-logs", projectId] as const,
   dailyLog:          (id: string)                  => ["build", "daily-log", id] as const,
 } as const;
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+export function useBuildDashboard() {
+  return useQuery({
+    queryKey:  BUILD_KEYS.dashboard(),
+    queryFn:   fetchBuildDashboard,
+    staleTime: 30_000,
+  });
+}
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 

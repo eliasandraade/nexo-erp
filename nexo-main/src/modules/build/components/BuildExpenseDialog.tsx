@@ -12,8 +12,12 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Sparkles, Loader2, CheckCircle2, ArrowLeft, AlertTriangle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
 import { useAnalyzeMovement, useConfirmMovement } from "../hooks/use-interpreter";
 import type { AnalyzeMovementResponse, MovementNature } from "../api/interpreter.api";
+
+const NO_SUPPLIER = "__none__";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -71,15 +75,23 @@ export function BuildExpenseDialog({ open, onClose, projectId }: Props) {
   const [date,        setDate]        = useState(today());
   const [description, setDescription] = useState("");
   const [nature,      setNature]      = useState<MovementNature>("Expense");
+  const [supplierId,  setSupplierId]  = useState<string>(NO_SUPPLIER);
 
   const analyzeMut = useAnalyzeMovement();
   const confirmMut = useConfirmMovement(projectId);
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey:  ["suppliers", "list"],
+    queryFn:   () => fetchSuppliers(),
+    staleTime: 60_000,
+  });
 
   // ── Reset ──────────────────────────────────────────────────────────────────
 
   const reset = () => {
     setStep("input"); setText(""); setDraft(null);
     setAmount(""); setDate(today()); setDescription(""); setNature("Expense");
+    setSupplierId(NO_SUPPLIER);
   };
 
   const handleClose = () => { reset(); onClose(); };
@@ -129,6 +141,7 @@ export function BuildExpenseDialog({ open, onClose, projectId }: Props) {
         contextType:          "Obra",
         contextId:            projectId,
         originalSuggestionId: draft.suggestionId,
+        supplierId:           supplierId === NO_SUPPLIER ? null : supplierId,
       },
     }, {
       onSuccess: () => {
@@ -284,6 +297,21 @@ export function BuildExpenseDialog({ open, onClose, projectId }: Props) {
                   <SelectContent>
                     {NATURES.map((n) => (
                       <SelectItem key={n.value} value={n.value}>{n.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Fornecedor (opcional)</Label>
+                <Select value={supplierId} onValueChange={setSupplierId}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue placeholder="Sem fornecedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_SUPPLIER}>Sem fornecedor</SelectItem>
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
