@@ -74,7 +74,14 @@ export default defineConfig({
           if (id.includes("/src/modules/platform/"))   return "app-platform";
           if (id.includes("/src/modules/portal/"))     return "app-portal";
           if (id.includes("/src/modules/landing/"))    return "app-landing";
-          if (id.includes("/src/modules/dashboard/"))  return "app-dashboard";
+          if (id.includes("/src/modules/dashboard/")) {
+            // SalesChart is the only dashboard file that pulls in recharts
+            // (vendor-charts, ~374KB). Keep it OUT of the eager app-dashboard
+            // chunk so its dynamic import() in DashboardPage creates a real lazy
+            // boundary — KPIs paint first, charts stream in afterwards.
+            if (id.includes("SalesChart")) return undefined;
+            return "app-dashboard";
+          }
           if (id.includes("/src/modules/reports/"))    return "app-reports";
 
           // All other app files (sales, products, customers, layouts, shared

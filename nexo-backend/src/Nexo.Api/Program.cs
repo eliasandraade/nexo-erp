@@ -1,6 +1,9 @@
+using System.IO.Compression;
 using System.Text;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -11,6 +14,7 @@ using Nexo.Infrastructure.Hubs;
 using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
 using Serilog;
+using StackExchange.Redis;
 
 // ── Bootstrap Serilog early so startup failures are logged ───────────────────
 Log.Logger = new LoggerConfiguration()
@@ -123,21 +127,74 @@ try
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                   .AllowAnyHeader()
                   .AllowCredentials()
+                  // Cache the CORS preflight (OPTIONS) for 24h. The SPA lives on a
+                  // different origin (app.orken.com.br) than the API, so without this
+                  // every non-simple request was preceded by a fresh OPTIONS round-trip,
+                  // doubling latency on the cold first load.
+                  .SetPreflightMaxAge(TimeSpan.FromHours(24))
                   .WithExposedHeaders("Content-Disposition", "Content-Length");
         });
     });
 
+    // ── Response Compression ───────────────────────────────────────────────────
+    // JSON payloads (sales/customers/product lists, dashboard summary) were sent
+    // uncompressed. Brotli/Gzip cut transfer size ~70-80% on the first load.
+    builder.Services.AddResponseCompression(options =>
+    {
+        options.EnableForHttps = true;
+        options.Providers.Add<BrotliCompressionProvider>();
+        options.Providers.Add<GzipCompressionProvider>();
+        options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+            new[] { "application/json", "application/json; charset=utf-8" });
+    });
+    builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+    builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+
     // ── Rate Limiting ────────────────────────────────────────────────────────
+    // "auth-login" protects /auth/login and /auth/refresh from brute force.
+    //
+    // Config-driven (RateLimiting:AuthLogin:{Enabled,PermitLimit,WindowSeconds})
+    // so the integration suite can disable it (the previous global limiter caused
+    // a shared-window 429 cascade across the whole suite), while the dedicated
+    // RateLimitingTests re-enable it explicitly.
+    //
+    // PARTITIONED per (client IP + endpoint path) — the previous
+    // AddFixedWindowLimiter("auth-login") used a SINGLE GLOBAL bucket, so 5 failed
+    // logins from anyone locked out every user for 15 min. Now each client gets
+    // its own budget, and login vs refresh are counted separately.
+    var authLoginEnabled = builder.Configuration.GetValue("RateLimiting:AuthLogin:Enabled", true);
+    var authLoginPermit  = builder.Configuration.GetValue("RateLimiting:AuthLogin:PermitLimit", 5);
+    var authLoginWindow  = builder.Configuration.GetValue("RateLimiting:AuthLogin:WindowSeconds", 900);
+
     builder.Services.AddRateLimiter(options =>
     {
-        options.AddFixedWindowLimiter("auth-login", opt =>
-        {
-            opt.PermitLimit = 5;
-            opt.Window = TimeSpan.FromMinutes(15);
-            opt.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
-            opt.QueueLimit = 0;
-        });
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+        options.AddPolicy("auth-login", httpContext =>
+        {
+            if (!authLoginEnabled)
+                return RateLimitPartition.GetNoLimiter("auth-login:disabled");
+
+            // Prefer the client IP from X-Forwarded-For (Railway sits behind a
+            // proxy); fall back to the socket address. NOTE: a client could spoof
+            // X-Forwarded-For — to harden, configure ForwardedHeaders middleware
+            // with KnownProxies and partition on the resolved RemoteIpAddress.
+            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
+                ? forwardedFor.Split(',')[0].Trim()
+                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+            var partitionKey = $"{clientIp}|{httpContext.Request.Path}";
+
+            return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
+                new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit          = authLoginPermit,
+                    Window               = TimeSpan.FromSeconds(authLoginWindow),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit           = 0,
+                });
+        });
     });
 
     // ── Controllers ───────────────────────────────────────────────────────────
@@ -218,8 +275,30 @@ try
         }
     }
 
+    // ── Warm the Redis connection at startup ──────────────────────────────────
+    // ConnectionMultiplexer.Connect() runs lazily on first resolution. Without
+    // this, the very first authenticated request paid the connect cost (up to
+    // ConnectTimeout = 3s) inside TenantResolutionMiddleware. Ping it now so the
+    // multiplexer is live before the first user hits the API. Fail-open.
+    if (!app.Environment.IsEnvironment("Testing"))
+    {
+        try
+        {
+            var mux = app.Services.GetService<IConnectionMultiplexer>();
+            mux?.GetDatabase().Ping();
+            if (mux is not null) Log.Information("Redis connection warmed.");
+        }
+        catch (Exception ex)
+        {
+            Log.Warning(ex, "Redis warmup ping failed — cache will be degraded (fail-open).");
+        }
+    }
+
     // ── Middleware pipeline ───────────────────────────────────────────────────
-    // CORS must be first so every response (including errors and rate-limit
+    // Response compression first so it wraps every downstream response body.
+    app.UseResponseCompression();
+
+    // CORS next so every response (including errors and rate-limit
     // rejections) carries the Access-Control-Allow-Origin header.
     app.UseCors("NexoFrontend");
 

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
@@ -13,14 +14,37 @@ namespace Nexo.IntegrationTests.Auth;
 /// - Refresh endpoint is rate limited
 /// - Rate limiting windows work correctly
 /// - Too many requests returns 429
+/// - Limiting is partitioned per client IP
+///
+/// The general integration suite DISABLES the auth-login limiter (see
+/// TestWebApplicationFactory) to avoid a shared-window 429 cascade. These tests
+/// re-enable it via <see cref="TestWebApplicationFactory.WithRateLimitingEnabled"/>.
+/// xUnit creates a fresh instance of this class per test method, so the derived
+/// factory (and its in-memory limiter window) is fresh for every test — no
+/// contamination between tests. Tests that need distinct client identities set
+/// distinct X-Forwarded-For headers (the limiter partitions on client IP).
 /// </summary>
 [Collection("Integration")]
-public class RateLimitingTests
+public class RateLimitingTests : IDisposable
 {
-    private readonly TestWebApplicationFactory _factory;
+    private readonly WebApplicationFactory<Program> _rlFactory;
 
     public RateLimitingTests(TestWebApplicationFactory factory)
-        => _factory = factory;
+        => _rlFactory = factory.WithRateLimitingEnabled(permitLimit: 5, windowSeconds: 900);
+
+    public void Dispose() => _rlFactory.Dispose();
+
+    /// <summary>Fresh no-redirect client against the rate-limited host.</summary>
+    private HttpClient NewClient(string? forwardedFor = null)
+    {
+        var client = _rlFactory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+        });
+        if (forwardedFor is not null)
+            client.DefaultRequestHeaders.Add("X-Forwarded-For", forwardedFor);
+        return client;
+    }
 
     // ────────────────────────────────────────────────────────────────────────────
     // LOGIN RATE LIMITING
@@ -29,7 +53,7 @@ public class RateLimitingTests
     [Fact]
     public async Task Login_WithinRateLimit_Succeeds()
     {
-        var client = _factory.CreateApiClient();
+        var client = NewClient();
 
         // First 5 attempts should succeed (or be rejected for wrong password, not rate limited)
         for (int i = 0; i < 5; i++)
@@ -46,9 +70,9 @@ public class RateLimitingTests
     [Fact]
     public async Task Login_ExceedsRateLimit_Returns429()
     {
-        var client = _factory.CreateApiClient();
+        var client = NewClient();
 
-        // Make 6 requests (limit is 5 per 15 min)
+        // Make 6 requests (limit is 5 per window)
         HttpStatusCode lastStatus = HttpStatusCode.OK;
         for (int i = 0; i < 6; i++)
         {
@@ -65,12 +89,10 @@ public class RateLimitingTests
     [Fact]
     public async Task Login_RateLimitIncludesIpAddress()
     {
-        // This test verifies that rate limiting is per-IP
-        var client1 = _factory.CreateApiClient();
-        var client2 = _factory.CreateApiClient();
-
-        client1.DefaultRequestHeaders.Add("User-Agent", "TestClient1/1.0");
-        client2.DefaultRequestHeaders.Add("User-Agent", "TestClient2/1.0");
+        // Two clients with DISTINCT X-Forwarded-For values land in distinct
+        // rate-limit partitions, so one being throttled must not affect the other.
+        var client1 = NewClient(forwardedFor: "203.0.113.1");
+        var client2 = NewClient(forwardedFor: "203.0.113.2");
 
         // Hammer client1 until rate limited
         HttpStatusCode client1LastStatus = HttpStatusCode.OK;
@@ -84,12 +106,12 @@ public class RateLimitingTests
         client1LastStatus.Should().Be(HttpStatusCode.TooManyRequests,
             "client1 should be rate limited after 6+ attempts");
 
-        // client2 should still be able to make requests (different connection)
+        // client2 (different IP partition) should still be able to make requests
         var client2Response = await client2.PostAsJsonAsync("/api/auth/login",
             TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrongpass"));
 
         client2Response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
-            "client2 should not be affected by client1's rate limiting");
+            "client2 (different IP) should not be affected by client1's rate limiting");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -99,7 +121,7 @@ public class RateLimitingTests
     [Fact]
     public async Task Refresh_WithinRateLimit_Succeeds()
     {
-        var client = _factory.CreateApiClient();
+        var client = NewClient();
 
         // Login to get a refresh token
         var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
@@ -108,17 +130,18 @@ public class RateLimitingTests
         if (loginResponse.StatusCode != HttpStatusCode.OK)
             return; // Login failed, skip refresh test
 
-        var loginBody = await loginResponse.Content.ReadFromJsonAsync<dynamic>();
-        var refreshToken = loginBody?.refreshToken ?? loginBody?.RefreshToken;
+        var loginBody = await loginResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        var refreshToken = loginBody.TryGetProperty("refreshToken", out var rt) ? rt.GetString() : null;
 
-        if (refreshToken == null)
+        if (string.IsNullOrEmpty(refreshToken))
             return; // No refresh token available
 
-        // First 5 refreshes should succeed
+        // Login and refresh use SEPARATE partitions (keyed by path), so the login
+        // above does not consume the refresh budget: all 5 refreshes succeed.
         for (int i = 0; i < 5; i++)
         {
             var response = await client.PostAsJsonAsync("/api/auth/refresh",
-                new { refreshToken = refreshToken.ToString() });
+                TestCredentials.RefreshPayload(refreshToken));
 
             response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
                 $"Refresh request {i + 1}/5 should not be rate limited");
@@ -128,7 +151,7 @@ public class RateLimitingTests
     [Fact]
     public async Task Refresh_ExceedsRateLimit_Returns429()
     {
-        var client = _factory.CreateApiClient();
+        var client = NewClient();
 
         // Login
         var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
@@ -164,7 +187,7 @@ public class RateLimitingTests
     [Fact]
     public async Task BruteForceAttempt_WithWrongPassword_IsThrottled()
     {
-        var client = _factory.CreateApiClient();
+        var client = NewClient();
         int rateLimitedCount = 0;
 
         // Try 10 times with wrong password
@@ -189,24 +212,25 @@ public class RateLimitingTests
     [Fact]
     public async Task RateLimitingPerIp_PreventsBruteForceFromSingleIp()
     {
-        // This test documents that rate limiting is per-IP
-        var client1 = _factory.CreateApiClient();
-        var client2 = _factory.CreateApiClient();
+        // Distinct X-Forwarded-For => distinct partitions.
+        var client1 = NewClient(forwardedFor: "203.0.113.10");
+        var client2 = NewClient(forwardedFor: "203.0.113.11");
 
-        // Client1 hammers the endpoint
+        // Client1 hammers the endpoint until throttled
         for (int i = 0; i < 10; i++)
         {
             await client1.PostAsJsonAsync("/api/auth/login",
                 TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrong"));
         }
 
-        // Client2 can still make requests (different IP perspective)
+        // Client2 (different IP) can still make requests — demonstrates per-IP
+        // isolation. (A distributed attack from many IPs can still bypass per-IP
+        // limits — a known, accepted limitation.)
         var client2Response = await client2.PostAsJsonAsync("/api/auth/login",
             TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrong"));
 
-        // This demonstrates that distributed attacks from multiple IPs can bypass per-IP limits
-        // (This is expected and a known limitation)
-        client2Response.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError);
+        client2Response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
+            "client2 (different IP) must not inherit client1's throttling");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -216,12 +240,12 @@ public class RateLimitingTests
     [Fact]
     public async Task RateLimitWindow_ResetsAfterTimeout()
     {
-        // Note: This test requires waiting 15 minutes, so we skip it or use mocking
+        // Note: This test requires waiting the full window, so we skip it or use mocking
         // Document the expected behavior instead
 
         // Expected behavior:
         // 1. Make 6 requests to login (get rate limited on 6th)
-        // 2. Wait 15 minutes (rate limit window)
+        // 2. Wait for the rate limit window to elapse
         // 3. Make another request to login (should succeed)
 
         // For actual testing, this would require:
@@ -237,7 +261,7 @@ public class RateLimitingTests
     [Fact]
     public async Task RateLimitResponse_IncludesRetryAfterHeader()
     {
-        var client = _factory.CreateApiClient();
+        var client = NewClient();
 
         // Make requests until rate limited
         HttpResponseMessage rateLimitedResponse = null!;
