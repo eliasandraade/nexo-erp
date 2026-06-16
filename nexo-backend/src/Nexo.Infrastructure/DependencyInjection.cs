@@ -79,11 +79,9 @@ public static class DependencyInjection
                 var logger = sp.GetRequiredService<ILogger<RedisCacheService>>();
                 try
                 {
-                    var options = ConfigurationOptions.Parse(redisConnectionString);
-                    // Fail-open: if Redis is unreachable, WaitAsync in RedisCacheService bails at 2s.
-                    options.AbortOnConnectFail = false;
-                    options.ConnectTimeout     = 3000;
-                    options.AsyncTimeout       = 2500;
+                    // Accepts native SE.Redis format AND redis://|rediss:// URIs (Railway,
+                    // Upstash, Heroku, …). Parse-only of a URI silently fails to connect.
+                    var options = RedisConfiguration.BuildOptions(redisConnectionString);
                     return ConnectionMultiplexer.Connect(options);
                 }
                 catch (Exception ex)
