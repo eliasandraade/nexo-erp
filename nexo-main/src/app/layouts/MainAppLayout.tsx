@@ -48,12 +48,12 @@ export function MainAppLayout() {
           >
             <Menu className="h-4 w-4" />
           </button>
-          <div className="ml-3 flex items-center gap-1.5">
-            <div className="w-5 h-5 rounded bg-[#5B4DFF] flex items-center justify-center">
-              <span className="text-[9px] font-black text-white leading-none">N</span>
-            </div>
-            <span className="font-display font-bold text-[14px] text-foreground">Nexo</span>
-          </div>
+          <img
+            src="/orken_lightmode.png"
+            alt="Orken"
+            className="ml-3 h-[18px] w-auto"
+            draggable={false}
+          />
         </div>
 
         {/* Desktop header */}

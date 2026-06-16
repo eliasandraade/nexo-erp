@@ -14,8 +14,8 @@ interface ErrorStateProps {
 const typeConfig = {
   generic: {
     icon: AlertTriangle,
-    title: "Algo deu errado",
-    description: "Ocorreu um erro ao carregar os dados.",
+    title: "Não foi possível carregar",
+    description: "Não conseguimos buscar os dados agora. Tente novamente em instantes.",
   },
   network: {
     icon: WifiOff,
