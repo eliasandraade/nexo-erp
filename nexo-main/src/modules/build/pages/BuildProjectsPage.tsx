@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { toast } from "sonner";
 import { useProjects, useCreateProject } from "../hooks/use-build";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
+import { BuildDashboardSection } from "../components/BuildDashboardSection";
 import type { BuildProjectDto, BuildProjectStatus, BuildProjectType } from "../api/build.api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -332,11 +333,6 @@ export default function BuildProjectsPage() {
       )
     : projects;
 
-  // KPI summary
-  const activeCount   = projects.filter((p) => p.status === "InProgress").length;
-  const planningCount = projects.filter((p) => p.status === "Planning").length;
-  const totalBudget   = projects.reduce((s, p) => s + (p.budgetApproved ?? p.budgetEstimated ?? 0), 0);
-
   return (
     <div className="p-6 space-y-6">
       <PageHeader
@@ -350,22 +346,8 @@ export default function BuildProjectsPage() {
         }
       />
 
-      {/* ── KPI strip ────────────────────────────────────────────────────────── */}
-      {!isLoading && projects.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { label: "Total de obras",    value: String(projects.length), color: "text-foreground" },
-            { label: "Em andamento",       value: String(activeCount),   color: "text-blue-600 dark:text-blue-400" },
-            { label: "Planejamento",       value: String(planningCount), color: "text-muted-foreground" },
-            { label: "Budget total",       value: fmt(totalBudget),      color: "text-primary" },
-          ].map((kpi) => (
-            <div key={kpi.label} className="rounded-xl border border-border bg-card p-3">
-              <p className="text-[11px] text-muted-foreground uppercase tracking-wide">{kpi.label}</p>
-              <p className={cn("text-xl font-bold tabular-nums mt-0.5", kpi.color)}>{kpi.value}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* ── Real dashboard (GET /v1/build/dashboard) ─────────────────────────── */}
+      <BuildDashboardSection />
 
       {/* ── Filters ──────────────────────────────────────────────────────────── */}
       <div className="space-y-3">

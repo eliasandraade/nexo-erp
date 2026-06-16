@@ -153,6 +153,7 @@ public static class DependencyInjection
         services.AddScoped<IBuildDailyLogRepository, BuildDailyLogRepository>();
         services.AddScoped<IBuildDailyLogPhotoRepository, BuildDailyLogPhotoRepository>();
         services.AddScoped<IBuildFinancialQueryService, BuildFinancialQueryService>();
+        services.AddScoped<IBuildDashboardQueryService, BuildDashboardQueryService>();
 
         // ── Operational Interpretation Engine ─────────────────────────────────
         // Repositories
