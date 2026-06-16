@@ -13,6 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/PageHeader";
+import { OperationalCostsCard } from "../components/OperationalCostsCard";
 import { toast } from "sonner";
 import { useCmvReport, useFinanceiroSummary } from "../hooks/use-financeiro";
 import {
@@ -755,6 +756,9 @@ export default function FinanceiroPage() {
           <CmvTable items={cmvData?.items ?? []} />
         )}
       </div>
+
+      {/* ── Parâmetros de custo (CMV) — alimentam o CMV acima ──────────────── */}
+      <OperationalCostsCard />
 
       {/* ── Funcionários ──────────────────────────────────────────────────── */}
       <EmployeesSection />

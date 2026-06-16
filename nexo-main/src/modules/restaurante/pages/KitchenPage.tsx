@@ -5,6 +5,7 @@ import { KitchenConnectionBadge } from "../components/KitchenConnectionBadge";
 import { useKitchenSocket } from "../hooks/useKitchenSocket";
 import { useKitchenItems } from "../hooks/useKitchenItems";
 import { UserDropdown } from "@/components/shared/UserDropdown";
+import { RestauranteBreadcrumb } from "../components/RestauranteBreadcrumb";
 
 export default function KitchenPage() {
   const { session } = useAuth();
@@ -29,9 +30,9 @@ export default function KitchenPage() {
 
   return (
     <div className="flex flex-col h-screen p-4">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-white">Cozinha</h1>
+      {/* Header — Orken Menu context/back + connection + user menu */}
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <RestauranteBreadcrumb />
         <div className="flex items-center gap-3">
           <KitchenConnectionBadge mode={connectionMode} />
           <UserDropdown variant="dark" />
