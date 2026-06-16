@@ -312,6 +312,14 @@ public class DataSeeder
 
     // ── Platform user (superusuário NexoERP) ─────────────────────────────────
 
+    /// <summary>
+    /// Idempotently provisions / synchronizes the platform super-admin from the
+    /// Seed:Platform* configuration. Unlike the demo <see cref="SeedAsync"/>, this runs in
+    /// EVERY environment (including Production) — it is the production bootstrap for the
+    /// super-admin. Never logs the password; throws if a required key is missing.
+    /// </summary>
+    public Task SeedPlatformAdminAsync(CancellationToken ct = default) => SeedPlatformUserAsync(ct);
+
     private async Task SeedPlatformUserAsync(CancellationToken ct)
     {
         var platformEmail    = _config["Seed:PlatformEmail"]

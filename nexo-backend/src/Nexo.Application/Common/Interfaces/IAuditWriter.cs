@@ -50,6 +50,11 @@ public static class AuditActions
     public const string ModuleDeactivated      = "module_deactivated";
     public const string SubscriptionRenewed    = "subscription_renewed";
     public const string SubscriptionCancelled  = "subscription_cancelled";
+
+    // Platform admin
+    public const string PlatformImpersonation  = "platform_impersonation";
+    public const string TenantUpdated          = "tenant_updated";
+    public const string TenantStatusChanged    = "tenant_status_changed";
 }
 
 /// <summary>Audit severity constants.</summary>
