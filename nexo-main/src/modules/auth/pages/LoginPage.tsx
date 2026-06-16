@@ -3,7 +3,8 @@ import { useNavigate, Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { homeRoute } from "../hooks/useRoleAccess";
+import { resolvePostLogin } from "@/modules/workspace/resolvePostLogin";
+import { readLastWorkspace } from "@/modules/workspace/persistence";
 import { getCurrentSession } from "../services/authService";
 import { DASHBOARD_SUMMARY_KEY } from "@/modules/dashboard/hooks/useDashboardSummary";
 import { getDashboardSummary } from "@/modules/dashboard/api/dashboard.api";
@@ -71,7 +72,9 @@ export default function LoginPage() {
       navigate("/platform", { replace: true });
     } else {
       const session = getCurrentSession();
-      const target  = session ? homeRoute(session) : "/dashboard";
+      const target  = session
+        ? resolvePostLogin(session, readLastWorkspace(session))
+        : "/dashboard";
       // Warm the dashboard cache in parallel with the route transition + chunk
       // download, so the first data is already in flight (or done) by the time
       // DashboardPage mounts. Only when the user actually lands on /dashboard.

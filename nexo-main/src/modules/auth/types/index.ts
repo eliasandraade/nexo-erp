@@ -11,7 +11,7 @@ export interface AuthSession {
   role: UserRole;
   login: string;
   email: string;
-  /** Module keys granted to this tenant (e.g. "retail", "restaurant") */
+  /** Active module keys granted to this tenant: "varejo" | "restaurante" | "build" */
   modules: string[];
   /** Active store ID from JWT storeId claim */
   storeId?: string;
