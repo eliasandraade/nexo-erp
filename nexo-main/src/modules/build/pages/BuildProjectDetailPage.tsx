@@ -34,6 +34,8 @@ import {
   type WeatherResult,
 } from "@/services/weather.api";
 import { uploadFile } from "@/services/storage.api";
+import { useQuery } from "@tanstack/react-query";
+import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -1174,6 +1176,14 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 
   const movements = movementsData?.items ?? [];
 
+  const { data: suppliers = [] } = useQuery({
+    queryKey:  ["suppliers", "list"],
+    queryFn:   () => fetchSuppliers(),
+    staleTime: 60_000,
+  });
+  const supplierName = (id: string | null) =>
+    id ? suppliers.find((s) => s.id === id)?.name ?? null : null;
+
   if (isLoading) {
     return (
       <div className="space-y-3">
@@ -1368,6 +1378,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
                     {m.nature === "Expense" ? "Despesa" :
                      m.nature === "Transfer" ? "Transferência" :
                      m.nature === "Reimbursement" ? "Reembolso" : "Adiantamento"}
+                    {supplierName(m.supplierId) ? ` · ${supplierName(m.supplierId)}` : ""}
                   </p>
                 </div>
                 <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400 shrink-0">

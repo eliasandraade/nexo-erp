@@ -25,7 +25,8 @@ public record ConfirmMovementCommand(
     FinancialContextType ContextType,
     Guid?                ContextId,
     Guid?                AccountId,
-    Guid                 OriginalSuggestionId);
+    Guid                 OriginalSuggestionId,
+    Guid?                SupplierId = null);
 
 public record ReprocessMovementCommand(
     Guid              TenantId,

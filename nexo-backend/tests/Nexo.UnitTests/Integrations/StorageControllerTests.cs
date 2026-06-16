@@ -195,6 +195,25 @@ public class StorageControllerTests
     }
 
     [Fact]
+    public async Task Upload_BuildDailyLogContext_KeyContainsBuildPath()
+    {
+        var sut  = Build();
+        var file = MakeFile();
+
+        StorageUploadRequest? captured = null;
+        sut.Provider
+           .UploadAsync(Arg.Do<StorageUploadRequest>(r => captured = r), Arg.Any<CancellationToken>())
+           .Returns(new StorageUploadResult("key", "https://cdn.example.com/key"));
+
+        var result = await sut.Controller.Upload(file, "build-daily-log", CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        captured.Should().NotBeNull();
+        captured!.ObjectKey.Should().Contain(TenantId.ToString());
+        captured.ObjectKey.Should().Contain("build/daily-logs");
+    }
+
+    [Fact]
     public async Task Upload_ProviderReceivesCorrectContentType()
     {
         var sut  = Build();

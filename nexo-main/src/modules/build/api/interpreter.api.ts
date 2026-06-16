@@ -69,6 +69,7 @@ export interface ConfirmMovementRequest {
   contextId?:           string | null;
   accountId?:           string | null;
   originalSuggestionId: string;
+  supplierId?:          string | null;
 }
 
 export interface ConfirmMovementResponse {
@@ -95,6 +96,7 @@ export interface MovementListItemDto {
   description: string;
   contextType: string;
   contextId:   string | null;
+  supplierId:  string | null;
   status:      MovementStatus;
   createdAt:   string;
 }

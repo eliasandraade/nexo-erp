@@ -19,7 +19,8 @@ public record ConfirmMovementRequest(
     string   ContextType,            // FinancialContextType enum value name
     Guid?    ContextId,
     Guid?    AccountId,
-    Guid     OriginalSuggestionId);  // required to compute corrections
+    Guid     OriginalSuggestionId,   // required to compute corrections
+    Guid?    SupplierId = null);     // optional counterparty (registered Supplier)
 
 public record ReprocessMovementRequest(
     string  Reason,                  // TriggerReason enum value name
@@ -143,6 +144,7 @@ public record MovementListItemResponse(
     string   Description,
     string   ContextType,
     Guid?    ContextId,
+    Guid?    SupplierId,
     string   Status,
     DateTime CreatedAt);
 

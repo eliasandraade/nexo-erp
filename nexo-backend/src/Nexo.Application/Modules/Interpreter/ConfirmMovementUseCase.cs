@@ -82,7 +82,8 @@ public class ConfirmMovementUseCase
             contextType:           command.ContextType,
             contextId:             command.ContextId,
             categoryId:            command.CategoryId,
-            accountId:             command.AccountId);
+            accountId:             command.AccountId,
+            supplierId:            command.SupplierId);
 
         movement.Confirm();
 
@@ -193,6 +194,6 @@ public class ConfirmMovementUseCase
         {
             m.Direction, m.Nature, m.Amount, m.Date,
             m.Description, m.CategoryId, m.ContextType,
-            m.ContextId, m.AccountId, m.Status
+            m.ContextId, m.AccountId, m.SupplierId, m.Status
         });
 }

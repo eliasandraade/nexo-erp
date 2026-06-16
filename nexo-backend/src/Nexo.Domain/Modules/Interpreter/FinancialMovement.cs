@@ -18,6 +18,8 @@ public class FinancialMovement : TenantEntity
     public FinancialContextType ContextType           { get; private set; }
     public Guid?                ContextId             { get; private set; }
     public Guid?                AccountId             { get; private set; }
+    /// <summary>Optional link to a registered Supplier (counterparty). Additive — null for legacy movements.</summary>
+    public Guid?                SupplierId            { get; private set; }
     public MovementStatus       Status                { get; private set; }
     public Guid                 CreatedBy             { get; private set; }
 
@@ -33,7 +35,8 @@ public class FinancialMovement : TenantEntity
         FinancialContextType contextType,
         Guid?               contextId,
         Guid?               categoryId,
-        Guid?               accountId)
+        Guid?               accountId,
+        Guid?               supplierId = null)
     {
         if (createdBy == Guid.Empty)
             throw new DomainException("CreatedBy is required.");
@@ -54,6 +57,7 @@ public class FinancialMovement : TenantEntity
             ContextId             = contextId,
             CategoryId            = categoryId,
             AccountId             = accountId,
+            SupplierId            = supplierId,
             Status                = MovementStatus.Draft,
             CreatedBy             = createdBy
         };
@@ -97,7 +101,8 @@ public class FinancialMovement : TenantEntity
         FinancialContextType contextType,
         Guid?                contextId,
         Guid?                categoryId,
-        Guid?                accountId)
+        Guid?                accountId,
+        Guid?                supplierId = null)
     {
         if (Status != MovementStatus.Draft)
             throw new DomainException("Only Draft movements can be edited.");
@@ -116,6 +121,7 @@ public class FinancialMovement : TenantEntity
         ContextId             = contextId;
         CategoryId            = categoryId;
         AccountId             = accountId;
+        SupplierId            = supplierId;
         SetUpdatedAt();
     }
 }
