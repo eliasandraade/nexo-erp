@@ -115,8 +115,8 @@ export interface BuildProjectDetailsDto extends BuildProjectDto {
 
 export interface BuildProjectFinancialSummaryDto {
   projectId:             string;
-  budgetEstimated:       number | null;
-  budgetApproved:        number | null;
+  estimatedBudget:       number | null;
+  approvedBudget:        number | null;
   totalRealizedExpenses: number;
   movementCount:         number;
   lastMovementDate:      string | null;
@@ -137,7 +137,7 @@ export interface CreateBuildProjectRequest {
   name:            string;
   clientName:      string;
   location?:       string;
-  type:            number;  // 0=Residential 1=Commercial 2=Industrial 3=Infrastructure
+  type:            BuildProjectType;  // enum name: House | Commercial | Renovation | Building | Other
   budgetEstimated?: number;
   startDate?:       string;
   expectedEndDate?: string;
@@ -146,8 +146,10 @@ export interface CreateBuildProjectRequest {
 export interface UpdateBuildProjectRequest {
   name:             string;
   clientName:       string;
+  type:             BuildProjectType;
   location?:        string;
   budgetEstimated?: number;
+  budgetApproved?:  number;
   startDate?:       string;
   expectedEndDate?: string;
 }
@@ -189,6 +191,7 @@ export interface UpdateBuildBudgetItemRequest {
   quantity: number;
   unit:     string;
   unitCost: number;
+  stageId?: string;
 }
 
 export interface SetBudgetMarginRequest {

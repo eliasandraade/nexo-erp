@@ -18,13 +18,14 @@ import {
   useStages, useCreateStage, useUpdateStageProgress, useDeleteStage,
   useBudgets, useBudget, useCreateBudget,
   useSendBudget, useApproveBudget, useRejectBudget,
-  useAddBudgetItem,
+  useAddBudgetItem, useUpdateBudgetItem, useRemoveBudgetItem, useSetBudgetMargin,
   useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto,
 } from "../hooks/use-build";
 import { useProjectMovements } from "../hooks/use-interpreter";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { BudgetStatusBadge } from "../components/BudgetStatusBadge";
 import { BuildExpenseDialog } from "../components/BuildExpenseDialog";
+import { EditProjectDialog } from "../components/EditProjectDialog";
 import type {
   BuildProjectDetailsDto, BuildStageDto, BuildBudgetDto, BuildDailyLogDto,
 } from "../api/build.api";
@@ -94,6 +95,8 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
   const completeMut = useCompleteProject(project.id);
   const cancelMut   = useCancelProject(project.id);
 
+  const [editOpen, setEditOpen] = useState(false);
+
   const isActive = project.status === "InProgress" || project.status === "Planning" || project.status === "Paused";
 
   const handleAction = (
@@ -116,6 +119,15 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
 
   return (
     <div className="space-y-6">
+      {/* Edit action — only for non-terminal projects */}
+      {isActive && (
+        <div className="flex justify-end">
+          <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar obra
+          </Button>
+        </div>
+      )}
+
       {/* Info cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {[
@@ -221,6 +233,8 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
           </div>
         </div>
       )}
+
+      <EditProjectDialog project={project} open={editOpen} onClose={() => setEditOpen(false)} />
     </div>
   );
 }
@@ -404,13 +418,19 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
   const [budgetName, setBudgetName]     = useState("");
   const [budgetMargin, setBudgetMargin] = useState("15");
 
-  // Item form
+  // Item form (shared between add + edit)
   const [addingItem, setAddingItem]     = useState(false);
+  const [editingItemId, setEditingItemId]           = useState<string | null>(null);
+  const [editingItemStageId, setEditingItemStageId] = useState<string | undefined>(undefined);
   const [itemName, setItemName]         = useState("");
   const [itemCat, setItemCat]           = useState("Materiais");
   const [itemQty, setItemQty]           = useState("1");
   const [itemUnit, setItemUnit]         = useState("un");
   const [itemCost, setItemCost]         = useState("");
+
+  // Margin edit
+  const [editingMargin, setEditingMargin] = useState(false);
+  const [marginInput, setMarginInput]     = useState("");
 
   const items = budgets?.items ?? [];
   const selectedBudget = items.find((b) => b.id === selectedBudgetId) ?? items[0];
@@ -418,7 +438,10 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
   const { data: budgetDetail } = useBudget(selectedBudget?.id ?? "");
   const budget = budgetDetail ?? selectedBudget;
 
-  const addItemMut = useAddBudgetItem(budget?.id ?? "");
+  const addItemMut    = useAddBudgetItem(budget?.id ?? "");
+  const updateItemMut = useUpdateBudgetItem(budget?.id ?? "");
+  const removeItemMut = useRemoveBudgetItem(budget?.id ?? "");
+  const setMarginMut  = useSetBudgetMargin();
 
   const handleCreateBudget = () => {
     if (!budgetName.trim()) return;
@@ -436,21 +459,57 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
     });
   };
 
-  const handleAddItem = () => {
+  const resetItemForm = () => {
+    setAddingItem(false); setEditingItemId(null); setEditingItemStageId(undefined);
+    setItemName(""); setItemCat("Materiais"); setItemQty("1"); setItemUnit("un"); setItemCost("");
+  };
+
+  const handleSaveItem = () => {
     if (!itemName.trim() || !itemCost) return;
-    addItemMut.mutate({
+    const req = {
       name:     itemName.trim(),
       category: itemCat,
       quantity: parseFloat(itemQty) || 1,
       unit:     itemUnit,
       unitCost: parseFloat(itemCost) || 0,
-    }, {
-      onSuccess: () => {
-        setAddingItem(false);
-        setItemName(""); setItemQty("1"); setItemCost("");
-        toast.success("Item adicionado!");
-      },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar item."),
+    };
+    if (editingItemId) {
+      updateItemMut.mutate({ id: editingItemId, req: { ...req, stageId: editingItemStageId } }, {
+        onSuccess: () => { resetItemForm(); toast.success("Item atualizado!"); },
+        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar item."),
+      });
+    } else {
+      addItemMut.mutate(req, {
+        onSuccess: () => { resetItemForm(); toast.success("Item adicionado!"); },
+        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar item."),
+      });
+    }
+  };
+
+  const startEditItem = (item: BuildBudgetDto["items"][number]) => {
+    setEditingItemId(item.id);
+    setEditingItemStageId(item.stageId ?? undefined);
+    setItemName(item.name); setItemCat(item.category);
+    setItemQty(String(item.quantity)); setItemUnit(item.unit);
+    setItemCost(String(item.unitCost));
+    setAddingItem(true);
+  };
+
+  const handleRemoveItem = (itemId: string) => {
+    if (!confirm("Remover este item do orçamento?")) return;
+    removeItemMut.mutate(itemId, {
+      onSuccess: () => toast.success("Item removido."),
+      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao remover item."),
+    });
+  };
+
+  const handleSaveMargin = () => {
+    if (!budget) return;
+    const m = parseFloat(marginInput);
+    if (isNaN(m) || m < 0) { toast.error("Margem inválida."); return; }
+    setMarginMut.mutate({ id: budget.id, req: { marginPercent: m } }, {
+      onSuccess: () => { setEditingMargin(false); toast.success("Margem atualizada!"); },
+      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar margem."),
     });
   };
 
@@ -525,7 +584,26 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margem</p>
-                  <p className="text-sm font-bold tabular-nums">{fmtPct(budget.marginPercent)}</p>
+                  {editingMargin ? (
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <Input value={marginInput} onChange={(e) => setMarginInput(e.target.value)}
+                        type="number" min={0} className="h-7 w-16 text-sm" autoFocus />
+                      <button onClick={handleSaveMargin} disabled={setMarginMut.isPending}
+                        className="text-primary disabled:opacity-40"><Check className="h-4 w-4" /></button>
+                      <button onClick={() => setEditingMargin(false)}
+                        className="text-muted-foreground"><X className="h-4 w-4" /></button>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-bold tabular-nums flex items-center gap-1">
+                      {fmtPct(budget.marginPercent)}
+                      {(budget.status === "Draft" || budget.status === "Sent") && (
+                        <button onClick={() => { setMarginInput(String(budget.marginPercent)); setEditingMargin(true); }}
+                          className="text-muted-foreground hover:text-foreground">
+                          <Pencil className="h-3 w-3" />
+                        </button>
+                      )}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Preço final</p>
@@ -567,7 +645,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                 <div className="flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Itens</p>
                   {(budget.status === "Draft" || budget.status === "Sent") && !addingItem && (
-                    <button onClick={() => setAddingItem(true)}
+                    <button onClick={() => { resetItemForm(); setAddingItem(true); }}
                       className="text-xs text-primary hover:underline">
                       + Adicionar item
                     </button>
@@ -609,12 +687,12 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                       </div>
                     </div>
                     <div className="flex gap-1.5 justify-end">
-                      <button onClick={handleAddItem}
-                        disabled={!itemName.trim() || !itemCost || addItemMut.isPending}
+                      <button onClick={handleSaveItem}
+                        disabled={!itemName.trim() || !itemCost || addItemMut.isPending || updateItemMut.isPending}
                         className="text-primary disabled:opacity-40">
                         <Check className="h-4 w-4" />
                       </button>
-                      <button onClick={() => { setAddingItem(false); setItemName(""); setItemCost(""); }}
+                      <button onClick={resetItemForm}
                         className="text-muted-foreground">
                         <X className="h-4 w-4" />
                       </button>
@@ -635,6 +713,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                           <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Qtd</th>
                           <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Unit.</th>
                           <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Total</th>
+                          <th className="px-3 py-2" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
@@ -649,6 +728,21 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                             </td>
                             <td className="px-3 py-2 text-right tabular-nums">{fmt(item.unitCost)}</td>
                             <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(item.totalCost)}</td>
+                            <td className="px-2 py-2 text-right whitespace-nowrap">
+                              {(budget.status === "Draft" || budget.status === "Sent") && (
+                                <div className="flex items-center justify-end gap-1">
+                                  <button onClick={() => startEditItem(item)}
+                                    className="text-muted-foreground hover:text-foreground p-1">
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => handleRemoveItem(item.id)}
+                                    disabled={removeItemMut.isPending}
+                                    className="text-muted-foreground hover:text-destructive p-1 disabled:opacity-40">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -1074,13 +1168,13 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
     );
   }
 
-  const isOverBudget    = financial.budgetApproved != null &&
-                          financial.totalRealizedExpenses > financial.budgetApproved;
+  const isOverBudget    = financial.approvedBudget != null &&
+                          financial.totalRealizedExpenses > financial.approvedBudget;
   const varianceIsOver  = financial.varianceAmount > 0;
   const varianceIsEqual = financial.varianceAmount === 0;
 
-  const coveragePercent = financial.budgetApproved
-    ? Math.min(150, (financial.totalRealizedExpenses / financial.budgetApproved) * 100)
+  const coveragePercent = financial.approvedBudget
+    ? Math.min(150, (financial.totalRealizedExpenses / financial.approvedBudget) * 100)
     : null;
 
   return (
@@ -1092,7 +1186,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
           <TrendingUp className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
           <p className="text-sm text-red-700 dark:text-red-300 font-medium">
             Realizado supera o orçamento aprovado em{" "}
-            {fmt(financial.totalRealizedExpenses - (financial.budgetApproved ?? 0))}.
+            {fmt(financial.totalRealizedExpenses - (financial.approvedBudget ?? 0))}.
           </p>
         </div>
       )}
@@ -1105,7 +1199,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             <span className="text-xs text-muted-foreground">Orçamento aprovado</span>
           </div>
           <p className="text-xl font-bold tabular-nums text-blue-600 dark:text-blue-400">
-            {fmt(financial.budgetApproved)}
+            {fmt(financial.approvedBudget)}
           </p>
         </div>
 
@@ -1160,7 +1254,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             <span className="text-xs text-muted-foreground">Estimado</span>
           </div>
           <p className="text-xl font-bold tabular-nums text-muted-foreground">
-            {fmt(financial.budgetEstimated)}
+            {fmt(financial.estimatedBudget)}
           </p>
         </div>
       </div>
@@ -1191,7 +1285,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            {fmt(financial.totalRealizedExpenses)} de {fmt(financial.budgetApproved)} utilizados
+            {fmt(financial.totalRealizedExpenses)} de {fmt(financial.approvedBudget)} utilizados
             {financial.lastMovementDate && (
               <> · última movimentação {fmtDate(financial.lastMovementDate)}</>
             )}
