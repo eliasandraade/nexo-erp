@@ -129,9 +129,18 @@ public class AuthService
         var entry = await _cache.GetAsync<RefreshTokenEntry>(cacheKey, ct);
         if (entry is null) return null;
 
-        // Load user to make sure account is still active
-        var user = await _users.GetByIdAsync(claims.UserId, ct);
+        // Load user to make sure account is still active. This endpoint is anonymous
+        // (no tenant context resolved), so we must bypass the tenant query filter —
+        // otherwise GetByIdAsync filters on Guid.Empty and returns null, yielding a
+        // spurious 401 on every refresh once the cache actually persists the token.
+        var user = await _users.GetByIdAcrossTenantsAsync(claims.UserId, ct);
         if (user is null || user.Status == Domain.Enums.UserStatus.Inactive || user.Status == Domain.Enums.UserStatus.Blocked)
+            return null;
+
+        // Defence in depth: the user loaded cross-tenant must match the token's tenant
+        // claim and the stored entry. Guards against a token whose userId/tenantId were
+        // ever decoupled (and against a future bug in token issuance).
+        if (user.TenantId != claims.TenantId || entry.UserId != claims.UserId)
             return null;
 
         var tenant = await _tenants.GetByIdAsync(claims.TenantId, ct);

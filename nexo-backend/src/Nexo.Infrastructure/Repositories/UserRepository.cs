@@ -23,6 +23,16 @@ public class UserRepository : IUserRepository
     public async Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _context.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
+    // IgnoreQueryFilters: refresh is a cross-tenant operation. /api/auth/refresh is
+    // [AllowAnonymous], so no tenant context is resolved and the filter would otherwise
+    // produce WHERE tenant_id = Guid.Empty → no rows → a spurious 401 on every refresh.
+    // Safe because the caller (AuthService.RefreshAsync) only reaches here after the
+    // token signature is validated AND the refresh:valid:{jti} entry is confirmed, and it
+    // asserts the loaded user's TenantId matches the token's tenantId claim.
+    public async Task<User?> GetByIdAcrossTenantsAsync(Guid id, CancellationToken ct = default)
+        => await _context.Users.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(u => u.Id == id, ct);
+
     // IgnoreQueryFilters: login is a cross-tenant operation. The caller arrives without a
     // tenant context; the filter would otherwise produce WHERE tenant_id = Guid.Empty → no rows.
     public async Task<User?> GetByLoginAsync(string login, CancellationToken ct = default)

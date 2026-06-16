@@ -135,15 +135,19 @@ public class ConcurrencyTests
             TestCredentials.AdminLoginPayload());
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
 
-        // Tab 2, 3, 4: Refresh from same refresh token
-        var tab2Token = await RefreshAndValidateAsync(
+        // Refresh-token rotation is one-time-use for replay protection — see
+        // AuthSessionSecurityTests.RefreshToken_AfterRotation_OldTokenIsRejected. Once a
+        // token is used it is revoked, so genuine multi-tab clients always refresh against
+        // the LATEST token (the shared cookie/store is updated on every rotation). Chain the
+        // rotations the way a real client would and assert each tab obtains a usable token.
+        var (tab2Token, refresh2) = await RefreshCaptureAsync(
             _factory.CreateApiClient(), loginBody!.RefreshToken);
-        var tab3Token = await RefreshAndValidateAsync(
-            _factory.CreateApiClient(), loginBody.RefreshToken);
-        var tab4Token = await RefreshAndValidateAsync(
-            _factory.CreateApiClient(), loginBody.RefreshToken);
+        var (tab3Token, refresh3) = await RefreshCaptureAsync(
+            _factory.CreateApiClient(), refresh2);
+        var (tab4Token, _)        = await RefreshCaptureAsync(
+            _factory.CreateApiClient(), refresh3);
 
-        // Each tab should have a different access token
+        // Each tab should have a usable access token
         var allTokens = new[] { loginBody.AccessToken, tab2Token, tab3Token, tab4Token };
         allTokens.Should().AllSatisfy(t => t.Should().NotBeNullOrEmpty());
 
@@ -338,5 +342,22 @@ public class ConcurrencyTests
 
         var body = await response.Content.ReadFromJsonAsync<RefreshResponse>();
         return body?.AccessToken ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Refreshes and returns BOTH the new access token and the rotated refresh token,
+    /// so callers can chain rotations (one-time-use tokens cannot be replayed).
+    /// </summary>
+    private async Task<(string AccessToken, string RefreshToken)> RefreshCaptureAsync(
+        HttpClient client, string refreshToken)
+    {
+        var response = await client.PostAsJsonAsync("/api/auth/refresh",
+            TestCredentials.RefreshPayload(refreshToken));
+
+        if (response.StatusCode != HttpStatusCode.OK)
+            return (string.Empty, string.Empty);
+
+        var body = await response.Content.ReadFromJsonAsync<RefreshResponse>();
+        return (body?.AccessToken ?? string.Empty, body?.RefreshToken ?? string.Empty);
     }
 }
