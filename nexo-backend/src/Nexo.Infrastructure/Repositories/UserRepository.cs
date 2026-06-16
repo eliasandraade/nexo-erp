@@ -29,6 +29,16 @@ public class UserRepository : IUserRepository
         => await _context.Users.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Login == login, ct);
 
+    // Scoped to an explicit tenant. The global tenant query filter remains ACTIVE
+    // (no IgnoreQueryFilters), and the explicit TenantId predicate is
+    // defense-in-depth: a user from a different tenant can never be returned, even
+    // if the ambient filter were ever bypassed. Used by manager verification to
+    // prevent cross-tenant authorization.
+    public async Task<User?> GetByLoginInTenantAsync(string login, Guid tenantId, CancellationToken ct = default)
+        => await _context.Users
+            .Where(u => u.Login == login && u.TenantId == tenantId)
+            .FirstOrDefaultAsync(ct);
+
     public async Task<User?> GetByEmailAsync(string email, CancellationToken ct = default)
         => await _context.Users.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == email, ct);

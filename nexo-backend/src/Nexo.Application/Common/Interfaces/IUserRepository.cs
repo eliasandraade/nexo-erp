@@ -9,7 +9,22 @@ namespace Nexo.Application.Common.Interfaces;
 public interface IUserRepository
 {
     Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Looks up a user by login, bypassing the tenant query filter. Use ONLY for
+    /// the tenant-less login flow, where no tenant context exists yet. For any
+    /// authenticated, tenant-bound credential check use
+    /// <see cref="GetByLoginInTenantAsync"/> instead.
+    /// </summary>
     Task<User?> GetByLoginAsync(string login, CancellationToken ct = default);
+
+    /// <summary>
+    /// Looks up a user by login WITHIN a specific tenant. Explicitly scoped so a
+    /// user from another tenant can never be returned — use this whenever a tenant
+    /// context is already established (e.g. manager verification).
+    /// </summary>
+    Task<User?> GetByLoginInTenantAsync(string login, Guid tenantId, CancellationToken ct = default);
+
     Task<User?> GetByEmailAsync(string email, CancellationToken ct = default);
     Task<bool> LoginExistsAsync(string login, CancellationToken ct = default);
     Task<bool> EmailExistsAsync(string email, CancellationToken ct = default);

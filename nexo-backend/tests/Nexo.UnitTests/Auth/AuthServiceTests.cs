@@ -16,8 +16,9 @@ public class AuthServiceTests
     private readonly IJwtTokenService   _jwt      = Substitute.For<IJwtTokenService>();
     private readonly ICacheService      _cache    = Substitute.For<ICacheService>();
     private readonly ISessionStore      _sessions = Substitute.For<ISessionStore>();
+    private readonly ICurrentTenant     _currentTenant = Substitute.For<ICurrentTenant>();
 
-    private AuthService CreateSut() => new(_users, _tenants, _stores, _hasher, _jwt, _cache, _sessions);
+    private AuthService CreateSut() => new(_users, _tenants, _stores, _hasher, _jwt, _cache, _sessions, _currentTenant);
 
     // ── LoginAsync ────────────────────────────────────────────────────────────
 
@@ -117,8 +118,10 @@ public class AuthServiceTests
     [Fact]
     public async Task VerifyManagerAsync_WithValidManager_ReturnsAuthorized()
     {
-        var manager = BuildUser(UserRole.Gerente);
-        _users.GetByLoginAsync("gerente", Arg.Any<CancellationToken>()).Returns(manager);
+        var tenantId = Guid.NewGuid();
+        var manager = BuildUser(UserRole.Gerente, tenantId: tenantId);
+        _currentTenant.Id.Returns(tenantId);
+        _users.GetByLoginInTenantAsync("gerente", tenantId, Arg.Any<CancellationToken>()).Returns(manager);
         _hasher.Verify("senha123", manager.PasswordHash).Returns(true);
 
         var sut = CreateSut();
@@ -132,8 +135,10 @@ public class AuthServiceTests
     [Fact]
     public async Task VerifyManagerAsync_WithVendedor_ReturnsNotAuthorized()
     {
-        var vendedor = BuildUser(UserRole.Vendedor);
-        _users.GetByLoginAsync("vendedor", Arg.Any<CancellationToken>()).Returns(vendedor);
+        var tenantId = Guid.NewGuid();
+        var vendedor = BuildUser(UserRole.Vendedor, tenantId: tenantId);
+        _currentTenant.Id.Returns(tenantId);
+        _users.GetByLoginInTenantAsync("vendedor", tenantId, Arg.Any<CancellationToken>()).Returns(vendedor);
         _hasher.Verify("senha123", vendedor.PasswordHash).Returns(true);
 
         var sut = CreateSut();
@@ -146,14 +151,54 @@ public class AuthServiceTests
     [Fact]
     public async Task VerifyManagerAsync_WithWrongPassword_ReturnsNotAuthorized()
     {
-        var manager = BuildUser(UserRole.Gerente);
-        _users.GetByLoginAsync("gerente", Arg.Any<CancellationToken>()).Returns(manager);
+        var tenantId = Guid.NewGuid();
+        var manager = BuildUser(UserRole.Gerente, tenantId: tenantId);
+        _currentTenant.Id.Returns(tenantId);
+        _users.GetByLoginInTenantAsync("gerente", tenantId, Arg.Any<CancellationToken>()).Returns(manager);
         _hasher.Verify("wrong", manager.PasswordHash).Returns(false);
 
         var sut = CreateSut();
         var result = await sut.VerifyManagerAsync(new VerifyManagerRequest("gerente", "wrong"));
 
         result.Authorized.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VerifyManagerAsync_ManagerFromAnotherTenant_ReturnsNotAuthorized()
+    {
+        // SECURITY regression: caller is in tenant A; a manager living in tenant B
+        // must never authorize. The scoped lookup in the caller's tenant finds nobody.
+        var callerTenant = Guid.NewGuid();
+        _currentTenant.Id.Returns(callerTenant);
+        _users.GetByLoginInTenantAsync("gerente", callerTenant, Arg.Any<CancellationToken>())
+            .Returns((User?)null);
+
+        var sut = CreateSut();
+        var result = await sut.VerifyManagerAsync(new VerifyManagerRequest("gerente", "senha123"));
+
+        result.Authorized.Should().BeFalse("a manager from another tenant must never be authorized");
+        result.ManagerUserId.Should().BeNull();
+        // The lookup MUST be tenant-scoped to the caller, never the global GetByLoginAsync.
+        await _users.Received(1).GetByLoginInTenantAsync("gerente", callerTenant, Arg.Any<CancellationToken>());
+        await _users.DidNotReceive().GetByLoginAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task VerifyManagerAsync_ScopedLookupReturnsWrongTenantUser_StillRejected()
+    {
+        // Defense-in-depth: even if the repository ever returned a user from another
+        // tenant, the explicit TenantId guard in the service must reject it.
+        var callerTenant = Guid.NewGuid();
+        var otherTenantManager = BuildUser(UserRole.Gerente, tenantId: Guid.NewGuid());
+        _currentTenant.Id.Returns(callerTenant);
+        _users.GetByLoginInTenantAsync("gerente", callerTenant, Arg.Any<CancellationToken>())
+            .Returns(otherTenantManager);
+        _hasher.Verify(Arg.Any<string>(), Arg.Any<string>()).Returns(true);
+
+        var sut = CreateSut();
+        var result = await sut.VerifyManagerAsync(new VerifyManagerRequest("gerente", "senha123"));
+
+        result.Authorized.Should().BeFalse("the explicit tenant guard must reject a cross-tenant user");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
