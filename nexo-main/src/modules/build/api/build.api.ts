@@ -242,7 +242,6 @@ export interface UpdateDailyLogRequest {
 
 export interface AddDailyLogPhotoRequest {
   storageKey: string;
-  url?:       string;
   caption?:   string;
 }
 

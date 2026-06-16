@@ -895,8 +895,9 @@ function TabDiario({ projectId }: { projectId: string }) {
     }
     setUploadingLogId(logId);
     try {
-      const { key, publicUrl } = await uploadFile(file, "build-daily-log");
-      addPhotoMut.mutate({ logId, req: { storageKey: key, url: publicUrl } }, {
+      // Persist only the durable storage key — the public URL is composed on read.
+      const { key } = await uploadFile(file, "build-daily-log");
+      addPhotoMut.mutate({ logId, req: { storageKey: key } }, {
         onSuccess: () => toast.success("Foto adicionada!"),
         onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar foto."),
       });

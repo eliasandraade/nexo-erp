@@ -96,7 +96,7 @@ public record BuildDailyLogPhotoDto(
     Guid           Id,
     Guid           DailyLogId,
     string         StorageKey,
-    string?        Url,
+    string?        Url,            // composed at read time from StorageKey — NOT persisted
     string?        Caption,
     DateTimeOffset CreatedAt);
 
@@ -236,5 +236,4 @@ public record UpdateDailyLogRequest(
 
 public record AddDailyLogPhotoRequest(
     string   StorageKey,
-    string?  Url     = null,
     string?  Caption = null);

@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20260616180656_AddSupplierToFinancialMovement")]
+    [Migration("20260616183140_AddSupplierToFinancialMovement")]
     partial class AddSupplierToFinancialMovement
     {
         /// <inheritdoc />
@@ -2214,11 +2214,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("updated_at");
-
-                    b.Property<string>("Url")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("url");
 
                     b.HasKey("Id");
 

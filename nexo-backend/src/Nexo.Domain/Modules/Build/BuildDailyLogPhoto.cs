@@ -14,9 +14,12 @@ public class BuildDailyLogPhoto : TenantEntity
     private BuildDailyLogPhoto(Guid tenantId) : base(tenantId) { }
 
     public Guid    DailyLogId  { get; private set; }
+    /// <summary>
+    /// Durable storage object key. The public URL is composed from this at read time
+    /// (IStoragePublicUrlResolver) — never persisted — so the public domain / CDN /
+    /// bucket / provider can change without invalidating existing photos.
+    /// </summary>
     public string  StorageKey  { get; private set; } = string.Empty;
-    /// <summary>Public URL returned by the storage upload (same pattern as Product.ImageUrl). Null until storage is configured.</summary>
-    public string? Url         { get; private set; }
     public string? Caption     { get; private set; }
 
     // ── Factory ───────────────────────────────────────────────────────────────
@@ -25,7 +28,6 @@ public class BuildDailyLogPhoto : TenantEntity
         Guid    tenantId,
         Guid    dailyLogId,
         string  storageKey,
-        string? url     = null,
         string? caption = null)
     {
         if (dailyLogId == Guid.Empty)               throw new DomainException("DailyLogId is required.");
@@ -35,7 +37,6 @@ public class BuildDailyLogPhoto : TenantEntity
         {
             DailyLogId = dailyLogId,
             StorageKey = storageKey.Trim(),
-            Url        = string.IsNullOrWhiteSpace(url) ? null : url.Trim(),
             Caption    = caption?.Trim(),
         };
     }

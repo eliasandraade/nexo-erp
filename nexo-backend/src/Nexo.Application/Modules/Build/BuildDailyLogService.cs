@@ -1,4 +1,5 @@
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Modules.Build.Interfaces;
 using Nexo.Domain.Exceptions;
 using Nexo.Domain.Modules.Build;
@@ -19,6 +20,7 @@ public class BuildDailyLogService
     private readonly IBuildProjectRepository       _projects;
     private readonly IBuildDailyLogRepository      _logs;
     private readonly IBuildDailyLogPhotoRepository _photos;
+    private readonly IStoragePublicUrlResolver     _urls;
     private readonly ICurrentTenant                _currentTenant;
     private readonly ICurrentUser                  _currentUser;
 
@@ -26,12 +28,14 @@ public class BuildDailyLogService
         IBuildProjectRepository       projects,
         IBuildDailyLogRepository      logs,
         IBuildDailyLogPhotoRepository photos,
+        IStoragePublicUrlResolver     urls,
         ICurrentTenant                currentTenant,
         ICurrentUser                  currentUser)
     {
         _projects      = projects;
         _logs          = logs;
         _photos        = photos;
+        _urls          = urls;
         _currentTenant = currentTenant;
         _currentUser   = currentUser;
     }
@@ -55,7 +59,7 @@ public class BuildDailyLogService
         foreach (var log in list)
         {
             var logPhotos = await _photos.GetByLogAsync(log.Id, ct);
-            dtos.Add(MapToDto(log, logPhotos));
+            dtos.Add(MapToDto(log, logPhotos, _urls));
         }
 
         return new BuildPagedResult<BuildDailyLogDto>(dtos, dtos.Count, page, pageSize);
@@ -65,7 +69,7 @@ public class BuildDailyLogService
     {
         var log = await _logs.GetByIdWithPhotosAsync(logId, ct)
             ?? throw new NotFoundException("BuildDailyLog", logId);
-        return MapToDto(log, log.Photos);
+        return MapToDto(log, log.Photos, _urls);
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────
@@ -95,7 +99,7 @@ public class BuildDailyLogService
 
         await _logs.AddAsync(log, ct);
         await _logs.SaveChangesAsync(ct);
-        return MapToDto(log, []);
+        return MapToDto(log, [], _urls);
     }
 
     public async Task<BuildDailyLogDto> UpdateAsync(
@@ -109,7 +113,7 @@ public class BuildDailyLogService
         log.Update(request.Notes, request.WeatherSummary);
         _logs.Update(log);
         await _logs.SaveChangesAsync(ct);
-        return MapToDto(log, log.Photos);
+        return MapToDto(log, log.Photos, _urls);
     }
 
     public async Task<BuildDailyLogDto> AddPhotoAsync(
@@ -127,14 +131,13 @@ public class BuildDailyLogService
             tenantId:   _currentTenant.Id,
             dailyLogId: logId,
             storageKey: request.StorageKey,
-            url:        request.Url,
             caption:    request.Caption);
 
         await _photos.AddAsync(photo, ct);
         await _photos.SaveChangesAsync(ct);
 
         var allPhotos = await _photos.GetByLogAsync(logId, ct);
-        return MapToDto(log, allPhotos);
+        return MapToDto(log, allPhotos, _urls);
     }
 
     public async Task<BuildDailyLogDto> RemovePhotoAsync(
@@ -151,14 +154,17 @@ public class BuildDailyLogService
         await _photos.SaveChangesAsync(ct);
 
         var remaining = await _photos.GetByLogAsync(log.Id, ct);
-        return MapToDto(log, remaining);
+        return MapToDto(log, remaining, _urls);
     }
 
     // ── Mappers ───────────────────────────────────────────────────────────────
 
-    internal static BuildDailyLogDto MapToDto(BuildDailyLog log, IEnumerable<BuildDailyLogPhoto> photos)
+    internal static BuildDailyLogDto MapToDto(
+        BuildDailyLog log,
+        IEnumerable<BuildDailyLogPhoto> photos,
+        IStoragePublicUrlResolver? urls = null)
     {
-        var photoList = photos.Select(MapPhotoToDto).ToList();
+        var photoList = photos.Select(p => MapPhotoToDto(p, urls)).ToList();
         return new BuildDailyLogDto(
             Id:             log.Id,
             ProjectId:      log.ProjectId,
@@ -178,11 +184,11 @@ public class BuildDailyLogService
     internal static BuildDailyLogDto MapToDtoNoPhotos(BuildDailyLog log) =>
         MapToDto(log, log.Photos);
 
-    private static BuildDailyLogPhotoDto MapPhotoToDto(BuildDailyLogPhoto p) => new(
+    private static BuildDailyLogPhotoDto MapPhotoToDto(BuildDailyLogPhoto p, IStoragePublicUrlResolver? urls) => new(
         Id:         p.Id,
         DailyLogId: p.DailyLogId,
         StorageKey: p.StorageKey,
-        Url:        p.Url,
+        Url:        urls?.ResolvePublicUrl(p.StorageKey),
         Caption:    p.Caption,
         CreatedAt:  p.CreatedAt);
 }
