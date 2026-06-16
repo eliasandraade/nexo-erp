@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { setTokens, TOKEN_KEYS } from "@/services/api-client";
+import { resolvePostLogin } from "@/modules/workspace/resolvePostLogin";
+import { readLastWorkspace } from "@/modules/workspace/persistence";
 
 /**
  * Landing page for platform admin impersonation.
@@ -30,7 +32,7 @@ export default function ImpersonatePage() {
       const session = JSON.parse(sessionRaw);
       setTokens(accessToken, refreshToken);
       localStorage.setItem(TOKEN_KEYS.session, JSON.stringify(session));
-      navigate("/dashboard", { replace: true });
+      navigate(resolvePostLogin(session, readLastWorkspace(session)), { replace: true });
     } catch {
       navigate("/login", { replace: true });
     }

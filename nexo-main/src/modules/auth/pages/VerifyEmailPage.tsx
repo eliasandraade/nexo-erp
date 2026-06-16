@@ -3,6 +3,8 @@ import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { Loader2, CheckCircle, XCircle, Mail } from "lucide-react";
 import { verifyEmail, resendVerification } from "../services/authService";
 import { useAuth } from "../context/AuthContext";
+import { resolvePostLogin } from "@/modules/workspace/resolvePostLogin";
+import { readLastWorkspace } from "@/modules/workspace/persistence";
 
 // ─── Shared input styles ──────────────────────────────────────────────────────
 
@@ -40,7 +42,8 @@ export default function VerifyEmailPage() {
         localStorage.removeItem("nexo:pending_email");
         setSessionFromVerify(result.session);
         setStatus("success");
-        setTimeout(() => navigate("/dashboard", { replace: true }), 1500);
+        const target = resolvePostLogin(result.session, readLastWorkspace(result.session));
+        setTimeout(() => navigate(target, { replace: true }), 1500);
       } else {
         setStatus("error");
       }

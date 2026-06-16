@@ -1,6 +1,8 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/modules/auth/context/AuthContext";
+import { WorkspaceProvider } from "@/modules/workspace/WorkspaceContext";
+import { AppErrorBoundary } from "@/components/shared/AppErrorBoundary";
 import { AuthLayout } from "@/app/layouts/AuthLayout";
 import { MainAppLayout } from "@/app/layouts/MainAppLayout";
 import { PosLayout } from "@/app/layouts/PosLayout";
@@ -29,6 +31,7 @@ const PortalTrackingPage = lazy(() => import("@/modules/portal/pages/PortalTrack
 
 const ImpersonatePage       = lazy(() => import("@/pages/ImpersonatePage"));
 const PerfilPage            = lazy(() => import("@/modules/profile/pages/PerfilPage"));
+const ModuleSelectionPage   = lazy(() => import("@/modules/workspace/pages/ModuleSelectionPage"));
 
 // Core / dashboard
 const DashboardPage         = lazy(() => import("@/modules/dashboard/pages/DashboardPage"));
@@ -112,6 +115,8 @@ export function AppRouter() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <WorkspaceProvider>
+        <AppErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Public: landing page */}
@@ -239,6 +244,11 @@ export function AppRouter() {
               </Route>
             </Route>
 
+            {/* ── Seleção de área de trabalho — full screen, sem sidebar ─────── */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/workspaces" element={<ModuleSelectionPage />} />
+            </Route>
+
             {/* ── Perfil — todos os roles autenticados ───────────────────────── */}
             <Route element={<ProtectedRoute />}>
               <Route element={<MainAppLayout />}>
@@ -269,6 +279,8 @@ export function AppRouter() {
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Suspense>
+        </AppErrorBoundary>
+        </WorkspaceProvider>
       </AuthProvider>
     </BrowserRouter>
   );

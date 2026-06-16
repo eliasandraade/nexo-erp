@@ -3,6 +3,11 @@ import { LogOut, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appRoutes, type RouteGroup } from "@/app/router/routes";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { useWorkspace } from "@/modules/workspace/WorkspaceContext";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
+
+/** Vertical groups are scoped to the active workspace; the rest are shared. */
+const VERTICAL_GROUPS: RouteGroup[] = ["varejo", "restaurante", "build"];
 
 // ─── Group metadata ───────────────────────────────────────────────────────────
 
@@ -39,11 +44,17 @@ function getInitials(name: string): string {
 
 export function SidebarContent({ onNav }: { onNav?: () => void }) {
   const { session, logout } = useAuth();
+  const { active } = useWorkspace();
   const navigate = useNavigate();
 
   const visibleRoutes = appRoutes.filter((route) => {
     if (route.moduleKey && !session?.modules.includes(route.moduleKey)) return false;
     if (route.roles && session?.role && !route.roles.includes(session.role)) return false;
+    // Show one operation at a time: a vertical group only appears in its own
+    // workspace. Shared groups (core, inventário, admin) always pass through.
+    if (active && VERTICAL_GROUPS.includes(route.group) && route.group !== active.group) {
+      return false;
+    }
     return true;
   });
 
@@ -66,19 +77,24 @@ export function SidebarContent({ onNav }: { onNav?: () => void }) {
     <div className="flex flex-col h-full bg-sidebar border-r border-sidebar-border">
 
       {/* ── Wordmark ── */}
-      <div className="px-5 pt-5 pb-4 shrink-0">
+      <div className="px-4 pt-5 pb-3 shrink-0">
         <a
-          href="/dashboard"
-          className="inline-flex items-center gap-2 select-none hover:opacity-80 transition-opacity"
+          href={active?.home ?? "/dashboard"}
+          onClick={onNav}
+          className="inline-flex select-none items-center hover:opacity-80 transition-opacity"
+          aria-label="Orken — início"
         >
-          <div className="w-6 h-6 rounded bg-[#5B4DFF] flex items-center justify-center shrink-0">
-            <span className="text-[10px] font-black text-white leading-none">N</span>
-          </div>
-          <span className="font-display text-[15px] font-bold text-white tracking-tight">
-            Nexo
-          </span>
+          <img
+            src="/orken_darkmode.png"
+            alt="Orken"
+            className="h-5 w-auto"
+            draggable={false}
+          />
         </a>
       </div>
+
+      {/* ── Workspace switcher ── */}
+      <WorkspaceSwitcher onNav={onNav} />
 
       {/* ── Navigation ── */}
       <nav className="flex-1 px-3 overflow-y-auto pb-3 space-y-4 sidebar-scroll">
