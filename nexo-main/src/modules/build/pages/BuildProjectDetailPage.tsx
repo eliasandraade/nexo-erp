@@ -19,7 +19,7 @@ import {
   useBudgets, useBudget, useCreateBudget,
   useSendBudget, useApproveBudget, useRejectBudget,
   useAddBudgetItem, useUpdateBudgetItem, useRemoveBudgetItem, useSetBudgetMargin,
-  useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto,
+  useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto, useRemoveDailyLogPhoto,
 } from "../hooks/use-build";
 import { useProjectMovements } from "../hooks/use-interpreter";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
@@ -33,6 +33,7 @@ import {
   getWeatherCurrent, getWeatherHistory,
   type WeatherResult,
 } from "@/services/weather.api";
+import { uploadFile } from "@/services/storage.api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -856,10 +857,9 @@ function TabDiario({ projectId }: { projectId: string }) {
     toast.success("Clima aplicado ao diário.");
   };
 
-  // Photo form
-  const [photoLogId, setPhotoLogId] = useState<string | null>(null);
-  const [photoKey, setPhotoKey]     = useState("");
-  const [photoCaption, setPhotoCaption] = useState("");
+  // Photo upload
+  const removePhotoMut = useRemoveDailyLogPhoto(projectId);
+  const [uploadingLogId, setUploadingLogId] = useState<string | null>(null);
 
   const logs = data?.items ?? [];
 
@@ -886,14 +886,35 @@ function TabDiario({ projectId }: { projectId: string }) {
     });
   };
 
-  const handleAddPhoto = (logId: string) => {
-    if (!photoKey.trim()) return;
-    addPhotoMut.mutate({ logId, req: { storageKey: photoKey.trim(), caption: photoCaption.trim() || undefined } }, {
-      onSuccess: () => {
-        setPhotoLogId(null); setPhotoKey(""); setPhotoCaption("");
-        toast.success("Foto adicionada!");
-      },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar foto."),
+  const handleUploadPhoto = async (logId: string, file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Selecione uma imagem (JPG, PNG ou WebP).");
+      return;
+    }
+    setUploadingLogId(logId);
+    try {
+      const { key, publicUrl } = await uploadFile(file, "build-daily-log");
+      addPhotoMut.mutate({ logId, req: { storageKey: key, url: publicUrl } }, {
+        onSuccess: () => toast.success("Foto adicionada!"),
+        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar foto."),
+      });
+    } catch (e) {
+      const msg = (e instanceof Error ? e.message : "").toLowerCase();
+      if (msg.includes("habilitado") || msg.includes("404") || msg.includes("não está")) {
+        toast.error("Upload de fotos indisponível neste ambiente.");
+      } else {
+        toast.error("Falha ao enviar foto. Tente novamente.");
+      }
+    } finally {
+      setUploadingLogId(null);
+    }
+  };
+
+  const handleRemovePhoto = (photoId: string) => {
+    if (!confirm("Remover esta foto?")) return;
+    removePhotoMut.mutate(photoId, {
+      onSuccess: () => toast.success("Foto removida."),
+      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao remover foto."),
     });
   };
 
@@ -1084,13 +1105,25 @@ function TabDiario({ projectId }: { projectId: string }) {
                     <span className="text-xs text-muted-foreground">· {log.weatherSummary}</span>
                   )}
                 </div>
-                <button
-                  onClick={() => setPhotoLogId(log.id)}
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
-                >
-                  <Camera className="h-3.5 w-3.5" />
-                  <span>Foto</span>
-                </button>
+                <label className={cn(
+                  "flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors cursor-pointer",
+                  uploadingLogId === log.id && "opacity-60 pointer-events-none",
+                )}>
+                  {uploadingLogId === log.id
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Camera className="h-3.5 w-3.5" />}
+                  <span>{uploadingLogId === log.id ? "Enviando…" : "Adicionar foto"}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = "";
+                      if (f) handleUploadPhoto(log.id, f);
+                    }}
+                  />
+                </label>
               </div>
 
               <p className="text-sm text-foreground/80 leading-relaxed">{log.notes}</p>
@@ -1099,37 +1132,28 @@ function TabDiario({ projectId }: { projectId: string }) {
               {log.photos.length > 0 && (
                 <div className="flex gap-2 flex-wrap pt-1">
                   {log.photos.map((photo) => (
-                    <div key={photo.id}
-                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-muted text-xs text-muted-foreground max-w-[200px] truncate">
-                      <Camera className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{photo.caption ?? photo.storageKey.split("/").pop()}</span>
+                    <div key={photo.id} className="relative group/photo">
+                      {photo.url ? (
+                        <a href={photo.url} target="_blank" rel="noopener noreferrer">
+                          <img src={photo.url} alt={photo.caption ?? "Foto da obra"}
+                            className="h-16 w-16 rounded-lg object-cover border border-border" />
+                        </a>
+                      ) : (
+                        <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center border border-border"
+                          title={photo.caption ?? photo.storageKey}>
+                          <Camera className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleRemovePhoto(photo.id)}
+                        disabled={removePhotoMut.isPending}
+                        className="absolute -top-1.5 -right-1.5 rounded-full bg-destructive text-destructive-foreground h-4 w-4 flex items-center justify-center opacity-0 group-hover/photo:opacity-100 transition-opacity disabled:opacity-40"
+                        title="Remover foto"
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
                     </div>
                   ))}
-                </div>
-              )}
-
-              {/* Add photo inline */}
-              {photoLogId === log.id && (
-                <div className="flex items-end gap-2 pt-1 p-2 rounded-lg border border-dashed border-primary/30 flex-wrap">
-                  <div className="flex-1 min-w-[160px]">
-                    <Label className="text-xs">Storage key (após upload)</Label>
-                    <Input value={photoKey} onChange={(e) => setPhotoKey(e.target.value)}
-                      placeholder="uploads/2026/foto.jpg" className="h-8 text-xs mt-0.5" autoFocus />
-                  </div>
-                  <div className="w-36">
-                    <Label className="text-xs">Legenda</Label>
-                    <Input value={photoCaption} onChange={(e) => setPhotoCaption(e.target.value)}
-                      placeholder="Opcional" className="h-8 text-xs mt-0.5" />
-                  </div>
-                  <button onClick={() => handleAddPhoto(log.id)}
-                    disabled={!photoKey.trim() || addPhotoMut.isPending}
-                    className="text-primary disabled:opacity-40 pb-1">
-                    <Check className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => { setPhotoLogId(null); setPhotoKey(""); setPhotoCaption(""); }}
-                    className="text-muted-foreground pb-1">
-                    <X className="h-4 w-4" />
-                  </button>
                 </div>
               )}
             </div>

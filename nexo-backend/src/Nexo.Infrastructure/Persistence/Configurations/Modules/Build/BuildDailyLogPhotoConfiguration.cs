@@ -15,6 +15,7 @@ public class BuildDailyLogPhotoConfiguration : IEntityTypeConfiguration<BuildDai
         builder.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
         builder.Property(x => x.DailyLogId).HasColumnName("daily_log_id").IsRequired();
         builder.Property(x => x.StorageKey).HasColumnName("storage_key").HasMaxLength(500).IsRequired();
+        builder.Property(x => x.Url).HasColumnName("url").HasMaxLength(1000);
         builder.Property(x => x.Caption).HasColumnName("caption").HasMaxLength(300);
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();

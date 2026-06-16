@@ -1,0 +1,31 @@
+﻿using Microsoft.EntityFrameworkCore.Migrations;
+
+#nullable disable
+
+namespace Nexo.Infrastructure.Persistence.Migrations
+{
+    /// <inheritdoc />
+    public partial class AddUrlToBuildDailyLogPhoto : Migration
+    {
+        /// <inheritdoc />
+        protected override void Up(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.AddColumn<string>(
+                name: "url",
+                schema: "nexo",
+                table: "bld_daily_log_photos",
+                type: "character varying(1000)",
+                maxLength: 1000,
+                nullable: true);
+        }
+
+        /// <inheritdoc />
+        protected override void Down(MigrationBuilder migrationBuilder)
+        {
+            migrationBuilder.DropColumn(
+                name: "url",
+                schema: "nexo",
+                table: "bld_daily_log_photos");
+        }
+    }
+}

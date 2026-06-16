@@ -92,6 +92,7 @@ export interface BuildDailyLogPhotoDto {
   id:         string;
   dailyLogId: string;
   storageKey: string;
+  url:        string | null;
   caption:    string | null;
   createdAt:  string;
 }
@@ -215,6 +216,7 @@ export interface UpdateDailyLogRequest {
 
 export interface AddDailyLogPhotoRequest {
   storageKey: string;
+  url?:       string;
   caption?:   string;
 }
 

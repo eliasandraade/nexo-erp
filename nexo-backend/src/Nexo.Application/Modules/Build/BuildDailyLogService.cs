@@ -127,6 +127,7 @@ public class BuildDailyLogService
             tenantId:   _currentTenant.Id,
             dailyLogId: logId,
             storageKey: request.StorageKey,
+            url:        request.Url,
             caption:    request.Caption);
 
         await _photos.AddAsync(photo, ct);
@@ -181,6 +182,7 @@ public class BuildDailyLogService
         Id:         p.Id,
         DailyLogId: p.DailyLogId,
         StorageKey: p.StorageKey,
+        Url:        p.Url,
         Caption:    p.Caption,
         CreatedAt:  p.CreatedAt);
 }

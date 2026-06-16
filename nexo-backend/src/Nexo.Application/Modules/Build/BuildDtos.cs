@@ -96,6 +96,7 @@ public record BuildDailyLogPhotoDto(
     Guid           Id,
     Guid           DailyLogId,
     string         StorageKey,
+    string?        Url,
     string?        Caption,
     DateTimeOffset CreatedAt);
 
@@ -209,4 +210,5 @@ public record UpdateDailyLogRequest(
 
 public record AddDailyLogPhotoRequest(
     string   StorageKey,
+    string?  Url     = null,
     string?  Caption = null);
