@@ -42,15 +42,18 @@ public class StockRepository : IStockRepository
 
         if (!string.IsNullOrWhiteSpace(status) && status != "all")
         {
+            // NOTE: AvailableQuantity is a computed C# property (CurrentQuantity -
+            // ReservedQuantity) and is unmapped, so EF Core cannot translate it to
+            // SQL. Use the raw column arithmetic so the predicate runs in the DB.
             q = status switch
             {
-                "zero"   => q.Where(x => x.AvailableQuantity <= 0),
-                "low"    => q.Where(x => x.AvailableQuantity > 0
+                "zero"   => q.Where(x => x.CurrentQuantity - x.ReservedQuantity <= 0),
+                "low"    => q.Where(x => x.CurrentQuantity - x.ReservedQuantity > 0
                                       && x.Product!.MinStockQuantity != null
-                                      && x.AvailableQuantity < x.Product.MinStockQuantity),
-                "normal" => q.Where(x => x.AvailableQuantity > 0
+                                      && x.CurrentQuantity - x.ReservedQuantity < x.Product.MinStockQuantity),
+                "normal" => q.Where(x => x.CurrentQuantity - x.ReservedQuantity > 0
                                       && (x.Product!.MinStockQuantity == null
-                                          || x.AvailableQuantity >= x.Product.MinStockQuantity)),
+                                          || x.CurrentQuantity - x.ReservedQuantity >= x.Product.MinStockQuantity)),
                 _ => q,
             };
         }
@@ -60,10 +63,10 @@ public class StockRepository : IStockRepository
 
         var baseQ = _context.StockItems.AsNoTracking();
         var belowMinCount = await baseQ.CountAsync(x =>
-            x.AvailableQuantity <= 0 ||
+            x.CurrentQuantity - x.ReservedQuantity <= 0 ||
             (x.Product!.MinStockQuantity != null &&
-             x.AvailableQuantity > 0 &&
-             x.AvailableQuantity < x.Product.MinStockQuantity), ct);
+             x.CurrentQuantity - x.ReservedQuantity > 0 &&
+             x.CurrentQuantity - x.ReservedQuantity < x.Product.MinStockQuantity), ct);
         var noTurnoverCount = await baseQ.CountAsync(x =>
             x.LastMovementAt == null || x.LastMovementAt < staleCutoff, ct);
 
@@ -82,7 +85,7 @@ public class StockRepository : IStockRepository
                 s.Product.MinStockQuantity,
                 s.CurrentQuantity,
                 s.ReservedQuantity,
-                s.AvailableQuantity,
+                s.CurrentQuantity - s.ReservedQuantity,
                 s.LastMovementAt))
             .ToListAsync(ct);
 
