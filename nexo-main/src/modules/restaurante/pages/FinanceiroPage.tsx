@@ -660,6 +660,7 @@ export default function FinanceiroPage() {
   return (
     <div className="p-6 space-y-8">
       <PageHeader
+        eyebrow="Orken Menu"
         title="Financeiro"
         description="CMV por prato, pessoal, despesas e KPIs do período selecionado."
       />

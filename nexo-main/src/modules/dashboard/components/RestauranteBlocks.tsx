@@ -1,4 +1,5 @@
-import { UtensilsCrossed, ChefHat } from "lucide-react";
+import { UtensilsCrossed, ChefHat, ArrowUpRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { useRestauranteTables } from "@/modules/restaurante/hooks/useRestauranteTables";
 import { useKitchenItems } from "@/modules/restaurante/hooks/useKitchenItems";
@@ -20,8 +21,11 @@ export function RestauranteBlocks() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-      {/* Open Tables */}
-      <div className="rounded-xl border border-border bg-card p-5 relative overflow-hidden">
+      {/* Open Tables → Salão */}
+      <Link
+        to="/restaurante"
+        className="group rounded-xl border border-border bg-card p-5 relative overflow-hidden transition-colors hover:border-[#5B4DFF]/40"
+      >
         <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#5B4DFF]" />
         <div className="flex items-center justify-between mb-3 pt-0.5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
@@ -36,13 +40,19 @@ export function RestauranteBlocks() {
             {openTables === 0 ? "—" : openTables}
           </p>
         )}
-        <p className="text-[11px] mt-2 text-muted-foreground font-medium">
+        <p className="text-[11px] mt-2 text-muted-foreground font-medium flex items-center gap-1">
           {tablesLoading ? "" : openTables === 0 ? "Nenhuma mesa ocupada" : "mesas em atendimento"}
+          <span className="ml-auto inline-flex items-center gap-0.5 text-[#5B4DFF] opacity-0 group-hover:opacity-100 transition-opacity">
+            Abrir salão <ArrowUpRight className="h-3 w-3" />
+          </span>
         </p>
-      </div>
+      </Link>
 
-      {/* Kitchen status */}
-      <div className="rounded-xl border border-border bg-card p-5 relative overflow-hidden">
+      {/* Kitchen status → Cozinha */}
+      <Link
+        to="/restaurante/cozinha"
+        className="group rounded-xl border border-border bg-card p-5 relative overflow-hidden transition-colors hover:border-primary/40"
+      >
         <div className={`absolute top-0 left-0 right-0 h-[2px] ${pendingItems > 0 ? "bg-warning" : "bg-success"}`} />
         <div className="flex items-center justify-between mb-3 pt-0.5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
@@ -57,10 +67,13 @@ export function RestauranteBlocks() {
             {pendingItems === 0 ? "—" : pendingItems}
           </p>
         )}
-        <p className="text-[11px] mt-2 text-muted-foreground font-medium">
+        <p className="text-[11px] mt-2 text-muted-foreground font-medium flex items-center gap-1">
           {kitchenLoading ? "" : pendingItems === 0 ? "Tudo em ordem" : "pedidos em preparo"}
+          <span className="ml-auto inline-flex items-center gap-0.5 text-foreground/70 opacity-0 group-hover:opacity-100 transition-opacity">
+            Abrir cozinha <ArrowUpRight className="h-3 w-3" />
+          </span>
         </p>
-      </div>
+      </Link>
 
     </div>
   );
