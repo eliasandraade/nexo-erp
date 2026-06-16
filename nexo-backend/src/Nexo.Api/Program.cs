@@ -275,22 +275,30 @@ try
         }
     }
 
-    // ── Warm the Redis connection at startup ──────────────────────────────────
-    // ConnectionMultiplexer.Connect() runs lazily on first resolution. Without
-    // this, the very first authenticated request paid the connect cost (up to
-    // ConnectTimeout = 3s) inside TenantResolutionMiddleware. Ping it now so the
-    // multiplexer is live before the first user hits the API. Fail-open.
+    // ── Warm the Redis connection at startup (non-blocking) ───────────────────
+    // Nudge the multiplexer to connect so the first authenticated request doesn't
+    // pay the connect cost. Runs in the BACKGROUND with a short cap: a blocking
+    // ping cost ~5s on cold start when Redis was unreachable. AbortOnConnectFail
+    // =false means the multiplexer reconnects on its own regardless; this just
+    // warms it and logs the outcome without delaying startup.
     if (!app.Environment.IsEnvironment("Testing"))
     {
-        try
+        var mux = app.Services.GetService<IConnectionMultiplexer>();
+        if (mux is not null)
         {
-            var mux = app.Services.GetService<IConnectionMultiplexer>();
-            mux?.GetDatabase().Ping();
-            if (mux is not null) Log.Information("Redis connection warmed.");
-        }
-        catch (Exception ex)
-        {
-            Log.Warning(ex, "Redis warmup ping failed — cache will be degraded (fail-open).");
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await mux.GetDatabase().PingAsync().WaitAsync(TimeSpan.FromSeconds(2));
+                    Log.Information("Redis connection warmed.");
+                }
+                catch (Exception ex)
+                {
+                    Log.Warning(ex,
+                        "Redis warmup ping failed — cache degraded, multiplexer will reconnect in background (fail-open).");
+                }
+            });
         }
     }
 
