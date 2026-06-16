@@ -1,8 +1,49 @@
 # Redis Connectivity / Cache Effectiveness — Investigation
 
 **Date:** 2026-06-16
-**Status:** Root cause hypotheses ranked; safe code fix applied; production verification needs Railway access (your authorization).
+**Status:** **CONFIRMED via read-only Railway check** — cause is **private-networking reachability** (a connect timeout to `redis.railway.internal:6379`), NOT connection-string format. See §0.
 **Scope:** Restore Redis cache effectiveness in production without re-introducing per-request stalls.
+
+---
+
+## 0. CONFIRMED diagnosis (read-only, sanitized — no secrets printed)
+
+Checked `railway` CLI against project **`nexoerp`**, env **`production`** (service `backend` = the API; `main` = the frontend; `Redis` and `Postgres` also present).
+
+`ConnectionStrings__Redis` on **backend / production**:
+
+| Question | Answer |
+|---|---|
+| 1. Env exists? | **YES** |
+| 2. Format | **`host:port` (native SE.Redis)** — NOT a `redis://` URI |
+| 3. Host (sanitized) | **`redis.railway.internal`** (private). Public proxy also available: `metro.proxy.rlwy.net` |
+| 4. Port | **6379** (private). Proxy port: `29823` |
+| 5. Password set? | **YES** |
+| 6. SSL/TLS? | **NO** (no `ssl=true`) — correct for the internal network |
+| 7. Backend + Redis same project/environment? | **YES** (`nexoerp` / `production`; both co-located) |
+| 8. Most likely cause now | **NETWORK (private networking)** |
+
+Backend log (sanitized):
+```
+[WRN] Redis warmup ping failed — cache degraded, multiplexer will reconnect in background (fail-open).
+System.TimeoutException: The operation has timed out.
+```
+
+A **TimeoutException** on a correctly-configured private host (right host/port, password present, same env) means the connection to `redis.railway.internal:6379` is **not reachable** — Railway private networking is IPv6-only and this container isn't reaching it. It is **not** `WRONGPASS` (so credentials are fine) and **not** a parse error (so format is fine).
+
+**Therefore: the redis:// URI parser in this PR is NOT the fix for the current value** (the string is already native format, which `ConfigurationOptions.Parse` handles). The URI parser remains useful as an *enabler* for the public-proxy fallback below (`${{Redis.REDIS_PUBLIC_URL}}` is a `redis://` URI), but it does not, by itself, restore the cache. **Do not expect this PR alone to fix production Redis.**
+
+### Recommended fix order (network cause)
+1. **Redeploy `backend` (no env change)** — Railway private networking frequently starts working after a fresh deploy that re-provisions the container's private network. Check the startup log for `Redis connection warmed.`. (Deploying any of these PRs is itself a redeploy.)
+2. **If still timing out → use the public TCP proxy** (env change — needs authorization). Railway's TCP proxy is a plain passthrough (no TLS):
+   - native: `ConnectionStrings__Redis = metro.proxy.rlwy.net:29823,password=<REDISPASSWORD>,ssl=false,abortConnect=false`
+   - or reference the provided URI: `ConnectionStrings__Redis = ${{Redis.REDIS_PUBLIC_URL}}` → **requires this PR's URI parser**.
+   Trade-off: egress leaves the private network (slightly higher latency) but is reliable.
+3. **Proper private-network fix:** confirm the Redis service is healthy, keep both services in `production`, redeploy both; if IPv6 egress is the blocker, fall back to the proxy (step 2).
+
+**Do not change any env/secret without the owner's authorization.**
+
+---
 
 ---
 
@@ -21,7 +62,7 @@ The connection is configured from the env var **`ConnectionStrings__Redis`** (Ra
 
 ## 2. Most likely root cause (ranked)
 
-### #1 — Connection string is a `redis://` URI that SE.Redis can't parse  ← fix applied
+### #1 — Connection string is a `redis://` URI that SE.Redis can't parse  ← RULED OUT for current value (see §0); fix still shipped as an enabler
 Railway (and Upstash/Heroku/Render) expose Redis as a **URI**:
 
 ```
@@ -38,7 +79,7 @@ cause of "Redis unreachable on Railway".
 SE.Redis format and `redis://` / `rediss://` URIs. Non-URI strings pass through unchanged, so it
 is safe regardless of which format the env var currently holds. Covered by 7 unit tests.
 
-### #2 — Private networking host not reachable (IPv6 / same-project-and-environment)
+### #2 — Private networking host not reachable (IPv6 / same-project-and-environment)  ← CONFIRMED CAUSE (§0)
 Railway private DNS `*.railway.internal` resolves only **inside the same project & environment**
 and is **IPv6-only**. If the backend and the Redis service are in different projects/environments,
 or the multiplexer resolves IPv4 only, the internal host is unreachable.
