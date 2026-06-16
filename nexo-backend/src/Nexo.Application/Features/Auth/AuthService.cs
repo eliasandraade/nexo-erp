@@ -12,6 +12,7 @@ public class AuthService
     private readonly IJwtTokenService _jwt;
     private readonly ICacheService _cache;
     private readonly ISessionStore _sessions;
+    private readonly ICurrentTenant _currentTenant;
 
     public AuthService(
         IUserRepository users,
@@ -20,7 +21,8 @@ public class AuthService
         IPasswordHasher hasher,
         IJwtTokenService jwt,
         ICacheService cache,
-        ISessionStore sessions)
+        ISessionStore sessions,
+        ICurrentTenant currentTenant)
     {
         _users    = users;
         _tenants  = tenants;
@@ -29,6 +31,7 @@ public class AuthService
         _jwt      = jwt;
         _cache    = cache;
         _sessions = sessions;
+        _currentTenant = currentTenant;
     }
 
     /// <summary>
@@ -261,9 +264,20 @@ public class AuthService
         VerifyManagerRequest request,
         CancellationToken ct = default)
     {
-        var user = await _users.GetByLoginAsync(request.Login.Trim().ToLowerInvariant(), ct);
+        // SECURITY (tenant isolation): scope the lookup to the CALLER'S tenant from
+        // the start. Using the global GetByLoginAsync here would let a manager from
+        // ANOTHER tenant authorize privileged actions (sale cancellation, high
+        // discounts) in this tenant — a cross-tenant authorization bug.
+        var user = await _users.GetByLoginInTenantAsync(
+            request.Login.Trim().ToLowerInvariant(), _currentTenant.Id, ct);
 
         if (user is null || user.Status != UserStatus.Active)
+            return new VerifyManagerResponse(false, null, null, null);
+
+        // Defense-in-depth: the scoped query already guarantees this; assert the
+        // invariant explicitly so a future refactor can't silently reintroduce the
+        // cross-tenant leak.
+        if (user.TenantId != _currentTenant.Id)
             return new VerifyManagerResponse(false, null, null, null);
 
         if (!_hasher.Verify(request.Password, user.PasswordHash))
