@@ -19,29 +19,57 @@ namespace Nexo.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/platform")]
-[Authorize]
+[Authorize(Policy = "Platform")]
 public class PlatformController : ControllerBase
 {
     private readonly NexoDbContext _db;
     private readonly IJwtTokenService _jwt;
     private readonly IPasswordHasher _hasher;
     private readonly ICacheService _cache;
+    private readonly IAuditWriter _audit;
 
-    public PlatformController(NexoDbContext db, IJwtTokenService jwt, IPasswordHasher hasher, ICacheService cache)
+    public PlatformController(NexoDbContext db, IJwtTokenService jwt, IPasswordHasher hasher, ICacheService cache, IAuditWriter audit)
     {
         _db     = db;
         _jwt    = jwt;
         _hasher = hasher;
         _cache  = cache;
+        _audit  = audit;
     }
-
-    private bool IsPlatformUser() =>
-        User.FindFirstValue("type") == "platform";
 
     private Guid? GetPlatformUserId()
     {
         var raw = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
         return Guid.TryParse(raw, out var id) ? id : null;
+    }
+
+    /// <summary>
+    /// Stages a platform audit record (committed with the caller's SaveChangesAsync).
+    /// IP is captured automatically by AuditWriterService; userAgent + correlationId are
+    /// enriched here. NEVER pass secrets (passwords, hashes, tokens) in <paramref name="metadata"/>.
+    /// </summary>
+    private void StageAudit(
+        string action, string severity, string entityType, string entityId,
+        string description, Guid? tenantId = null, object? metadata = null)
+    {
+        var enriched = new
+        {
+            userAgent     = Request.Headers.UserAgent.ToString(),
+            correlationId = HttpContext.TraceIdentifier,
+            detail        = metadata,
+        };
+
+        _audit.Stage(
+            actionType:  action,
+            severity:    severity,
+            entityType:  entityType,
+            entityId:    entityId,
+            description: description,
+            tenantId:    tenantId,
+            actorId:     GetPlatformUserId(),
+            actorName:   User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue("email"),
+            actorType:   "platform",
+            metadata:    enriched);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -52,7 +80,6 @@ public class PlatformController : ControllerBase
     [HttpGet("tenants")]
     public async Task<IActionResult> GetTenants(CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var tenants = await _db.Tenants
             .IgnoreQueryFilters()
@@ -109,7 +136,6 @@ public class PlatformController : ControllerBase
     [HttpGet("tenants/{tenantId:guid}")]
     public async Task<IActionResult> GetTenant(Guid tenantId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var tenant = await _db.Tenants
             .IgnoreQueryFilters()
@@ -198,7 +224,6 @@ public class PlatformController : ControllerBase
     [HttpPost("tenants")]
     public async Task<IActionResult> CreateTenant([FromBody] CreateTenantRequest req, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         // Check uniqueness
         var emailExists = await _db.Tenants
@@ -283,6 +308,11 @@ public class PlatformController : ControllerBase
             systemJson:    """{"language":"pt-BR","dateFormat":"dd/MM/yyyy","currencySymbol":"R$"}""");
         _db.AppSettings.Add(defaultSettings);
 
+        StageAudit(AuditActions.TenantCreated, AuditSeverity.Info, "Tenant", tenant.Id.ToString(),
+            $"Platform admin created tenant '{tenant.CompanyName}'.",
+            tenantId: tenant.Id,
+            metadata: new { tenantName = tenant.CompanyName, modules = req.Modules });
+
         await _db.SaveChangesAsync(ct);
 
         return CreatedAtAction(nameof(GetTenant), new { tenantId = tenant.Id }, new { id = tenant.Id, slug = tenant.Slug });
@@ -303,12 +333,17 @@ public class PlatformController : ControllerBase
     [HttpPut("tenants/{tenantId:guid}")]
     public async Task<IActionResult> UpdateTenant(Guid tenantId, [FromBody] UpdateTenantRequest req, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var tenant = await _db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return NotFound();
 
         tenant.Update(req.CompanyName, req.TradeName, req.TaxId, req.Email, req.Phone, req.BusinessType);
+
+        StageAudit(AuditActions.TenantUpdated, AuditSeverity.Info, "Tenant", tenantId.ToString(),
+            $"Platform admin updated tenant '{req.CompanyName}'.",
+            tenantId: tenantId,
+            metadata: new { tenantName = req.CompanyName });
+
         await _db.SaveChangesAsync(ct);
 
         return NoContent();
@@ -323,7 +358,6 @@ public class PlatformController : ControllerBase
     [HttpPut("tenants/{tenantId:guid}/status")]
     public async Task<IActionResult> SetTenantStatus(Guid tenantId, [FromBody] SetTenantStatusRequest req, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var tenant = await _db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return NotFound();
@@ -331,7 +365,14 @@ public class PlatformController : ControllerBase
         if (!Enum.TryParse<TenantStatus>(req.Status, true, out var newStatus))
             return BadRequest(new { error = "Status inválido." });
 
+        var oldStatus = tenant.Status;
         tenant.SetStatus(newStatus);
+
+        StageAudit(AuditActions.TenantStatusChanged, AuditSeverity.Warning, "Tenant", tenantId.ToString(),
+            $"Platform admin changed tenant status: {oldStatus} → {newStatus}.",
+            tenantId: tenantId,
+            metadata: new { tenantName = tenant.CompanyName, oldValue = oldStatus.ToString(), newValue = newStatus.ToString() });
+
         await _db.SaveChangesAsync(ct);
 
         return NoContent();
@@ -346,7 +387,6 @@ public class PlatformController : ControllerBase
     [HttpPost("tenants/{tenantId:guid}/modules")]
     public async Task<IActionResult> GrantModule(Guid tenantId, [FromBody] GrantModuleRequest req, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var tenant = await _db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return NotFound();
@@ -383,6 +423,11 @@ public class PlatformController : ControllerBase
             periodEnd: req.ExpiresAt);
         _db.ModuleSubscriptionEvents.Add(grantEvt);
 
+        StageAudit(AuditActions.ModuleActivated, AuditSeverity.Info, "Tenant", tenantId.ToString(),
+            $"Platform admin {eventType} module '{req.ModuleKey}'.",
+            tenantId: tenantId,
+            metadata: new { moduleKey = req.ModuleKey, newValue = eventType, expiresAt = req.ExpiresAt });
+
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -390,7 +435,6 @@ public class PlatformController : ControllerBase
     [HttpDelete("tenants/{tenantId:guid}/modules/{moduleKey}")]
     public async Task<IActionResult> RevokeModule(Guid tenantId, string moduleKey, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var sub = await _db.ModuleSubscriptions
             .IgnoreQueryFilters()
@@ -406,6 +450,11 @@ public class PlatformController : ControllerBase
             eventType: "revoked",
             actorId:   GetPlatformUserId());
         _db.ModuleSubscriptionEvents.Add(revokeEvt);
+
+        StageAudit(AuditActions.ModuleDeactivated, AuditSeverity.Warning, "Tenant", tenantId.ToString(),
+            $"Platform admin revoked module '{moduleKey}'.",
+            tenantId: tenantId,
+            metadata: new { moduleKey });
 
         await _db.SaveChangesAsync(ct);
 
@@ -423,7 +472,6 @@ public class PlatformController : ControllerBase
     [HttpPost("tenants/{tenantId:guid}/impersonate")]
     public async Task<IActionResult> Impersonate(Guid tenantId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var tenant = await _db.Tenants
             .IgnoreQueryFilters()
@@ -467,6 +515,14 @@ public class PlatformController : ControllerBase
             storeId:             primaryStore.Id,
             accessibleStoreIds:  storeIds);
 
+        // Impersonation MUST be audited. This action is otherwise read-only, so persist
+        // the staged audit record explicitly (no other SaveChanges in this method).
+        StageAudit(AuditActions.PlatformImpersonation, AuditSeverity.Critical, "Tenant", tenantId.ToString(),
+            $"Platform admin impersonated tenant '{tenant.CompanyName}' as user '{adminUser.Login}'.",
+            tenantId: tenantId,
+            metadata: new { tenantName = tenant.CompanyName, targetUserId = adminUser.Id, targetUserEmail = adminUser.Email, targetStoreId = primaryStore.Id });
+        await _db.SaveChangesAsync(ct);
+
         return Ok(new
         {
             accessToken  = tokens.AccessToken,
@@ -495,7 +551,6 @@ public class PlatformController : ControllerBase
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats(CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var tenantCount  = await _db.Tenants.IgnoreQueryFilters().CountAsync(ct);
         var activeCount  = await _db.Tenants.IgnoreQueryFilters().CountAsync(t => t.Status == TenantStatus.Active, ct);
@@ -537,7 +592,6 @@ public class PlatformController : ControllerBase
     [HttpGet("health")]
     public async Task<IActionResult> GetHealth(CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         // DB check
         var dbOk    = false;
@@ -570,7 +624,6 @@ public class PlatformController : ControllerBase
     [HttpGet("system/endpoints")]
     public IActionResult GetEndpoints([FromServices] IActionDescriptorCollectionProvider provider)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var endpoints = provider.ActionDescriptors.Items
             .OfType<ControllerActionDescriptor>()
@@ -622,7 +675,6 @@ public class PlatformController : ControllerBase
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         pageSize = Math.Clamp(pageSize, 1, 200);
         page     = Math.Max(page, 1);
@@ -680,7 +732,6 @@ public class PlatformController : ControllerBase
     [HttpGet("tenants/{tenantId:guid}/notes")]
     public async Task<IActionResult> GetNotes(Guid tenantId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var notes = await _db.TenantNotes
             .Where(n => n.TenantId == tenantId)
@@ -704,7 +755,6 @@ public class PlatformController : ControllerBase
     [HttpPost("tenants/{tenantId:guid}/notes")]
     public async Task<IActionResult> CreateNote(Guid tenantId, [FromBody] CreateNoteRequest req, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var platformUserId   = GetPlatformUserId();
         var platformUserEmail = User.FindFirstValue(ClaimTypes.Email)
@@ -720,7 +770,6 @@ public class PlatformController : ControllerBase
     [HttpDelete("tenants/{tenantId:guid}/notes/{noteId:guid}")]
     public async Task<IActionResult> DeleteNote(Guid tenantId, Guid noteId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var note = await _db.TenantNotes.FirstOrDefaultAsync(n => n.Id == noteId && n.TenantId == tenantId, ct);
         if (note is null) return NotFound();
@@ -734,7 +783,6 @@ public class PlatformController : ControllerBase
     [HttpPatch("tenants/{tenantId:guid}/notes/{noteId:guid}/pin")]
     public async Task<IActionResult> TogglePin(Guid tenantId, Guid noteId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var note = await _db.TenantNotes.FirstOrDefaultAsync(n => n.Id == noteId && n.TenantId == tenantId, ct);
         if (note is null) return NotFound();
@@ -757,7 +805,6 @@ public class PlatformController : ControllerBase
         [FromBody] ResetPasswordRequest req,
         CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
             return BadRequest(new { error = "Senha deve ter pelo menos 6 caracteres." });
@@ -775,6 +822,12 @@ public class PlatformController : ControllerBase
         // Purge all active sessions for this user from Redis + DB
         await RevokeUserSessionsAsync(userId, ct);
 
+        // SECURITY: never record the new password, its hash, or any token in the audit.
+        StageAudit(AuditActions.UserPasswordChanged, AuditSeverity.Critical, "User", userId.ToString(),
+            $"Platform admin reset password for user '{user.Login}'.",
+            tenantId: tenantId,
+            metadata: new { targetUserId = user.Id, targetUserEmail = user.Email, result = "success" });
+
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }
@@ -786,7 +839,6 @@ public class PlatformController : ControllerBase
     [HttpPost("tenants/{tenantId:guid}/users/{userId:guid}/force-logout")]
     public async Task<IActionResult> ForceLogout(Guid tenantId, Guid userId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var user = await _db.Users
             .IgnoreQueryFilters()
@@ -796,6 +848,12 @@ public class PlatformController : ControllerBase
 
         user.BumpSecurityStamp();
         await RevokeUserSessionsAsync(userId, ct);
+
+        StageAudit(AuditActions.UserSessionRevoked, AuditSeverity.Warning, "User", userId.ToString(),
+            $"Platform admin forced logout for user '{user.Login}'.",
+            tenantId: tenantId,
+            metadata: new { targetUserId = user.Id, targetUserEmail = user.Email, scope = "force_logout" });
+
         await _db.SaveChangesAsync(ct);
 
         return NoContent();
@@ -809,7 +867,6 @@ public class PlatformController : ControllerBase
     [HttpGet("tenants/{tenantId:guid}/users/{userId:guid}/sessions")]
     public async Task<IActionResult> GetSessions(Guid tenantId, Guid userId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var sessions = await _db.UserSessions
             .IgnoreQueryFilters()
@@ -839,7 +896,6 @@ public class PlatformController : ControllerBase
     [HttpDelete("tenants/{tenantId:guid}/users/{userId:guid}/sessions")]
     public async Task<IActionResult> RevokeAllSessions(Guid tenantId, Guid userId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var user = await _db.Users
             .IgnoreQueryFilters()
@@ -849,6 +905,12 @@ public class PlatformController : ControllerBase
 
         user.BumpSecurityStamp();
         await RevokeUserSessionsAsync(userId, ct);
+
+        StageAudit(AuditActions.UserSessionRevoked, AuditSeverity.Warning, "User", userId.ToString(),
+            $"Platform admin revoked all sessions for user '{user.Login}'.",
+            tenantId: tenantId,
+            metadata: new { targetUserId = user.Id, targetUserEmail = user.Email, scope = "revoke_all" });
+
         await _db.SaveChangesAsync(ct);
 
         return NoContent();
@@ -865,7 +927,6 @@ public class PlatformController : ControllerBase
     [HttpGet("tenants/trial-expired")]
     public async Task<IActionResult> GetTrialExpired(CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var now = DateTime.UtcNow;
 
@@ -923,7 +984,6 @@ public class PlatformController : ControllerBase
     [HttpGet("tenants/{tenantId:guid}/plan-history")]
     public async Task<IActionResult> GetPlanHistory(Guid tenantId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var events = await _db.ModuleSubscriptionEvents
             .IgnoreQueryFilters()
@@ -964,7 +1024,6 @@ public class PlatformController : ControllerBase
     [HttpGet("mrr")]
     public async Task<IActionResult> GetMrr(CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var now = DateTime.UtcNow;
 
@@ -1029,7 +1088,6 @@ public class PlatformController : ControllerBase
         [FromQuery] int period = 30,
         CancellationToken ct = default)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         period = Math.Clamp(period, 1, 365);
         var now   = DateTime.UtcNow;

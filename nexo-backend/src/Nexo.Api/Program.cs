@@ -100,7 +100,15 @@ try
             };
         });
 
-    builder.Services.AddAuthorization();
+    builder.Services.AddAuthorization(options =>
+    {
+        // Platform super-admin gate: must be authenticated AND carry the platform token
+        // claim (type=platform, set by JwtTokenService.GeneratePlatformToken). Applied at
+        // the controller level on the /api/platform/* controllers so a new endpoint can't
+        // forget the check. Unauthenticated → 401; authenticated non-platform → 403.
+        options.AddPolicy("Platform", policy =>
+            policy.RequireAuthenticatedUser().RequireClaim("type", "platform"));
+    });
 
     // ── CORS ──────────────────────────────────────────────────────────────────
     builder.Services.AddCors(options =>
@@ -268,10 +276,15 @@ try
         Log.Information("Applying database migrations...");
         await db.Database.MigrateAsync();
 
+        // Platform super-admin bootstrap: idempotent, env-driven (Seed:Platform*).
+        // Runs in EVERY environment INCLUDING Production — decoupled from the demo
+        // seeder so production gets a working super-admin without demo tenant data.
+        var seeder = scope.ServiceProvider.GetRequiredService<DataSeeder>();
+        await seeder.SeedPlatformAdminAsync();
+
         if (!app.Environment.IsProduction())
         {
-            var seeder = scope.ServiceProvider.GetRequiredService<DataSeeder>();
-            await seeder.SeedAsync();
+            await seeder.SeedAsync();   // demo tenants/users — non-production only
         }
     }
 

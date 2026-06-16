@@ -115,6 +115,45 @@ public class RateLimitingTests : IDisposable
     }
 
     // ────────────────────────────────────────────────────────────────────────────
+    // PLATFORM LOGIN RATE LIMITING
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task PlatformLogin_ExceedsRateLimit_Returns429()
+    {
+        var client = NewClient(forwardedFor: "203.0.113.50");
+
+        HttpStatusCode lastStatus = HttpStatusCode.OK;
+        for (int i = 0; i < 6; i++)
+        {
+            var response = await client.PostAsJsonAsync("/api/platform/auth/login",
+                new { email = "nobody@nexo.test", password = "wrongpass" });
+            lastStatus = response.StatusCode;
+        }
+
+        lastStatus.Should().Be(HttpStatusCode.TooManyRequests,
+            "platform login must be rate limited (6th attempt within the window → 429)");
+    }
+
+    [Fact]
+    public async Task PlatformLogin_HasSeparateBucketFromTenantLogin()
+    {
+        // Same client IP, but the limiter partitions on (IP | path): exhausting the
+        // /platform/auth/login bucket must NOT throttle the tenant /auth/login path.
+        var client = NewClient(forwardedFor: "203.0.113.51");
+
+        for (int i = 0; i < 8; i++)
+            await client.PostAsJsonAsync("/api/platform/auth/login",
+                new { email = "nobody@nexo.test", password = "wrongpass" });
+
+        var tenant = await client.PostAsJsonAsync("/api/auth/login",
+            TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrongpass"));
+
+        tenant.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
+            "tenant login is a different path partition; platform-login attempts must not limit it");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
     // REFRESH RATE LIMITING
     // ────────────────────────────────────────────────────────────────────────────
 

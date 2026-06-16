@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Infrastructure.Persistence;
@@ -28,6 +29,7 @@ public class PlatformAuthController : ControllerBase
     /// Authenticates a platform admin and returns a short-lived access token.
     /// </summary>
     [HttpPost("login")]
+    [EnableRateLimiting("auth-login")]
     public async Task<IActionResult> Login([FromBody] PlatformLoginRequest request, CancellationToken ct)
     {
         var user = await _context.PlatformUsers

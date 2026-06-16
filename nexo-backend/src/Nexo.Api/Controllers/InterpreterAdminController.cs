@@ -15,7 +15,7 @@ namespace Nexo.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/platform/interpreter")]
-[Authorize]
+[Authorize(Policy = "Platform")]
 public class InterpreterAdminController : ControllerBase
 {
     private readonly NexoDbContext          _db;
@@ -35,9 +35,6 @@ public class InterpreterAdminController : ControllerBase
         _memoryService         = memoryService;
     }
 
-    private bool IsPlatformUser() =>
-        User.FindFirstValue("type") == "platform";
-
     private Guid? GetPlatformUserId()
     {
         var raw = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
@@ -52,7 +49,6 @@ public class InterpreterAdminController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<IActionResult> GetDashboard(CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var now     = DateTime.UtcNow;
         var today   = now.Date;
@@ -172,7 +168,6 @@ public class InterpreterAdminController : ControllerBase
         [FromQuery] bool?   success  = null,
         CancellationToken ct = default)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         if (page < 1)     page     = 1;
         if (pageSize < 1) pageSize = 50;
@@ -245,7 +240,6 @@ public class InterpreterAdminController : ControllerBase
     [HttpGet("costs")]
     public async Task<IActionResult> GetCosts(CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var since30d = DateTime.UtcNow.AddDays(-30);
 
@@ -304,7 +298,6 @@ public class InterpreterAdminController : ControllerBase
     [HttpGet("providers")]
     public async Task<IActionResult> GetProviders(CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var providers = await _db.AiProviders
             .OrderBy(p => p.Priority)
@@ -335,7 +328,6 @@ public class InterpreterAdminController : ControllerBase
         [FromBody] PatchProviderRequest body,
         CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var provider = await _db.AiProviders.FindAsync(new object[] { id }, ct);
         if (provider is null) return NotFound();
@@ -380,7 +372,6 @@ public class InterpreterAdminController : ControllerBase
         [FromBody] RotateKeyRequest body,
         CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var provider = await _db.AiProviders.FindAsync(new object[] { id }, ct);
         if (provider is null) return NotFound();
@@ -415,7 +406,6 @@ public class InterpreterAdminController : ControllerBase
         [FromQuery] string? type = null,
         CancellationToken ct = default)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var query = _db.StoredPromptVersions.AsQueryable();
 
@@ -458,7 +448,6 @@ public class InterpreterAdminController : ControllerBase
     [HttpPost("prompts/{id:guid}/activate")]
     public async Task<IActionResult> ActivatePrompt(Guid id, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var target = await _db.StoredPromptVersions.FindAsync(new object[] { id }, ct);
         if (target is null) return NotFound();
@@ -486,7 +475,6 @@ public class InterpreterAdminController : ControllerBase
         [FromBody] PlaygroundRequest body,
         CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var platformUserId = GetPlatformUserId() ?? Guid.Empty;
 

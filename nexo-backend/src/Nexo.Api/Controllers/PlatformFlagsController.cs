@@ -14,7 +14,7 @@ namespace Nexo.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/platform")]
-[Authorize]
+[Authorize(Policy = "Platform")]
 public class PlatformFlagsController : ControllerBase
 {
     private readonly NexoDbContext _db;
@@ -25,9 +25,6 @@ public class PlatformFlagsController : ControllerBase
         _db    = db;
         _cache = cache;
     }
-
-    private bool IsPlatformUser() =>
-        User.FindFirstValue("type") == "platform";
 
     // ─────────────────────────────────────────────────────────────────────────
     // GLOBAL FLAGS — list, create, update default
@@ -42,7 +39,6 @@ public class PlatformFlagsController : ControllerBase
         [FromQuery] Guid? tenantId,
         CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var flags = await _db.FeatureFlags
             .OrderBy(f => f.Category)
@@ -102,7 +98,6 @@ public class PlatformFlagsController : ControllerBase
     [HttpPost("flags")]
     public async Task<IActionResult> CreateFlag([FromBody] CreateFlagRequest req, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var exists = await _db.FeatureFlags.AnyAsync(f => f.Key == req.Key.ToLowerInvariant(), ct);
         if (exists) return Conflict(new { error = "Já existe uma flag com essa chave." });
@@ -124,7 +119,6 @@ public class PlatformFlagsController : ControllerBase
     [HttpPut("flags/{key}")]
     public async Task<IActionResult> UpdateFlag(string key, [FromBody] UpdateFlagRequest req, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var flag = await _db.FeatureFlags.FirstOrDefaultAsync(f => f.Key == key.ToLowerInvariant(), ct);
         if (flag is null) return NotFound();
@@ -144,7 +138,6 @@ public class PlatformFlagsController : ControllerBase
     [HttpPatch("flags/{key}/toggle")]
     public async Task<IActionResult> ToggleFlag(string key, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var flag = await _db.FeatureFlags.FirstOrDefaultAsync(f => f.Key == key.ToLowerInvariant(), ct);
         if (flag is null) return NotFound();
@@ -165,7 +158,6 @@ public class PlatformFlagsController : ControllerBase
     [HttpGet("flags/{key}/overrides")]
     public async Task<IActionResult> GetFlagOverrides(string key, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var flag = await _db.FeatureFlags.FirstOrDefaultAsync(f => f.Key == key.ToLowerInvariant(), ct);
         if (flag is null) return NotFound();
@@ -194,7 +186,6 @@ public class PlatformFlagsController : ControllerBase
     [HttpGet("tenants/{tenantId:guid}/flags")]
     public async Task<IActionResult> GetTenantFlags(Guid tenantId, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var tenant = await _db.Tenants.IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.Id == tenantId, ct);
@@ -240,7 +231,6 @@ public class PlatformFlagsController : ControllerBase
         [FromBody] SetOverrideRequest req,
         CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var flagKey = key.ToLowerInvariant();
 
@@ -271,7 +261,6 @@ public class PlatformFlagsController : ControllerBase
     [HttpDelete("tenants/{tenantId:guid}/flags/{key}")]
     public async Task<IActionResult> DeleteOverride(Guid tenantId, string key, CancellationToken ct)
     {
-        if (!IsPlatformUser()) return Forbid();
 
         var flagKey = key.ToLowerInvariant();
 
