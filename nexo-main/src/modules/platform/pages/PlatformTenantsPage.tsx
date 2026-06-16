@@ -1,8 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Building2, Store, Users, ChevronRight, Search, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { usePlatformTenants } from "../hooks/usePlatformTenants";
 import { CreateTenantDrawer } from "../components/CreateTenantDrawer";
+
+const STATUS_FILTERS = [
+  { value: "all",       label: "Todos" },
+  { value: "Active",    label: "Ativos" },
+  { value: "Suspended", label: "Suspensos" },
+] as const;
+type StatusFilter = typeof STATUS_FILTERS[number]["value"];
 
 const MODULE_LABELS: Record<string, string> = {
   varejo:              "Varejo",
@@ -17,16 +25,21 @@ const MODULE_LABELS: Record<string, string> = {
 };
 
 export default function PlatformTenantsPage() {
-  const { data: tenants, isLoading } = usePlatformTenants();
+  const { data: tenants, isLoading, isError, refetch } = usePlatformTenants();
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("all");
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const filtered = tenants?.filter(t =>
-    t.companyName.toLowerCase().includes(search.toLowerCase()) ||
-    (t.tradeName ?? "").toLowerCase().includes(search.toLowerCase()) ||
-    t.email.toLowerCase().includes(search.toLowerCase())
-  ) ?? [];
+  const filtered = tenants?.filter(t => {
+    const q = search.toLowerCase();
+    const matchesSearch =
+      t.companyName.toLowerCase().includes(q) ||
+      (t.tradeName ?? "").toLowerCase().includes(q) ||
+      t.email.toLowerCase().includes(q);
+    const matchesStatus = status === "all" || t.status === status;
+    return matchesSearch && matchesStatus;
+  }) ?? [];
 
   return (
     <>
@@ -47,16 +60,34 @@ export default function PlatformTenantsPage() {
           </button>
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Buscar por empresa, email..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full h-9 pl-9 pr-3 rounded-lg bg-muted border-none text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
+        {/* Search + status filter */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative max-w-sm flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Buscar por empresa, email..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full h-9 pl-9 pr-3 rounded-lg bg-muted border-none text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            {STATUS_FILTERS.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => setStatus(value)}
+                className={cn(
+                  "h-9 px-3 rounded-lg text-xs font-medium border transition-colors",
+                  status === value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border text-muted-foreground hover:bg-muted"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Table */}
@@ -78,14 +109,24 @@ export default function PlatformTenantsPage() {
                   <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">Carregando...</td>
                 </tr>
               )}
-              {!isLoading && filtered.length === 0 && (
+              {!isLoading && isError && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    {search ? "Nenhum cliente encontrado." : "Nenhum cliente cadastrado ainda."}
+                  <td colSpan={6} className="px-4 py-8 text-center">
+                    <p className="text-sm text-muted-foreground mb-2">Não foi possível carregar os clientes.</p>
+                    <button onClick={() => refetch()} className="text-xs text-primary hover:underline">
+                      Tentar novamente
+                    </button>
                   </td>
                 </tr>
               )}
-              {filtered.map(t => (
+              {!isLoading && !isError && filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    {search || status !== "all" ? "Nenhum cliente encontrado." : "Nenhum cliente cadastrado ainda."}
+                  </td>
+                </tr>
+              )}
+              {!isError && filtered.map(t => (
                 <tr
                   key={t.id}
                   onClick={() => navigate(`/platform/tenants/${t.id}`)}

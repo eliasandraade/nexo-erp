@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Store, Users, ExternalLink,
@@ -6,6 +6,7 @@ import {
   KeyRound, LogOut as LogOutIcon, StickyNote, PinOff,
   ChevronDown, ChevronUp, Monitor, Wifi, History,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 
@@ -21,7 +22,6 @@ import {
   useDeleteNote,
   useToggleNotePin,
   useResetUserPassword,
-  useForceLogout,
   useUserSessions,
   useRevokeAllSessions,
   usePlanHistory,
@@ -64,7 +64,6 @@ export default function PlatformTenantDetailPage() {
   const revokeMut         = useRevokeModule(tenantId ?? "");
   const impersonateMut    = useImpersonate();
   const resetPwMut        = useResetUserPassword(tenantId ?? "");
-  const forceLogoutMut    = useForceLogout(tenantId ?? "");
   const revokeSessionsMut = useRevokeAllSessions(tenantId ?? "");
   const createNoteMut     = useCreateNote(tenantId ?? "");
   const deleteNoteMut     = useDeleteNote(tenantId ?? "");
@@ -131,13 +130,18 @@ export default function PlatformTenantDetailPage() {
       window.open("/impersonate", "_blank");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao impersonar";
-      alert(msg);
+      toast.error(msg);
     }
   };
 
   const activeModuleKeys = tenant.subscriptions
     .filter(s => s.status === "Active")
     .map(s => s.moduleKey);
+
+  // The backend impersonates the tenant's first ACTIVE Diretoria user — surface it in the confirm.
+  const impersonationTarget = tenant.users.find(
+    u => u.role === "Diretoria" && u.status === "Active"
+  );
 
   return (
     <div className="p-6 space-y-5 max-w-4xl">
@@ -173,7 +177,12 @@ export default function PlatformTenantDetailPage() {
           {/* Status toggle */}
           {tenant.status === "Active" ? (
             <button
-              onClick={() => setStatusMut.mutate("Suspended")}
+              onClick={() => openConfirm({
+                title: "Suspender cliente",
+                description: `Suspender "${tenant.tradeName ?? tenant.companyName}" bloqueia o acesso de todos os usuários deste cliente até a reativação. Confirmar?`,
+                variant: "warning",
+                onConfirm: () => setStatusMut.mutate("Suspended"),
+              })}
               disabled={setStatusMut.isPending}
               className="h-8 px-3 rounded-lg border border-amber-500/50 text-amber-600 text-xs font-medium hover:bg-amber-500/10 transition-colors disabled:opacity-50"
             >
@@ -181,7 +190,12 @@ export default function PlatformTenantDetailPage() {
             </button>
           ) : (
             <button
-              onClick={() => setStatusMut.mutate("Active")}
+              onClick={() => openConfirm({
+                title: "Reativar cliente",
+                description: `Reativar "${tenant.tradeName ?? tenant.companyName}" restaura o acesso dos usuários deste cliente. Confirmar?`,
+                variant: "default",
+                onConfirm: () => setStatusMut.mutate("Active"),
+              })}
               disabled={setStatusMut.isPending}
               className="h-8 px-3 rounded-lg border border-green-500/50 text-green-600 text-xs font-medium hover:bg-green-500/10 transition-colors disabled:opacity-50"
             >
@@ -191,7 +205,16 @@ export default function PlatformTenantDetailPage() {
 
           {/* Impersonate */}
           <button
-            onClick={handleImpersonate}
+            onClick={() => openConfirm({
+              title: "Entrar como cliente (impersonation)",
+              description:
+                `Você vai acessar a conta de "${tenant.tradeName ?? tenant.companyName}"` +
+                `${impersonationTarget ? ` como ${impersonationTarget.name} (Diretoria)` : ""}. ` +
+                `Você verá e poderá agir como esse usuário no sistema dele. ` +
+                `Esta ação é registrada na auditoria. Continuar?`,
+              variant: "danger",
+              onConfirm: handleImpersonate,
+            })}
             disabled={impersonateMut.isPending}
             className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
@@ -314,7 +337,12 @@ export default function PlatformTenantDetailPage() {
                   </span>
                   {isActive ? (
                     <button
-                      onClick={() => revokeMut.mutate(mod.key)}
+                      onClick={() => openConfirm({
+                        title: "Revogar módulo",
+                        description: `Revogar o módulo "${mod.label}" remove imediatamente o acesso deste cliente a esse módulo. Confirmar?`,
+                        variant: "danger",
+                        onConfirm: () => revokeMut.mutate(mod.key),
+                      })}
                       disabled={revokeMut.isPending}
                       className="flex items-center gap-1 h-7 px-3 rounded-md border border-destructive/50 text-destructive text-xs hover:bg-destructive/10 transition-colors disabled:opacity-50"
                     >
@@ -471,8 +499,8 @@ export default function PlatformTenantDetailPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {tenant.users.map(u => (
-                    <>
-                    <tr key={u.id} className="hover:bg-muted/20 transition-colors">
+                    <Fragment key={u.id}>
+                    <tr className="hover:bg-muted/20 transition-colors">
                       <td className="px-4 py-3">
                         <p className="font-medium text-foreground">{u.name}</p>
                         <p className="text-xs text-muted-foreground">{u.email}</p>
@@ -532,13 +560,12 @@ export default function PlatformTenantDetailPage() {
                     </tr>
                     {expandedUser === u.id && (
                       <SessionsRow
-                        key={`sessions-${u.id}`}
                         userId={u.id}
                         tenantId={tenantId!}
                         colSpan={6}
                       />
                     )}
-                    </>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

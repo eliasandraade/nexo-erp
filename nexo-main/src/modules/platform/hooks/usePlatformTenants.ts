@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   createPlatformTenant,
   fetchPlatformTenant,
@@ -28,6 +29,9 @@ import {
   deleteTenantFlagOverride,
 } from "../services/platformApi";
 import type { CreateTenantInput } from "../types";
+
+/** Consistent error message for failed platform mutations. */
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Erro ao executar a ação.");
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
@@ -73,10 +77,12 @@ export function useSetTenantStatus(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (status: string) => setTenantStatus(tenantId, status),
-    onSuccess: () => {
+    onSuccess: (_, status) => {
       qc.invalidateQueries({ queryKey: ["platform", "tenants"] });
       qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
+      toast.success(status === "Suspended" ? "Cliente suspenso." : "Cliente reativado.");
     },
+    onError: (e) => toast.error(errMsg(e)),
   });
 }
 
@@ -85,7 +91,11 @@ export function useGrantModule(tenantId: string) {
   return useMutation({
     mutationFn: ({ moduleKey, notes }: { moduleKey: string; notes?: string }) =>
       grantModule(tenantId, moduleKey, undefined, notes),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
+      toast.success("Módulo ativado.");
+    },
+    onError: (e) => toast.error(errMsg(e)),
   });
 }
 
@@ -93,7 +103,11 @@ export function useRevokeModule(tenantId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (moduleKey: string) => revokeModule(tenantId, moduleKey),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
+      toast.success("Módulo revogado.");
+    },
+    onError: (e) => toast.error(errMsg(e)),
   });
 }
 
@@ -144,6 +158,8 @@ export function useResetUserPassword(tenantId: string) {
   return useMutation({
     mutationFn: ({ userId, newPassword }: { userId: string; newPassword: string }) =>
       resetUserPassword(tenantId, userId, newPassword),
+    onSuccess: () => toast.success("Senha redefinida. O usuário deverá trocá-la no próximo login."),
+    onError: (e) => toast.error(errMsg(e)),
   });
 }
 
@@ -170,7 +186,9 @@ export function useRevokeAllSessions(tenantId: string) {
     mutationFn: (userId: string) => revokeAllSessions(tenantId, userId),
     onSuccess: (_, userId) => {
       qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "users", userId, "sessions"] });
+      toast.success("Sessões revogadas. O usuário foi desconectado.");
     },
+    onError: (e) => toast.error(errMsg(e)),
   });
 }
 
