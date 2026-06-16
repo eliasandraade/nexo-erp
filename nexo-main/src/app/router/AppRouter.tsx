@@ -7,6 +7,7 @@ import { AuthLayout } from "@/app/layouts/AuthLayout";
 import { MainAppLayout } from "@/app/layouts/MainAppLayout";
 import { PosLayout } from "@/app/layouts/PosLayout";
 import { PlatformLayout } from "@/app/layouts/PlatformLayout";
+import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ModuleRoute } from "./ModuleRoute";
 import { PlatformRoute } from "./PlatformRoute";
@@ -115,6 +116,7 @@ export function AppRouter() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ImpersonationBanner />
         <WorkspaceProvider>
         <AppErrorBoundary>
         <Suspense fallback={<PageLoader />}>

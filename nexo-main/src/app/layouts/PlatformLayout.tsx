@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Outlet, NavLink, Link, useNavigate } from "react-router-dom";
 import {
   Building2, LayoutDashboard, LogOut, ShieldCheck,
   Activity, ScrollText, Clock, Flag, Brain,
@@ -76,13 +76,13 @@ export function PlatformLayout() {
         {/* Brand */}
         <div className="px-5 pt-6 pb-5 shrink-0 flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-[#5B4DFF] shrink-0" />
-          <a
-            href="/platform"
+          <Link
+            to="/platform"
             className="font-display text-[16px] font-bold text-white tracking-tight hover:opacity-80 transition-opacity"
           >
             Ork<span className="text-[#5B4DFF]">en</span>
             <span className="text-sidebar-muted font-normal text-[12px] ml-1.5">admin</span>
-          </a>
+          </Link>
         </div>
 
         {/* Nav */}

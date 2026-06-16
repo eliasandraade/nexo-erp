@@ -203,12 +203,12 @@ export default function PlatformDashboardPage() {
               <span className="text-muted-foreground">Suspensos</span>
               <span className="font-medium text-amber-600">{stat(stats?.suspendedCount)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Sem módulo</span>
-              <span className="font-medium text-foreground">
-                {statsLoading ? "—" : ((stats?.tenantCount ?? 0) - (stats?.activeSubscriptions ?? 0) < 0 ? 0 : 0)}
-              </span>
-            </div>
+            <button
+              onClick={() => navigate("/platform/trial")}
+              className="text-xs text-primary hover:underline"
+            >
+              Ver trials e assinaturas expiradas →
+            </button>
           </div>
         </div>
 

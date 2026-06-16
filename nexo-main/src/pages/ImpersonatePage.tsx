@@ -32,6 +32,12 @@ export default function ImpersonatePage() {
       const session = JSON.parse(sessionRaw);
       setTokens(accessToken, refreshToken);
       localStorage.setItem(TOKEN_KEYS.session, JSON.stringify(session));
+      // Tab-scoped impersonation marker so <ImpersonationBanner/> can warn the operator.
+      // sessionStorage is per-tab → never shows in the platform admin's own tabs.
+      sessionStorage.setItem(
+        "orken:impersonation",
+        JSON.stringify({ tenant: session.companyName ?? "", user: session.name ?? "" })
+      );
       navigate(resolvePostLogin(session, readLastWorkspace(session)), { replace: true });
     } catch {
       navigate("/login", { replace: true });

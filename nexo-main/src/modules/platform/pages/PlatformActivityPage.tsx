@@ -6,22 +6,49 @@ import { usePlatformTenants } from "../hooks/usePlatformTenants";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SEVERITIES = ["", "Info", "Warning", "Error", "Critical"] as const;
-const ACTION_TYPES = [
-  "", "UserLogin", "UserLogout", "UserCreated", "UserUpdated",
-  "SaleCreated", "SaleCancelled", "StockAdjusted", "CashOpened",
-  "CashClosed", "ModuleGranted", "ModuleRevoked", "TenantCreated",
-  "TenantUpdated", "PasswordReset", "ForceLogout",
-] as const;
+// Real backend values (snake_case, lowercase) — must match AuditSeverity / AuditActions.
+// The backend filters case-lowered, so these values map 1:1 to stored records.
+const SEVERITIES: { value: string; label: string }[] = [
+  { value: "info",     label: "Info" },
+  { value: "warning",  label: "Aviso" },
+  { value: "critical", label: "Crítico" },
+];
+
+const ACTION_TYPES: { value: string; label: string }[] = [
+  { value: "platform_impersonation", label: "Impersonation" },
+  { value: "user_password_changed",  label: "Senha redefinida" },
+  { value: "user_session_revoked",   label: "Sessões revogadas" },
+  { value: "tenant_created",         label: "Cliente criado" },
+  { value: "tenant_updated",         label: "Cliente atualizado" },
+  { value: "tenant_status_changed",  label: "Status do cliente alterado" },
+  { value: "module_activated",       label: "Módulo ativado" },
+  { value: "module_deactivated",     label: "Módulo revogado" },
+  { value: "user_logged_in",         label: "Login" },
+  { value: "user_logged_out",        label: "Logout" },
+  { value: "user_created",           label: "Usuário criado" },
+  { value: "user_updated",           label: "Usuário atualizado" },
+  { value: "sale_completed",         label: "Venda concluída" },
+  { value: "sale_cancelled",         label: "Venda cancelada" },
+  { value: "stock_adjustment",       label: "Ajuste de estoque" },
+  { value: "cash_open",              label: "Caixa aberto" },
+  { value: "cash_close",             label: "Caixa fechado" },
+];
 
 const PAGE_SIZE = 25;
 
 const SEVERITY_STYLES: Record<string, string> = {
-  Info:     "bg-blue-500/10 text-blue-600",
-  Warning:  "bg-amber-500/10 text-amber-600",
-  Error:    "bg-red-500/10 text-red-600",
-  Critical: "bg-red-700/10 text-red-700",
+  info:     "bg-blue-500/10 text-blue-600",
+  warning:  "bg-amber-500/10 text-amber-600",
+  critical: "bg-red-700/10 text-red-700",
 };
+
+const SEVERITY_LABELS: Record<string, string> = {
+  info: "Info", warning: "Aviso", critical: "Crítico",
+};
+
+const ACTION_LABELS: Record<string, string> = Object.fromEntries(
+  ACTION_TYPES.map(a => [a.value, a.label])
+);
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -118,8 +145,8 @@ export default function PlatformActivityPage() {
             className="h-8 px-2.5 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           >
             <option value="">Todas as severidades</option>
-            {SEVERITIES.filter(Boolean).map(s => (
-              <option key={s} value={s}>{s}</option>
+            {SEVERITIES.map(s => (
+              <option key={s.value} value={s.value}>{s.label}</option>
             ))}
           </select>
 
@@ -130,8 +157,8 @@ export default function PlatformActivityPage() {
             className="h-8 px-2.5 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           >
             <option value="">Todos os tipos</option>
-            {ACTION_TYPES.filter(Boolean).map(a => (
-              <option key={a} value={a}>{a}</option>
+            {ACTION_TYPES.map(a => (
+              <option key={a.value} value={a.value}>{a.label}</option>
             ))}
           </select>
         </div>
@@ -142,8 +169,8 @@ export default function PlatformActivityPage() {
             <span className="text-xs text-muted-foreground">Filtros ativos:</span>
             {search     && <Chip label={`"${search}"`}     onRemove={() => handleFilterChange(() => setSearch(""))} />}
             {tenantId   && <Chip label="Cliente específico" onRemove={() => handleFilterChange(() => setTenantId(""))} />}
-            {severity   && <Chip label={severity}           onRemove={() => handleFilterChange(() => setSeverity(""))} />}
-            {actionType && <Chip label={actionType}         onRemove={() => handleFilterChange(() => setActionType(""))} />}
+            {severity   && <Chip label={SEVERITY_LABELS[severity] ?? severity}     onRemove={() => handleFilterChange(() => setSeverity(""))} />}
+            {actionType && <Chip label={ACTION_LABELS[actionType] ?? actionType}   onRemove={() => handleFilterChange(() => setActionType(""))} />}
             <button
               onClick={resetFilters}
               className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline ml-1"
@@ -195,14 +222,16 @@ export default function PlatformActivityPage() {
                       {new Date(r.createdAt).toLocaleString("pt-BR")}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-mono text-xs text-foreground">{r.actionType}</span>
+                      <span title={r.actionType} className="text-xs text-foreground">
+                        {ACTION_LABELS[r.actionType] ?? r.actionType}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn(
                         "px-1.5 py-0.5 rounded text-[10px] font-medium",
                         SEVERITY_STYLES[r.severity] ?? "bg-muted text-muted-foreground"
                       )}>
-                        {r.severity}
+                        {SEVERITY_LABELS[r.severity] ?? r.severity}
                       </span>
                     </td>
                     <td className="px-4 py-3">
