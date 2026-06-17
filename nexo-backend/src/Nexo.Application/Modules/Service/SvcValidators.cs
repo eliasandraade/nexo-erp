@@ -1,4 +1,6 @@
+using System.Text.Json;
 using FluentValidation;
+using Nexo.Domain.Modules.Service;
 
 namespace Nexo.Application.Modules.Service;
 
@@ -38,6 +40,25 @@ internal static class SvcValidationRules
         v.RuleFor(x => x.CommissionPercent).InclusiveBetween(0m, 100m)
             .When(x => x.CommissionPercent.HasValue);
     }
+
+    /// <summary>True when the string is null/blank or parses as a JSON document — guards jsonb columns from 500s.</summary>
+    public static bool BeValidJsonOrNull(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return true;
+        try { using var _ = JsonDocument.Parse(json); return true; }
+        catch (JsonException) { return false; }
+    }
+
+    public static void ApplySubjectRules<T>(AbstractValidator<T> v) where T : ISvcSubjectFields
+    {
+        v.RuleFor(x => x.Kind).IsInEnum().WithMessage("Invalid subject kind.");
+        v.RuleFor(x => x.DisplayName)
+            .NotEmpty().WithMessage("Subject display name is required.")
+            .MaximumLength(200).WithMessage("Display name must not exceed 200 characters.");
+        v.RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+        v.RuleFor(x => x.MetadataJson)
+            .Must(BeValidJsonOrNull).WithMessage("MetadataJson must be valid JSON.");
+    }
 }
 
 public class CreateSvcProfessionalRequestValidator : AbstractValidator<CreateSvcProfessionalRequest>
@@ -58,4 +79,44 @@ public class CreateSvcCatalogItemRequestValidator : AbstractValidator<CreateSvcC
 public class UpdateSvcCatalogItemRequestValidator : AbstractValidator<UpdateSvcCatalogItemRequest>
 {
     public UpdateSvcCatalogItemRequestValidator() => SvcValidationRules.ApplyCatalogRules(this);
+}
+
+public class CreateSvcSubjectRequestValidator : AbstractValidator<CreateSvcSubjectRequest>
+{
+    public CreateSvcSubjectRequestValidator()
+    {
+        RuleFor(x => x.CustomerId).NotEmpty().WithMessage("CustomerId is required.");
+        SvcValidationRules.ApplySubjectRules(this);
+    }
+}
+
+public class UpdateSvcSubjectRequestValidator : AbstractValidator<UpdateSvcSubjectRequest>
+{
+    public UpdateSvcSubjectRequestValidator() => SvcValidationRules.ApplySubjectRules(this);
+}
+
+public class CreateSvcRecordEntryRequestValidator : AbstractValidator<CreateSvcRecordEntryRequest>
+{
+    private static readonly SvcRecordContextType[] Supported =
+        { SvcRecordContextType.Customer, SvcRecordContextType.Subject };
+
+    public CreateSvcRecordEntryRequestValidator()
+    {
+        RuleFor(x => x.ContextType)
+            .NotNull().WithMessage("ContextType is required.")
+            .Must(ct => ct is null || Supported.Contains(ct.Value))
+            .WithMessage("ContextType is not supported yet. Use Customer or Subject.");
+
+        RuleFor(x => x.ContextId)
+            .NotNull().NotEqual(Guid.Empty).WithMessage("ContextId is required.");
+
+        RuleFor(x => x)
+            .Must(r => !string.IsNullOrWhiteSpace(r.Text) || r.Attachments is { Count: > 0 })
+            .WithMessage("A record must have text or at least one attachment.");
+
+        RuleForEach(x => x.Attachments)
+            .Must(a => !string.IsNullOrWhiteSpace(a.StorageKey))
+            .WithMessage("Each attachment must have a storageKey.")
+            .When(x => x.Attachments is not null);
+    }
 }

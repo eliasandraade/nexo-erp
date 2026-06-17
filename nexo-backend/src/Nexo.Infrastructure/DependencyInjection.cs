@@ -160,6 +160,8 @@ public static class DependencyInjection
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();
         services.AddScoped<ISvcCatalogItemRepository, SvcCatalogItemRepository>();
+        services.AddScoped<ISvcSubjectRepository, SvcSubjectRepository>();
+        services.AddScoped<ISvcRecordEntryRepository, SvcRecordEntryRepository>();
 
         // ── Operational Interpretation Engine ─────────────────────────────────
         // Repositories

@@ -116,6 +116,8 @@ public class NexoDbContext : DbContext
     // ── Service module (Orken Service — motor de serviços) ───────────────────
     public DbSet<SvcProfessional>     SvcProfessionals => Set<SvcProfessional>();
     public DbSet<SvcCatalogItem>      SvcCatalogItems  => Set<SvcCatalogItem>();
+    public DbSet<SvcSubject>          SvcSubjects      => Set<SvcSubject>();
+    public DbSet<SvcRecordEntry>      SvcRecordEntries => Set<SvcRecordEntry>();
 
     // ── Operational Interpretation Engine ────────────────────────────────────
     public DbSet<FinancialMovement>        IntMovements         => Set<FinancialMovement>();
