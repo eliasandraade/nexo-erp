@@ -34,6 +34,7 @@ import {
   type WeatherResult,
 } from "@/services/weather.api";
 import { uploadFile } from "@/services/storage.api";
+import { ApiError } from "@/services/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
 
@@ -902,12 +903,13 @@ function TabDiario({ projectId }: { projectId: string }) {
         onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar foto."),
       });
     } catch (e) {
-      const msg = (e instanceof Error ? e.message : "").toLowerCase();
-      if (msg.includes("habilitado") || msg.includes("404") || msg.includes("não está")) {
-        toast.error("Upload de fotos indisponível neste ambiente.");
-      } else {
-        toast.error("Falha ao enviar foto. Tente novamente.");
-      }
+      // Storage off/misconfigured → backend returns a controlled 404. Show an honest state.
+      const disabled = e instanceof ApiError
+        ? e.status === 404
+        : /habilitado/i.test(e instanceof Error ? e.message : "");
+      toast.error(disabled
+        ? "Upload de fotos indisponível neste ambiente."
+        : "Falha ao enviar foto. Tente novamente.");
     } finally {
       setUploadingLogId(null);
     }
