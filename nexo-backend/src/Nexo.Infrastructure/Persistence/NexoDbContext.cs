@@ -6,6 +6,7 @@ using Nexo.Domain.Entities;
 using Nexo.Domain.Modules.Build;
 using Nexo.Domain.Modules.Interpreter;
 using Nexo.Domain.Modules.Restaurante;
+using Nexo.Domain.Modules.Service;
 using Nexo.Domain.Modules.Varejo;
 
 namespace Nexo.Infrastructure.Persistence;
@@ -111,6 +112,10 @@ public class NexoDbContext : DbContext
     public DbSet<BuildBudgetItem>     BldBudgetItems   => Set<BuildBudgetItem>();
     public DbSet<BuildDailyLog>       BldDailyLogs     => Set<BuildDailyLog>();
     public DbSet<BuildDailyLogPhoto>  BldDailyLogPhotos => Set<BuildDailyLogPhoto>();
+
+    // ── Service module (Orken Service — motor de serviços) ───────────────────
+    public DbSet<SvcProfessional>     SvcProfessionals => Set<SvcProfessional>();
+    public DbSet<SvcCatalogItem>      SvcCatalogItems  => Set<SvcCatalogItem>();
 
     // ── Operational Interpretation Engine ────────────────────────────────────
     public DbSet<FinancialMovement>        IntMovements         => Set<FinancialMovement>();
