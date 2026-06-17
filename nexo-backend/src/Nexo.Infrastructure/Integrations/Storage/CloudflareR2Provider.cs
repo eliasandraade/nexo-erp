@@ -11,7 +11,7 @@ namespace Nexo.Infrastructure.Integrations.Storage;
 
 public sealed class CloudflareR2Provider : IStorageProvider
 {
-    private readonly AmazonS3Client  _s3;
+    private readonly Lazy<AmazonS3Client> _s3;
     private readonly StorageOptions  _opts;
     private readonly ILogger<CloudflareR2Provider> _logger;
 
@@ -20,6 +20,18 @@ public sealed class CloudflareR2Provider : IStorageProvider
         _opts   = opts.Value;
         _logger = logger;
 
+        // Lazy: the S3 client is created only on first use, never in the constructor.
+        // With empty/invalid R2 config (e.g. StorageEnabled=false in an environment that
+        // never set credentials) the AWS SDK can throw while building the client. Doing it
+        // in the constructor made the DI-injected singleton fail, which 500'd the
+        // StorageController BEFORE its StorageEnabled feature-flag gate could return 404.
+        // Deferring construction keeps the controller constructable, so a disabled/misconfigured
+        // store yields a controlled response (404 when off, 503 when on-but-unreachable).
+        _s3 = new Lazy<AmazonS3Client>(CreateClient);
+    }
+
+    private AmazonS3Client CreateClient()
+    {
         var config = new AmazonS3Config
         {
             ServiceURL           = $"https://{_opts.R2.AccountId}.r2.cloudflarestorage.com",
@@ -27,7 +39,7 @@ public sealed class CloudflareR2Provider : IStorageProvider
             AuthenticationRegion = "auto",
         };
         var credentials = new BasicAWSCredentials(_opts.R2.AccessKeyId, _opts.R2.SecretAccessKey);
-        _s3 = new AmazonS3Client(credentials, config);
+        return new AmazonS3Client(credentials, config);
     }
 
     public async Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken ct = default)
@@ -45,7 +57,7 @@ public sealed class CloudflareR2Provider : IStorageProvider
             UseChunkEncoding      = false,
         };
 
-        await _s3.PutObjectAsync(putRequest, ct);
+        await _s3.Value.PutObjectAsync(putRequest, ct);
 
         var publicUrl = $"{_opts.R2.PublicUrl.TrimEnd('/')}/{request.ObjectKey}";
 
@@ -59,7 +71,7 @@ public sealed class CloudflareR2Provider : IStorageProvider
         _logger.LogInformation("[Storage] Deleting {Key}", key);
         try
         {
-            await _s3.DeleteObjectAsync(_opts.R2.BucketName, key, ct);
+            await _s3.Value.DeleteObjectAsync(_opts.R2.BucketName, key, ct);
             _logger.LogInformation("[Storage] Deleted {Key}", key);
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -70,6 +82,6 @@ public sealed class CloudflareR2Provider : IStorageProvider
 
     public async Task PingAsync(CancellationToken ct = default)
     {
-        await _s3.ListBucketsAsync(ct);
+        await _s3.Value.ListBucketsAsync(ct);
     }
 }
