@@ -1,5 +1,20 @@
 namespace Nexo.Application.Modules.Service;
 
+/// <summary>
+/// Editable fields shared by the create and update catalog requests, so both can be
+/// validated by a single rule set (see SvcValidators).
+/// </summary>
+public interface ISvcCatalogItemFields
+{
+    string   Name { get; }
+    int      DurationMinutes { get; }
+    decimal  Price { get; }
+    string?  Description { get; }
+    string?  Category { get; }
+    decimal? CommissionPercent { get; }
+    bool     RequiresSubject { get; }
+}
+
 /// <summary>Wire shape of a catalog item (serviço/procedimento/aula).</summary>
 public sealed record SvcCatalogItemDto(
     Guid     Id,
@@ -22,7 +37,7 @@ public sealed record CreateSvcCatalogItemRequest(
     string?  Description = null,
     string?  Category = null,
     decimal? CommissionPercent = null,
-    bool     RequiresSubject = false);
+    bool     RequiresSubject = false) : ISvcCatalogItemFields;
 
 public sealed record UpdateSvcCatalogItemRequest(
     string   Name,
@@ -31,4 +46,4 @@ public sealed record UpdateSvcCatalogItemRequest(
     string?  Description = null,
     string?  Category = null,
     decimal? CommissionPercent = null,
-    bool     RequiresSubject = false);
+    bool     RequiresSubject = false) : ISvcCatalogItemFields;
