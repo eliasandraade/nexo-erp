@@ -19,10 +19,12 @@ using Nexo.Infrastructure.Persistence.Seed;
 using Nexo.Infrastructure.Repositories;
 using Nexo.Application.Modules.Restaurante.Interfaces;
 using Nexo.Application.Modules.Build.Interfaces;
+using Nexo.Application.Modules.Service.Interfaces;
 using Nexo.Infrastructure.Hubs;
 using Nexo.Infrastructure.Modules.Build;
 using Nexo.Infrastructure.Modules.Interpreter;
 using Nexo.Infrastructure.Repositories.Modules.Build;
+using Nexo.Infrastructure.Repositories.Modules.Service;
 using Nexo.Infrastructure.Repositories.Modules.Interpreter;
 using Nexo.Infrastructure.Repositories.Modules.Restaurante;
 using Nexo.Infrastructure.Repositories.Modules.Varejo;
@@ -154,6 +156,10 @@ public static class DependencyInjection
         services.AddScoped<IBuildDailyLogPhotoRepository, BuildDailyLogPhotoRepository>();
         services.AddScoped<IBuildFinancialQueryService, BuildFinancialQueryService>();
         services.AddScoped<IBuildDashboardQueryService, BuildDashboardQueryService>();
+
+        // ── Service module (Orken Service) repositories ──────────────────────
+        services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();
+        services.AddScoped<ISvcCatalogItemRepository, SvcCatalogItemRepository>();
 
         // ── Operational Interpretation Engine ─────────────────────────────────
         // Repositories

@@ -68,6 +68,8 @@ public static class DependencyInjection
 
         // ── Módulo Service (Orken Service — motor de serviços, presets por vertical) ──
         services.AddScoped<ServicePresetService>();
+        services.AddScoped<SvcProfessionalService>();
+        services.AddScoped<SvcCatalogItemService>();
 
         // FluentValidation — scan this assembly for all validators
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
