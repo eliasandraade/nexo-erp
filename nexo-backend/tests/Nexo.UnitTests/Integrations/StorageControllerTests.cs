@@ -214,6 +214,25 @@ public class StorageControllerTests
     }
 
     [Fact]
+    public async Task Upload_ServiceRecordContext_KeyContainsServiceRecordsPath()
+    {
+        var sut  = Build();
+        var file = MakeFile();
+
+        StorageUploadRequest? captured = null;
+        sut.Provider
+           .UploadAsync(Arg.Do<StorageUploadRequest>(r => captured = r), Arg.Any<CancellationToken>())
+           .Returns(new StorageUploadResult("key", "https://cdn.example.com/key"));
+
+        var result = await sut.Controller.Upload(file, "service-record", CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        captured.Should().NotBeNull();
+        captured!.ObjectKey.Should().Contain(TenantId.ToString());
+        captured.ObjectKey.Should().Contain("service/records");
+    }
+
+    [Fact]
     public async Task Upload_ProviderReceivesCorrectContentType()
     {
         var sut  = Build();
