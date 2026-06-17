@@ -70,6 +70,8 @@ public static class DependencyInjection
         services.AddScoped<ServicePresetService>();
         services.AddScoped<SvcProfessionalService>();
         services.AddScoped<SvcCatalogItemService>();
+        services.AddScoped<SvcSubjectService>();
+        services.AddScoped<SvcRecordEntryService>();
 
         // FluentValidation — scan this assembly for all validators
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
