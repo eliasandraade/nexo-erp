@@ -59,6 +59,16 @@ internal static class SvcValidationRules
         v.RuleFor(x => x.MetadataJson)
             .Must(BeValidJsonOrNull).WithMessage("MetadataJson must be valid JSON.");
     }
+
+    public static void ApplyAppointmentRules<T>(AbstractValidator<T> v) where T : ISvcAppointmentFields
+    {
+        v.RuleFor(x => x.CustomerId).NotEmpty().WithMessage("CustomerId is required.");
+        v.RuleFor(x => x.ProfessionalId).NotEmpty().WithMessage("ProfessionalId is required.");
+        v.RuleFor(x => x.CatalogItemId).NotEmpty().WithMessage("CatalogItemId is required.");
+        v.RuleFor(x => x).Must(r => r.StartsAt < r.EndsAt)
+            .WithMessage("StartsAt must be before EndsAt.");
+        v.RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+    }
 }
 
 public class CreateSvcProfessionalRequestValidator : AbstractValidator<CreateSvcProfessionalRequest>
@@ -118,5 +128,25 @@ public class CreateSvcRecordEntryRequestValidator : AbstractValidator<CreateSvcR
             .Must(a => !string.IsNullOrWhiteSpace(a.StorageKey))
             .WithMessage("Each attachment must have a storageKey.")
             .When(x => x.Attachments is not null);
+    }
+}
+
+public class CreateSvcAppointmentRequestValidator : AbstractValidator<CreateSvcAppointmentRequest>
+{
+    public CreateSvcAppointmentRequestValidator() => SvcValidationRules.ApplyAppointmentRules(this);
+}
+
+public class UpdateSvcAppointmentRequestValidator : AbstractValidator<UpdateSvcAppointmentRequest>
+{
+    public UpdateSvcAppointmentRequestValidator() => SvcValidationRules.ApplyAppointmentRules(this);
+}
+
+public class ChangeSvcAppointmentStatusRequestValidator : AbstractValidator<ChangeSvcAppointmentStatusRequest>
+{
+    public ChangeSvcAppointmentStatusRequestValidator()
+    {
+        RuleFor(x => x.Status).NotNull().WithMessage("Status is required.")
+            .IsInEnum().WithMessage("Invalid status.");
+        RuleFor(x => x.Reason).MaximumLength(500).When(x => x.Reason is not null);
     }
 }
