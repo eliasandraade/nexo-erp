@@ -7,7 +7,7 @@ import { useWorkspace } from "@/modules/workspace/WorkspaceContext";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 /** Vertical groups are scoped to the active workspace; the rest are shared. */
-const VERTICAL_GROUPS: RouteGroup[] = ["varejo", "restaurante", "build"];
+const VERTICAL_GROUPS: RouteGroup[] = ["varejo", "restaurante", "build", "service"];
 
 // ─── Group metadata ───────────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ const GROUP_LABELS: Record<RouteGroup, string> = {
   varejo:      "Varejo",
   restaurante: "Restaurante",
   build:       "Obras",
+  service:     "Serviços",
   admin:       "Administração",
 };
 
@@ -26,6 +27,7 @@ const GROUP_ORDER: RouteGroup[] = [
   "varejo",
   "restaurante",
   "build",
+  "service",
   "admin",
 ];
 
