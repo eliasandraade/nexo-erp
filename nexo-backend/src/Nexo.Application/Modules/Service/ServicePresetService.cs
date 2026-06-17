@@ -31,18 +31,9 @@ public sealed class ServicePresetService
 
         var activeKeys = await _tenants.GetActiveModuleKeysAsync(_currentTenant.Id, ct);
         var preset = ServicePresetRegistry.Resolve(activeKeys);
-        return preset is null ? null : Map(preset);
-    }
 
-    private static ServicePresetDto Map(ServicePreset p) => new(
-        p.Key,
-        p.DisplayName,
-        new ServiceLabelsDto(
-            p.Labels.Customer, p.Labels.Professional, p.Labels.CatalogItem,
-            p.Labels.Appointment, p.Labels.Order, p.Labels.Subject),
-        new ServiceCapabilitiesDto(
-            p.Capabilities.Appointments, p.Capabilities.Orders, p.Capabilities.Quotes,
-            p.Capabilities.Parts, p.Capabilities.Packages, p.Capabilities.SimpleRecord,
-            p.Capabilities.Commissions, p.Capabilities.Recurrence,
-            p.Capabilities.SubjectKind?.ToString()));
+        return preset is null
+            ? null
+            : new ServicePresetDto(preset.Key, preset.DisplayName, preset.Labels, preset.Capabilities);
+    }
 }

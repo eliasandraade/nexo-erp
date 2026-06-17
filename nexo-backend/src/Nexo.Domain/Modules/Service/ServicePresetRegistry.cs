@@ -43,51 +43,52 @@ public static class ServicePresetRegistry
     }
 
     // Priority follows the v1 segment order (spec §1). Lower number = wins resolution ties.
-    private static IReadOnlyList<ServicePreset> BuildAll() => new List<ServicePreset>
+    private static IReadOnlyList<ServicePreset> BuildAll()
     {
-        new("clinica-medica", "Clínicas Médicas e Odontológicas", 0,
-            new ServiceLabels("Paciente", "Profissional", "Procedimento", "Consulta", "Ordem de serviço", "Registro"),
-            new ServiceCapabilities(Appointments: true, Orders: false, Quotes: false, Parts: false,
-                Packages: false, SimpleRecord: true, Commissions: false, Recurrence: false, SubjectKind: null)),
+        // Baseline: every surface off. Each preset enables only what it uses via `with`, so the
+        // capability sets stay declarative and free of repeated full constructors.
+        // Declared as a local (not a static field) to avoid static-init ordering with `All`.
+        var off = new ServiceCapabilities(
+            Appointments: false, Orders: false, Quotes: false, Parts: false, Packages: false,
+            SimpleRecord: false, Commissions: false, Recurrence: false, SubjectKind: null);
 
-        new("personal-trainer", "Personal Trainers", 1,
-            new ServiceLabels("Aluno", "Personal", "Sessão", "Sessão", "Ordem", "Avaliação"),
-            new ServiceCapabilities(Appointments: true, Orders: false, Quotes: false, Parts: false,
-                Packages: true, SimpleRecord: true, Commissions: false, Recurrence: false, SubjectKind: null)),
+        return new List<ServicePreset>
+        {
+            new("clinica-medica", "Clínicas Médicas e Odontológicas", 0,
+                new ServiceLabels("Paciente", "Profissional", "Procedimento", "Consulta", "Ordem de serviço", "Registro"),
+                off with { Appointments = true, SimpleRecord = true }),
 
-        new("nutricionista", "Nutricionistas", 2,
-            new ServiceLabels("Paciente", "Nutricionista", "Consulta", "Consulta", "Ordem", "Avaliação"),
-            new ServiceCapabilities(Appointments: true, Orders: false, Quotes: false, Parts: false,
-                Packages: false, SimpleRecord: true, Commissions: false, Recurrence: false, SubjectKind: null)),
+            new("personal-trainer", "Personal Trainers", 1,
+                new ServiceLabels("Aluno", "Personal", "Sessão", "Sessão", "Ordem", "Avaliação"),
+                off with { Appointments = true, Packages = true, SimpleRecord = true }),
 
-        new("oficina-mecanica", "Oficinas Mecânicas", 3,
-            new ServiceLabels("Cliente", "Mecânico", "Serviço", "Agendamento", "Ordem de serviço", "Veículo"),
-            new ServiceCapabilities(Appointments: false, Orders: true, Quotes: true, Parts: true,
-                Packages: false, SimpleRecord: false, Commissions: false, Recurrence: false, SubjectKind: ServiceSubjectKind.Vehicle)),
+            new("nutricionista", "Nutricionistas", 2,
+                new ServiceLabels("Paciente", "Nutricionista", "Consulta", "Consulta", "Ordem", "Avaliação"),
+                off with { Appointments = true, SimpleRecord = true }),
 
-        new("programador-autonomo", "Programadores Autônomos", 4,
-            new ServiceLabels("Cliente", "Profissional", "Serviço", "Agendamento", "Projeto", "Item"),
-            new ServiceCapabilities(Appointments: false, Orders: true, Quotes: true, Parts: false,
-                Packages: false, SimpleRecord: false, Commissions: false, Recurrence: false, SubjectKind: null)),
+            new("oficina-mecanica", "Oficinas Mecânicas", 3,
+                new ServiceLabels("Cliente", "Mecânico", "Serviço", "Agendamento", "Ordem de serviço", "Veículo"),
+                off with { Orders = true, Quotes = true, Parts = true, SubjectKind = ServiceSubjectKind.Vehicle }),
 
-        new("autoescola", "Autoescolas", 5,
-            new ServiceLabels("Aluno", "Instrutor", "Aula", "Aula", "Ordem", "Registro"),
-            new ServiceCapabilities(Appointments: true, Orders: false, Quotes: false, Parts: false,
-                Packages: true, SimpleRecord: true, Commissions: false, Recurrence: false, SubjectKind: null)),
+            new("programador-autonomo", "Programadores Autônomos", 4,
+                new ServiceLabels("Cliente", "Profissional", "Serviço", "Agendamento", "Projeto", "Item"),
+                off with { Orders = true, Quotes = true }),
 
-        new("pet-shop", "Pet Shops + Clínicas Veterinárias", 6,
-            new ServiceLabels("Tutor", "Profissional", "Serviço", "Agendamento", "Ordem de serviço", "Pet"),
-            new ServiceCapabilities(Appointments: true, Orders: false, Quotes: false, Parts: false,
-                Packages: true, SimpleRecord: true, Commissions: false, Recurrence: false, SubjectKind: ServiceSubjectKind.Pet)),
+            new("autoescola", "Autoescolas", 5,
+                new ServiceLabels("Aluno", "Instrutor", "Aula", "Aula", "Ordem", "Registro"),
+                off with { Appointments = true, Packages = true, SimpleRecord = true }),
 
-        new("salao-beleza", "Salões de Beleza", 7,
-            new ServiceLabels("Cliente", "Profissional", "Serviço", "Agendamento", "Comanda", "Registro"),
-            new ServiceCapabilities(Appointments: true, Orders: false, Quotes: false, Parts: false,
-                Packages: true, SimpleRecord: false, Commissions: true, Recurrence: false, SubjectKind: null)),
+            new("pet-shop", "Pet Shops + Clínicas Veterinárias", 6,
+                new ServiceLabels("Tutor", "Profissional", "Serviço", "Agendamento", "Ordem de serviço", "Pet"),
+                off with { Appointments = true, Packages = true, SimpleRecord = true, SubjectKind = ServiceSubjectKind.Pet }),
 
-        new("escola-idiomas", "Escolas de Idiomas", 8,
-            new ServiceLabels("Aluno", "Professor", "Aula", "Aula", "Matrícula", "Registro"),
-            new ServiceCapabilities(Appointments: true, Orders: false, Quotes: false, Parts: false,
-                Packages: true, SimpleRecord: true, Commissions: false, Recurrence: true, SubjectKind: null)),
-    };
+            new("salao-beleza", "Salões de Beleza", 7,
+                new ServiceLabels("Cliente", "Profissional", "Serviço", "Agendamento", "Comanda", "Registro"),
+                off with { Appointments = true, Packages = true, Commissions = true }),
+
+            new("escola-idiomas", "Escolas de Idiomas", 8,
+                new ServiceLabels("Aluno", "Professor", "Aula", "Aula", "Matrícula", "Registro"),
+                off with { Appointments = true, Packages = true, SimpleRecord = true, Recurrence = true }),
+        };
+    }
 }

@@ -2,28 +2,14 @@ using Nexo.Domain.Modules.Service;
 
 namespace Nexo.Application.Modules.Service;
 
-/// <summary>Wire shape of the resolved Service preset. Serialized camelCase by the API.</summary>
+/// <summary>
+/// Wire shape of the resolved Service preset. Composes the domain value descriptors
+/// (labels + capabilities) directly so the response contract has a single definition —
+/// serialized camelCase, enums as string names (global JsonStringEnumConverter).
+/// <see cref="ServicePreset.Priority"/> is intentionally not exposed.
+/// </summary>
 public sealed record ServicePresetDto(
     string Key,
     string DisplayName,
-    ServiceLabelsDto Labels,
-    ServiceCapabilitiesDto Capabilities);
-
-public sealed record ServiceLabelsDto(
-    string Customer,
-    string Professional,
-    string CatalogItem,
-    string Appointment,
-    string Order,
-    string Subject);
-
-public sealed record ServiceCapabilitiesDto(
-    bool Appointments,
-    bool Orders,
-    bool Quotes,
-    bool Parts,
-    bool Packages,
-    bool SimpleRecord,
-    bool Commissions,
-    bool Recurrence,
-    string? SubjectKind);
+    ServiceLabels Labels,
+    ServiceCapabilities Capabilities);
