@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
 
-export type RouteGroup = "core" | "inventario" | "varejo" | "restaurante" | "build" | "admin";
+export type RouteGroup = "core" | "inventario" | "varejo" | "restaurante" | "build" | "service" | "admin";
 
 export interface AppRoute {
   path: string;

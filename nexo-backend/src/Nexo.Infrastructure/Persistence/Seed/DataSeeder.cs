@@ -50,6 +50,7 @@ public class DataSeeder
 
         // Per-module idempotent seeds — safe to run even if the bulk seed above was skipped.
         await SeedBuildModuleAsync(ct);
+        await SeedServiceModulesAsync(ct);
     }
 
     // ── Tenant ────────────────────────────────────────────────────────────────
@@ -488,6 +489,70 @@ public class DataSeeder
         {
             _logger.LogDebug(
                 "Seed: tenant {TenantId} already has 'build' subscription, skipping.", tenant.Id);
+        }
+    }
+
+    // ── Service module family (idempotent — runs even on already-seeded DBs) ────
+
+    /// <summary>
+    /// Ensures the 5 service-family ModuleDefinitions that are NOT in the original bulk seed
+    /// exist (nutricionista, personal-trainer, autoescola, escola-idiomas, programador-autonomo),
+    /// all created IsPublished=false (Stripe pricing is owner-owned and out of scope).
+    ///
+    /// Also grants one service-family key (salao-beleza) to the default dev tenant so the
+    /// Service engine is exercisable in dev/test — mirrors <see cref="SeedBuildModuleAsync"/>.
+    /// Safe to re-run.
+    /// </summary>
+    private async Task SeedServiceModulesAsync(CancellationToken ct)
+    {
+        // 1. Service-family ModuleDefinitions missing from the original bulk seed.
+        var serviceDefs = new (string Key, string Name, decimal Monthly, decimal Annual, decimal Lifetime)[]
+        {
+            ("nutricionista",        "Nutricionistas",          79m, 710m, 1290m),
+            ("personal-trainer",     "Personal Trainers",       79m, 710m, 1290m),
+            ("autoescola",           "Autoescolas",             97m, 870m, 1490m),
+            ("escola-idiomas",       "Escolas de Idiomas",      97m, 870m, 1490m),
+            ("programador-autonomo", "Programadores Autônomos", 69m, 620m, 1090m),
+        };
+
+        var created = 0;
+        foreach (var d in serviceDefs)
+        {
+            if (await _context.ModuleDefinitions.AnyAsync(m => m.Key == d.Key, ct))
+                continue;
+
+            _context.ModuleDefinitions.Add(ModuleDefinition.Create(
+                key: d.Key, name: d.Name,
+                priceMonthly: d.Monthly, priceAnnual: d.Annual, priceLifetime: d.Lifetime));
+            created++;
+        }
+
+        if (created > 0)
+        {
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation(
+                "Seed: {Count} service-family ModuleDefinitions created (IsPublished=false).", created);
+        }
+
+        // 2. Grant a sample service-family key to the default tenant (dev/test convenience).
+        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct);
+        if (tenant is null)
+        {
+            _logger.LogDebug("Seed: no tenant found — skipping service-family subscription.");
+            return;
+        }
+
+        const string sampleKey = "salao-beleza";
+        var alreadySubscribed = await _context.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .AnyAsync(s => s.TenantId == tenant.Id && s.ModuleKey == sampleKey, ct);
+
+        if (!alreadySubscribed)
+        {
+            _context.ModuleSubscriptions.Add(ModuleSubscription.CreateAdminGrant(tenant.Id, sampleKey));
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation(
+                "Seed: '{Key}' (service family) granted to tenant {TenantId}.", sampleKey, tenant.Id);
         }
     }
 
