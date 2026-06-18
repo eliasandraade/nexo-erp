@@ -12,6 +12,8 @@ import { ProtectedRoute } from "./ProtectedRoute";
 import { ModuleRoute } from "./ModuleRoute";
 import { PlatformRoute } from "./PlatformRoute";
 import { RoleRoute } from "./RoleRoute";
+import { ServiceModuleRoute } from "@/modules/service/routing/ServiceModuleRoute";
+import { ServicePresetProvider } from "@/modules/service/context/ServicePresetContext";
 
 // ── Static imports: auth pages only — absolute critical path ─────────────────
 // Login/Register must render without a spinner (auth redirect lands here).
@@ -60,6 +62,9 @@ const PdvPage               = lazy(() => import("@/modules/sales/pages/PdvPage")
 // Build (obras)
 const BuildProjectsPage     = lazy(() => import("@/modules/build/pages/BuildProjectsPage"));
 const BuildProjectDetailPage = lazy(() => import("@/modules/build/pages/BuildProjectDetailPage"));
+
+// Service (serviços) — engine shell; surfaces land in the stacked PRs
+const ServiceOverviewPage   = lazy(() => import("@/modules/service/pages/ServiceOverviewPage"));
 
 // Restaurante
 import { WaiterLayout }     from "@/app/layouts/WaiterLayout";
@@ -160,6 +165,19 @@ export function AppRouter() {
                   <Route element={<MainAppLayout />}>
                     <Route path="/build"              element={<BuildProjectsPage />} />
                     <Route path="/build/projetos/:id" element={<BuildProjectDetailPage />} />
+                  </Route>
+                </Route>
+              </Route>
+            </Route>
+
+            {/* ── Service (Serviços) — management only; family gate + preset-driven shell ── */}
+            <Route element={<ProtectedRoute />}>
+              <Route element={<ServiceModuleRoute />}>
+                <Route element={<RoleRoute path="/service" />}>
+                  <Route element={<ServicePresetProvider />}>
+                    <Route element={<MainAppLayout />}>
+                      <Route path="/service" element={<ServiceOverviewPage />} />
+                    </Route>
                   </Route>
                 </Route>
               </Route>
