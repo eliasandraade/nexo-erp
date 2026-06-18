@@ -16,6 +16,13 @@ public class SvcSettingsRepository : ISvcSettingsRepository
     public async Task<SvcSettings?> GetForCurrentStoreAsync(CancellationToken ct = default)
         => await _context.SvcSettings.FirstOrDefaultAsync(ct);
 
+    public async Task<SvcSettings?> GetByStorePublicAsync(
+        Guid tenantId, Guid storeId, CancellationToken ct = default)
+        => await _context.SvcSettings
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.TenantId == tenantId && x.StoreId == storeId, ct);
+
     public async Task AddAsync(SvcSettings entity, CancellationToken ct = default)
         => await _context.SvcSettings.AddAsync(entity, ct);
 

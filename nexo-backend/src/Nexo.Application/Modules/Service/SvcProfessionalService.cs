@@ -41,7 +41,8 @@ public class SvcProfessionalService
             phone:                    request.Phone,
             email:                    request.Email,
             defaultCommissionPercent: request.DefaultCommissionPercent,
-            userId:                   request.UserId);
+            userId:                   request.UserId,
+            workingHoursJson:         request.WorkingHoursJson);
 
         await _repo.AddAsync(professional, ct);
         await _repo.SaveChangesAsync(ct);
@@ -56,7 +57,7 @@ public class SvcProfessionalService
 
         professional.UpdateDetails(
             request.Name, request.Role, request.Specialty,
-            request.Color, request.Phone, request.Email);
+            request.Color, request.Phone, request.Email, request.WorkingHoursJson);
         professional.UpdateCommission(request.DefaultCommissionPercent);
 
         _repo.Update(professional);
@@ -94,6 +95,7 @@ public class SvcProfessionalService
         Email:                    p.Email,
         DefaultCommissionPercent: p.DefaultCommissionPercent,
         UserId:                   p.UserId,
+        WorkingHoursJson:         p.WorkingHoursJson,
         IsActive:                 p.IsActive,
         CreatedAt:                p.CreatedAt,
         UpdatedAt:                p.UpdatedAt);

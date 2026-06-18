@@ -104,6 +104,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // cascade. RateLimitingTests re-enable it explicitly via
         // WithRateLimitingEnabled() so the limiter itself stays under test.
         builder.UseSetting("RateLimiting:AuthLogin:Enabled", "false");
+
+        // Same reasoning for the public booking limiter: the shared suite fires many public
+        // POSTs from one client IP; with the limiter on, the window is exhausted and later
+        // tests get 429. The policy stays enabled in production (config default true).
+        builder.UseSetting("RateLimiting:PublicBooking:Enabled", "false");
     }
 
     /// <summary>Creates an HttpClient pre-configured for the test server.</summary>

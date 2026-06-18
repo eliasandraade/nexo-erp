@@ -1,5 +1,6 @@
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Service.Interfaces;
+using Nexo.Domain.Exceptions;
 using Nexo.Domain.Modules.Service;
 
 namespace Nexo.Application.Modules.Service;
@@ -63,4 +64,45 @@ public class SvcSettingsService
         await _repo.SaveChangesAsync(ct);
         return new ServiceSettingsDto(IsConfigured: true, PresetKey: existing.PresetKey);
     }
+
+    // ── Public booking configuration ─────────────────────────────────────────────
+
+    public async Task<PublicBookingSettingsDto> GetPublicBookingAsync(CancellationToken ct = default)
+    {
+        var settings = await _repo.GetForCurrentStoreAsync(ct);
+        if (settings is null)
+            // Not onboarded yet — surface the domain defaults with booking off.
+            return new PublicBookingSettingsDto(
+                IsConfigured: false, PublicBookingEnabled: false, BookingDaysAhead: 14,
+                MinLeadMinutes: 120, SlotIntervalMinutes: 30, ShowPrices: true,
+                AutoConfirmAppointments: false, TimeZoneId: "America/Sao_Paulo");
+
+        return Map(settings);
+    }
+
+    public async Task<PublicBookingSettingsDto> UpdatePublicBookingAsync(
+        UpdatePublicBookingRequest request, CancellationToken ct = default)
+    {
+        var settings = await _repo.GetForCurrentStoreAsync(ct)
+            ?? throw new DomainException("Choose the service vertical (preset) before enabling public booking.");
+
+        settings.UpdatePublicBooking(
+            request.PublicBookingEnabled, request.BookingDaysAhead, request.MinLeadMinutes,
+            request.SlotIntervalMinutes, request.ShowPrices, request.AutoConfirmAppointments,
+            request.TimeZoneId);
+
+        _repo.Update(settings);
+        await _repo.SaveChangesAsync(ct);
+        return Map(settings);
+    }
+
+    private static PublicBookingSettingsDto Map(SvcSettings s) => new(
+        IsConfigured:            true,
+        PublicBookingEnabled:    s.PublicBookingEnabled,
+        BookingDaysAhead:        s.BookingDaysAhead,
+        MinLeadMinutes:          s.MinLeadMinutes,
+        SlotIntervalMinutes:     s.SlotIntervalMinutes,
+        ShowPrices:              s.ShowPrices,
+        AutoConfirmAppointments: s.AutoConfirmAppointments,
+        TimeZoneId:              s.TimeZoneId);
 }

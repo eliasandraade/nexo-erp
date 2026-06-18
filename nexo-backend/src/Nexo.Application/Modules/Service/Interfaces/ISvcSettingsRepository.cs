@@ -10,6 +10,13 @@ namespace Nexo.Application.Modules.Service.Interfaces;
 public interface ISvcSettingsRepository
 {
     Task<SvcSettings?> GetForCurrentStoreAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Public-path read for a store resolved by its slug (no auth context). Bypasses the global
+    /// query filter and scopes explicitly by tenant + store. Used by the public booking portal.
+    /// </summary>
+    Task<SvcSettings?> GetByStorePublicAsync(Guid tenantId, Guid storeId, CancellationToken ct = default);
+
     Task AddAsync(SvcSettings entity, CancellationToken ct = default);
     void Update(SvcSettings entity);
     Task SaveChangesAsync(CancellationToken ct = default);

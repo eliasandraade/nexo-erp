@@ -38,6 +38,35 @@ public class SvcAppointmentRepository : ISvcAppointmentRepository
             a.StartsAt < endsAt && a.EndsAt > startsAt &&
             (excludeId == null || a.Id != excludeId), ct);
 
+    public async Task<IReadOnlyList<SvcAppointment>> GetBlockingForProfessionalPublicAsync(
+        Guid professionalId, Guid tenantId, Guid storeId, DateTime fromUtc, DateTime toUtc,
+        CancellationToken ct = default)
+        => await _context.SvcAppointments
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(a =>
+                a.ProfessionalId == professionalId &&
+                a.TenantId == tenantId && a.StoreId == storeId &&
+                (a.Status == SvcAppointmentStatus.Scheduled ||
+                 a.Status == SvcAppointmentStatus.Confirmed ||
+                 a.Status == SvcAppointmentStatus.InProgress) &&
+                a.StartsAt < toUtc && a.EndsAt > fromUtc)
+            .OrderBy(a => a.StartsAt)
+            .ToListAsync(ct);
+
+    public async Task<bool> HasOverlapPublicAsync(
+        Guid professionalId, Guid tenantId, Guid storeId, DateTime startsAt, DateTime endsAt,
+        CancellationToken ct = default)
+        => await _context.SvcAppointments
+            .IgnoreQueryFilters()
+            .AnyAsync(a =>
+                a.ProfessionalId == professionalId &&
+                a.TenantId == tenantId && a.StoreId == storeId &&
+                (a.Status == SvcAppointmentStatus.Scheduled ||
+                 a.Status == SvcAppointmentStatus.Confirmed ||
+                 a.Status == SvcAppointmentStatus.InProgress) &&
+                a.StartsAt < endsAt && a.EndsAt > startsAt, ct);
+
     public async Task AddAsync(SvcAppointment entity, CancellationToken ct = default)
         => await _context.SvcAppointments.AddAsync(entity, ct);
 

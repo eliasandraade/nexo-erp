@@ -16,6 +16,22 @@ internal sealed class SvcSettingsConfiguration : IEntityTypeConfiguration<SvcSet
 
         b.Property(x => x.PresetKey).HasColumnName("preset_key").HasMaxLength(50).IsRequired();
 
+        // ── Public booking portal (PR12) ─────────────────────────────────────────
+        b.Property(x => x.PublicBookingEnabled)
+            .HasColumnName("public_booking_enabled").HasDefaultValue(false).IsRequired();
+        b.Property(x => x.BookingDaysAhead)
+            .HasColumnName("booking_days_ahead").HasDefaultValue(14).IsRequired();
+        b.Property(x => x.MinLeadMinutes)
+            .HasColumnName("min_lead_minutes").HasDefaultValue(120).IsRequired();
+        b.Property(x => x.SlotIntervalMinutes)
+            .HasColumnName("slot_interval_minutes").HasDefaultValue(30).IsRequired();
+        b.Property(x => x.ShowPrices)
+            .HasColumnName("show_prices").HasDefaultValue(true).IsRequired();
+        b.Property(x => x.AutoConfirmAppointments)
+            .HasColumnName("auto_confirm_appointments").HasDefaultValue(false).IsRequired();
+        b.Property(x => x.TimeZoneId)
+            .HasColumnName("time_zone_id").HasMaxLength(64).HasDefaultValue("America/Sao_Paulo").IsRequired();
+
         b.HasIndex("TenantId", "StoreId")
             .IsUnique()
             .HasDatabaseName("ix_svc_settings_tenant_store_unique");
