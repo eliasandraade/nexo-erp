@@ -126,6 +126,7 @@ public class NexoDbContext : DbContext
     public DbSet<SvcCustomerPackage>     SvcCustomerPackages     => Set<SvcCustomerPackage>();
     public DbSet<SvcCustomerPackageItem> SvcCustomerPackageItems => Set<SvcCustomerPackageItem>();
     public DbSet<SvcPackageUsage>        SvcPackageUsages        => Set<SvcPackageUsage>();
+    public DbSet<SvcPayment>             SvcPayments             => Set<SvcPayment>();
 
     // ── Operational Interpretation Engine ────────────────────────────────────
     public DbSet<FinancialMovement>        IntMovements         => Set<FinancialMovement>();

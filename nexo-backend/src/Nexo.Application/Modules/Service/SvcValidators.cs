@@ -258,3 +258,24 @@ public class ConsumeSvcPackageRequestValidator : AbstractValidator<ConsumeSvcPac
         RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
     }
 }
+
+public class CreateSvcPaymentRequestValidator : AbstractValidator<CreateSvcPaymentRequest>
+{
+    public CreateSvcPaymentRequestValidator()
+    {
+        RuleFor(x => x.Amount).GreaterThan(0m).WithMessage("Amount must be positive.");
+        RuleFor(x => x.Method).IsInEnum().WithMessage("Invalid payment method.");
+        RuleFor(x => x.PaidAt).Must(d => d.Kind == DateTimeKind.Utc)
+            .WithMessage("PaidAt must be UTC (use a trailing Z).");
+        RuleFor(x => x).Must(r => (r.OrderId is null) != (r.CustomerPackageId is null))
+            .WithMessage("Exactly one of OrderId or CustomerPackageId must be set.");
+        RuleFor(x => x.ExternalReference).MaximumLength(200).When(x => x.ExternalReference is not null);
+        RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+    }
+}
+
+public class VoidSvcPaymentRequestValidator : AbstractValidator<VoidSvcPaymentRequest>
+{
+    public VoidSvcPaymentRequestValidator()
+        => RuleFor(x => x.Reason).MaximumLength(500).When(x => x.Reason is not null);
+}
