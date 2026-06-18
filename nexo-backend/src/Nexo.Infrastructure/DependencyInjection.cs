@@ -163,6 +163,8 @@ public static class DependencyInjection
         services.AddScoped<ISvcSubjectRepository, SvcSubjectRepository>();
         services.AddScoped<ISvcRecordEntryRepository, SvcRecordEntryRepository>();
         services.AddScoped<ISvcAppointmentRepository, SvcAppointmentRepository>();
+        services.AddScoped<ISvcOrderRepository, SvcOrderRepository>();
+        services.AddScoped<ISvcOrderItemRepository, SvcOrderItemRepository>();
 
         // ── Operational Interpretation Engine ─────────────────────────────────
         // Repositories

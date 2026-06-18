@@ -18,6 +18,7 @@ public class SvcRecordEntryService
 {
     private readonly ISvcRecordEntryRepository  _repo;
     private readonly ISvcSubjectRepository      _subjects;
+    private readonly ISvcOrderRepository        _orders;
     private readonly ICustomerRepository        _customers;
     private readonly ICurrentTenant             _currentTenant;
     private readonly ICurrentUser               _currentUser;
@@ -26,6 +27,7 @@ public class SvcRecordEntryService
     public SvcRecordEntryService(
         ISvcRecordEntryRepository repo,
         ISvcSubjectRepository     subjects,
+        ISvcOrderRepository       orders,
         ICustomerRepository       customers,
         ICurrentTenant            currentTenant,
         ICurrentUser              currentUser,
@@ -33,6 +35,7 @@ public class SvcRecordEntryService
     {
         _repo          = repo;
         _subjects      = subjects;
+        _orders        = orders;
         _customers     = customers;
         _currentTenant = currentTenant;
         _currentUser   = currentUser;
@@ -87,6 +90,9 @@ public class SvcRecordEntryService
                 break;
             case SvcRecordContextType.Subject:
                 _ = await _subjects.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcSubject", id);
+                break;
+            case SvcRecordContextType.Order:
+                _ = await _orders.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcOrder", id);
                 break;
             default:
                 // Defense in depth — the validator already rejects reserved context types.
