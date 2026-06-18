@@ -26,6 +26,23 @@ export const serviceKeys = {
   appointmentsList: (params: Record<string, unknown>) => [...serviceKeys.appointments(), params] as const,
   appointment: (id: string) => [...serviceKeys.appointments(), id] as const,
 
+  orders: () => [...serviceKeys.all, "orders"] as const,
+  ordersList: (params: Record<string, unknown>) => [...serviceKeys.orders(), params] as const,
+  order: (id: string) => [...serviceKeys.orders(), id] as const,
+
+  packages: () => [...serviceKeys.all, "packages"] as const,
+  packagesList: (active: boolean | undefined) => [...serviceKeys.packages(), { active }] as const,
+  package: (id: string) => [...serviceKeys.packages(), id] as const,
+
+  customerPackages: () => [...serviceKeys.all, "customer-packages"] as const,
+  customerPackagesList: (params: Record<string, unknown>) => [...serviceKeys.customerPackages(), params] as const,
+  customerPackage: (id: string) => [...serviceKeys.customerPackages(), id] as const,
+
+  payments: () => [...serviceKeys.all, "payments"] as const,
+  paymentsList: (params: Record<string, unknown>) => [...serviceKeys.payments(), params] as const,
+  paymentSummary: (target: "order" | "customer-package", id: string) =>
+    [...serviceKeys.payments(), "summary", target, id] as const,
+
   records: (contextType: string, contextId: string) =>
     [...serviceKeys.all, "records", contextType, contextId] as const,
 };
