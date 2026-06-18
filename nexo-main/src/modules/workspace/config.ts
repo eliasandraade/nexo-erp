@@ -1,5 +1,6 @@
-import { Store, UtensilsCrossed, HardHat } from "lucide-react";
+import { Store, UtensilsCrossed, HardHat, ConciergeBell } from "lucide-react";
 import type { AuthSession } from "@/modules/auth/types";
+import { SERVICE_FAMILY_KEYS } from "@/modules/service/lib/service-family";
 import type { WorkspaceDef, WorkspaceId } from "./types";
 
 /**
@@ -40,6 +41,19 @@ export const WORKSPACES: WorkspaceDef[] = [
     group: "build",
     accent: "#0EA5E9",
   },
+  {
+    id: "service",
+    // Logical family key — never appears literally in session.modules; matched via moduleKeys.
+    moduleKey: "service",
+    moduleKeys: SERVICE_FAMILY_KEYS,
+    name: "Orken Service",
+    shortName: "Service",
+    description: "Agenda, ordens de serviço, pacotes e pagamentos.",
+    icon: ConciergeBell,
+    home: "/service",
+    group: "service",
+    accent: "#10B981",
+  },
 ];
 
 /** Sidebar groups shared across every workspace (always visible). */
@@ -56,7 +70,11 @@ export function getWorkspace(id: WorkspaceId): WorkspaceDef {
 
 /** Workspaces the tenant actually has an active module for, in display order. */
 export function availableWorkspaces(session: Pick<AuthSession, "modules">): WorkspaceDef[] {
-  return WORKSPACES.filter((w) => session.modules.includes(w.moduleKey));
+  return WORKSPACES.filter(
+    (w) =>
+      session.modules.includes(w.moduleKey) ||
+      w.moduleKeys?.some((k) => session.modules.includes(k))
+  );
 }
 
 /**
@@ -67,6 +85,7 @@ export function availableWorkspaces(session: Pick<AuthSession, "modules">): Work
 export function workspaceForPath(pathname: string): WorkspaceId | null {
   if (pathname.startsWith("/restaurante")) return "menu";
   if (pathname.startsWith("/build")) return "build";
+  if (pathname.startsWith("/service")) return "service";
   if (pathname.startsWith("/pdv")) return "store";
   return null;
 }
