@@ -22,6 +22,10 @@ export const serviceKeys = {
   subjectsList: (params: Record<string, unknown>) => [...serviceKeys.subjects(), params] as const,
   subject: (id: string) => [...serviceKeys.subjects(), id] as const,
 
+  appointments: () => [...serviceKeys.all, "appointments"] as const,
+  appointmentsList: (params: Record<string, unknown>) => [...serviceKeys.appointments(), params] as const,
+  appointment: (id: string) => [...serviceKeys.appointments(), id] as const,
+
   records: (contextType: string, contextId: string) =>
     [...serviceKeys.all, "records", contextType, contextId] as const,
 };

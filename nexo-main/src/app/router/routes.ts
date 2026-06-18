@@ -22,6 +22,7 @@ import {
   ConciergeBell,
   BookMarked,
   Boxes,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
@@ -84,6 +85,7 @@ export const appRoutes: AppRoute[] = [
 
   // ── Service (Serviços) — management only; family-gated + capability-driven in the sidebar ──
   { path: "/service",                label: "Visão geral",   icon: ConciergeBell,     group: "service",     roles: MGMT },
+  { path: "/service/agenda",         label: "Agenda",        icon: CalendarClock,     group: "service",     roles: MGMT, capability: "appointments" },
   { path: "/service/profissionais",  label: "Profissionais", icon: Users,             group: "service",     roles: MGMT },
   { path: "/service/catalogo",       label: "Catálogo",      icon: BookMarked,        group: "service",     roles: MGMT },
   { path: "/service/subjects",       label: "Cadastros",     icon: Boxes,             group: "service",     roles: MGMT, capability: "subjectKind" },
