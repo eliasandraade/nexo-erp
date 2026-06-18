@@ -50,6 +50,22 @@ public class SvcAppointment : StoreEntity
         };
     }
 
+    /// <summary>
+    /// Public-path factory with an explicit store. The public booking endpoint has no request
+    /// context, so the TenantSaveChangesInterceptor cannot inject StoreId from ICurrentStore —
+    /// it is set here, mirroring <see cref="SvcSettings.CreateForStore"/>.
+    /// </summary>
+    public static SvcAppointment CreateForStore(
+        Guid tenantId, Guid storeId, Guid customerId, Guid professionalId, Guid catalogItemId,
+        Guid? subjectId, DateTime startsAt, DateTime endsAt, decimal priceSnapshot, string? notes = null)
+    {
+        var appt = Create(
+            tenantId, customerId, professionalId, catalogItemId,
+            subjectId, startsAt, endsAt, priceSnapshot, notes);
+        appt.SetStoreId(storeId);
+        return appt;
+    }
+
     public void Reschedule(
         Guid customerId, Guid professionalId, Guid catalogItemId,
         Guid? subjectId, DateTime startsAt, DateTime endsAt, decimal priceSnapshot, string? notes)

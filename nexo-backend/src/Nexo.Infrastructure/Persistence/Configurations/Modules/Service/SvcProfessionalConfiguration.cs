@@ -21,5 +21,7 @@ public class SvcProfessionalConfiguration : IEntityTypeConfiguration<SvcProfessi
         builder.Property(x => x.DefaultCommissionPercent)
             .HasColumnName("default_commission_percent").HasColumnType("numeric(5,2)");
         builder.Property(x => x.UserId).HasColumnName("user_id");
+        builder.Property(x => x.WorkingHoursJson)
+            .HasColumnName("working_hours_json").HasColumnType("jsonb");
     }
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentValidation;
+using Nexo.Application.Modules.Service.Public;
 using Nexo.Domain.Modules.Service;
 
 namespace Nexo.Application.Modules.Service;
@@ -24,6 +25,8 @@ internal static class SvcValidationRules
             .When(x => !string.IsNullOrWhiteSpace(x.Email));
         v.RuleFor(x => x.DefaultCommissionPercent).InclusiveBetween(0m, 100m)
             .When(x => x.DefaultCommissionPercent.HasValue);
+        v.RuleFor(x => x.WorkingHoursJson)
+            .Must(BeValidJsonOrNull).WithMessage("WorkingHoursJson must be valid JSON.");
     }
 
     public static void ApplyCatalogRules<T>(AbstractValidator<T> v) where T : ISvcCatalogItemFields
@@ -288,5 +291,48 @@ public class SetServicePresetRequestValidator : AbstractValidator<SetServicePres
             .NotEmpty().WithMessage("PresetKey is required.")
             .Must(ServicePresetRegistry.IsValidPresetKey)
             .WithMessage("Invalid service preset key.");
+    }
+}
+
+public class UpdatePublicBookingRequestValidator : AbstractValidator<UpdatePublicBookingRequest>
+{
+    public UpdatePublicBookingRequestValidator()
+    {
+        RuleFor(x => x.BookingDaysAhead).InclusiveBetween(1, 365)
+            .WithMessage("BookingDaysAhead must be between 1 and 365.");
+        RuleFor(x => x.MinLeadMinutes).InclusiveBetween(0, 43200)
+            .WithMessage("MinLeadMinutes must be between 0 and 43200.");
+        RuleFor(x => x.SlotIntervalMinutes).InclusiveBetween(5, 240)
+            .WithMessage("SlotIntervalMinutes must be between 5 and 240.");
+        RuleFor(x => x.TimeZoneId).NotEmpty().MaximumLength(64)
+            .WithMessage("TimeZoneId is required.");
+    }
+}
+
+public class CreatePublicAppointmentRequestValidator : AbstractValidator<CreatePublicAppointmentRequest>
+{
+    public CreatePublicAppointmentRequestValidator()
+    {
+        RuleFor(x => x.CustomerName)
+            .NotEmpty().WithMessage("Customer name is required.").MaximumLength(200);
+        RuleFor(x => x.Phone)
+            .NotEmpty().WithMessage("Phone is required.").MaximumLength(30)
+            .Must(p => p is not null && p.Count(char.IsDigit) >= 8)
+            .WithMessage("Phone must contain at least 8 digits.");
+        RuleFor(x => x.Email).EmailAddress().MaximumLength(200)
+            .When(x => !string.IsNullOrWhiteSpace(x.Email));
+        RuleFor(x => x.CatalogItemId).NotEmpty().WithMessage("A service must be selected.");
+        RuleFor(x => x.ProfessionalId).NotEmpty().WithMessage("A professional must be selected.");
+        RuleFor(x => x.StartsAt).Must(d => d.Kind == DateTimeKind.Utc)
+            .WithMessage("StartsAt must be UTC (use a trailing Z).");
+        RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+
+        When(x => x.Subject is not null, () =>
+        {
+            RuleFor(x => x.Subject!.DisplayName)
+                .NotEmpty().WithMessage("Subject name is required.").MaximumLength(200);
+            RuleFor(x => x.Subject!.Notes).MaximumLength(2000).When(x => x.Subject!.Notes is not null);
+            RuleFor(x => x.Subject!.Kind).MaximumLength(30).When(x => x.Subject!.Kind is not null);
+        });
     }
 }

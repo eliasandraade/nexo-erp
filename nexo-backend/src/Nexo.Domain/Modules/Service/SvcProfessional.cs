@@ -25,6 +25,15 @@ public class SvcProfessional : StoreEntity
     public Guid?    UserId                   { get; private set; }
     public bool     IsActive                 { get; private set; }
 
+    /// <summary>
+    /// Weekly availability for the public booking portal, as JSON (jsonb). Null/empty ⇒ this
+    /// professional has NO public availability and the portal shows "indisponível" — never a fake
+    /// slot. Shape: array of <c>{ "weekday": 0-6, "windows": [{ "start": "HH:mm", "end": "HH:mm" }] }</c>
+    /// where weekday follows <see cref="System.DayOfWeek"/> (0 = Sunday) and times are the store's
+    /// local wall clock (see <see cref="SvcSettings.TimeZoneId"/>).
+    /// </summary>
+    public string? WorkingHoursJson { get; private set; }
+
     public static SvcProfessional Create(
         Guid     tenantId,
         string   name,
@@ -34,7 +43,8 @@ public class SvcProfessional : StoreEntity
         string?  phone                    = null,
         string?  email                    = null,
         decimal? defaultCommissionPercent = null,
-        Guid?    userId                   = null)
+        Guid?    userId                   = null,
+        string?  workingHoursJson         = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Professional name is required.");
@@ -50,6 +60,7 @@ public class SvcProfessional : StoreEntity
             Email                    = email?.Trim().ToLowerInvariant(),
             DefaultCommissionPercent = defaultCommissionPercent,
             UserId                   = userId,
+            WorkingHoursJson         = NormalizeJson(workingHoursJson),
             IsActive                 = true,
         };
     }
@@ -60,19 +71,24 @@ public class SvcProfessional : StoreEntity
         string? specialty,
         string? color,
         string? phone,
-        string? email)
+        string? email,
+        string? workingHoursJson)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Professional name is required.");
 
-        Name      = name.Trim();
-        Role      = role?.Trim();
-        Specialty = specialty?.Trim();
-        Color     = color?.Trim();
-        Phone     = phone?.Trim();
-        Email     = email?.Trim().ToLowerInvariant();
+        Name             = name.Trim();
+        Role             = role?.Trim();
+        Specialty        = specialty?.Trim();
+        Color            = color?.Trim();
+        Phone            = phone?.Trim();
+        Email            = email?.Trim().ToLowerInvariant();
+        WorkingHoursJson = NormalizeJson(workingHoursJson);
         SetUpdatedAt();
     }
+
+    private static string? NormalizeJson(string? json)
+        => string.IsNullOrWhiteSpace(json) ? null : json.Trim();
 
     public void UpdateCommission(decimal? defaultCommissionPercent)
     {

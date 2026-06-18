@@ -27,6 +27,22 @@ public class SvcCatalogItemRepository : ISvcCatalogItemRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<SvcCatalogItem>> GetActivePublicAsync(
+        Guid tenantId, Guid storeId, CancellationToken ct = default)
+        => await _context.SvcCatalogItems
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && x.IsActive)
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
+
+    public async Task<SvcCatalogItem?> GetByIdPublicAsync(
+        Guid id, Guid tenantId, Guid storeId, CancellationToken ct = default)
+        => await _context.SvcCatalogItems
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId && x.StoreId == storeId, ct);
+
     public async Task AddAsync(SvcCatalogItem entity, CancellationToken ct = default)
         => await _context.SvcCatalogItems.AddAsync(entity, ct);
 

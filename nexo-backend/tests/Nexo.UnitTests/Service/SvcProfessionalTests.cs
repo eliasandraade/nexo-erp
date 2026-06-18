@@ -72,7 +72,8 @@ public class SvcProfessionalTests
     {
         var p = SvcProfessional.Create(Tenant, "Ana");
         p.UpdateDetails("Beatriz", role: "Manicure", specialty: "Unhas",
-            color: "#FF0000", phone: "1199999", email: "B@X.com");
+            color: "#FF0000", phone: "1199999", email: "B@X.com",
+            workingHoursJson: "[{\"weekday\":1,\"windows\":[{\"start\":\"09:00\",\"end\":\"18:00\"}]}]");
 
         p.Name.Should().Be("Beatriz");
         p.Role.Should().Be("Manicure");
@@ -80,13 +81,14 @@ public class SvcProfessionalTests
         p.Color.Should().Be("#FF0000");
         p.Phone.Should().Be("1199999");
         p.Email.Should().Be("b@x.com");
+        p.WorkingHoursJson.Should().Contain("weekday");
     }
 
     [Fact]
     public void UpdateDetails_rejects_blank_name()
     {
         var p = SvcProfessional.Create(Tenant, "Ana");
-        var act = () => p.UpdateDetails("  ", null, null, null, null, null);
+        var act = () => p.UpdateDetails("  ", null, null, null, null, null, null);
         act.Should().Throw<DomainException>();
     }
 

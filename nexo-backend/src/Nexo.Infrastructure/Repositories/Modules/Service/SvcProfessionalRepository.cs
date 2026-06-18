@@ -27,6 +27,22 @@ public class SvcProfessionalRepository : ISvcProfessionalRepository
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<SvcProfessional>> GetActivePublicAsync(
+        Guid tenantId, Guid storeId, CancellationToken ct = default)
+        => await _context.SvcProfessionals
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && x.IsActive)
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
+
+    public async Task<SvcProfessional?> GetByIdPublicAsync(
+        Guid id, Guid tenantId, Guid storeId, CancellationToken ct = default)
+        => await _context.SvcProfessionals
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId && x.StoreId == storeId, ct);
+
     public async Task AddAsync(SvcProfessional entity, CancellationToken ct = default)
         => await _context.SvcProfessionals.AddAsync(entity, ct);
 

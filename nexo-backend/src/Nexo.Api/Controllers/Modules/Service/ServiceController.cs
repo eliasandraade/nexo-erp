@@ -22,15 +22,18 @@ public class ServiceController : ControllerBase
     private readonly ServicePresetService _presets;
     private readonly SvcSettingsService _settings;
     private readonly IValidator<SetServicePresetRequest> _setPresetValidator;
+    private readonly IValidator<UpdatePublicBookingRequest> _publicBookingValidator;
 
     public ServiceController(
         ServicePresetService presets,
         SvcSettingsService settings,
-        IValidator<SetServicePresetRequest> setPresetValidator)
+        IValidator<SetServicePresetRequest> setPresetValidator,
+        IValidator<UpdatePublicBookingRequest> publicBookingValidator)
     {
         _presets = presets;
         _settings = settings;
         _setPresetValidator = setPresetValidator;
+        _publicBookingValidator = publicBookingValidator;
     }
 
     /// <summary>
@@ -60,5 +63,22 @@ public class ServiceController : ControllerBase
     {
         await _setPresetValidator.ValidateAndThrowAsync(request, ct);
         return Ok(await _settings.SetPresetAsync(request.PresetKey, ct));
+    }
+
+    /// <summary>Returns the public booking configuration for the active store (defaults when not onboarded).</summary>
+    [HttpGet("settings/public-booking")]
+    public async Task<ActionResult<PublicBookingSettingsDto>> GetPublicBooking(CancellationToken ct)
+        => Ok(await _settings.GetPublicBookingAsync(ct));
+
+    /// <summary>
+    /// Updates the public booking configuration. The store must have chosen a preset first
+    /// (otherwise 422). The public slug is managed separately via <c>PATCH /api/stores/{id}/public-slug</c>.
+    /// </summary>
+    [HttpPut("settings/public-booking")]
+    public async Task<ActionResult<PublicBookingSettingsDto>> UpdatePublicBooking(
+        [FromBody] UpdatePublicBookingRequest request, CancellationToken ct)
+    {
+        await _publicBookingValidator.ValidateAndThrowAsync(request, ct);
+        return Ok(await _settings.UpdatePublicBookingAsync(request, ct));
     }
 }

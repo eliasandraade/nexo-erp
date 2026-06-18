@@ -203,6 +203,32 @@ try
                     QueueLimit           = 0,
                 });
         });
+
+        // Public booking POST (portal de agendamento) — per-IP fixed window so an abusive client
+        // can't flood appointment creation. Defaults overridable via RateLimiting:PublicBooking:*.
+        var pubEnabled = builder.Configuration.GetValue("RateLimiting:PublicBooking:Enabled", true);
+        var pubPermit  = builder.Configuration.GetValue("RateLimiting:PublicBooking:PermitLimit", 15);
+        var pubWindow  = builder.Configuration.GetValue("RateLimiting:PublicBooking:WindowSeconds", 60);
+
+        options.AddPolicy("public-booking", httpContext =>
+        {
+            if (!pubEnabled)
+                return RateLimitPartition.GetNoLimiter("public-booking:disabled");
+
+            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
+                ? forwardedFor.Split(',')[0].Trim()
+                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+            return RateLimitPartition.GetFixedWindowLimiter($"pub-booking|{clientIp}", _ =>
+                new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit          = pubPermit,
+                    Window               = TimeSpan.FromSeconds(pubWindow),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit           = 0,
+                });
+        });
     });
 
     // ── Controllers ───────────────────────────────────────────────────────────

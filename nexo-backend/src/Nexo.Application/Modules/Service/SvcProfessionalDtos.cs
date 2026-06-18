@@ -13,6 +13,7 @@ public interface ISvcProfessionalFields
     string?  Phone { get; }
     string?  Email { get; }
     decimal? DefaultCommissionPercent { get; }
+    string?  WorkingHoursJson { get; }
 }
 
 /// <summary>Wire shape of a service professional. StoreId is exposed (Service is store-scoped); TenantId is not.</summary>
@@ -27,6 +28,7 @@ public sealed record SvcProfessionalDto(
     string?  Email,
     decimal? DefaultCommissionPercent,
     Guid?    UserId,
+    string?  WorkingHoursJson,
     bool     IsActive,
     DateTime CreatedAt,
     DateTime UpdatedAt);
@@ -39,9 +41,10 @@ public sealed record CreateSvcProfessionalRequest(
     string?  Phone = null,
     string?  Email = null,
     decimal? DefaultCommissionPercent = null,
-    Guid?    UserId = null) : ISvcProfessionalFields;
+    Guid?    UserId = null,
+    string?  WorkingHoursJson = null) : ISvcProfessionalFields;
 
-/// <summary>Update editable details + commission in one PUT. UserId is set only at creation in v1.</summary>
+/// <summary>Update editable details + commission + working hours in one PUT. UserId is set only at creation in v1.</summary>
 public sealed record UpdateSvcProfessionalRequest(
     string   Name,
     string?  Role = null,
@@ -49,4 +52,5 @@ public sealed record UpdateSvcProfessionalRequest(
     string?  Color = null,
     string?  Phone = null,
     string?  Email = null,
-    decimal? DefaultCommissionPercent = null) : ISvcProfessionalFields;
+    decimal? DefaultCommissionPercent = null,
+    string?  WorkingHoursJson = null) : ISvcProfessionalFields;

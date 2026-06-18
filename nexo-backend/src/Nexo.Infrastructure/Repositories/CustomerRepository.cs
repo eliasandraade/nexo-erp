@@ -73,6 +73,20 @@ public class CustomerRepository : ICustomerRepository
         => await _context.Customers.AnyAsync(
             x => x.DocumentNumber == documentNumber && (excludeId == null || x.Id != excludeId), ct);
 
+    public async Task<Customer?> GetByPhonePublicAsync(
+        Guid tenantId, string phone, CancellationToken ct = default)
+        => await _context.Customers
+            .IgnoreQueryFilters()
+            .Where(x => x.TenantId == tenantId && x.IsActive && x.Phone == phone)
+            .OrderBy(x => x.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<bool> DocumentExistsPublicAsync(
+        Guid tenantId, string documentNumber, CancellationToken ct = default)
+        => await _context.Customers
+            .IgnoreQueryFilters()
+            .AnyAsync(x => x.TenantId == tenantId && x.DocumentNumber == documentNumber, ct);
+
     public async Task AddAsync(Customer customer, CancellationToken ct = default)
         => await _context.Customers.AddAsync(customer, ct);
 
