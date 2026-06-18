@@ -1,37 +1,27 @@
-using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Modules.Service;
 
 namespace Nexo.Application.Modules.Service;
 
 /// <summary>
-/// Resolves the active Service preset (labels + capability flags) for the current tenant from
-/// its active module keys (decisions D1/D2; Q5 deterministic fallback via the registry).
+/// Resolves the active Service preset (labels + capability flags) for the current store from the
+/// chosen internal preset (SvcSettings), with a temporary legacy fallback to a per-vertical
+/// module key — both via <see cref="SvcSettingsService.ResolveEffectivePresetKeyAsync"/>.
 ///
-/// PR0 is read-only: a per-store SvcSettings override is out of scope and arrives with the
-/// engine — see docs/superpowers/specs/2026-06-17-orken-service-v1.md.
+/// Returns null when the store has not chosen a preset yet (not configured) → the controller
+/// answers NotFound and the frontend shows onboarding. No preset is ever auto-picked.
 /// </summary>
 public sealed class ServicePresetService
 {
-    private readonly ICurrentTenant _currentTenant;
-    private readonly ITenantRepository _tenants;
+    private readonly SvcSettingsService _settings;
 
-    public ServicePresetService(ICurrentTenant currentTenant, ITenantRepository tenants)
-    {
-        _currentTenant = currentTenant;
-        _tenants = tenants;
-    }
+    public ServicePresetService(SvcSettingsService settings) => _settings = settings;
 
-    /// <summary>
-    /// Returns the resolved preset, or null when the tenant has no active service-family
-    /// module (the family gate normally prevents this from being reached).
-    /// </summary>
     public async Task<ServicePresetDto?> GetActivePresetAsync(CancellationToken ct = default)
     {
-        if (!_currentTenant.IsResolved) return null;
+        var key = await _settings.ResolveEffectivePresetKeyAsync(ct);
+        if (key is null) return null;
 
-        var activeKeys = await _tenants.GetActiveModuleKeysAsync(_currentTenant.Id, ct);
-        var preset = ServicePresetRegistry.Resolve(activeKeys);
-
+        var preset = ServicePresetRegistry.GetByKey(key);
         return preset is null
             ? null
             : new ServicePresetDto(preset.Key, preset.DisplayName, preset.Labels, preset.Capabilities);

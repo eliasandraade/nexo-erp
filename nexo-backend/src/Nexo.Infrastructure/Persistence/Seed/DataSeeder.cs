@@ -5,6 +5,7 @@ using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Domain.Modules.Interpreter;
+using Nexo.Domain.Modules.Service;
 using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Infrastructure.Persistence.Seed;
@@ -534,25 +535,56 @@ public class DataSeeder
                 "Seed: {Count} service-family ModuleDefinitions created (IsPublished=false).", created);
         }
 
-        // 2. Grant a sample service-family key to the default tenant (dev/test convenience).
+        // 2. The single commercial Service module — published (v1.1 entitlement model).
+        if (!await _context.ModuleDefinitions.AnyAsync(m => m.Key == ServicePresetRegistry.Family, ct))
+        {
+            var serviceModule = ModuleDefinition.Create(
+                key: ServicePresetRegistry.Family, name: "Orken Service",
+                priceMonthly: 97m, priceAnnual: 870m, priceLifetime: 1490m);
+            serviceModule.Publish();
+            _context.ModuleDefinitions.Add(serviceModule);
+            await _context.SaveChangesAsync(ct);
+            _logger.LogInformation("Seed: 'service' ModuleDefinition created (published).");
+        }
+
+        // 3. Grant the single 'service' module to the default tenant and configure a sample preset
+        //    for its default store, so the engine is exercisable in dev/test (mirrors the new flow:
+        //    commercial module + per-store preset, NOT a per-vertical module).
         var tenant = await _context.Tenants.FirstOrDefaultAsync(ct);
         if (tenant is null)
         {
-            _logger.LogDebug("Seed: no tenant found — skipping service-family subscription.");
+            _logger.LogDebug("Seed: no tenant found — skipping service subscription.");
             return;
         }
 
-        const string sampleKey = "salao-beleza";
-        var alreadySubscribed = await _context.ModuleSubscriptions
+        var hasService = await _context.ModuleSubscriptions
             .IgnoreQueryFilters()
-            .AnyAsync(s => s.TenantId == tenant.Id && s.ModuleKey == sampleKey, ct);
-
-        if (!alreadySubscribed)
+            .AnyAsync(s => s.TenantId == tenant.Id && s.ModuleKey == ServicePresetRegistry.Family, ct);
+        if (!hasService)
         {
-            _context.ModuleSubscriptions.Add(ModuleSubscription.CreateAdminGrant(tenant.Id, sampleKey));
+            _context.ModuleSubscriptions.Add(
+                ModuleSubscription.CreateAdminGrant(tenant.Id, ServicePresetRegistry.Family));
             await _context.SaveChangesAsync(ct);
-            _logger.LogInformation(
-                "Seed: '{Key}' (service family) granted to tenant {TenantId}.", sampleKey, tenant.Id);
+            _logger.LogInformation("Seed: 'service' module granted to tenant {TenantId}.", tenant.Id);
+        }
+
+        var store = await _context.Stores
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.TenantId == tenant.Id, ct);
+        if (store is not null)
+        {
+            var hasSettings = await _context.SvcSettings
+                .IgnoreQueryFilters()
+                .AnyAsync(x => x.TenantId == tenant.Id && x.StoreId == store.Id, ct);
+            if (!hasSettings)
+            {
+                const string samplePreset = "salao-beleza";
+                _context.SvcSettings.Add(SvcSettings.CreateForStore(tenant.Id, store.Id, samplePreset));
+                await _context.SaveChangesAsync(ct);
+                _logger.LogInformation(
+                    "Seed: SvcSettings preset '{Preset}' configured for tenant {TenantId} store {StoreId}.",
+                    samplePreset, tenant.Id, store.Id);
+            }
         }
     }
 
