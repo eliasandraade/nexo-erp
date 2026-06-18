@@ -8,6 +8,7 @@ import { getServicePreset, type ServicePresetDto } from "../api/service.api";
 export const serviceKeys = {
   all: ["service"] as const,
   preset: () => [...serviceKeys.all, "preset"] as const,
+  settings: () => [...serviceKeys.all, "settings"] as const,
 };
 
 /**

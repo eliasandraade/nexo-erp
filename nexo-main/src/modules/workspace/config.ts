@@ -1,6 +1,5 @@
 import { Store, UtensilsCrossed, HardHat, ConciergeBell } from "lucide-react";
 import type { AuthSession } from "@/modules/auth/types";
-import { SERVICE_FAMILY_KEYS } from "@/modules/service/lib/service-family";
 import type { WorkspaceDef, WorkspaceId } from "./types";
 
 /**
@@ -43,9 +42,7 @@ export const WORKSPACES: WorkspaceDef[] = [
   },
   {
     id: "service",
-    // Logical family key — never appears literally in session.modules; matched via moduleKeys.
     moduleKey: "service",
-    moduleKeys: SERVICE_FAMILY_KEYS,
     name: "Orken Service",
     shortName: "Service",
     description: "Agenda, ordens de serviço, pacotes e pagamentos.",
@@ -70,11 +67,7 @@ export function getWorkspace(id: WorkspaceId): WorkspaceDef {
 
 /** Workspaces the tenant actually has an active module for, in display order. */
 export function availableWorkspaces(session: Pick<AuthSession, "modules">): WorkspaceDef[] {
-  return WORKSPACES.filter(
-    (w) =>
-      session.modules.includes(w.moduleKey) ||
-      w.moduleKeys?.some((k) => session.modules.includes(k))
-  );
+  return WORKSPACES.filter((w) => session.modules.includes(w.moduleKey));
 }
 
 /**

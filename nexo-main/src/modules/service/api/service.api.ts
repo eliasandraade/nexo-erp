@@ -46,6 +46,16 @@ export interface ServicePresetDto {
 
 export const getServicePreset = () => apiClient.get<ServicePresetDto>("/v1/service/preset");
 
+// ── Settings (per-store internal preset — v1.1 single-module model) ─────────────
+export interface ServiceSettingsDto {
+  isConfigured: boolean;
+  presetKey: string | null;
+}
+export const getServiceSettings = () =>
+  apiClient.get<ServiceSettingsDto>("/v1/service/settings");
+export const setServicePreset = (presetKey: string) =>
+  apiClient.put<ServiceSettingsDto>("/v1/service/settings/preset", { presetKey });
+
 // ── Professionals (PR1) ────────────────────────────────────────────────────────
 export interface SvcProfessionalDto {
   id: string;
