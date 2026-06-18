@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, MoreHorizontal, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -22,12 +22,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatCurrency, formatDate } from "@/lib/formatters";
+import { formatCurrency } from "@/lib/formatters";
 import { ApiError } from "@/services/api-client";
 import { useCustomers } from "@/modules/customers/hooks/use-customers";
 import { useOrder, useChangeOrderStatus, useAddOrderItem, useRemoveOrderItem } from "../hooks/useOrders";
 import { useCatalog } from "../hooks/useCatalog";
-import { useOrderPaymentSummary, usePayments, useVoidPayment } from "../hooks/usePayments";
 import { useServicePreset } from "../context/ServicePresetContext";
 import {
   ORDER_STATUS_LABELS,
@@ -36,8 +35,7 @@ import {
   allowedOrderTransitions,
   isOrderMutable,
 } from "../lib/order-status";
-import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_VARIANTS } from "../lib/payment";
-import { PaymentDialog } from "../components/PaymentDialog";
+import { PaymentsPanel } from "../components/PaymentsPanel";
 
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -48,17 +46,13 @@ export default function OrderDetailPage() {
   const { data: order, isLoading, isError, refetch } = useOrder(id);
   const { data: customers } = useCustomers(false);
   const { data: catalog } = useCatalog(true);
-  const summaryQ = useOrderPaymentSummary(id);
-  const paymentsQ = usePayments(id ? { orderId: id } : {});
 
   const changeStatus = useChangeOrderStatus();
   const addItem = useAddOrderItem();
   const removeItem = useRemoveOrderItem();
-  const voidPayment = useVoidPayment();
 
   const [newItemId, setNewItemId] = useState("");
   const [newQty, setNewQty] = useState("1");
-  const [payOpen, setPayOpen] = useState(false);
 
   if (isLoading) {
     return <div className="space-y-4"><Skeleton className="h-9 w-64" /><Skeleton className="h-72 w-full" /></div>;
@@ -103,19 +97,6 @@ export default function OrderDetailPage() {
     try { await removeItem.mutateAsync({ id: order.id, itemId }); }
     catch (e) { toast.error(e instanceof ApiError ? e.message : "Não foi possível remover o item."); }
   };
-
-  const handleVoid = (paymentId: string) =>
-    voidPayment.mutate(
-      { id: paymentId, reason: null },
-      {
-        onSuccess: () => toast.success("Pagamento estornado."),
-        onError: (e) => toast.error(e instanceof ApiError ? e.message : "Não foi possível estornar."),
-      }
-    );
-
-  const summary = summaryQ.data;
-  const remaining = summary?.remainingAmount ?? 0;
-  const payments = paymentsQ.data ?? [];
 
   return (
     <div className="space-y-6">
@@ -209,74 +190,7 @@ export default function OrderDetailPage() {
         )}
       </SectionCard>
 
-      {/* Payments */}
-      <SectionCard
-        title="Pagamentos"
-        actions={
-          <Button
-            size="sm"
-            onClick={() => setPayOpen(true)}
-            disabled={order.status === "Cancelled" || remaining <= 0}
-          >
-            <Plus className="mr-1.5 h-4 w-4" /> Registrar pagamento
-          </Button>
-        }
-      >
-        {summary && (
-          <div className="mb-4 grid grid-cols-3 gap-3">
-            <div className="rounded-md border border-border p-3">
-              <p className="text-[11px] text-muted-foreground">Total</p>
-              <p className="text-[15px] font-semibold text-foreground">{formatCurrency(summary.totalAmount)}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-[11px] text-muted-foreground">Pago</p>
-              <p className="text-[15px] font-semibold text-success">{formatCurrency(summary.paidAmount)}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-[11px] text-muted-foreground">Em aberto</p>
-              <p className="text-[15px] font-semibold text-foreground">{formatCurrency(summary.remainingAmount)}</p>
-            </div>
-          </div>
-        )}
-        {summary?.isFullyPaid && (
-          <div className="mb-3"><StatusBadge variant="success" label="Quitado" dot /></div>
-        )}
-
-        {payments.length === 0 ? (
-          <p className="py-4 text-center text-[12.5px] text-muted-foreground">Nenhum pagamento registrado.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {payments.map((p) => (
-              <div key={p.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-foreground">{formatCurrency(p.amount)}</p>
-                  <p className="text-[11.5px] text-muted-foreground">
-                    {PAYMENT_METHOD_LABELS[p.method]} · {formatDate(p.paidAt)}
-                  </p>
-                </div>
-                <StatusBadge variant={PAYMENT_STATUS_VARIANTS[p.status]} label={PAYMENT_STATUS_LABELS[p.status]} />
-                {p.status === "Paid" && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4" /></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleVoid(p.id)}>Estornar</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
-
-      <PaymentDialog
-        open={payOpen}
-        onClose={() => setPayOpen(false)}
-        target={{ kind: "order", id: order.id }}
-        suggestedAmount={remaining}
-      />
+      <PaymentsPanel target={{ kind: "order", id: order.id }} canRecord={order.status !== "Cancelled"} />
     </div>
   );
 }

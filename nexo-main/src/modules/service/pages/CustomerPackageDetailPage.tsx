@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, MoreHorizontal, Plus } from "lucide-react";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -14,20 +14,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/formatters";
+import { formatDate, formatDateTime } from "@/lib/formatters";
 import { ApiError } from "@/services/api-client";
 import { useCustomers } from "@/modules/customers/hooks/use-customers";
 import { useCustomerPackage, useCancelCustomerPackage } from "../hooks/useCustomerPackages";
 import { usePackages } from "../hooks/usePackages";
-import { useCustomerPackagePaymentSummary, usePayments, useVoidPayment } from "../hooks/usePayments";
 import {
   CUSTOMER_PACKAGE_STATUS_LABELS,
   CUSTOMER_PACKAGE_STATUS_VARIANTS,
   isCustomerPackageActive,
 } from "../lib/customer-package-status";
-import { PAYMENT_METHOD_LABELS, PAYMENT_STATUS_LABELS, PAYMENT_STATUS_VARIANTS } from "../lib/payment";
 import { ConsumePackageDialog } from "../components/ConsumePackageDialog";
-import { PaymentDialog } from "../components/PaymentDialog";
+import { PaymentsPanel } from "../components/PaymentsPanel";
 
 export default function CustomerPackageDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -36,13 +34,9 @@ export default function CustomerPackageDetailPage() {
   const { data: cp, isLoading, isError, refetch } = useCustomerPackage(id);
   const { data: customers } = useCustomers(false);
   const { data: packages } = usePackages(undefined);
-  const summaryQ = useCustomerPackagePaymentSummary(id);
-  const paymentsQ = usePayments(id ? { customerPackageId: id } : {});
   const cancel = useCancelCustomerPackage();
-  const voidPayment = useVoidPayment();
 
   const [consumeOpen, setConsumeOpen] = useState(false);
-  const [payOpen, setPayOpen] = useState(false);
 
   if (isLoading) {
     return <div className="space-y-4"><Skeleton className="h-9 w-64" /><Skeleton className="h-72 w-full" /></div>;
@@ -64,20 +58,10 @@ export default function CustomerPackageDetailPage() {
     cp.items.find((it) => it.catalogItemId === catalogItemId)?.nameSnapshot ?? "Serviço";
   const active = isCustomerPackageActive(cp.status);
 
-  const summary = summaryQ.data;
-  const remaining = summary?.remainingAmount ?? 0;
-  const payments = paymentsQ.data ?? [];
-
   const handleCancel = () =>
     cancel.mutate(cp.id, {
       onSuccess: () => toast.success("Pacote cancelado."),
       onError: (e) => toast.error(e instanceof ApiError ? e.message : "Não foi possível cancelar."),
-    });
-
-  const handleVoid = (paymentId: string) =>
-    voidPayment.mutate({ id: paymentId, reason: null }, {
-      onSuccess: () => toast.success("Pagamento estornado."),
-      onError: (e) => toast.error(e instanceof ApiError ? e.message : "Não foi possível estornar."),
     });
 
   return (
@@ -146,61 +130,9 @@ export default function CustomerPackageDetailPage() {
         )}
       </SectionCard>
 
-      {/* Payments */}
-      <SectionCard
-        title="Pagamentos"
-        actions={
-          <Button size="sm" onClick={() => setPayOpen(true)} disabled={!active || remaining <= 0}>
-            <Plus className="mr-1.5 h-4 w-4" /> Registrar pagamento
-          </Button>
-        }
-      >
-        {summary && (
-          <div className="mb-4 grid grid-cols-3 gap-3">
-            <div className="rounded-md border border-border p-3">
-              <p className="text-[11px] text-muted-foreground">Total</p>
-              <p className="text-[15px] font-semibold text-foreground">{formatCurrency(summary.totalAmount)}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-[11px] text-muted-foreground">Pago</p>
-              <p className="text-[15px] font-semibold text-success">{formatCurrency(summary.paidAmount)}</p>
-            </div>
-            <div className="rounded-md border border-border p-3">
-              <p className="text-[11px] text-muted-foreground">Em aberto</p>
-              <p className="text-[15px] font-semibold text-foreground">{formatCurrency(summary.remainingAmount)}</p>
-            </div>
-          </div>
-        )}
-
-        {payments.length === 0 ? (
-          <p className="py-4 text-center text-[12.5px] text-muted-foreground">Nenhum pagamento registrado.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {payments.map((p) => (
-              <div key={p.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-foreground">{formatCurrency(p.amount)}</p>
-                  <p className="text-[11.5px] text-muted-foreground">{PAYMENT_METHOD_LABELS[p.method]} · {formatDate(p.paidAt)}</p>
-                </div>
-                <StatusBadge variant={PAYMENT_STATUS_VARIANTS[p.status]} label={PAYMENT_STATUS_LABELS[p.status]} />
-                {p.status === "Paid" && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7"><MoreHorizontal className="h-4 w-4" /></Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleVoid(p.id)}>Estornar</DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </SectionCard>
+      <PaymentsPanel target={{ kind: "customer-package", id: cp.id }} canRecord={active} />
 
       <ConsumePackageDialog open={consumeOpen} customerPackage={cp} onClose={() => setConsumeOpen(false)} />
-      <PaymentDialog open={payOpen} onClose={() => setPayOpen(false)} target={{ kind: "customer-package", id: cp.id }} suggestedAmount={remaining} />
     </div>
   );
 }
