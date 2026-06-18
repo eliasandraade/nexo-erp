@@ -108,7 +108,7 @@ public class UpdateSvcSubjectRequestValidator : AbstractValidator<UpdateSvcSubje
 public class CreateSvcRecordEntryRequestValidator : AbstractValidator<CreateSvcRecordEntryRequest>
 {
     private static readonly SvcRecordContextType[] Supported =
-        { SvcRecordContextType.Customer, SvcRecordContextType.Subject };
+        { SvcRecordContextType.Customer, SvcRecordContextType.Subject, SvcRecordContextType.Order };
 
     public CreateSvcRecordEntryRequestValidator()
     {
@@ -149,4 +149,44 @@ public class ChangeSvcAppointmentStatusRequestValidator : AbstractValidator<Chan
             .IsInEnum().WithMessage("Invalid status.");
         RuleFor(x => x.Reason).MaximumLength(500).When(x => x.Reason is not null);
     }
+}
+
+public class CreateSvcOrderRequestValidator : AbstractValidator<CreateSvcOrderRequest>
+{
+    public CreateSvcOrderRequestValidator()
+    {
+        RuleFor(x => x.CustomerId).NotEmpty().WithMessage("CustomerId is required.");
+        RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+    }
+}
+
+public class UpdateSvcOrderRequestValidator : AbstractValidator<UpdateSvcOrderRequest>
+{
+    public UpdateSvcOrderRequestValidator()
+        => RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+}
+
+public class ChangeSvcOrderStatusRequestValidator : AbstractValidator<ChangeSvcOrderStatusRequest>
+{
+    public ChangeSvcOrderStatusRequestValidator()
+    {
+        RuleFor(x => x.Status).NotNull().WithMessage("Status is required.")
+            .IsInEnum().WithMessage("Invalid status.");
+        RuleFor(x => x.Reason).MaximumLength(500).When(x => x.Reason is not null);
+    }
+}
+
+public class AddSvcOrderItemRequestValidator : AbstractValidator<AddSvcOrderItemRequest>
+{
+    public AddSvcOrderItemRequestValidator()
+    {
+        RuleFor(x => x.CatalogItemId).NotEmpty().WithMessage("CatalogItemId is required.");
+        RuleFor(x => x.Quantity).GreaterThan(0m).WithMessage("Quantity must be positive.");
+    }
+}
+
+public class UpdateSvcOrderItemRequestValidator : AbstractValidator<UpdateSvcOrderItemRequest>
+{
+    public UpdateSvcOrderItemRequestValidator()
+        => RuleFor(x => x.Quantity).GreaterThan(0m).WithMessage("Quantity must be positive.");
 }

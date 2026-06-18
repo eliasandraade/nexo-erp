@@ -37,8 +37,8 @@ public class RecordsController : ControllerBase
     {
         if (contextType is null || contextId is null || contextId == Guid.Empty)
             return BadRequest(new { error = "contextType and contextId are required." });
-        if (contextType is not (SvcRecordContextType.Customer or SvcRecordContextType.Subject))
-            return BadRequest(new { error = "ContextType is not supported yet. Use Customer or Subject." });
+        if (contextType is not (SvcRecordContextType.Customer or SvcRecordContextType.Subject or SvcRecordContextType.Order))
+            return BadRequest(new { error = "ContextType is not supported yet. Use Customer, Subject, or Order." });
 
         return Ok(await _service.GetByContextAsync(contextType.Value, contextId.Value, ct));
     }
