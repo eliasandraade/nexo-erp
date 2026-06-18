@@ -9,6 +9,21 @@ export const serviceKeys = {
   all: ["service"] as const,
   preset: () => [...serviceKeys.all, "preset"] as const,
   settings: () => [...serviceKeys.all, "settings"] as const,
+
+  professionals: () => [...serviceKeys.all, "professionals"] as const,
+  professionalsList: (onlyActive: boolean) => [...serviceKeys.professionals(), { onlyActive }] as const,
+  professional: (id: string) => [...serviceKeys.professionals(), id] as const,
+
+  catalog: () => [...serviceKeys.all, "catalog"] as const,
+  catalogList: (onlyActive: boolean) => [...serviceKeys.catalog(), { onlyActive }] as const,
+  catalogItem: (id: string) => [...serviceKeys.catalog(), id] as const,
+
+  subjects: () => [...serviceKeys.all, "subjects"] as const,
+  subjectsList: (params: Record<string, unknown>) => [...serviceKeys.subjects(), params] as const,
+  subject: (id: string) => [...serviceKeys.subjects(), id] as const,
+
+  records: (contextType: string, contextId: string) =>
+    [...serviceKeys.all, "records", contextType, contextId] as const,
 };
 
 /**
