@@ -7,6 +7,8 @@ import type { CreateTenantInput } from "../types";
 const AVAILABLE_MODULES = [
   { key: "varejo",      label: "Varejo" },
   { key: "restaurante", label: "Restaurante" },
+  { key: "build",       label: "ORKEN Build" },
+  { key: "service",     label: "ORKEN Service" },
 ];
 
 const BUSINESS_TYPES = [

@@ -28,6 +28,25 @@ public static class ServicePresetRegistry
         && All.Any(p => string.Equals(p.Key, moduleKey, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
+    /// True when the module key entitles the tenant to the Service engine: the single commercial
+    /// module <see cref="Family"/> ("service"), OR — temporary legacy fallback — any per-vertical
+    /// family key granted before the single-module model. The internal preset is configured
+    /// separately (SvcSettings), not derived from the module key.
+    /// </summary>
+    public static bool IsServiceEntitlement(string? moduleKey) =>
+        string.Equals(moduleKey, Family, StringComparison.OrdinalIgnoreCase)
+        || IsServiceFamilyKey(moduleKey);
+
+    /// <summary>Resolves a single preset by its exact key (the chosen vertical). Null when unknown.</summary>
+    public static ServicePreset? GetByKey(string? presetKey) =>
+        string.IsNullOrWhiteSpace(presetKey)
+            ? null
+            : All.FirstOrDefault(p => string.Equals(p.Key, presetKey, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>True when <paramref name="presetKey"/> is a valid internal preset (one of the 9 verticals).</summary>
+    public static bool IsValidPresetKey(string? presetKey) => GetByKey(presetKey) is not null;
+
+    /// <summary>
     /// Resolves the active preset from a tenant's active module keys. Non-family keys are
     /// ignored. Returns null when no service-family key is active.
     /// </summary>

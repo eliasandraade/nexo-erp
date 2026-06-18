@@ -36,12 +36,14 @@ const MODULE_LABELS: Record<string, string> = {
   varejo:      "Varejo",
   restaurante: "Restaurante",
   build:       "ORKEN Build",
+  service:     "ORKEN Service",
 };
 
 const AVAILABLE_MODULES = [
   { key: "varejo",      label: "Varejo" },
   { key: "restaurante", label: "Restaurante" },
   { key: "build",       label: "ORKEN Build" },
+  { key: "service",     label: "ORKEN Service" },
 ];
 
 const ROLE_COLORS: Record<string, string> = {

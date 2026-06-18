@@ -121,4 +121,44 @@ public class ServicePresetRegistryTests
         var priorities = ServicePresetRegistry.All.Select(p => p.Priority).ToList();
         priorities.Should().OnlyHaveUniqueItems();
     }
+
+    // ── v1.1: single commercial module ("service") vs internal preset keys ────────
+
+    [Theory]
+    [InlineData("salao-beleza")]
+    [InlineData("Pet-Shop")] // case-insensitive
+    public void GetByKey_and_IsValidPresetKey_accept_a_vertical_preset(string key)
+    {
+        ServicePresetRegistry.GetByKey(key).Should().NotBeNull();
+        ServicePresetRegistry.IsValidPresetKey(key).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("service")] // the commercial module key is NOT a preset key
+    [InlineData("varejo")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void GetByKey_and_IsValidPresetKey_reject_non_preset_keys(string? key)
+    {
+        ServicePresetRegistry.GetByKey(key).Should().BeNull();
+        ServicePresetRegistry.IsValidPresetKey(key).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("service")]      // single commercial module
+    [InlineData("salao-beleza")] // legacy per-vertical key (temporary fallback)
+    [InlineData("Service")]      // case-insensitive
+    public void IsServiceEntitlement_is_true_for_the_service_module_and_legacy_verticals(string key)
+    {
+        ServicePresetRegistry.IsServiceEntitlement(key).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("varejo")]
+    [InlineData("build")]
+    [InlineData("")]
+    public void IsServiceEntitlement_is_false_for_non_service_modules(string key)
+    {
+        ServicePresetRegistry.IsServiceEntitlement(key).Should().BeFalse();
+    }
 }

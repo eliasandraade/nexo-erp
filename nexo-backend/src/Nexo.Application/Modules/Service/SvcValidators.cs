@@ -279,3 +279,14 @@ public class VoidSvcPaymentRequestValidator : AbstractValidator<VoidSvcPaymentRe
     public VoidSvcPaymentRequestValidator()
         => RuleFor(x => x.Reason).MaximumLength(500).When(x => x.Reason is not null);
 }
+
+public class SetServicePresetRequestValidator : AbstractValidator<SetServicePresetRequest>
+{
+    public SetServicePresetRequestValidator()
+    {
+        RuleFor(x => x.PresetKey)
+            .NotEmpty().WithMessage("PresetKey is required.")
+            .Must(ServicePresetRegistry.IsValidPresetKey)
+            .WithMessage("Invalid service preset key.");
+    }
+}
