@@ -68,6 +68,7 @@ const ServiceOverviewPage   = lazy(() => import("@/modules/service/pages/Service
 const ProfissionaisPage     = lazy(() => import("@/modules/service/pages/ProfissionaisPage"));
 const CatalogoPage          = lazy(() => import("@/modules/service/pages/CatalogoPage"));
 const SubjectsPage          = lazy(() => import("@/modules/service/pages/SubjectsPage"));
+const AgendaPage            = lazy(() => import("@/modules/service/pages/AgendaPage"));
 
 // Restaurante
 import { WaiterLayout }     from "@/app/layouts/WaiterLayout";
@@ -180,6 +181,7 @@ export function AppRouter() {
                   <Route element={<ServicePresetProvider />}>
                     <Route element={<MainAppLayout />}>
                       <Route path="/service" element={<ServiceOverviewPage />} />
+                      <Route path="/service/agenda" element={<AgendaPage />} />
                       <Route path="/service/profissionais" element={<ProfissionaisPage />} />
                       <Route path="/service/catalogo" element={<CatalogoPage />} />
                       <Route path="/service/subjects" element={<SubjectsPage />} />
