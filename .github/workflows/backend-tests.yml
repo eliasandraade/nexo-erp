@@ -1,0 +1,45 @@
+name: backend-tests
+
+# Minimal backend CI: build + unit + integration (Testcontainers PostgreSQL).
+# Runs only when backend code (or this workflow) changes, so frontend-only PRs are unaffected.
+on:
+  push:
+    paths:
+      - "nexo-backend/**"
+      - ".github/workflows/backend-tests.yml"
+  pull_request:
+    paths:
+      - "nexo-backend/**"
+      - ".github/workflows/backend-tests.yml"
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nexo-backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore Nexo.sln
+
+      - name: Build
+        run: dotnet build Nexo.sln --no-restore
+
+      - name: Unit tests
+        run: >-
+          dotnet test tests/Nexo.UnitTests/Nexo.UnitTests.csproj
+          --no-build --logger "console;verbosity=normal"
+
+      # Integration tests spin up a real PostgreSQL via Testcontainers — the ubuntu-latest
+      # runner has Docker available.
+      - name: Integration tests
+        run: >-
+          dotnet test tests/Nexo.IntegrationTests/Nexo.IntegrationTests.csproj
+          --no-build --logger "console;verbosity=normal"
