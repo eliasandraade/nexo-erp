@@ -190,3 +190,71 @@ public class UpdateSvcOrderItemRequestValidator : AbstractValidator<UpdateSvcOrd
     public UpdateSvcOrderItemRequestValidator()
         => RuleFor(x => x.Quantity).GreaterThan(0m).WithMessage("Quantity must be positive.");
 }
+
+public class CreateSvcPackageRequestValidator : AbstractValidator<CreateSvcPackageRequest>
+{
+    public CreateSvcPackageRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().WithMessage("Package name is required.").MaximumLength(200);
+        RuleFor(x => x.Price).GreaterThanOrEqualTo(0m).WithMessage("Price cannot be negative.");
+        RuleFor(x => x.ValidityDays).GreaterThan(0).When(x => x.ValidityDays.HasValue)
+            .WithMessage("ValidityDays must be positive when set.");
+        RuleFor(x => x.Description).MaximumLength(1000).When(x => x.Description is not null);
+    }
+}
+
+public class UpdateSvcPackageRequestValidator : AbstractValidator<UpdateSvcPackageRequest>
+{
+    public UpdateSvcPackageRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().WithMessage("Package name is required.").MaximumLength(200);
+        RuleFor(x => x.ValidityDays).GreaterThan(0).When(x => x.ValidityDays.HasValue)
+            .WithMessage("ValidityDays must be positive when set.");
+        RuleFor(x => x.Description).MaximumLength(1000).When(x => x.Description is not null);
+    }
+}
+
+public class UpdateSvcPackagePriceRequestValidator : AbstractValidator<UpdateSvcPackagePriceRequest>
+{
+    public UpdateSvcPackagePriceRequestValidator()
+        => RuleFor(x => x.Price).GreaterThanOrEqualTo(0m).WithMessage("Price cannot be negative.");
+}
+
+public class AddSvcPackageItemRequestValidator : AbstractValidator<AddSvcPackageItemRequest>
+{
+    public AddSvcPackageItemRequestValidator()
+    {
+        RuleFor(x => x.CatalogItemId).NotEmpty().WithMessage("CatalogItemId is required.");
+        RuleFor(x => x.IncludedQuantity).GreaterThan(0m).WithMessage("IncludedQuantity must be positive.");
+    }
+}
+
+public class UpdateSvcPackageItemRequestValidator : AbstractValidator<UpdateSvcPackageItemRequest>
+{
+    public UpdateSvcPackageItemRequestValidator()
+        => RuleFor(x => x.IncludedQuantity).GreaterThan(0m).WithMessage("IncludedQuantity must be positive.");
+}
+
+public class AssignSvcCustomerPackageRequestValidator : AbstractValidator<AssignSvcCustomerPackageRequest>
+{
+    public AssignSvcCustomerPackageRequestValidator()
+    {
+        RuleFor(x => x.PackageId).NotEmpty().WithMessage("PackageId is required.");
+        RuleFor(x => x.CustomerId).NotEmpty().WithMessage("CustomerId is required.");
+        RuleFor(x => x.StartsAt).Must(d => d.Kind == DateTimeKind.Utc)
+            .WithMessage("StartsAt must be UTC (use a trailing Z).");
+        RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+    }
+}
+
+public class ConsumeSvcPackageRequestValidator : AbstractValidator<ConsumeSvcPackageRequest>
+{
+    public ConsumeSvcPackageRequestValidator()
+    {
+        RuleFor(x => x.CatalogItemId).NotEmpty().WithMessage("CatalogItemId is required.");
+        RuleFor(x => x.Quantity).GreaterThan(0m).WithMessage("Quantity must be positive.");
+        RuleFor(x => x).Must(r => r.OrderItemId is null || r.OrderId is not null)
+            .WithMessage("OrderId is required when OrderItemId is provided.");
+        RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+    }
+}
