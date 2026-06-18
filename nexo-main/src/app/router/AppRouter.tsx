@@ -69,6 +69,12 @@ const ProfissionaisPage     = lazy(() => import("@/modules/service/pages/Profiss
 const CatalogoPage          = lazy(() => import("@/modules/service/pages/CatalogoPage"));
 const SubjectsPage          = lazy(() => import("@/modules/service/pages/SubjectsPage"));
 const AgendaPage            = lazy(() => import("@/modules/service/pages/AgendaPage"));
+const OrdensPage            = lazy(() => import("@/modules/service/pages/OrdensPage"));
+const OrderDetailPage       = lazy(() => import("@/modules/service/pages/OrderDetailPage"));
+const PacotesPage           = lazy(() => import("@/modules/service/pages/PacotesPage"));
+const CustomerPackagesPage  = lazy(() => import("@/modules/service/pages/CustomerPackagesPage"));
+const CustomerPackageDetailPage = lazy(() => import("@/modules/service/pages/CustomerPackageDetailPage"));
+const PagamentosPage        = lazy(() => import("@/modules/service/pages/PagamentosPage"));
 
 // Restaurante
 import { WaiterLayout }     from "@/app/layouts/WaiterLayout";
@@ -182,6 +188,12 @@ export function AppRouter() {
                     <Route element={<MainAppLayout />}>
                       <Route path="/service" element={<ServiceOverviewPage />} />
                       <Route path="/service/agenda" element={<AgendaPage />} />
+                      <Route path="/service/ordens" element={<OrdensPage />} />
+                      <Route path="/service/ordens/:id" element={<OrderDetailPage />} />
+                      <Route path="/service/pacotes" element={<PacotesPage />} />
+                      <Route path="/service/customer-packages" element={<CustomerPackagesPage />} />
+                      <Route path="/service/customer-packages/:id" element={<CustomerPackageDetailPage />} />
+                      <Route path="/service/pagamentos" element={<PagamentosPage />} />
                       <Route path="/service/profissionais" element={<ProfissionaisPage />} />
                       <Route path="/service/catalogo" element={<CatalogoPage />} />
                       <Route path="/service/subjects" element={<SubjectsPage />} />

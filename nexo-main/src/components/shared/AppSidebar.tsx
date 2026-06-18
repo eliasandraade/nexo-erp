@@ -61,6 +61,8 @@ export function SidebarContent({ onNav }: { onNav?: () => void }) {
     if (route.group === "service") {
       if (!hasService) return false;
       if (route.capability && !servicePreset?.capabilities?.[route.capability]) return false;
+      if (route.capabilityAny && !route.capabilityAny.some((c) => servicePreset?.capabilities?.[c]))
+        return false;
     }
     if (route.roles && session?.role && !route.roles.includes(session.role)) return false;
     // Show one operation at a time: a vertical group only appears in its own

@@ -23,6 +23,8 @@ import {
   BookMarked,
   Boxes,
   CalendarClock,
+  ClipboardList,
+  PackageCheck,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
@@ -51,6 +53,11 @@ export interface AppRoute {
    * family in the sidebar, not via `moduleKey`.
    */
   capability?: keyof ServiceCapabilities;
+  /**
+   * Service-only: shown when ANY of these capabilities is on. Used by surfaces with more than
+   * one enabling capability (e.g. Pagamentos needs orders OR packages).
+   */
+  capabilityAny?: (keyof ServiceCapabilities)[];
 }
 
 /** Roles that have full management access */
@@ -86,6 +93,10 @@ export const appRoutes: AppRoute[] = [
   // ── Service (Serviços) — management only; family-gated + capability-driven in the sidebar ──
   { path: "/service",                label: "Visão geral",   icon: ConciergeBell,     group: "service",     roles: MGMT },
   { path: "/service/agenda",         label: "Agenda",        icon: CalendarClock,     group: "service",     roles: MGMT, capability: "appointments" },
+  { path: "/service/ordens",         label: "Ordens",        icon: ClipboardList,     group: "service",     roles: MGMT, capability: "orders" },
+  { path: "/service/pacotes",        label: "Pacotes",       icon: Package,           group: "service",     roles: MGMT, capability: "packages" },
+  { path: "/service/customer-packages", label: "Pacotes de clientes", icon: PackageCheck, group: "service", roles: MGMT, capability: "packages" },
+  { path: "/service/pagamentos",     label: "Pagamentos",    icon: CreditCard,        group: "service",     roles: MGMT, capabilityAny: ["orders", "packages"] },
   { path: "/service/profissionais",  label: "Profissionais", icon: Users,             group: "service",     roles: MGMT },
   { path: "/service/catalogo",       label: "Catálogo",      icon: BookMarked,        group: "service",     roles: MGMT },
   { path: "/service/subjects",       label: "Cadastros",     icon: Boxes,             group: "service",     roles: MGMT, capability: "subjectKind" },
