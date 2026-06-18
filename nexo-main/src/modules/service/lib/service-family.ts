@@ -1,28 +1,40 @@
 /**
- * The Orken Service module family (decision D1): per-vertical billable SKUs that all unlock
- * the SAME Service engine. Mirrors the backend source of truth
- * `Nexo.Domain.Modules.Service.ServicePresetRegistry` — keep the two lists in sync.
+ * Orken Service is ONE commercial module (decision v1.1): module key `service`, display
+ * "Orken Service". The 9 verticals are INTERNAL presets (the "ramo"), chosen via in-app
+ * onboarding (PUT /v1/service/settings/preset) — they are NOT keys in `session.modules`.
  */
-export const SERVICE_FAMILY_KEYS = [
-  "clinica-medica",
-  "personal-trainer",
-  "nutricionista",
-  "oficina-mecanica",
-  "programador-autonomo",
-  "autoescola",
-  "pet-shop",
-  "salao-beleza",
-  "escola-idiomas",
-] as const;
+export const SERVICE_MODULE_KEY = "service";
 
-const FAMILY = new Set<string>(SERVICE_FAMILY_KEYS);
-
-/** True when `key` is one of the service-family verticals. */
-export function isServiceFamilyKey(key: string | undefined): boolean {
-  return !!key && FAMILY.has(key);
+/** True when the tenant holds the single 'service' commercial module. */
+export function hasServiceModule(modules: readonly string[] | undefined): boolean {
+  return !!modules && modules.includes(SERVICE_MODULE_KEY);
 }
 
-/** True when the tenant holds at least one active service-family module. */
-export function hasServiceModule(modules: readonly string[] | undefined): boolean {
-  return !!modules && modules.some(isServiceFamilyKey);
+export interface ServicePresetOption {
+  key: string;
+  label: string;
+}
+
+/**
+ * The 9 internal presets offered in onboarding. Mirrors the backend `ServicePresetRegistry`
+ * (keep in sync). After a preset is chosen, the resolved labels/capabilities come from
+ * GET /v1/service/preset.
+ */
+export const SERVICE_PRESET_OPTIONS: ServicePresetOption[] = [
+  { key: "clinica-medica",       label: "Clínicas Médicas e Odontológicas" },
+  { key: "personal-trainer",     label: "Personal Trainers" },
+  { key: "nutricionista",        label: "Nutricionistas" },
+  { key: "oficina-mecanica",     label: "Oficinas Mecânicas" },
+  { key: "programador-autonomo", label: "Programadores Autônomos" },
+  { key: "autoescola",           label: "Autoescolas" },
+  { key: "pet-shop",             label: "Pet Shops e Clínicas Veterinárias" },
+  { key: "salao-beleza",         label: "Salões de Beleza" },
+  { key: "escola-idiomas",       label: "Escolas de Idiomas" },
+];
+
+const PRESET_KEYS = new Set(SERVICE_PRESET_OPTIONS.map((o) => o.key));
+
+/** True when `key` is one of the 9 internal presets. */
+export function isValidPresetKey(key: string | undefined): boolean {
+  return !!key && PRESET_KEYS.has(key);
 }

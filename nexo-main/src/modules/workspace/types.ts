@@ -2,12 +2,12 @@ import type { LucideIcon } from "lucide-react";
 import type { RouteGroup } from "@/app/router/routes";
 
 /** Stable identifier for a product workspace (the "área de trabalho"). */
-export type WorkspaceId = "store" | "menu" | "build";
+export type WorkspaceId = "store" | "menu" | "build" | "service";
 
 /**
  * A product workspace = the lens a tenant operates through.
  * Maps 1:1 to a backend module entitlement key (session.modules):
- *   store → "varejo" · menu → "restaurante" · build → "build"
+ *   store → "varejo" · menu → "restaurante" · build → "build" · service → "service"
  */
 export interface WorkspaceDef {
   id: WorkspaceId;

@@ -19,9 +19,11 @@ import {
   Globe,
   ChefHat,
   HardHat,
+  ConciergeBell,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
+import type { ServiceCapabilities } from "@/modules/service/api/service.api";
 
 export type RouteGroup = "core" | "inventario" | "varejo" | "restaurante" | "build" | "service" | "admin";
 
@@ -40,6 +42,12 @@ export interface AppRoute {
    * Undefined = shown to all authenticated users (use sparingly).
    */
   roles?: UserRole[];
+  /**
+   * Service-only: the route is shown only when the resolved preset has this capability on
+   * (decision D2). Undefined = always shown for the group. The "service" group is gated as a
+   * family in the sidebar, not via `moduleKey`.
+   */
+  capability?: keyof ServiceCapabilities;
 }
 
 /** Roles that have full management access */
@@ -71,6 +79,9 @@ export const appRoutes: AppRoute[] = [
 
   // ── Build (Obras) — management only ─────────────────────────────────────
   { path: "/build",                  label: "Obras",         icon: HardHat,           group: "build",       moduleKey: "build",       roles: MGMT },
+
+  // ── Service (Serviços) — management only; family-gated + capability-driven in the sidebar ──
+  { path: "/service",                label: "Visão geral",   icon: ConciergeBell,     group: "service",     roles: MGMT },
 
   // ── Admin — diretoria only ───────────────────────────────────────────────
   { path: "/usuarios",      label: "Usuários",       icon: UserCog,           group: "admin",       roles: ["diretoria"] },
