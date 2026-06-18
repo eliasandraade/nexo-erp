@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { appRoutes, type RouteGroup } from "@/app/router/routes";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { useWorkspace } from "@/modules/workspace/WorkspaceContext";
+import { useHasServiceModule } from "@/modules/service/hooks/useHasServiceModule";
+import { useServicePresetOptional } from "@/modules/service/context/ServicePresetContext";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 /** Vertical groups are scoped to the active workspace; the rest are shared. */
@@ -47,10 +49,19 @@ function getInitials(name: string): string {
 export function SidebarContent({ onNav }: { onNav?: () => void }) {
   const { session, logout } = useAuth();
   const { active } = useWorkspace();
+  const hasService = useHasServiceModule();
+  const servicePreset = useServicePresetOptional();
   const navigate = useNavigate();
 
   const visibleRoutes = appRoutes.filter((route) => {
     if (route.moduleKey && !session?.modules.includes(route.moduleKey)) return false;
+    // Service is a module family (decision D1): any vertical key unlocks the group, so it
+    // can't use a single `moduleKey`. Capability-gated surfaces (decision D2) appear only
+    // when the resolved preset enables them — preset is null outside the Service area.
+    if (route.group === "service") {
+      if (!hasService) return false;
+      if (route.capability && !servicePreset?.capabilities?.[route.capability]) return false;
+    }
     if (route.roles && session?.role && !route.roles.includes(session.role)) return false;
     // Show one operation at a time: a vertical group only appears in its own
     // workspace. Shared groups (core, inventário, admin) always pass through.
