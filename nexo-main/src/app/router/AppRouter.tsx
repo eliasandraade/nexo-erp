@@ -63,8 +63,11 @@ const PdvPage               = lazy(() => import("@/modules/sales/pages/PdvPage")
 const BuildProjectsPage     = lazy(() => import("@/modules/build/pages/BuildProjectsPage"));
 const BuildProjectDetailPage = lazy(() => import("@/modules/build/pages/BuildProjectDetailPage"));
 
-// Service (serviços) — engine shell; surfaces land in the stacked PRs
+// Service (serviços) — engine shell + cadastros; remaining surfaces land in the stacked PRs
 const ServiceOverviewPage   = lazy(() => import("@/modules/service/pages/ServiceOverviewPage"));
+const ProfissionaisPage     = lazy(() => import("@/modules/service/pages/ProfissionaisPage"));
+const CatalogoPage          = lazy(() => import("@/modules/service/pages/CatalogoPage"));
+const SubjectsPage          = lazy(() => import("@/modules/service/pages/SubjectsPage"));
 
 // Restaurante
 import { WaiterLayout }     from "@/app/layouts/WaiterLayout";
@@ -177,6 +180,9 @@ export function AppRouter() {
                   <Route element={<ServicePresetProvider />}>
                     <Route element={<MainAppLayout />}>
                       <Route path="/service" element={<ServiceOverviewPage />} />
+                      <Route path="/service/profissionais" element={<ProfissionaisPage />} />
+                      <Route path="/service/catalogo" element={<CatalogoPage />} />
+                      <Route path="/service/subjects" element={<SubjectsPage />} />
                     </Route>
                   </Route>
                 </Route>
