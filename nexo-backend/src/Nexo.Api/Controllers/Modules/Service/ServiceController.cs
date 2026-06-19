@@ -23,17 +23,20 @@ public class ServiceController : ControllerBase
     private readonly SvcSettingsService _settings;
     private readonly IValidator<SetServicePresetRequest> _setPresetValidator;
     private readonly IValidator<UpdatePublicBookingRequest> _publicBookingValidator;
+    private readonly IValidator<UpdatePortalBrandingRequest> _brandingValidator;
 
     public ServiceController(
         ServicePresetService presets,
         SvcSettingsService settings,
         IValidator<SetServicePresetRequest> setPresetValidator,
-        IValidator<UpdatePublicBookingRequest> publicBookingValidator)
+        IValidator<UpdatePublicBookingRequest> publicBookingValidator,
+        IValidator<UpdatePortalBrandingRequest> brandingValidator)
     {
         _presets = presets;
         _settings = settings;
         _setPresetValidator = setPresetValidator;
         _publicBookingValidator = publicBookingValidator;
+        _brandingValidator = brandingValidator;
     }
 
     /// <summary>
@@ -80,5 +83,17 @@ public class ServiceController : ControllerBase
     {
         await _publicBookingValidator.ValidateAndThrowAsync(request, ct);
         return Ok(await _settings.UpdatePublicBookingAsync(request, ct));
+    }
+
+    /// <summary>
+    /// Updates the public portal branding (logo, banner, brand color, WhatsApp, address, description)
+    /// for the active store, independently of the booking config. 422 when the store has no preset.
+    /// </summary>
+    [HttpPut("settings/branding")]
+    public async Task<ActionResult<PublicBookingSettingsDto>> UpdateBranding(
+        [FromBody] UpdatePortalBrandingRequest request, CancellationToken ct)
+    {
+        await _brandingValidator.ValidateAndThrowAsync(request, ct);
+        return Ok(await _settings.UpdatePortalBrandingAsync(request, ct));
     }
 }

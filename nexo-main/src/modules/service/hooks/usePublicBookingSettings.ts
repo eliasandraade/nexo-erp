@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getPublicBookingSettings,
   updatePublicBookingSettings,
+  updatePortalBranding,
   type PublicBookingSettingsDto,
   type UpdatePublicBookingRequest,
+  type UpdatePortalBrandingRequest,
 } from "../api/service.api";
 import { serviceKeys } from "./useServicePreset";
 
@@ -28,6 +30,18 @@ export function useUpdatePublicBookingSettings() {
     mutationFn: (body: UpdatePublicBookingRequest) => updatePublicBookingSettings(body),
     onSuccess: (data) => {
       // Seed the cache + invalidate so the sidebar/overview react immediately (Agenda visibility).
+      qc.setQueryData(serviceKeys.publicBooking(), data);
+      qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
+    },
+  });
+}
+
+/** Updates the portal branding (separate endpoint so it never collides with the booking config). */
+export function useUpdatePortalBranding() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdatePortalBrandingRequest) => updatePortalBranding(body),
+    onSuccess: (data) => {
       qc.setQueryData(serviceKeys.publicBooking(), data);
       qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
     },

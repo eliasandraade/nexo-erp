@@ -22,6 +22,8 @@ public class StorageController : ControllerBase
             ["restaurant-cover"] = "restaurant/cover",
             ["build-daily-log"]  = "build/daily-logs",
             ["service-record"]   = "service/records",
+            ["service-portal-logo"]  = "service/portal/logo",
+            ["service-portal-cover"] = "service/portal/cover",
         };
 
     // MIME type → file extension

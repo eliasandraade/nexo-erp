@@ -23,6 +23,7 @@ import {
 import { ProfessionalHoursDialog } from "../components/ProfessionalHoursDialog";
 import { PortalSlugSection, publicBookingUrl } from "../components/PortalSlugSection";
 import { PortalBookingSettingsForm } from "../components/PortalBookingSettingsForm";
+import { PortalBrandingForm } from "../components/PortalBrandingForm";
 
 export default function ServicePortalPage() {
   const { session } = useAuth();
@@ -82,7 +83,14 @@ export default function ServicePortalPage() {
         <PortalSlugSection storeId={storeId} currentSlug={slug} />
       </Section>
 
-      {/* 4. Configurações de agendamento */}
+      {/* 4. Identidade da loja */}
+      <Section title="Identidade da loja" description="Logo, capa, cor, contato e descrição exibidos no portal público.">
+        {settingsQ.data?.isConfigured
+          ? <PortalBrandingForm settings={settingsQ.data} />
+          : <p className="text-sm text-muted-foreground">Escolha o ramo (onboarding) para configurar a identidade.</p>}
+      </Section>
+
+      {/* 5. Configurações de agendamento */}
       <Section title="Configurações de agendamento" description="Como o portal oferece horários.">
         {settingsQ.data
           ? <PortalBookingSettingsForm settings={settingsQ.data} />

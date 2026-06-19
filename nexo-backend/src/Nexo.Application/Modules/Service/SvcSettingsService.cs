@@ -75,7 +75,9 @@ public class SvcSettingsService
             return new PublicBookingSettingsDto(
                 IsConfigured: false, PublicBookingEnabled: false, BookingDaysAhead: 14,
                 MinLeadMinutes: 120, SlotIntervalMinutes: 30, ShowPrices: true,
-                AutoConfirmAppointments: false, TimeZoneId: "America/Sao_Paulo");
+                AutoConfirmAppointments: false, TimeZoneId: "America/Sao_Paulo",
+                DisplayName: null, Description: null, LogoUrl: null, CoverImageUrl: null,
+                BrandColor: null, WhatsApp: null, Address: null);
 
         return Map(settings);
     }
@@ -96,6 +98,21 @@ public class SvcSettingsService
         return Map(settings);
     }
 
+    public async Task<PublicBookingSettingsDto> UpdatePortalBrandingAsync(
+        UpdatePortalBrandingRequest request, CancellationToken ct = default)
+    {
+        var settings = await _repo.GetForCurrentStoreAsync(ct)
+            ?? throw new DomainException("Choose the service vertical (preset) before setting branding.");
+
+        settings.UpdateBranding(
+            request.DisplayName, request.Description, request.LogoUrl, request.CoverImageUrl,
+            request.BrandColor, request.WhatsApp, request.Address);
+
+        _repo.Update(settings);
+        await _repo.SaveChangesAsync(ct);
+        return Map(settings);
+    }
+
     private static PublicBookingSettingsDto Map(SvcSettings s) => new(
         IsConfigured:            true,
         PublicBookingEnabled:    s.PublicBookingEnabled,
@@ -104,5 +121,12 @@ public class SvcSettingsService
         SlotIntervalMinutes:     s.SlotIntervalMinutes,
         ShowPrices:              s.ShowPrices,
         AutoConfirmAppointments: s.AutoConfirmAppointments,
-        TimeZoneId:              s.TimeZoneId);
+        TimeZoneId:              s.TimeZoneId,
+        DisplayName:             s.DisplayName,
+        Description:             s.Description,
+        LogoUrl:                 s.LogoUrl,
+        CoverImageUrl:           s.CoverImageUrl,
+        BrandColor:              s.BrandColor,
+        WhatsApp:                s.WhatsApp,
+        Address:                 s.Address);
 }

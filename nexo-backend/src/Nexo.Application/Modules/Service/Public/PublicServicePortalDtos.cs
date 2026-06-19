@@ -16,7 +16,15 @@ public sealed record PublicServicePortalDto(
     ServiceCapabilities Capabilities,
     bool                ShowPrices,
     bool                RequiresProfessionalSelection,
-    bool                IsBookingEnabled);
+    bool                IsBookingEnabled,
+    // Optional store branding (PR16) — null ⇒ the adaptive theme provides the identity.
+    string?             DisplayName,
+    string?             Description,
+    string?             LogoUrl,
+    string?             CoverImageUrl,
+    string?             BrandColor,
+    string?             WhatsApp,
+    string?             Address);
 
 /// <summary>A bookable service. <see cref="Price"/> is null when the store hides prices.</summary>
 public sealed record PublicServiceCatalogItemDto(

@@ -16,21 +16,42 @@ public sealed record SetServicePresetRequest(string PresetKey);
 /// chosen a preset yet — booking cannot be enabled before onboarding.
 /// </summary>
 public sealed record PublicBookingSettingsDto(
-    bool   IsConfigured,
-    bool   PublicBookingEnabled,
-    int    BookingDaysAhead,
-    int    MinLeadMinutes,
-    int    SlotIntervalMinutes,
-    bool   ShowPrices,
-    bool   AutoConfirmAppointments,
-    string TimeZoneId);
+    bool    IsConfigured,
+    bool    PublicBookingEnabled,
+    int     BookingDaysAhead,
+    int     MinLeadMinutes,
+    int     SlotIntervalMinutes,
+    bool    ShowPrices,
+    bool    AutoConfirmAppointments,
+    string  TimeZoneId,
+    // ── Branding (PR16) ──
+    string? DisplayName,
+    string? Description,
+    string? LogoUrl,
+    string? CoverImageUrl,
+    string? BrandColor,
+    string? WhatsApp,
+    string? Address);
 
-/// <summary>Updates the public booking configuration for the active store.</summary>
+/// <summary>Updates the public booking configuration for the active store (branding is separate).</summary>
 public sealed record UpdatePublicBookingRequest(
-    bool   PublicBookingEnabled,
-    int    BookingDaysAhead,
-    int    MinLeadMinutes,
-    int    SlotIntervalMinutes,
-    bool   ShowPrices,
-    bool   AutoConfirmAppointments,
-    string TimeZoneId);
+    bool    PublicBookingEnabled,
+    int     BookingDaysAhead,
+    int     MinLeadMinutes,
+    int     SlotIntervalMinutes,
+    bool    ShowPrices,
+    bool    AutoConfirmAppointments,
+    string  TimeZoneId);
+
+/// <summary>
+/// Updates the public portal branding for the active store — a separate endpoint so saving the
+/// booking config never touches branding and vice-versa. All fields optional; null/blank clears.
+/// </summary>
+public sealed record UpdatePortalBrandingRequest(
+    string? DisplayName,
+    string? Description,
+    string? LogoUrl,
+    string? CoverImageUrl,
+    string? BrandColor,
+    string? WhatsApp,
+    string? Address);
