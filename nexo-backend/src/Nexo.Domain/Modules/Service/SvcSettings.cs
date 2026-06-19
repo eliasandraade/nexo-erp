@@ -44,6 +44,23 @@ public class SvcSettings : StoreEntity
     /// <summary>IANA timezone the working hours are expressed in (wall-clock → UTC). Default America/Sao_Paulo.</summary>
     public string TimeZoneId { get; private set; } = "America/Sao_Paulo";
 
+    // ── Public portal branding (PR16) ────────────────────────────────────────────
+    // Optional store identity rendered on the public portal. Null ⇒ the adaptive theme provides
+    // the identity (the frontend already degrades gracefully).
+
+    /// <summary>Public display name; falls back to the store name when null.</summary>
+    public string? DisplayName { get; private set; }
+    /// <summary>Short public tagline shown under the store name.</summary>
+    public string? Description { get; private set; }
+    public string? LogoUrl { get; private set; }
+    public string? CoverImageUrl { get; private set; }
+    /// <summary>Brand accent as a #rrggbb hex; overrides the theme accent when set.</summary>
+    public string? BrandColor { get; private set; }
+    /// <summary>WhatsApp contact, digits only.</summary>
+    public string? WhatsApp { get; private set; }
+    /// <summary>Free-text public address line.</summary>
+    public string? Address { get; private set; }
+
     /// <summary>App-path factory: StoreId is auto-injected on INSERT by the interceptor.</summary>
     public static SvcSettings Create(Guid tenantId, string presetKey)
     {
@@ -78,6 +95,43 @@ public class SvcSettings : StoreEntity
         TimeZoneId              = timeZoneId.Trim();
         SetUpdatedAt();
     }
+
+    /// <summary>
+    /// Updates the optional public branding. Strings are trimmed (blank → null); the brand color
+    /// must be a #rrggbb hex or null; WhatsApp is reduced to digits. Length-guarded so a bad
+    /// payload can't grow the columns.
+    /// </summary>
+    public void UpdateBranding(
+        string? displayName, string? description, string? logoUrl, string? coverImageUrl,
+        string? brandColor, string? whatsApp, string? address)
+    {
+        var color = Clean(brandColor);
+        if (color is not null && !IsHexColor(color))
+            throw new DomainException("BrandColor must be a #rrggbb hex value.");
+
+        DisplayName   = Clamp(Clean(displayName), 120);
+        Description   = Clamp(Clean(description), 280);
+        LogoUrl       = Clamp(Clean(logoUrl), 500);
+        CoverImageUrl = Clamp(Clean(coverImageUrl), 500);
+        BrandColor    = color?.ToLowerInvariant();
+        WhatsApp      = Clamp(DigitsOnly(whatsApp), 20);
+        Address       = Clamp(Clean(address), 200);
+        SetUpdatedAt();
+    }
+
+    /// <summary>True for a #rrggbb hex string. Non-regex on purpose (avoids a regex security hotspot).</summary>
+    public static bool IsHexColor(string? s) =>
+        s is { Length: 7 } && s[0] == '#' && s.Skip(1).All(Uri.IsHexDigit);
+
+    private static string? Clean(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+    private static string? DigitsOnly(string? v)
+    {
+        if (string.IsNullOrWhiteSpace(v)) return null;
+        var digits = new string(v.Where(char.IsDigit).ToArray());
+        return digits.Length == 0 ? null : digits;
+    }
+    private static string? Clamp(string? v, int max) =>
+        v is null ? null : (v.Length <= max ? v : v[..max]);
 
     /// <summary>
     /// Seeding factory with an explicit store — used only by the data seeder, which has no

@@ -4,7 +4,9 @@ export type StorageContext =
   | "product-image"
   | "restaurant-logo"
   | "restaurant-cover"
-  | "build-daily-log";
+  | "build-daily-log"
+  | "service-portal-logo"
+  | "service-portal-cover";
 
 export interface StorageUploadResult {
   key: string;

@@ -377,6 +377,55 @@ public class ServicePublicPortalTests
                 "commissionPercent", "defaultCommissionPercent", "costPrice", "createdBy");
     }
 
+    // ── 17. Branding (PR16) ────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Branding_set_by_admin_appears_in_public_portal()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+
+        var put = await admin.PutAsJsonAsync("/api/v1/service/settings/branding", new
+        {
+            displayName   = "Studio Belle",
+            description   = "Cuidado de verdade",
+            logoUrl       = "https://x/logo.png",
+            coverImageUrl = (string?)null,
+            brandColor    = "#A8743F",
+            whatsApp      = "(85) 99999-8888",
+            address       = "Rua X, 10",
+        });
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var pub = _factory.CreateApiClient();
+        var portal = await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{slug}");
+        portal.GetProperty("displayName").GetString().Should().Be("Studio Belle");
+        portal.GetProperty("brandColor").GetString().Should().Be("#a8743f");   // normalized
+        portal.GetProperty("logoUrl").GetString().Should().Be("https://x/logo.png");
+        portal.GetProperty("whatsApp").GetString().Should().Be("85999998888"); // digits only
+
+        // Booking config and branding live on the same row but on separate endpoints — saving the
+        // booking config must NOT wipe the branding.
+        var booking = await admin.PutAsJsonAsync("/api/v1/service/settings/public-booking", new
+        {
+            publicBookingEnabled = true, bookingDaysAhead = 14, minLeadMinutes = 30,
+            slotIntervalMinutes = 60, showPrices = true, autoConfirmAppointments = false, timeZoneId = "UTC",
+        });
+        booking.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await booking.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("displayName").GetString().Should().Be("Studio Belle");
+    }
+
+    [Fact]
+    public async Task Branding_invalid_color_is_rejected()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        await ConfigureStoreAsync(admin, bookingEnabled: true);
+
+        var put = await admin.PutAsJsonAsync("/api/v1/service/settings/branding", new { brandColor = "red" });
+        put.StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.UnprocessableEntity);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task<string> ConfigureStoreAsync(HttpClient admin, bool bookingEnabled)

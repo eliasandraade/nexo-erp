@@ -309,6 +309,23 @@ public class UpdatePublicBookingRequestValidator : AbstractValidator<UpdatePubli
     }
 }
 
+public class UpdatePortalBrandingRequestValidator : AbstractValidator<UpdatePortalBrandingRequest>
+{
+    public UpdatePortalBrandingRequestValidator()
+    {
+        RuleFor(x => x.BrandColor)
+            .Must(c => SvcSettings.IsHexColor(c))
+            .When(x => !string.IsNullOrWhiteSpace(x.BrandColor))
+            .WithMessage("BrandColor must be a #rrggbb hex value.");
+        RuleFor(x => x.DisplayName).MaximumLength(120).When(x => x.DisplayName is not null);
+        RuleFor(x => x.Description).MaximumLength(280).When(x => x.Description is not null);
+        RuleFor(x => x.LogoUrl).MaximumLength(500).When(x => x.LogoUrl is not null);
+        RuleFor(x => x.CoverImageUrl).MaximumLength(500).When(x => x.CoverImageUrl is not null);
+        RuleFor(x => x.WhatsApp).MaximumLength(30).When(x => x.WhatsApp is not null);
+        RuleFor(x => x.Address).MaximumLength(200).When(x => x.Address is not null);
+    }
+}
+
 public class CreatePublicAppointmentRequestValidator : AbstractValidator<CreatePublicAppointmentRequest>
 {
     public CreatePublicAppointmentRequestValidator()

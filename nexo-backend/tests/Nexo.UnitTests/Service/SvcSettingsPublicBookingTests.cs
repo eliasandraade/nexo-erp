@@ -72,4 +72,47 @@ public class SvcSettingsPublicBookingTests
         appt.StoreId.Should().Be(storeId);
         appt.Status.Should().Be(SvcAppointmentStatus.Scheduled);
     }
+
+    // ── Branding (PR16) ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public void UpdateBranding_trims_normalizes_and_lowercases_color()
+    {
+        var s = SvcSettings.Create(Tenant, "salao-beleza");
+        s.UpdateBranding(" Studio Belle ", " Premium ", "https://x/logo.png", "https://x/cover.png",
+            "#A8743F", "(85) 99999-8888", " Rua X, 10 ");
+
+        s.DisplayName.Should().Be("Studio Belle");
+        s.Description.Should().Be("Premium");
+        s.LogoUrl.Should().Be("https://x/logo.png");
+        s.CoverImageUrl.Should().Be("https://x/cover.png");
+        s.BrandColor.Should().Be("#a8743f");
+        s.WhatsApp.Should().Be("85999998888");
+        s.Address.Should().Be("Rua X, 10");
+    }
+
+    [Fact]
+    public void UpdateBranding_clears_with_blank_or_null()
+    {
+        var s = SvcSettings.Create(Tenant, "pet-shop");
+        s.UpdateBranding("X", "Y", "u", "c", "#000000", "11", "addr");
+        s.UpdateBranding(null, "  ", null, null, null, "", null);
+
+        s.DisplayName.Should().BeNull();
+        s.Description.Should().BeNull();
+        s.LogoUrl.Should().BeNull();
+        s.BrandColor.Should().BeNull();
+        s.WhatsApp.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("red")]
+    [InlineData("#fff")]
+    [InlineData("a8743f")]
+    public void UpdateBranding_rejects_non_hex_color(string color)
+    {
+        var s = SvcSettings.Create(Tenant, "clinica-medica");
+        var act = () => s.UpdateBranding(null, null, null, null, color, null, null);
+        act.Should().Throw<DomainException>();
+    }
 }

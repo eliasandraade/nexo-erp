@@ -66,6 +66,14 @@ export interface PublicBookingSettingsDto {
   showPrices: boolean;
   autoConfirmAppointments: boolean;
   timeZoneId: string;
+  // Branding (PR16) — null until configured.
+  displayName: string | null;
+  description: string | null;
+  logoUrl: string | null;
+  coverImageUrl: string | null;
+  brandColor: string | null;
+  whatsApp: string | null;
+  address: string | null;
 }
 export interface UpdatePublicBookingRequest {
   publicBookingEnabled: boolean;
@@ -76,10 +84,21 @@ export interface UpdatePublicBookingRequest {
   autoConfirmAppointments: boolean;
   timeZoneId: string;
 }
+export interface UpdatePortalBrandingRequest {
+  displayName: string | null;
+  description: string | null;
+  logoUrl: string | null;
+  coverImageUrl: string | null;
+  brandColor: string | null;
+  whatsApp: string | null;
+  address: string | null;
+}
 export const getPublicBookingSettings = () =>
   apiClient.get<PublicBookingSettingsDto>("/v1/service/settings/public-booking");
 export const updatePublicBookingSettings = (body: UpdatePublicBookingRequest) =>
   apiClient.put<PublicBookingSettingsDto>("/v1/service/settings/public-booking", body);
+export const updatePortalBranding = (body: UpdatePortalBrandingRequest) =>
+  apiClient.put<PublicBookingSettingsDto>("/v1/service/settings/branding", body);
 
 // ── Professionals (PR1) ────────────────────────────────────────────────────────
 export interface SvcProfessionalDto {

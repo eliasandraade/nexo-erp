@@ -63,7 +63,14 @@ public sealed class PublicServicePortalService
             Capabilities:                  ctx.Preset.Capabilities,
             ShowPrices:                    ctx.Settings.ShowPrices,
             RequiresProfessionalSelection: true, // v1 decision: a professional is always chosen first
-            IsBookingEnabled:              ctx.Settings.PublicBookingEnabled);
+            IsBookingEnabled:              ctx.Settings.PublicBookingEnabled,
+            DisplayName:                   ctx.Settings.DisplayName,
+            Description:                   ctx.Settings.Description,
+            LogoUrl:                       ctx.Settings.LogoUrl,
+            CoverImageUrl:                 ctx.Settings.CoverImageUrl,
+            BrandColor:                    ctx.Settings.BrandColor,
+            WhatsApp:                      ctx.Settings.WhatsApp,
+            Address:                       ctx.Settings.Address);
     }
 
     // ── Catalog ─────────────────────────────────────────────────────────────────

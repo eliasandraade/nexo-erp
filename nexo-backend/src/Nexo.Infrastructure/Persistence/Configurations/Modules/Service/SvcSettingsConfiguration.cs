@@ -32,6 +32,15 @@ internal sealed class SvcSettingsConfiguration : IEntityTypeConfiguration<SvcSet
         b.Property(x => x.TimeZoneId)
             .HasColumnName("time_zone_id").HasMaxLength(64).HasDefaultValue("America/Sao_Paulo").IsRequired();
 
+        // ── Public portal branding (PR16) ────────────────────────────────────────
+        b.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(120);
+        b.Property(x => x.Description).HasColumnName("description").HasMaxLength(280);
+        b.Property(x => x.LogoUrl).HasColumnName("logo_url").HasMaxLength(500);
+        b.Property(x => x.CoverImageUrl).HasColumnName("cover_image_url").HasMaxLength(500);
+        b.Property(x => x.BrandColor).HasColumnName("brand_color").HasMaxLength(7);
+        b.Property(x => x.WhatsApp).HasColumnName("whatsapp").HasMaxLength(20);
+        b.Property(x => x.Address).HasColumnName("address").HasMaxLength(200);
+
         b.HasIndex("TenantId", "StoreId")
             .IsUnique()
             .HasDatabaseName("ix_svc_settings_tenant_store_unique");
