@@ -106,7 +106,7 @@ public class SvcSettings : StoreEntity
         string? brandColor, string? whatsApp, string? address)
     {
         var color = Clean(brandColor);
-        if (color is not null && !System.Text.RegularExpressions.Regex.IsMatch(color, "^#[0-9a-fA-F]{6}$"))
+        if (color is not null && !IsHexColor(color))
             throw new DomainException("BrandColor must be a #rrggbb hex value.");
 
         DisplayName   = Clamp(Clean(displayName), 120);
@@ -118,6 +118,10 @@ public class SvcSettings : StoreEntity
         Address       = Clamp(Clean(address), 200);
         SetUpdatedAt();
     }
+
+    /// <summary>True for a #rrggbb hex string. Non-regex on purpose (avoids a regex security hotspot).</summary>
+    public static bool IsHexColor(string? s) =>
+        s is { Length: 7 } && s[0] == '#' && s.Skip(1).All(Uri.IsHexDigit);
 
     private static string? Clean(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
     private static string? DigitsOnly(string? v)

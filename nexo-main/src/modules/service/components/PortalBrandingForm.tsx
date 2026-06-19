@@ -8,7 +8,10 @@ import { ImageUploadButton } from "@/components/shared/ImageUploadButton";
 import { useUpdatePortalBranding } from "../hooks/usePublicBookingSettings";
 import type { PublicBookingSettingsDto } from "../api/service.api";
 
-const HEX = /^#[0-9a-fA-F]{6}$/;
+// Non-regex hex check (avoids a static-analysis regex hotspot).
+function isHex(s: string): boolean {
+  return s.length === 7 && s[0] === "#" && [...s.slice(1)].every((c) => "0123456789abcdefABCDEF".includes(c));
+}
 
 interface Props {
   settings: PublicBookingSettingsDto;
@@ -35,7 +38,7 @@ export function PortalBrandingForm({ settings }: Props) {
     setAddress(settings.address ?? "");
   }, [settings]);
 
-  const colorValid = brandColor === null || HEX.test(brandColor);
+  const colorValid = brandColor === null || isHex(brandColor);
 
   function save() {
     if (!colorValid) { toast.error("Cor da marca inválida."); return; }
@@ -80,7 +83,7 @@ export function PortalBrandingForm({ settings }: Props) {
         <div className="flex items-center gap-3">
           <input
             type="color"
-            value={brandColor && HEX.test(brandColor) ? brandColor : "#4f46e5"}
+            value={brandColor && isHex(brandColor) ? brandColor : "#4f46e5"}
             onChange={(e) => setBrandColor(e.target.value)}
             className="h-9 w-12 cursor-pointer rounded-md border border-border bg-transparent p-1"
             aria-label="Cor da marca"

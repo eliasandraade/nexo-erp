@@ -313,7 +313,8 @@ public class UpdatePortalBrandingRequestValidator : AbstractValidator<UpdatePort
 {
     public UpdatePortalBrandingRequestValidator()
     {
-        RuleFor(x => x.BrandColor).Matches("^#[0-9a-fA-F]{6}$")
+        RuleFor(x => x.BrandColor)
+            .Must(c => SvcSettings.IsHexColor(c))
             .When(x => !string.IsNullOrWhiteSpace(x.BrandColor))
             .WithMessage("BrandColor must be a #rrggbb hex value.");
         RuleFor(x => x.DisplayName).MaximumLength(120).When(x => x.DisplayName is not null);
