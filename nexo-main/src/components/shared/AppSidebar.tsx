@@ -60,8 +60,12 @@ export function SidebarContent({ onNav }: { onNav?: () => void }) {
     // when the resolved preset enables them — preset is null outside the Service area.
     if (route.group === "service") {
       if (!hasService) return false;
-      if (route.capability && !servicePreset?.capabilities?.[route.capability]) return false;
-      if (route.capabilityAny && !route.capabilityAny.some((c) => servicePreset?.capabilities?.[c]))
+      // Public booking keeps capability-gated surfaces (the Agenda) discoverable for verticals
+      // without that capability, since the portal creates appointments to manage.
+      const bookingOverride = !!route.showWhenPublicBooking && !!servicePreset?.publicBookingEnabled;
+      if (route.capability && !servicePreset?.capabilities?.[route.capability] && !bookingOverride)
+        return false;
+      if (route.capabilityAny && !route.capabilityAny.some((c) => servicePreset?.capabilities?.[c]) && !bookingOverride)
         return false;
     }
     if (route.roles && session?.role && !route.roles.includes(session.role)) return false;

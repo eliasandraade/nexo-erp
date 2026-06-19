@@ -9,6 +9,7 @@ export const serviceKeys = {
   all: ["service"] as const,
   preset: () => [...serviceKeys.all, "preset"] as const,
   settings: () => [...serviceKeys.all, "settings"] as const,
+  publicBooking: () => [...serviceKeys.all, "public-booking"] as const,
 
   professionals: () => [...serviceKeys.all, "professionals"] as const,
   professionalsList: (onlyActive: boolean) => [...serviceKeys.professionals(), { onlyActive }] as const,

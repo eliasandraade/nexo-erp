@@ -76,6 +76,7 @@ const PacotesPage           = lazy(() => import("@/modules/service/pages/Pacotes
 const CustomerPackagesPage  = lazy(() => import("@/modules/service/pages/CustomerPackagesPage"));
 const CustomerPackageDetailPage = lazy(() => import("@/modules/service/pages/CustomerPackageDetailPage"));
 const PagamentosPage        = lazy(() => import("@/modules/service/pages/PagamentosPage"));
+const ServicePortalPage     = lazy(() => import("@/modules/service/pages/ServicePortalPage"));
 
 // Restaurante
 import { WaiterLayout }     from "@/app/layouts/WaiterLayout";
@@ -202,6 +203,7 @@ export function AppRouter() {
                       <Route path="/service/profissionais" element={<ProfissionaisPage />} />
                       <Route path="/service/catalogo" element={<CatalogoPage />} />
                       <Route path="/service/subjects" element={<SubjectsPage />} />
+                      <Route path="/service/portal" element={<ServicePortalPage />} />
                     </Route>
                   </Route>
                 </Route>

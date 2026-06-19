@@ -56,6 +56,31 @@ export const getServiceSettings = () =>
 export const setServicePreset = (presetKey: string) =>
   apiClient.put<ServiceSettingsDto>("/v1/service/settings/preset", { presetKey });
 
+// ── Public booking settings (PR12 backend) ──────────────────────────────────────
+export interface PublicBookingSettingsDto {
+  isConfigured: boolean;
+  publicBookingEnabled: boolean;
+  bookingDaysAhead: number;
+  minLeadMinutes: number;
+  slotIntervalMinutes: number;
+  showPrices: boolean;
+  autoConfirmAppointments: boolean;
+  timeZoneId: string;
+}
+export interface UpdatePublicBookingRequest {
+  publicBookingEnabled: boolean;
+  bookingDaysAhead: number;
+  minLeadMinutes: number;
+  slotIntervalMinutes: number;
+  showPrices: boolean;
+  autoConfirmAppointments: boolean;
+  timeZoneId: string;
+}
+export const getPublicBookingSettings = () =>
+  apiClient.get<PublicBookingSettingsDto>("/v1/service/settings/public-booking");
+export const updatePublicBookingSettings = (body: UpdatePublicBookingRequest) =>
+  apiClient.put<PublicBookingSettingsDto>("/v1/service/settings/public-booking", body);
+
 // ── Professionals (PR1) ────────────────────────────────────────────────────────
 export interface SvcProfessionalDto {
   id: string;
@@ -68,6 +93,8 @@ export interface SvcProfessionalDto {
   email: string | null;
   defaultCommissionPercent: number | null;
   userId: string | null;
+  /** Weekly availability for the public booking portal (PR12). null = no public hours. */
+  workingHoursJson: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +107,7 @@ export interface SaveProfessionalRequest {
   phone?: string | null;
   email?: string | null;
   defaultCommissionPercent?: number | null;
+  workingHoursJson?: string | null;
 }
 
 export const fetchProfessionals = (onlyActive = false) =>
