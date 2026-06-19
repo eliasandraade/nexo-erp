@@ -3,7 +3,6 @@ import {
   getPortal,
   getCatalog,
   getProfessionals,
-  getAvailability,
   createAppointment,
   type CreatePublicAppointmentRequest,
 } from "../api/booking.api";
@@ -39,18 +38,7 @@ export function useProfessionals(slug: string, enabled: boolean) {
   });
 }
 
-export function useAvailability(
-  slug: string, catalogItemId: string | null, professionalId: string | null,
-) {
-  return useQuery({
-    queryKey:  ["svc-portal-availability", slug, catalogItemId, professionalId],
-    queryFn:   () => getAvailability(slug, catalogItemId!, professionalId!),
-    // Availability is time-sensitive — don't serve stale slots.
-    staleTime: 0,
-    enabled:   Boolean(catalogItemId && professionalId),
-    retry:     false,
-  });
-}
+// Availability now lives in usePortalAvailability (per-professional + "no preference" union).
 
 export function useCreateAppointment(slug: string) {
   return useMutation({

@@ -70,6 +70,14 @@ export interface PublicServicePortal {
   showPrices:                    boolean;
   requiresProfessionalSelection: boolean;
   isBookingEnabled:              boolean;
+  // ── Optional store branding (PR16 backend). Absent ⇒ the adaptive theme provides the identity. ──
+  displayName?:                  string | null;
+  description?:                  string | null;
+  logoUrl?:                      string | null;
+  coverImageUrl?:                string | null;
+  brandColor?:                   string | null;
+  whatsApp?:                     string | null;
+  address?:                      string | null;
 }
 
 export interface PublicCatalogItem {
