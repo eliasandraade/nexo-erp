@@ -23,7 +23,7 @@ import { appointmentStats, openOrdersStats, paidTotal } from "../lib/dashboard";
  * actually supports.
  */
 export default function ServiceOverviewPage() {
-  const { preset, isLoading, isError, refetch } = useServicePreset();
+  const { preset, publicBookingEnabled, isLoading, isError, refetch } = useServicePreset();
   const dash = useServiceDashboard(preset?.capabilities);
 
   if (isLoading) return <PageSkeleton />;
@@ -38,7 +38,8 @@ export default function ServiceOverviewPage() {
   }
 
   const caps = preset.capabilities;
-  const surfaces = enabledSurfaces(preset);
+  const showAgenda = caps.appointments || publicBookingEnabled;
+  const surfaces = enabledSurfaces(preset, { publicBookingEnabled });
 
   const apptStats = dash.appointments.data ? appointmentStats(dash.appointments.data) : null;
   const openOrders = dash.orders.data ? openOrdersStats(dash.orders.data) : null;
@@ -55,7 +56,7 @@ export default function ServiceOverviewPage() {
 
       {/* KPIs — real, capability-gated */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {caps.appointments && (
+        {showAgenda && (
           <KpiCard
             to="/service/agenda" icon={CalendarClock} label="Agenda de hoje"
             loading={dash.appointments.isLoading} error={dash.appointments.isError}

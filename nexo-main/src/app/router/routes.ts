@@ -58,6 +58,12 @@ export interface AppRoute {
    * one enabling capability (e.g. Pagamentos needs orders OR packages).
    */
   capabilityAny?: (keyof ServiceCapabilities)[];
+  /**
+   * Service-only: also show this capability-gated route when public booking is enabled — keeps
+   * the Agenda discoverable for verticals without the appointments capability (oficina etc.),
+   * since the public portal creates appointments the owner must manage.
+   */
+  showWhenPublicBooking?: boolean;
 }
 
 /** Roles that have full management access */
@@ -92,7 +98,7 @@ export const appRoutes: AppRoute[] = [
 
   // ── Service (Serviços) — management only; family-gated + capability-driven in the sidebar ──
   { path: "/service",                label: "Visão geral",   icon: ConciergeBell,     group: "service",     roles: MGMT },
-  { path: "/service/agenda",         label: "Agenda",        icon: CalendarClock,     group: "service",     roles: MGMT, capability: "appointments" },
+  { path: "/service/agenda",         label: "Agenda",        icon: CalendarClock,     group: "service",     roles: MGMT, capability: "appointments", showWhenPublicBooking: true },
   { path: "/service/ordens",         label: "Ordens",        icon: ClipboardList,     group: "service",     roles: MGMT, capability: "orders" },
   { path: "/service/pacotes",        label: "Pacotes",       icon: Package,           group: "service",     roles: MGMT, capability: "packages" },
   { path: "/service/customer-packages", label: "Pacotes de clientes", icon: PackageCheck, group: "service", roles: MGMT, capability: "packages" },
@@ -100,6 +106,7 @@ export const appRoutes: AppRoute[] = [
   { path: "/service/profissionais",  label: "Profissionais", icon: Users,             group: "service",     roles: MGMT },
   { path: "/service/catalogo",       label: "Catálogo",      icon: BookMarked,        group: "service",     roles: MGMT },
   { path: "/service/subjects",       label: "Cadastros",     icon: Boxes,             group: "service",     roles: MGMT, capability: "subjectKind" },
+  { path: "/service/portal",         label: "Portal público", icon: Globe,            group: "service",     roles: MGMT },
 
   // ── Admin — diretoria only ───────────────────────────────────────────────
   { path: "/usuarios",      label: "Usuários",       icon: UserCog,           group: "admin",       roles: ["diretoria"] },

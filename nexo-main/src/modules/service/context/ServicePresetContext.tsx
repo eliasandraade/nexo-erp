@@ -8,6 +8,7 @@ import type {
 import { useHasServiceModule } from "../hooks/useHasServiceModule";
 import { useServicePresetQuery } from "../hooks/useServicePreset";
 import { useServiceSettings } from "../hooks/useServiceSettings";
+import { usePublicBookingSettings } from "../hooks/usePublicBookingSettings";
 import ServiceOnboardingPage from "../pages/ServiceOnboardingPage";
 
 export interface ServicePresetContextValue {
@@ -19,6 +20,12 @@ export interface ServicePresetContextValue {
   /** Whether the active store has chosen a preset (vertical). */
   isConfigured: boolean;
   presetKey: string | null;
+  /**
+   * Whether the public booking portal is enabled. Keeps the Agenda surface discoverable for
+   * verticals without the `appointments` capability (e.g. oficina) once booking is on — the
+   * portal creates appointments the owner must be able to see.
+   */
+  publicBookingEnabled: boolean;
   isLoading: boolean;
   isError: boolean;
   refetch: () => void;
@@ -39,6 +46,8 @@ export function ServicePresetProvider({ children }: { children?: ReactNode }) {
   const settingsQ = useServiceSettings(hasService);
   const isConfigured = settingsQ.data?.isConfigured ?? false;
   const presetQ = useServicePresetQuery(hasService && isConfigured);
+  const bookingQ = usePublicBookingSettings(hasService && isConfigured);
+  const publicBookingEnabled = bookingQ.data?.publicBookingEnabled ?? false;
 
   const value = useMemo<ServicePresetContextValue>(
     () => ({
@@ -47,13 +56,14 @@ export function ServicePresetProvider({ children }: { children?: ReactNode }) {
       capabilities: presetQ.data?.capabilities,
       isConfigured,
       presetKey: settingsQ.data?.presetKey ?? null,
+      publicBookingEnabled,
       isLoading: presetQ.isLoading,
       isError: presetQ.isError,
       refetch: () => {
         void presetQ.refetch();
       },
     }),
-    [presetQ.data, presetQ.isLoading, presetQ.isError, presetQ.refetch, isConfigured, settingsQ.data?.presetKey]
+    [presetQ.data, presetQ.isLoading, presetQ.isError, presetQ.refetch, isConfigured, settingsQ.data?.presetKey, publicBookingEnabled]
   );
 
   // Onboarding gate (only for Service tenants — the route guard already enforces that).

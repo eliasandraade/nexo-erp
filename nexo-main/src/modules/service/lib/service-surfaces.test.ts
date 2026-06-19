@@ -40,6 +40,9 @@ function preset(caps: Partial<ServiceCapabilities>): ServicePresetDto {
 const keysFor = (caps: Partial<ServiceCapabilities>) =>
   enabledSurfaces(preset(caps)).map((s) => s.key);
 
+const keysForCtx = (caps: Partial<ServiceCapabilities>, ctx: { publicBookingEnabled?: boolean }) =>
+  enabledSurfaces(preset(caps), ctx).map((s) => s.key);
+
 describe("service-surfaces", () => {
   it("always exposes core cadastros (professionals + catalog)", () => {
     const keys = keysFor({});
@@ -102,6 +105,15 @@ describe("service-surfaces", () => {
   it("subjects surface is hidden when the preset has no subjectKind", () => {
     expect(keysFor({ appointments: true })).not.toContain("subjects");
     expect(keysFor({ subjectKind: "Student" as SvcSubjectKind })).toContain("subjects");
+  });
+
+  it("public booking keeps the Agenda discoverable even without the appointments capability", () => {
+    // oficina-style (orders, no appointments) → Agenda hidden by default…
+    expect(keysFor({ orders: true })).not.toContain("agenda");
+    // …but visible once public booking is on (the portal creates appointments to manage).
+    expect(keysForCtx({ orders: true }, { publicBookingEnabled: true })).toContain("agenda");
+    // a vertical with appointments shows the Agenda regardless of booking.
+    expect(keysForCtx({ appointments: true }, { publicBookingEnabled: false })).toContain("agenda");
   });
 
   it("subject label adapts to the preset subjectKind", () => {

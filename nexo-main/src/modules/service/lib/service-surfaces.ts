@@ -29,6 +29,12 @@ export type ServiceSurfaceKey =
   | "packages"
   | "payments";
 
+/** Extra context (beyond the preset) that can switch a surface on. */
+export interface SurfaceContext {
+  /** Public booking is on — keeps the Agenda discoverable even without the appointments capability. */
+  publicBookingEnabled?: boolean;
+}
+
 export interface ServiceSurface {
   key: ServiceSurfaceKey;
   path: string;
@@ -37,8 +43,8 @@ export interface ServiceSurface {
   label: (preset: ServicePresetDto) => string;
   /** Short description for the overview cards. */
   description: (preset: ServicePresetDto) => string;
-  /** Whether this surface is active for the resolved preset. */
-  isEnabled: (preset: ServicePresetDto) => boolean;
+  /** Whether this surface is active for the resolved preset (+ optional context). */
+  isEnabled: (preset: ServicePresetDto, ctx?: SurfaceContext) => boolean;
 }
 
 export const SERVICE_HOME = "/service";
@@ -64,7 +70,9 @@ export const SERVICE_SURFACES: ServiceSurface[] = [
     icon: CalendarClock,
     label: () => "Agenda",
     description: (p) => `Agende e acompanhe ${p.labels.appointment.toLowerCase()}s.`,
-    isEnabled: (p) => p.capabilities.appointments,
+    // Public booking creates appointments even for verticals without the capability, so the
+    // owner must be able to see the Agenda once the portal is on.
+    isEnabled: (p, ctx) => p.capabilities.appointments || !!ctx?.publicBookingEnabled,
   },
   {
     key: "orders",
@@ -117,7 +125,7 @@ export const SERVICE_SURFACES: ServiceSurface[] = [
   },
 ];
 
-/** Surfaces active for the resolved preset, in nav order. */
-export function enabledSurfaces(preset: ServicePresetDto): ServiceSurface[] {
-  return SERVICE_SURFACES.filter((s) => s.isEnabled(preset));
+/** Surfaces active for the resolved preset (+ optional context), in nav order. */
+export function enabledSurfaces(preset: ServicePresetDto, ctx?: SurfaceContext): ServiceSurface[] {
+  return SERVICE_SURFACES.filter((s) => s.isEnabled(preset, ctx));
 }
