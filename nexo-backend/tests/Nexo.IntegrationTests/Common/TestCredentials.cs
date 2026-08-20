@@ -47,6 +47,9 @@ public static class TestCredentials
     /// <summary>Password used when seeding same-tenant manager users for verify-manager tests.</summary>
     public const string SameTenantManagerPassword = "FakeSameTenantManager!789";
 
+    /// <summary>Password posted to /api/auth/register when a test needs a brand-new tenant.</summary>
+    public const string SelfServiceRegistrationPassword = "FakeSelfServiceSignup!321";
+
     // ── Email domain constants (IANA-reserved, never resolve in DNS) ─────────────
 
     /// <summary>Primary test domain. Never resolves in DNS per RFC 2606.</summary>

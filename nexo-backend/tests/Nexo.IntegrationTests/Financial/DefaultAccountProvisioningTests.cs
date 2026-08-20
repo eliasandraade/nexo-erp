@@ -30,13 +30,15 @@ public class DefaultAccountProvisioningTests
     public async Task Self_service_registration_provisions_the_four_default_accounts()
     {
         var client = _factory.CreateApiClient();
-        var email = $"barbearia-{Guid.NewGuid():N}@example.com";
+        // Registration uses the e-mail as the user's login, and users.login is varchar(50).
+        // Keep the unique suffix short enough that the whole address fits.
+        var email = $"barb-{Guid.NewGuid():N}"[..16] + "@" + TestCredentials.TestDomain;
 
         var resp = await client.PostAsJsonAsync("/api/auth/register", new
         {
             name     = "Barbearia do Ze",
             email,
-            password = "senha@123",
+            password = TestCredentials.SelfServiceRegistrationPassword,
         });
         resp.StatusCode.Should().Be(HttpStatusCode.OK, "registration must succeed as a precondition");
 
