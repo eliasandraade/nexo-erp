@@ -6,16 +6,21 @@ using FluentAssertions;
 using Nexo.Application.Features.Auth;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Nexo.Domain.Modules.Service;
+using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.IntegrationTests.Service;
 
 /// <summary>
-/// Verifies the family-aware Service module gate (decision D1) and the preset endpoint:
-///   - a tenant WITHOUT any service-family key is forbidden (403);
-///   - a tenant WITH a service-family key gets its resolved preset (labels + capabilities).
+/// Verifies the Service module gate and the preset endpoint:
+///   - a tenant WITHOUT the 'service' module is forbidden (403);
+///   - a tenant WITH it gets the preset stored in SvcSettings (labels + capabilities);
+///   - the retired per-vertical SKUs stay retired after a full migrate + seed cycle.
 ///
-/// The seeder grants 'salao-beleza' (service family) to the default dev tenant, mirroring
-/// SeedBuildModuleAsync; 'clara.boutique' (varejo only) provides the negative case.
+/// The seeder grants the single 'service' module to the default dev tenant and configures the
+/// sample preset 'salao-beleza'; 'clara.boutique' (varejo only) provides the negative case.
 /// </summary>
 [Collection("Integration")]
 public class ServicePresetGateTests
@@ -62,5 +67,32 @@ public class ServicePresetGateTests
         body.GetProperty("labels").GetProperty("customer").GetString().Should().Be("Cliente");
         body.GetProperty("capabilities").GetProperty("appointments").GetBoolean().Should().BeTrue();
         body.GetProperty("capabilities").GetProperty("packages").GetBoolean().Should().BeTrue();
+        // Salons bill walk-ins on a comanda — the label promised it long before the surface existed.
+        body.GetProperty("capabilities").GetProperty("orders").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Retired_vertical_skus_survive_neither_the_migration_nor_the_seeder()
+    {
+        // The database this runs against was migrated AND seeded. If either step still creates a
+        // per-vertical SKU, the dead keys come back on every boot and the gate has to keep a
+        // fallback for them forever.
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+
+        var legacy = ServicePresetRegistry.LegacyVerticalKeys;
+
+        var definitions = await db.ModuleDefinitions
+            .Where(m => legacy.Contains(m.Key))
+            .Select(m => m.Key)
+            .ToListAsync();
+        definitions.Should().BeEmpty("per-vertical SKUs are retired");
+
+        var subscriptions = await db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .Where(s => legacy.Contains(s.ModuleKey))
+            .Select(s => s.ModuleKey)
+            .ToListAsync();
+        subscriptions.Should().BeEmpty("ConvertLegacyServiceSubscriptions rewrote them to 'service'");
     }
 }

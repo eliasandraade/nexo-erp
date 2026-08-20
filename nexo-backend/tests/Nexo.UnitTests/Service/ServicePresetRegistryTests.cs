@@ -72,67 +72,26 @@ public class ServicePresetRegistryTests
     [InlineData("autoescola")]
     [InlineData("escola-idiomas")]
     [InlineData("programador-autonomo")]
-    public void IsServiceFamilyKey_is_true_for_every_service_vertical(string key)
+    public void IsLegacyVerticalKey_recognizes_every_retired_sku(string key)
     {
-        ServicePresetRegistry.IsServiceFamilyKey(key).Should().BeTrue();
+        ServicePresetRegistry.IsLegacyVerticalKey(key).Should().BeTrue();
     }
 
     [Theory]
+    [InlineData("service")]   // the commercial module, not a retired SKU
+    [InlineData("barbearia")] // a preset that was never sold as a SKU
     [InlineData("build")]
     [InlineData("varejo")]
-    [InlineData("restaurante")]
-    [InlineData("imobiliaria")]
-    [InlineData("pousada-hotel")]
-    [InlineData("academia-musculacao")]
     [InlineData("")]
-    public void IsServiceFamilyKey_is_false_for_non_service_keys(string key)
+    public void IsLegacyVerticalKey_is_false_for_everything_else(string key)
     {
-        ServicePresetRegistry.IsServiceFamilyKey(key).Should().BeFalse();
+        ServicePresetRegistry.IsLegacyVerticalKey(key).Should().BeFalse();
     }
 
     [Fact]
-    public void IsServiceFamilyKey_is_case_insensitive()
+    public void IsLegacyVerticalKey_is_case_insensitive()
     {
-        ServicePresetRegistry.IsServiceFamilyKey("Salao-Beleza").Should().BeTrue();
-    }
-
-    [Fact]
-    public void Resolve_returns_the_preset_for_a_single_family_key()
-    {
-        var preset = ServicePresetRegistry.Resolve(new[] { "salao-beleza" });
-        preset.Should().NotBeNull();
-        preset!.Key.Should().Be("salao-beleza");
-    }
-
-    [Fact]
-    public void Resolve_returns_null_when_no_family_key_is_active()
-    {
-        ServicePresetRegistry.Resolve(new[] { "varejo", "build" }).Should().BeNull();
-    }
-
-    [Fact]
-    public void Resolve_returns_null_for_an_empty_set()
-    {
-        ServicePresetRegistry.Resolve(Array.Empty<string>()).Should().BeNull();
-    }
-
-    [Fact]
-    public void Resolve_ignores_non_family_keys_and_picks_the_family_one()
-    {
-        var preset = ServicePresetRegistry.Resolve(new[] { "varejo", "oficina-mecanica" });
-        preset!.Key.Should().Be("oficina-mecanica");
-    }
-
-    [Fact]
-    public void Resolve_with_multiple_family_keys_picks_the_highest_priority_deterministically()
-    {
-        // Order of the input must not change the result.
-        var a = ServicePresetRegistry.Resolve(new[] { "salao-beleza", "clinica-medica" });
-        var b = ServicePresetRegistry.Resolve(new[] { "clinica-medica", "salao-beleza" });
-
-        a!.Key.Should().Be(b!.Key);
-        // clinica-medica is declared first → highest priority.
-        a.Key.Should().Be("clinica-medica");
+        ServicePresetRegistry.IsLegacyVerticalKey("Salao-Beleza").Should().BeTrue();
     }
 
     [Fact]
@@ -182,10 +141,9 @@ public class ServicePresetRegistryTests
     }
 
     [Theory]
-    [InlineData("service")]      // single commercial module
-    [InlineData("salao-beleza")] // legacy per-vertical key (temporary fallback)
-    [InlineData("Service")]      // case-insensitive
-    public void IsServiceEntitlement_is_true_for_the_service_module_and_legacy_verticals(string key)
+    [InlineData("service")] // the only entitlement
+    [InlineData("Service")] // case-insensitive
+    public void IsServiceEntitlement_is_true_only_for_the_commercial_module(string key)
     {
         ServicePresetRegistry.IsServiceEntitlement(key).Should().BeTrue();
     }
@@ -197,5 +155,15 @@ public class ServicePresetRegistryTests
     public void IsServiceEntitlement_is_false_for_non_service_modules(string key)
     {
         ServicePresetRegistry.IsServiceEntitlement(key).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("salao-beleza")]
+    [InlineData("clinica-medica")]
+    public void Retired_vertical_skus_no_longer_grant_access(string legacyKey)
+    {
+        // The ConvertLegacyServiceSubscriptions migration rewrites these to "service" before
+        // the gate ever sees them. Accepting them here would keep the dead SKUs alive forever.
+        ServicePresetRegistry.IsServiceEntitlement(legacyKey).Should().BeFalse();
     }
 }

@@ -10,34 +10,29 @@ namespace Nexo.Application.Modules.Service;
 ///
 /// The commercial entitlement is the single "service" module (gate); the vertical lives here,
 /// chosen via onboarding. <see cref="ResolveEffectivePresetKeyAsync"/> centralises resolution:
-///   1. stored SvcSettings.PresetKey (the correct, new path), else
-///   2. TEMPORARY legacy fallback — a still-active per-vertical family module key, else
-///   3. null (not configured) → the frontend shows onboarding, never an auto-picked preset.
+///   1. stored SvcSettings.PresetKey, else
+///   2. null (not configured) → the frontend shows onboarding, never an auto-picked preset.
 /// </summary>
 public class SvcSettingsService
 {
     private readonly ISvcSettingsRepository _repo;
     private readonly ICurrentTenant         _currentTenant;
-    private readonly ITenantRepository      _tenants;
 
-    public SvcSettingsService(
-        ISvcSettingsRepository repo, ICurrentTenant currentTenant, ITenantRepository tenants)
+    public SvcSettingsService(ISvcSettingsRepository repo, ICurrentTenant currentTenant)
     {
         _repo          = repo;
         _currentTenant = currentTenant;
-        _tenants       = tenants;
     }
 
     public async Task<string?> ResolveEffectivePresetKeyAsync(CancellationToken ct = default)
     {
         if (!_currentTenant.IsResolved) return null;
 
+        // The per-store row is the only source of the vertical. Tenants that used to carry it in
+        // their module key were rewritten by the ConvertLegacyServiceSubscriptions migration,
+        // which also seeded their SvcSettings; a store with no row is genuinely unconfigured.
         var settings = await _repo.GetForCurrentStoreAsync(ct);
-        if (settings is not null) return settings.PresetKey;
-
-        // Legacy fallback (temporary): a tenant still holding a per-vertical family key.
-        var activeKeys = await _tenants.GetActiveModuleKeysAsync(_currentTenant.Id, ct);
-        return ServicePresetRegistry.Resolve(activeKeys)?.Key;
+        return settings?.PresetKey;
     }
 
     public async Task<ServiceSettingsDto> GetSettingsAsync(CancellationToken ct = default)

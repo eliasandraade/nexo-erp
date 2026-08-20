@@ -163,10 +163,6 @@ public class DataSeeder
                 priceMonthly:  97m,  priceAnnual: 870m,  priceLifetime: 1490m),
             ModuleDefinition.Create("academia-musculacao",  "Academias de Musculação",            priceMonthly: 79m,  priceAnnual: 710m,  priceLifetime: 1290m),
             ModuleDefinition.Create("academia-artes-marciais", "Academias de Artes Marciais",    priceMonthly: 79m,  priceAnnual: 710m,  priceLifetime: 1290m),
-            ModuleDefinition.Create("clinica-medica",       "Clínicas Médicas e Odontológicas",   priceMonthly: 97m,  priceAnnual: 870m,  priceLifetime: 1490m),
-            ModuleDefinition.Create("salao-beleza",         "Salões de Beleza",                   priceMonthly: 69m,  priceAnnual: 620m,  priceLifetime: 1090m),
-            ModuleDefinition.Create("pet-shop",             "Pet Shops + Clínicas Veterinárias",  priceMonthly: 79m,  priceAnnual: 710m,  priceLifetime: 1290m),
-            ModuleDefinition.Create("oficina-mecanica",     "Oficinas Mecânicas",                 priceMonthly: 79m,  priceAnnual: 710m,  priceLifetime: 1290m),
             ModuleDefinition.Create("pousada-hotel",        "Pousadas e Hotéis",                  priceMonthly: 97m,  priceAnnual: 870m,  priceLifetime: 1490m),
             ModuleDefinition.Create("imobiliaria",          "Imobiliárias",                       priceMonthly: 97m,  priceAnnual: 870m,  priceLifetime: 1490m),
         };
@@ -496,46 +492,20 @@ public class DataSeeder
     // ── Service module family (idempotent — runs even on already-seeded DBs) ────
 
     /// <summary>
-    /// Ensures the 5 service-family ModuleDefinitions that are NOT in the original bulk seed
-    /// exist (nutricionista, personal-trainer, autoescola, escola-idiomas, programador-autonomo),
-    /// all created IsPublished=false (Stripe pricing is owner-owned and out of scope).
+    /// Ensures the single commercial 'service' ModuleDefinition exists and is published.
     ///
-    /// Also grants one service-family key (salao-beleza) to the default dev tenant so the
+    /// Also grants the single 'service' module to the default dev tenant, with a sample preset, so the
     /// Service engine is exercisable in dev/test — mirrors <see cref="SeedBuildModuleAsync"/>.
     /// Safe to re-run.
     /// </summary>
     private async Task SeedServiceModulesAsync(CancellationToken ct)
     {
-        // 1. Service-family ModuleDefinitions missing from the original bulk seed.
-        var serviceDefs = new (string Key, string Name, decimal Monthly, decimal Annual, decimal Lifetime)[]
-        {
-            ("nutricionista",        "Nutricionistas",          79m, 710m, 1290m),
-            ("personal-trainer",     "Personal Trainers",       79m, 710m, 1290m),
-            ("autoescola",           "Autoescolas",             97m, 870m, 1490m),
-            ("escola-idiomas",       "Escolas de Idiomas",      97m, 870m, 1490m),
-            ("programador-autonomo", "Programadores Autônomos", 69m, 620m, 1090m),
-        };
+        // Per-vertical SKUs are NOT seeded any more: Orken Service is one commercial module and
+        // the vertical is an internal preset. The retired keys are removed from existing
+        // databases by the ConvertLegacyServiceSubscriptions migration — re-creating them here
+        // would resurrect them on the next boot.
 
-        var created = 0;
-        foreach (var d in serviceDefs)
-        {
-            if (await _context.ModuleDefinitions.AnyAsync(m => m.Key == d.Key, ct))
-                continue;
-
-            _context.ModuleDefinitions.Add(ModuleDefinition.Create(
-                key: d.Key, name: d.Name,
-                priceMonthly: d.Monthly, priceAnnual: d.Annual, priceLifetime: d.Lifetime));
-            created++;
-        }
-
-        if (created > 0)
-        {
-            await _context.SaveChangesAsync(ct);
-            _logger.LogInformation(
-                "Seed: {Count} service-family ModuleDefinitions created (IsPublished=false).", created);
-        }
-
-        // 2. The single commercial Service module — published (v1.1 entitlement model).
+        // 1. The single commercial Service module — published (v1.1 entitlement model).
         if (!await _context.ModuleDefinitions.AnyAsync(m => m.Key == ServicePresetRegistry.Family, ct))
         {
             var serviceModule = ModuleDefinition.Create(
@@ -547,7 +517,7 @@ public class DataSeeder
             _logger.LogInformation("Seed: 'service' ModuleDefinition created (published).");
         }
 
-        // 3. Grant the single 'service' module to the default tenant and configure a sample preset
+        // 2. Grant the single 'service' module to the default tenant and configure a sample preset
         //    for its default store, so the engine is exercisable in dev/test (mirrors the new flow:
         //    commercial module + per-store preset, NOT a per-vertical module).
         var tenant = await _context.Tenants.FirstOrDefaultAsync(ct);

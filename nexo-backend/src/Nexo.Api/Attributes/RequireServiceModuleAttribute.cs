@@ -7,10 +7,10 @@ namespace Nexo.Api.Attributes;
 
 /// <summary>
 /// Ensures the authenticated tenant is entitled to the Service engine: the single commercial
-/// module "service" (the v1.1 model), OR — temporary legacy fallback — any per-vertical family
-/// key (clinica-medica, salao-beleza, …) granted before the single-module model. Returns 403
-/// Forbidden otherwise. The internal preset (vertical "ramo") is configured separately via
-/// SvcSettings, NOT via the module key.
+/// module "service". Returns 403 Forbidden otherwise. Retired per-vertical keys are rewritten
+/// to "service" by the ConvertLegacyServiceSubscriptions migration, so no fallback is needed
+/// here. The internal preset (vertical "ramo") is configured separately via SvcSettings, NOT
+/// via the module key.
 ///
 /// Reads the active module keys already resolved onto <see cref="ICurrentTenant"/> by
 /// TenantResolutionMiddleware (which runs before authorization filters); it does not re-implement
