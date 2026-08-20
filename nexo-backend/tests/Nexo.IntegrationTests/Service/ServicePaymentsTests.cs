@@ -17,7 +17,8 @@ namespace Nexo.IntegrationTests.Service;
 /// <summary>
 /// End-to-end coverage for Service payments (PR6): manual records against an order or a customer
 /// package, partial totals, void, summaries — and the hard guarantee that a payment never changes
-/// the order total/status nor the package balance/status. No Stripe/cash/financial side effects.
+/// the order total/status nor the package balance/status. Since PR B it DOES post a settled
+/// Receivable to the financeiro (and a counter-entry on void); no Stripe/cash side effects.
 /// </summary>
 [Collection("Integration")]
 public class ServicePaymentsTests
@@ -223,6 +224,67 @@ public class ServicePaymentsTests
 
         (await c.PostAsJsonAsync($"/api/v1/service/payments/{paymentId}/void", new { reason = "again" }))
             .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);   // double void
+    }
+
+    // ── Financeiro (PR B) ────────────────────────────────────────────────────
+    [Fact]
+    public async Task Paying_an_order_creates_a_settled_receivable_in_the_financeiro()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var customerId = await CreateCustomerAsync(c);
+        var (orderId, _) = await OrderWithTotalAsync(c, customerId, 300m);
+
+        var paymentId = await PayOrder(c, orderId, 120m);
+
+        var tx = await FindTransactionAsync("SvcPayment", paymentId);
+        tx.Should().NotBeNull("Service revenue must reach the financial module");
+        tx!.TransactionType.Should().Be(TransactionType.Receivable);
+        tx.Status.Should().Be(TransactionStatus.Paid);
+        tx.Amount.Should().Be(120m);
+    }
+
+    [Fact]
+    public async Task Paying_a_customer_package_creates_a_settled_receivable()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var customerId = await CreateCustomerAsync(c);
+        var cpId = await CustomerPackageAsync(c, customerId, 500m);
+
+        var paymentId = await PayCustomerPackage(c, cpId, 200m);
+
+        var tx = await FindTransactionAsync("SvcPayment", paymentId);
+        tx!.Amount.Should().Be(200m);
+        tx.TransactionType.Should().Be(TransactionType.Receivable);
+    }
+
+    [Fact]
+    public async Task Voiding_a_payment_adds_a_counter_entry_and_keeps_the_original()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var customerId = await CreateCustomerAsync(c);
+        var (orderId, _) = await OrderWithTotalAsync(c, customerId, 300m);
+        var paymentId = await PayOrder(c, orderId, 80m);
+
+        (await c.PostAsJsonAsync($"/api/v1/service/payments/{paymentId}/void", new { reason = "erro de caixa" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // The receivable is NOT deleted — history stays auditable, mirroring SaleCancellation.
+        (await FindTransactionAsync("SvcPayment", paymentId)).Should().NotBeNull();
+
+        var reversal = await FindTransactionAsync("SvcPaymentVoid", paymentId);
+        reversal.Should().NotBeNull();
+        reversal!.TransactionType.Should().Be(TransactionType.Payable);
+        reversal.Amount.Should().Be(80m);
+        reversal.Status.Should().Be(TransactionStatus.Paid);
+    }
+
+    private async Task<FinancialTransaction?> FindTransactionAsync(string referenceType, Guid referenceId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return await db.FinancialTransactions
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(t => t.ReferenceType == referenceType && t.ReferenceId == referenceId);
     }
 
     // ── Immutability of the targets (the core PR6 guarantee) ─────────────────

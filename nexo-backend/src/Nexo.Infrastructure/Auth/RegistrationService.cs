@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
@@ -6,13 +6,14 @@ using Nexo.Application.Features.Auth;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
+using Nexo.Infrastructure.Persistence.Provisioning;
 
 namespace Nexo.Infrastructure.Auth;
 
 /// <summary>
 /// Handles user self-registration, email verification and resend.
 /// Encapsulates the full tenant bootstrapping logic:
-///   Register → [Tenant + ModuleSubscription + Store + User + AppSettings] → SendEmail
+///   Register → [Tenant + ModuleSubscription + Store + User + AppSettings + Contas] → SendEmail
 ///   Verify   → Activate user + issue JWT (auto-login)
 /// </summary>
 public class RegistrationService
@@ -24,6 +25,7 @@ public class RegistrationService
     private readonly IEmailService _email;
     private readonly IConfiguration _config;
     private readonly ILogger<RegistrationService> _logger;
+    private readonly DefaultFinancialAccountProvisioner _accounts;
 
     public RegistrationService(
         NexoDbContext db,
@@ -32,15 +34,17 @@ public class RegistrationService
         ICacheService cache,
         IEmailService email,
         IConfiguration config,
-        ILogger<RegistrationService> logger)
+        ILogger<RegistrationService> logger,
+        DefaultFinancialAccountProvisioner accounts)
     {
-        _db     = db;
-        _hasher = hasher;
-        _jwt    = jwt;
-        _cache  = cache;
-        _email  = email;
-        _config = config;
-        _logger = logger;
+        _db       = db;
+        _hasher   = hasher;
+        _jwt      = jwt;
+        _cache    = cache;
+        _email    = email;
+        _config   = config;
+        _logger   = logger;
+        _accounts = accounts;
     }
 
     /// <summary>
@@ -111,7 +115,12 @@ public class RegistrationService
         _db.AppSettings.Add(settings);
         await _db.SaveChangesAsync(ct);
 
-        // 8. Generate verification token and persist in PostgreSQL (immune to Redis failures).
+        // 8. Default chart of accounts — without it the first credit sale or Service payment
+        //    fails looking for the tenant's "Contas a Receber" account.
+        await _accounts.EnsureAsync(tenant.Id, ct);
+        await _db.SaveChangesAsync(ct);
+
+        // 9. Generate verification token and persist in PostgreSQL (immune to Redis failures).
         var token = Guid.NewGuid().ToString("N");
         user.SetVerificationToken(token, DateTime.UtcNow.AddHours(24));
         await _db.SaveChangesAsync(ct);
