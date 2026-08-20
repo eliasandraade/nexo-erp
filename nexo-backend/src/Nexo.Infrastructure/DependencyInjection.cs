@@ -16,6 +16,7 @@ using Nexo.Infrastructure.Modules;
 using Nexo.Infrastructure.MultiTenancy;
 using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
+using Nexo.Infrastructure.Persistence.Provisioning;
 using Nexo.Infrastructure.Repositories;
 using Nexo.Application.Modules.Restaurante.Interfaces;
 using Nexo.Application.Modules.Build.Interfaces;
@@ -237,6 +238,7 @@ public static class DependencyInjection
         {
             services.AddScoped<IEmailService, ConsoleEmailService>();
         }
+        services.AddScoped<DefaultFinancialAccountProvisioner>();
         services.AddScoped<RegistrationService>();
 
         // ── Audit ─────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,6 +9,7 @@ using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
+using Nexo.Infrastructure.Persistence.Provisioning;
 using DomainUser = Nexo.Domain.Entities.User;
 
 namespace Nexo.Api.Controllers;
@@ -27,14 +28,16 @@ public class PlatformController : ControllerBase
     private readonly IPasswordHasher _hasher;
     private readonly ICacheService _cache;
     private readonly IAuditWriter _audit;
+    private readonly DefaultFinancialAccountProvisioner _accounts;
 
-    public PlatformController(NexoDbContext db, IJwtTokenService jwt, IPasswordHasher hasher, ICacheService cache, IAuditWriter audit)
+    public PlatformController(NexoDbContext db, IJwtTokenService jwt, IPasswordHasher hasher, ICacheService cache, IAuditWriter audit, DefaultFinancialAccountProvisioner accounts)
     {
         _db     = db;
         _jwt    = jwt;
         _hasher = hasher;
         _cache  = cache;
         _audit  = audit;
+        _accounts = accounts;
     }
 
     private Guid? GetPlatformUserId()
@@ -307,6 +310,10 @@ public class PlatformController : ControllerBase
             posJson:       """{"allowValueDiscount":true,"allowPercentDiscount":true,"requireManagerAuth":true,"maxDiscountPercent":20}""",
             systemJson:    """{"language":"pt-BR","dateFormat":"dd/MM/yyyy","currencySymbol":"R$"}""");
         _db.AppSettings.Add(defaultSettings);
+
+        // Default chart of accounts — a tenant without "Contas a Receber" cannot take a credit
+        // sale or a Service payment. Same unit of work as the rest of the bootstrap.
+        await _accounts.EnsureAsync(tenant.Id, ct);
 
         StageAudit(AuditActions.TenantCreated, AuditSeverity.Info, "Tenant", tenant.Id.ToString(),
             $"Platform admin created tenant '{tenant.CompanyName}'.",
