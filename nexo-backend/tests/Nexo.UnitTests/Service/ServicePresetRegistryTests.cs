@@ -13,9 +13,32 @@ namespace Nexo.UnitTests.Service;
 public class ServicePresetRegistryTests
 {
     [Fact]
-    public void All_contains_the_nine_v1_presets()
+    public void All_contains_the_ten_v1_presets()
     {
-        ServicePresetRegistry.All.Should().HaveCount(9);
+        ServicePresetRegistry.All.Should().HaveCount(10);
+    }
+
+    [Fact]
+    public void Barbearia_preset_uses_barber_labels_and_enables_comanda()
+    {
+        var preset = ServicePresetRegistry.GetByKey("barbearia");
+
+        preset.Should().NotBeNull();
+        preset!.Labels.Professional.Should().Be("Barbeiro");
+        preset.Labels.Order.Should().Be("Comanda");
+        preset.Capabilities.Appointments.Should().BeTrue();
+        preset.Capabilities.Orders.Should().BeTrue();
+        preset.Capabilities.Packages.Should().BeTrue();
+        preset.Capabilities.Commissions.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Presets_that_label_an_order_as_comanda_must_enable_orders()
+    {
+        // A label promising a "Comanda" with the Orders surface off is a dead promise:
+        // the nav entry never renders and walk-in customers cannot be billed.
+        foreach (var p in ServicePresetRegistry.All.Where(p => p.Labels.Order == "Comanda"))
+            p.Capabilities.Orders.Should().BeTrue($"{p.Key} promete comanda no label");
     }
 
     [Fact]
@@ -126,6 +149,7 @@ public class ServicePresetRegistryTests
 
     [Theory]
     [InlineData("salao-beleza")]
+    [InlineData("barbearia")]
     [InlineData("Pet-Shop")] // case-insensitive
     public void GetByKey_and_IsValidPresetKey_accept_a_vertical_preset(string key)
     {

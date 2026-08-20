@@ -101,11 +101,15 @@ public static class ServicePresetRegistry
                 new ServiceLabels("Tutor", "Profissional", "Serviço", "Agendamento", "Ordem de serviço", "Pet"),
                 off with { Appointments = true, Packages = true, SimpleRecord = true, SubjectKind = ServiceSubjectKind.Pet }),
 
-            new("salao-beleza", "Salões de Beleza", 7,
-                new ServiceLabels("Cliente", "Profissional", "Serviço", "Agendamento", "Comanda", "Registro"),
-                off with { Appointments = true, Packages = true, Commissions = true }),
+            new("barbearia", "Barbearias", 7,
+                new ServiceLabels("Cliente", "Barbeiro", "Serviço", "Agendamento", "Comanda", "Registro"),
+                off with { Appointments = true, Orders = true, Packages = true, Commissions = true }),
 
-            new("escola-idiomas", "Escolas de Idiomas", 8,
+            new("salao-beleza", "Salões de Beleza", 8,
+                new ServiceLabels("Cliente", "Profissional", "Serviço", "Agendamento", "Comanda", "Registro"),
+                off with { Appointments = true, Orders = true, Packages = true, Commissions = true }),
+
+            new("escola-idiomas", "Escolas de Idiomas", 9,
                 new ServiceLabels("Aluno", "Professor", "Aula", "Aula", "Matrícula", "Registro"),
                 off with { Appointments = true, Packages = true, SimpleRecord = true, Recurrence = true }),
         };
