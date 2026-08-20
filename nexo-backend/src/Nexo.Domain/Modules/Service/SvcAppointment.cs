@@ -26,6 +26,12 @@ public class SvcAppointment : StoreEntity
     public string?              Notes              { get; private set; }
     public string?              CancellationReason { get; private set; }
     public decimal              PriceSnapshot      { get; private set; }
+    /// <summary>
+    /// Commission rate in force when the appointment was booked (catalog item first, then the
+    /// professional's default). Null means this appointment earns no commission. Frozen here so a
+    /// later rate change never rewrites what was already agreed — same discipline as PriceSnapshot.
+    /// </summary>
+    public decimal?             CommissionPercentSnapshot { get; private set; }
 
     public bool IsTerminal => Status is SvcAppointmentStatus.Completed
                                      or SvcAppointmentStatus.Cancelled
@@ -33,11 +39,13 @@ public class SvcAppointment : StoreEntity
 
     public static SvcAppointment Create(
         Guid tenantId, Guid customerId, Guid professionalId, Guid catalogItemId,
-        Guid? subjectId, DateTime startsAt, DateTime endsAt, decimal priceSnapshot, string? notes = null)
+        Guid? subjectId, DateTime startsAt, DateTime endsAt, decimal priceSnapshot, string? notes = null,
+        decimal? commissionPercentSnapshot = null)
     {
         EnsureValid(customerId, professionalId, catalogItemId, startsAt, endsAt, priceSnapshot);
         return new SvcAppointment(tenantId)
         {
+            CommissionPercentSnapshot = commissionPercentSnapshot,
             CustomerId     = customerId,
             ProfessionalId = professionalId,
             CatalogItemId  = catalogItemId,
@@ -57,18 +65,20 @@ public class SvcAppointment : StoreEntity
     /// </summary>
     public static SvcAppointment CreateForStore(
         Guid tenantId, Guid storeId, Guid customerId, Guid professionalId, Guid catalogItemId,
-        Guid? subjectId, DateTime startsAt, DateTime endsAt, decimal priceSnapshot, string? notes = null)
+        Guid? subjectId, DateTime startsAt, DateTime endsAt, decimal priceSnapshot, string? notes = null,
+        decimal? commissionPercentSnapshot = null)
     {
         var appt = Create(
             tenantId, customerId, professionalId, catalogItemId,
-            subjectId, startsAt, endsAt, priceSnapshot, notes);
+            subjectId, startsAt, endsAt, priceSnapshot, notes, commissionPercentSnapshot);
         appt.SetStoreId(storeId);
         return appt;
     }
 
     public void Reschedule(
         Guid customerId, Guid professionalId, Guid catalogItemId,
-        Guid? subjectId, DateTime startsAt, DateTime endsAt, decimal priceSnapshot, string? notes)
+        Guid? subjectId, DateTime startsAt, DateTime endsAt, decimal priceSnapshot, string? notes,
+        decimal? commissionPercentSnapshot = null)
     {
         if (IsTerminal)
             throw new DomainException($"Cannot edit a {Status} appointment.");
@@ -82,6 +92,7 @@ public class SvcAppointment : StoreEntity
         EndsAt         = endsAt;
         PriceSnapshot  = priceSnapshot;
         Notes          = notes?.Trim();
+        CommissionPercentSnapshot = commissionPercentSnapshot;
         SetUpdatedAt();
     }
 

@@ -24,6 +24,8 @@ public class SvcAppointmentConfiguration : IEntityTypeConfiguration<SvcAppointme
         builder.Property(x => x.CancellationReason).HasColumnName("cancellation_reason").HasMaxLength(500);
         builder.Property(x => x.PriceSnapshot)
             .HasColumnName("price_snapshot").HasColumnType("numeric(18,2)").IsRequired();
+        builder.Property(x => x.CommissionPercentSnapshot)
+            .HasColumnName("commission_percent_snapshot").HasColumnType("numeric(5,2)");
 
         builder.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId)
             .HasConstraintName("fk_svc_appointments_customers").OnDelete(DeleteBehavior.Restrict);
