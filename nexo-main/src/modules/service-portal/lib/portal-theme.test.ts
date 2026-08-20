@@ -6,6 +6,7 @@ describe("getPortalTheme", () => {
     ["clinica-medica", "clinica"],
     ["nutricionista", "nutri"],
     ["salao-beleza", "salao"],
+    ["barbearia", "barbearia"],
     ["pet-shop", "pet"],
     ["personal-trainer", "personal"],
     ["oficina-mecanica", "oficina"],

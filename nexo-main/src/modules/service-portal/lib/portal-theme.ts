@@ -56,6 +56,14 @@ const THEMES: Record<string, PortalTheme> = {
     ink: "#2a1f1c", muted: "#7a6760", accent: "#a8743f", accentInk: "#fffaf4", accentSoft: "#f1e4d6",
     heroFrom: "#f3e8e1", heroTo: "#faf4ef", radius: 18,
   },
+  // Barbershop reads colder and squarer than the salon: neutral greys instead of warm beiges,
+  // tighter corners, a leather-brown accent. Same fonts, different temperature.
+  barbearia: {
+    key: "barbearia", display: FRAUNCES, body: MANROPE, mood: "classic",
+    bg: "#f4f3f1", bgSoft: "#e7e5e1", surface: "#fbfaf9", line: "#ddd9d3",
+    ink: "#171513", muted: "#6b645c", accent: "#8c6239", accentInk: "#fdf8f3", accentSoft: "#eee2d3",
+    heroFrom: "#e9e5df", heroTo: "#f7f5f2", radius: 14,
+  },
   pet: {
     key: "pet", display: MANROPE, body: MANROPE, mood: "friendly",
     bg: "#fef6f2", bgSoft: "#fde9e0", surface: "#fffbf9", line: "#fadccf",
@@ -97,6 +105,7 @@ const THEMES: Record<string, PortalTheme> = {
 const PRESET_THEME: Record<string, string> = {
   "clinica-medica": "clinica",
   "nutricionista": "nutri",
+  "barbearia": "barbearia",
   "salao-beleza": "salao",
   "pet-shop": "pet",
   "personal-trainer": "personal",

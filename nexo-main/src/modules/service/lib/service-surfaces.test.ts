@@ -19,12 +19,8 @@ const LABELS: ServiceLabels = {
 const OFF: ServiceCapabilities = {
   appointments: false,
   orders: false,
-  quotes: false,
-  parts: false,
   packages: false,
-  simpleRecord: false,
   commissions: false,
-  recurrence: false,
   subjectKind: null,
 };
 
@@ -51,7 +47,7 @@ describe("service-surfaces", () => {
   });
 
   it("clinica-medica (appointments only) → agenda + cadastros, no OS/packages/payments/subjects", () => {
-    const keys = keysFor({ appointments: true, simpleRecord: true });
+    const keys = keysFor({ appointments: true });
     expect(keys).toEqual(expect.arrayContaining(["agenda", "professionals", "catalog"]));
     expect(keys).not.toContain("orders");
     expect(keys).not.toContain("packages");
@@ -62,8 +58,6 @@ describe("service-surfaces", () => {
   it("oficina-mecanica (orders + vehicle subject) → orders + payments + subjects, no agenda/packages", () => {
     const keys = keysFor({
       orders: true,
-      quotes: true,
-      parts: true,
       subjectKind: "Vehicle" as SvcSubjectKind,
     });
     expect(keys).toContain("orders");
@@ -73,12 +67,21 @@ describe("service-surfaces", () => {
     expect(keys).not.toContain("packages");
   });
 
-  it("salao-beleza (appointments + packages) → agenda + packages + payments, no orders/subjects", () => {
-    const keys = keysFor({ appointments: true, packages: true, commissions: true });
+  it("barbearia (appointments + orders + packages) → agenda + comanda + packages + payments", () => {
+    // Walk-in is the norm in a barbershop: the comanda has to be reachable without an
+    // appointment, which is exactly what the orders surface provides.
+    const keys = keysFor({ appointments: true, orders: true, packages: true, commissions: true });
+    expect(keys).toEqual([
+      "agenda", "orders", "packages", "payments", "professionals", "catalog",
+    ]);
+  });
+
+  it("salao-beleza (appointments + orders + packages) → agenda + comanda + packages + payments", () => {
+    const keys = keysFor({ appointments: true, orders: true, packages: true, commissions: true });
     expect(keys).toContain("agenda");
     expect(keys).toContain("packages");
     expect(keys).toContain("payments"); // packages provide a payment target
-    expect(keys).not.toContain("orders");
+    expect(keys).toContain("orders");
     expect(keys).not.toContain("subjects");
   });
 
@@ -86,7 +89,6 @@ describe("service-surfaces", () => {
     const keys = keysFor({
       appointments: true,
       packages: true,
-      simpleRecord: true,
       subjectKind: "Pet" as SvcSubjectKind,
     });
     expect(keys).toEqual(
