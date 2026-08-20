@@ -1,4 +1,4 @@
-using Nexo.Application.Common.Interfaces;
+﻿using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Service.Interfaces;
 using Nexo.Domain.Exceptions;
 using Nexo.Domain.Modules.Service;
@@ -9,8 +9,12 @@ namespace Nexo.Application.Modules.Service;
 /// Use cases for SvcPayment — manual payment records against an order or a customer package.
 /// Resolves the target (cross-tenant invisible → 404), rejects a cancelled target (422), and
 /// rejects an amount that exceeds the remaining balance (422). The CustomerId is taken from the
-/// target. This service NEVER mutates the order (total/status) or the package (balance/status),
-/// and never creates any global financial/cash entity — it only reads to compute remaining.
+/// target. This service NEVER mutates the order (total/status) or the package (balance/status) —
+/// it only reads them to compute the remaining balance.
+///
+/// It DOES post to the tenant's financeiro: a confirmed payment becomes a settled Receivable and
+/// a void becomes a counter-entry, both via ServiceFinancialPostingService. Without that, Service
+/// revenue never reached the financial module and the ERP effectively kept two separate tills.
 /// </summary>
 public class SvcPaymentService
 {
@@ -18,12 +22,15 @@ public class SvcPaymentService
     private readonly ISvcOrderRepository           _orders;
     private readonly ISvcCustomerPackageRepository _customerPackages;
     private readonly ICurrentTenant                _currentTenant;
+    private readonly ServiceFinancialPostingService _posting;
 
     public SvcPaymentService(
         ISvcPaymentRepository payments, ISvcOrderRepository orders,
-        ISvcCustomerPackageRepository customerPackages, ICurrentTenant currentTenant)
+        ISvcCustomerPackageRepository customerPackages, ICurrentTenant currentTenant,
+        ServiceFinancialPostingService posting)
     {
-        _payments = payments; _orders = orders; _customerPackages = customerPackages; _currentTenant = currentTenant;
+        _payments = payments; _orders = orders; _customerPackages = customerPackages;
+        _currentTenant = currentTenant; _posting = posting;
     }
 
     public async Task<IReadOnlyList<SvcPaymentDto>> GetAllAsync(
@@ -38,12 +45,14 @@ public class SvcPaymentService
     public async Task<SvcPaymentDto> CreateAsync(CreateSvcPaymentRequest r, CancellationToken ct = default)
     {
         SvcPayment payment;
+        string description;
         if (r.OrderId is { } orderId)
         {
             var order = await _orders.GetByIdAsync(orderId, ct) ?? throw new NotFoundException("SvcOrder", orderId);
             if (order.Status == SvcOrderStatus.Cancelled) throw new DomainException("Cannot pay a cancelled order.");
             EnsureWithinRemaining(r.Amount, order.TotalAmount, await PaidTotalForOrderAsync(orderId, ct));
             payment = SvcPayment.CreateForOrder(_currentTenant.Id, order.CustomerId, orderId, r.Amount, r.Method, r.PaidAt, r.ExternalReference, r.Notes);
+            description = $"Orken Service — pagamento {order.Code}";
         }
         else
         {
@@ -52,9 +61,13 @@ public class SvcPaymentService
             if (cp.Status == SvcCustomerPackageStatus.Cancelled) throw new DomainException("Cannot pay a cancelled customer package.");
             EnsureWithinRemaining(r.Amount, cp.PriceSnapshot, await PaidTotalForCustomerPackageAsync(cpId, ct));
             payment = SvcPayment.CreateForCustomerPackage(_currentTenant.Id, cp.CustomerId, cpId, r.Amount, r.Method, r.PaidAt, r.ExternalReference, r.Notes);
+            description = "Orken Service — pagamento de pacote";
         }
 
         await _payments.AddAsync(payment, ct);
+        // Same scoped DbContext behind both repositories, so the payment and its financial
+        // transaction commit together — a payment can never be recorded without its lançamento.
+        await _posting.PostPaymentAsync(payment, description, ct);
         await _payments.SaveChangesAsync(ct);
         return MapToDto(payment);
     }
@@ -64,6 +77,8 @@ public class SvcPaymentService
         var payment = await _payments.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcPayment", id);
         payment.Void(r.Reason);
         _payments.Update(payment);
+        // Counter-entry, not a delete: the original receivable stays auditable.
+        await _posting.ReversePaymentAsync(payment, "Orken Service — estorno de pagamento", ct);
         await _payments.SaveChangesAsync(ct);
         return MapToDto(payment);
     }
