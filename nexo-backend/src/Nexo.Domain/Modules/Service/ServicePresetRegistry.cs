@@ -68,38 +68,38 @@ public static class ServicePresetRegistry
         // capability sets stay declarative and free of repeated full constructors.
         // Declared as a local (not a static field) to avoid static-init ordering with `All`.
         var off = new ServiceCapabilities(
-            Appointments: false, Orders: false, Quotes: false, Parts: false, Packages: false,
-            SimpleRecord: false, Commissions: false, Recurrence: false, SubjectKind: null);
+            Appointments: false, Orders: false, Packages: false,
+            Commissions: false, SubjectKind: null);
 
         return new List<ServicePreset>
         {
             new("clinica-medica", "Clínicas Médicas e Odontológicas", 0,
                 new ServiceLabels("Paciente", "Profissional", "Procedimento", "Consulta", "Ordem de serviço", "Registro"),
-                off with { Appointments = true, SimpleRecord = true }),
+                off with { Appointments = true }),
 
             new("personal-trainer", "Personal Trainers", 1,
                 new ServiceLabels("Aluno", "Personal", "Sessão", "Sessão", "Ordem", "Avaliação"),
-                off with { Appointments = true, Packages = true, SimpleRecord = true }),
+                off with { Appointments = true, Packages = true }),
 
             new("nutricionista", "Nutricionistas", 2,
                 new ServiceLabels("Paciente", "Nutricionista", "Consulta", "Consulta", "Ordem", "Avaliação"),
-                off with { Appointments = true, SimpleRecord = true }),
+                off with { Appointments = true }),
 
             new("oficina-mecanica", "Oficinas Mecânicas", 3,
                 new ServiceLabels("Cliente", "Mecânico", "Serviço", "Agendamento", "Ordem de serviço", "Veículo"),
-                off with { Orders = true, Quotes = true, Parts = true, SubjectKind = ServiceSubjectKind.Vehicle }),
+                off with { Orders = true, SubjectKind = ServiceSubjectKind.Vehicle }),
 
             new("programador-autonomo", "Programadores Autônomos", 4,
                 new ServiceLabels("Cliente", "Profissional", "Serviço", "Agendamento", "Projeto", "Item"),
-                off with { Orders = true, Quotes = true }),
+                off with { Orders = true }),
 
             new("autoescola", "Autoescolas", 5,
                 new ServiceLabels("Aluno", "Instrutor", "Aula", "Aula", "Ordem", "Registro"),
-                off with { Appointments = true, Packages = true, SimpleRecord = true }),
+                off with { Appointments = true, Packages = true }),
 
             new("pet-shop", "Pet Shops + Clínicas Veterinárias", 6,
                 new ServiceLabels("Tutor", "Profissional", "Serviço", "Agendamento", "Ordem de serviço", "Pet"),
-                off with { Appointments = true, Packages = true, SimpleRecord = true, SubjectKind = ServiceSubjectKind.Pet }),
+                off with { Appointments = true, Packages = true, SubjectKind = ServiceSubjectKind.Pet }),
 
             new("barbearia", "Barbearias", 7,
                 new ServiceLabels("Cliente", "Barbeiro", "Serviço", "Agendamento", "Comanda", "Registro"),
@@ -111,7 +111,7 @@ public static class ServicePresetRegistry
 
             new("escola-idiomas", "Escolas de Idiomas", 9,
                 new ServiceLabels("Aluno", "Professor", "Aula", "Aula", "Matrícula", "Registro"),
-                off with { Appointments = true, Packages = true, SimpleRecord = true, Recurrence = true }),
+                off with { Appointments = true, Packages = true }),
         };
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Reflection;
 using FluentAssertions;
 using Nexo.Domain.Modules.Service;
 using Xunit;
@@ -30,6 +31,18 @@ public class ServicePresetRegistryTests
         preset.Capabilities.Orders.Should().BeTrue();
         preset.Capabilities.Packages.Should().BeTrue();
         preset.Capabilities.Commissions.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Capabilities_expose_only_surfaces_the_product_actually_has()
+    {
+        // A capability flag no screen reads is a lie told to the caller of GET /service/preset.
+        var names = typeof(ServiceCapabilities)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(p => p.Name);
+
+        names.Should().BeEquivalentTo(
+            "Appointments", "Orders", "Packages", "Commissions", "SubjectKind");
     }
 
     [Fact]

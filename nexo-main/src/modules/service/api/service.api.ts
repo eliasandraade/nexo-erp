@@ -29,12 +29,8 @@ export interface ServiceLabels {
 export interface ServiceCapabilities {
   appointments: boolean;
   orders: boolean;
-  quotes: boolean;
-  parts: boolean;
   packages: boolean;
-  simpleRecord: boolean;
   commissions: boolean;
-  recurrence: boolean;
   subjectKind: SvcSubjectKind | null;
 }
 export interface ServicePresetDto {

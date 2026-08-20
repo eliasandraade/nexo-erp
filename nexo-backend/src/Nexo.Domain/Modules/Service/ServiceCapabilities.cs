@@ -8,10 +8,6 @@ namespace Nexo.Domain.Modules.Service;
 public sealed record ServiceCapabilities(
     bool Appointments,
     bool Orders,
-    bool Quotes,
-    bool Parts,
     bool Packages,
-    bool SimpleRecord,
     bool Commissions,
-    bool Recurrence,
     ServiceSubjectKind? SubjectKind);
