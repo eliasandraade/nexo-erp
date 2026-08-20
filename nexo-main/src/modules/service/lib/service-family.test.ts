@@ -23,14 +23,14 @@ describe("service-family (single-module model)", () => {
     expect(hasServiceModule(undefined)).toBe(false);
   });
 
-  it("offers the nine internal presets for onboarding", () => {
-    expect(SERVICE_PRESET_OPTIONS).toHaveLength(9);
+  it("offers the ten internal presets for onboarding", () => {
+    expect(SERVICE_PRESET_OPTIONS).toHaveLength(10);
     expect(SERVICE_PRESET_OPTIONS.every((o) => o.key && o.label)).toBe(true);
   });
 
   it.each([
     "clinica-medica", "salao-beleza", "pet-shop", "oficina-mecanica", "nutricionista",
-    "personal-trainer", "autoescola", "escola-idiomas", "programador-autonomo",
+    "personal-trainer", "autoescola", "escola-idiomas", "programador-autonomo", "barbearia",
   ])("isValidPresetKey is true for preset %s", (key) => {
     expect(isValidPresetKey(key)).toBe(true);
   });

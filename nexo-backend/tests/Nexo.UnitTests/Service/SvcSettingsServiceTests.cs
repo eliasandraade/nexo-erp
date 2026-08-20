@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using FluentAssertions;
 using NSubstitute;
@@ -12,15 +11,16 @@ using Xunit;
 namespace Nexo.UnitTests.Service;
 
 /// <summary>
-/// Effective-preset resolution: stored SvcSettings first, then the temporary legacy fallback to
-/// a per-vertical module key, else not configured. Never auto-picks a preset.
+/// Effective-preset resolution: the stored per-store SvcSettings row is the only source. There
+/// is no fallback to a module key — the retired per-vertical SKUs were rewritten to "service"
+/// (and their vertical copied into SvcSettings) by ConvertLegacyServiceSubscriptions. Never
+/// auto-picks a preset.
 /// </summary>
 public class SvcSettingsServiceTests
 {
     private static readonly Guid Tenant = Guid.NewGuid();
 
-    private static SvcSettingsService Build(
-        SvcSettings? stored, IReadOnlyList<string> activeModules, bool resolved = true)
+    private static SvcSettingsService Build(SvcSettings? stored, bool resolved = true)
     {
         var repo = Substitute.For<ISvcSettingsRepository>();
         repo.GetForCurrentStoreAsync(Arg.Any<CancellationToken>()).Returns(stored);
@@ -29,16 +29,13 @@ public class SvcSettingsServiceTests
         tenant.IsResolved.Returns(resolved);
         tenant.Id.Returns(Tenant);
 
-        var tenants = Substitute.For<ITenantRepository>();
-        tenants.GetActiveModuleKeysAsync(Tenant, Arg.Any<CancellationToken>()).Returns(activeModules);
-
-        return new SvcSettingsService(repo, tenant, tenants);
+        return new SvcSettingsService(repo, tenant);
     }
 
     [Fact]
-    public async Task Not_configured_when_no_settings_and_no_legacy_vertical()
+    public async Task Not_configured_when_the_store_has_no_settings_row()
     {
-        var dto = await Build(stored: null, activeModules: new[] { "service" }).GetSettingsAsync();
+        var dto = await Build(stored: null).GetSettingsAsync();
         dto.IsConfigured.Should().BeFalse();
         dto.PresetKey.Should().BeNull();
     }
@@ -46,24 +43,23 @@ public class SvcSettingsServiceTests
     [Fact]
     public async Task Uses_the_stored_preset_when_present()
     {
-        var dto = await Build(SvcSettings.Create(Tenant, "pet-shop"), new[] { "service" }).GetSettingsAsync();
+        var dto = await Build(SvcSettings.Create(Tenant, "pet-shop")).GetSettingsAsync();
         dto.IsConfigured.Should().BeTrue();
         dto.PresetKey.Should().Be("pet-shop");
     }
 
     [Fact]
-    public async Task Falls_back_to_a_legacy_vertical_module_when_no_settings()
+    public async Task Uses_the_stored_preset_for_a_barbershop()
     {
-        var dto = await Build(stored: null, activeModules: new[] { "salao-beleza" }).GetSettingsAsync();
+        var dto = await Build(SvcSettings.Create(Tenant, "barbearia")).GetSettingsAsync();
         dto.IsConfigured.Should().BeTrue();
-        dto.PresetKey.Should().Be("salao-beleza");
+        dto.PresetKey.Should().Be("barbearia");
     }
 
     [Fact]
     public async Task Resolve_is_null_when_tenant_is_not_resolved()
     {
-        var key = await Build(stored: null, activeModules: Array.Empty<string>(), resolved: false)
-            .ResolveEffectivePresetKeyAsync();
+        var key = await Build(stored: null, resolved: false).ResolveEffectivePresetKeyAsync();
         key.Should().BeNull();
     }
 }

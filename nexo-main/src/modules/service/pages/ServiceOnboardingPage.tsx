@@ -8,6 +8,7 @@ import {
   Car,
   PawPrint,
   Scissors,
+  Sparkles,
   Languages,
   ConciergeBell,
   Loader2,
@@ -25,7 +26,10 @@ const PRESET_ICONS: Record<string, LucideIcon> = {
   "programador-autonomo": Code,
   "autoescola": Car,
   "pet-shop": PawPrint,
-  "salao-beleza": Scissors,
+  // Scissors belongs to the barbershop; the salon takes Sparkles so the two cards
+  // are not visually identical in the picker.
+  "barbearia": Scissors,
+  "salao-beleza": Sparkles,
   "escola-idiomas": Languages,
 };
 

@@ -28,6 +28,7 @@ export const SERVICE_PRESET_OPTIONS: ServicePresetOption[] = [
   { key: "programador-autonomo", label: "Programadores Autônomos" },
   { key: "autoescola",           label: "Autoescolas" },
   { key: "pet-shop",             label: "Pet Shops e Clínicas Veterinárias" },
+  { key: "barbearia",            label: "Barbearias" },
   { key: "salao-beleza",         label: "Salões de Beleza" },
   { key: "escola-idiomas",       label: "Escolas de Idiomas" },
 ];
