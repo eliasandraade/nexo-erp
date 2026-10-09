@@ -39,7 +39,7 @@ export const listAreas = (includeInactive = false): Promise<AreaDto[]> =>
 export const createArea = (req: { name: string; description?: string }): Promise<AreaDto> =>
   apiClient.post<AreaDto>("/restaurante/areas", req);
 
-export const updateArea = (id: string, req: { name: string; description?: string; isActive: boolean }): Promise<AreaDto> =>
+export const updateArea = (id: string, req: { name: string; description?: string | null; isActive: boolean }): Promise<AreaDto> =>
   apiClient.put<AreaDto>(`/restaurante/areas/${id}`, req);
 
 // ── Tables ────────────────────────────────────────────────────────────────────

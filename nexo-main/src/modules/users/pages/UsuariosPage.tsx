@@ -6,7 +6,7 @@ import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UserPlus } from "lucide-react";
+import { UserCog, UserPlus } from "lucide-react";
 import { userService } from "../services/userService";
 import { UserFilters } from "../components/UserFilters";
 import { UserTable } from "../components/UserTable";

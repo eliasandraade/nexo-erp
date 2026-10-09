@@ -226,11 +226,13 @@ describe("Token Validation", () => {
   });
 
   it("should extract claims from JWT", () => {
-    // Simplified JWT parsing (in reality, use a JWT library)
-    const jwt = FAKE_JWT;
+    // Simplified JWT parsing (in reality, use a JWT library). Built at runtime from known claims:
+    // FAKE_JWT deliberately carries a non-decodable payload so no real-looking token is committed.
+    const encode = (o: object) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const jwt = [encode({ alg: "HS256", typ: "JWT" }), encode({ name: "John Doe", iat: 1516239022 }), "sig"].join(".");
 
     const parts = jwt.split(".");
-    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString());
 
     expect(payload.name).toBe("John Doe");
     expect(payload.iat).toBe(1516239022);
@@ -325,7 +327,7 @@ describe("Refresh Loop Prevention", () => {
 
     const simulateRefresh = async () => {
       refreshCount++;
-      return new Promise((resolve) => setTimeout(resolve, 10));
+      return new Promise<void>((resolve) => setTimeout(resolve, 10));
     };
 
     // Fire 5 concurrent refresh requests

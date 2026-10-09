@@ -3,7 +3,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMemo } from "react";
 import { useDashboardSummary } from "@/modules/dashboard/hooks/useDashboardSummary";
 import { Link } from "react-router-dom";
-import type { InsightCategory, InsightSeverity } from "@/modules/insights/types";
+type InsightCategory = "inventory" | "cash" | "sales" | "commissions" | "operations";
+type InsightSeverity = "critical" | "warning" | "info";
 
 const categoryIcons: Record<InsightCategory, React.ElementType> = {
   inventory:   Package,
