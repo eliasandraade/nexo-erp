@@ -39,6 +39,10 @@ public class SvcPaymentRepository : ISvcPaymentRepository
 
     public void Update(SvcPayment entity) => _context.SvcPayments.Update(entity);
 
+    public async Task LockAsync(Guid paymentId, Guid tenantId, CancellationToken ct = default)
+        => await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.svc_payments WHERE id = {paymentId} AND tenant_id = {tenantId} FOR UPDATE", ct);
+
     public async Task SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);
 }

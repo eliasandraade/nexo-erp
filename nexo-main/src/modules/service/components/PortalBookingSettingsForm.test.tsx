@@ -23,6 +23,8 @@ const SETTINGS: PublicBookingSettingsDto = {
   isConfigured: true, publicBookingEnabled: false, bookingDaysAhead: 14,
   minLeadMinutes: 120, slotIntervalMinutes: 30, showPrices: true,
   autoConfirmAppointments: false, timeZoneId: "America/Sao_Paulo",
+  displayName: null, description: null, logoUrl: null, coverImageUrl: null,
+  brandColor: null, whatsApp: null, address: null,
 };
 
 beforeEach(() => mutate.mockClear());

@@ -21,6 +21,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/services/api-client";
 import type { SvcCustomerPackageDto } from "../api/service.api";
 import { useConsumeCustomerPackage } from "../hooks/useCustomerPackages";
+import { useProfessionals } from "../hooks/useProfessionals";
+import { useAppointments } from "../hooks/useAppointments";
+import { formatDateTime } from "@/lib/formatters";
+import { useServicePreset } from "../context/ServicePresetContext";
+
+/** Radix Select cannot hold an empty value — sentinel for "none selected". */
+const NO_PROFESSIONAL = "none";
+const NO_APPOINTMENT = "none";
 
 interface ConsumePackageDialogProps {
   open: boolean;
@@ -30,8 +38,33 @@ interface ConsumePackageDialogProps {
 
 export function ConsumePackageDialog({ open, onClose, customerPackage }: ConsumePackageDialogProps) {
   const consume = useConsumeCustomerPackage();
+  const { labels, capabilities } = useServicePreset();
+  const professionalTerm = labels?.professional ?? "Profissional";
+  const { data: professionals } = useProfessionals(true);
   const [catalogItemId, setCatalogItemId] = useState("");
   const [quantity, setQuantity] = useState("1");
+  const [professionalId, setProfessionalId] = useState(NO_PROFESSIONAL);
+  const [appointmentId, setAppointmentId] = useState(NO_APPOINTMENT);
+  const appointmentTerm = labels?.appointment ?? "Agendamento";
+  // Only while the dialog is open and the package is known — never an unfiltered store-wide list.
+  const { data: customerAppointments } = useAppointments(
+    { customerId: customerPackage?.customerId },
+    open && !!customerPackage,
+  );
+  // Appointments this consumption can pay for: same customer, same service, not cancelled/no-show,
+  // and not already paid by another consumption of this package.
+  const alreadyLinked = new Set((customerPackage?.usages ?? []).map((u) => u.appointmentId).filter(Boolean));
+  const linkableAppointments = (open && customerPackage ? customerAppointments ?? [] : [])
+    .filter((a) => a.catalogItemId === catalogItemId && a.status !== "Cancelled" && a.status !== "NoShow"
+      && !alreadyLinked.has(a.id))
+    .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
+    .slice(0, 20);
+  // The appointment this consumption almost certainly pays for: the only one within ±12h of now.
+  const likelyAppointment = (() => {
+    const near = linkableAppointments.filter(
+      (a) => Math.abs(new Date(a.startsAt).getTime() - Date.now()) <= 12 * 60 * 60 * 1000);
+    return near.length === 1 ? near[0] : null;
+  })();
   const [notes, setNotes] = useState("");
 
   const available = (customerPackage?.items ?? []).filter((it) => it.remainingQuantity > 0);
@@ -40,9 +73,20 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
     if (!open) return;
     setCatalogItemId(available[0]?.catalogItemId ?? "");
     setQuantity("1");
+    setProfessionalId(NO_PROFESSIONAL);
+    setAppointmentId(NO_APPOINTMENT);
     setNotes("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, customerPackage]);
+
+  // Pre-link today's appointment of this service (and its professional) — unlinked, the same
+  // service would earn commission twice: once on completion, once on this consumption.
+  useEffect(() => {
+    if (!open || !likelyAppointment) return;
+    setAppointmentId(likelyAppointment.id);
+    setProfessionalId((current) => (current === NO_PROFESSIONAL ? likelyAppointment.professionalId : current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, likelyAppointment?.id]);
 
   const handleConsume = async () => {
     if (!customerPackage) return;
@@ -51,7 +95,16 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
     if (!Number.isFinite(qty) || qty <= 0) { toast.error("Quantidade inválida."); return; }
 
     try {
-      await consume.mutateAsync({ id: customerPackage.id, body: { catalogItemId, quantity: qty, notes: notes.trim() || null } });
+      await consume.mutateAsync({
+        id: customerPackage.id,
+        body: {
+          catalogItemId,
+          quantity: qty,
+          notes: notes.trim() || null,
+          professionalId: professionalId === NO_PROFESSIONAL ? null : professionalId,
+          appointmentId: appointmentId === NO_APPOINTMENT ? null : appointmentId,
+        },
+      });
       toast.success("Saldo consumido.");
       onClose();
     } catch (e) {
@@ -75,7 +128,11 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
             <>
               <div className="space-y-1.5">
                 <Label>Serviço *</Label>
-                <Select value={catalogItemId} onValueChange={setCatalogItemId} disabled={consume.isPending}>
+                <Select
+                  value={catalogItemId}
+                  onValueChange={(v) => { setCatalogItemId(v); setAppointmentId(NO_APPOINTMENT); }}
+                  disabled={consume.isPending}
+                >
                   <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                   <SelectContent>
                     {available.map((it) => (
@@ -90,6 +147,55 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
                 <Label htmlFor="consume-qty">Quantidade *</Label>
                 <Input id="consume-qty" type="number" min={1} step={1} value={quantity}
                   onChange={(e) => setQuantity(e.target.value)} disabled={consume.isPending} />
+              </div>
+              {linkableAppointments.length > 0 && (
+                <div className="space-y-1.5">
+                  <Label>{appointmentTerm} atendido</Label>
+                  <Select
+                    value={appointmentId}
+                    onValueChange={(v) => {
+                      setAppointmentId(v);
+                      const appt = linkableAppointments.find((a) => a.id === v);
+                      if (appt && professionalId === NO_PROFESSIONAL) setProfessionalId(appt.professionalId);
+                    }}
+                    disabled={consume.isPending}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_APPOINTMENT}>Nenhum</SelectItem>
+                      {linkableAppointments.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>{formatDateTime(a.startsAt)}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {capabilities?.commissions && appointmentId === NO_APPOINTMENT ? (
+                    <p className="text-[11.5px] text-warning">
+                      Este cliente tem {appointmentTerm.toLowerCase()} deste serviço. Se este consumo pagou esse
+                      atendimento, vincule-o — sem o vínculo, a comissão é contada duas vezes.
+                    </p>
+                  ) : capabilities?.commissions ? (
+                    <p className="text-[11.5px] text-muted-foreground">
+                      A comissão deste atendimento será contada uma única vez.
+                    </p>
+                  ) : null}
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label>{professionalTerm}</Label>
+                <Select value={professionalId} onValueChange={setProfessionalId} disabled={consume.isPending}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NO_PROFESSIONAL}>Não informar</SelectItem>
+                    {(professionals ?? []).map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {capabilities?.commissions && (
+                  <p className="text-[11.5px] text-muted-foreground">
+                    Quem executou o serviço recebe a comissão deste consumo.
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="consume-notes">Observações</Label>

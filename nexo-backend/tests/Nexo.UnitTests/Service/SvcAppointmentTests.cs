@@ -108,7 +108,7 @@ public class SvcAppointmentTests
         var a = New();
         var ns = new DateTime(2026, 6, 19, 9, 0, 0, DateTimeKind.Utc);
         var ne = new DateTime(2026, 6, 19, 9, 30, 0, DateTimeKind.Utc);
-        a.Reschedule(Cust, Prof, Item, null, ns, ne, 80m, "moved");
+        a.Reschedule(Cust, Prof, Item, null, ns, ne, 80m, "moved", null);
         a.StartsAt.Should().Be(ns);
         a.EndsAt.Should().Be(ne);
         a.PriceSnapshot.Should().Be(80m);
@@ -121,7 +121,7 @@ public class SvcAppointmentTests
         a.ChangeStatus(SvcAppointmentStatus.Confirmed, null);
         a.ChangeStatus(SvcAppointmentStatus.InProgress, null);
         a.ChangeStatus(SvcAppointmentStatus.Completed, null);
-        var act = () => a.Reschedule(Cust, Prof, Item, null, Start, End, 50m, null);
+        var act = () => a.Reschedule(Cust, Prof, Item, null, Start, End, 50m, null, null);
         act.Should().Throw<DomainException>().WithMessage("*Completed*");
     }
 }

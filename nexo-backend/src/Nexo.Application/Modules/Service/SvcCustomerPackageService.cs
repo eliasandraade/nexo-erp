@@ -13,6 +13,9 @@ namespace Nexo.Application.Modules.Service;
 /// package Consumed when every balance reaches zero. Consume may reference an order/order-item for
 /// operational history — it NEVER changes the order's total or status. Expired/terminal packages
 /// cannot be consumed.
+///
+/// Each consumption snapshots who performed it, its prorated value and the commission rate, and
+/// recognises the commission (SvcCommissionService) in the same transaction.
 /// </summary>
 public class SvcCustomerPackageService
 {
@@ -25,16 +28,23 @@ public class SvcCustomerPackageService
     private readonly ISvcOrderRepository               _orders;
     private readonly ISvcOrderItemRepository           _orderItems;
     private readonly ICurrentTenant                    _currentTenant;
+    private readonly ISvcProfessionalRepository        _professionals;
+    private readonly ISvcCatalogItemRepository         _catalog;
+    private readonly ISvcAppointmentRepository         _appointments;
+    private readonly SvcCommissionService              _commissions;
+    private readonly IUnitOfWork                       _uow;
 
     public SvcCustomerPackageService(
         ISvcCustomerPackageRepository customerPackages, ISvcCustomerPackageItemRepository customerPackageItems,
         ISvcPackageUsageRepository usages, ISvcPackageRepository packages, ICustomerRepository customers,
         ISvcSubjectRepository subjects, ISvcOrderRepository orders, ISvcOrderItemRepository orderItems,
-        ICurrentTenant currentTenant)
+        ICurrentTenant currentTenant, ISvcProfessionalRepository professionals, ISvcCatalogItemRepository catalog,
+        ISvcAppointmentRepository appointments, SvcCommissionService commissions, IUnitOfWork uow)
     {
         _customerPackages = customerPackages; _customerPackageItems = customerPackageItems; _usages = usages;
         _packages = packages; _customers = customers; _subjects = subjects; _orders = orders;
-        _orderItems = orderItems; _currentTenant = currentTenant;
+        _orderItems = orderItems; _currentTenant = currentTenant; _professionals = professionals;
+        _catalog = catalog; _appointments = appointments; _commissions = commissions; _uow = uow;
     }
 
     public async Task<IReadOnlyList<SvcCustomerPackageDto>> GetAllAsync(
@@ -99,6 +109,7 @@ public class SvcCustomerPackageService
 
     public async Task<SvcCustomerPackageDto> ConsumeAsync(Guid id, ConsumeSvcPackageRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
         var cp = await _customerPackages.GetByIdWithItemsAsync(id, ct) ?? throw new NotFoundException("SvcCustomerPackage", id);
         if (cp.Status != SvcCustomerPackageStatus.Active) throw new DomainException($"Cannot consume from a {cp.Status} package.");
         if (cp.IsExpiredAt(DateTime.UtcNow))              throw new DomainException("Package has expired.");
@@ -106,13 +117,32 @@ public class SvcCustomerPackageService
         var balance = cp.Items.FirstOrDefault(i => i.CatalogItemId == r.CatalogItemId)
             ?? throw new NotFoundException("Package balance for catalog item", r.CatalogItemId);
 
-        await ValidateOrderLinkAsync(r.OrderId, r.OrderItemId, cp, ct);
+        var appointment = await ValidateAppointmentLinkAsync(r.AppointmentId, r.CatalogItemId, cp, ct);
+        var (orderId, orderItemId) = await NormalizeOrderLinkAsync(r.OrderId, r.OrderItemId, appointment, r.CatalogItemId, ct);
+        // Same lock a payment takes: the "already commissioned?" checks on both sides see each other.
+        if (orderId is { } lockedOrderId) await _orders.LockAsync(lockedOrderId, _currentTenant.Id, ct);
+        var linkedProfessionalId = await ValidateOrderLinkAsync(orderId, orderItemId, cp, ct) ?? appointment?.ProfessionalId;
+        var professional = r.ProfessionalId is { } explicitId
+            ? await ResolveConsumingProfessionalAsync(explicitId, ct)
+            : linkedProfessionalId is { } linkedId ? await _professionals.GetByIdAsync(linkedId, ct) : null;
 
         balance.Consume(r.Quantity);                       // 422 if insufficient / non-positive
         _customerPackageItems.Update(balance);
 
+        // Commission snapshots: prorated value of the consumed units (over everything the package
+        // includes) and the rate in force now — catalog item first, then the professional default.
+        var baseAmount = SvcCommissionPolicy.ProratePackageValue(
+            cp.PriceSnapshot, cp.Items.Sum(i => i.TotalQuantity), r.Quantity);
+        decimal? percent = null;
+        if (professional is not null)
+        {
+            var catalog = await _catalog.GetByIdAsync(r.CatalogItemId, ct);
+            percent = SvcCommissionPolicy.ResolvePercent(catalog?.CommissionPercent, professional.DefaultCommissionPercent);
+        }
+
         var usage = SvcPackageUsage.Create(
-            _currentTenant.Id, cp.Id, balance.Id, r.CatalogItemId, r.Quantity, r.OrderId, r.OrderItemId, r.Notes);
+            _currentTenant.Id, cp.Id, balance.Id, r.CatalogItemId, r.Quantity, orderId, orderItemId, r.Notes,
+            professional?.Id, baseAmount, percent, appointment?.Id);
         await _usages.AddAsync(usage, ct);
 
         if (cp.Items.All(i => i.RemainingQuantity == 0m))
@@ -122,22 +152,75 @@ public class SvcCustomerPackageService
         }
 
         await _customerPackages.SaveChangesAsync(ct);
+        await _commissions.RecognizePackageUsageAsync(usage, cp.CustomerId, $"{cp.Code} · {balance.NameSnapshot}", ct);
+        await tx.CommitAsync(ct);
         return MapToDto(cp, cp.Items, await _usages.GetByCustomerPackageAsync(id, ct));
     }
 
-    private async Task ValidateOrderLinkAsync(Guid? orderId, Guid? orderItemId, SvcCustomerPackage cp, CancellationToken ct)
+    /// <summary>
+    /// An explicitly chosen professional must exist in this tenant/store (404) and be active (422).
+    /// One inherited from the linked order is taken as recorded there.
+    /// </summary>
+    private async Task<SvcProfessional> ResolveConsumingProfessionalAsync(Guid pid, CancellationToken ct)
     {
-        if (orderId is not { } oid) return;                // orderItemId-without-orderId rejected by the validator (400)
+        var professional = await _professionals.GetByIdAsync(pid, ct) ?? throw new NotFoundException("SvcProfessional", pid);
+        if (!professional.IsActive) throw new DomainException("Professional is not active.");
+        return professional;
+    }
+
+    /// <summary>
+    /// The appointment a consumption pays for must exist in this tenant/store (404), belong to the
+    /// package's customer, be for the consumed service and not be cancelled / no-show (422).
+    /// </summary>
+    private async Task<SvcAppointment?> ValidateAppointmentLinkAsync(
+        Guid? appointmentId, Guid catalogItemId, SvcCustomerPackage cp, CancellationToken ct)
+    {
+        if (appointmentId is not { } aid) return null;
+        var appointment = await _appointments.GetByIdAsync(aid, ct) ?? throw new NotFoundException("SvcAppointment", aid);
+        if (appointment.CustomerId != cp.CustomerId)
+            throw new DomainException("Appointment belongs to a different customer than the package.");
+        if (appointment.CatalogItemId != catalogItemId)
+            throw new DomainException("Appointment is for a different service than the one consumed.");
+        if (appointment.Status is SvcAppointmentStatus.Cancelled or SvcAppointmentStatus.NoShow)
+            throw new DomainException($"Cannot consume a package for a {appointment.Status} appointment.");
+        // One appointment, one service, paid once — a second consumption would earn commission twice.
+        if (await _usages.ExistsForAppointmentAsync(aid, ct))
+            throw new DomainException("This appointment was already paid with a package.");
+        return appointment;
+    }
+
+    /// <summary>
+    /// Makes the order link precise, so the commission guards can see exactly which order item the
+    /// package paid for: an appointment that already has an order links that order, and an order
+    /// link without an item points at the order's first item for the consumed service.
+    /// </summary>
+    private async Task<(Guid? OrderId, Guid? OrderItemId)> NormalizeOrderLinkAsync(
+        Guid? orderId, Guid? orderItemId, SvcAppointment? appointment, Guid catalogItemId, CancellationToken ct)
+    {
+        if (orderId is null && appointment is not null)
+            orderId = (await _orders.GetAllAsync(null, null, null, null, appointment.Id, ct)).FirstOrDefault()?.Id;
+        if (orderId is { } oid && orderItemId is null)
+            orderItemId = (await _orderItems.GetByOrderAsync(oid, ct))
+                .Where(i => i.CatalogItemId == catalogItemId)
+                .OrderBy(i => i.CreatedAt).ThenBy(i => i.Id)
+                .FirstOrDefault()?.Id;
+        return (orderId, orderItemId);
+    }
+
+    /// <summary>Validates the optional order link and returns the professional it implies (item first, then order).</summary>
+    private async Task<Guid?> ValidateOrderLinkAsync(Guid? orderId, Guid? orderItemId, SvcCustomerPackage cp, CancellationToken ct)
+    {
+        if (orderId is not { } oid) return null;           // orderItemId-without-orderId rejected by the validator (400)
         var order = await _orders.GetByIdAsync(oid, ct) ?? throw new NotFoundException("SvcOrder", oid);
         if (order.CustomerId != cp.CustomerId)
             throw new DomainException("Order belongs to a different customer than the package.");
         if (cp.SubjectId is { } sid && order.SubjectId != sid)
             throw new DomainException("Order subject does not match the package subject.");
-        if (orderItemId is { } oiid)
-        {
-            var item = await _orderItems.GetByIdAsync(oiid, ct) ?? throw new NotFoundException("SvcOrderItem", oiid);
-            if (item.OrderId != oid) throw new DomainException("Order item does not belong to the order.");
-        }
+        if (orderItemId is not { } oiid) return order.ProfessionalId;
+
+        var item = await _orderItems.GetByIdAsync(oiid, ct) ?? throw new NotFoundException("SvcOrderItem", oiid);
+        if (item.OrderId != oid) throw new DomainException("Order item does not belong to the order.");
+        return item.ProfessionalId ?? order.ProfessionalId;
     }
 
     private static string GenerateCode() => $"PKG-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..19].ToUpperInvariant();
@@ -157,5 +240,6 @@ public class SvcCustomerPackageService
     private static SvcPackageUsageDto MapUsageToDto(SvcPackageUsage u) => new(
         Id: u.Id, CustomerPackageId: u.CustomerPackageId, CustomerPackageItemId: u.CustomerPackageItemId,
         CatalogItemId: u.CatalogItemId, OrderId: u.OrderId, OrderItemId: u.OrderItemId, Quantity: u.Quantity,
-        Notes: u.Notes, CreatedAt: u.CreatedAt);
+        Notes: u.Notes, ProfessionalId: u.ProfessionalId, AppointmentId: u.AppointmentId, BaseAmountSnapshot: u.BaseAmountSnapshot,
+        CommissionPercentSnapshot: u.CommissionPercentSnapshot, CreatedAt: u.CreatedAt);
 }

@@ -18,10 +18,11 @@ export interface AppointmentsFilter {
   subjectId?: string;
 }
 
-export function useAppointments(filter: AppointmentsFilter = {}) {
+export function useAppointments(filter: AppointmentsFilter = {}, enabled = true) {
   return useQuery({
     queryKey: serviceKeys.appointmentsList(filter),
     queryFn: () => fetchAppointments(filter),
+    enabled,
   });
 }
 
@@ -47,6 +48,10 @@ export function useChangeAppointmentStatus() {
   return useMutation({
     mutationFn: ({ id, status, reason }: { id: string; status: SvcAppointmentStatus; reason?: string | null }) =>
       changeAppointmentStatus(id, { status, reason }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: serviceKeys.appointments() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: serviceKeys.appointments() });
+      // Completing an appointment without an order recognises its commission.
+      qc.invalidateQueries({ queryKey: serviceKeys.commissions() });
+    },
   });
 }

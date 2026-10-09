@@ -25,6 +25,15 @@ public class ServiceFinancialPostingService
 {
     public const string PaymentReference       = "SvcPayment";
     public const string PaymentVoidReference   = "SvcPaymentVoid";
+    public const string CommissionPayoutReference = "SvcCommissionPayout";
+
+    /// <summary>
+    /// ReferenceTypes owned by the Service module. Their lançamentos mirror Service records
+    /// (payment, void, payout) and are corrected only at the origin — the financial module must
+    /// not create, edit, pay or cancel them, or the two sides silently disagree.
+    /// </summary>
+    public static bool IsServiceManaged(string? referenceType)
+        => referenceType is not null && referenceType.StartsWith("Svc", StringComparison.OrdinalIgnoreCase);
 
     private readonly IFinancialRepository _financial;
     private readonly ICurrentUser        _currentUser;

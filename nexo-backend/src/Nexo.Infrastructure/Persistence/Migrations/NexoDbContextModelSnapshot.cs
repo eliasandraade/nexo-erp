@@ -4720,6 +4720,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("catalog_item_id");
 
+                    b.Property<decimal?>("CommissionPercentSnapshot")
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("commission_percent_snapshot");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
@@ -4863,6 +4867,199 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_svc_catalog_items_tenant_store_active");
 
                     b.ToTable("svc_catalog_items", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcCommissionEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("BaseAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("base_amount");
+
+                    b.Property<decimal>("CommissionAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("commission_amount");
+
+                    b.Property<decimal>("CommissionPercent")
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("commission_percent");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid?>("PayoutId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payout_id");
+
+                    b.Property<Guid>("ProfessionalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("professional_id");
+
+                    b.Property<DateTime>("RecognizedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("recognized_at");
+
+                    b.Property<Guid?>("ReversalOfEntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reversal_of_entry_id");
+
+                    b.Property<DateTime?>("ReversedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("reversed_at");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("source");
+
+                    b.Property<Guid>("SourceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_id");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_svc_commission_entries_customer_id");
+
+                    b.HasIndex("PayoutId")
+                        .HasDatabaseName("ix_svc_commission_entries_payout_id");
+
+                    b.HasIndex("ReversalOfEntryId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_svc_commission_entries_reversal_of")
+                        .HasFilter("reversal_of_entry_id IS NOT NULL");
+
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_svc_commission_entries_store_id");
+
+                    b.HasIndex("ProfessionalId", "RecognizedAt")
+                        .HasDatabaseName("ix_svc_commission_entries_professional_recognized");
+
+                    b.HasIndex("TenantId", "Source", "SourceId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_svc_commission_entries_source")
+                        .HasFilter("kind = 'Earning' AND reversed_at IS NULL");
+
+                    b.ToTable("svc_commission_entries", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_svc_commission_entries_kind", "(kind = 'Earning' AND base_amount >= 0 AND commission_amount >= 0 AND reversal_of_entry_id IS NULL) OR (kind = 'Reversal' AND base_amount <= 0 AND commission_amount <= 0 AND reversal_of_entry_id IS NOT NULL AND reversed_at IS NULL)");
+
+                            t.HasCheckConstraint("ck_svc_commission_entries_percent", "commission_percent > 0 AND commission_percent <= 100");
+                        });
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcCommissionPayout", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("EntryCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("entry_count");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("paid_at");
+
+                    b.Property<DateTime>("PeriodEnd")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("period_end");
+
+                    b.Property<DateTime>("PeriodStart")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("period_start");
+
+                    b.Property<Guid>("ProfessionalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("professional_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_svc_commission_payouts_status");
+
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_svc_commission_payouts_store_id");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("ProfessionalId", "PeriodEnd")
+                        .HasDatabaseName("ix_svc_commission_payouts_professional_period");
+
+                    b.ToTable("svc_commission_payouts", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_svc_commission_payouts_paid_at", "(status = 'Paid') = (paid_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_svc_commission_payouts_period", "period_start <= period_end");
+
+                            t.HasCheckConstraint("ck_svc_commission_payouts_totals", "total_amount > 0 AND entry_count > 0");
+                        });
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcCustomerPackage", b =>
@@ -5301,9 +5498,21 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AppointmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("appointment_id");
+
+                    b.Property<decimal?>("BaseAmountSnapshot")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("base_amount_snapshot");
+
                     b.Property<Guid>("CatalogItemId")
                         .HasColumnType("uuid")
                         .HasColumnName("catalog_item_id");
+
+                    b.Property<decimal?>("CommissionPercentSnapshot")
+                        .HasColumnType("numeric(5,2)")
+                        .HasColumnName("commission_percent_snapshot");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
@@ -5330,6 +5539,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("order_item_id");
 
+                    b.Property<Guid?>("ProfessionalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("professional_id");
+
                     b.Property<decimal>("Quantity")
                         .HasColumnType("numeric(18,3)")
                         .HasColumnName("quantity");
@@ -5348,6 +5561,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AppointmentId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_svc_package_usages_appointment_id")
+                        .HasFilter("appointment_id IS NOT NULL");
+
                     b.HasIndex("CatalogItemId");
 
                     b.HasIndex("CustomerPackageId")
@@ -5355,9 +5573,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CustomerPackageItemId");
 
-                    b.HasIndex("OrderId");
+                    b.HasIndex("OrderId")
+                        .HasDatabaseName("ix_svc_package_usages_order_id");
 
                     b.HasIndex("OrderItemId");
+
+                    b.HasIndex("ProfessionalId");
 
                     b.HasIndex("StoreId")
                         .HasDatabaseName("ix_svc_package_usages_store_id");
@@ -7062,6 +7283,73 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_svc_catalog_items_tenants");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcCommissionEntry", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_commission_entries_customers");
+
+                    b.HasOne("Nexo.Domain.Modules.Service.SvcCommissionPayout", null)
+                        .WithMany()
+                        .HasForeignKey("PayoutId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_svc_commission_entries_payouts");
+
+                    b.HasOne("Nexo.Domain.Modules.Service.SvcProfessional", null)
+                        .WithMany()
+                        .HasForeignKey("ProfessionalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_commission_entries_professionals");
+
+                    b.HasOne("Nexo.Domain.Modules.Service.SvcCommissionEntry", null)
+                        .WithMany()
+                        .HasForeignKey("ReversalOfEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_svc_commission_entries_reversal_of");
+
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_commission_entries_stores");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_commission_entries_tenants");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcCommissionPayout", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Service.SvcProfessional", null)
+                        .WithMany()
+                        .HasForeignKey("ProfessionalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_commission_payouts_professionals");
+
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_commission_payouts_stores");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_commission_payouts_tenants");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcCustomerPackage", b =>
                 {
                     b.HasOne("Nexo.Domain.Entities.Customer", null)
@@ -7259,6 +7547,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcPackageUsage", b =>
                 {
+                    b.HasOne("Nexo.Domain.Modules.Service.SvcAppointment", null)
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_svc_package_usages_appointments");
+
                     b.HasOne("Nexo.Domain.Modules.Service.SvcCatalogItem", null)
                         .WithMany()
                         .HasForeignKey("CatalogItemId")
@@ -7291,6 +7585,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasForeignKey("OrderItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_svc_package_usages_order_items");
+
+                    b.HasOne("Nexo.Domain.Modules.Service.SvcProfessional", null)
+                        .WithMany()
+                        .HasForeignKey("ProfessionalId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_svc_package_usages_professionals");
 
                     b.HasOne("Nexo.Domain.Entities.Store", null)
                         .WithMany()

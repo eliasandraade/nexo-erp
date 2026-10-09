@@ -48,6 +48,8 @@ function useOrderMutation<TArgs>(fn: (args: TArgs) => Promise<SvcOrderDto>) {
     onSuccess: (order) => {
       qc.setQueryData(serviceKeys.order(order.id), order);
       qc.invalidateQueries({ queryKey: serviceKeys.orders() });
+      // Naming the professional / removing an unpaid item can settle a paid order's commissions.
+      qc.invalidateQueries({ queryKey: serviceKeys.commissions() });
     },
   });
 }

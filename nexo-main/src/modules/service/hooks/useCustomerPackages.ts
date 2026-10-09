@@ -41,6 +41,8 @@ function useCustomerPackageMutation<TArgs>(fn: (args: TArgs) => Promise<SvcCusto
     onSuccess: (cp) => {
       qc.setQueryData(serviceKeys.customerPackage(cp.id), cp);
       qc.invalidateQueries({ queryKey: serviceKeys.customerPackages() });
+      // A consumption recognises the commission of whoever performed it.
+      qc.invalidateQueries({ queryKey: serviceKeys.commissions() });
     },
   });
 }

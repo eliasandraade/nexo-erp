@@ -19,7 +19,7 @@ function AreaRow({ area, tables }: { area: AreaDto; tables: TableDto[] }) {
   const [tableCap, setTableCap]     = useState("4");
 
   const updateAreaMut = useMutation({
-    mutationFn: () => updateArea(area.id, { name, description: null as any, isActive: area.isActive }),
+    mutationFn: () => updateArea(area.id, { name, description: area.description, isActive: area.isActive }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["restaurante-areas-setup"] }); setEditing(false); },
   });
 
@@ -29,7 +29,7 @@ function AreaRow({ area, tables }: { area: AreaDto; tables: TableDto[] }) {
   });
 
   const toggleActiveMut = useMutation({
-    mutationFn: () => updateArea(area.id, { name: area.name, description: null as any, isActive: !area.isActive }),
+    mutationFn: () => updateArea(area.id, { name: area.name, description: area.description, isActive: !area.isActive }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["restaurante-areas-setup"] }),
   });
 

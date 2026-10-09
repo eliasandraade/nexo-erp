@@ -13,11 +13,11 @@ import { test, expect } from "@playwright/test";
  *
  * These tests require:
  * - Backend running on http://localhost:5000
- * - Frontend running on http://localhost:3000 (or configured base URL)
+ * - Frontend running on http://localhost:8080 (or configured base URL)
  */
 
 const API_URL = process.env.API_URL || "http://localhost:5000";
-const APP_URL = process.env.APP_URL || "http://localhost:3000";
+const APP_URL = process.env.APP_URL || "http://localhost:8080";
 
 /**
  * E2E test credentials.

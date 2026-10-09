@@ -8,7 +8,8 @@
  */
 
 export type ThemeMood =
-  | "serene" | "fresh" | "energetic" | "industrial" | "tech" | "elegant" | "friendly" | "scholarly";
+  | "serene" | "fresh" | "energetic" | "industrial" | "tech" | "elegant" | "friendly" | "scholarly"
+  | "classic";
 
 export interface PortalTheme {
   key:        string;

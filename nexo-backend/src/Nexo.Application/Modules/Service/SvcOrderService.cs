@@ -11,6 +11,12 @@ namespace Nexo.Application.Modules.Service;
 /// All references (customer/subject/professional/catalog) are validated through tenant/store-
 /// filtered repositories (cross-tenant → 404); inactive professional/catalog and subject/customer
 /// mismatch and RequiresSubject → 422. TotalAmount is always recomputed from items server-side.
+///
+/// Commission: an item that already earned commission is frozen (422 on edit/remove). Edits that
+/// can make an already-paid order commissionable — naming the (order or item) professional after
+/// payment, or removing an unpaid item so the payments now cover the total — re-run recognition
+/// (idempotent) in the same transaction. Every edit locks the order row first, the same lock a
+/// payment takes, so edits and payments never interleave.
 /// </summary>
 public class SvcOrderService
 {
@@ -22,16 +28,21 @@ public class SvcOrderService
     private readonly ISvcCatalogItemRepository  _catalog;
     private readonly ISvcAppointmentRepository  _appointments;
     private readonly ICurrentTenant             _currentTenant;
+    private readonly ISvcCommissionRepository   _commissions;
+    private readonly SvcCommissionService       _commissionService;
+    private readonly IUnitOfWork                _uow;
 
     public SvcOrderService(
         ISvcOrderRepository orders, ISvcOrderItemRepository items, ICustomerRepository customers,
         ISvcSubjectRepository subjects, ISvcProfessionalRepository professionals,
         ISvcCatalogItemRepository catalog, ISvcAppointmentRepository appointments,
-        ICurrentTenant currentTenant)
+        ICurrentTenant currentTenant, ISvcCommissionRepository commissions,
+        SvcCommissionService commissionService, IUnitOfWork uow)
     {
         _orders = orders; _items = items; _customers = customers; _subjects = subjects;
         _professionals = professionals; _catalog = catalog; _appointments = appointments;
-        _currentTenant = currentTenant;
+        _currentTenant = currentTenant; _commissions = commissions;
+        _commissionService = commissionService; _uow = uow;
     }
 
     // ── Queries ──────────────────────────────────────────────────────────────
@@ -102,8 +113,11 @@ public class SvcOrderService
     // ── Update / status ──────────────────────────────────────────────────────
     public async Task<SvcOrderDto> UpdateAsync(Guid id, UpdateSvcOrderRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _orders.LockAsync(id, _currentTenant.Id, ct);
         var order = await _orders.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcOrder", id);
         order.EnsureEditable();
+        var professionalNamedNow = order.ProfessionalId is null && r.ProfessionalId is not null;
 
         await EnsureSubjectAsync(r.SubjectId, order.CustomerId, ct);
         await EnsureProfessionalActiveAsync(r.ProfessionalId, ct);
@@ -112,6 +126,9 @@ public class SvcOrderService
         order.UpdateDetails(r.SubjectId, r.ProfessionalId, r.Notes);
         _orders.Update(order);
         await _orders.SaveChangesAsync(ct);
+        if (professionalNamedNow)
+            await _commissionService.RecognizeOrderIfSettledAsync(order.Id, DateTime.UtcNow, ct);
+        await tx.CommitAsync(ct);
         return MapToDto(order, await _items.GetByOrderAsync(order.Id, ct));
     }
 
@@ -127,6 +144,8 @@ public class SvcOrderService
     // ── Items ────────────────────────────────────────────────────────────────
     public async Task<SvcOrderDto> AddItemAsync(Guid orderId, AddSvcOrderItemRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _orders.LockAsync(orderId, _currentTenant.Id, ct);
         var order = await _orders.GetByIdAsync(orderId, ct) ?? throw new NotFoundException("SvcOrder", orderId);
         order.EnsureEditable();
 
@@ -146,17 +165,22 @@ public class SvcOrderService
         order.RecalculateTotal(all);
         _orders.Update(order);
         await _orders.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(order, all);
     }
 
     public async Task<SvcOrderDto> UpdateItemAsync(
         Guid orderId, Guid itemId, UpdateSvcOrderItemRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _orders.LockAsync(orderId, _currentTenant.Id, ct);
         var order = await _orders.GetByIdAsync(orderId, ct) ?? throw new NotFoundException("SvcOrder", orderId);
         order.EnsureEditable();
         var item = await _items.GetByIdAsync(itemId, ct);
         if (item is null || item.OrderId != orderId) throw new NotFoundException("SvcOrderItem", itemId);
+        await EnsureNotCommissionedAsync(itemId, ct);
         await EnsureProfessionalActiveAsync(r.ProfessionalId, ct);
+        var professionalNamedNow = item.ProfessionalId is null && r.ProfessionalId is not null;
 
         item.Update(r.Quantity, r.ProfessionalId);
         _items.Update(item);
@@ -165,21 +189,29 @@ public class SvcOrderService
         order.RecalculateTotal(all);
         _orders.Update(order);
         await _orders.SaveChangesAsync(ct);
+        if (professionalNamedNow)
+            await _commissionService.RecognizeOrderIfSettledAsync(orderId, DateTime.UtcNow, ct);
+        await tx.CommitAsync(ct);
         return MapToDto(order, all);
     }
 
     public async Task<SvcOrderDto> RemoveItemAsync(Guid orderId, Guid itemId, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _orders.LockAsync(orderId, _currentTenant.Id, ct);
         var order = await _orders.GetByIdAsync(orderId, ct) ?? throw new NotFoundException("SvcOrder", orderId);
         order.EnsureEditable();
         var item = await _items.GetByIdAsync(itemId, ct);
         if (item is null || item.OrderId != orderId) throw new NotFoundException("SvcOrderItem", itemId);
+        await EnsureNotCommissionedAsync(itemId, ct);
 
         _items.Remove(item);
         var remaining = (await _items.GetByOrderAsync(orderId, ct)).Where(i => i.Id != itemId).ToList();
         order.RecalculateTotal(remaining);
         _orders.Update(order);
         await _orders.SaveChangesAsync(ct);
+        await _commissionService.RecognizeOrderIfSettledAsync(orderId, DateTime.UtcNow, ct);
+        await tx.CommitAsync(ct);
         return MapToDto(order, remaining);
     }
 
@@ -204,6 +236,17 @@ public class SvcOrderService
         var professional = await _professionals.GetByIdAsync(pid, ct)
             ?? throw new NotFoundException("SvcProfessional", pid);
         if (!professional.IsActive) throw new DomainException("Professional is not active.");
+    }
+
+    /// <summary>
+    /// An item whose commission was already recognised (the order was paid in full) is frozen:
+    /// changing its quantity/professional or removing it would leave the commission pointing at
+    /// something that no longer matches.
+    /// </summary>
+    private async Task EnsureNotCommissionedAsync(Guid itemId, CancellationToken ct)
+    {
+        if (await _commissions.EntryExistsForSourceAsync(SvcCommissionSource.OrderItem, itemId, ct))
+            throw new DomainException("This item already earned commission and can no longer be changed.");
     }
 
     private async Task EnsureNoItemRequiresSubjectAsync(Guid orderId, CancellationToken ct)

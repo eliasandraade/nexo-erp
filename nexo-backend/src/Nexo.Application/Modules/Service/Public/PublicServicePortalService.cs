@@ -194,7 +194,8 @@ public sealed class PublicServicePortalService
 
         var appt = SvcAppointment.CreateForStore(
             ctx.Store.TenantId, ctx.Store.Id, customer.Id, professional.Id, catalog.Id,
-            subjectId, startsAt, endsAt, catalog.Price, request.Notes);
+            subjectId, startsAt, endsAt, catalog.Price, request.Notes,
+            SvcCommissionPolicy.ResolvePercent(catalog.CommissionPercent, professional.DefaultCommissionPercent));
 
         if (ctx.Settings.AutoConfirmAppointments)
             appt.ChangeStatus(SvcAppointmentStatus.Confirmed, null);
