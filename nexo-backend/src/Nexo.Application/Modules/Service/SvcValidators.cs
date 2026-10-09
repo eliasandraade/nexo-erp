@@ -259,6 +259,38 @@ public class ConsumeSvcPackageRequestValidator : AbstractValidator<ConsumeSvcPac
         RuleFor(x => x).Must(r => r.OrderItemId is null || r.OrderId is not null)
             .WithMessage("OrderId is required when OrderItemId is provided.");
         RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
+        RuleFor(x => x.ProfessionalId).NotEqual(Guid.Empty).When(x => x.ProfessionalId is not null)
+            .WithMessage("ProfessionalId must not be empty.");
+        RuleFor(x => x.AppointmentId).NotEqual(Guid.Empty).When(x => x.AppointmentId is not null)
+            .WithMessage("AppointmentId must not be empty.");
+    }
+}
+
+public class CloseSvcCommissionPayoutRequestValidator : AbstractValidator<CloseSvcCommissionPayoutRequest>
+{
+    public CloseSvcCommissionPayoutRequestValidator()
+    {
+        RuleFor(x => x.ProfessionalId).NotEmpty().WithMessage("ProfessionalId is required.");
+        RuleFor(x => x.PeriodStart).Must(d => d.Kind == DateTimeKind.Utc)
+            .WithMessage("PeriodStart must be UTC (use a trailing Z).");
+        RuleFor(x => x.PeriodEnd).Must(d => d.Kind == DateTimeKind.Utc)
+            .WithMessage("PeriodEnd must be UTC (use a trailing Z).");
+        RuleFor(x => x).Must(x => x.PeriodStart <= x.PeriodEnd)
+            .WithMessage("PeriodStart must not be after PeriodEnd.");
+        RuleFor(x => x.Notes).MaximumLength(500).When(x => x.Notes is not null);
+    }
+}
+
+public class MarkSvcCommissionPayoutPaidRequestValidator : AbstractValidator<MarkSvcCommissionPayoutPaidRequest>
+{
+    public MarkSvcCommissionPayoutPaidRequestValidator()
+    {
+        RuleFor(x => x.PaidAt).Must(d => d!.Value.Kind == DateTimeKind.Utc)
+            .WithMessage("PaidAt must be UTC (use a trailing Z).")
+            .When(x => x.PaidAt is not null);
+        RuleFor(x => x.PaidAt).Must(d => d!.Value <= DateTime.UtcNow.AddMinutes(5))
+            .WithMessage("PaidAt cannot be in the future.")
+            .When(x => x.PaidAt is not null);
     }
 }
 

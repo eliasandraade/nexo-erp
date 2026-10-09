@@ -11,6 +11,14 @@ public interface ISvcOrderRepository
         SvcOrderStatus? status, Guid? customerId, Guid? subjectId, Guid? professionalId,
         Guid? appointmentId, CancellationToken ct = default);
     Task<bool> ExistsForAppointmentAsync(Guid appointmentId, CancellationToken ct = default);
+
+    /// <summary>
+    /// SELECT … FOR UPDATE on the order row (scoped to the tenant). Must run inside a transaction:
+    /// serialises everything that changes what an order owes or has paid (payments, voids, item
+    /// edits), so a concurrent pair can neither both miss the "fully paid" moment nor edit an item
+    /// while its commission is being recognised. Works across API replicas (database lock).
+    /// </summary>
+    Task LockAsync(Guid orderId, Guid tenantId, CancellationToken ct = default);
     Task AddAsync(SvcOrder entity, CancellationToken ct = default);
     void Update(SvcOrder entity);
     Task SaveChangesAsync(CancellationToken ct = default);

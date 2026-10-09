@@ -25,6 +25,7 @@ public class ServiceFinancialPostingService
 {
     public const string PaymentReference       = "SvcPayment";
     public const string PaymentVoidReference   = "SvcPaymentVoid";
+    public const string CommissionPayoutReference = "SvcCommissionPayout";
 
     private readonly IFinancialRepository _financial;
     private readonly ICurrentUser        _currentUser;

@@ -79,6 +79,7 @@ public static class DependencyInjection
         services.AddScoped<SvcPackageService>();
         services.AddScoped<SvcCustomerPackageService>();
         services.AddScoped<SvcPaymentService>();
+        services.AddScoped<SvcCommissionService>();
         services.AddScoped<Nexo.Application.Modules.Service.Public.PublicServicePortalService>();
 
         // FluentValidation — scan this assembly for all validators

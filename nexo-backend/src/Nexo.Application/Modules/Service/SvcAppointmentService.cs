@@ -11,7 +11,9 @@ namespace Nexo.Application.Modules.Service;
 /// professional, catalog item, and (optional) subject through tenant/store-filtered repositories
 /// (cross-tenant rows are invisible → 404). Enforces active professional/catalog (422),
 /// RequiresSubject + subject-belongs-to-customer (422), and per-professional overlap (409). The
-/// price and the commission rate are snapshotted at create/reschedule time.
+/// price and the commission rate are snapshotted at create/reschedule time. Completing an
+/// appointment that has no order recognises its commission (SvcCommissionService) in the same
+/// transaction as the status change.
 /// </summary>
 public class SvcAppointmentService
 {
@@ -21,6 +23,8 @@ public class SvcAppointmentService
     private readonly ISvcCatalogItemRepository  _catalog;
     private readonly ISvcSubjectRepository      _subjects;
     private readonly ICurrentTenant             _currentTenant;
+    private readonly SvcCommissionService       _commissions;
+    private readonly IUnitOfWork                _uow;
 
     public SvcAppointmentService(
         ISvcAppointmentRepository repo,
@@ -28,8 +32,12 @@ public class SvcAppointmentService
         ISvcProfessionalRepository professionals,
         ISvcCatalogItemRepository catalog,
         ISvcSubjectRepository subjects,
-        ICurrentTenant currentTenant)
+        ICurrentTenant currentTenant,
+        SvcCommissionService commissions,
+        IUnitOfWork uow)
     {
+        _commissions   = commissions;
+        _uow           = uow;
         _repo          = repo;
         _customers     = customers;
         _professionals = professionals;
@@ -79,10 +87,16 @@ public class SvcAppointmentService
     public async Task<SvcAppointmentDto> ChangeStatusAsync(
         Guid id, ChangeSvcAppointmentStatusRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
         var appt = await _repo.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcAppointment", id);
         appt.ChangeStatus(r.Status!.Value, r.Reason);   // Status is NotNull-validated upstream
         _repo.Update(appt);
         await _repo.SaveChangesAsync(ct);
+
+        if (appt.Status == SvcAppointmentStatus.Completed)
+            await _commissions.RecognizeAppointmentAsync(appt, ct);
+
+        await tx.CommitAsync(ct);
         return MapToDto(appt);
     }
 

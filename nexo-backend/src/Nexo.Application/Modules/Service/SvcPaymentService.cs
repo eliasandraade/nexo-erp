@@ -15,6 +15,9 @@ namespace Nexo.Application.Modules.Service;
 /// It DOES post to the tenant's financeiro: a confirmed payment becomes a settled Receivable and
 /// a void becomes a counter-entry, both via ServiceFinancialPostingService. Without that, Service
 /// revenue never reached the financial module and the ERP effectively kept two separate tills.
+///
+/// A payment that settles an order in full also recognises that order's commissions (regime de
+/// caixa) through SvcCommissionService — in the same transaction as the payment and its lançamento.
 /// </summary>
 public class SvcPaymentService
 {
@@ -23,14 +26,16 @@ public class SvcPaymentService
     private readonly ISvcCustomerPackageRepository _customerPackages;
     private readonly ICurrentTenant                _currentTenant;
     private readonly ServiceFinancialPostingService _posting;
+    private readonly SvcCommissionService          _commissions;
+    private readonly IUnitOfWork                   _uow;
 
     public SvcPaymentService(
         ISvcPaymentRepository payments, ISvcOrderRepository orders,
         ISvcCustomerPackageRepository customerPackages, ICurrentTenant currentTenant,
-        ServiceFinancialPostingService posting)
+        ServiceFinancialPostingService posting, SvcCommissionService commissions, IUnitOfWork uow)
     {
         _payments = payments; _orders = orders; _customerPackages = customerPackages;
-        _currentTenant = currentTenant; _posting = posting;
+        _currentTenant = currentTenant; _posting = posting; _commissions = commissions; _uow = uow;
     }
 
     public async Task<IReadOnlyList<SvcPaymentDto>> GetAllAsync(
@@ -44,10 +49,14 @@ public class SvcPaymentService
 
     public async Task<SvcPaymentDto> CreateAsync(CreateSvcPaymentRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
         SvcPayment payment;
         string description;
         if (r.OrderId is { } orderId)
         {
+            // Serialises concurrent payments/edits of the same order: the remaining-balance check
+            // and the "fully paid -> commission" check below must see each other's payments.
+            await _orders.LockAsync(orderId, _currentTenant.Id, ct);
             var order = await _orders.GetByIdAsync(orderId, ct) ?? throw new NotFoundException("SvcOrder", orderId);
             if (order.Status == SvcOrderStatus.Cancelled) throw new DomainException("Cannot pay a cancelled order.");
             EnsureWithinRemaining(r.Amount, order.TotalAmount, await PaidTotalForOrderAsync(orderId, ct));
@@ -69,17 +78,28 @@ public class SvcPaymentService
         // transaction commit together — a payment can never be recorded without its lançamento.
         await _posting.PostPaymentAsync(payment, description, ct);
         await _payments.SaveChangesAsync(ct);
+
+        // Saved first so the settled check below already counts this payment. Recognised at the
+        // server clock (when the money was registered), not the client-supplied PaidAt, so a
+        // backdated payment cannot drop entries into a period that was already closed.
+        if (payment.OrderId is { } paidOrderId)
+            await _commissions.RecognizeOrderIfSettledAsync(paidOrderId, DateTime.UtcNow, ct);
+
+        await tx.CommitAsync(ct);
         return MapToDto(payment);
     }
 
     public async Task<SvcPaymentDto> VoidAsync(Guid id, VoidSvcPaymentRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
         var payment = await _payments.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcPayment", id);
+        if (payment.OrderId is { } orderId) await _orders.LockAsync(orderId, _currentTenant.Id, ct);
         payment.Void(r.Reason);
         _payments.Update(payment);
         // Counter-entry, not a delete: the original receivable stays auditable.
         await _posting.ReversePaymentAsync(payment, "Orken Service — estorno de pagamento", ct);
         await _payments.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(payment);
     }
 
