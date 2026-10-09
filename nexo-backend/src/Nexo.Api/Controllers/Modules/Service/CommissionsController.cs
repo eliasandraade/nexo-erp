@@ -13,17 +13,14 @@ namespace Nexo.Api.Controllers.Modules.Service;
 /// created here: they are recognised by the payment / appointment / package flows. This controller
 /// reads them, closes a professional's period into a payout, and marks a payout paid (which is
 /// when the expense reaches the financeiro). Tenant/store isolation comes from the EF query
-/// filters; gated by the service module. Closing and paying move money, so they are restricted to
-/// Gerente/Diretoria.
+/// filters; gated by the service module; Gerente/Diretoria only, like every Service operation.
 /// </summary>
 [ApiController]
 [Route("api/v1/service/commissions")]
-[Authorize]
+[Authorize(Roles = ServiceRoles.Management)]
 [RequireServiceModule]
 public class CommissionsController : ControllerBase
 {
-    private const string ManagerRoles = "Gerente,Diretoria";
-
     private readonly SvcCommissionService                             _service;
     private readonly IValidator<CloseSvcCommissionPayoutRequest>      _closeValidator;
     private readonly IValidator<MarkSvcCommissionPayoutPaidRequest>   _payValidator;
@@ -70,7 +67,6 @@ public class CommissionsController : ControllerBase
 
     /// <summary>Closes the professional's open entries in the period into a Pending payout.</summary>
     [HttpPost("payouts")]
-    [Authorize(Roles = ManagerRoles)]
     public async Task<ActionResult<SvcCommissionPayoutDetailDto>> ClosePayout(
         [FromBody] CloseSvcCommissionPayoutRequest request, CancellationToken ct)
     {
@@ -81,7 +77,6 @@ public class CommissionsController : ControllerBase
 
     /// <summary>Marks the payout paid and posts the settled Payable. Idempotent.</summary>
     [HttpPost("payouts/{id:guid}/pay")]
-    [Authorize(Roles = ManagerRoles)]
     public async Task<ActionResult<SvcCommissionPayoutDto>> MarkPaid(
         Guid id, [FromBody] MarkSvcCommissionPayoutPaidRequest? request, CancellationToken ct)
     {

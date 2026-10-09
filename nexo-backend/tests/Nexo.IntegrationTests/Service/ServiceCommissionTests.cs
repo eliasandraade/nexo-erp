@@ -41,10 +41,26 @@ public class ServiceCommissionTests
     }
 
     [Fact]
-    public async Task Closing_and_paying_require_a_manager_role()
+    public async Task Service_operations_require_a_manager_role_but_preset_reads_stay_open()
     {
         var seller = await LoginAsSellerOfAdminTenantAsync();
-        (await seller.GetAsync($"{Base}/commissions/summary")).StatusCode.Should().Be(HttpStatusCode.OK);
+        // The app-wide preset provider reads these for any user.
+        (await seller.GetAsync($"{Base}/preset")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await seller.GetAsync($"{Base}/settings")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await seller.GetAsync($"{Base}/settings/public-booking")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Every operation is management-only, as every /service/* screen is.
+        (await seller.GetAsync($"{Base}/commissions/summary")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await seller.GetAsync($"{Base}/payments")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await seller.PostAsJsonAsync($"{Base}/payments/{Guid.NewGuid()}/void", new { reason = "x" }))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await seller.GetAsync($"{Base}/orders")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await seller.GetAsync($"{Base}/appointments")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await seller.GetAsync($"{Base}/professionals")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await seller.PutAsJsonAsync($"{Base}/settings/preset", new { presetKey = "barbearia" }))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await seller.PutAsJsonAsync($"{Base}/settings/branding", new { displayName = "x" }))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         (await seller.PostAsJsonAsync($"{Base}/commissions/payouts", new
         {
@@ -267,6 +283,24 @@ public class ServiceCommissionTests
         var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
         return await db.FinancialTransactions.IgnoreQueryFilters().AsNoTracking()
             .SingleAsync(t => t.ReferenceType == referenceType && t.ReferenceId == referenceId);
+    }
+
+    [Fact]
+    public async Task An_order_with_payments_cannot_be_cancelled_until_they_are_voided()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 30m);
+        var order = await OrderAsync(c, await CustomerAsync(c), prof, (await CatalogAsync(c, 100m, null), null));
+        var payment = await PayAsync(c, order.Id, 100m);
+
+        (await c.PatchAsJsonAsync($"{Base}/orders/{order.Id}/status", new { status = "Cancelled", reason = "x" }))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, "cancelling would leave receita and commission behind");
+
+        (await c.PostAsJsonAsync($"{Base}/payments/{payment}/void", new { reason = "cliente desistiu" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await c.PatchAsJsonAsync($"{Base}/orders/{order.Id}/status", new { status = "Cancelled", reason = "x" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await EntriesAsync(c, prof)).Count(IsActiveEarning).Should().Be(0);
     }
 
     [Fact]
