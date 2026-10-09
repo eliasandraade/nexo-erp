@@ -31,18 +31,19 @@ public class SvcOrderService
     private readonly ISvcCommissionRepository   _commissions;
     private readonly SvcCommissionService       _commissionService;
     private readonly IUnitOfWork                _uow;
+    private readonly ISvcPaymentRepository      _payments;
 
     public SvcOrderService(
         ISvcOrderRepository orders, ISvcOrderItemRepository items, ICustomerRepository customers,
         ISvcSubjectRepository subjects, ISvcProfessionalRepository professionals,
         ISvcCatalogItemRepository catalog, ISvcAppointmentRepository appointments,
         ICurrentTenant currentTenant, ISvcCommissionRepository commissions,
-        SvcCommissionService commissionService, IUnitOfWork uow)
+        SvcCommissionService commissionService, IUnitOfWork uow, ISvcPaymentRepository payments)
     {
         _orders = orders; _items = items; _customers = customers; _subjects = subjects;
         _professionals = professionals; _catalog = catalog; _appointments = appointments;
         _currentTenant = currentTenant; _commissions = commissions;
-        _commissionService = commissionService; _uow = uow;
+        _commissionService = commissionService; _uow = uow; _payments = payments;
     }
 
     // ── Queries ──────────────────────────────────────────────────────────────
@@ -134,10 +135,21 @@ public class SvcOrderService
 
     public async Task<SvcOrderDto> ChangeStatusAsync(Guid id, ChangeSvcOrderStatusRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _orders.LockAsync(id, _currentTenant.Id, ct);   // same lock as payments: no pay/cancel race
         var order = await _orders.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcOrder", id);
+
+        // A cancelled order with money still recorded against it would keep its receita in the
+        // financeiro and its commissions active. Payments are undone at the origin (void), which
+        // also posts the counter-entry and reverses the commissions — so require that first.
+        if (r.Status == SvcOrderStatus.Cancelled
+            && (await _payments.GetByOrderAsync(id, ct)).Any(p => p.Status == SvcPaymentStatus.Paid))
+            throw new DomainException("This order has payments. Void them before cancelling the order.");
+
         order.ChangeStatus(r.Status!.Value, r.Reason);
         _orders.Update(order);
         await _orders.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(order, await _items.GetByOrderAsync(order.Id, ct));
     }
 
