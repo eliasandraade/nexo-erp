@@ -4,7 +4,7 @@ namespace Nexo.Application.Features.Stock;
 
 public record AdjustStockRequest(
     Guid ProductId,
-    decimal Quantity,           // positive = entry, negative = exit
+    decimal Quantity,           // magnitude for ManualEntry/ManualExit/Loss; signed delta for Adjustment
     string MovementType,        // "ManualEntry" | "ManualExit" | "Adjustment" | "Loss"
     string? Notes = null);
 

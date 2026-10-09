@@ -6,7 +6,8 @@ namespace Nexo.Api.Controllers;
 
 [ApiController]
 [Route("api/financial")]
-[Authorize]
+// Contas a pagar/receber move money: management only (no other role has a financial screen).
+[Authorize(Roles = "Gerente,Diretoria")]
 public class FinancialController : ControllerBase
 {
     private readonly FinancialService _service;

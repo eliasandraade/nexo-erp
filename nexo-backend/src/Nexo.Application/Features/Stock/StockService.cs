@@ -48,6 +48,31 @@ public class StockService
         return movements.Select(MapMovementToDto).ToList();
     }
 
+    /// <summary>
+    /// The direction of a manual movement is decided by its TYPE, never by the sign the client
+    /// happened to send: entries add, exits and losses subtract, an inventory adjustment is the
+    /// signed difference counted. (Before, the screen always sent a positive quantity and an exit
+    /// or loss INCREASED the stock.) Only the four manual types are accepted here — sale, purchase
+    /// and recipe movements are written by their own flows.
+    /// </summary>
+    internal static (StockMovementType Type, decimal Delta) ResolveManualMovement(string movementType, decimal quantity)
+    {
+        if (!Enum.TryParse<StockMovementType>(movementType, ignoreCase: true, out var type))
+            throw new DomainException($"Unknown stock movement type '{movementType}'.");
+        if (quantity == 0m)
+            throw new DomainException("Quantity must not be zero.");
+
+        return type switch
+        {
+            StockMovementType.ManualEntry => (type, Math.Abs(quantity)),
+            StockMovementType.ManualExit  => (type, -Math.Abs(quantity)),
+            StockMovementType.Loss        => (type, -Math.Abs(quantity)),
+            StockMovementType.Adjustment  => (type, quantity),
+            _ => throw new DomainException(
+                $"'{type}' movements are recorded by their own flow and cannot be adjusted manually."),
+        };
+    }
+
     public async Task<StockItemDto> AdjustAsync(AdjustStockRequest request, CancellationToken ct = default)
     {
         var product = await _products.GetByIdAsync(request.ProductId, ct)
@@ -63,15 +88,15 @@ public class StockService
             await _stock.AddStockItemAsync(stockItem, ct);
         }
 
-        var movementType = Enum.Parse<StockMovementType>(request.MovementType, ignoreCase: true);
+        var (movementType, delta) = ResolveManualMovement(request.MovementType, request.Quantity);
         var quantityBefore = stockItem.CurrentQuantity;
-        stockItem.ApplyMovement(request.Quantity);
+        stockItem.ApplyMovement(delta);
 
         var movement = StockMovement.Create(
             _currentTenant.Id,
             request.ProductId,
             movementType,
-            request.Quantity,
+            delta,
             quantityBefore,
             stockItem.CurrentQuantity,
             _currentUser.UserId,

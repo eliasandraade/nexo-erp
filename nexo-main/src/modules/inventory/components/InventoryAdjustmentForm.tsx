@@ -32,8 +32,9 @@ export function InventoryAdjustmentForm() {
       return;
     }
     const qty = Number(quantity);
-    if (!qty || qty <= 0) {
-      toast.error("Informe uma quantidade maior que zero.");
+    const isInventoryCount = movementType === "Adjustment";
+    if (!qty || (!isInventoryCount && qty <= 0)) {
+      toast.error(isInventoryCount ? "Informe a diferença (positiva ou negativa)." : "Informe uma quantidade maior que zero.");
       return;
     }
 
@@ -92,12 +93,19 @@ export function InventoryAdjustmentForm() {
             <Label>Quantidade *</Label>
             <Input
               type="number"
-              min={1}
+              min={movementType === "Adjustment" ? undefined : 1}
               step={1}
               placeholder="0"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
             />
+            <p className="text-[11.5px] text-muted-foreground">
+              {movementType === "Adjustment"
+                ? "Diferença encontrada na contagem: positiva soma, negativa subtrai."
+                : movementType === "ManualEntry"
+                  ? "Quantidade que entra no estoque."
+                  : "Quantidade que sai do estoque."}
+            </p>
           </div>
 
           <div className="space-y-1.5 md:col-span-2">

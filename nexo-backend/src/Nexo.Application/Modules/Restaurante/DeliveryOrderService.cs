@@ -266,6 +266,17 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
 
         var orderType = Enum.Parse<DeliveryOrderType>(request.OrderType, ignoreCase: true);
 
+        // Anonymous input: validate the items BEFORE anything is saved, so a bad request never
+        // leaves an empty or negative-total order in the restaurant's inbox.
+        var portalItems = request.Items ?? [];
+        if (portalItems.Count == 0)
+            throw new DomainException("O pedido precisa de ao menos um item.");
+        if (portalItems.Any(i => i.Quantity <= 0m || i.Quantity > 99m || i.Quantity != decimal.Truncate(i.Quantity)))
+            throw new DomainException("Quantidade inválida: use um número inteiro entre 1 e 99.");
+        foreach (var i in portalItems)
+            _ = await _products.GetActiveMenuItemAsync(i.ProductId, store.Id, ct)
+                ?? throw new NotFoundException("Product", i.ProductId);
+
         if (foodSettings is not null && orderType == DeliveryOrderType.Delivery && !foodSettings.DeliveryEnabled)
             throw new DomainException("Entrega não está disponível no momento.");
         if (foodSettings is not null && orderType == DeliveryOrderType.Takeaway && !foodSettings.TakeawayEnabled)
