@@ -140,9 +140,133 @@ public class ServiceCommissionTests
         var payment = await PayAsync(c, order.Id, 100m);             // 1st recognition
         (await c.PostAsJsonAsync($"{Base}/payments/{payment}/void", new { reason = "lançado errado" }))
             .StatusCode.Should().Be(HttpStatusCode.OK);
-        await PayAsync(c, order.Id, 100m);                            // settles again → replays recognition
+        await PayAsync(c, order.Id, 100m);                            // settles again → earns again
 
-        (await EntriesAsync(c, prof)).Should().ContainSingle();
+        var entries = await EntriesAsync(c, prof);
+        entries.Count(IsActiveEarning).Should().Be(1, "only one commission counts for the item");
+        entries.Count(e => e.GetProperty("reversedAt").ValueKind != JsonValueKind.Null).Should().Be(1);
+        (await SummaryAsync(c, prof)).GetProperty("openAmount").GetDecimal().Should().Be(30m);
+    }
+
+    // ── Reversal (voided payments) ───────────────────────────────────────────
+    [Fact]
+    public async Task Voiding_a_payment_reverses_the_open_commission_and_unfreezes_the_item()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 30m);
+        var order = await OrderAsync(c, await CustomerAsync(c), prof, (await CatalogAsync(c, 100m, null), null));
+        var payment = await PayAsync(c, order.Id, 100m);
+
+        (await c.PostAsJsonAsync($"{Base}/payments/{payment}/void", new { reason = "estorno" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var e = (await EntriesAsync(c, prof)).Single();
+        e.GetProperty("reversedAt").ValueKind.Should().NotBe(JsonValueKind.Null);
+        (await SummaryAsync(c, prof)).GetProperty("openAmount").GetDecimal().Should().Be(0m);
+        (await ClosePayoutAsync(c, prof, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddMinutes(1)))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, "a reversed commission is never paid out");
+        (await c.PutAsJsonAsync($"{Base}/orders/{order.Id}/items/{order.ItemIds.Single()}", new { quantity = 1m, professionalId = prof }))
+            .StatusCode.Should().Be(HttpStatusCode.OK, "the item is no longer commissioned");
+    }
+
+    [Fact]
+    public async Task Voiding_one_of_two_payments_keeps_nothing_and_a_partial_void_of_an_unsettled_order_is_harmless()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 10m);
+        var order = await OrderAsync(c, await CustomerAsync(c), prof, (await CatalogAsync(c, 100m, null), null));
+        var p1 = await PayAsync(c, order.Id, 40m);
+        (await c.PostAsJsonAsync($"{Base}/payments/{p1}/void", new { reason = "x" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await EntriesAsync(c, prof)).Should().BeEmpty();
+
+        await PayAsync(c, order.Id, 60m);
+        var p3 = await PayAsync(c, order.Id, 40m);                   // settles
+        (await EntriesAsync(c, prof)).Count(IsActiveEarning).Should().Be(1);
+        (await c.PostAsJsonAsync($"{Base}/payments/{p3}/void", new { reason = "x" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await EntriesAsync(c, prof)).Count(IsActiveEarning).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Voiding_after_the_commission_was_paid_out_discounts_it_from_the_next_payout()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 10m);
+        var customer = await CustomerAsync(c);
+        var order = await OrderAsync(c, customer, prof, (await CatalogAsync(c, 100m, null), null));
+        var payment = await PayAsync(c, order.Id, 100m);              // +10
+        var payoutId = await ClosedPayoutIdAsync(c, prof);
+        (await c.PostAsJsonAsync($"{Base}/commissions/payouts/{payoutId}/pay", new { })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await c.PostAsJsonAsync($"{Base}/payments/{payment}/void", new { reason = "chargeback" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var reversal = (await EntriesAsync(c, prof, "open")).Single();
+        reversal.GetProperty("kind").GetString().Should().Be("Reversal");
+        reversal.GetProperty("commissionAmount").GetDecimal().Should().Be(-10m);
+        (await ClosePayoutAsync(c, prof, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddMinutes(1)))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, "a period that only owes back cannot be paid");
+
+        await PaidOrderAsync(c, customer, prof, 300m);                // +30
+        var next = await (await ClosePayoutAsync(c, prof, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddMinutes(1)))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        next.GetProperty("payout").GetProperty("totalAmount").GetDecimal().Should().Be(20m, "30 earned − 10 discounted");
+        next.GetProperty("payout").GetProperty("entryCount").GetInt32().Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Voiding_the_same_payment_twice_reverses_once()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 10m);
+        var order = await OrderAsync(c, await CustomerAsync(c), prof, (await CatalogAsync(c, 100m, null), null));
+        var payment = await PayAsync(c, order.Id, 100m);
+        var payoutId = await ClosedPayoutIdAsync(c, prof);
+
+        var c2 = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var results = await Task.WhenAll(
+            c.PostAsJsonAsync($"{Base}/payments/{payment}/void", new { reason = "a" }),
+            c2.PostAsJsonAsync($"{Base}/payments/{payment}/void", new { reason = "b" }));
+
+        results.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
+        (await EntriesAsync(c, prof)).Count(e => e.GetProperty("kind").GetString() == "Reversal").Should().Be(1);
+        payoutId.Should().NotBeEmpty();
+    }
+
+    // ── Financial module guards ──────────────────────────────────────────────
+    [Fact]
+    public async Task Service_generated_lancamentos_cannot_be_changed_or_forged_in_the_financial_module()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 10m);
+        var order = await OrderAsync(c, await CustomerAsync(c), prof, (await CatalogAsync(c, 100m, null), null));
+        var payment = await PayAsync(c, order.Id, 100m);
+        var txId = (await ServiceTransactionAsync("SvcPayment", payment)).Id;
+
+        (await c.PostAsync($"/api/financial/transactions/{txId}/cancel", null))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await ServiceTransactionAsync("SvcPayment", payment)).Status.Should().Be(TransactionStatus.Paid);
+
+        var accounts = await c.GetFromJsonAsync<JsonElement[]>("/api/financial/accounts");
+        var payableAccount = accounts!.First(a => a.GetProperty("accountType").GetString() == "Payable").GetProperty("id").GetGuid();
+        (await c.PostAsJsonAsync("/api/financial/transactions", new
+        {
+            financialAccountId = payableAccount, transactionType = "Payable", amount = 10m, description = "forjado",
+            dueDate = DateTime.UtcNow, referenceType = "SvcCommissionPayout", referenceId = Guid.NewGuid(),
+        })).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    private static bool IsActiveEarning(JsonElement e)
+        => e.GetProperty("kind").GetString() == "Earning" && e.GetProperty("reversedAt").ValueKind == JsonValueKind.Null;
+
+    private static async Task<JsonElement> SummaryAsync(HttpClient c, Guid prof)
+        => (await c.GetFromJsonAsync<JsonElement[]>($"{Base}/commissions/summary?professionalId={prof}"))!.Single();
+
+    private async Task<FinancialTransaction> ServiceTransactionAsync(string referenceType, Guid referenceId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return await db.FinancialTransactions.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(t => t.ReferenceType == referenceType && t.ReferenceId == referenceId);
     }
 
     [Fact]

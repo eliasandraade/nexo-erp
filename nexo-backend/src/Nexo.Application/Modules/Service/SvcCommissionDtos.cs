@@ -7,6 +7,7 @@ public sealed record SvcCommissionEntryDto(
     Guid                StoreId,
     Guid                ProfessionalId,
     Guid                CustomerId,
+    SvcCommissionEntryKind Kind,
     SvcCommissionSource Source,
     Guid                SourceId,
     decimal             BaseAmount,
@@ -14,6 +15,8 @@ public sealed record SvcCommissionEntryDto(
     decimal             CommissionAmount,
     DateTime            RecognizedAt,
     Guid?               PayoutId,
+    DateTime?           ReversedAt,
+    Guid?               ReversalOfEntryId,
     string?             Description,
     DateTime            CreatedAt);
 

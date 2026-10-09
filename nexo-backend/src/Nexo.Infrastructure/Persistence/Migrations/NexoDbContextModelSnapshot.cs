@@ -4896,6 +4896,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("customer_id");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -4912,6 +4918,14 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("RecognizedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("recognized_at");
+
+                    b.Property<Guid?>("ReversalOfEntryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reversal_of_entry_id");
+
+                    b.Property<DateTime?>("ReversedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("reversed_at");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -4943,6 +4957,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("PayoutId")
                         .HasDatabaseName("ix_svc_commission_entries_payout_id");
 
+                    b.HasIndex("ReversalOfEntryId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_svc_commission_entries_reversal_of")
+                        .HasFilter("reversal_of_entry_id IS NOT NULL");
+
                     b.HasIndex("StoreId")
                         .HasDatabaseName("ix_svc_commission_entries_store_id");
 
@@ -4951,11 +4970,14 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "Source", "SourceId")
                         .IsUnique()
-                        .HasDatabaseName("ux_svc_commission_entries_source");
+                        .HasDatabaseName("ux_svc_commission_entries_source")
+                        .HasFilter("kind = 'Earning' AND reversed_at IS NULL");
 
                     b.ToTable("svc_commission_entries", "nexo", t =>
                         {
-                            t.HasCheckConstraint("ck_svc_commission_entries_amounts", "base_amount >= 0 AND commission_amount >= 0 AND commission_percent > 0 AND commission_percent <= 100");
+                            t.HasCheckConstraint("ck_svc_commission_entries_kind", "(kind = 'Earning' AND base_amount >= 0 AND commission_amount >= 0 AND reversal_of_entry_id IS NULL) OR (kind = 'Reversal' AND base_amount <= 0 AND commission_amount <= 0 AND reversal_of_entry_id IS NOT NULL AND reversed_at IS NULL)");
+
+                            t.HasCheckConstraint("ck_svc_commission_entries_percent", "commission_percent > 0 AND commission_percent <= 100");
                         });
                 });
 
@@ -7280,6 +7302,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_svc_commission_entries_professionals");
+
+                    b.HasOne("Nexo.Domain.Modules.Service.SvcCommissionEntry", null)
+                        .WithMany()
+                        .HasForeignKey("ReversalOfEntryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_svc_commission_entries_reversal_of");
 
                     b.HasOne("Nexo.Domain.Entities.Store", null)
                         .WithMany()

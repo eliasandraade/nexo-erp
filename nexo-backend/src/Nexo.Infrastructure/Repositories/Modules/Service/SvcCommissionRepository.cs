@@ -8,7 +8,8 @@ namespace Nexo.Infrastructure.Repositories.Modules.Service;
 
 public class SvcCommissionRepository : ISvcCommissionRepository
 {
-    private const string SourceUniqueIndex = "ux_svc_commission_entries_source";
+    private const string SourceUniqueIndex   = "ux_svc_commission_entries_source";
+    private const string ReversalUniqueIndex = "ux_svc_commission_entries_reversal_of";
 
     private readonly NexoDbContext _context;
     public SvcCommissionRepository(NexoDbContext context) => _context = context;
@@ -35,6 +36,7 @@ public class SvcCommissionRepository : ISvcCommissionRepository
             .AsNoTracking()
             .Where(x => x.ProfessionalId == professionalId
                      && x.PayoutId == null
+                     && x.ReversedAt == null
                      && x.RecognizedAt >= periodStart
                      && x.RecognizedAt <= periodEnd)
             .OrderBy(x => x.RecognizedAt).ThenBy(x => x.Id)
@@ -43,7 +45,8 @@ public class SvcCommissionRepository : ISvcCommissionRepository
     public async Task<bool> EntryExistsForSourceAsync(
         SvcCommissionSource source, Guid sourceId, CancellationToken ct = default)
         => await _context.SvcCommissionEntries
-            .AnyAsync(x => x.Source == source && x.SourceId == sourceId, ct);
+            .AnyAsync(x => x.Source == source && x.SourceId == sourceId
+                        && x.Kind == SvcCommissionEntryKind.Earning && x.ReversedAt == null, ct);
 
     public async Task<IReadOnlySet<Guid>> GetRecognizedSourceIdsAsync(
         SvcCommissionSource source, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct = default)
@@ -51,7 +54,8 @@ public class SvcCommissionRepository : ISvcCommissionRepository
         if (sourceIds.Count == 0) return new HashSet<Guid>();
         var ids = sourceIds.ToList();
         return (await _context.SvcCommissionEntries
-                .Where(x => x.Source == source && ids.Contains(x.SourceId))
+                .Where(x => x.Source == source && ids.Contains(x.SourceId)
+                         && x.Kind == SvcCommissionEntryKind.Earning && x.ReversedAt == null)
                 .Select(x => x.SourceId)
                 .ToListAsync(ct))
             .ToHashSet();
@@ -67,7 +71,15 @@ public class SvcCommissionRepository : ISvcCommissionRepository
                 .ToListAsync(ct))
             .ToHashSet();
 
-    public async Task<bool> TryAddEntryAsync(SvcCommissionEntry entry, CancellationToken ct = default)
+    public Task<bool> TryAddEntryAsync(SvcCommissionEntry entry, CancellationToken ct = default)
+        // Another request recognised this source first — that entry is the valid one.
+        => TryInsertAsync(entry, SourceUniqueIndex, ct);
+
+    public Task<bool> TryAddReversalAsync(SvcCommissionEntry reversal, CancellationToken ct = default)
+        // Another request already wrote this earning's reversal.
+        => TryInsertAsync(reversal, ReversalUniqueIndex, ct);
+
+    private async Task<bool> TryInsertAsync(SvcCommissionEntry entry, string uniqueIndex, CancellationToken ct)
     {
         await _context.SvcCommissionEntries.AddAsync(entry, ct);
         try
@@ -78,18 +90,40 @@ public class SvcCommissionRepository : ISvcCommissionRepository
         catch (DbUpdateException ex)
             when (ex.InnerException is PostgresException pg
                   && pg.SqlState == PostgresErrorCodes.UniqueViolation
-                  && pg.ConstraintName == SourceUniqueIndex)
+                  && pg.ConstraintName == uniqueIndex)
         {
-            // Another request recognised this source first — that entry is the valid one.
             _context.Entry(entry).State = EntityState.Detached;
             return false;
         }
     }
 
+    public async Task<IReadOnlyList<SvcCommissionEntry>> GetActiveEarningsAsync(
+        SvcCommissionSource source, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct = default)
+    {
+        if (sourceIds.Count == 0) return [];
+        var ids = sourceIds.ToList();
+        return await _context.SvcCommissionEntries
+            .Where(x => x.Source == source && ids.Contains(x.SourceId)
+                     && x.Kind == SvcCommissionEntryKind.Earning && x.ReversedAt == null)
+            .OrderBy(x => x.RecognizedAt).ThenBy(x => x.Id)
+            .ToListAsync(ct);
+    }
+
+    public async Task<bool> TryMarkReversedAsync(Guid entryId, DateTime reversedAt, CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var affected = await _context.SvcCommissionEntries
+            .Where(x => x.Id == entryId && x.Kind == SvcCommissionEntryKind.Earning && x.ReversedAt == null)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.ReversedAt, reversedAt)
+                .SetProperty(x => x.UpdatedAt, now), ct);
+        return affected == 1;
+    }
+
     public async Task<IReadOnlyDictionary<Guid, (int Count, decimal Amount)>> GetOpenTotalsByProfessionalAsync(
         Guid? professionalId, CancellationToken ct = default)
     {
-        var q = _context.SvcCommissionEntries.Where(x => x.PayoutId == null);
+        var q = _context.SvcCommissionEntries.Where(x => x.PayoutId == null && x.ReversedAt == null);
         if (professionalId is { } p) q = q.Where(x => x.ProfessionalId == p);
         var rows = await q
             .GroupBy(x => x.ProfessionalId)
@@ -104,7 +138,7 @@ public class SvcCommissionRepository : ISvcCommissionRepository
         var ids = entryIds.ToList();
         var now = DateTime.UtcNow;
         return await _context.SvcCommissionEntries
-            .Where(x => ids.Contains(x.Id) && x.PayoutId == null)
+            .Where(x => ids.Contains(x.Id) && x.PayoutId == null && x.ReversedAt == null)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(x => x.PayoutId, payoutId)
                 .SetProperty(x => x.UpdatedAt, now), ct);

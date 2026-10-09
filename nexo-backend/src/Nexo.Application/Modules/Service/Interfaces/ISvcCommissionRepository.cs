@@ -26,11 +26,11 @@ public interface ISvcCommissionRepository
     Task<IReadOnlyList<SvcCommissionEntry>> GetOpenEntriesForPayoutAsync(
         Guid professionalId, DateTime periodStart, DateTime periodEnd, CancellationToken ct = default);
 
-    /// <summary>True when this exact source already produced an entry — the anti-double-count guard.</summary>
+    /// <summary>True when this exact source holds an ACTIVE earning — the anti-double-count guard.</summary>
     Task<bool> EntryExistsForSourceAsync(
         SvcCommissionSource source, Guid sourceId, CancellationToken ct = default);
 
-    /// <summary>Which of <paramref name="sourceIds"/> already produced an entry, in one query.</summary>
+    /// <summary>Which of <paramref name="sourceIds"/> hold an ACTIVE earning, in one query.</summary>
     Task<IReadOnlySet<Guid>> GetRecognizedSourceIdsAsync(
         SvcCommissionSource source, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct = default);
 
@@ -48,7 +48,23 @@ public interface ISvcCommissionRepository
     /// </summary>
     Task<bool> TryAddEntryAsync(SvcCommissionEntry entry, CancellationToken ct = default);
 
-    /// <summary>Open (unpaid-out) commission per professional: (count, amount).</summary>
+    /// <summary>The ACTIVE earnings of the given sources (tracked), for reversal.</summary>
+    Task<IReadOnlyList<SvcCommissionEntry>> GetActiveEarningsAsync(
+        SvcCommissionSource source, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stamps reversed_at on an active earning (UPDATE … WHERE reversed_at IS NULL). True only for
+    /// the single caller that actually reversed it.
+    /// </summary>
+    Task<bool> TryMarkReversedAsync(Guid entryId, DateTime reversedAt, CancellationToken ct = default);
+
+    /// <summary>
+    /// Inserts a reversal entry. False — detached — when the earning already has its reversal
+    /// (unique reversal_of_entry_id).
+    /// </summary>
+    Task<bool> TryAddReversalAsync(SvcCommissionEntry reversal, CancellationToken ct = default);
+
+    /// <summary>Open (not yet in a payout, not reversed) commission per professional: (count, net amount).</summary>
     Task<IReadOnlyDictionary<Guid, (int Count, decimal Amount)>> GetOpenTotalsByProfessionalAsync(
         Guid? professionalId, CancellationToken ct = default);
 

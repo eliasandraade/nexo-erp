@@ -18,6 +18,7 @@ namespace Nexo.Application.Modules.Service;
 ///
 /// A payment that settles an order in full also recognises that order's commissions (regime de
 /// caixa) through SvcCommissionService — in the same transaction as the payment and its lançamento.
+/// A void that leaves the order no longer fully paid reverses them, in the void's transaction.
 /// </summary>
 public class SvcPaymentService
 {
@@ -92,6 +93,8 @@ public class SvcPaymentService
     public async Task<SvcPaymentDto> VoidAsync(Guid id, VoidSvcPaymentRequest r, CancellationToken ct = default)
     {
         await using var tx = await _uow.BeginTransactionAsync(ct);
+        // Lock first, read after: a concurrent void then sees this one committed (already Voided → 422).
+        await _payments.LockAsync(id, _currentTenant.Id, ct);
         var payment = await _payments.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcPayment", id);
         if (payment.OrderId is { } orderId) await _orders.LockAsync(orderId, _currentTenant.Id, ct);
         payment.Void(r.Reason);
@@ -99,6 +102,8 @@ public class SvcPaymentService
         // Counter-entry, not a delete: the original receivable stays auditable.
         await _posting.ReversePaymentAsync(payment, "Orken Service — estorno de pagamento", ct);
         await _payments.SaveChangesAsync(ct);
+        if (payment.OrderId is { } voidedOrderId)
+            await _commissions.ReverseOrderIfUnsettledAsync(voidedOrderId, DateTime.UtcNow, ct);
         await tx.CommitAsync(ct);
         return MapToDto(payment);
     }

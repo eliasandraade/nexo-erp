@@ -91,6 +91,33 @@ public class SvcCommissionTests
             .Should().Throw<DomainException>();
     }
 
+    [Fact]
+    public void Reversal_is_the_exact_negative_of_the_earning_and_points_at_it()
+    {
+        var earning = SvcCommissionEntry.Create(T, Prof, Cust, SvcCommissionSource.OrderItem, Guid.NewGuid(),
+            33.33m, 33.33m, At, "OS · Corte");
+        var reversal = SvcCommissionEntry.CreateReversalOf(earning, At.AddDays(1), "Estorno · OS · Corte");
+
+        earning.Kind.Should().Be(SvcCommissionEntryKind.Earning);
+        earning.IsActiveEarning.Should().BeTrue();
+        reversal.Kind.Should().Be(SvcCommissionEntryKind.Reversal);
+        reversal.IsActiveEarning.Should().BeFalse();
+        reversal.ReversalOfEntryId.Should().Be(earning.Id);
+        reversal.SourceId.Should().Be(earning.SourceId);
+        reversal.ProfessionalId.Should().Be(earning.ProfessionalId);
+        reversal.CommissionAmount.Should().Be(-earning.CommissionAmount);
+        reversal.BaseAmount.Should().Be(-earning.BaseAmount);
+        reversal.RecognizedAt.Should().Be(At.AddDays(1));
+    }
+
+    [Fact]
+    public void A_reversal_cannot_itself_be_reversed()
+    {
+        var earning = SvcCommissionEntry.Create(T, Prof, Cust, SvcCommissionSource.OrderItem, Guid.NewGuid(), 10m, 10m, At);
+        var reversal = SvcCommissionEntry.CreateReversalOf(earning, At, null);
+        ((Action)(() => SvcCommissionEntry.CreateReversalOf(reversal, At, null))).Should().Throw<DomainException>();
+    }
+
     // ── Payout ───────────────────────────────────────────────────────────────
     [Fact]
     public void Payout_is_born_pending_with_its_frozen_total()

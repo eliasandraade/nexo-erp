@@ -29,6 +29,10 @@ namespace Nexo.Application.Modules.Service;
 ///     the commission: completion skips a package-covered appointment, and a usage linked to an
 ///     appointment that already earned its entry generates nothing.
 ///
+/// Reversal (cash basis works both ways): a voided payment that leaves the order no longer fully
+/// paid reverses that order's active earnings — open ones simply stop counting; ones already
+/// closed into a payout get a negative entry the next payout discounts. Paying again re-earns.
+///
 /// Payouts: closing freezes a professional's open entries in a period (conditional UPDATE, safe
 /// against concurrent closings); paying writes the settled Payable in the financeiro exactly once.
 /// </summary>
@@ -114,6 +118,36 @@ public class SvcCommissionService
 
         var appointment = await _appointments.GetByIdAsync(appointmentId, ct);
         return items.FirstOrDefault(i => i.CatalogItemId == appointment?.CatalogItemId)?.Id;
+    }
+
+    // ── Reversal: order ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Reverses the order's active earnings when the order is no longer fully paid (a payment was
+    /// voided). Must run after the void was saved, inside the same transaction, with the order row
+    /// locked. Idempotent: each earning is reversed once (conditional UPDATE) and gets at most one
+    /// negative entry (unique index).
+    /// </summary>
+    public async Task ReverseOrderIfUnsettledAsync(Guid orderId, DateTime reversedAt, CancellationToken ct = default)
+    {
+        var order = await _orders.GetByIdWithItemsAsync(orderId, ct);
+        if (order is null) return;
+
+        var paid = (await _payments.GetByOrderAsync(orderId, ct))
+            .Where(p => p.Status == SvcPaymentStatus.Paid).Sum(p => p.Amount);
+        if (order.TotalAmount > 0m && paid >= order.TotalAmount) return;   // still settled
+
+        var earnings = await _commissions.GetActiveEarningsAsync(
+            SvcCommissionSource.OrderItem, order.Items.Select(i => i.Id).ToList(), ct);
+        foreach (var earning in earnings)
+        {
+            if (!await _commissions.TryMarkReversedAsync(earning.Id, reversedAt, ct)) continue;
+            if (earning.PayoutId is null) continue;            // never paid out — it simply stops counting
+
+            var reversal = SvcCommissionEntry.CreateReversalOf(
+                earning, reversedAt, Truncate($"Estorno · {earning.Notes ?? order.Code}", 500));
+            await _commissions.TryAddReversalAsync(reversal, ct);
+        }
     }
 
     // ── Recognition: appointment ─────────────────────────────────────────────
@@ -228,9 +262,13 @@ public class SvcCommissionService
             if (open.Count == 0)
                 throw new DomainException("There are no open commissions for this professional in the period.");
 
+            var total = open.Sum(e => e.CommissionAmount);
+            if (total <= 0m)
+                throw new DomainException(
+                    "The period has more reversals to discount than commission to pay; nothing to close yet.");
+
             var payout = SvcCommissionPayout.Create(
-                _currentTenant.Id, r.ProfessionalId, r.PeriodStart, r.PeriodEnd,
-                open.Sum(e => e.CommissionAmount), open.Count, r.Notes);
+                _currentTenant.Id, r.ProfessionalId, r.PeriodStart, r.PeriodEnd, total, open.Count, r.Notes);
             await _commissions.AddPayoutAsync(payout, tct);
             await _commissions.SaveChangesAsync(tct);
 
@@ -291,9 +329,10 @@ public class SvcCommissionService
 
     private static SvcCommissionEntryDto MapEntry(SvcCommissionEntry e) => new(
         Id: e.Id, StoreId: e.StoreId, ProfessionalId: e.ProfessionalId, CustomerId: e.CustomerId,
-        Source: e.Source, SourceId: e.SourceId, BaseAmount: e.BaseAmount, CommissionPercent: e.CommissionPercent,
-        CommissionAmount: e.CommissionAmount, RecognizedAt: e.RecognizedAt, PayoutId: e.PayoutId,
-        Description: e.Notes, CreatedAt: e.CreatedAt);
+        Kind: e.Kind, Source: e.Source, SourceId: e.SourceId, BaseAmount: e.BaseAmount,
+        CommissionPercent: e.CommissionPercent, CommissionAmount: e.CommissionAmount,
+        RecognizedAt: e.RecognizedAt, PayoutId: e.PayoutId, ReversedAt: e.ReversedAt,
+        ReversalOfEntryId: e.ReversalOfEntryId, Description: e.Notes, CreatedAt: e.CreatedAt);
 
     private static SvcCommissionPayoutDto MapPayout(SvcCommissionPayout p) => new(
         Id: p.Id, StoreId: p.StoreId, ProfessionalId: p.ProfessionalId, PeriodStart: p.PeriodStart,

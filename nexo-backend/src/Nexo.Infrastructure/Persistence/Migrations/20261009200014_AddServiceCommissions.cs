@@ -108,6 +108,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     professional_id = table.Column<Guid>(type: "uuid", nullable: false),
                     customer_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    kind = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     source = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     source_id = table.Column<Guid>(type: "uuid", nullable: false),
                     base_amount = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
@@ -115,6 +116,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     commission_amount = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
                     recognized_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     payout_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    reversed_at = table.Column<DateTime>(type: "timestamptz", nullable: true),
+                    reversal_of_entry_id = table.Column<Guid>(type: "uuid", nullable: true),
                     notes = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     updated_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
@@ -124,7 +127,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_svc_commission_entries", x => x.id);
-                    table.CheckConstraint("ck_svc_commission_entries_amounts", "base_amount >= 0 AND commission_amount >= 0 AND commission_percent > 0 AND commission_percent <= 100");
+                    table.CheckConstraint("ck_svc_commission_entries_kind", "(kind = 'Earning' AND base_amount >= 0 AND commission_amount >= 0 AND reversal_of_entry_id IS NULL) OR (kind = 'Reversal' AND base_amount <= 0 AND commission_amount <= 0 AND reversal_of_entry_id IS NOT NULL AND reversed_at IS NULL)");
+                    table.CheckConstraint("ck_svc_commission_entries_percent", "commission_percent > 0 AND commission_percent <= 100");
                     table.ForeignKey(
                         name: "fk_svc_commission_entries_customers",
                         column: x => x.customer_id,
@@ -144,6 +148,13 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         column: x => x.professional_id,
                         principalSchema: "nexo",
                         principalTable: "svc_professionals",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "fk_svc_commission_entries_reversal_of",
+                        column: x => x.reversal_of_entry_id,
+                        principalSchema: "nexo",
+                        principalTable: "svc_commission_entries",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
@@ -199,11 +210,20 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 column: "store_id");
 
             migrationBuilder.CreateIndex(
+                name: "ux_svc_commission_entries_reversal_of",
+                schema: "nexo",
+                table: "svc_commission_entries",
+                column: "reversal_of_entry_id",
+                unique: true,
+                filter: "reversal_of_entry_id IS NOT NULL");
+
+            migrationBuilder.CreateIndex(
                 name: "ux_svc_commission_entries_source",
                 schema: "nexo",
                 table: "svc_commission_entries",
                 columns: new[] { "tenant_id", "source", "source_id" },
-                unique: true);
+                unique: true,
+                filter: "kind = 'Earning' AND reversed_at IS NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_svc_commission_payouts_professional_period",
