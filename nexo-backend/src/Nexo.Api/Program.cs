@@ -50,6 +50,9 @@ try
     // ── JWT Authentication ────────────────────────────────────────────────────
     var jwtSecret = builder.Configuration["Jwt:Secret"]
         ?? throw new InvalidOperationException("Jwt:Secret is not configured.");
+    // Fail fast outside Development/Testing when the secret is missing, short, a committed
+    // placeholder or not random — otherwise anyone with the repo could forge tokens.
+    Nexo.Infrastructure.Auth.JwtSecretPolicy.EnsureSafe(jwtSecret, builder.Environment.EnvironmentName);
 
     builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
