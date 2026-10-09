@@ -60,7 +60,7 @@ public class BillingController : ControllerBase
     /// Activation happens via webhook, NOT via the success_url callback.
     /// </summary>
     [HttpPost("checkout")]
-    [Authorize]
+    [Authorize(Roles = "Gerente,Diretoria")]
     public async Task<IActionResult> CreateCheckout([FromBody] CreateCheckoutBody body, CancellationToken ct)
     {
         if (!_flags.StripeEnabled)
@@ -112,7 +112,7 @@ public class BillingController : ControllerBase
     /// Returns { portalUrl } — frontend should redirect to this URL.
     /// </summary>
     [HttpPost("portal")]
-    [Authorize]
+    [Authorize(Roles = "Gerente,Diretoria")]
     public async Task<IActionResult> CreatePortal([FromBody] CreatePortalBody? body, CancellationToken ct)
     {
         if (!_flags.StripeEnabled)

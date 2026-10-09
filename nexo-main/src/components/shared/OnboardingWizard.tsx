@@ -38,11 +38,12 @@ export function OnboardingWizard({ onComplete }: Props) {
 
       const stockNum = parseInt(stock) || 0;
       if (stockNum > 0) {
+        // Contract of POST /stock/adjust: { productId, quantity, movementType, notes }.
         await apiClient.post("/stock/adjust", {
-          productId: product.id,
-          quantity:  stockNum,
-          type:      "EntradaManual",
-          reason:    "Estoque inicial",
+          productId:    product.id,
+          quantity:     stockNum,
+          movementType: "ManualEntry",
+          notes:        "Estoque inicial",
         });
       }
 

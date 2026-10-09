@@ -881,6 +881,43 @@ public class RestauranteFlowTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Regression (audit 2026-10): a paid modifier was left out of the Sale created on close, so
+    /// the sale total was lower than what the screen charges and paying ALWAYS failed.
+    /// </summary>
+    [Fact]
+    public async Task Order_with_a_paid_modifier_closes_and_pays_for_the_full_price()
+    {
+        await ResetFoodServiceSettingsAsync();
+        var product = await CreateProductWithStockAsync(
+            $"BURGER-MOD-{Interlocked.Increment(ref _tableSeq)}", salePrice: 30m, costPrice: 10m, initialStock: 5m);
+
+        var groupResp = await _client.PostAsJsonAsync("/api/restaurante/modifier-groups",
+            new CreateModifierGroupRequest(ProductId: product.Id, Name: "Extras", IsRequired: false,
+                MinSelections: 0, MaxSelections: 2, SortOrder: 0));
+        groupResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var group = (await groupResp.Content.ReadFromJsonAsync<ModifierGroupDto>())!;
+        var modResp = await _client.PostAsJsonAsync($"/api/restaurante/modifier-groups/{group.Id}/modifiers",
+            new CreateModifierRequest(group.Id, "Bacon extra", PriceAdjustment: 5m, SortOrder: 0));
+        modResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        // The endpoint returns the group with its modifiers.
+        var modifier = (await modResp.Content.ReadFromJsonAsync<ModifierGroupDto>())!.Modifiers.Single();
+
+        var area  = await CreateAreaAsync($"Área PaidModifier {Interlocked.Increment(ref _tableSeq)}");
+        var table = await CreateTableAsync(area.Id);
+        var order = await OpenOrderAsync(table.Id);
+        var add = await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/items",
+            new AddOrderItemRequest(product.Id, 2, Modifiers: [new ApplyModifierRequest(modifier.Id)]));
+        add.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var closed = await CloseOrderAsync(order.Id);
+        closed.Total.Should().Be(70m);                                  // 2 × (30 + 5)
+        (await GetSaleAsync(closed.SaleId)).Total.Should().Be(70m, "the sale must carry the modifier price, counted once");
+
+        var paid = await PayOrderAsync(order.Id, 70m);
+        paid.Status.Should().Be("Paid");
+    }
+
+    /// <summary>
     /// Cancelling a DineIn order releases the table (SetAvailable),
     /// allowing a new order to be opened on the same table.
     /// </summary>

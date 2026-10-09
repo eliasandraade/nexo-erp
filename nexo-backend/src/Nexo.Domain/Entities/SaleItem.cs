@@ -1,4 +1,5 @@
 using Nexo.Domain.Common;
+using Nexo.Domain.Exceptions;
 
 namespace Nexo.Domain.Entities;
 
@@ -30,7 +31,13 @@ public class SaleItem : TenantEntity
         decimal discountAmount = 0,
         string? notes = null)
     {
+        // A sale line can never reduce revenue below zero or put stock back: returns do not go
+        // through a negative sale line (there is no return flow yet).
+        if (quantity <= 0m)     throw new DomainException("Item quantity must be positive.");
+        if (unitPrice < 0m)     throw new DomainException("Item unit price cannot be negative.");
+        if (discountAmount < 0m) throw new DomainException("Item discount cannot be negative.");
         var total = quantity * unitPrice - discountAmount;
+        if (total < 0m)         throw new DomainException("Item discount cannot exceed the item total.");
         return new SaleItem(tenantId)
         {
             SaleId         = saleId,

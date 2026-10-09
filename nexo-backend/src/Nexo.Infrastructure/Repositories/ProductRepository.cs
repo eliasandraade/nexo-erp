@@ -23,13 +23,14 @@ public class ProductRepository : IProductRepository
             .FirstOrDefaultAsync(x => x.Id == id
                                    && x.StoreId == storeId
                                    && x.IsActive
-                                   && x.IsMenuVisible, ct);
+                                   && x.IsMenuVisible
+                                   && !x.IsIngredient, ct);   // insumos nunca são vendidos no portal
 
     public async Task<IReadOnlyList<Product>> GetAllMenuItemsAsync(Guid storeId, Guid tenantId, CancellationToken ct = default)
         => await _context.Products
             .IgnoreQueryFilters()
             .Include(p => p.Category)
-            .Where(p => p.StoreId == storeId && p.TenantId == tenantId && p.IsActive && p.IsMenuVisible)
+            .Where(p => p.StoreId == storeId && p.TenantId == tenantId && p.IsActive && p.IsMenuVisible && !p.IsIngredient)
             .OrderBy(p => p.Category != null ? p.Category.SortOrder : int.MaxValue)
             .ThenBy(p => p.Name)
             .ToListAsync(ct);

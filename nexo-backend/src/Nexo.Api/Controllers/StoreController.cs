@@ -84,11 +84,19 @@ public class StoreController : ControllerBase
     /// Retorna 409 se o slug já estiver em uso por outra store.
     /// </summary>
     [HttpPatch("{id:guid}/public-slug")]
+    [Authorize(Roles = "Gerente,Diretoria")]
     public async Task<IActionResult> SetPublicSlug(
         Guid id, [FromBody] SetPublicSlugRequest request, CancellationToken ct)
     {
+        // The lookup ignores the tenant filter (stores are resolved before a store context
+        // exists), so ownership is checked here: the store must belong to the caller's tenant AND
+        // be one of the stores in the caller's token. Anything else is indistinguishable from
+        // "not found" — never reveal that another tenant's store exists.
         var store = await _stores.GetByIdTrackedAsync(id, ct);
-        if (store is null) return NotFound();
+        if (store is null
+            || store.TenantId != _currentUser.TenantId
+            || !_currentUser.StoreIds.Contains(id))
+            return NotFound();
 
         string? normalized = request.PublicSlug is null
             ? null

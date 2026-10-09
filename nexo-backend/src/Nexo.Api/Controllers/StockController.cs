@@ -39,6 +39,7 @@ public class StockController : ControllerBase
         => Ok(await _service.GetMovementsAsync(productId, ct));
 
     [HttpPost("adjust")]
+    [Authorize(Roles = "Gerente,Diretoria,Estoquista")]
     public async Task<ActionResult<StockItemDto>> Adjust(
         [FromBody] AdjustStockRequest request,
         CancellationToken ct)
