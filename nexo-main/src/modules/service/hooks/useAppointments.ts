@@ -18,10 +18,11 @@ export interface AppointmentsFilter {
   subjectId?: string;
 }
 
-export function useAppointments(filter: AppointmentsFilter = {}) {
+export function useAppointments(filter: AppointmentsFilter = {}, enabled = true) {
   return useQuery({
     queryKey: serviceKeys.appointmentsList(filter),
     queryFn: () => fetchAppointments(filter),
+    enabled,
   });
 }
 

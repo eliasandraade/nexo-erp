@@ -119,6 +119,8 @@ public class SvcCustomerPackageService
 
         var appointment = await ValidateAppointmentLinkAsync(r.AppointmentId, r.CatalogItemId, cp, ct);
         var (orderId, orderItemId) = await NormalizeOrderLinkAsync(r.OrderId, r.OrderItemId, appointment, r.CatalogItemId, ct);
+        // Same lock a payment takes: the "already commissioned?" checks on both sides see each other.
+        if (orderId is { } lockedOrderId) await _orders.LockAsync(lockedOrderId, _currentTenant.Id, ct);
         var linkedProfessionalId = await ValidateOrderLinkAsync(orderId, orderItemId, cp, ct) ?? appointment?.ProfessionalId;
         var professional = r.ProfessionalId is { } explicitId
             ? await ResolveConsumingProfessionalAsync(explicitId, ct)
@@ -181,6 +183,9 @@ public class SvcCustomerPackageService
             throw new DomainException("Appointment is for a different service than the one consumed.");
         if (appointment.Status is SvcAppointmentStatus.Cancelled or SvcAppointmentStatus.NoShow)
             throw new DomainException($"Cannot consume a package for a {appointment.Status} appointment.");
+        // One appointment, one service, paid once — a second consumption would earn commission twice.
+        if (await _usages.ExistsForAppointmentAsync(aid, ct))
+            throw new DomainException("This appointment was already paid with a package.");
         return appointment;
     }
 

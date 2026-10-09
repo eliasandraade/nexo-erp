@@ -83,7 +83,7 @@ public class SvcCommissionService
 
         var alreadyRecognized = await _commissions.GetRecognizedSourceIdsAsync(
             SvcCommissionSource.OrderItem, items.Select(i => i.Id).ToList(), ct);
-        var coveredByPackage = await _commissions.GetOrderItemIdsCoveredByPackageAsync(orderId, ct);
+        var coveredByPackage = await ItemsCoveredByPackageAsync(order, items, ct);
         var coveredByAppointment = await ItemCoveredByAppointmentEntryAsync(order, items, ct);
 
         var professionals = new Dictionary<Guid, SvcProfessional?>();
@@ -102,6 +102,25 @@ public class SvcCommissionService
             await TryRecognizeAsync(professionalId, order.CustomerId, SvcCommissionSource.OrderItem, item.Id,
                 item.TotalAmount, percent, recognizedAt, $"{order.Code} · {item.NameSnapshot}", ct);
         }
+    }
+
+    /// <summary>
+    /// Order items a package already paid for: usages linked to the item directly, plus — for an
+    /// order opened from an appointment — the item carrying a service that a package consumption
+    /// linked to that appointment paid (the consumption may have happened before the order existed).
+    /// </summary>
+    private async Task<HashSet<Guid>> ItemsCoveredByPackageAsync(
+        SvcOrder order, IReadOnlyList<SvcOrderItem> items, CancellationToken ct)
+    {
+        var covered = (await _commissions.GetOrderItemIdsCoveredByPackageAsync(order.Id, ct)).ToHashSet();
+        if (order.AppointmentId is not { } appointmentId) return covered;
+
+        foreach (var catalogItemId in await _commissions.GetCatalogItemsPaidByPackageForAppointmentAsync(appointmentId, ct))
+        {
+            var item = items.FirstOrDefault(i => i.CatalogItemId == catalogItemId && !covered.Contains(i.Id));
+            if (item is not null) covered.Add(item.Id);
+        }
+        return covered;
     }
 
     /// <summary>
@@ -125,8 +144,10 @@ public class SvcCommissionService
     /// <summary>
     /// Reverses the order's active earnings when the order is no longer fully paid (a payment was
     /// voided). Must run after the void was saved, inside the same transaction, with the order row
-    /// locked. Idempotent: each earning is reversed once (conditional UPDATE) and gets at most one
-    /// negative entry (unique index).
+    /// locked. The earnings are row-locked (id order — the same order a payout closing uses, so the
+    /// two cannot deadlock) and re-read after the lock, so a payout that closed them a moment ago is
+    /// seen and gets its negative entry. Idempotent: each earning is reversed once (conditional
+    /// UPDATE) and gets at most one negative entry (unique index).
     /// </summary>
     public async Task ReverseOrderIfUnsettledAsync(Guid orderId, DateTime reversedAt, CancellationToken ct = default)
     {
@@ -137,8 +158,8 @@ public class SvcCommissionService
             .Where(p => p.Status == SvcPaymentStatus.Paid).Sum(p => p.Amount);
         if (order.TotalAmount > 0m && paid >= order.TotalAmount) return;   // still settled
 
-        var earnings = await _commissions.GetActiveEarningsAsync(
-            SvcCommissionSource.OrderItem, order.Items.Select(i => i.Id).ToList(), ct);
+        var earnings = await _commissions.LockActiveEarningsAsync(
+            SvcCommissionSource.OrderItem, order.Items.Select(i => i.Id).ToList(), _currentTenant.Id, ct);
         foreach (var earning in earnings)
         {
             if (!await _commissions.TryMarkReversedAsync(earning.Id, reversedAt, ct)) continue;
@@ -272,7 +293,8 @@ public class SvcCommissionService
             await _commissions.AddPayoutAsync(payout, tct);
             await _commissions.SaveChangesAsync(tct);
 
-            var stamped = await _commissions.AttachOpenEntriesToPayoutAsync(payout.Id, open.Select(e => e.Id).ToList(), tct);
+            var stamped = await _commissions.AttachOpenEntriesToPayoutAsync(
+                payout.Id, open.Select(e => e.Id).ToList(), _currentTenant.Id, tct);
             if (stamped != open.Count)
                 throw new ConflictException(
                     "Some of these commissions were just closed in another payout. Refresh and try again.");

@@ -585,6 +585,52 @@ public class ServiceCommissionTests
     }
 
     [Fact]
+    public async Task Package_paid_appointment_whose_order_is_opened_later_is_commissioned_once()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 40m);
+        var customer = await CustomerAsync(c);
+        var catalog = await CatalogAsync(c, 60m, null);
+        var extra = await CatalogAsync(c, 20m, null);
+        var cp = await CustomerPackageAsync(c, customer, price: 160m, (catalog, 4m));
+        var appt = await AppointmentAsync(c, customer, prof, catalog);
+
+        // Package consumed for the appointment BEFORE any order exists…
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/consume",
+            new { catalogItemId = catalog, quantity = 1m, appointmentId = appt })).StatusCode.Should().Be(HttpStatusCode.OK);
+        // …then a comanda is opened from the appointment (same service + an extra) and paid in full.
+        var order = await OrderFromAppointmentAsync(c, appt);
+        (await c.PostAsJsonAsync($"{Base}/orders/{order}/items", new { catalogItemId = extra, quantity = 1m, professionalId = prof }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        await PayAsync(c, order, 80m);
+
+        var entries = await EntriesAsync(c, prof);
+        entries.Should().HaveCount(2, "the package pays the appointment service; the order only the extra");
+        entries.Count(e => e.GetProperty("source").GetString() == "PackageUsage").Should().Be(1);
+        entries.Single(e => e.GetProperty("source").GetString() == "OrderItem")
+            .GetProperty("baseAmount").GetDecimal().Should().Be(20m);
+    }
+
+    [Fact]
+    public async Task An_appointment_can_be_paid_by_only_one_package_consumption()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 40m);
+        var customer = await CustomerAsync(c);
+        var catalog = await CatalogAsync(c, 60m, null);
+        var cp = await CustomerPackageAsync(c, customer, price: 160m, (catalog, 4m));
+        var appt = await AppointmentAsync(c, customer, prof, catalog);
+
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/consume",
+            new { catalogItemId = catalog, quantity = 1m, appointmentId = appt })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/consume",
+            new { catalogItemId = catalog, quantity = 1m, appointmentId = appt }))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        (await EntriesAsync(c, prof)).Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task Package_consumption_linked_to_an_unrelated_appointment_is_rejected()
     {
         var c = await AuthClientFactory.LoginAsAdminAsync(_factory);

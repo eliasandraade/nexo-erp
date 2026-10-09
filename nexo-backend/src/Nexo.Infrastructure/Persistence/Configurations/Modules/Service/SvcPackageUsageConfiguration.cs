@@ -44,6 +44,8 @@ public class SvcPackageUsageConfiguration : IEntityTypeConfiguration<SvcPackageU
         // Commission recognition looks usages up by order (an order item covered by a package is
         // commissioned through the usage, not again through the order).
         builder.HasIndex(x => x.OrderId).HasDatabaseName("ix_svc_package_usages_order_id");
-        builder.HasIndex(x => x.AppointmentId).HasDatabaseName("ix_svc_package_usages_appointment_id");
+        // An appointment is paid by at most one package consumption.
+        builder.HasIndex(x => x.AppointmentId).IsUnique().HasFilter("appointment_id IS NOT NULL")
+            .HasDatabaseName("ux_svc_package_usages_appointment_id");
     }
 }

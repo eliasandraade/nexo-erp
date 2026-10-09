@@ -5562,7 +5562,9 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AppointmentId")
-                        .HasDatabaseName("ix_svc_package_usages_appointment_id");
+                        .IsUnique()
+                        .HasDatabaseName("ux_svc_package_usages_appointment_id")
+                        .HasFilter("appointment_id IS NOT NULL");
 
                     b.HasIndex("CatalogItemId");
 

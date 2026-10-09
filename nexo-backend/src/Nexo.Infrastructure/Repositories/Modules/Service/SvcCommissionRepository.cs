@@ -97,17 +97,32 @@ public class SvcCommissionRepository : ISvcCommissionRepository
         }
     }
 
-    public async Task<IReadOnlyList<SvcCommissionEntry>> GetActiveEarningsAsync(
-        SvcCommissionSource source, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct = default)
+    public async Task<IReadOnlyList<SvcCommissionEntry>> LockActiveEarningsAsync(
+        SvcCommissionSource source, IReadOnlyCollection<Guid> sourceIds, Guid tenantId, CancellationToken ct = default)
     {
         if (sourceIds.Count == 0) return [];
-        var ids = sourceIds.ToList();
+        var ids = sourceIds.ToArray();
+        var sourceName = source.ToString();
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $@"SELECT id FROM nexo.svc_commission_entries
+               WHERE tenant_id = {tenantId} AND source = {sourceName} AND source_id = ANY({ids})
+                 AND kind = 'Earning' AND reversed_at IS NULL
+               ORDER BY id FOR UPDATE", ct);
+        // Read after the lock (no tracking): sees whatever a concurrent payout closing committed.
         return await _context.SvcCommissionEntries
+            .AsNoTracking()
             .Where(x => x.Source == source && ids.Contains(x.SourceId)
                      && x.Kind == SvcCommissionEntryKind.Earning && x.ReversedAt == null)
-            .OrderBy(x => x.RecognizedAt).ThenBy(x => x.Id)
+            .OrderBy(x => x.Id)
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<Guid>> GetCatalogItemsPaidByPackageForAppointmentAsync(
+        Guid appointmentId, CancellationToken ct = default)
+        => await _context.SvcPackageUsages
+            .Where(u => u.AppointmentId == appointmentId)
+            .Select(u => u.CatalogItemId)
+            .ToListAsync(ct);
 
     public async Task<bool> TryMarkReversedAsync(Guid entryId, DateTime reversedAt, CancellationToken ct = default)
     {
@@ -133,10 +148,13 @@ public class SvcCommissionRepository : ISvcCommissionRepository
     }
 
     public async Task<int> AttachOpenEntriesToPayoutAsync(
-        Guid payoutId, IReadOnlyCollection<Guid> entryIds, CancellationToken ct = default)
+        Guid payoutId, IReadOnlyCollection<Guid> entryIds, Guid tenantId, CancellationToken ct = default)
     {
-        var ids = entryIds.ToList();
+        var ids = entryIds.ToArray();
         var now = DateTime.UtcNow;
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT id FROM nexo.svc_commission_entries WHERE tenant_id = {tenantId} AND id = ANY({ids}) ORDER BY id FOR UPDATE",
+            ct);
         return await _context.SvcCommissionEntries
             .Where(x => ids.Contains(x.Id) && x.PayoutId == null && x.ReversedAt == null)
             .ExecuteUpdateAsync(s => s

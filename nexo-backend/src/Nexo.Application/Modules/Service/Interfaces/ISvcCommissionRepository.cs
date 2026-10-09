@@ -48,9 +48,15 @@ public interface ISvcCommissionRepository
     /// </summary>
     Task<bool> TryAddEntryAsync(SvcCommissionEntry entry, CancellationToken ct = default);
 
-    /// <summary>The ACTIVE earnings of the given sources (tracked), for reversal.</summary>
-    Task<IReadOnlyList<SvcCommissionEntry>> GetActiveEarningsAsync(
-        SvcCommissionSource source, IReadOnlyCollection<Guid> sourceIds, CancellationToken ct = default);
+    /// <summary>
+    /// Row-locks (SELECT … ORDER BY id FOR UPDATE) the ACTIVE earnings of the given sources and
+    /// returns them read AFTER the lock — current PayoutId included. Must run inside a transaction.
+    /// </summary>
+    Task<IReadOnlyList<SvcCommissionEntry>> LockActiveEarningsAsync(
+        SvcCommissionSource source, IReadOnlyCollection<Guid> sourceIds, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Catalog items that package consumptions linked to this appointment paid for (one per usage).</summary>
+    Task<IReadOnlyList<Guid>> GetCatalogItemsPaidByPackageForAppointmentAsync(Guid appointmentId, CancellationToken ct = default);
 
     /// <summary>
     /// Stamps reversed_at on an active earning (UPDATE … WHERE reversed_at IS NULL). True only for
@@ -70,11 +76,12 @@ public interface ISvcCommissionRepository
 
     /// <summary>
     /// Stamps <paramref name="payoutId"/> on the given entries that are STILL open
-    /// (UPDATE … WHERE id = ANY(ids) AND payout_id IS NULL). Returns how many rows it stamped;
-    /// fewer than requested means a concurrent closing captured some of them first.
+    /// (UPDATE … WHERE id = ANY(ids) AND payout_id IS NULL). The rows are locked in id order first
+    /// (same order as a reversal, so the two cannot deadlock). Returns how many rows it stamped;
+    /// fewer than requested means a concurrent closing or reversal got some of them first.
     /// </summary>
     Task<int> AttachOpenEntriesToPayoutAsync(
-        Guid payoutId, IReadOnlyCollection<Guid> entryIds, CancellationToken ct = default);
+        Guid payoutId, IReadOnlyCollection<Guid> entryIds, Guid tenantId, CancellationToken ct = default);
 
     // ── Payouts ──────────────────────────────────────────────────────────────
     Task<SvcCommissionPayout?> GetPayoutByIdAsync(Guid id, CancellationToken ct = default);

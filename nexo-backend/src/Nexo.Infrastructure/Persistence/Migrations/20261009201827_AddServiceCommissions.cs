@@ -174,16 +174,18 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ix_svc_package_usages_appointment_id",
-                schema: "nexo",
-                table: "svc_package_usages",
-                column: "appointment_id");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_svc_package_usages_professional_id",
                 schema: "nexo",
                 table: "svc_package_usages",
                 column: "professional_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ux_svc_package_usages_appointment_id",
+                schema: "nexo",
+                table: "svc_package_usages",
+                column: "appointment_id",
+                unique: true,
+                filter: "appointment_id IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_svc_commission_entries_customer_id",
@@ -292,12 +294,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 schema: "nexo");
 
             migrationBuilder.DropIndex(
-                name: "ix_svc_package_usages_appointment_id",
+                name: "IX_svc_package_usages_professional_id",
                 schema: "nexo",
                 table: "svc_package_usages");
 
             migrationBuilder.DropIndex(
-                name: "IX_svc_package_usages_professional_id",
+                name: "ux_svc_package_usages_appointment_id",
                 schema: "nexo",
                 table: "svc_package_usages");
 

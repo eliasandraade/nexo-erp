@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261009200014_AddServiceCommissions")]
+    [Migration("20261009201827_AddServiceCommissions")]
     partial class AddServiceCommissions
     {
         /// <inheritdoc />
@@ -5565,7 +5565,9 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AppointmentId")
-                        .HasDatabaseName("ix_svc_package_usages_appointment_id");
+                        .IsUnique()
+                        .HasDatabaseName("ux_svc_package_usages_appointment_id")
+                        .HasFilter("appointment_id IS NOT NULL");
 
                     b.HasIndex("CatalogItemId");
 

@@ -46,8 +46,10 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
   const [professionalId, setProfessionalId] = useState(NO_PROFESSIONAL);
   const [appointmentId, setAppointmentId] = useState(NO_APPOINTMENT);
   const appointmentTerm = labels?.appointment ?? "Agendamento";
+  // Only while the dialog is open and the package is known — never an unfiltered store-wide list.
   const { data: customerAppointments } = useAppointments(
-    customerPackage ? { customerId: customerPackage.customerId } : {},
+    { customerId: customerPackage?.customerId },
+    open && !!customerPackage,
   );
   // Appointments this consumption can pay for: same customer, same service, not cancelled/no-show,
   // and not already paid by another consumption of this package.
