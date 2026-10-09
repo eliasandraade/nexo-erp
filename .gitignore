@@ -105,3 +105,10 @@ __snapshots__/
 # =========================
 semgrep-report.json
 secret-scan-results.json
+
+# Database dumps / backups — never commit (they carry password hashes and customer data)
+*.sql.gz
+*.dump
+*.bak
+/*.sql
+nexo_backup*.sql
