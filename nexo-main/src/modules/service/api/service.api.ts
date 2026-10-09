@@ -562,6 +562,8 @@ export const fetchCustomerPackagePaymentSummary = (customerPackageId: string) =>
 
 // ── Commissions (PR C) ─────────────────────────────────────────────────────────
 export type SvcCommissionSource = "OrderItem" | "Appointment" | "PackageUsage";
+/** Earning = commission earned; Reversal = negative entry discounting an earning already paid out. */
+export type SvcCommissionEntryKind = "Earning" | "Reversal";
 export type SvcCommissionPayoutStatus = "Pending" | "Paid";
 
 export interface SvcCommissionEntryDto {
@@ -569,6 +571,7 @@ export interface SvcCommissionEntryDto {
   storeId: string;
   professionalId: string;
   customerId: string;
+  kind: SvcCommissionEntryKind;
   source: SvcCommissionSource;
   sourceId: string;
   baseAmount: number;
@@ -577,6 +580,9 @@ export interface SvcCommissionEntryDto {
   recognizedAt: string;
   /** Null while open; set once the entry is closed into a payout. */
   payoutId: string | null;
+  /** Set on an earning whose payment was voided — it no longer counts. */
+  reversedAt: string | null;
+  reversalOfEntryId: string | null;
   description: string | null;
   createdAt: string;
 }

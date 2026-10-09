@@ -25,9 +25,22 @@ export const PAYOUT_STATUS_VARIANTS: Record<SvcCommissionPayoutStatus, BadgeVari
   Paid: "success",
 };
 
-/** An entry is "Fechada" once it belongs to a payout, "Em aberto" before. */
-export function entryStatus(entry: Pick<SvcCommissionEntryDto, "payoutId">): { label: string; variant: BadgeVariant } {
+/**
+ * Earning: "Em aberto" → "Fechada" once in a payout; "Estornada" if its payment was voided.
+ * Reversal (negative): "A descontar" until a payout discounts it, then "Descontada".
+ */
+export function entryStatus(
+  entry: Pick<SvcCommissionEntryDto, "payoutId" | "kind" | "reversedAt">,
+): { label: string; variant: BadgeVariant } {
+  if (entry.kind === "Reversal")
+    return entry.payoutId ? { label: "Descontada", variant: "neutral" } : { label: "A descontar", variant: "warning" };
+  if (entry.reversedAt) return { label: "Estornada", variant: "danger" };
   return entry.payoutId ? { label: "Fechada", variant: "neutral" } : { label: "Em aberto", variant: "info" };
+}
+
+/** Counts towards the next payout: not yet closed and not reversed (reversals count negative). */
+export function isOpenEntry(entry: Pick<SvcCommissionEntryDto, "payoutId" | "reversedAt">): boolean {
+  return !entry.payoutId && !entry.reversedAt;
 }
 
 /** yyyy-MM-dd of a local date (what <input type="date"> speaks). */

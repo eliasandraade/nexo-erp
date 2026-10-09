@@ -3,6 +3,7 @@ import {
   commissionSourceLabel,
   currentMonthPeriod,
   entryStatus,
+  isOpenEntry,
   periodToUtcRange,
   PAYOUT_STATUS_LABELS,
   sumCommission,
@@ -25,8 +26,17 @@ describe("commission", () => {
   });
 
   it("marks an entry as closed once it belongs to a payout", () => {
-    expect(entryStatus({ payoutId: null }).label).toBe("Em aberto");
-    expect(entryStatus({ payoutId: "p1" }).label).toBe("Fechada");
+    expect(entryStatus({ payoutId: null, kind: "Earning", reversedAt: null }).label).toBe("Em aberto");
+    expect(entryStatus({ payoutId: "p1", kind: "Earning", reversedAt: null }).label).toBe("Fechada");
+  });
+
+  it("labels voided earnings and the reversals that discount them", () => {
+    expect(entryStatus({ payoutId: null, kind: "Earning", reversedAt: "2026-10-09T10:00:00Z" }).label).toBe("Estornada");
+    expect(entryStatus({ payoutId: null, kind: "Reversal", reversedAt: null }).label).toBe("A descontar");
+    expect(entryStatus({ payoutId: "p2", kind: "Reversal", reversedAt: null }).label).toBe("Descontada");
+    expect(isOpenEntry({ payoutId: null, reversedAt: null })).toBe(true);
+    expect(isOpenEntry({ payoutId: null, reversedAt: "2026-10-09T10:00:00Z" })).toBe(false);
+    expect(isOpenEntry({ payoutId: "p1", reversedAt: null })).toBe(false);
   });
 
   it("defaults the period to the current month up to today", () => {

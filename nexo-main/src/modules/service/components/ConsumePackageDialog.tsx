@@ -49,11 +49,20 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
   const { data: customerAppointments } = useAppointments(
     customerPackage ? { customerId: customerPackage.customerId } : {},
   );
-  // Appointments this consumption can pay for: same customer, same service, not cancelled/no-show.
+  // Appointments this consumption can pay for: same customer, same service, not cancelled/no-show,
+  // and not already paid by another consumption of this package.
+  const alreadyLinked = new Set((customerPackage?.usages ?? []).map((u) => u.appointmentId).filter(Boolean));
   const linkableAppointments = (open && customerPackage ? customerAppointments ?? [] : [])
-    .filter((a) => a.catalogItemId === catalogItemId && a.status !== "Cancelled" && a.status !== "NoShow")
+    .filter((a) => a.catalogItemId === catalogItemId && a.status !== "Cancelled" && a.status !== "NoShow"
+      && !alreadyLinked.has(a.id))
     .sort((a, b) => b.startsAt.localeCompare(a.startsAt))
     .slice(0, 20);
+  // The appointment this consumption almost certainly pays for: the only one within ±12h of now.
+  const likelyAppointment = (() => {
+    const near = linkableAppointments.filter(
+      (a) => Math.abs(new Date(a.startsAt).getTime() - Date.now()) <= 12 * 60 * 60 * 1000);
+    return near.length === 1 ? near[0] : null;
+  })();
   const [notes, setNotes] = useState("");
 
   const available = (customerPackage?.items ?? []).filter((it) => it.remainingQuantity > 0);
@@ -67,6 +76,15 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
     setNotes("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, customerPackage]);
+
+  // Pre-link today's appointment of this service (and its professional) — unlinked, the same
+  // service would earn commission twice: once on completion, once on this consumption.
+  useEffect(() => {
+    if (!open || !likelyAppointment) return;
+    setAppointmentId(likelyAppointment.id);
+    setProfessionalId((current) => (current === NO_PROFESSIONAL ? likelyAppointment.professionalId : current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, likelyAppointment?.id]);
 
   const handleConsume = async () => {
     if (!customerPackage) return;
@@ -148,11 +166,16 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
                       ))}
                     </SelectContent>
                   </Select>
-                  {capabilities?.commissions && (
-                    <p className="text-[11.5px] text-muted-foreground">
-                      Vincule o {appointmentTerm.toLowerCase()} pago com o pacote para a comissão não ser contada duas vezes.
+                  {capabilities?.commissions && appointmentId === NO_APPOINTMENT ? (
+                    <p className="text-[11.5px] text-warning">
+                      Este cliente tem {appointmentTerm.toLowerCase()} deste serviço. Se este consumo pagou esse
+                      atendimento, vincule-o — sem o vínculo, a comissão é contada duas vezes.
                     </p>
-                  )}
+                  ) : capabilities?.commissions ? (
+                    <p className="text-[11.5px] text-muted-foreground">
+                      A comissão deste atendimento será contada uma única vez.
+                    </p>
+                  ) : null}
                 </div>
               )}
               <div className="space-y-1.5">

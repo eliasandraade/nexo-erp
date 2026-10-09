@@ -43,6 +43,7 @@ import {
   commissionSourceLabel,
   currentMonthPeriod,
   entryStatus,
+  isOpenEntry,
   PAYOUT_STATUS_LABELS,
   PAYOUT_STATUS_VARIANTS,
   periodToUtcRange,
@@ -103,13 +104,15 @@ export function CommissionPanel({ professionals }: CommissionPanelProps) {
   }, [rows, byProfessional, selectedId, summary.isLoading]);
 
   const periodEntries = entries.data ?? [];
-  const openInPeriod = periodEntries.filter((e) => !e.payoutId);
+  const openInPeriod = periodEntries.filter(isOpenEntry);
   const openInPeriodTotal = sumCommission(openInPeriod);
+  // Voided payments can leave more to discount than to pay — such a period cannot be closed yet.
+  const canClosePeriod = !!range && openInPeriod.length > 0 && openInPeriodTotal > 0;
   const selectedSummary = selectedId ? byProfessional.get(selectedId) : undefined;
 
   const handleClose = () => {
     setConfirmClose(false);
-    if (!selectedId || !range || openInPeriod.length === 0) return;
+    if (!selectedId || !range || !canClosePeriod) return;
     closePayout.mutate(
       { professionalId: selectedId, periodStart: range.start, periodEnd: range.end },
       {
@@ -216,7 +219,7 @@ export function CommissionPanel({ professionals }: CommissionPanelProps) {
             {canManage ? (
               <Button
                 onClick={() => setConfirmClose(true)}
-                disabled={!range || openInPeriod.length === 0 || closePayout.isPending}
+                disabled={!canClosePeriod || closePayout.isPending}
               >
                 <Lock className="mr-1.5 h-4 w-4" />
                 {closePayout.isPending ? "Fechando..." : "Fechar período"}
@@ -224,6 +227,12 @@ export function CommissionPanel({ professionals }: CommissionPanelProps) {
             ) : null}
           </div>
           {!range && <p className="text-[12px] text-destructive">Período inválido.</p>}
+          {range && openInPeriod.length > 0 && openInPeriodTotal <= 0 && (
+            <p className="text-[12px] text-warning">
+              Há estornos a descontar maiores que as comissões do período. O fechamento fica disponível
+              quando houver saldo positivo.
+            </p>
+          )}
           {!canManage && (
             <p className="text-[11.5px] text-muted-foreground">Fechar período e pagar repasses é restrito a gerência e diretoria.</p>
           )}
@@ -270,7 +279,9 @@ export function CommissionPanel({ professionals }: CommissionPanelProps) {
                         return (
                           <TableRow key={e.id}>
                             <TableCell className="whitespace-nowrap text-muted-foreground">{formatDateTime(e.recognizedAt)}</TableCell>
-                            <TableCell>{commissionSourceLabel(e.source, labels)}</TableCell>
+                            <TableCell>
+                              {e.kind === "Reversal" ? "Estorno · " : ""}{commissionSourceLabel(e.source, labels)}
+                            </TableCell>
                             <TableCell className="max-w-[260px] truncate text-muted-foreground" title={e.description ?? ""}>
                               {e.description ?? "—"}
                             </TableCell>
