@@ -445,6 +445,12 @@ export interface SvcPackageUsageDto {
   orderItemId: string | null;
   quantity: number;
   notes: string | null;
+  /** Who performed the consumption (earns the commission); null when not informed. */
+  professionalId: string | null;
+  /** The appointment this consumption paid for (prevents commissioning it twice). */
+  appointmentId: string | null;
+  baseAmountSnapshot: number | null;
+  commissionPercentSnapshot: number | null;
   createdAt: string;
 }
 export interface SvcCustomerPackageDto {
@@ -477,6 +483,8 @@ export interface ConsumePackageRequest {
   orderId?: string | null;
   orderItemId?: string | null;
   notes?: string | null;
+  professionalId?: string | null;
+  appointmentId?: string | null;
 }
 
 export const fetchCustomerPackages = (params: {
@@ -551,3 +559,80 @@ export const fetchOrderPaymentSummary = (orderId: string) =>
   apiClient.get<SvcPaymentSummaryDto>(`/v1/service/payments/order/${orderId}/summary`);
 export const fetchCustomerPackagePaymentSummary = (customerPackageId: string) =>
   apiClient.get<SvcPaymentSummaryDto>(`/v1/service/payments/customer-package/${customerPackageId}/summary`);
+
+// ── Commissions (PR C) ─────────────────────────────────────────────────────────
+export type SvcCommissionSource = "OrderItem" | "Appointment" | "PackageUsage";
+export type SvcCommissionPayoutStatus = "Pending" | "Paid";
+
+export interface SvcCommissionEntryDto {
+  id: string;
+  storeId: string;
+  professionalId: string;
+  customerId: string;
+  source: SvcCommissionSource;
+  sourceId: string;
+  baseAmount: number;
+  commissionPercent: number;
+  commissionAmount: number;
+  recognizedAt: string;
+  /** Null while open; set once the entry is closed into a payout. */
+  payoutId: string | null;
+  description: string | null;
+  createdAt: string;
+}
+export interface SvcCommissionPayoutDto {
+  id: string;
+  storeId: string;
+  professionalId: string;
+  periodStart: string;
+  periodEnd: string;
+  totalAmount: number;
+  entryCount: number;
+  status: SvcCommissionPayoutStatus;
+  paidAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface SvcCommissionPayoutDetailDto {
+  payout: SvcCommissionPayoutDto;
+  entries: SvcCommissionEntryDto[];
+}
+export interface SvcCommissionSummaryDto {
+  professionalId: string;
+  openCount: number;
+  openAmount: number;
+  pendingPayoutCount: number;
+  pendingPayoutAmount: number;
+  paidPayoutCount: number;
+  paidPayoutAmount: number;
+}
+export interface CloseCommissionPayoutRequest {
+  professionalId: string;
+  periodStart: string;
+  periodEnd: string;
+  notes?: string | null;
+}
+export type CommissionEntryStatusFilter = "open" | "settled" | "all";
+
+export const fetchCommissionEntries = (params: {
+  professionalId?: string; from?: string; to?: string; status?: CommissionEntryStatusFilter; payoutId?: string;
+} = {}) => {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
+  return apiClient.get<SvcCommissionEntryDto[]>(`/v1/service/commissions/entries?${q.toString()}`);
+};
+export const fetchCommissionSummary = (professionalId?: string) =>
+  apiClient.get<SvcCommissionSummaryDto[]>(
+    `/v1/service/commissions/summary${professionalId ? `?professionalId=${professionalId}` : ""}`);
+export const fetchCommissionPayouts = (params: { professionalId?: string; status?: SvcCommissionPayoutStatus } = {}) => {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => { if (v) q.set(k, v); });
+  return apiClient.get<SvcCommissionPayoutDto[]>(`/v1/service/commissions/payouts?${q.toString()}`);
+};
+export const fetchCommissionPayout = (id: string) =>
+  apiClient.get<SvcCommissionPayoutDetailDto>(`/v1/service/commissions/payouts/${id}`);
+export const closeCommissionPayout = (body: CloseCommissionPayoutRequest) =>
+  apiClient.post<SvcCommissionPayoutDetailDto>("/v1/service/commissions/payouts", body);
+export const markCommissionPayoutPaid = (id: string, paidAt?: string | null) =>
+  apiClient.post<SvcCommissionPayoutDto>(`/v1/service/commissions/payouts/${id}/pay`, paidAt ? { paidAt } : {});

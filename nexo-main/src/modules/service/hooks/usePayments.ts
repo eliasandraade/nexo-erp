@@ -48,7 +48,11 @@ export function useCreatePayment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: CreatePaymentRequest) => createPayment(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: serviceKeys.payments() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: serviceKeys.payments() });
+      // A payment that settles an order recognises its commissions.
+      qc.invalidateQueries({ queryKey: serviceKeys.commissions() });
+    },
   });
 }
 
@@ -56,6 +60,10 @@ export function useVoidPayment() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, reason }: { id: string; reason?: string | null }) => voidPayment(id, reason),
-    onSuccess: () => qc.invalidateQueries({ queryKey: serviceKeys.payments() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: serviceKeys.payments() });
+      // A payment that settles an order recognises its commissions.
+      qc.invalidateQueries({ queryKey: serviceKeys.commissions() });
+    },
   });
 }

@@ -44,6 +44,13 @@ export const serviceKeys = {
   paymentSummary: (target: "order" | "customer-package", id: string) =>
     [...serviceKeys.payments(), "summary", target, id] as const,
 
+  commissions: () => [...serviceKeys.all, "commissions"] as const,
+  commissionEntries: (params: Record<string, unknown>) => [...serviceKeys.commissions(), "entries", params] as const,
+  commissionSummary: (professionalId: string | undefined) =>
+    [...serviceKeys.commissions(), "summary", professionalId ?? "all"] as const,
+  commissionPayouts: (params: Record<string, unknown>) => [...serviceKeys.commissions(), "payouts", params] as const,
+  commissionPayout: (id: string) => [...serviceKeys.commissions(), "payout", id] as const,
+
   records: (contextType: string, contextId: string) =>
     [...serviceKeys.all, "records", contextType, contextId] as const,
 };
