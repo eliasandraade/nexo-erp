@@ -90,7 +90,8 @@ export default function PdvPage() {
   }
 
   if (cashLoading) return <div className="p-6"><PageSkeleton /></div>;
-  if (cashError) return <ErrorState title="Não foi possível consultar o caixa" onRetry={() => void retryCash()} />;
+  // A failed background refetch keeps the cached session: only a first-load failure blocks the PDV.
+  if (cashError && !cashSession) return <ErrorState title="Não foi possível consultar o caixa" onRetry={() => void retryCash()} />;
 
   // Guard: cash session must be open
   if (!hasOpenSession) {

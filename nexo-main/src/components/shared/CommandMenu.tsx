@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useNavigation } from "./useNavigation";
+import { shortcutLabel } from "./shortcutLabel";
 
 export function CommandMenu() {
   const [open, setOpen] = useState(false);
@@ -21,7 +22,7 @@ export function CommandMenu() {
   }, []);
   return <>
     <button ref={trigger} onClick={() => setOpen(true)} className="ml-auto flex h-9 items-center gap-2 rounded border border-border px-3 text-sm text-muted-foreground hover:bg-muted" aria-label="Buscar páginas" aria-haspopup="dialog">
-      <Search className="h-4 w-4" /><span className="hidden sm:inline">Ir para…</span><kbd className="hidden text-xs lg:inline">Ctrl K</kbd>
+      <Search className="h-4 w-4" /><span className="hidden sm:inline">Ir para…</span><kbd className="hidden text-xs lg:inline">{shortcutLabel()}</kbd>
     </button>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="overflow-hidden p-0" onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }}>

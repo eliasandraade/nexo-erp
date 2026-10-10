@@ -20,7 +20,6 @@ vi.mock("@/components/ui/select", () => ({
 }));
 
 const SETTINGS: PublicBookingSettingsDto = {
-  displayName: null, description: null, logoUrl: null, coverImageUrl: null, brandColor: null, whatsApp: null, address: null,
   isConfigured: true, publicBookingEnabled: false, bookingDaysAhead: 14,
   minLeadMinutes: 120, slotIntervalMinutes: 30, showPrices: true,
   autoConfirmAppointments: false, timeZoneId: "America/Sao_Paulo",
