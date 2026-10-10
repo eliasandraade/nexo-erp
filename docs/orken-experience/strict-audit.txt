@@ -1,0 +1,3 @@
+src/modules/restaurante/pages/RestauranteSetupPage.tsx(22,51): error TS2322: Type 'null' is not assignable to type 'string | undefined'.
+src/modules/restaurante/pages/RestauranteSetupPage.tsx(32,62): error TS2322: Type 'null' is not assignable to type 'string | undefined'.
+src/test/auth.e2e.spec.ts(249,39): error TS7006: Parameter 'p' implicitly has an 'any' type.

@@ -1,0 +1,77 @@
+
+> vite_react_shadcn_ts@0.0.0 lint
+> eslint .
+
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\scripts\reconstruct-customers.mjs
+  34:119  error  Parsing error: Unexpected token {
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\badge.tsx
+  29:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\button.tsx
+  47:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\command.tsx
+  24:11  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\form.tsx
+  129:10  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\navigation-menu.tsx
+  111:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\sidebar.tsx
+  636:3  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\sonner.tsx
+  27:19  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\textarea.tsx
+  5:18  error  An interface declaring no members is equivalent to its supertype  @typescript-eslint/no-empty-object-type
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\components\ui\toggle.tsx
+  37:18  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\audit\services\auditService.ts
+  6:3  warning  Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-unused-vars')
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\auth\context\AuthContext.tsx
+  106:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\platform\services\interpreterAdminApi.ts
+  300:104  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  300:135  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  301:104  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  301:135  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  302:104  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  302:135  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  303:104  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  303:135  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  304:37   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\restaurante\hooks\useKitchenSocket.ts
+  188:6  warning  React Hook useEffect has a missing dependency: 'qc'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\restaurante\pages\RestauranteSetupPage.tsx
+  22:72  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  32:83  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\service\components\PortalSlugSection.tsx
+  12:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  23:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\service\context\ServicePresetContext.tsx
+  66:5   warning  React Hook useMemo has a missing dependency: 'presetQ'. Either include it or remove the dependency array                        react-hooks/exhaustive-deps
+  91:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  96:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\workspace\WorkspaceContext.tsx
+  77:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+
+C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\tailwind.config.ts
+  135:13  error  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+✖ 31 problems (15 errors, 16 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.
+

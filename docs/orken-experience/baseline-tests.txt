@@ -1,0 +1,52 @@
+
+> vite_react_shadcn_ts@0.0.0 test
+> vitest run --reporter=dot
+
+
+ RUN  v3.2.4 C:/Users/Elias/.codex/worktrees/orken-experience/NexoERP/nexo-main
+
+··············································································x························································································
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/test/auth.e2e.spec.ts [ src/test/auth.e2e.spec.ts ]
+Error: Playwright Test did not expect test.describe() to be called here.
+Most common reasons include:
+- You are calling test.describe() in a configuration file.
+- You are calling test.describe() in a file that is imported by the configuration file.
+- You have two different versions of @playwright/test. This usually happens
+  when one of the dependencies in your package.json depends on @playwright/test.
+ ❯ TestTypeImpl._currentSuite node_modules/playwright/lib/common/testType.js:75:13
+ ❯ TestTypeImpl._describe node_modules/playwright/lib/common/testType.js:115:24
+ ❯ Function.describe node_modules/playwright/lib/transform/transform.js:282:12
+ ❯ src/test/auth.e2e.spec.ts:31:6
+     29| const E2E_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "IntegrationTes…
+     30| 
+     31| test.describe("Frontend Authentication Flow", () => {
+       |      ^
+     32|   test.beforeEach(async ({ page, context }) => {
+     33|     // Clear all cookies before each test
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/test/auth.unit.spec.ts > Token Validation > should extract claims from JWT
+SyntaxError: Unexpected token '', "��1O�-�"... is not valid JSON
+ ❯ src/test/auth.unit.spec.ts:233:26
+    231| 
+    232|     const parts = jwt.split(".");
+    233|     const payload = JSON.parse(Buffer.from(parts[1], "base64").toStrin…
+       |                          ^
+    234| 
+    235|     expect(payload.name).toBe("John Doe");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 15 passed (17)
+      Tests  1 failed | 166 passed (167)
+   Start at  15:38:03
+   Duration  132.80s (transform 15.86s, setup 114.83s, collect 44.91s, tests 6.64s, environment 554.19s, prepare 58.11s)
+

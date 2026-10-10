@@ -1,0 +1,28 @@
+src/components/shared/PageSkeleton.tsx(61,45): error TS2322: Type '{ key: number; className: string; style: { width: number; }; }' is not assignable to type 'IntrinsicAttributes & SkeletonProps'.
+  Property 'style' does not exist on type 'IntrinsicAttributes & SkeletonProps'.
+src/components/shared/PageSkeleton.tsx(67,49): error TS2322: Type '{ key: number; className: string; style: { width: number; }; }' is not assignable to type 'IntrinsicAttributes & SkeletonProps'.
+  Property 'style' does not exist on type 'IntrinsicAttributes & SkeletonProps'.
+src/modules/auth/context/AuthContext.tsx(72,49): error TS2339: Property 'error' does not exist on type 'LoginResponse'.
+  Property 'error' does not exist on type 'LoginResult'.
+src/modules/dashboard/components/RecentInsights.tsx(6,55): error TS2307: Cannot find module '@/modules/insights/types' or its corresponding type declarations.
+src/modules/sales/components/SaleCancellationDialog.tsx(63,27): error TS2339: Property 'error' does not exist on type '{ success: true; user: User; } | { success: false; error: string; }'.
+  Property 'error' does not exist on type '{ success: true; user: User; }'.
+src/modules/sales/components/SaleSummaryCard.tsx(38,11): error TS2322: Type 'Element' is not assignable to type 'string'.
+src/modules/sales/components/SaleSummaryCard.tsx(42,11): error TS2322: Type 'Element' is not assignable to type 'string'.
+src/modules/sales/components/SaleSummaryCard.tsx(46,11): error TS2322: Type 'Element' is not assignable to type 'string'.
+src/modules/service-portal/lib/portal-theme.ts(62,57): error TS2322: Type '"classic"' is not assignable to type 'ThemeMood'.
+src/modules/service/components/PortalBookingSettingsForm.test.tsx(22,7): error TS2740: Type '{ isConfigured: true; publicBookingEnabled: false; bookingDaysAhead: number; minLeadMinutes: number; slotIntervalMinutes: number; showPrices: true; autoConfirmAppointments: false; timeZoneId: string; }' is missing the following properties from type 'PublicBookingSettingsDto': displayName, description, logoUrl, coverImageUrl, and 3 more.
+src/modules/service/hooks/useAppointments.ts(23,44): error TS2345: Argument of type 'AppointmentsFilter' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'AppointmentsFilter'.
+src/modules/service/hooks/useCustomerPackages.ts(24,48): error TS2345: Argument of type 'CustomerPackagesFilter' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'CustomerPackagesFilter'.
+src/modules/service/hooks/useOrders.ts(31,38): error TS2345: Argument of type 'OrdersFilter' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'OrdersFilter'.
+src/modules/service/hooks/usePayments.ts(26,40): error TS2345: Argument of type 'PaymentsFilter' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'PaymentsFilter'.
+src/modules/service/hooks/useSubjects.ts(22,40): error TS2345: Argument of type 'SubjectsFilter' is not assignable to parameter of type 'Record<string, unknown>'.
+  Index signature for type 'string' is missing in type 'SubjectsFilter'.
+src/modules/users/pages/UsuariosPage.tsx(74,31): error TS2304: Cannot find name 'UserCog'.
+src/modules/users/pages/UsuariosPage.tsx(76,31): error TS2304: Cannot find name 'UserCog'.
+src/test/auth.unit.spec.ts(333,28): error TS2345: Argument of type 'Promise<unknown>' is not assignable to parameter of type 'Promise<void>'.
+  Type 'unknown' is not assignable to type 'void'.

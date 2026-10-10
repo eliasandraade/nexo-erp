@@ -34,6 +34,3 @@ await page.setViewportSize({width:390,height:844});
 await page.screenshot({path: `${folder}/clientes-390.png`, fullPage: true});
 await browser.close();
 console.log(`Saved ${phase} comparison captures using explicitly synthetic empty test session.`);
-
-
-
