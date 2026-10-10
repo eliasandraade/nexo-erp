@@ -50,7 +50,7 @@ interface KpiCardProps {
 
 function KpiCard({ icon: Icon, label, value, sub, color = "text-primary" }: KpiCardProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-2">
+    <div className="rounded-md border border-border bg-card p-4 flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <div className={cn("p-2 rounded-lg bg-muted/60", color)}>
           <Icon className="h-4 w-4" />
@@ -117,14 +117,14 @@ export default function RelatoriosPage() {
                 type="date"
                 value={customFrom}
                 onChange={e => setCustomFrom(e.target.value)}
-                className="h-9 rounded-xl border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
               <span className="text-muted-foreground text-sm">até</span>
               <input
                 type="date"
                 value={customTo}
                 onChange={e => setCustomTo(e.target.value)}
-                className="h-9 rounded-xl border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
               />
             </div>
           )}
@@ -142,11 +142,11 @@ export default function RelatoriosPage() {
         {isLoading ? (
           <div className="grid grid-cols-2 gap-3">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="rounded-xl border border-border bg-card p-4 h-24 animate-pulse bg-muted/30" />
+              <div key={i} className="rounded-md border border-border bg-card p-4 h-24 animate-pulse bg-muted/30" />
             ))}
           </div>
         ) : isError ? (
-          <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-6 text-center">
+          <div className="rounded-md border border-destructive/20 bg-destructive/5 p-6 text-center">
             <p className="text-sm text-destructive">Erro ao carregar relatório.</p>
             <p className="text-xs text-muted-foreground mt-1">Verifique a conexão e tente novamente.</p>
           </div>

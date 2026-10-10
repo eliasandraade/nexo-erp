@@ -15,7 +15,7 @@ export function SellerRanking() {
   const sellers = summary?.topSellers ?? [];
 
   return (
-    <div className="bg-card rounded-xl border border-border p-5 animate-fade-in">
+    <div className="bg-card rounded-md border border-border p-5">
       <h3 className="text-sm font-semibold text-foreground mb-4">Ranking de vendedores</h3>
 
       {isLoading ? (

@@ -13,8 +13,8 @@ export function InventoryKpiCards({ totalProducts, belowMin, noTurnover }: Inven
       label:     "Itens em estoque",
       value:     totalProducts,
       icon:      Package,
-      iconColor: "text-[#5B4DFF]",
-      strip:     "bg-[#5B4DFF]",
+      iconColor: "text-primary",
+      strip:     "bg-primary",
       subOk:     true,
       sub:       "produtos cadastrados",
     },
@@ -41,7 +41,7 @@ export function InventoryKpiCards({ totalProducts, belowMin, noTurnover }: Inven
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {cards.map((c) => (
-        <div key={c.label} className="bg-card rounded-xl border border-border p-5 relative overflow-hidden">
+        <div key={c.label} className="bg-card rounded-md border border-border p-5 relative overflow-hidden">
           {/* Top accent strip */}
           <div className={cn("absolute top-0 left-0 right-0 h-[2px]", c.strip)} />
 

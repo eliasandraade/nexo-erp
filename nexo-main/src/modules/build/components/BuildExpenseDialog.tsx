@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Sparkles, Loader2, CheckCircle2, ArrowLeft, AlertTriangle } from "lucide-react";
+import { ScanText, Loader2, CheckCircle2, ArrowLeft, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
 import { useAnalyzeMovement, useConfirmMovement } from "../hooks/use-interpreter";
@@ -161,7 +161,7 @@ export function BuildExpenseDialog({ open, onClose, projectId }: Props) {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="h-4 w-4 text-primary" />
+            <ScanText className="h-4 w-4 text-primary" />
             {step === "done" ? "Despesa registrada" : "Registrar despesa"}
           </DialogTitle>
           <DialogDescription className="sr-only">
@@ -210,7 +210,7 @@ export function BuildExpenseDialog({ open, onClose, projectId }: Props) {
                 {analyzeMut.isPending ? (
                   <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Analisando…</>
                 ) : (
-                  <><Sparkles className="h-4 w-4 mr-1.5" /> Analisar</>
+                  <><ScanText className="h-4 w-4 mr-1.5" /> Analisar</>
                 )}
               </Button>
             </DialogFooter>
@@ -222,7 +222,7 @@ export function BuildExpenseDialog({ open, onClose, projectId }: Props) {
           <>
             <div className="space-y-4 py-1">
               {/* Extraction summary */}
-              <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+              <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   Extração — {draft.extraction.analyzerUsed}
                 </p>

@@ -1,0 +1,188 @@
+
+> vite_react_shadcn_ts@0.0.0 build
+> vite build --outDir node_modules/.orken-build
+
+vite v5.4.19 building for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 16 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+node_modules/@microsoft/signalr/dist/esm/Utils.js (189:0): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@microsoft/signalr/dist/esm/Utils.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@microsoft/signalr/dist/esm/Utils.js (207:0): A comment
+
+"/*#__PURE__*/"
+
+in "node_modules/@microsoft/signalr/dist/esm/Utils.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+✓ 3716 modules transformed.
+rendering chunks...
+[plugin:vite:reporter] [plugin vite:reporter] 
+(!) C:/Users/Elias/.codex/worktrees/orken-experience/NexoERP/nexo-main/src/modules/users/api/users.api.ts is dynamically imported by C:/Users/Elias/.codex/worktrees/orken-experience/NexoERP/nexo-main/src/modules/users/services/userService.ts but also statically imported by C:/Users/Elias/.codex/worktrees/orken-experience/NexoERP/nexo-main/src/modules/users/pages/UserFormPage.tsx, C:/Users/Elias/.codex/worktrees/orken-experience/NexoERP/nexo-main/src/modules/users/services/userService.ts, dynamic import will not move module into another chunk.
+
+computing gzip size...
+node_modules/.orken-build/index.html                                      2.61 kB │ gzip:   1.11 kB
+node_modules/.orken-build/assets/index-DMdiACRI.css                      97.37 kB │ gzip:  17.15 kB
+node_modules/.orken-build/assets/storage.api-FqnpQ8er.js                  0.19 kB │ gzip:   0.17 kB
+node_modules/.orken-build/assets/skeleton-BbwCe2K7.js                     0.21 kB │ gzip:   0.18 kB
+node_modules/.orken-build/assets/useRestauranteTables-BJc5OJEh.js         0.22 kB │ gzip:   0.19 kB
+node_modules/.orken-build/assets/minus-C0LjxGVE.js                        0.29 kB │ gzip:   0.24 kB
+node_modules/.orken-build/assets/chevron-up-BeKo-qN-.js                   0.30 kB │ gzip:   0.25 kB
+node_modules/.orken-build/assets/play-CfIVOLpd.js                         0.30 kB │ gzip:   0.25 kB
+node_modules/.orken-build/assets/plus-DDmcEmiE.js                         0.32 kB │ gzip:   0.25 kB
+node_modules/.orken-build/assets/useFoodSettings-BHnK1cnu.js              0.33 kB │ gzip:   0.26 kB
+node_modules/.orken-build/assets/arrow-left-Cf7XbS-3.js                   0.33 kB │ gzip:   0.27 kB
+node_modules/.orken-build/assets/arrow-up-right-QLrt7Lfi.js               0.33 kB │ gzip:   0.26 kB
+node_modules/.orken-build/assets/circle-check-X7Aq95jG.js                 0.35 kB │ gzip:   0.27 kB
+node_modules/.orken-build/assets/formatters-BYaKtrf4.js                   0.35 kB │ gzip:   0.18 kB
+node_modules/.orken-build/assets/clock-BhvNckxG.js                        0.35 kB │ gzip:   0.28 kB
+node_modules/.orken-build/assets/rotate-ccw-o3LS2vIH.js                   0.37 kB │ gzip:   0.29 kB
+node_modules/.orken-build/assets/label-Bx2gRiTL.js                        0.37 kB │ gzip:   0.27 kB
+node_modules/.orken-build/assets/info-iQkJ5Iqe.js                         0.37 kB │ gzip:   0.28 kB
+node_modules/.orken-build/assets/trending-down-CwNGmrCS.js                0.38 kB │ gzip:   0.28 kB
+node_modules/.orken-build/assets/dollar-sign-By0vn0A-.js                  0.39 kB │ gzip:   0.30 kB
+node_modules/.orken-build/assets/ellipsis-CSC0Kmid.js                     0.40 kB │ gzip:   0.27 kB
+node_modules/.orken-build/assets/activity-Bxg82EDW.js                     0.40 kB │ gzip:   0.30 kB
+node_modules/.orken-build/assets/copy-_rT2FSWc.js                         0.41 kB │ gzip:   0.31 kB
+node_modules/.orken-build/assets/history-i4Lr8lPG.js                      0.41 kB │ gzip:   0.30 kB
+node_modules/.orken-build/assets/separator-OOiLOsD4.js                    0.41 kB │ gzip:   0.28 kB
+node_modules/.orken-build/assets/circle-alert-yw4ermrx.js                 0.42 kB │ gzip:   0.29 kB
+node_modules/.orken-build/assets/external-link-BXoha5-Y.js                0.42 kB │ gzip:   0.30 kB
+node_modules/.orken-build/assets/shopping-bag-DxV2wGu-.js                 0.42 kB │ gzip:   0.30 kB
+node_modules/.orken-build/assets/map-pin-DD3Z9ALP.js                      0.43 kB │ gzip:   0.33 kB
+node_modules/.orken-build/assets/zap-D0v65IA-.js                          0.43 kB │ gzip:   0.31 kB
+node_modules/.orken-build/assets/triangle-alert-BMi8NGGr.js               0.43 kB │ gzip:   0.31 kB
+node_modules/.orken-build/assets/pencil-CnfkEJxl.js                       0.45 kB │ gzip:   0.33 kB
+node_modules/.orken-build/assets/hash-CGCRQzl_.js                         0.47 kB │ gzip:   0.30 kB
+node_modules/.orken-build/assets/shield-check-BApgxu5y.js                 0.49 kB │ gzip:   0.35 kB
+node_modules/.orken-build/assets/tag-Bur5E8du.js                          0.50 kB │ gzip:   0.35 kB
+node_modules/.orken-build/assets/save-vB0RMm4J.js                         0.50 kB │ gzip:   0.33 kB
+node_modules/.orken-build/assets/file-text-CyINKlu1.js                    0.50 kB │ gzip:   0.32 kB
+node_modules/.orken-build/assets/SaleStatusBadge-DForWCgl.js              0.51 kB │ gzip:   0.29 kB
+node_modules/.orken-build/assets/integrations.api-jieglIsz.js             0.52 kB │ gzip:   0.26 kB
+node_modules/.orken-build/assets/textarea-CfqlvNMj.js                     0.52 kB │ gzip:   0.34 kB
+node_modules/.orken-build/assets/key-round-Dpv2-6-3.js                    0.52 kB │ gzip:   0.36 kB
+node_modules/.orken-build/assets/trash-2-hPsQnCrh.js                      0.53 kB │ gzip:   0.35 kB
+node_modules/.orken-build/assets/usePlatformSystem-DYbwy7MM.js            0.53 kB │ gzip:   0.28 kB
+node_modules/.orken-build/assets/sales.api-BQaGGdL1.js                    0.58 kB │ gzip:   0.32 kB
+node_modules/.orken-build/assets/portal.api-CW5tVMAH.js                   0.58 kB │ gzip:   0.34 kB
+node_modules/.orken-build/assets/arrow-up-CXfZzAsg.js                     0.61 kB │ gzip:   0.31 kB
+node_modules/.orken-build/assets/useCatalog-Cj0twb1c.js                   0.61 kB │ gzip:   0.31 kB
+node_modules/.orken-build/assets/useKitchenItems-BMr7CS_J.js              0.62 kB │ gzip:   0.39 kB
+node_modules/.orken-build/assets/input-dQDR9Zx7.js                        0.62 kB │ gzip:   0.38 kB
+node_modules/.orken-build/assets/PageHeader-Bkz4gM2z.js                   0.62 kB │ gzip:   0.35 kB
+node_modules/.orken-build/assets/useSubjects-4APzIeRs.js                  0.62 kB │ gzip:   0.31 kB
+node_modules/.orken-build/assets/usePackages-Bw0vSLmO.js                  0.64 kB │ gzip:   0.38 kB
+node_modules/.orken-build/assets/useProfessionals-FyMbEfTZ.js             0.64 kB │ gzip:   0.31 kB
+node_modules/.orken-build/assets/StatusBadge-B82QW0cB.js                  0.69 kB │ gzip:   0.41 kB
+node_modules/.orken-build/assets/SectionCard-B1E8oAWU.js                  0.70 kB │ gzip:   0.39 kB
+node_modules/.orken-build/assets/EmptyState-CIPh9Jcc.js                   0.70 kB │ gzip:   0.38 kB
+node_modules/.orken-build/assets/checkbox-C5MM50ZK.js                     0.71 kB │ gzip:   0.41 kB
+node_modules/.orken-build/assets/index-CTMjLhli.js                        0.71 kB │ gzip:   0.35 kB
+node_modules/.orken-build/assets/useAppointments-CejVlxZz.js              0.73 kB │ gzip:   0.34 kB
+node_modules/.orken-build/assets/user-aaNlSb5S.js                         0.74 kB │ gzip:   0.38 kB
+node_modules/.orken-build/assets/badge-QNFjPtYO.js                        0.75 kB │ gzip:   0.39 kB
+node_modules/.orken-build/assets/use-customers-6WHxykB5.js                0.76 kB │ gzip:   0.36 kB
+node_modules/.orken-build/assets/customer-package-status-akHiD2gF.js      0.85 kB │ gzip:   0.45 kB
+node_modules/.orken-build/assets/pdf.api-CtAZNAZ-.js                      0.85 kB │ gzip:   0.57 kB
+node_modules/.orken-build/assets/switch-CSKsI2cc.js                       0.85 kB │ gzip:   0.45 kB
+node_modules/.orken-build/assets/index-CtdDzcmZ.js                        0.86 kB │ gzip:   0.43 kB
+node_modules/.orken-build/assets/use-stock-B2stJziA.js                    0.93 kB │ gzip:   0.50 kB
+node_modules/.orken-build/assets/use-cash-BDweSLPi.js                     0.93 kB │ gzip:   0.38 kB
+node_modules/.orken-build/assets/card-C7HsA5wA.js                         1.03 kB │ gzip:   0.40 kB
+node_modules/.orken-build/assets/PageSkeleton-J8DNpziz.js                 1.08 kB │ gzip:   0.43 kB
+node_modules/.orken-build/assets/payment-Cx_YS1DB.js                      1.11 kB │ gzip:   0.53 kB
+node_modules/.orken-build/assets/tabs-DKGUduCb.js                         1.19 kB │ gzip:   0.51 kB
+node_modules/.orken-build/assets/order-status-Dehr19wG.js                 1.22 kB │ gzip:   0.60 kB
+node_modules/.orken-build/assets/index-yldTuWuB.js                        1.23 kB │ gzip:   0.54 kB
+node_modules/.orken-build/assets/ImpersonatePage-BEBUX4L4.js              1.24 kB │ gzip:   0.59 kB
+node_modules/.orken-build/assets/table-jtye3VRS.js                        1.53 kB │ gzip:   0.54 kB
+node_modules/.orken-build/assets/ErrorState-DdmK7r88.js                   1.88 kB │ gzip:   1.00 kB
+node_modules/.orken-build/assets/useOrderMutations-BsMMSjdY.js            1.89 kB │ gzip:   0.66 kB
+node_modules/.orken-build/assets/restaurante.api-elhcxkvw.js              1.90 kB │ gzip:   0.66 kB
+node_modules/.orken-build/assets/DataPagination-CSGz7t_h.js               2.05 kB │ gzip:   0.88 kB
+node_modules/.orken-build/assets/ModuleSelectionPage-DyoK-6qp.js          2.07 kB │ gzip:   1.01 kB
+node_modules/.orken-build/assets/ImageUploadButton-D-qRR-tq.js            2.10 kB │ gzip:   1.20 kB
+node_modules/.orken-build/assets/userService-D8SfDhEZ.js                  2.19 kB │ gzip:   0.94 kB
+node_modules/.orken-build/assets/customers.api-BQvWXSYW.js                2.24 kB │ gzip:   0.84 kB
+node_modules/.orken-build/assets/useKitchenSocket-D97Kup-R.js             2.25 kB │ gzip:   1.18 kB
+node_modules/.orken-build/assets/use-products-BDUWqf7A.js                 2.40 kB │ gzip:   0.83 kB
+node_modules/.orken-build/assets/platformApi-DtFvCKm5.js                  2.51 kB │ gzip:   0.74 kB
+node_modules/.orken-build/assets/SalesChart-Y89nRmnn.js                   2.55 kB │ gzip:   1.26 kB
+node_modules/.orken-build/assets/ConfirmDialog-B4xu2H4Y.js                2.67 kB │ gzip:   1.01 kB
+node_modules/.orken-build/assets/suppliers.api-CWSJC0gV.js                2.77 kB │ gzip:   0.97 kB
+node_modules/.orken-build/assets/select-D5hTLDDz.js                       3.03 kB │ gzip:   1.10 kB
+node_modules/.orken-build/assets/PortalTrackingPage-D6r0NzXC.js           3.26 kB │ gzip:   1.33 kB
+node_modules/.orken-build/assets/PagamentosPage-CuLhmKDF.js               3.58 kB │ gzip:   1.65 kB
+node_modules/.orken-build/assets/PlatformTrialPage-DFA0kLT5.js            3.63 kB │ gzip:   1.35 kB
+node_modules/.orken-build/assets/AjustesPage-CasRB7aA.js                  3.79 kB │ gzip:   1.64 kB
+node_modules/.orken-build/assets/usePlatformTenants-Bph0oLjX.js           4.00 kB │ gzip:   1.07 kB
+node_modules/.orken-build/assets/KitchenPage-X8dqwtGj.js                  4.26 kB │ gzip:   1.84 kB
+node_modules/.orken-build/assets/FornecedoresPage-CVlbzZob.js             4.75 kB │ gzip:   2.01 kB
+node_modules/.orken-build/assets/RelatoriosPage-DIpvcrCd.js               5.00 kB │ gzip:   1.99 kB
+node_modules/.orken-build/assets/UsuariosPage-DKJUCvR6.js                 5.03 kB │ gzip:   2.07 kB
+node_modules/.orken-build/assets/AiCostsPage-D9Z--xAM.js                  5.20 kB │ gzip:   1.75 kB
+node_modules/.orken-build/assets/VendasPage-B5UY0ZVI.js                   5.46 kB │ gzip:   2.23 kB
+node_modules/.orken-build/assets/PaymentsPanel-DCCzzlQc.js                5.53 kB │ gzip:   2.23 kB
+node_modules/.orken-build/assets/OrderDetailPage-DsDD3V1n.js              5.61 kB │ gzip:   2.21 kB
+node_modules/.orken-build/assets/CustomerPackagesPage-ByYt56Jn.js         5.79 kB │ gzip:   2.28 kB
+node_modules/.orken-build/assets/OrdensPage-DRtxl8l2.js                   5.82 kB │ gzip:   2.26 kB
+node_modules/.orken-build/assets/useAiOperations-LYBeJ9LS.js              5.82 kB │ gzip:   2.01 kB
+node_modules/.orken-build/assets/MovimentacoesPage-9Qyrg75-.js            5.85 kB │ gzip:   2.49 kB
+node_modules/.orken-build/assets/AssinaturaPage-C7cC5kSi.js               5.85 kB │ gzip:   2.29 kB
+node_modules/.orken-build/assets/ServiceOverviewPage-CaeU8Jn1.js          6.20 kB │ gzip:   2.33 kB
+node_modules/.orken-build/assets/AuditoriaPage-VO2lz65C.js                6.56 kB │ gzip:   2.37 kB
+node_modules/.orken-build/assets/AiPromptsPage-t_srGsya.js                6.83 kB │ gzip:   2.37 kB
+node_modules/.orken-build/assets/LandingPage-C3ryVoVf.js                  7.01 kB │ gzip:   2.55 kB
+node_modules/.orken-build/assets/FloorPage-CpeSKMTb.js                    7.10 kB │ gzip:   2.74 kB
+node_modules/.orken-build/assets/ProjectStatusBadge-DGr-crvo.js           7.13 kB │ gzip:   1.77 kB
+node_modules/.orken-build/assets/RestauranteSetupPage-B61wqa_E.js         7.33 kB │ gzip:   2.19 kB
+node_modules/.orken-build/assets/EstoquePage-o3wgy2CX.js                  7.43 kB │ gzip:   2.86 kB
+node_modules/.orken-build/assets/ClientesPage-CWqTsmnS.js                 7.44 kB │ gzip:   2.66 kB
+node_modules/.orken-build/assets/AiTelemetryPage-DFJtIHf1.js              7.53 kB │ gzip:   2.34 kB
+node_modules/.orken-build/assets/PacotesPage-CBokPuuK.js                  8.03 kB │ gzip:   2.89 kB
+node_modules/.orken-build/assets/CatalogoPage-xYZcps9C.js                 8.04 kB │ gzip:   2.83 kB
+node_modules/.orken-build/assets/PlatformSystemPage-q_bC6pyD.js           8.32 kB │ gzip:   2.73 kB
+node_modules/.orken-build/assets/PerfilPage-vgq7dDTY.js                   8.61 kB │ gzip:   2.61 kB
+node_modules/.orken-build/assets/CustomerPackageDetailPage-IiPfXoF2.js    8.72 kB │ gzip:   3.25 kB
+node_modules/.orken-build/assets/AiDashboardPage-BIcWt_JV.js              8.74 kB │ gzip:   2.64 kB
+node_modules/.orken-build/assets/SubjectsPage-BkvuQN0H.js                 9.46 kB │ gzip:   3.38 kB
+node_modules/.orken-build/assets/PlatformDashboardPage-jbV9_5Dt.js        9.56 kB │ gzip:   2.62 kB
+node_modules/.orken-build/assets/PlatformFlagsPage-BNsU8mHd.js            9.63 kB │ gzip:   3.09 kB
+node_modules/.orken-build/assets/PlatformActivityPage-zlHCzk2f.js         9.86 kB │ gzip:   2.90 kB
+node_modules/.orken-build/assets/AiProvidersPage-B37xBHPT.js             10.31 kB │ gzip:   3.40 kB
+node_modules/.orken-build/assets/ProdutosPage-DLbv4Hhf.js                10.95 kB │ gzip:   3.78 kB
+node_modules/.orken-build/assets/UserFormPage-BgWTAljM.js                11.26 kB │ gzip:   3.67 kB
+node_modules/.orken-build/assets/AiPlaygroundPage-BdQ3Ezz1.js            11.28 kB │ gzip:   3.34 kB
+node_modules/.orken-build/assets/CustomerFormPage-DlV0eixX.js            11.39 kB │ gzip:   3.49 kB
+node_modules/.orken-build/assets/AgendaPage-CgIM_Xvn.js                  11.68 kB │ gzip:   4.04 kB
+node_modules/.orken-build/assets/PlatformTenantsPage-BN0VB_40.js         12.25 kB │ gzip:   3.48 kB
+node_modules/.orken-build/assets/SupplierFormPage-KasWyLEs.js            12.83 kB │ gzip:   3.90 kB
+node_modules/.orken-build/assets/BuildProjectsPage-BEITsyah.js           12.85 kB │ gzip:   4.15 kB
+node_modules/.orken-build/assets/ConfiguracoesPage-D2B_tbGq.js           13.07 kB │ gzip:   4.28 kB
+node_modules/.orken-build/assets/CaixaPage-C30waal_.js                   13.82 kB │ gzip:   4.19 kB
+node_modules/.orken-build/assets/VendaDetailPage-DxJY3p6n.js             14.90 kB │ gzip:   4.64 kB
+node_modules/.orken-build/assets/DashboardPage-BRZMky2J.js               15.10 kB │ gzip:   4.46 kB
+node_modules/.orken-build/assets/PdvPage-D0KE245j.js                     17.02 kB │ gzip:   5.37 kB
+node_modules/.orken-build/assets/RecipeCardPage-y-T3airW.js              17.39 kB │ gzip:   4.95 kB
+node_modules/.orken-build/assets/ProductFormPage-4p-lIuz8.js             17.54 kB │ gzip:   5.11 kB
+node_modules/.orken-build/assets/ProfissionaisPage-DHB9jO3l.js           18.70 kB │ gzip:   6.13 kB
+node_modules/.orken-build/assets/PortalMenuPage-D1AKsX4w.js              18.71 kB │ gzip:   5.52 kB
+node_modules/.orken-build/assets/DeliveryPage-CL2DQFto.js                19.13 kB │ gzip:   5.42 kB
+node_modules/.orken-build/assets/PortalSetupPage-Cu4wcSWF.js             25.32 kB │ gzip:   7.66 kB
+node_modules/.orken-build/assets/PlatformTenantDetailPage-DHrugav8.js    25.66 kB │ gzip:   6.34 kB
+node_modules/.orken-build/assets/vendor-dates-BnWYOt86.js                26.45 kB │ gzip:   7.21 kB
+node_modules/.orken-build/assets/OrderPage-C5eKp-K5.js                   27.06 kB │ gzip:   8.67 kB
+node_modules/.orken-build/assets/FinanceiroPage-DoERDDrR.js              27.47 kB │ gzip:   7.05 kB
+node_modules/.orken-build/assets/ServicePortalPage-DnbUmush.js           28.19 kB │ gzip:   8.89 kB
+node_modules/.orken-build/assets/BookingPage-BGXq_Q1P.js                 29.59 kB │ gzip:   9.55 kB
+node_modules/.orken-build/assets/vendor-query-CNNBgEgf.js                42.70 kB │ gzip:  12.70 kB
+node_modules/.orken-build/assets/BuildProjectDetailPage-B1NlwdDS.js      53.22 kB │ gzip:  12.57 kB
+node_modules/.orken-build/assets/vendor-signalr-cK5ecMAR.js              55.54 kB │ gzip:  14.34 kB
+node_modules/.orken-build/assets/vendor-radix--wSRkM6w.js               116.84 kB │ gzip:  37.56 kB
+node_modules/.orken-build/assets/index-C173XumF.js                      166.02 kB │ gzip:  45.44 kB
+node_modules/.orken-build/assets/vendor-react-jY6meaSe.js               186.04 kB │ gzip:  60.59 kB
+node_modules/.orken-build/assets/AreaChart-CB82IwV2.js                  382.79 kB │ gzip: 105.36 kB
+✓ built in 17.74s

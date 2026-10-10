@@ -165,7 +165,7 @@ export default function AssinaturaPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Assinatura</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Gerencie os módulos ativos do seu plano Orken.
+            Módulos ativos e condições da assinatura.
           </p>
         </div>
         {hasAnySubscription && (

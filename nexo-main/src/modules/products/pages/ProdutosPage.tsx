@@ -59,7 +59,7 @@ export default function ProdutosPage() {
     <div className="space-y-6">
       <PageHeader
         title="Produtos"
-        description="Gerencie o cadastro e as informações comerciais dos produtos."
+        eyebrow="Cadastros"
         actions={
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setManageCatsOpen(true)}>

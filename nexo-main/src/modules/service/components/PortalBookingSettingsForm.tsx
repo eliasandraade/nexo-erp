@@ -176,7 +176,7 @@ function Toggle({ checked, onChange, label, description, icon: Icon }: {
       type="button"
       onClick={() => onChange(!checked)}
       className={cn(
-        "flex w-full items-center gap-4 rounded-xl border p-4 text-left transition-colors",
+        "flex w-full items-center gap-4 rounded-md border p-4 text-left transition-colors",
         checked ? "border-primary/40 bg-primary/5" : "border-border bg-card hover:border-border/80",
       )}
     >

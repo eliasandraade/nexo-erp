@@ -51,11 +51,11 @@ export default function ServiceOverviewPage() {
       <PageHeader
         eyebrow={preset.displayName}
         title="Serviços"
-        description="Visão do dia e atalhos operacionais."
+        description="Agenda, ordens e recebimentos da operação."
       />
 
       {/* KPIs — real, capability-gated */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="metric-strip">
         {showAgenda && (
           <KpiCard
             to="/service/agenda" icon={CalendarClock} label="Agenda de hoje"
@@ -91,16 +91,16 @@ export default function ServiceOverviewPage() {
       {/* Shortcuts */}
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Atalhos</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="record-list">
           {surfaces.map((surface) => {
             const Icon = surface.icon;
             return (
               <Link
                 key={surface.key}
                 to={surface.path}
-                className="group flex items-start gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:bg-accent/40"
+                className="group flex items-center gap-4 px-2 py-4 transition-colors hover:bg-muted"
               >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center text-muted-foreground">
                   <Icon className="h-[18px] w-[18px]" />
                 </span>
                 <div className="min-w-0">
@@ -130,7 +130,7 @@ function KpiCard({ to, icon: Icon, label, value, hint, loading, error }: KpiCard
   return (
     <Link
       to={to}
-      className="group rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary/50"
+      className="metric-cell hover:bg-muted"
     >
       <div className="flex items-center justify-between">
         <p className="text-[11.5px] font-medium text-muted-foreground">{label}</p>
@@ -139,7 +139,7 @@ function KpiCard({ to, icon: Icon, label, value, hint, loading, error }: KpiCard
       {loading ? (
         <Skeleton className="mt-2 h-6 w-20" />
       ) : (
-        <p className="mt-1.5 text-[20px] font-bold leading-tight text-foreground">{error ? "—" : value}</p>
+        <p className="mt-1.5 text-2xl font-semibold tabular-nums leading-tight text-foreground">{error ? "—" : value}</p>
       )}
       {hint && !loading && !error && (
         <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>

@@ -11,7 +11,9 @@ const SalesChart = lazy(() =>
   import("@/modules/dashboard/components/SalesChart").then((m) => ({ default: m.SalesChart }))
 );
 import { SellerRanking } from "@/modules/dashboard/components/SellerRanking";
-import { RecentInsights } from "@/modules/dashboard/components/RecentInsights";
+import { OperationPriorities } from "@/modules/dashboard/components/OperationPriorities";
+import { useDashboardSummary } from "../hooks/useDashboardSummary";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { StockAlerts } from "@/modules/dashboard/components/StockAlerts";
 import { SetupCard } from "@/components/shared/SetupCard";
 import { RestauranteBlocks } from "@/modules/dashboard/components/RestauranteBlocks";
@@ -40,6 +42,7 @@ export default function DashboardPage() {
   const { session } = useAuth();
   const { dismissed, dismiss } = useSetupDismissed(session?.userId);
 
+  const summary = useDashboardSummary();
   const greeting = useMemo(() => getGreeting(), []);
   const firstName = session?.name?.split(" ")[0] ?? "";
 
@@ -49,27 +52,30 @@ export default function DashboardPage() {
 
       <PageHeader
         title={firstName ? `${greeting}, ${firstName}` : greeting}
-        description="Visão geral da operação hoje"
+        description="Vendas, caixa e estoque. Confira o que pede atenção."
       />
 
+      {summary.isError ? <ErrorState title="Não foi possível atualizar a operação" description="Não é possível confirmar vendas, caixa ou estoque agora." onRetry={() => void summary.refetch()} /> : <>
+      <OperationPriorities />
       <KpiCards />
 
       {session?.modules.includes("restaurante") && <RestauranteBlocks />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <Suspense fallback={<Skeleton className="h-[360px] rounded-xl" />}>
+          <Suspense fallback={<Skeleton className="h-[360px] rounded-md" />}>
             <SalesChart />
           </Suspense>
         </div>
         <TopProducts />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <SellerRanking />
-        <RecentInsights />
+
         <StockAlerts />
       </div>
+      </>}
     </div>
   );
 }

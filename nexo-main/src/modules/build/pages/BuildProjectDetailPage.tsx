@@ -144,7 +144,7 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
           { icon: DollarSign,  label: "Orçamento previsto", value: fmt(project.budgetEstimated) },
           { icon: DollarSign,  label: "Orçamento aprovado", value: fmt(project.budgetApproved) },
         ].map(({ icon: Icon, label, value }) => (
-          <div key={label} className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
+          <div key={label} className="rounded-md border border-border bg-card p-3 flex items-center gap-3">
             <div className="p-2 rounded-lg bg-muted/60 text-muted-foreground shrink-0">
               <Icon className="h-4 w-4" />
             </div>
@@ -185,7 +185,7 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
 
       {/* Status transitions */}
       {isActive && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-3">
+        <div className="rounded-md border border-border bg-card p-4 space-y-3">
           <h3 className="text-sm font-semibold">Ações</h3>
           <div className="flex flex-wrap gap-2">
             {project.status !== "InProgress" && (
@@ -293,7 +293,7 @@ function TabEtapas({ projectId }: { projectId: string }) {
       </div>
 
       {adding && (
-        <div className="flex items-center gap-2 p-3 rounded-xl border border-dashed border-primary/40">
+        <div className="flex items-center gap-2 p-3 rounded-md border border-dashed border-primary/40">
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -316,11 +316,11 @@ function TabEtapas({ projectId }: { projectId: string }) {
       {isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 rounded-xl bg-muted animate-pulse" />
+            <div key={i} className="h-16 rounded-md bg-muted animate-pulse" />
           ))}
         </div>
       ) : stages.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-8 text-center">
+        <div className="rounded-md border border-dashed border-border p-8 text-center">
           <p className="text-sm text-muted-foreground">Nenhuma etapa cadastrada.</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={() => setAdding(true)}>
             <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar primeira etapa
@@ -329,7 +329,7 @@ function TabEtapas({ projectId }: { projectId: string }) {
       ) : (
         <div className="space-y-2">
           {stages.map((stage) => (
-            <div key={stage.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
+            <div key={stage.id} className="rounded-md border border-border bg-card p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-medium text-sm truncate">{stage.name}</p>
@@ -531,9 +531,9 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
   return (
     <div className="space-y-4">
       {isLoading ? (
-        <div className="h-20 rounded-xl bg-muted animate-pulse" />
+        <div className="h-20 rounded-md bg-muted animate-pulse" />
       ) : items.length === 0 && !addingBudget ? (
-        <div className="rounded-xl border border-dashed border-border p-8 text-center">
+        <div className="rounded-md border border-dashed border-border p-8 text-center">
           <FileText className="h-8 w-8 mx-auto text-muted-foreground opacity-40 mb-2" />
           <p className="text-sm text-muted-foreground">Nenhum orçamento criado.</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={() => setAddingBudget(true)}>
@@ -569,7 +569,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
 
           {/* Budget summary */}
           {budget && (
-            <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+            <div className="rounded-md border border-border bg-card p-4 space-y-4">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-semibold text-sm">{budget.name}</p>
@@ -657,7 +657,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                 </div>
 
                 {addingItem && (
-                  <div className="p-3 rounded-xl border border-dashed border-primary/40 space-y-2">
+                  <div className="p-3 rounded-md border border-dashed border-primary/40 space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <Label className="text-xs">Descrição</Label>
@@ -709,7 +709,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
                     Nenhum item no orçamento.
                   </p>
                 ) : (
-                  <div className="rounded-xl border border-border overflow-hidden">
+                  <div className="rounded-md border border-border overflow-hidden">
                     <table className="w-full text-sm min-w-[480px]">
                       <thead className="bg-muted/40 border-b border-border">
                         <tr>
@@ -761,7 +761,7 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
 
       {/* New budget form */}
       {addingBudget && (
-        <div className="rounded-xl border border-dashed border-primary/40 p-4 space-y-3">
+        <div className="rounded-md border border-dashed border-primary/40 p-4 space-y-3">
           <p className="text-sm font-medium">Novo orçamento</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -937,7 +937,7 @@ function TabDiario({ projectId }: { projectId: string }) {
       </div>
 
       {adding && (
-        <div className="rounded-xl border border-dashed border-primary/40 p-4 space-y-3">
+        <div className="rounded-md border border-dashed border-primary/40 p-4 space-y-3">
           <p className="text-sm font-medium">Novo registro de obra</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -1085,11 +1085,11 @@ function TabDiario({ projectId }: { projectId: string }) {
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+            <div key={i} className="h-24 rounded-md bg-muted animate-pulse" />
           ))}
         </div>
       ) : logs.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border p-8 text-center">
+        <div className="rounded-md border border-dashed border-border p-8 text-center">
           <BookOpen className="h-8 w-8 mx-auto text-muted-foreground opacity-40 mb-2" />
           <p className="text-sm text-muted-foreground">Nenhum registro no diário.</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={() => setAdding(true)}>
@@ -1099,7 +1099,7 @@ function TabDiario({ projectId }: { projectId: string }) {
       ) : (
         <div className="space-y-3">
           {logs.map((log: BuildDailyLogDto) => (
-            <div key={log.id} className="rounded-xl border border-border bg-card p-4 space-y-2">
+            <div key={log.id} className="rounded-md border border-border bg-card p-4 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -1191,7 +1191,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />
+          <div key={i} className="h-20 rounded-md bg-muted animate-pulse" />
         ))}
       </div>
     );
@@ -1199,7 +1199,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 
   if (isError || !financial) {
     return (
-      <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-8 text-center">
+      <div className="rounded-md border border-destructive/20 bg-destructive/5 p-8 text-center">
         <p className="text-sm text-destructive">Erro ao carregar resumo financeiro.</p>
       </div>
     );
@@ -1219,7 +1219,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 
       {/* ── Alert: over budget ─────────────────────────────────────────── */}
       {isOverBudget && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3">
+        <div className="flex items-start gap-2.5 rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/20 p-3">
           <TrendingUp className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
           <p className="text-sm text-red-700 dark:text-red-300 font-medium">
             Realizado supera o orçamento aprovado em{" "}
@@ -1230,7 +1230,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 
       {/* ── KPI grid ───────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-md border border-border bg-card p-4">
           <div className="flex items-center gap-2 mb-2">
             <FileText className="h-3.5 w-3.5 text-blue-500" />
             <span className="text-xs text-muted-foreground">Orçamento aprovado</span>
@@ -1241,7 +1241,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
         </div>
 
         <div className={cn(
-          "rounded-xl border p-4",
+          "rounded-md border p-4",
           isOverBudget
             ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-900/10"
             : "border-border bg-card",
@@ -1261,7 +1261,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-md border border-border bg-card p-4">
           <div className="flex items-center gap-2 mb-2">
             {varianceIsOver
               ? <TrendingUp className="h-3.5 w-3.5 text-red-500" />
@@ -1285,7 +1285,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
           )}
         </div>
 
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-md border border-border bg-card p-4">
           <div className="flex items-center gap-2 mb-2">
             <FileText className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Estimado</span>
@@ -1298,7 +1298,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 
       {/* ── Coverage bar ───────────────────────────────────────────────── */}
       {coveragePercent != null && (
-        <div className="rounded-xl border border-border bg-card p-4 space-y-2">
+        <div className="rounded-md border border-border bg-card p-4 space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium">Consumo do orçamento</span>
             <span className={cn(
@@ -1347,11 +1347,11 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
         {movLoading ? (
           <div className="space-y-2">
             {[1, 2].map((i) => (
-              <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />
+              <div key={i} className="h-14 rounded-md bg-muted animate-pulse" />
             ))}
           </div>
         ) : movements.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border p-6 text-center">
+          <div className="rounded-md border border-dashed border-border p-6 text-center">
             <DollarSign className="h-7 w-7 mx-auto text-muted-foreground opacity-30 mb-2" />
             <p className="text-sm text-muted-foreground">
               Nenhuma despesa registrada ainda.
@@ -1361,7 +1361,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-border overflow-hidden">
+          <div className="rounded-md border border-border overflow-hidden">
             {movements.map((m, idx) => (
               <div
                 key={m.id}
@@ -1416,10 +1416,10 @@ export default function BuildProjectDetailPage() {
     return (
       <div className="p-6 space-y-4">
         <div className="h-8 w-64 rounded-lg bg-muted animate-pulse" />
-        <div className="h-10 rounded-xl bg-muted animate-pulse" />
+        <div className="h-10 rounded-md bg-muted animate-pulse" />
         <div className="grid grid-cols-2 gap-3">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />
+            <div key={i} className="h-20 rounded-md bg-muted animate-pulse" />
           ))}
         </div>
       </div>
@@ -1429,7 +1429,7 @@ export default function BuildProjectDetailPage() {
   if (isError || !project) {
     return (
       <div className="p-6">
-        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-8 text-center">
+        <div className="rounded-md border border-destructive/20 bg-destructive/5 p-8 text-center">
           <p className="text-sm text-destructive font-medium">Obra não encontrada.</p>
           <Button variant="outline" className="mt-4" onClick={() => navigate("/build")}>
             Voltar para obras

@@ -1,3 +1,4 @@
+import animate from "tailwindcss-animate";
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
 
@@ -15,8 +16,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        display: ["Syne", "system-ui", "sans-serif"],
+        sans: ["Segoe UI Variable", "Segoe UI", "system-ui", "sans-serif"],
+        display: ["Segoe UI Variable", "Segoe UI", "system-ui", "sans-serif"],
       },
       colors: {
         // ── Orken brand colors (landing page design system) ──────────────────
@@ -133,5 +134,5 @@ export default {
       },
     },
   },
-  plugins: [tailwindcssAnimate],
+  plugins: [animate],
 } satisfies Config;

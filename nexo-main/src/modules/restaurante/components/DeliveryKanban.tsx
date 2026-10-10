@@ -47,7 +47,7 @@ function KanbanColumn({
       {/* Cards */}
       <div className="flex-1 overflow-y-auto flex flex-col gap-3 pb-4 pr-0.5">
         {orders.length === 0 ? (
-          <div className="rounded-xl border-2 border-dashed border-white/10 flex items-center justify-center h-20">
+          <div className="rounded-md border-2 border-dashed border-white/10 flex items-center justify-center h-20">
             <p className="text-xs text-muted-foreground">Nenhum pedido</p>
           </div>
         ) : (

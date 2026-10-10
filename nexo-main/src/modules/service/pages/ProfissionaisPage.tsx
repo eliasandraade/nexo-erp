@@ -60,7 +60,7 @@ export default function ProfissionaisPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Cadastros"
-        title={`${term}s`}
+        title={term === "Profissional" ? "Profissionais" : `${term}s`}
         description={`Equipe que executa os serviços${capabilities?.commissions ? " e suas comissões" : ""}.`}
         actions={
           <Button onClick={() => setDialog({ open: true, editing: null })}>

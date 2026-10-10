@@ -1,18 +1,11 @@
-import { defineConfig, devices } from "@playwright/test";
-
-/**
- * Browser end-to-end tests (e2e/). They need the API and the frontend running — they are NOT part
- * of `npm test` (Vitest only runs src/**). Run with `npm run test:e2e`.
- *   API_URL  (default http://localhost:5000)
- *   APP_URL  (default http://localhost:8080 — the Vite dev server)
- */
+import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 30_000,
-  retries: 0,
-  use: {
-    baseURL: process.env.APP_URL || "http://localhost:8080",
-    trace: "retain-on-failure",
-  },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  testMatch: "experience.spec.ts",
+  timeout: 30000,
+  fullyParallel: false,
+  workers: 1,
+  reporter: [["list"], ["html", { open: "never" }]],
+  use: { baseURL: "http://127.0.0.1:5179", headless: true, channel: process.platform === "win32" ? "msedge" : undefined, trace: "retain-on-failure", screenshot: "only-on-failure" },
+  webServer: { command: "npm run dev -- --host 127.0.0.1 --port 5179", url: "http://127.0.0.1:5179", reuseExistingServer: true },
 });

@@ -1,0 +1,11 @@
+
+> vite_react_shadcn_ts@0.0.0 typecheck
+> tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json
+
+src/modules/service/components/PortalBookingSettingsForm.test.tsx(27,3): error TS1117: An object literal cannot have multiple properties with the same name.
+src/modules/service/components/PortalBookingSettingsForm.test.tsx(27,22): error TS1117: An object literal cannot have multiple properties with the same name.
+src/modules/service/components/PortalBookingSettingsForm.test.tsx(27,41): error TS1117: An object literal cannot have multiple properties with the same name.
+src/modules/service/components/PortalBookingSettingsForm.test.tsx(27,56): error TS1117: An object literal cannot have multiple properties with the same name.
+src/modules/service/components/PortalBookingSettingsForm.test.tsx(28,3): error TS1117: An object literal cannot have multiple properties with the same name.
+src/modules/service/components/PortalBookingSettingsForm.test.tsx(28,21): error TS1117: An object literal cannot have multiple properties with the same name.
+src/modules/service/components/PortalBookingSettingsForm.test.tsx(28,37): error TS1117: An object literal cannot have multiple properties with the same name.

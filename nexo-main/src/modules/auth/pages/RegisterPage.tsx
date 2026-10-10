@@ -5,15 +5,9 @@ import * as authService from "../services/authService";
 
 // ─── Shared input styles (mirrors LoginPage) ──────────────────────────────────
 
-const INPUT_BASE =
-  "w-full h-12 rounded-[10px] border border-white/[0.08] bg-white/[0.04] " +
-  "px-4 text-[14px] text-white placeholder:text-white/20 " +
-  "outline-none transition-all duration-150 " +
-  "focus:border-[#5B4DFF] focus:bg-white/[0.06] focus:shadow-[0_0_0_3px_rgba(91,77,255,0.12)] " +
-  "disabled:opacity-50 disabled:cursor-not-allowed";
+const INPUT_BASE = "auth-input";
 
-const LABEL =
-  "block text-[11px] font-semibold uppercase tracking-[0.09em] text-slate-500 mb-1.5";
+const LABEL = "auth-label";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -30,13 +24,7 @@ export default function RegisterPage() {
   const [error,       setError]       = useState<string | null>(null);
   const [loading,     setLoading]     = useState(false);
 
-  function triggerShake() {
-    const el = formRef.current;
-    if (!el) return;
-    el.classList.remove("animate-auth-shake");
-    void el.offsetWidth;
-    el.classList.add("animate-auth-shake");
-  }
+  function triggerShake() { formRef.current?.querySelector<HTMLInputElement>("input")?.focus(); }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -61,18 +49,18 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="animate-auth-enter">
+    <div className="">
 
       {/* ── Eyebrow + headline ── */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-4">
-          <div className="h-px w-5 bg-[#5B4DFF]" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#5B4DFF]">
+
+          <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-primary">
             Cadastro
           </span>
         </div>
-        <h1 className="font-display text-[26px] sm:text-[28px] font-bold text-white leading-[1.1] tracking-tight">
-          Criar conta<br />no Orken
+        <h1 className="font-sans text-[26px] sm:text-[28px] font-semibold text-foreground leading-[1.1] tracking-tight">
+          Criar conta no ORKEN
         </h1>
       </div>
 
@@ -132,8 +120,7 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => setShowPass((v) => !v)}
-              tabIndex={-1}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-600 hover:text-slate-300 transition-colors focus:outline-none"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-muted-foreground transition-colors "
               aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
             >
               {showPass ? <EyeOff className="h-[15px] w-[15px]" /> : <Eye className="h-[15px] w-[15px]" />}
@@ -158,8 +145,7 @@ export default function RegisterPage() {
             <button
               type="button"
               onClick={() => setShowConfirm((v) => !v)}
-              tabIndex={-1}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-600 hover:text-slate-300 transition-colors focus:outline-none"
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-muted-foreground hover:text-muted-foreground transition-colors "
               aria-label={showConfirm ? "Ocultar senha" : "Mostrar senha"}
             >
               {showConfirm ? <EyeOff className="h-[15px] w-[15px]" /> : <Eye className="h-[15px] w-[15px]" />}
@@ -169,7 +155,7 @@ export default function RegisterPage() {
 
         {/* Error */}
         {error && (
-          <p className="text-[13px] text-red-400 leading-snug pt-0.5" role="alert">
+          <p className="text-[13px] text-destructive leading-snug pt-0.5" role="alert">
             {error}
           </p>
         )}
@@ -179,15 +165,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="
-              w-full h-[52px] rounded-[10px]
-              bg-[#5B4DFF] hover:bg-[#4338CA] active:scale-[0.985]
-              text-white text-[14px] font-semibold
-              flex items-center justify-center
-              transition-all duration-150
-              disabled:opacity-60 disabled:cursor-not-allowed
-              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5B4DFF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B1020]
-            "
+            className="auth-submit"
           >
             {loading ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : "Criar conta"}
           </button>
@@ -195,12 +173,12 @@ export default function RegisterPage() {
       </form>
 
       {/* ── Login link ── */}
-      <div className="mt-6 pt-5 border-t border-white/[0.06]">
-        <p className="text-[13px] text-slate-600">
+      <div className="mt-6 pt-5 border-t border-border">
+        <p className="text-[13px] text-muted-foreground">
           Já tem conta?{" "}
           <Link
             to="/login"
-            className="text-slate-400 hover:text-white transition-colors font-medium focus-visible:outline-none focus-visible:text-white"
+            className="text-muted-foreground hover:text-foreground transition-colors font-medium  focus-visible:text-foreground"
           >
             Entrar →
           </Link>

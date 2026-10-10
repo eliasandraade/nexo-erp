@@ -377,7 +377,7 @@ export default function PlatformTenantDetailPage() {
           {historyLoading ? (
             <div className="p-6 text-center text-sm text-muted-foreground">Carregando...</div>
           ) : planHistory.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
+            <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground">
               Nenhum evento registrado ainda.<br />
               <span className="text-xs">Eventos são criados ao ativar ou revogar módulos.</span>
             </div>
@@ -618,7 +618,7 @@ export default function PlatformTenantDetailPage() {
 
           {/* Notes list */}
           {notes.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
+            <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
               Nenhuma nota ainda. Adicione contexto, histórico ou lembretes sobre este cliente.
             </div>
           ) : (

@@ -26,7 +26,7 @@ export function TableCard({ table, onClick, readyCount = 0 }: TableCardProps) {
     <button
       onClick={onClick}
       className={cn(
-        "relative rounded-xl border-2 p-4 text-left transition-all min-h-[88px]",
+        "relative rounded-md border-2 p-4 text-left transition-all min-h-[88px]",
         "flex flex-col justify-between active:scale-95",
         statusStyles[table.status]
       )}

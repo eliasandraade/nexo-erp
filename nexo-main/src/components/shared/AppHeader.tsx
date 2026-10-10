@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { roleLabels } from "@/modules/users/types";
+import { CommandMenu } from "./CommandMenu";
 import { StoreSwitcher } from "./StoreSwitcher";
 
 function getInitials(name: string): string {
@@ -25,23 +26,24 @@ export function AppHeader() {
   const displayRole = session ? (roleLabels[session.role] ?? session.role) : "—";
 
   return (
-    <header className="h-12 border-b border-border bg-card flex items-center justify-between px-5 shrink-0 gap-4">
+    <header className="h-16 border-b border-border bg-card flex items-center justify-between px-4 lg:px-8 shrink-0 gap-4">
 
       {/* Left: store switcher */}
       <div className="flex items-center gap-2 min-w-0">
         <StoreSwitcher />
       </div>
 
+      <CommandMenu />
       {/* Right: user */}
       <div className="flex items-center gap-0.5 shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 hover:bg-muted rounded-md px-1.5 py-1 transition-colors">
               <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center shrink-0">
-                <span className="text-[10px] font-semibold text-primary-foreground leading-none">{initials}</span>
+                <span className="text-xs font-semibold text-primary-foreground leading-none">{initials}</span>
               </div>
               <div className="text-left hidden sm:block">
-                <p className="text-[11.5px] font-medium text-foreground leading-none">{displayName}</p>
+                <p className="max-w-40 truncate text-sm font-medium text-foreground leading-none">{displayName}</p>
                 <p className="text-[10px] text-muted-foreground leading-none mt-0.5">{displayRole}</p>
               </div>
               <ChevronDown className="h-3 w-3 text-muted-foreground" />

@@ -166,7 +166,7 @@ export default function AiPlaygroundPage() {
         {/* ── Results panel ──────────────────────────────────────────── */}
         <div className="space-y-3">
           {!result && !isPending && (
-            <div className="bg-card border border-border border-dashed rounded-lg p-8 text-center">
+            <div className="bg-card border border-border border-dashed rounded-lg p-4 sm:p-8 text-center">
               <FlaskConical className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">
                 Os resultados da análise aparecerão aqui.
@@ -175,7 +175,7 @@ export default function AiPlaygroundPage() {
           )}
 
           {isPending && (
-            <div className="bg-card border border-border rounded-lg p-8 text-center">
+            <div className="bg-card border border-border rounded-lg p-4 sm:p-8 text-center">
               <div className="h-6 w-6 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">Processando...</p>
             </div>

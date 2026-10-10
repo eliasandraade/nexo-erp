@@ -129,7 +129,7 @@ describe("Auth Client", () => {
     it("should include credentials in fetch requests", () => {
       // Validate that fetch requests have credentials: 'include'
       // This is tested by verifying cookies are sent
-      
+
       const fetchOptions = {
         method: "GET",
         credentials: "include",
@@ -363,13 +363,13 @@ describe("Error Messages", () => {
     // Authentication errors must use generic messages
     // NOT expose whether user exists
     const genericAuthError = "Invalid login or password";
-    
+
     // Backend returns this generic message for all auth failures:
     // - User not found
     // - Wrong password
     // - User blocked
     // - Tenant not found
-    
+
     // The error message should NOT contain:
     expect(genericAuthError).not.toContain("@");
     expect(genericAuthError).not.toContain("not found");

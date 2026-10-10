@@ -54,7 +54,7 @@ export default function FornecedoresPage() {
     <div className="space-y-6">
       <PageHeader
         title="Fornecedores"
-        description="Gerencie os cadastros e dados comerciais dos fornecedores."
+        eyebrow="Cadastros"
         actions={
           <Button onClick={() => navigate("/fornecedores/novo")}>
             <Plus className="h-4 w-4 mr-2" />

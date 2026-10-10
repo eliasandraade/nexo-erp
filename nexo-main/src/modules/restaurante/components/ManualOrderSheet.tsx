@@ -326,7 +326,7 @@ export function ManualOrderSheet({ open, onClose, storeId }: ManualOrderSheetPro
             </div>
 
             {showPicker && (
-              <div className="rounded-xl border border-border bg-muted/30 p-3 flex flex-col gap-3">
+              <div className="rounded-md border border-border bg-muted/30 p-3 flex flex-col gap-3">
                 <ProductPicker
                   onAdd={handleAddItem}
                   onClose={() => setShowPicker(false)}

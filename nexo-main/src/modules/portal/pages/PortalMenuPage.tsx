@@ -85,14 +85,14 @@ export default function PortalMenuPage() {
             <img src={menu.coverImageUrl} alt={menu.storeName} className="w-full h-full object-cover" />
           </div>
         ) : (
-          <div className="w-full h-24 bg-gradient-to-r from-primary/30 to-primary/10" />
+          <div className="w-full h-24 bg-muted" />
         )}
         <div className="px-4 pt-3 pb-4">
           {menu.logoUrl && (
             <img
               src={menu.logoUrl}
               alt={menu.storeName}
-              className="w-16 h-16 rounded-xl object-cover border-2 border-background -mt-8 mb-2 shadow-md"
+              className="w-16 h-16 rounded-md object-cover border-2 border-background -mt-8 mb-2 shadow-md"
             />
           )}
           <h1 className="text-xl font-bold">{menu.storeName}</h1>
@@ -152,7 +152,7 @@ export default function PortalMenuPage() {
                   key={product.id}
                   onClick={() => menu.acceptingOrders && setActiveProduct(product)}
                   className={cn(
-                    "flex items-start gap-3 rounded-xl border border-border bg-card p-3 text-left transition-colors",
+                    "flex items-start gap-3 rounded-md border border-border bg-card p-3 text-left transition-colors",
                     menu.acceptingOrders ? "hover:border-primary/40 hover:bg-primary/5" : "opacity-60 cursor-default"
                   )}
                 >
@@ -182,7 +182,7 @@ export default function PortalMenuPage() {
         <div className="fixed bottom-6 left-4 right-4 z-20">
           <button
             onClick={() => setCartOpen(true)}
-            className="w-full flex items-center gap-3 rounded-xl bg-primary px-4 py-3.5 text-primary-foreground shadow-lg"
+            className="w-full flex items-center gap-3 rounded-md bg-primary px-4 py-3.5 text-primary-foreground shadow-none"
           >
             <div className="relative">
               <ShoppingCart className="h-5 w-5" />

@@ -4,7 +4,7 @@ import type { InventoryAlert, AlertSeverity } from "../types";
 const severityConfig: Record<AlertSeverity, { icon: typeof AlertTriangle; color: string; bg: string }> = {
   critical: { icon: AlertCircle, color: "text-destructive", bg: "bg-destructive/10" },
   warning: { icon: AlertTriangle, color: "text-warning", bg: "bg-warning/10" },
-  info: { icon: Info, color: "text-secondary", bg: "bg-secondary/10" },
+  info: { icon: Info, color: "text-primary", bg: "bg-secondary/10" },
 };
 
 interface InventoryAlertCardProps {
@@ -16,7 +16,7 @@ export function InventoryAlertCard({ alert }: InventoryAlertCardProps) {
   const Icon = config.icon;
 
   return (
-    <div className={`flex items-start gap-3 rounded-xl border border-border p-4 ${config.bg}`}>
+    <div className={`flex items-start gap-3 rounded-md border border-border p-4 ${config.bg}`}>
       <Icon className={`h-5 w-5 mt-0.5 shrink-0 ${config.color}`} />
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-foreground">{alert.title}</p>

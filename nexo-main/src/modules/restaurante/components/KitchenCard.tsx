@@ -63,7 +63,7 @@ export function KitchenCard({
 
   return (
     <div className={cn(
-      "bg-gray-900 rounded-xl p-4 border-2 flex flex-col gap-2 transition-colors",
+      "bg-gray-900 rounded-md p-4 border-2 flex flex-col gap-2 transition-colors",
       cardStyle(item.status, mins),
     )}>
       {/* Meta row */}

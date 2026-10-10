@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -47,7 +49,7 @@ export default function PdvPage() {
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
 
   // Real cash session from the backend (same query as CaixaPage)
-  const { data: cashSession } = useOpenSession();
+  const { data: cashSession, isLoading: cashLoading, isError: cashError, refetch: retryCash } = useOpenSession();
   const hasOpenSession = cashSession?.status === "Open";
 
   function handleAddProduct(product: ProductSearchResult) {
@@ -87,6 +89,10 @@ export default function PdvPage() {
     setCompletedSale(null);
   }
 
+  if (cashLoading) return <div className="p-6"><PageSkeleton /></div>;
+  // A failed background refetch keeps the cached session: only a first-load failure blocks the PDV.
+  if (cashError && !cashSession) return <ErrorState title="Não foi possível consultar o caixa" onRetry={() => void retryCash()} />;
+
   // Guard: cash session must be open
   if (!hasOpenSession) {
     return (
@@ -108,9 +114,9 @@ export default function PdvPage() {
   }
 
   return (
-    <div className="h-full flex gap-0 overflow-hidden">
+    <div className="h-full flex flex-col gap-0 overflow-auto md:flex-row md:overflow-hidden">
       {/* Left: product search + cart */}
-      <div className="flex flex-col flex-1 min-w-0 border-r border-border">
+      <div className="flex min-h-[18rem] flex-col min-w-0 md:flex-1 md:border-r border-border">
         {/* Product search */}
         <div className="p-4 border-b border-border">
           <PosProductSearch onAdd={handleAddProduct} />
@@ -145,7 +151,7 @@ export default function PdvPage() {
       </div>
 
       {/* Right: totals + payment */}
-      <div className="w-80 xl:w-96 flex flex-col gap-4 p-4 overflow-auto shrink-0">
+      <div className="w-full md:w-80 xl:w-96 flex flex-col gap-4 p-4 overflow-auto shrink-0">
         <div className="space-y-4">
           <PosTotals
             subtotal={cart.subtotal}

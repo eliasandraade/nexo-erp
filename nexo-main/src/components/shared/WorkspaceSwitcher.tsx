@@ -35,11 +35,11 @@ export function WorkspaceSwitcher({ onNav }: { onNav?: () => void }) {
       <div className="mx-3 mb-3 flex items-center gap-2.5 rounded-lg border border-sidebar-border/70 px-2.5 py-2">
         <span
           className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
-          style={{ background: `${active.accent}26`, color: active.accent }}
+          style={{ background: "hsl(var(--accent))", color: "hsl(var(--primary))" }}
         >
           <ActiveIcon className="h-[14px] w-[14px]" strokeWidth={2} />
         </span>
-        <span className="truncate text-[12.5px] font-semibold text-white">{active.name}</span>
+        <span className="truncate text-[12.5px] font-semibold text-sidebar-accent-foreground">{active.name}</span>
       </div>
     );
   }
@@ -51,15 +51,15 @@ export function WorkspaceSwitcher({ onNav }: { onNav?: () => void }) {
           <button className="flex w-full items-center gap-2.5 rounded-lg border border-sidebar-border/70 px-2.5 py-2 text-left transition-colors hover:bg-sidebar-accent">
             <span
               className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
-              style={{ background: `${active.accent}26`, color: active.accent }}
+              style={{ background: "hsl(var(--accent))", color: "hsl(var(--primary))" }}
             >
               <ActiveIcon className="h-[14px] w-[14px]" strokeWidth={2} />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12.5px] font-semibold leading-tight text-white">
+              <p className="truncate text-[12.5px] font-semibold leading-tight text-sidebar-accent-foreground">
                 {active.name}
               </p>
-              <p className="text-[10px] leading-tight text-sidebar-muted">Área de trabalho</p>
+              <p className="text-xs leading-tight text-sidebar-muted">Área de trabalho</p>
             </div>
             <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-sidebar-muted" />
           </button>
@@ -81,7 +81,7 @@ export function WorkspaceSwitcher({ onNav }: { onNav?: () => void }) {
               >
                 <span
                   className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
-                  style={{ background: `${ws.accent}1f`, color: ws.accent }}
+                  style={{ background: "hsl(var(--accent))", color: "hsl(var(--primary))" }}
                 >
                   <Icon className="h-[14px] w-[14px]" strokeWidth={2} />
                 </span>

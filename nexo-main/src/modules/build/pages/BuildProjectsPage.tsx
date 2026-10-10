@@ -73,7 +73,7 @@ function ProjectCard({ project, onClick }: { project: BuildProjectDto; onClick: 
   return (
     <button
       onClick={onClick}
-      className="w-full text-left rounded-xl border border-border bg-card hover:bg-muted/30 transition-colors p-4 space-y-3 group"
+      className="w-full text-left rounded-md border border-border bg-card hover:bg-muted/30 transition-colors p-4 space-y-3 group"
     >
       {/* Row 1: name + status */}
       <div className="flex items-start justify-between gap-2">
@@ -377,16 +377,16 @@ export default function BuildProjectsPage() {
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-xl border border-border bg-card p-4 h-28 animate-pulse bg-muted/30" />
+            <div key={i} className="rounded-md border border-border bg-card p-4 h-28 animate-pulse bg-muted/30" />
           ))}
         </div>
       ) : isError ? (
-        <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-8 text-center">
+        <div className="rounded-md border border-destructive/20 bg-destructive/5 p-8 text-center">
           <p className="text-sm text-destructive font-medium">Erro ao carregar obras.</p>
           <p className="text-xs text-muted-foreground mt-1">Verifique a conexão e tente novamente.</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card p-12 text-center">
+        <div className="rounded-md border border-border bg-card p-12 text-center">
           <HardHat className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-40" />
           <p className="text-sm font-medium text-muted-foreground">
             {search

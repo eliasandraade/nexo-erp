@@ -88,7 +88,7 @@ export default function DeliveryPage() {
               >
                 <div className="h-5 w-24 rounded bg-muted animate-pulse" />
                 {[...Array(2)].map((_, j) => (
-                  <div key={j} className="h-40 rounded-xl bg-muted animate-pulse" />
+                  <div key={j} className="h-40 rounded-md bg-muted animate-pulse" />
                 ))}
               </div>
             ))}

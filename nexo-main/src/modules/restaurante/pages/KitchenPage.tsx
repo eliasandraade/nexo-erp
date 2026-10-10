@@ -32,7 +32,7 @@ export default function KitchenPage() {
     <div className="flex flex-col h-screen p-4">
       {/* Header — Orken Menu context/back + connection + user menu */}
       <div className="flex items-center justify-between gap-3 mb-4">
-        <RestauranteBreadcrumb />
+        <RestauranteBreadcrumb dark />
         <div className="flex items-center gap-3">
           <KitchenConnectionBadge mode={connectionMode} />
           <UserDropdown variant="dark" />

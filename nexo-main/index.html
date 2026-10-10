@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,15 +8,15 @@
     <link rel="shortcut icon" href="/orken_lightmode.png" />
     <link rel="apple-touch-icon" href="/orken_lightmode.png" />
     <link rel="manifest" href="/site.webmanifest" />
-    <title>Orken</title>
-    <meta name="description" content="Controle sua operação de qualquer lugar. Varejo e restaurante no mesmo sistema.">
+    <title>ORKEN</title>
+    <meta name="description" content="Vendas, serviços, restaurantes e obras. Conheça as áreas de trabalho do ORKEN.">
     <meta name="author" content="Andrade Systems" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Orken" />
-    <meta property="og:description" content="Controle sua operação de qualquer lugar. Varejo e restaurante no mesmo sistema." />
+    <meta property="og:title" content="ORKEN" />
+    <meta property="og:description" content="Vendas, serviços, restaurantes e obras. Conheça as áreas de trabalho do ORKEN." />
     <meta property="og:image" content="https://app.orken.com.br/orken_lightmode.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Orken" />
+    <meta name="twitter:title" content="ORKEN" />
 </head>
 
   <body>
@@ -24,23 +24,23 @@
       Inline app shell: paints instantly from the static HTML, before the JS
       bundle downloads/parses and React mounts. Eliminates the long white screen
       on first load. createRoot().render() replaces these children on mount.
-      Background matches --background (#f8fafc) so there's no color jump into the
+      Background matches --background (#f7f8f6) so there's no color jump into the
       authenticated app.
     -->
     <style>
       #app-shell {
         position: fixed; inset: 0;
         display: flex; align-items: center; justify-content: center;
-        background: #f8fafc;
+        background: #f7f8f6;
       }
       #app-shell .nexo-spinner {
         width: 28px; height: 28px; border-radius: 9999px;
-        border: 3px solid #e2e8f0; border-top-color: #5b4dff;
+        border: 3px solid #e2e8f0; border-top-color: #21634b;
         animation: nexo-spin 0.7s linear infinite;
       }
       @keyframes nexo-spin { to { transform: rotate(360deg); } }
       @media (prefers-reduced-motion: reduce) {
-        #app-shell .nexo-spinner { animation-duration: 1.6s; }
+        #app-shell .nexo-spinner { animation: none; }
       }
     </style>
     <div id="root">

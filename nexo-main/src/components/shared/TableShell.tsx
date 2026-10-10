@@ -7,8 +7,8 @@ interface TableShellProps {
 
 export function TableShell({ children, className }: TableShellProps) {
   return (
-    <div className={cn("w-full overflow-x-auto", className)}>
-      <table className="w-full text-[12.5px] border-collapse">
+    <div className={cn("w-full overflow-auto", className)}>
+      <table className="w-full text-sm border-collapse">
         {children}
       </table>
     </div>
@@ -23,7 +23,7 @@ export function Th({ children, className, ...props }: ThProps) {
   return (
     <th
       className={cn(
-        "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.07em] text-muted-foreground border-b border-border bg-muted/40 whitespace-nowrap",
+        "px-3 py-2 text-left text-xs font-medium text-muted-foreground border-b border-border bg-muted whitespace-nowrap",
         className
       )}
       {...props}

@@ -195,9 +195,9 @@ export default function AiPromptsPage() {
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>
+          <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground">Carregando...</div>
         ) : !versions?.length ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">
+          <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground">
             Nenhuma versão encontrada para este tipo de prompt.
           </div>
         ) : (

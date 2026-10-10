@@ -26,7 +26,7 @@ export function ModifierSelector({
           <div
             key={group.id}
             className={cn(
-              "rounded-xl p-3 -mx-1 transition-colors",
+              "rounded-md p-3 -mx-1 transition-colors",
               hasError  && "bg-destructive/5 ring-1 ring-destructive/40",
               isComplete && !hasError && "bg-green-500/5 ring-1 ring-green-500/30",
             )}

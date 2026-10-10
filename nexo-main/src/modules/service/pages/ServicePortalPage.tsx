@@ -112,7 +112,7 @@ export default function ServicePortalPage() {
             {pros.map((p) => {
               const ok = professionalHasHours(p.workingHoursJson);
               return (
-                <div key={p.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+                <div key={p.id} className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{p.name}</p>
                     <p className={cn("mt-0.5 flex items-center gap-1 text-xs",
@@ -134,7 +134,7 @@ export default function ServicePortalPage() {
       {/* 6. Publicação / preview */}
       <Section title="Publicação" description="Verifique tudo antes de divulgar o link.">
         {publishable && slug ? (
-          <div className="flex flex-col gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4">
+          <div className="flex flex-col gap-3 rounded-md border border-primary/30 bg-primary/5 p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-primary">
               <Rocket className="h-4 w-4" /> Tudo pronto — seu portal está no ar.
             </div>
@@ -154,7 +154,7 @@ export default function ServicePortalPage() {
             </div>
           </div>
         ) : (
-          <div className="rounded-xl border border-amber-700/30 bg-amber-950/20 p-4">
+          <div className="rounded-md border border-amber-700/30 bg-amber-950/20 p-4">
             <p className="mb-2 flex items-center gap-2 text-sm font-medium text-amber-400">
               <AlertTriangle className="h-4 w-4" /> Antes de publicar, falta:
             </p>
@@ -221,7 +221,7 @@ function StatusRow({ item }: { item: ChecklistItem }) {
 
 function EmptyHint({ text, to, cta }: { text: string; to: string; cta: string }) {
   return (
-    <div className="flex items-center justify-between rounded-xl border border-dashed border-border px-4 py-6">
+    <div className="flex items-center justify-between rounded-md border border-dashed border-border px-4 py-6">
       <p className="text-sm text-muted-foreground">{text}</p>
       <Button variant="outline" size="sm" asChild>
         <Link to={to}>{cta} <ChevronRight className="ml-1 h-3.5 w-3.5" /></Link>

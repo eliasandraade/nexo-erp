@@ -281,7 +281,7 @@ export default function AiProvidersPage() {
         </div>
 
         {isLoading && (
-          <div className="p-8 text-center text-sm text-muted-foreground">
+          <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground">
             Carregando providers...
           </div>
         )}
@@ -299,7 +299,7 @@ export default function AiProvidersPage() {
         )}
 
         {!isLoading && !isError && providers?.length === 0 && (
-          <div className="p-8 text-center text-sm text-muted-foreground">
+          <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground">
             Nenhum provider configurado.
           </div>
         )}

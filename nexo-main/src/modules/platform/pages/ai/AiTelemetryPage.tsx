@@ -156,7 +156,7 @@ export default function AiTelemetryPage() {
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Carregando...</div>
+          <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground">Carregando...</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
