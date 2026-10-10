@@ -11,11 +11,11 @@ interface StatusBadgeProps {
 }
 
 const variantStyles: Record<BadgeVariant, string> = {
-  success: "bg-success/10 text-success",
-  warning: "bg-warning/10 text-warning",
-  danger:  "bg-destructive/10 text-destructive",
-  info:    "bg-primary/10 text-primary",
-  neutral: "bg-muted text-muted-foreground",
+  success: "text-success",
+  warning: "text-warning",
+  danger:  "text-destructive",
+  info:    "text-primary",
+  neutral: "text-muted-foreground",
 };
 
 const dotStyles: Record<BadgeVariant, string> = {
@@ -37,7 +37,7 @@ export function StatusBadge({
     <span className={cn(
       "inline-flex items-center gap-1.5 rounded font-medium whitespace-nowrap",
       size === "sm"
-        ? "px-1.5 py-0.5 text-[11px]"
+        ? "px-1.5 py-0.5 text-xs"
         : "px-2 py-1 text-[12px]",
       variantStyles[variant],
       className

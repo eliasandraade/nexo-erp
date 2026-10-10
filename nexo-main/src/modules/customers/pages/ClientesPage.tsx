@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { SectionCard } from "@/components/shared/SectionCard";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Users } from "lucide-react";
+import { Plus } from "lucide-react";
 import { DataPagination } from "@/components/shared/DataPagination";
 import { CustomerFilters } from "../components/CustomerFilters";
 import { CustomerTable } from "../components/CustomerTable";
@@ -32,7 +32,7 @@ export default function ClientesPage() {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [search]);
 
-  const { data, isLoading, isError } = useCustomersList({
+  const { data, isLoading, isError, isFetching, refetch } = useCustomersList({
     page,
     pageSize: PAGE_SIZE,
     search:          debouncedSearch || undefined,
@@ -57,7 +57,7 @@ export default function ClientesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Clientes"
-        description="Gerencie os cadastros e informações comerciais dos clientes."
+        eyebrow="Cadastros"
         actions={
           <Button onClick={() => navigate("/clientes/novo")}>
             <Plus className="h-4 w-4 mr-2" /> Novo cliente
@@ -65,7 +65,7 @@ export default function ClientesPage() {
         }
       />
 
-      <SectionCard>
+      <section className="data-region p-4 sm:p-6" aria-label="Lista de clientes" aria-busy={isFetching}>
         <div className="space-y-4">
           <CustomerFilters
             search={search} onSearchChange={(v) => { setSearch(v); }}
@@ -80,15 +80,14 @@ export default function ClientesPage() {
           )}
 
           {isError && (
-            <EmptyState icon={Users} title="Erro ao carregar clientes" description="Tente novamente mais tarde." />
+            <ErrorState title="Não foi possível carregar os clientes" description="Seus cadastros não foram alterados." onRetry={() => void refetch()} />
           )}
 
           {!isLoading && !isError && filtered.length === 0 && (
             <EmptyState
-              icon={Users}
-              title="Nenhum cliente encontrado"
-              description="Adicione clientes para acompanhar vendas e relacionamento."
-              action={
+              title={search || personType !== "all" || isActive !== "all" ? "Nenhum cliente nesta seleção" : "Nenhum cliente cadastrado"}
+              description={search ? "Tente outro nome, documento ou contato." : personType !== "all" || isActive !== "all" ? "Os filtros de tipo e situação se aplicam à página atual." : "Cadastre os dados de contato para usar nas vendas e nos atendimentos."}
+              action={search || personType !== "all" || isActive !== "all" ? <Button variant="outline" onClick={() => { setSearch(""); setPersonType("all"); setIsActive("all"); setPage(1); }}>Limpar filtros</Button> :
                 <Button variant="outline" onClick={() => navigate("/clientes/novo")}>
                   <Plus className="h-4 w-4 mr-2" /> Cadastrar cliente
                 </Button>
@@ -98,13 +97,14 @@ export default function ClientesPage() {
 
           {!isLoading && !isError && filtered.length > 0 && (
             <>
-              <p className="text-xs text-muted-foreground">{totalCount} cliente(s) encontrado(s)</p>
+              <p className="text-xs text-muted-foreground" role="status">{filtered.length} nesta página · {totalCount} no resultado da busca{isFetching ? " · Atualizando…" : ""}</p>
               <CustomerTable customers={filtered} />
-              <DataPagination page={page} totalPages={totalPages} onPageChange={setPage} />
+
             </>
           )}
+          {!isLoading && !isError && totalPages > 1 && <DataPagination page={page} totalPages={totalPages} onPageChange={setPage} />}
         </div>
-      </SectionCard>
+      </section>
     </div>
   );
 }

@@ -16,9 +16,9 @@ interface MetricBlockProps {
 
 const variantBorder: Record<NonNullable<MetricBlockProps["variant"]>, string> = {
   default: "",
-  warning: "border-l-2 border-l-warning",
-  danger:  "border-l-2 border-l-destructive",
-  success: "border-l-2 border-l-success",
+  warning: "border-warning/40",
+  danger:  "border-destructive/40",
+  success: "border-success/40",
 };
 
 export function MetricBlock({
@@ -32,19 +32,19 @@ export function MetricBlock({
 }: MetricBlockProps) {
   return (
     <div className={cn(
-      "bg-card rounded-lg border border-border shadow-sm p-4",
+      "bg-card rounded-md border border-border p-4",
       variantBorder[variant],
       className
     )}>
       <div className="flex items-start justify-between gap-2 mb-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground leading-none">
+        <p className="text-xs font-medium text-muted-foreground leading-none">
           {label}
         </p>
         {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
       </div>
 
       <p className={cn(
-        "text-[22px] font-semibold leading-none tabular-nums",
+        "text-2xl font-semibold leading-none tabular-nums",
         variant === "warning"  && "text-warning",
         variant === "danger"   && "text-destructive",
         variant === "success"  && "text-success",

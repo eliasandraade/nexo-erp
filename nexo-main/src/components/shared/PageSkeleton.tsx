@@ -1,12 +1,10 @@
 import { cn } from "@/lib/utils";
 
-interface SkeletonProps {
-  className?: string;
-}
+type SkeletonProps = React.HTMLAttributes<HTMLDivElement>;
 
-export function Skeleton({ className }: SkeletonProps) {
+export function Skeleton({ className, ...props }: SkeletonProps) {
   return (
-    <div className={cn("animate-pulse bg-muted rounded", className)} />
+    <div className={cn("animate-pulse bg-muted rounded", className)} {...props} />
   );
 }
 

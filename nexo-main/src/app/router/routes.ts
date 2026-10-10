@@ -71,7 +71,7 @@ const MGMT: UserRole[] = ["diretoria", "gerente"];
 
 export const appRoutes: AppRoute[] = [
   // ── Core — management only ───────────────────────────────────────────────
-  { path: "/dashboard",     label: "Dashboard",     icon: LayoutDashboard,   group: "core",        roles: MGMT },
+  { path: "/dashboard",     label: "Visão geral",     icon: LayoutDashboard,   group: "core",        roles: MGMT },
   { path: "/vendas",        label: "Vendas",         icon: Receipt,           group: "core",        roles: MGMT },
   { path: "/clientes",      label: "Clientes",       icon: Users,             group: "core",        roles: MGMT },
   { path: "/fornecedores",  label: "Fornecedores",   icon: Truck,             group: "core",        roles: MGMT },

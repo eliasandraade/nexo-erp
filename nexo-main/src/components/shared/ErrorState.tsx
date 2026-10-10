@@ -43,7 +43,7 @@ export function ErrorState({
   const displayDesc = description ?? config.description;
 
   return (
-    <div className={cn(
+    <div role="alert" className={cn(
       "flex flex-col items-center justify-center text-center",
       compact ? "py-8" : "py-14",
       className

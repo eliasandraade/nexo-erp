@@ -1,15 +1,14 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { LogOut, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { appRoutes, type RouteGroup } from "@/app/router/routes";
+import { type RouteGroup } from "@/app/router/routes";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { useWorkspace } from "@/modules/workspace/WorkspaceContext";
-import { useHasServiceModule } from "@/modules/service/hooks/useHasServiceModule";
-import { useServicePresetOptional } from "@/modules/service/context/ServicePresetContext";
+import { Brand } from "./Brand";
+import { useNavigation } from "./useNavigation";
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 
 /** Vertical groups are scoped to the active workspace; the rest are shared. */
-const VERTICAL_GROUPS: RouteGroup[] = ["varejo", "restaurante", "build", "service"];
 
 // ─── Group metadata ───────────────────────────────────────────────────────────
 
@@ -49,34 +48,9 @@ function getInitials(name: string): string {
 export function SidebarContent({ onNav }: { onNav?: () => void }) {
   const { session, logout } = useAuth();
   const { active } = useWorkspace();
-  const hasService = useHasServiceModule();
-  const servicePreset = useServicePresetOptional();
   const navigate = useNavigate();
 
-  const visibleRoutes = appRoutes.filter((route) => {
-    if (route.moduleKey && !session?.modules.includes(route.moduleKey)) return false;
-    // Service is a module family (decision D1): any vertical key unlocks the group, so it
-    // can't use a single `moduleKey`. Capability-gated surfaces (decision D2) appear only
-    // when the resolved preset enables them — preset is null outside the Service area.
-    if (route.group === "service") {
-      if (!hasService) return false;
-      // Public booking keeps capability-gated surfaces (the Agenda) discoverable for verticals
-      // without that capability, since the portal creates appointments to manage.
-      const bookingOverride = !!route.showWhenPublicBooking && !!servicePreset?.publicBookingEnabled;
-      if (route.capability && !servicePreset?.capabilities?.[route.capability] && !bookingOverride)
-        return false;
-      if (route.capabilityAny && !route.capabilityAny.some((c) => servicePreset?.capabilities?.[c]) && !bookingOverride)
-        return false;
-    }
-    if (route.roles && session?.role && !route.roles.includes(session.role)) return false;
-    // Show one operation at a time: a vertical group only appears in its own
-    // workspace. Shared groups (core, inventário, admin) always pass through.
-    if (active && VERTICAL_GROUPS.includes(route.group) && route.group !== active.group) {
-      return false;
-    }
-    return true;
-  });
-
+  const visibleRoutes = useNavigation();
   const grouped = GROUP_ORDER.reduce<Record<RouteGroup, typeof visibleRoutes>>(
     (acc, g) => {
       acc[g] = visibleRoutes.filter((r) => r.group === g);
@@ -97,33 +71,28 @@ export function SidebarContent({ onNav }: { onNav?: () => void }) {
 
       {/* ── Wordmark ── */}
       <div className="px-4 pt-5 pb-3 shrink-0">
-        <a
-          href={active?.home ?? "/dashboard"}
+        <Link
+          to={active?.home ?? "/dashboard"}
           onClick={onNav}
           className="inline-flex select-none items-center hover:opacity-80 transition-opacity"
           aria-label="Orken — início"
         >
-          <img
-            src="/orken_darkmode.png"
-            alt="Orken"
-            className="h-5 w-auto"
-            draggable={false}
-          />
-        </a>
+          <Brand />
+        </Link>
       </div>
 
       {/* ── Workspace switcher ── */}
       <WorkspaceSwitcher onNav={onNav} />
 
       {/* ── Navigation ── */}
-      <nav className="flex-1 px-3 overflow-y-auto pb-3 space-y-4 sidebar-scroll">
+      <nav aria-label="Navegação principal" className="flex-1 px-3 overflow-y-auto pb-3 space-y-4 sidebar-scroll">
         {GROUP_ORDER.map((group) => {
           const routes = grouped[group];
           if (!routes.length) return null;
           return (
             <div key={group}>
               {/* Section label */}
-              <p className="px-2 mb-1 text-[9.5px] font-semibold uppercase tracking-[0.14em] text-sidebar-muted select-none">
+              <p className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-sidebar-muted select-none">
                 {GROUP_LABELS[group]}
               </p>
 
@@ -133,13 +102,13 @@ export function SidebarContent({ onNav }: { onNav?: () => void }) {
                   <NavLink
                     key={route.path}
                     to={route.path}
-                    end={route.path === "/restaurante"}
+                    end={route.path === "/restaurante" || route.path === "/service" || route.path === "/estoque"}
                     onClick={onNav}
                     className={({ isActive }) =>
                       cn(
-                        "flex items-center gap-2.5 px-2.5 py-[6px] rounded-md text-[13px] font-medium transition-colors duration-75",
+                        "flex items-center gap-2.5 px-2.5 py-2 rounded-md text-sm font-medium transition-colors duration-75",
                         isActive
-                          ? "bg-[#5B4DFF]/[0.14] text-white"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
                           : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                       )
                     }
@@ -149,12 +118,12 @@ export function SidebarContent({ onNav }: { onNav?: () => void }) {
                         <route.icon
                           className={cn(
                             "h-[14px] w-[14px] shrink-0 transition-colors duration-75",
-                            isActive ? "text-[#5B4DFF]" : "text-current opacity-70"
+                            isActive ? "text-primary" : "text-current opacity-70"
                           )}
                         />
                         <span className="flex-1">{route.label}</span>
                         {isActive && (
-                          <div className="w-1 h-1 rounded-full bg-[#5B4DFF] shrink-0" />
+                          <div className="w-1 h-1 rounded-full bg-primary shrink-0" />
                         )}
                       </>
                     )}
@@ -173,12 +142,12 @@ export function SidebarContent({ onNav }: { onNav?: () => void }) {
           onClick={handleProfile}
           className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-sidebar-accent transition-colors group"
         >
-          <div className="w-6 h-6 rounded-full bg-[#5B4DFF]/80 flex items-center justify-center shrink-0">
-            <span className="text-[10px] font-bold text-white leading-none">{initials}</span>
+          <div className="w-6 h-6 rounded-full bg-primary/80 flex items-center justify-center shrink-0">
+            <span className="text-xs font-bold text-primary-foreground leading-none">{initials}</span>
           </div>
           <div className="min-w-0 text-left flex-1">
-            <p className="text-[11.5px] font-medium text-white truncate leading-tight">{displayName}</p>
-            <p className="text-[10px] text-sidebar-muted leading-tight capitalize">{displayRole}</p>
+            <p className="text-sm font-medium text-sidebar-accent-foreground truncate leading-tight">{displayName}</p>
+            <p className="text-xs text-sidebar-muted leading-tight capitalize">{displayRole}</p>
           </div>
           <ChevronRight className="h-3 w-3 text-sidebar-muted group-hover:text-sidebar-accent-foreground transition-colors shrink-0" />
         </button>
@@ -200,7 +169,7 @@ export function SidebarContent({ onNav }: { onNav?: () => void }) {
 
 export function AppSidebar() {
   return (
-    <aside className="hidden md:flex w-56 min-h-screen shrink-0 flex-col">
+    <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col lg:flex">
       <SidebarContent />
     </aside>
   );

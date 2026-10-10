@@ -18,17 +18,17 @@ export function CustomerFilters({
 }: CustomerFiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <div className="relative flex-1 min-w-[220px]">
+      <div className="relative flex-1 min-w-0 basis-full sm:basis-64">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Buscar por nome, documento, telefone ou e-mail..."
+          aria-label="Buscar clientes" placeholder="Nome, documento ou contato"
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           className="pl-9"
         />
       </div>
       <Select value={personType} onValueChange={onPersonTypeChange}>
-        <SelectTrigger className="w-[160px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
+        <SelectTrigger aria-label="Tipo de pessoa nesta página" className="w-full sm:w-[180px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Todos os tipos</SelectItem>
           <SelectItem value="Individual">Pessoa física</SelectItem>
@@ -36,13 +36,14 @@ export function CustomerFilters({
         </SelectContent>
       </Select>
       <Select value={isActive} onValueChange={onIsActiveChange}>
-        <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+        <SelectTrigger aria-label="Situação nesta página" className="w-full sm:w-[160px]"><SelectValue placeholder="Status" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="all">Todos</SelectItem>
           <SelectItem value="true">Ativo</SelectItem>
           <SelectItem value="false">Inativo</SelectItem>
         </SelectContent>
       </Select>
+      <p className="basis-full text-xs text-muted-foreground">Tipo e situação filtram os registros da página atual.</p>
     </div>
   );
 }

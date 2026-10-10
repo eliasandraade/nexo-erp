@@ -17,7 +17,7 @@ export function StoreSwitcher() {
   const [switching, setSwitching] = useState(false);
 
   const activeStore = stores?.find((s) => s.id === session?.storeId);
-  const displayName = activeStore?.name ?? "Loja";
+  const displayName = activeStore?.name ?? session?.companyName ?? "Selecionar loja";
 
   async function handleSwitch(storeId: string) {
     if (storeId === session?.storeId || switching) return;
@@ -33,7 +33,7 @@ export function StoreSwitcher() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
-          className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-secondary transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors disabled:opacity-50"
           disabled={switching}
         >
           {switching ? (
@@ -41,7 +41,7 @@ export function StoreSwitcher() {
           ) : (
             <Store className="h-4 w-4 text-muted-foreground" />
           )}
-          <span>{displayName}</span>
+          <span className="max-w-[9rem] truncate sm:max-w-xs" title={displayName}>{displayName}</span>
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
@@ -64,7 +64,7 @@ export function StoreSwitcher() {
             <div className="flex items-center justify-between w-full">
               <span>{store.name}</span>
               {store.id === session?.storeId && (
-                <Check className="h-3.5 w-3.5 text-secondary" />
+                <Check className="h-3.5 w-3.5 text-primary" />
               )}
             </div>
           </DropdownMenuItem>
