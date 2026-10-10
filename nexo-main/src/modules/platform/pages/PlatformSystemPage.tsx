@@ -256,9 +256,9 @@ export default function PlatformSystemPage() {
         </div>
 
         {endpointsLoading ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Carregando endpoints...</div>
+          <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground">Carregando endpoints...</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-sm text-muted-foreground">Nenhum endpoint encontrado.</div>
+          <div className="p-4 sm:p-8 text-center text-sm text-muted-foreground">Nenhum endpoint encontrado.</div>
         ) : (
           <div>
             {Object.entries(groupedByController).map(([controller, eps]) => (

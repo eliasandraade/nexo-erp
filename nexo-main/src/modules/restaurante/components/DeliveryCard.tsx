@@ -119,7 +119,7 @@ export function DeliveryCard({
   return (
     <div
       className={cn(
-        "bg-gray-900 rounded-xl border-2 flex flex-col gap-2.5 p-3.5 transition-colors",
+        "bg-gray-900 rounded-md border-2 flex flex-col gap-2.5 p-3.5 transition-colors",
         cardBorder(order.status)
       )}
     >

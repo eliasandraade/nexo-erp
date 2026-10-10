@@ -19,7 +19,7 @@ function AreaRow({ area, tables }: { area: AreaDto; tables: TableDto[] }) {
   const [tableCap, setTableCap]     = useState("4");
 
   const updateAreaMut = useMutation({
-    mutationFn: () => updateArea(area.id, { name, description: null as any, isActive: area.isActive }),
+    mutationFn: () => updateArea(area.id, { name, description: null, isActive: area.isActive }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["restaurante-areas-setup"] }); setEditing(false); },
   });
 
@@ -29,14 +29,14 @@ function AreaRow({ area, tables }: { area: AreaDto; tables: TableDto[] }) {
   });
 
   const toggleActiveMut = useMutation({
-    mutationFn: () => updateArea(area.id, { name: area.name, description: null as any, isActive: !area.isActive }),
+    mutationFn: () => updateArea(area.id, { name: area.name, description: null, isActive: !area.isActive }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["restaurante-areas-setup"] }),
   });
 
   const areaTables = tables.filter(t => t.areaId === area.id);
 
   return (
-    <div className="border border-border rounded-xl overflow-hidden">
+    <div className="border border-border rounded-md overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 bg-card">
         <button onClick={() => setExpanded(v => !v)} className="text-muted-foreground">
@@ -229,7 +229,7 @@ export default function RestauranteSetupPage() {
         </div>
 
         {addingArea && (
-          <div className="flex items-center gap-2 p-3 border border-dashed border-primary/40 rounded-xl">
+          <div className="flex items-center gap-2 p-3 border border-dashed border-primary/40 rounded-md">
             <Input
               placeholder="Nome da área (ex: Salão, Terraço)"
               value={newAreaName}
@@ -253,10 +253,10 @@ export default function RestauranteSetupPage() {
 
         {isLoading ? (
           <div className="space-y-2">
-            {[1, 2].map(i => <div key={i} className="h-12 rounded-xl bg-muted animate-pulse" />)}
+            {[1, 2].map(i => <div key={i} className="h-12 rounded-md bg-muted animate-pulse" />)}
           </div>
         ) : areas.length === 0 && !addingArea ? (
-          <div className="text-center py-10 text-muted-foreground text-sm border border-dashed border-border rounded-xl">
+          <div className="text-center py-10 text-muted-foreground text-sm border border-dashed border-border rounded-md">
             Nenhuma área cadastrada. Crie uma área para começar.
           </div>
         ) : (

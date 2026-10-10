@@ -1,4 +1,4 @@
-import { Check, Sparkles } from "lucide-react";
+import { Check, Users } from "lucide-react";
 import type { PublicProfessional, ServiceLabels } from "../api/booking.api";
 import { Surface, Avatar, Reveal, Muted } from "./PortalPrimitives";
 
@@ -21,14 +21,14 @@ export function ProfessionalChooser({ professionals, labels, selectedId, onSelec
       <Reveal>
         <Choice active={selectedId === ANY_PROFESSIONAL} onClick={() => onSelect(ANY_PROFESSIONAL)}>
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
-            style={{ background: "var(--p-accent-soft)", color: "var(--p-accent)" }}>
-            <Sparkles className="h-5 w-5" />
+            style={{ background: "var(--p-accent-soft)", color: "var(--p-ink)" }}>
+            <Users className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-semibold" style={{ fontFamily: "var(--p-display)" }}>Sem preferência</p>
             <Muted className="text-[13px]">Mostramos os horários de toda a equipe e escolhemos um {noun} livre.</Muted>
           </div>
-          {selectedId === ANY_PROFESSIONAL && <Check className="h-5 w-5 shrink-0" style={{ color: "var(--p-accent)" }} />}
+          {selectedId === ANY_PROFESSIONAL && <Check className="h-5 w-5 shrink-0" style={{ color: "var(--p-ink)" }} />}
         </Choice>
       </Reveal>
 
@@ -40,7 +40,7 @@ export function ProfessionalChooser({ professionals, labels, selectedId, onSelec
               <p className="text-[15px] font-semibold leading-tight">{p.name}</p>
               {(p.specialty || p.role) && <Muted className="text-[13px]">{p.specialty || p.role}</Muted>}
             </div>
-            {selectedId === p.id && <Check className="h-5 w-5 shrink-0" style={{ color: "var(--p-accent)" }} />}
+            {selectedId === p.id && <Check className="h-5 w-5 shrink-0" style={{ color: "var(--p-ink)" }} />}
           </Choice>
         </Reveal>
       ))}

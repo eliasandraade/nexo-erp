@@ -59,7 +59,7 @@ export function SaleCancellationDialog({
     }
 
     const result = userService.validateManagerAuthorization(login.trim(), password);
-    if (!result.success) {
+    if (result.success === false) {
       setAuthError(result.error);
       return;
     }

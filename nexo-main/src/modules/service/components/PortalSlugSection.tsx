@@ -114,7 +114,7 @@ export function PortalSlugSection({ storeId, currentSlug }: PortalSlugSectionPro
       )}
 
       {hasSlug ? (
-        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-3">
+        <div className="flex items-center gap-3 rounded-md border border-border bg-card p-3">
           <Globe className="h-4 w-4 shrink-0 text-primary" />
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted-foreground">Link público de agendamento</p>

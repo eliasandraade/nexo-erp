@@ -110,7 +110,7 @@ export default function FloorPage() {
         {tablesLoading ? (
           <div className="grid grid-cols-3 gap-3 mt-2">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-[88px] rounded-xl bg-muted animate-pulse" />
+              <div key={i} className="h-[88px] rounded-md bg-muted animate-pulse" />
             ))}
           </div>
         ) : tables.length === 0 ? (

@@ -45,13 +45,13 @@ export function CustomerMainDataSection({ data, onChange, isEdit = false }: Prop
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <div className="space-y-1.5">
-        <Label>Tipo de pessoa *</Label>
+        <Label htmlFor="customer-personType">Tipo de pessoa *</Label>
         <Select
           value={data.personType}
           onValueChange={(v) => onChange("personType", v)}
           disabled={isEdit}
         >
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger id="customer-personType"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="Individual">Pessoa física</SelectItem>
             <SelectItem value="Company">Pessoa jurídica</SelectItem>
@@ -60,8 +60,8 @@ export function CustomerMainDataSection({ data, onChange, isEdit = false }: Prop
       </div>
 
       <div className="space-y-1.5">
-        <Label>{isCompany ? "Razão social *" : "Nome completo *"}</Label>
-        <Input
+        <Label htmlFor="customer-name">{isCompany ? "Razão social *" : "Nome completo *"}</Label>
+        <Input id="customer-name"
           value={data.name}
           onChange={(e) => onChange("name", e.target.value)}
           placeholder={isCompany ? "Razão social da empresa" : "Nome completo do cliente"}
@@ -70,8 +70,8 @@ export function CustomerMainDataSection({ data, onChange, isEdit = false }: Prop
 
       {isCompany && (
         <div className="space-y-1.5">
-          <Label>Nome fantasia</Label>
-          <Input
+          <Label htmlFor="customer-tradeName">Nome fantasia</Label>
+          <Input id="customer-tradeName"
             value={data.tradeName}
             onChange={(e) => onChange("tradeName", e.target.value)}
             placeholder="Nome fantasia"
@@ -80,13 +80,13 @@ export function CustomerMainDataSection({ data, onChange, isEdit = false }: Prop
       )}
 
       <div className="space-y-1.5">
-        <Label>Tipo de documento *</Label>
+        <Label htmlFor="customer-documentType">Tipo de documento *</Label>
         <Select
           value={data.documentType}
           onValueChange={(v) => onChange("documentType", v)}
           disabled={isEdit}
         >
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger id="customer-documentType"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="CPF">CPF</SelectItem>
             <SelectItem value="CNPJ">CNPJ</SelectItem>
@@ -96,9 +96,9 @@ export function CustomerMainDataSection({ data, onChange, isEdit = false }: Prop
       </div>
 
       <div className="space-y-1.5">
-        <Label>Número do documento *</Label>
+        <Label htmlFor="customer-documentNumber">Número do documento *</Label>
         <div className="flex gap-2">
-          <Input
+          <Input id="customer-documentNumber"
             value={data.documentNumber}
             onChange={(e) => onChange("documentNumber", e.target.value)}
             placeholder={
@@ -125,11 +125,11 @@ export function CustomerMainDataSection({ data, onChange, isEdit = false }: Prop
 
       <div className="space-y-1.5 flex items-end pb-0.5">
         <div className="flex items-center gap-2">
-          <Switch
+          <Switch id="customer-isActive"
             checked={data.isActive}
             onCheckedChange={(v) => onChange("isActive", v)}
           />
-          <Label>Ativo</Label>
+          <Label htmlFor="customer-isActive">Ativo</Label>
         </div>
       </div>
     </div>

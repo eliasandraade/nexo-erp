@@ -24,14 +24,14 @@ export function RestauranteBlocks() {
       {/* Open Tables → Salão */}
       <Link
         to="/restaurante"
-        className="group rounded-xl border border-border bg-card p-5 relative overflow-hidden transition-colors hover:border-[#5B4DFF]/40"
+        className="group rounded-md border border-border bg-card p-5 relative overflow-hidden transition-colors hover:border-primary/40"
       >
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#5B4DFF]" />
+        <div className="absolute top-0 left-0 right-0 h-[2px] bg-primary" />
         <div className="flex items-center justify-between mb-3 pt-0.5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
             Mesas abertas
           </p>
-          <UtensilsCrossed className="h-3.5 w-3.5 text-[#5B4DFF]" />
+          <UtensilsCrossed className="h-3.5 w-3.5 text-primary" />
         </div>
         {tablesLoading ? (
           <div className="h-8 w-16 bg-muted animate-pulse rounded" />
@@ -42,7 +42,7 @@ export function RestauranteBlocks() {
         )}
         <p className="text-[11px] mt-2 text-muted-foreground font-medium flex items-center gap-1">
           {tablesLoading ? "" : openTables === 0 ? "Nenhuma mesa ocupada" : "mesas em atendimento"}
-          <span className="ml-auto inline-flex items-center gap-0.5 text-[#5B4DFF] opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="ml-auto inline-flex items-center gap-0.5 text-primary opacity-0 group-hover:opacity-100 transition-opacity">
             Abrir salão <ArrowUpRight className="h-3 w-3" />
           </span>
         </p>
@@ -51,7 +51,7 @@ export function RestauranteBlocks() {
       {/* Kitchen status → Cozinha */}
       <Link
         to="/restaurante/cozinha"
-        className="group rounded-xl border border-border bg-card p-5 relative overflow-hidden transition-colors hover:border-primary/40"
+        className="group rounded-md border border-border bg-card p-5 relative overflow-hidden transition-colors hover:border-primary/40"
       >
         <div className={`absolute top-0 left-0 right-0 h-[2px] ${pendingItems > 0 ? "bg-warning" : "bg-success"}`} />
         <div className="flex items-center justify-between mb-3 pt-0.5">

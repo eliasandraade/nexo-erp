@@ -8,7 +8,7 @@ import {
   Car,
   PawPrint,
   Scissors,
-  Sparkles,
+  Brush,
   Languages,
   ConciergeBell,
   Loader2,
@@ -26,10 +26,10 @@ const PRESET_ICONS: Record<string, LucideIcon> = {
   "programador-autonomo": Code,
   "autoescola": Car,
   "pet-shop": PawPrint,
-  // Scissors belongs to the barbershop; the salon takes Sparkles so the two cards
+  // Scissors belongs to the barbershop; the salon takes Brush so the two cards
   // are not visually identical in the picker.
   "barbearia": Scissors,
-  "salao-beleza": Sparkles,
+  "salao-beleza": Brush,
   "escola-idiomas": Languages,
 };
 
@@ -56,20 +56,20 @@ export default function ServiceOnboardingPage() {
   return (
     <div className="flex min-h-screen w-full flex-col items-center justify-center bg-background p-6">
       <div className="w-full max-w-3xl">
-        <div className="mb-8 text-center">
-          <span className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <div className="mb-8 text-left">
+          <span className="mb-4 flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground">
             <ConciergeBell className="h-5 w-5" />
           </span>
-          <h1 className="font-display text-[22px] font-bold tracking-tight text-foreground">
+          <h1 className="font-display text-[28px] font-semibold tracking-tight text-foreground">
             Qual é o ramo do seu negócio?
           </h1>
-          <p className="mx-auto mt-1.5 max-w-md text-[13px] leading-relaxed text-muted-foreground">
-            Escolha para adaptar o Orken Service à sua operação — telas, termos e fluxos mudam
+          <p className="mt-3 max-w-md text-[13px] leading-relaxed text-muted-foreground">
+            Escolha para adaptar o Orken Service à sua operação; telas, termos e fluxos mudam
             conforme o ramo.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {SERVICE_PRESET_OPTIONS.map((opt) => {
             const Icon = PRESET_ICONS[opt.key] ?? ConciergeBell;
             const isChoosing = choosing === opt.key;

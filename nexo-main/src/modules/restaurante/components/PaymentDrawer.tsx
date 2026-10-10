@@ -196,7 +196,7 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
         )}
 
         {/* ── Split by N ───────────────────────────────────────────────── */}
-        <div className="flex items-center gap-2 mb-5 px-3 py-2.5 bg-muted/40 rounded-xl border border-border">
+        <div className="flex items-center gap-2 mb-5 px-3 py-2.5 bg-muted/40 rounded-md border border-border">
           <Users className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="text-sm text-muted-foreground shrink-0">Dividir por</span>
           <Input
@@ -247,7 +247,7 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
 
         {/* ── Running balance ───────────────────────────────────────────── */}
         <div className={cn(
-          "rounded-xl px-4 py-3 mb-4 text-sm border transition-colors",
+          "rounded-md px-4 py-3 mb-4 text-sm border transition-colors",
           isExact
             ? "bg-green-500/10 border-green-500/25"
             : "bg-amber-500/8 border-amber-500/25"
@@ -321,7 +321,7 @@ function PaymentEntryRow({
   entry, label, canRemove, onMethodChange, onAmountChange, onRemove,
 }: PaymentEntryRowProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-3 space-y-2.5">
+    <div className="rounded-md border border-border bg-card p-3 space-y-2.5">
       {label && (
         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
           {label}

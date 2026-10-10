@@ -125,10 +125,10 @@ export function ProductMainDataSection({ data, onChange, categories }: Props) {
 
         {/* Suggestion card */}
         {suggestion && (
-          <Card className="border-indigo-500/40 bg-indigo-950/30">
+          <Card className="border-primary/30 bg-primary/5">
             <CardContent className="p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
-                <p className="text-sm font-medium text-indigo-300">
+                <p className="text-sm font-medium text-primary">
                   Produto encontrado — confirme os dados antes de aplicar
                 </p>
                 <Button

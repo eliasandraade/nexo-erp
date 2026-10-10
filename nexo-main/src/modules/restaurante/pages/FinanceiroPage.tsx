@@ -74,7 +74,7 @@ interface KpiCardProps {
 
 function KpiCard({ icon: Icon, label, value, sub, color = "text-primary" }: KpiCardProps) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-2">
+    <div className="rounded-md border border-border bg-card p-4 flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <div className={cn("p-2 rounded-lg bg-muted/60", color)}>
           <Icon className="h-4 w-4" />
@@ -134,7 +134,7 @@ function CmvTable({ items }: { items: CmvReportItemDto[] }) {
           Nenhum prato encontrado. Crie fichas técnicas para seus produtos do cardápio.
         </div>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden">
+        <div className="rounded-md border border-border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px]">
               <thead className="bg-muted/40 border-b border-border">
@@ -279,7 +279,7 @@ function EmployeesSection() {
       </div>
 
       {adding && (
-        <div className="flex items-end gap-2 p-3 border border-dashed border-primary/40 rounded-xl flex-wrap">
+        <div className="flex items-end gap-2 p-3 border border-dashed border-primary/40 rounded-md flex-wrap">
           <div className="space-y-1 flex-1 min-w-[140px]">
             <Label className="text-xs">Nome</Label>
             <Input value={newName} onChange={e => setNewName(e.target.value)}
@@ -320,7 +320,7 @@ function EmployeesSection() {
           Nenhum funcionário cadastrado.
         </p>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
+        <div className="rounded-md border border-border overflow-hidden divide-y divide-border">
           {employees.map(emp => (
             <div key={emp.id} className={cn("flex items-center gap-2 px-4 py-3 text-sm",
               !emp.isActive && "opacity-50")}>
@@ -442,7 +442,7 @@ function ExpensesSection({ from, to }: { from: string; to: string }) {
       </div>
 
       {adding && (
-        <div className="flex items-end gap-2 p-3 border border-dashed border-primary/40 rounded-xl flex-wrap">
+        <div className="flex items-end gap-2 p-3 border border-dashed border-primary/40 rounded-md flex-wrap">
           <div className="space-y-1 flex-1 min-w-[160px]">
             <Label className="text-xs">Descrição</Label>
             <Input value={desc} onChange={e => setDesc(e.target.value)}
@@ -496,7 +496,7 @@ function ExpensesSection({ from, to }: { from: string; to: string }) {
           Nenhuma despesa neste período.
         </p>
       ) : (
-        <div className="rounded-xl border border-border overflow-hidden divide-y divide-border">
+        <div className="rounded-md border border-border overflow-hidden divide-y divide-border">
           {expenses.map(exp => (
             <div key={exp.id} className="flex items-center gap-2 px-4 py-3 text-sm">
               {editId === exp.id ? (
@@ -581,7 +581,7 @@ function InsightCards({ cmvItems, summary, prevSummary, employees }: InsightCard
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {/* Insight 1: High CMV dishes */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-1">
+      <div className="rounded-md border border-border bg-card p-4 space-y-1">
         <div className="flex items-center gap-2">
           <Lightbulb className="h-4 w-4 text-yellow-500" />
           <span className="text-xs font-medium text-muted-foreground">CMV elevado (&gt;35%)</span>
@@ -601,7 +601,7 @@ function InsightCards({ cmvItems, summary, prevSummary, employees }: InsightCard
       </div>
 
       {/* Insight 2: Lucro vs mês anterior */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-1">
+      <div className="rounded-md border border-border bg-card p-4 space-y-1">
         <div className="flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-blue-500" />
           <span className="text-xs font-medium text-muted-foreground">Lucro vs mês anterior</span>
@@ -620,7 +620,7 @@ function InsightCards({ cmvItems, summary, prevSummary, employees }: InsightCard
       </div>
 
       {/* Insight 3: Top employee cost */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-1">
+      <div className="rounded-md border border-border bg-card p-4 space-y-1">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-purple-500" />
           <span className="text-xs font-medium text-muted-foreground">Maior custo — pessoal</span>
@@ -751,7 +751,7 @@ export default function FinanceiroPage() {
         </div>
         {cmvLoading ? (
           <div className="space-y-2">
-            {[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl bg-muted animate-pulse" />)}
+            {[1, 2, 3].map(i => <div key={i} className="h-14 rounded-md bg-muted animate-pulse" />)}
           </div>
         ) : (
           <CmvTable items={cmvData?.items ?? []} />

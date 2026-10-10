@@ -27,7 +27,7 @@ export function BuildDashboardSection() {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[...Array(6)].map((_, i) => (
-          <div key={i} className="rounded-xl border border-border bg-card p-3 h-20 animate-pulse bg-muted/30" />
+          <div key={i} className="rounded-md border border-border bg-card p-3 h-20 animate-pulse bg-muted/30" />
         ))}
       </div>
     );
@@ -35,7 +35,7 @@ export function BuildDashboardSection() {
 
   if (isError) {
     return (
-      <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-center">
+      <div className="rounded-md border border-destructive/20 bg-destructive/5 p-4 text-center">
         <p className="text-sm text-destructive">Não foi possível carregar o painel.</p>
       </div>
     );
@@ -58,7 +58,7 @@ export function BuildDashboardSection() {
     <div className="space-y-3">
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {kpis.map(({ icon: Icon, label, value, tone }) => (
-          <div key={label} className="rounded-xl border border-border bg-card p-3">
+          <div key={label} className="rounded-md border border-border bg-card p-3">
             <div className="flex items-center gap-1.5 mb-1">
               <Icon className="h-3.5 w-3.5 text-muted-foreground" />
               <p className="text-[11px] text-muted-foreground uppercase tracking-wide truncate">{label}</p>
@@ -69,7 +69,7 @@ export function BuildDashboardSection() {
       </div>
 
       {data.recentExpenses.length > 0 && (
-        <div className="rounded-xl border border-border bg-card p-4">
+        <div className="rounded-md border border-border bg-card p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Despesas recentes
           </p>

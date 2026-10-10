@@ -69,7 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (input: LoginInput) => {
     const result = await authService.login(input);
-    if (!result.success) return { error: result.error, type: null } as const;
+    if (result.success === false) return { error: result.error, type: null } as const;
     setSession(result.session);
     return { error: null, type: result.session.type } as const;
   }, []);

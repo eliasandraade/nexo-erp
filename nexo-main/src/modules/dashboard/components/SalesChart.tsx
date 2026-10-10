@@ -36,16 +36,17 @@ export function SalesChart() {
   }, [summary?.salesByDay, period]);
 
   return (
-    <div className="bg-card rounded-xl border border-border p-5 animate-fade-in">
+    <div className="bg-card rounded-md border border-border p-5">
       <div className="flex items-center justify-between mb-5">
         <div>
           <h3 className="text-sm font-semibold text-foreground">Vendas</h3>
-          <p className="text-xs text-muted-foreground">Receita por data</p>
+          <p className="text-xs text-muted-foreground">Receita diária para comparar o ritmo de vendas.</p>
         </div>
         <div className="flex gap-1">
           {PERIODS.map((p) => (
             <button
               key={p}
+              aria-pressed={period === p}
               onClick={() => setPeriod(p)}
               className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
                 period === p
@@ -53,7 +54,7 @@ export function SalesChart() {
                   : "text-muted-foreground hover:bg-muted"
               }`}
             >
-              {p}
+              {p === "7d" ? "7 dias" : "30 dias"}
             </button>
           ))}
         </div>
@@ -64,17 +65,12 @@ export function SalesChart() {
       ) : chartData.length === 0 ? (
         <div className="h-[260px] flex flex-col items-center justify-center gap-2">
           <p className="text-sm font-medium text-foreground">Nenhuma venda ainda.</p>
-          <p className="text-xs text-muted-foreground">Abra o caixa e registre a primeira venda pelo PDV.</p>
+          <p className="text-xs text-muted-foreground">Não há registros no período selecionado.</p>
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={260}>
           <AreaChart data={chartData}>
-            <defs>
-              <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%"  stopColor="hsl(217, 91%, 60%)" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="hsl(217, 91%, 60%)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
+
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(214, 32%, 91%)" vertical={false} />
             <XAxis
               dataKey="name"
@@ -106,9 +102,10 @@ export function SalesChart() {
             <Area
               type="monotone"
               dataKey="vendas"
-              stroke="hsl(217, 91%, 60%)"
+              stroke="hsl(var(--primary))"
               strokeWidth={2}
-              fill="url(#salesGradient)"
+              fill="hsl(var(--primary) / .08)"
+              isAnimationActive={false}
             />
           </AreaChart>
         </ResponsiveContainer>

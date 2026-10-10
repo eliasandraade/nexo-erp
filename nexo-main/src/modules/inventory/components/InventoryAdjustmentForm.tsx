@@ -49,7 +49,7 @@ export function InventoryAdjustmentForm() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-start gap-3 rounded-lg border border-border bg-secondary/5 p-4">
-        <Info className="h-5 w-5 text-secondary mt-0.5 shrink-0" />
+        <Info className="h-5 w-5 text-primary mt-0.5 shrink-0" />
         <p className="text-sm text-muted-foreground">
           Todo ajuste fica registrado no histórico de movimentações do produto e não pode ser desfeito.
         </p>

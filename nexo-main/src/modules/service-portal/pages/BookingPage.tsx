@@ -62,7 +62,7 @@ export default function BookingPage() {
   const firstRender = useRef(true);
   useEffect(() => {
     if (firstRender.current) { firstRender.current = false; return; }
-    flowRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    flowRef.current?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   }, [step]);
 
   // ── Top-level states (themed) ───────────────────────────────────────────────

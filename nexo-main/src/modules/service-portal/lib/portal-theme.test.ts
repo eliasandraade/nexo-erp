@@ -24,8 +24,8 @@ describe("getPortalTheme", () => {
   it("every theme defines core tokens and fonts", () => {
     const t = getPortalTheme("salao-beleza");
     expect(t.accent).toMatch(/^#[0-9a-f]{6}$/i);
-    expect(t.display).toContain("Fraunces");
-    expect(t.body).toContain("Manrope");
+    expect(t.display).toContain("Segoe UI");
+    expect(t.body).toContain("Segoe UI");
   });
 });
 
@@ -57,4 +57,11 @@ describe("isHexColor / hexTint", () => {
     expect(hexTint("#000000", 1)).toBe("#000000");
     expect(hexTint("#3366cc", 0.5)).toMatch(/^#[0-9a-f]{6}$/);
   });
+});
+
+it('keeps brand button text readable for bright and dark overrides', () => {
+ const theme = getPortalTheme('pet-shop');
+ expect(themeVars(theme, '#ffff00')['--p-accent-ink']).toBe('#000000');
+ expect(themeVars(theme, '#102030')['--p-accent-ink']).toBe('#ffffff');
+ expect(themeVars(theme, ' #102030 ')['--p-accent']).toBe('#102030');
 });

@@ -199,7 +199,7 @@ export function AddItemDrawer({ open, onClose, onAdd, isLoading }: AddItemDrawer
                         key={p.id}
                         onClick={() => setSelectedProduct(p.id)}
                         className={cn(
-                          "flex flex-col items-start rounded-xl border border-border bg-card p-3 text-left transition-colors active:scale-[0.97]",
+                          "flex flex-col items-start rounded-md border border-border bg-card p-3 text-left transition-colors active:scale-[0.97]",
                           "hover:border-primary/40 hover:bg-primary/5",
                           outOfStock && "opacity-50"
                         )}

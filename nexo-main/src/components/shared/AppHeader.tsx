@@ -43,7 +43,7 @@ export function AppHeader() {
                 <span className="text-xs font-semibold text-primary-foreground leading-none">{initials}</span>
               </div>
               <div className="text-left hidden sm:block">
-                <p className="text-sm font-medium text-foreground leading-none">{displayName}</p>
+                <p className="max-w-40 truncate text-sm font-medium text-foreground leading-none">{displayName}</p>
                 <p className="text-[10px] text-muted-foreground leading-none mt-0.5">{displayRole}</p>
               </div>
               <ChevronDown className="h-3 w-3 text-muted-foreground" />

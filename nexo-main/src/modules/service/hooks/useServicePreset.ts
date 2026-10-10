@@ -20,15 +20,15 @@ export const serviceKeys = {
   catalogItem: (id: string) => [...serviceKeys.catalog(), id] as const,
 
   subjects: () => [...serviceKeys.all, "subjects"] as const,
-  subjectsList: (params: Record<string, unknown>) => [...serviceKeys.subjects(), params] as const,
+  subjectsList: <T extends object>(params: T) => [...serviceKeys.subjects(), params] as const,
   subject: (id: string) => [...serviceKeys.subjects(), id] as const,
 
   appointments: () => [...serviceKeys.all, "appointments"] as const,
-  appointmentsList: (params: Record<string, unknown>) => [...serviceKeys.appointments(), params] as const,
+  appointmentsList: <T extends object>(params: T) => [...serviceKeys.appointments(), params] as const,
   appointment: (id: string) => [...serviceKeys.appointments(), id] as const,
 
   orders: () => [...serviceKeys.all, "orders"] as const,
-  ordersList: (params: Record<string, unknown>) => [...serviceKeys.orders(), params] as const,
+  ordersList: <T extends object>(params: T) => [...serviceKeys.orders(), params] as const,
   order: (id: string) => [...serviceKeys.orders(), id] as const,
 
   packages: () => [...serviceKeys.all, "packages"] as const,
@@ -36,11 +36,11 @@ export const serviceKeys = {
   package: (id: string) => [...serviceKeys.packages(), id] as const,
 
   customerPackages: () => [...serviceKeys.all, "customer-packages"] as const,
-  customerPackagesList: (params: Record<string, unknown>) => [...serviceKeys.customerPackages(), params] as const,
+  customerPackagesList: <T extends object>(params: T) => [...serviceKeys.customerPackages(), params] as const,
   customerPackage: (id: string) => [...serviceKeys.customerPackages(), id] as const,
 
   payments: () => [...serviceKeys.all, "payments"] as const,
-  paymentsList: (params: Record<string, unknown>) => [...serviceKeys.payments(), params] as const,
+  paymentsList: <T extends object>(params: T) => [...serviceKeys.payments(), params] as const,
   paymentSummary: (target: "order" | "customer-package", id: string) =>
     [...serviceKeys.payments(), "summary", target, id] as const,
 

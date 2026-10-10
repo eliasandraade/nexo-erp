@@ -1,14 +1,7 @@
-import { Check, Clock, Scissors, Stethoscope, Sparkles, Car, Dog, GraduationCap, Dumbbell, Wrench, type LucideIcon } from "lucide-react";
+import { Check, Clock, ClipboardList } from "lucide-react";
 import type { PublicCatalogItem, ServiceLabels } from "../api/booking.api";
 import { formatDuration, formatPrice } from "../lib/booking-format";
 import { Surface, Reveal, Muted } from "./PortalPrimitives";
-
-const ICONS: LucideIcon[] = [Sparkles, Stethoscope, Scissors, Dog, Car, Dumbbell, GraduationCap, Wrench];
-function iconFor(name: string): LucideIcon {
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return ICONS[h % ICONS.length];
-}
 
 interface ServiceGridProps {
   items:      PublicCatalogItem[];
@@ -30,22 +23,22 @@ export function ServiceGrid({ items, showPrices, labels, selectedId, onSelect }:
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {items.map((item, i) => {
-        const Icon = iconFor(item.name);
+
         const active = item.id === selectedId;
         return (
           <Reveal key={item.id} delay={i * 60}>
-            <button onClick={() => onSelect(item)} className="block w-full text-left">
+            <button aria-pressed={active} onClick={() => onSelect(item)} className="block w-full text-left">
               <Surface
                 interactive
                 className="h-full p-4"
                 style={active
-                  ? { borderColor: "var(--p-accent)", boxShadow: "0 12px 30px -16px color-mix(in srgb, var(--p-accent) 55%, transparent)" }
+                  ? { borderColor: "var(--p-accent)", outline: "1px solid var(--p-accent)" }
                   : undefined}
               >
                 <div className="flex items-start gap-3">
                   <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[calc(var(--p-radius)*0.6)]"
-                    style={{ background: "var(--p-accent-soft)", color: "var(--p-accent)" }}>
-                    {active ? <Check className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
+                    style={{ background: "var(--p-accent-soft)", color: "var(--p-ink)" }}>
+                    {active ? <Check className="h-5 w-5" /> : <ClipboardList className="h-5 w-5" />}
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-[15px] font-semibold leading-tight" style={{ fontFamily: "var(--p-display)" }}>

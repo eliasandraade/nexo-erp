@@ -99,7 +99,7 @@ function Toggle({
       type="button"
       onClick={() => onChange(!checked)}
       className={cn(
-        "flex items-center gap-4 w-full rounded-xl border p-4 text-left transition-colors",
+        "flex items-center gap-4 w-full rounded-md border p-4 text-left transition-colors",
         checked
           ? "border-primary/40 bg-primary/5"
           : "border-border bg-card hover:border-border/80",
@@ -297,7 +297,7 @@ function CouponDialog({
             </Field>
           )}
           {isEdit && (
-            <div className="rounded-xl border border-border bg-muted/30 px-3 py-2 flex items-center gap-2">
+            <div className="rounded-md border border-border bg-muted/30 px-3 py-2 flex items-center gap-2">
               <Tag className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-sm font-mono font-medium">{editingCoupon!.code}</span>
             </div>
@@ -761,7 +761,7 @@ export default function PortalSetupPage() {
               </Field>
 
               {hasSlug && (
-                <div className="rounded-xl border border-border bg-card p-3 flex items-center gap-3">
+                <div className="rounded-md border border-border bg-card p-3 flex items-center gap-3">
                   <Globe className="h-4 w-4 text-primary shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs text-muted-foreground">Link do seu cardápio</p>
@@ -1018,7 +1018,7 @@ export default function PortalSetupPage() {
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : coupons.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border p-8 text-center">
+            <div className="rounded-md border border-dashed border-border p-8 text-center">
               <Tag className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">Nenhum cupom cadastrado.</p>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -1031,7 +1031,7 @@ export default function PortalSetupPage() {
                 <div
                   key={c.id}
                   className={cn(
-                    "rounded-xl border px-4 py-3 flex items-center gap-3 transition-colors",
+                    "rounded-md border px-4 py-3 flex items-center gap-3 transition-colors",
                     c.isActive ? "border-border bg-card" : "border-border/40 bg-muted/20",
                   )}
                 >

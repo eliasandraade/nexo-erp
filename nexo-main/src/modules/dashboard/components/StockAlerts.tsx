@@ -9,7 +9,7 @@ export function StockAlerts() {
   const hasAlerts  = alertItems.length > 0;
 
   return (
-    <div className="bg-card rounded-xl border border-border p-5 animate-fade-in">
+    <div className="bg-card rounded-md border border-border p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-warning" />

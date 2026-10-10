@@ -45,21 +45,21 @@ export function CustomerContactSection({ data, onChange }: Props) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
       <div className="space-y-1.5">
-        <Label>E-mail</Label>
-        <Input type="email" value={data.email} onChange={(e) => onChange("email", e.target.value)} placeholder="cliente@email.com" />
+        <Label htmlFor="customer-email">E-mail</Label>
+        <Input id="customer-email" type="email" value={data.email} onChange={(e) => onChange("email", e.target.value)} placeholder="cliente@email.com" />
       </div>
       <div className="space-y-1.5">
-        <Label>Telefone</Label>
-        <Input value={data.phone} onChange={(e) => onChange("phone", e.target.value)} placeholder="(00) 00000-0000" />
+        <Label htmlFor="customer-phone">Telefone</Label>
+        <Input id="customer-phone" value={data.phone} onChange={(e) => onChange("phone", e.target.value)} placeholder="(00) 00000-0000" />
       </div>
       <div className="space-y-1.5">
-        <Label>WhatsApp</Label>
-        <Input value={data.whatsApp} onChange={(e) => onChange("whatsApp", e.target.value)} placeholder="(00) 00000-0000" />
+        <Label htmlFor="customer-whatsApp">WhatsApp</Label>
+        <Input id="customer-whatsApp" value={data.whatsApp} onChange={(e) => onChange("whatsApp", e.target.value)} placeholder="(00) 00000-0000" />
       </div>
       <div className="space-y-1.5">
-        <Label>CEP</Label>
+        <Label htmlFor="customer-zipCode">CEP</Label>
         <div className="flex gap-2">
-          <Input
+          <Input id="customer-zipCode"
             value={data.zipCode}
             onChange={(e) => onChange("zipCode", e.target.value)}
             placeholder="00000-000"
@@ -78,28 +78,28 @@ export function CustomerContactSection({ data, onChange }: Props) {
         </div>
       </div>
       <div className="space-y-1.5 md:col-span-2">
-        <Label>Rua / Avenida</Label>
-        <Input value={data.street} onChange={(e) => onChange("street", e.target.value)} placeholder="Rua, Avenida..." />
+        <Label htmlFor="customer-street">Rua / Avenida</Label>
+        <Input id="customer-street" value={data.street} onChange={(e) => onChange("street", e.target.value)} placeholder="Rua, Avenida..." />
       </div>
       <div className="space-y-1.5">
-        <Label>Número</Label>
-        <Input value={data.number} onChange={(e) => onChange("number", e.target.value)} placeholder="Nº" />
+        <Label htmlFor="customer-number">Número</Label>
+        <Input id="customer-number" value={data.number} onChange={(e) => onChange("number", e.target.value)} placeholder="Nº" />
       </div>
       <div className="space-y-1.5">
-        <Label>Complemento</Label>
-        <Input value={data.complement} onChange={(e) => onChange("complement", e.target.value)} placeholder="Apto, Sala..." />
+        <Label htmlFor="customer-complement">Complemento</Label>
+        <Input id="customer-complement" value={data.complement} onChange={(e) => onChange("complement", e.target.value)} placeholder="Apto, Sala..." />
       </div>
       <div className="space-y-1.5">
-        <Label>Bairro</Label>
-        <Input value={data.neighborhood} onChange={(e) => onChange("neighborhood", e.target.value)} placeholder="Bairro" />
+        <Label htmlFor="customer-neighborhood">Bairro</Label>
+        <Input id="customer-neighborhood" value={data.neighborhood} onChange={(e) => onChange("neighborhood", e.target.value)} placeholder="Bairro" />
       </div>
       <div className="space-y-1.5">
-        <Label>Cidade</Label>
-        <Input value={data.city} onChange={(e) => onChange("city", e.target.value)} placeholder="Cidade" />
+        <Label htmlFor="customer-city">Cidade</Label>
+        <Input id="customer-city" value={data.city} onChange={(e) => onChange("city", e.target.value)} placeholder="Cidade" />
       </div>
       <div className="space-y-1.5">
-        <Label>Estado</Label>
-        <select
+        <Label htmlFor="customer-state">Estado</Label>
+        <select id="customer-state"
           value={data.state}
           onChange={(e) => onChange("state", e.target.value)}
           className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

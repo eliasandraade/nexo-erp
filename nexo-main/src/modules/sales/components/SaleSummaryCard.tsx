@@ -21,7 +21,7 @@ function formatDateTime(iso: string) {
   });
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function Row({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between text-sm py-1.5">
       <span className="text-muted-foreground">{label}</span>
