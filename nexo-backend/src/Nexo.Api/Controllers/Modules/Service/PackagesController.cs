@@ -12,7 +12,7 @@ namespace Nexo.Api.Controllers.Modules.Service;
 /// </summary>
 [ApiController]
 [Route("api/v1/service/packages")]
-[Authorize]
+[Authorize(Roles = ServiceRoles.Management)]
 [RequireServiceModule]
 public class PackagesController : ControllerBase
 {

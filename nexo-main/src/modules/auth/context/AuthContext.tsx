@@ -63,6 +63,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         navigate("/login", { replace: true });
       }
       setIsReady(true);
+    }).catch(() => {
+      // Validation could not reach the server (network blip): keep the stored session — the
+      // API still rejects it if it is invalid — and never leave the app stuck on "not ready".
+      setIsReady(true);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -75,7 +79,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(() => {
-    authService.logout();
+    // Server-side revocation is best effort; the local session is cleared regardless.
+    void authService.logout();
     setSession(null);
     // Drop every cached query so the next user on this browser never sees the
     // previous session's data (dashboard, customers, sales, …).

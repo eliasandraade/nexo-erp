@@ -28,6 +28,7 @@ import type { SvcProfessionalDto } from "../api/service.api";
 import { useProfessionals, useSetProfessionalActive } from "../hooks/useProfessionals";
 import { useServicePreset } from "../context/ServicePresetContext";
 import { ProfessionalDialog } from "../components/ProfessionalDialog";
+import { CommissionPanel } from "../components/CommissionPanel";
 
 export default function ProfissionaisPage() {
   const { labels, capabilities } = useServicePreset();
@@ -40,6 +41,8 @@ export default function ProfissionaisPage() {
   });
 
   const { data, isLoading, isError, refetch } = useProfessionals(!showInactive);
+  // The commission panel needs everyone, inactive included — their history outlives deactivation.
+  const allProfessionals = useProfessionals(false);
   const setActive = useSetProfessionalActive();
 
   const items = data ?? [];
@@ -155,6 +158,10 @@ export default function ProfissionaisPage() {
           </Table>
         )}
       </SectionCard>
+
+      {capabilities?.commissions && allProfessionals.data && (
+        <CommissionPanel professionals={allProfessionals.data} />
+      )}
 
       <ProfessionalDialog
         open={dialog.open}

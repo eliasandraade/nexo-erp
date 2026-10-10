@@ -102,8 +102,10 @@ public class SaleService
 
         _sales.TrackItem(item);
 
-        var allItems = sale.Items.ToList();
-        allItems.Add(item);
+        // When the sale is already tracked (e.g. created a moment ago in the same request, as the
+        // restaurant does on close), EF fix-up has ALREADY put the new item into sale.Items — so
+        // de-duplicate by id instead of blindly appending, or the item is counted twice.
+        var allItems = sale.Items.Where(i => i.Id != item.Id).Append(item).ToList();
         sale.RecalculateTotals(allItems);
 
         await _sales.SaveChangesAsync(ct);

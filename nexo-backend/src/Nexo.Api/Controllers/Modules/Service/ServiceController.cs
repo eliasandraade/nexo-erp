@@ -61,6 +61,7 @@ public class ServiceController : ControllerBase
 
     /// <summary>Sets (or changes) the active store's Service preset. Invalid key → 400.</summary>
     [HttpPut("settings/preset")]
+    [Authorize(Roles = ServiceRoles.Management)]
     public async Task<ActionResult<ServiceSettingsDto>> SetPreset(
         [FromBody] SetServicePresetRequest request, CancellationToken ct)
     {
@@ -78,6 +79,7 @@ public class ServiceController : ControllerBase
     /// (otherwise 422). The public slug is managed separately via <c>PATCH /api/stores/{id}/public-slug</c>.
     /// </summary>
     [HttpPut("settings/public-booking")]
+    [Authorize(Roles = ServiceRoles.Management)]
     public async Task<ActionResult<PublicBookingSettingsDto>> UpdatePublicBooking(
         [FromBody] UpdatePublicBookingRequest request, CancellationToken ct)
     {
@@ -90,6 +92,7 @@ public class ServiceController : ControllerBase
     /// for the active store, independently of the booking config. 422 when the store has no preset.
     /// </summary>
     [HttpPut("settings/branding")]
+    [Authorize(Roles = ServiceRoles.Management)]
     public async Task<ActionResult<PublicBookingSettingsDto>> UpdateBranding(
         [FromBody] UpdatePortalBrandingRequest request, CancellationToken ct)
     {

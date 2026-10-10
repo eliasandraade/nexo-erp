@@ -6,6 +6,8 @@ import type {
   TenantCostSummary,
   PlaygroundResult,
   PromptVersion,
+  AnalyzerProvider,
+  FieldStatus,
 } from "../types/aiOperations";
 
 const BASE = "/platform/interpreter";
@@ -297,11 +299,11 @@ export async function runPlayground(input: {
     draftId:       null,   // playground never creates a draft
     analyzerChain: [raw.provider as PlaygroundResult["analyzerChain"][0]],
     extraction: {
-      amount:  { value: e.amount.value,  confidence: e.amount.confidence,  status: e.amount.status as PlaygroundResult["extraction"]["amount"]["status"], provider: raw.provider as PlaygroundResult["extraction"]["analyzerUsed"] },
-      date:    { value: e.date.value,    confidence: e.date.confidence,    status: e.date.status as PlaygroundResult["extraction"]["date"]["status"], provider: raw.provider as PlaygroundResult["extraction"]["analyzerUsed"] },
-      payee:   { value: e.payee.value,   confidence: e.payee.confidence,   status: e.payee.status as PlaygroundResult["extraction"]["payee"]["status"], provider: raw.provider as PlaygroundResult["extraction"]["analyzerUsed"] },
-      account: { value: e.account.value, confidence: e.account.confidence, status: e.account.status as PlaygroundResult["extraction"]["account"]["status"], provider: raw.provider as PlaygroundResult["extraction"]["analyzerUsed"] },
-      analyzerUsed: raw.provider as PlaygroundResult["extraction"]["analyzerUsed"],
+      amount:  { value: e.amount.value,  confidence: e.amount.confidence,  status: e.amount.status  as FieldStatus, provider: raw.provider as AnalyzerProvider },
+      date:    { value: e.date.value,    confidence: e.date.confidence,    status: e.date.status    as FieldStatus, provider: raw.provider as AnalyzerProvider },
+      payee:   { value: e.payee.value,   confidence: e.payee.confidence,   status: e.payee.status   as FieldStatus, provider: raw.provider as AnalyzerProvider },
+      account: { value: e.account.value, confidence: e.account.confidence, status: e.account.status as FieldStatus, provider: raw.provider as AnalyzerProvider },
+      analyzerUsed: raw.provider as AnalyzerProvider,
     },
     suggestion: {
       direction: { value: i.direction,   source: i.dirSource },

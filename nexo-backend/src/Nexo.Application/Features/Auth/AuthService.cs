@@ -82,7 +82,7 @@ public class AuthService
             var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
             await _cache.SetAsync(
                 $"refresh:valid:{refreshClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId),
+                new RefreshTokenEntry(user.Id, user.TenantId, storeId),
                 ttl, ct);
 
             // Track session for platform admin visibility
@@ -149,11 +149,15 @@ public class AuthService
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(claims.TenantId, ct);
 
-        // Re-load stores to refresh the list in the new token
+        // Re-load stores to refresh the list in the new token. Keep the store the session was
+        // working in (recorded with the refresh token at login / switch-store): falling back to
+        // the first store silently moved multi-store users — and everything they recorded — to
+        // another store every time the access token was refreshed.
         var stores = await _stores.GetByTenantIdAsync(claims.TenantId, ct);
-        var defaultStore = stores.FirstOrDefault();
-        var storeId = defaultStore?.Id ?? Guid.Empty;
         var storeIds = stores.Select(s => s.Id).ToList();
+        var storeId = entry.StoreId is { } activeStoreId && storeIds.Contains(activeStoreId)
+            ? activeStoreId
+            : stores.FirstOrDefault()?.Id ?? Guid.Empty;
 
         var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, storeId, storeIds);
 
@@ -165,7 +169,7 @@ public class AuthService
             var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
             await _cache.SetAsync(
                 $"refresh:valid:{newClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId),
+                new RefreshTokenEntry(user.Id, user.TenantId, storeId),
                 ttl, ct);
 
             // Update session JTI so platform can still revoke if needed
@@ -225,7 +229,7 @@ public class AuthService
             var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
             await _cache.SetAsync(
                 $"refresh:valid:{newClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId),
+                new RefreshTokenEntry(user.Id, user.TenantId, requestedStoreId),
                 ttl, ct);
         }
 
@@ -304,4 +308,5 @@ public class AuthService
 }
 
 /// <summary>Serializable refresh token cache entry.</summary>
-public record RefreshTokenEntry(Guid UserId, Guid TenantId);
+/// <summary>StoreId: the store the token was issued for (null on entries cached before this field existed).</summary>
+public record RefreshTokenEntry(Guid UserId, Guid TenantId, Guid? StoreId = null);

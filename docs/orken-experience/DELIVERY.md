@@ -1,6 +1,6 @@
 # ORKEN — entrega para revisão humana
 
-Branch: codex/orken-experience. Base: origin/master, 8f5c6ab. Rodadas de trabalho em 9–10 de outubro de 2026. Sem merge ou deploy. O checkout original e seus commits de comissões permanecem separados.
+Branch: codex/orken-experience. Base inicial: origin/master, 8f5c6ab; atualizada com master 6788fed antes da PR. Rodadas de trabalho em 9–10 de outubro de 2026. Sem merge em master ou deploy. O checkout original não foi alterado. As correções de comissões já aprovadas na master foram incorporadas à branch de revisão.
 
 ## 1. Diagnóstico e conceito
 
@@ -17,7 +17,7 @@ Pesquisa primária e diagnóstico detalhado: [RESEARCH.md](RESEARCH.md). Direç�
 - Celular: menu em diálogo com foco contido, Escape e restauração de foco. Plataforma usa a mesma mecânica com grupos próprios.
 - Áreas: Varejo, Serviços, Restaurante e Obras; seleção preserva a lógica de módulos habilitados e o destino de cada workspace.
 - PDV e cozinha continuam ambientes operacionais próprios, com suas regras e estados transacionais.
-- Rotas, guards, permissões e endpoints de servidor não foram reescritos. Nenhuma mudança de backend, banco, infraestrutura, secrets ou produção.
+- Rotas, guards, permissões e endpoints de servidor não foram reescritos. Nenhuma mudança própria de backend, banco, infraestrutura, secrets ou produção no diff contra a master atual.
 
 ## 3. Componentes e tokens
 
@@ -49,9 +49,9 @@ Nem toda página precisou de uma composição nova: telas operacionais com semâ
 
 Nenhuma dependência adicionada ou removida. React, Vite, Tailwind, Radix, React Query e bibliotecas existentes mantidos. O pacote inexistente lovable-agent-playwright-config deixou de ser importado pela configuração e fixture de Playwright; usa-se @playwright/test já presente.
 
-TypeScript passou a strict/noImplicitAny. Corrigidas incompatibilidades anteriores em PageSkeleton, uniões discriminadas de auth/cancelamento, tipo de rótulo de venda, query keys de Service, ThemeMood, fixture de marca, import UserCog e teste de promessa. Ajustes são de tipagem: formatos de chamadas e contratos do backend preservados. O frontend de UpdateArea aceita description nula, que já era enviada pela tela.
+TypeScript passou a strict/noImplicitAny. Corrigidas incompatibilidades anteriores em PageSkeleton, uniões discriminadas de auth/cancelamento, tipo de rótulo de venda, query keys de Service, ThemeMood, fixture de marca, import UserCog e teste de promessa. Ajustes são de tipagem: formatos de chamadas e contratos do backend preservados. A correção posterior da master em UpdateArea foi preservada: editar/ativar uma área mantém sua descrição, em vez de apagá-la.
 
-Vitest exclui arquivos .e2e.spec.ts e limita dois workers. O teste de JWT usa um payload sintético estruturalmente válido. Playwright tem configuração local autônoma, usando Edge no Windows. Chromium instalado retornou spawn UNKNOWN neste ambiente; a evidência válida foi produzida com Edge.
+Vitest exclui arquivos .e2e.spec.ts e limita dois workers. O teste de JWT usa um payload sintético estruturalmente válido. Playwright tem configuração local autônoma, usando Edge no Windows. A suíte de autenticação da master foi preservada em e2e/auth.e2e.spec.ts e usa playwright.auth.config.ts via npm run test:e2e; exige backend real e não foi executada nesta revisão. npm run test:ui executa somente a suíte visual com fixtures. Chromium instalado retornou spawn UNKNOWN neste ambiente; a evidência válida foi produzida com Edge.
 
 Build gerado fora do dist versionado, em node_modules/.orken-build. Nenhum bundle gerado integra esta entrega.
 
@@ -59,7 +59,7 @@ Build gerado fora do dist versionado, em node_modules/.orken-build. Nenhum bundl
 
 - Typecheck estrito: aprovado.
 - ESLint: zero erros; 16 avisos existentes de fast refresh/hooks permanecem registrados.
-- Vitest: 16 arquivos, 168 testes aprovados.
+- Vitest: 18 arquivos, 179 testes aprovados.
 - Playwright: 29 testes aprovados; cenários em e2e/experience.spec.ts, incluindo oito larguras (1920, 1440, 1366, 1280, 1024, 768, 390 e 320), lista de 25 registros com textos longos, vazio, falha, filtros, teclado, retorno de foco, restrição de papel, movimento reduzido, formulários, plataforma, PDV e portal público. Resultado final em browser-tests.txt.
 - Build Vite: aprovado; avisos de anotação PURE da dependência SignalR registrados, sem erro de build.
 - Revisão visual de screenshots: login, landing, clientes desktop/mobile, formulário de cliente, plataforma, PDV e portal. Não constitui certificação WCAG ou validação em dispositivos físicos.
@@ -88,7 +88,7 @@ npm run typecheck
 npm run lint
 npm test
 npm run build -- --outDir node_modules/.orken-build
-npx playwright test
+npm run test:ui
 ~~~
 
 Playwright inicia/reutiliza Vite em 127.0.0.1:5179. Windows requer Edge; outros sistemas usam Chromium do Playwright. O backend é interceptado com fixtures locais. O script scripts/capture-experience.mjs captura comparações e aceita REVIEW_URL para um servidor com a versão original.
@@ -99,7 +99,9 @@ A validação automatizada é de frontend com respostas controladas. Falta valid
 
 Filtros de tipo/situação de clientes continuam limitados à página atual pelo contrato existente; a interface agora informa isso. Pesquisa de comandos navega apenas páginas. Não foi criada busca global de dados ou recuperação de senha no backend.
 
-A aprovação visual e funcional final é humana. A PR deve permanecer Draft, sem merge ou deploy.
+A aprovação visual e funcional final é humana. A PR deve permanecer Draft, sem merge em master ou deploy.
+
+Integração da master: durante a execução a base avançou 21 commits. Foi feito merge da master para esta branch, sem reescrever histórico. Os conflitos de tipagem equivalentes foram conciliados; as alterações de segurança/comissões da base e a preservação de descrição das áreas continuam intactas. Os testes e o build foram repetidos depois dessa integração.
 
 ## 10. Commits e PR
 

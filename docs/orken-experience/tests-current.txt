@@ -5,25 +5,28 @@
 
  RUN  v3.2.4 C:/Users/Elias/.codex/worktrees/orken-experience/NexoERP/nexo-main
 
- ✓ src/modules/service/components/PortalBookingSettingsForm.test.tsx (2 tests) 173ms
- ✓ src/modules/service/components/PortalSlugSection.test.tsx (4 tests) 55ms
- ✓ src/test/auth.unit.spec.ts (25 tests) 34ms
- ✓ src/modules/service-portal/lib/booking-format.test.ts (18 tests) 53ms
+ ✓ src/test/auth.unit.spec.ts (25 tests) 115ms
+ ✓ src/modules/service/lib/commission.test.ts (8 tests) 8ms
+ ✓ src/modules/service/components/PortalBookingSettingsForm.test.tsx (2 tests) 279ms
+ ✓ src/modules/service/components/PortalSlugSection.test.tsx (4 tests) 71ms
+ ✓ src/modules/service-portal/lib/booking-format.test.ts (18 tests) 63ms
  ✓ src/modules/service/lib/working-hours.test.ts (24 tests) 18ms
- ✓ src/modules/service/lib/service-surfaces.test.ts (9 tests) 6ms
- ✓ src/modules/workspace/resolvePostLogin.spec.ts (12 tests) 5ms
- ✓ src/modules/service-portal/lib/portal-theme.test.ts (25 tests) 5ms
- ✓ src/modules/service/lib/service-family.test.ts (18 tests) 5ms
- ✓ src/modules/service/lib/appointment-status.test.ts (5 tests) 4ms
- ✓ src/modules/service/lib/portal-status.test.ts (10 tests) 5ms
- ✓ src/modules/service-portal/lib/ics.test.ts (4 tests) 4ms
- ✓ src/modules/service/lib/dashboard.test.ts (4 tests) 4ms
- ✓ src/modules/service/lib/order-status.test.ts (3 tests) 4ms
- ✓ src/modules/service/hooks/serviceKeys.test.ts (4 tests) 4ms
- ✓ src/test/example.test.ts (1 test) 2ms
+ ✓ src/modules/service/components/CommissionPanel.test.tsx (3 tests) 1341ms
+   ✓ CommissionPanel > shows each professional's position and the open entries of the period  920ms
+ ✓ src/modules/service/lib/service-surfaces.test.ts (9 tests) 9ms
+ ✓ src/modules/service-portal/lib/portal-theme.test.ts (25 tests) 10ms
+ ✓ src/modules/workspace/resolvePostLogin.spec.ts (12 tests) 11ms
+ ✓ src/modules/service/lib/service-family.test.ts (18 tests) 7ms
+ ✓ src/modules/service/lib/portal-status.test.ts (10 tests) 10ms
+ ✓ src/modules/service/lib/appointment-status.test.ts (5 tests) 10ms
+ ✓ src/modules/service/lib/order-status.test.ts (3 tests) 10ms
+ ✓ src/modules/service/hooks/serviceKeys.test.ts (4 tests) 8ms
+ ✓ src/modules/service/lib/dashboard.test.ts (4 tests) 5ms
+ ✓ src/modules/service-portal/lib/ics.test.ts (4 tests) 5ms
+ ✓ src/test/example.test.ts (1 test) 4ms
 
- Test Files  16 passed (16)
-      Tests  168 passed (168)
-   Start at  02:27:34
-   Duration  19.37s (transform 369ms, setup 4.32s, collect 3.49s, tests 381ms, environment 25.72s, prepare 2.06s)
+ Test Files  18 passed (18)
+      Tests  179 passed (179)
+   Start at  02:38:08
+   Duration  36.64s (transform 2.38s, setup 6.28s, collect 12.54s, tests 1.99s, environment 41.35s, prepare 3.74s)
 

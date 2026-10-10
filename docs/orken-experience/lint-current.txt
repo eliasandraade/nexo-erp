@@ -28,7 +28,7 @@ C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\a
   6:3  warning  Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-unused-vars')
 
 C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\auth\context\AuthContext.tsx
-  106:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
+  111:17  warning  Fast refresh only works when a file only exports components. Use a new file to share constants or functions between components  react-refresh/only-export-components
 
 C:\Users\Elias\.codex\worktrees\orken-experience\NexoERP\nexo-main\src\modules\restaurante\hooks\useKitchenSocket.ts
   188:6  warning  React Hook useEffect has a missing dependency: 'qc'. Either include it or remove the dependency array  react-hooks/exhaustive-deps

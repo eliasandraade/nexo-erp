@@ -14,6 +14,9 @@ public class SvcPackageUsageRepository : ISvcPackageUsageRepository
         => await _context.SvcPackageUsages.Where(x => x.CustomerPackageId == customerPackageId)
             .OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
 
+    public async Task<bool> ExistsForAppointmentAsync(Guid appointmentId, CancellationToken ct = default)
+        => await _context.SvcPackageUsages.AnyAsync(u => u.AppointmentId == appointmentId, ct);
+
     public async Task AddAsync(SvcPackageUsage entity, CancellationToken ct = default)
         => await _context.SvcPackageUsages.AddAsync(entity, ct);
 

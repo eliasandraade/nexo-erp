@@ -66,7 +66,10 @@ public static class DependencyInjection
             options.AddInterceptors(interceptor);
 
             // Extra diagnostics in non-production
-            if (!IsProduction(configuration))
+            // Parameter values (PII) in logs only on a developer machine or the test host — never
+            // by default. Before, an UNSET ASPNETCORE_ENVIRONMENT (which the host treats as
+            // Production) turned sensitive logging ON.
+            if (IsDevelopmentOrTesting(configuration))
             {
                 options.EnableSensitiveDataLogging();
                 options.EnableDetailedErrors();
@@ -172,6 +175,7 @@ public static class DependencyInjection
         services.AddScoped<ISvcCustomerPackageItemRepository, SvcCustomerPackageItemRepository>();
         services.AddScoped<ISvcPackageUsageRepository, SvcPackageUsageRepository>();
         services.AddScoped<ISvcPaymentRepository, SvcPaymentRepository>();
+        services.AddScoped<ISvcCommissionRepository, SvcCommissionRepository>();
         services.AddScoped<ISvcSettingsRepository, SvcSettingsRepository>();
 
         // ── Operational Interpretation Engine ─────────────────────────────────
@@ -264,6 +268,7 @@ public static class DependencyInjection
         return services;
     }
 
-    private static bool IsProduction(IConfiguration config)
-        => config["ASPNETCORE_ENVIRONMENT"] == "Production";
+    private static bool IsDevelopmentOrTesting(IConfiguration config)
+        => config["ASPNETCORE_ENVIRONMENT"] is "Development" or "Testing"
+        || config["DOTNET_ENVIRONMENT"] is "Development" or "Testing";
 }

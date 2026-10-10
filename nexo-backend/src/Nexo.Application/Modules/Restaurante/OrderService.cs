@@ -294,13 +294,15 @@ public class OrderService
             CashSessionId: null,
             Notes:         $"Comanda #{order.OrderNumber}"), ct);
 
-        // Adiciona itens ativos ao Sale
+        // Adiciona itens ativos ao Sale. O preço unitário inclui os adicionais escolhidos
+        // (item.Total = Quantity × (UnitPrice + Σ adicionais)): sem eles a venda ficava menor que
+        // o que a tela cobra e o pagamento era sempre recusado (pagamento ≠ total da venda).
         foreach (var item in order.ActiveItems)
         {
             await _saleService.AddItemAsync(saleDto.Id, new AddSaleItemRequest(
                 ProductId:      item.ProductId,
                 Quantity:       item.Quantity,
-                UnitPrice:      item.UnitPrice,
+                UnitPrice:      item.UnitPrice + item.Modifiers.Sum(m => m.PriceSnapshot),
                 DiscountAmount: 0,
                 Notes:          item.Notes), ct);
         }

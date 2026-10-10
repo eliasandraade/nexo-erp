@@ -32,6 +32,10 @@ public class SvcOrderRepository : ISvcOrderRepository
     public async Task<bool> ExistsForAppointmentAsync(Guid appointmentId, CancellationToken ct = default)
         => await _context.SvcOrders.AnyAsync(o => o.AppointmentId == appointmentId, ct);
 
+    public async Task LockAsync(Guid orderId, Guid tenantId, CancellationToken ct = default)
+        => await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.svc_orders WHERE id = {orderId} AND tenant_id = {tenantId} FOR UPDATE", ct);
+
     public async Task AddAsync(SvcOrder entity, CancellationToken ct = default)
         => await _context.SvcOrders.AddAsync(entity, ct);
 

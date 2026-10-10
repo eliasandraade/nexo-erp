@@ -7,7 +7,8 @@ namespace Nexo.Api.Controllers;
 
 [ApiController]
 [Route("api/audit")]
-[Authorize]
+// The audit trail holds IPs, e-mails and impersonation records — same audience as the screen.
+[Authorize(Roles = "Diretoria")]
 public class AuditController : ControllerBase
 {
     private readonly AuditQueryService _service;
