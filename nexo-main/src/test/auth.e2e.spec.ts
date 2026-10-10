@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Frontend Authentication E2E Tests
@@ -54,7 +54,7 @@ test.describe("Frontend Authentication Flow", () => {
 
     // Verify session is stored
     const cookies = await page.context().cookies();
-    const hasAuthCookies = cookies.some(c => 
+    const hasAuthCookies = cookies.some(c =>
       c.name === "nexo_access" || c.name === "nexo_refresh"
     );
     expect(hasAuthCookies).toBeTruthy();
@@ -246,7 +246,7 @@ test.describe("Frontend Authentication Flow", () => {
 
     try {
       // Both tabs: Login
-      const loginAndNavigate = async (p) => {
+      const loginAndNavigate = async (p: Page) => {
         await p.goto(`${APP_URL}/login`);
         await p.fill('input[name="login"]', E2E_LOGIN);
         await p.fill('input[name="password"]', E2E_PASSWORD);

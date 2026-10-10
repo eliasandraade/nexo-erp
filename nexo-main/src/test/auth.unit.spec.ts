@@ -129,7 +129,7 @@ describe("Auth Client", () => {
     it("should include credentials in fetch requests", () => {
       // Validate that fetch requests have credentials: 'include'
       // This is tested by verifying cookies are sent
-      
+
       const fetchOptions = {
         method: "GET",
         credentials: "include",
@@ -227,7 +227,7 @@ describe("Token Validation", () => {
 
   it("should extract claims from JWT", () => {
     // Simplified JWT parsing (in reality, use a JWT library)
-    const jwt = FAKE_JWT;
+    const jwt = ["test-header", Buffer.from(JSON.stringify({ name: "John Doe", iat: 1516239022 })).toString("base64url"), "test-signature"].join(".");
 
     const parts = jwt.split(".");
     const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
@@ -325,7 +325,7 @@ describe("Refresh Loop Prevention", () => {
 
     const simulateRefresh = async () => {
       refreshCount++;
-      return new Promise((resolve) => setTimeout(resolve, 10));
+      return new Promise<void>((resolve) => setTimeout(resolve, 10));
     };
 
     // Fire 5 concurrent refresh requests
@@ -361,13 +361,13 @@ describe("Error Messages", () => {
     // Authentication errors must use generic messages
     // NOT expose whether user exists
     const genericAuthError = "Invalid login or password";
-    
+
     // Backend returns this generic message for all auth failures:
     // - User not found
     // - Wrong password
     // - User blocked
     // - Tenant not found
-    
+
     // The error message should NOT contain:
     expect(genericAuthError).not.toContain("@");
     expect(genericAuthError).not.toContain("not found");

@@ -25,3 +25,7 @@ dist-ssr
 .vercel
 
 .worktrees/
+
+.review-baseline/
+playwright-report/
+test-results/
