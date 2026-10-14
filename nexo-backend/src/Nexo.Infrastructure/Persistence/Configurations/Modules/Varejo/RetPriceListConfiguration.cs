@@ -77,5 +77,10 @@ public class RetPriceListConfiguration : IEntityTypeConfiguration<RetPriceList>
 
         builder.HasIndex(x => new { x.TenantId, x.IsDefault })
             .HasDatabaseName("ix_ret_price_lists_tenant_id_is_default");
+
+        // At most one default list per tenant (active or not) — two defaults priced sales unpredictably.
+        builder.HasIndex(x => x.TenantId, "ux_ret_price_lists_one_default")
+            .IsUnique()
+            .HasFilter("is_default");
     }
 }

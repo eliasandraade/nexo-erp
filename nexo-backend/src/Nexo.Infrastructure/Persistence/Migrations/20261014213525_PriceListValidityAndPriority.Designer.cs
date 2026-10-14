@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261014205932_PriceListValidityAndPriority")]
+    [Migration("20261014213525_PriceListValidityAndPriority")]
     partial class PriceListValidityAndPriority
     {
         /// <inheritdoc />
@@ -6504,6 +6504,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "IsDefault")
                         .HasDatabaseName("ix_ret_price_lists_tenant_id_is_default");
+
+                    b.HasIndex(new[] { "TenantId" }, "ux_ret_price_lists_one_default")
+                        .IsUnique()
+                        .HasFilter("is_default");
 
                     b.ToTable("ret_price_lists", "nexo");
                 });

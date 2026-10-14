@@ -35,12 +35,15 @@ public class PriceListRepository : IPriceListRepository
 
     public async Task<IReadOnlyList<RetPriceList>> GetAllAsync(bool includeInactive = false, CancellationToken ct = default)
     {
-        var query = _context.RetPriceLists.AsQueryable();
+        var query = _context.RetPriceLists.Include(x => x.Items).AsQueryable();
         if (!includeInactive) query = query.Where(x => x.IsActive);
         return await query.OrderBy(x => x.Name).ToListAsync(ct);
     }
 
     public void TrackItem(RetPriceListItem item) => _context.Entry(item).State = EntityState.Added;
+
+    public async Task<IReadOnlyList<RetPriceList>> GetAllDefaultsAsync(CancellationToken ct = default)
+        => await _context.RetPriceLists.Where(x => x.IsDefault).ToListAsync(ct);   // active or not
 
     public async Task<RetCustomerPriceList?> GetCustomerLinkAsync(Guid customerId, CancellationToken ct = default)
         => await _context.RetCustomerPriceLists.FirstOrDefaultAsync(x => x.CustomerId == customerId, ct);
@@ -64,7 +67,10 @@ public class PriceListRepository : IPriceListRepository
         IEnumerable<Guid> ids, CancellationToken ct = default)
     {
         var list = ids.Distinct().ToList();
-        var rows = await _context.Products.Where(p => list.Contains(p.Id))
+        // Lists are tenant-wide, products are per store: read labels across the tenant's stores.
+        var tenantId = _context.CurrentTenantIdForFilter;
+        var rows = await _context.Products.IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && list.Contains(p.Id))
             .Select(p => new { p.Id, p.Name, p.Code }).ToListAsync(ct);
         return rows.ToDictionary(x => x.Id, x => (x.Name, x.Code));
     }

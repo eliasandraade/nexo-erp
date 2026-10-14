@@ -160,7 +160,7 @@ function AddItemForm({ purchaseId, onAdded }: { purchaseId: string; onAdded: (p:
         <Select value={productId} onValueChange={(v) => {
           setProductId(v);
           const p = products.find((x) => x.id === v);
-          if (p && unitCost.trim() === "") setUnitCost(String(p.costPrice));
+          if (p && p.costPrice != null && unitCost.trim() === "") setUnitCost(String(p.costPrice));
         }}>
           <SelectTrigger id="purchase-product"><SelectValue placeholder="Escolha o produto" /></SelectTrigger>
           <SelectContent>

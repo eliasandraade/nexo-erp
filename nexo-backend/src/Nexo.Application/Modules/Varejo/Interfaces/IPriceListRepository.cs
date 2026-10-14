@@ -13,6 +13,8 @@ public interface IPriceListRepository
     Task AddAsync(RetPriceList priceList, CancellationToken ct = default);
     /// <summary>New items of a loaded list must be marked Added (readonly backing field).</summary>
     void TrackItem(RetPriceListItem item);
+    /// <summary>Every list flagged default, active or not (to keep a single default per tenant).</summary>
+    Task<IReadOnlyList<RetPriceList>> GetAllDefaultsAsync(CancellationToken ct = default);
     Task<RetCustomerPriceList?> GetCustomerLinkAsync(Guid customerId, CancellationToken ct = default);
     Task<IReadOnlyList<(Guid CustomerId, string Name)>> GetLinkedCustomersAsync(Guid priceListId, CancellationToken ct = default);
     Task AddCustomerLinkAsync(RetCustomerPriceList link, CancellationToken ct = default);

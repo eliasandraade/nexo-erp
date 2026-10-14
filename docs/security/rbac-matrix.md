@@ -24,7 +24,6 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | `Stock` | Gerente, Diretoria, Estoquista |
 | `Floor` | Gerente, Diretoria, Vendedor |
 | `RestaurantOps` | Gerente, Diretoria, Vendedor, Cozinha |
-| `RecipeReaders` | Gerente, Diretoria, Estoquista, Cozinha |
 | `StockReaders` | Gerente, Diretoria, Estoquista, Vendedor |
 
 "Todos" na matriz abaixo significa qualquer usuário autenticado do tenant.
@@ -58,7 +57,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Restaurante: delivery | Floor | Floor | Floor | — | cancelar / recusar: Floor |
 | Restaurante: adicionais, configurações | RestaurantOps | Management | Management | Management | — |
 | Restaurante: cupons, zonas | Floor | Management | Management | Management | — |
-| Restaurante: ficha técnica | RecipeReaders | Stock | Stock | Stock | — |
+| Restaurante: ficha técnica (tem custos) | Stock | Stock | Stock | Stock | — |
 | Restaurante: funcionários, despesas, financeiro, relatórios | Management | Management | Management | Management | Management |
 | Build (obras, orçamentos, etapas, diário) | Management | Management | Management | Management | aprovar orçamento: Management |
 | Interpreter (lançamentos, anexos, vocabulário) | Management | Management | Management | Management | confirmar / estornar: Management |

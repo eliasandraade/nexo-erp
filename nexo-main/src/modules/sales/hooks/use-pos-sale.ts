@@ -59,14 +59,22 @@ export function useCompleteSale() {
       // 1. Create draft sale tied to the open cash session
       const draft = await createSale({ cashSessionId });
 
-      // 2. Add items sequentially (backend validates stock per-item)
+      // 2. Add items sequentially (backend validates stock per-item and decides the price)
+      let latest = draft;
       for (const item of items) {
-        await addSaleItem(draft.id, {
+        latest = await addSaleItem(draft.id, {
           productId:      item.productId,
           quantity:       item.quantity,
           unitPrice:      item.unitPrice,
           discountAmount: item.discount ?? 0,
         });
+      }
+
+      // The server prices each line (price lists). If a price changed since the cart was built,
+      // the payments no longer match — stop before charging and let the operator review.
+      const cartSubtotal = items.reduce((s, i) => s + i.unitPrice * i.quantity - (i.discount ?? 0), 0);
+      if (Math.round(latest.subtotal * 100) !== Math.round(cartSubtotal * 100)) {   // compare in cents
+        throw new Error("Os preços mudaram desde que os itens entraram no carrinho. Remova e adicione os itens de novo.");
       }
       pending.current = { key, saleId: draft.id };
 

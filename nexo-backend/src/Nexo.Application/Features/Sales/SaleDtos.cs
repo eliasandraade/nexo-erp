@@ -82,7 +82,7 @@ public record SaleItemDto(
     string ProductCode,
     decimal Quantity,
     decimal UnitPrice,
-    decimal CostPrice,
+    decimal? CostPrice,      // null for roles that must not see costs (Vendedor)
     decimal DiscountAmount,
     decimal Total,
     string? Notes);

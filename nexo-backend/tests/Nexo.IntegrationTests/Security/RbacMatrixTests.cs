@@ -98,7 +98,7 @@ public class RbacMatrixTests
         { "GET",    "/api/restaurante/delivery-orders",        Seller,  true  },
         { "GET",    "/api/restaurante/delivery-orders",        Kitchen, false },
         { "DELETE", $"/api/restaurante/coupons/{R}",           Seller,  false },
-        { "GET",    "/api/restaurante/recipe-cards",           Kitchen, true  },
+        { "GET",    "/api/restaurante/recipe-cards",           Kitchen, false },   // costs: stock only (PR 48)
         { "GET",    "/api/restaurante/recipe-cards",           Seller,  false },
         { "GET",    "/api/restaurante/employees",              Seller,  false },
         { "GET",    "/api/restaurante/employees",              Manager, true  },

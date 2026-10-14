@@ -127,6 +127,48 @@ public class PriceListTests
         (await seller.GetAsync($"/api/products/{product}/sheet.pdf")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    [Fact]
+    public async Task Only_one_list_is_default_even_after_reactivating_an_old_one()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var product = await ProductAsync(c, salePrice: 10m);
+        var first = await ListAsync(c, "Padrão A PR48", isDefault: true);
+        await PriceAsync(c, first, product, 9m);
+        (await c.PostAsync($"{Lists}/{first}/deactivate", null)).EnsureSuccessStatusCode();
+
+        var second = await ListAsync(c, "Padrão B PR48", isDefault: true);
+        await PriceAsync(c, second, product, 8m);
+        (await c.PostAsync($"{Lists}/{first}/activate", null)).EnsureSuccessStatusCode();
+
+        var all = await c.GetFromJsonAsync<List<PriceListDto>>($"{Lists}?includeInactive=true");
+        all!.Count(l => l.IsDefault).Should().Be(1);
+        all.Single(l => l.Id == second).IsDefault.Should().BeTrue();
+        all.Single(l => l.Id == second).ItemCount.Should().Be(1);
+        (await AddLineAsync(c, product, null)).UnitPrice.Should().Be(8m);
+
+        await ResetDefaultAsync(c, second);
+    }
+
+    [Fact]
+    public async Task Linking_an_unknown_customer_is_not_found()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var list = await ListAsync(c, "Sem cliente PR48");
+        (await c.PutAsync($"{Lists}/{list}/customers/{Guid.NewGuid()}", null))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Sellers_do_not_see_line_costs_on_the_sale()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var product = await ProductAsync(admin, salePrice: 10m, costPrice: 4m);
+        var seller = await SellerAsync();
+
+        (await AddLineAsync(seller, product, null)).CostPrice.Should().BeNull();
+        (await AddLineAsync(admin, product, null)).CostPrice.Should().Be(4m);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private static async Task<T> OkAsync<T>(HttpResponseMessage resp)

@@ -29,6 +29,4 @@ public static class AppRoles
     /// <summary>Everyone running the restaurant (floor + kitchen): reading orders, menu and settings.</summary>
     public const string RestaurantOps = "Gerente,Diretoria,Vendedor,Cozinha";
 
-    /// <summary>Recipe cards: kept by stock, read by the kitchen.</summary>
-    public const string RecipeReaders = "Gerente,Diretoria,Estoquista,Cozinha";
 }

@@ -17,15 +17,18 @@ public class PriceListService : IPriceResolver
 {
     private readonly IPriceListRepository _priceLists;
     private readonly IProductRepository   _products;
+    private readonly ICustomerRepository  _customers;
     private readonly ICurrentTenant       _currentTenant;
 
     public PriceListService(
         IPriceListRepository priceLists,
         IProductRepository   products,
+        ICustomerRepository  customers,
         ICurrentTenant       currentTenant)
     {
         _priceLists    = priceLists;
         _products      = products;
+        _customers     = customers;
         _currentTenant = currentTenant;
     }
 
@@ -85,10 +88,8 @@ public class PriceListService : IPriceResolver
     public async Task<PriceListDto> CreateAsync(CreatePriceListRequest request, CancellationToken ct = default)
     {
         if (request.IsDefault)
-        {
-            var current = await _priceLists.GetDefaultAsync(ct);
-            current?.UnsetDefault();
-        }
+            foreach (var other in await _priceLists.GetAllDefaultsAsync(ct))
+                other.UnsetDefault();
 
         var pl = RetPriceList.Create(
             tenantId:    _currentTenant.Id,
@@ -116,12 +117,13 @@ public class PriceListService : IPriceResolver
 
     public async Task<PriceListDto> SetAsDefaultAsync(Guid id, CancellationToken ct = default)
     {
-        var current = await _priceLists.GetDefaultAsync(ct);
-        if (current is not null && current.Id != id)
-            current.UnsetDefault();
-
         var pl = await _priceLists.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("PriceList", id);
+
+        // One default per tenant — including inactive ones, or re-activating them would make two.
+        foreach (var other in (await _priceLists.GetAllDefaultsAsync(ct)).Where(l => l.Id != id))
+            other.UnsetDefault();
+        await _priceLists.SaveChangesAsync(ct);
 
         pl.SetAsDefault();
         await _priceLists.SaveChangesAsync(ct);
@@ -168,18 +170,16 @@ public class PriceListService : IPriceResolver
         var pl = await _priceLists.GetByIdWithItemsAsync(id, ct)
             ?? throw new NotFoundException("PriceList", id);
 
+        _ = await _customers.GetByIdAsync(customerId, ct)          // tenant-filtered: another tenant's id is "not found"
+            ?? throw new NotFoundException("Customer", customerId);
+
         var existing = await _priceLists.GetCustomerLinkAsync(customerId, ct);
-        if (existing is not null && existing.PriceListId != id)
-        {
+        if (existing?.PriceListId == id)
+            return await MapToDetailAsync(pl, ct);
+        if (existing is not null)
             _priceLists.RemoveCustomerLink(existing);
-            await _priceLists.SaveChangesAsync(ct);
-            existing = null;
-        }
-        if (existing is null)
-        {
-            await _priceLists.AddCustomerLinkAsync(RetCustomerPriceList.Create(_currentTenant.Id, customerId, id), ct);
-            await _priceLists.SaveChangesAsync(ct);
-        }
+        await _priceLists.AddCustomerLinkAsync(RetCustomerPriceList.Create(_currentTenant.Id, customerId, id), ct);
+        await _priceLists.SaveChangesAsync(ct);   // one save: the customer is never left without a list
         return await MapToDetailAsync(pl, ct);
     }
 

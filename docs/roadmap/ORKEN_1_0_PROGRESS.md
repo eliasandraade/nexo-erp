@@ -29,7 +29,7 @@
   - `RbacCoverageTests`, um guard estrutural: ação nova sem papel quebra o build;
   - `RbacMatrixTests`, 66 casos por papel.
 - **Matriz:** [`docs/security/rbac-matrix.md`](../security/rbac-matrix.md).
-- **Riscos restantes:** `CostPrice` exposto em `GET /products` (resolver no PR 48); `DELETE /categories/{id}` não existe.
+- **Riscos restantes:** ~~`CostPrice` exposto em `GET /products`~~ (resolvido no PR 48); `DELETE /categories/{id}` não existe.
 - **Maturidade:** Auth/Segurança e papéis 50% → ~80%.
 
 ## PR 43 — PDV: integridade de pagamentos
@@ -250,5 +250,11 @@
   - preços por produto;
   - clientes vinculados.
 - **Testes:**
-  - `PriceListTests`: 5 testes de integração (preço do servidor contra o do cliente, precedência cliente/padrão/prioridade, vigência expirada e futura, lista inativa, itens novos e atualizados com vínculo único de cliente, custo oculto ao vendedor).
+  - `PriceListTests`: 8 testes de integração (preço do servidor contra o do cliente, precedência cliente/padrão/prioridade, vigência expirada e futura, lista inativa, itens novos e atualizados com vínculo único de cliente, custo oculto ao vendedor).
   - Playwright: tela de listas.
+- **Revisão independente (corrigido antes do merge):**
+  - O custo ainda vazava por dois caminhos: as linhas da venda (`SaleItemDto.CostPrice`) e a ficha técnica do restaurante. Agora as linhas vêm sem custo para quem não é da gestão nem do estoque, e a ficha técnica ficou restrita ao estoque (nenhuma tela da cozinha usa a ficha).
+  - Era possível ter duas listas padrão: uma padrão inativa mantinha a marca e podia ser reativada. Agora, ao definir uma padrão, todas as outras perdem a marca, inclusive as inativas. Entrou também um índice único parcial, `ux_ret_price_lists_one_default`, e a migration desmarca as duplicadas antes, mantendo a padrão mais recente.
+  - PDV: se o preço mudar entre montar o carrinho e fechar a venda, a venda para antes de cobrar.
+  - Vigência mostrada no dia local; prioridade inteira; vínculo de cliente valida que o cliente existe e troca a lista numa única gravação; contagem de itens correta na listagem; nomes de produtos de outras lojas aparecem.
+  - +3 testes de integração (padrão única após reativar, cliente inexistente → 404, custo oculto na venda para o vendedor).

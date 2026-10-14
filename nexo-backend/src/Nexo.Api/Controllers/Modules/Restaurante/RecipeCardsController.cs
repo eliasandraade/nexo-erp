@@ -21,18 +21,18 @@ public class RecipeCardsController : ControllerBase
     public RecipeCardsController(RecipeCardService service) => _service = service;
 
     [HttpGet]
-    [Authorize(Roles = AppRoles.RecipeReaders)]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<IReadOnlyList<RecipeCardDto>>> GetAll(
         [FromQuery] bool includeInactive = false, CancellationToken ct = default)
         => Ok(await _service.GetAllAsync(includeInactive, ct));
 
     [HttpGet("{id:guid}")]
-    [Authorize(Roles = AppRoles.RecipeReaders)]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<RecipeCardDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await _service.GetByIdAsync(id, ct));
 
     [HttpGet("product/{productId:guid}")]
-    [Authorize(Roles = AppRoles.RecipeReaders)]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<RecipeCardDto>> GetByProduct(Guid productId, CancellationToken ct)
         => Ok(await _service.GetByProductIdAsync(productId, ct));
 

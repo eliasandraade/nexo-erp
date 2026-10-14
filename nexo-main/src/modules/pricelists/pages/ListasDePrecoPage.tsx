@@ -22,7 +22,12 @@ import {
   type PriceListDetailDto, type PriceListDto,
 } from "../api/pricelists.api";
 
-const dateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
+// Validity is stored in UTC; the date field shows the operator's local day (not the UTC one).
+const dateInput = (iso: string | null) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 const toIso = (date: string, endOfDay = false) =>
   date ? new Date(`${date}T${endOfDay ? "23:59:59" : "00:00:00"}`).toISOString() : null;
 
@@ -131,7 +136,7 @@ function ListEditor({ id, onChanged }: { id: string; onChanged: () => void }) {
       name: form!.name.trim(),
       validFrom: toIso(form!.validFrom),
       validUntil: toIso(form!.validUntil, true),
-      priority: Number(form!.priority) || 0,
+      priority: Number.parseInt(form!.priority, 10) || 0,   // the API takes an integer
     }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: [...PRICE_LISTS_KEY, id] }); onChanged(); setForm(null); toast.success("Lista atualizada."); },
     onError: fail,
