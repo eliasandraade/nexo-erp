@@ -328,7 +328,7 @@ public class SaleService
                         await _cash.AddMovementAsync(CashMovement.Create(
                             _currentTenant.Id,
                             drawerId,
-                            CashMovementType.Withdrawal,
+                            CashMovementType.SaleRefund,
                             receipt.Amount,
                             $"Estorno Venda #{sale.Number}",
                             _currentUser.UserId,

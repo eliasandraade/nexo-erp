@@ -123,3 +123,21 @@ test('Portal público: serviço real da fixture e seleção por teclado',async({
  await page.screenshot({path:'../docs/orken-experience/screenshots/qa/portal-390.png',fullPage:true});
  await page.getByRole('button',{name:/Serviço de teste/}).focus();await page.keyboard.press('Enter');await expect(page.getByRole('button',{name:'Profissional de teste',exact:true})).toBeVisible();
 });
+test('Caixa: esperado do backend, recebimentos por forma e histórico de fechamentos',async({page})=>{
+ await prepare(page);
+ const open={id:'qa-cash',status:'Open',openedByUserId:'qa',openedByName:'Revisão local',closedByUserId:null,closedByName:null,openingBalance:100,closingBalance:null,openedAt:'2026-10-14T08:00:00Z',closedAt:null,notes:null,movements:null,expectedBalance:null,difference:null,closingNotes:null,summary:null};
+ const summary={openingBalance:100,cashSales:20,deposits:50,withdrawals:30,refunds:0,expectedBalance:140,receiptsByMethod:[{method:'Cash',type:'Cash',count:1,amount:20},{method:'Pix',type:'Cash',count:1,amount:15}]};
+ const closed={...open,id:'qa-old',status:'Closed',closedByName:'Revisão local',closingBalance:135,closedAt:'2026-10-13T20:00:00Z',expectedBalance:140,difference:-5,closingNotes:'Faltou troco'};
+ await page.route('**/api/cash/sessions**',route=>{const p=new URL(route.request().url()).pathname;
+  const body=p.endsWith('/sessions/open')?open:p.endsWith('/sessions/qa-cash')?{...open,movements:[],summary}:p.endsWith('/sessions')?[open,closed]:{};
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});});
+ for(const width of [1440,390]){
+  await page.setViewportSize({width,height:900});await page.goto('/caixa');
+  await expect(page.getByText('Recebimentos por forma de pagamento')).toBeVisible();
+  await expect(page.getByText('Pix',{exact:true})).toBeVisible();
+  await expect(page.getByText('Falta R$ 5,00',{exact:false})).toBeVisible();
+  await expect(page.getByText('R$ 140,00').first()).toBeVisible();
+  await noOverflow(page);
+  await page.screenshot({path:'test-results/caixa-'+width+'.png',fullPage:true});
+ }
+});

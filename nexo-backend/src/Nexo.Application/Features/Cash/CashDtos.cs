@@ -6,10 +6,11 @@ public record OpenCashSessionRequest(
     decimal OpeningBalance,
     string? Notes = null);
 
-public record CloseCashSessionRequest(decimal ClosingBalance);
+/// <summary>ClosingBalance = what was counted in the drawer; Notes explain a difference.</summary>
+public record CloseCashSessionRequest(decimal ClosingBalance, string? Notes = null);
 
 public record AddCashMovementRequest(
-    string MovementType,        // "SaleIncome" | "ManualEntry" | "ManualWithdrawal" | "Expense" | "OpeningBalance" | "ClosingBalance"
+    string MovementType,        // "Deposit" (suprimento) | "Withdrawal" (sangria) — the only manual kinds
     decimal Amount,
     string Description,
     string? ReferenceType = null,
@@ -39,4 +40,21 @@ public record CashSessionDto(
     DateTime OpenedAt,
     DateTime? ClosedAt,
     string? Notes,
-    IReadOnlyList<CashMovementDto>? Movements);
+    IReadOnlyList<CashMovementDto>? Movements,
+    decimal? ExpectedBalance = null,    // frozen at closing
+    decimal? Difference = null,         // counted − expected (closed sessions)
+    string? ClosingNotes = null,
+    CashSessionSummaryDto? Summary = null);
+
+/// <summary>Drawer totals of a session and what was received in it by payment method.</summary>
+public record CashSessionSummaryDto(
+    decimal OpeningBalance,
+    decimal CashSales,
+    decimal Deposits,
+    decimal Withdrawals,
+    decimal Refunds,
+    decimal ExpectedBalance,
+    IReadOnlyList<CashPaymentTotalDto> ReceiptsByMethod);
+
+/// <summary>Sale payments of the session grouped by method (Pix/card included — they never enter the drawer).</summary>
+public record CashPaymentTotalDto(string Method, string Type, int Count, decimal Amount);

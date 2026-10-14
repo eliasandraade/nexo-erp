@@ -5,7 +5,8 @@ export type CashMovementType =
   | "SaleReceipt"
   | "Withdrawal"
   | "Deposit"
-  | "Closing";
+  | "Closing"
+  | "SaleRefund";
 
 export type CashSessionStatus = "Open" | "Closed";
 
@@ -33,6 +34,30 @@ export interface CashSessionDto {
   closedAt: string | null;
   notes: string | null;
   movements: CashMovementDto[] | null;
+  /** Frozen at closing (closed sessions). */
+  expectedBalance: number | null;
+  /** Counted − expected: positive = sobra, negative = falta. */
+  difference: number | null;
+  closingNotes: string | null;
+  /** Drawer totals computed by the backend (open sessions: live). */
+  summary: CashSessionSummaryDto | null;
+}
+
+export interface CashPaymentTotalDto {
+  method: string;
+  type: string;
+  count: number;
+  amount: number;
+}
+
+export interface CashSessionSummaryDto {
+  openingBalance: number;
+  cashSales: number;
+  deposits: number;
+  withdrawals: number;
+  refunds: number;
+  expectedBalance: number;
+  receiptsByMethod: CashPaymentTotalDto[];
 }
 
 // ── Request types ──────────────────────────────────────────────────────────────
@@ -43,7 +68,10 @@ export interface OpenCashSessionRequest {
 }
 
 export interface CloseCashSessionRequest {
+  /** What was counted in the drawer. */
   closingBalance: number;
+  /** Explains a difference — kept with the closing. */
+  notes?: string;
 }
 
 export interface AddCashMovementRequest {
@@ -60,6 +88,17 @@ export const MOVEMENT_TYPE_LABEL: Record<CashMovementType, string> = {
   Withdrawal:  "Sangria",
   Deposit:     "Suprimento",
   Closing:     "Fechamento",
+  SaleRefund:  "Estorno de venda",
+};
+
+export const PAYMENT_METHOD_LABEL: Record<string, string> = {
+  Cash:     "Dinheiro",
+  Pix:      "Pix",
+  Debit:    "Cartão de débito",
+  Credit:   "Cartão de crédito",
+  Transfer: "Transferência",
+  Check:    "Cheque",
+  Other:    "Outro",
 };
 
 export const MOVEMENT_TYPE_VARIANT: Record<
@@ -71,6 +110,7 @@ export const MOVEMENT_TYPE_VARIANT: Record<
   Withdrawal:  "destructive",
   Deposit:     "default",
   Closing:     "secondary",
+  SaleRefund:  "destructive",
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -84,7 +124,7 @@ export function deriveExpectedBalance(
     if (m.movementType === "Deposit" || m.movementType === "SaleReceipt") {
       return acc + m.amount;
     }
-    if (m.movementType === "Withdrawal") {
+    if (m.movementType === "Withdrawal" || m.movementType === "SaleRefund") {
       return acc - m.amount;
     }
     return acc;

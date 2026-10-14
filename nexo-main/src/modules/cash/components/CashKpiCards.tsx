@@ -36,7 +36,7 @@ function KpiCard({ icon: Icon, label, value, highlight = "neutral" }: KpiCardPro
 
 export function CashKpiCards({ openingBalance, expectedBalance, movementsCount }: CashKpiCardsProps) {
   return (
-    <div className="grid grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
       <KpiCard
         icon={Wallet}
         label="Abertura"
