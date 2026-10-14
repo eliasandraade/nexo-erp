@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Filters;
 using Nexo.Application.Modules.Restaurante;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Restaurante;
 
@@ -20,7 +21,7 @@ namespace Nexo.Api.Controllers.Modules.Restaurante;
 /// </summary>
 [ApiController]
 [Route("api/restaurante/delivery-orders")]
-[Authorize]
+[Authorize(Roles = AppRoles.Floor)]
 [RequireModule("restaurante")]
 public class DeliveryOrdersController : ControllerBase
 {

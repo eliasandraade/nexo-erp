@@ -1,6 +1,7 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexo.Api.Authorization;
 using Nexo.Application.Features.Settings;
 
 namespace Nexo.Api.Controllers;
@@ -31,7 +32,7 @@ public class SettingsController : ControllerBase
 
     /// <summary>Replaces all settings sections. Diretoria and Gerente only.</summary>
     [HttpPut]
-    [Authorize(Roles = "Gerente,Diretoria")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<SettingsDto>> Update(
         [FromBody] UpdateSettingsRequest request,
         CancellationToken ct)

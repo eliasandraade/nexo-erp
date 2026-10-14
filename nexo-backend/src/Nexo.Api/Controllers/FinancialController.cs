@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexo.Api.Authorization;
 using Nexo.Application.Features.Financial;
 
 namespace Nexo.Api.Controllers;
@@ -7,7 +8,7 @@ namespace Nexo.Api.Controllers;
 [ApiController]
 [Route("api/financial")]
 // Contas a pagar/receber move money: management only (no other role has a financial screen).
-[Authorize(Roles = "Gerente,Diretoria")]
+[Authorize(Roles = AppRoles.Management)]
 public class FinancialController : ControllerBase
 {
     private readonly FinancialService _service;

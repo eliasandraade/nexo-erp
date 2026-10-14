@@ -5,12 +5,13 @@ using Nexo.Api.Filters;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Modules.Restaurante;
 using Nexo.Infrastructure.Persistence;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Restaurante;
 
 [ApiController]
 [Route("api/restaurante/expenses")]
-[Authorize]
+[Authorize(Roles = AppRoles.Management)]
 [RequireModule("restaurante")]
 public class ExpensesController : ControllerBase
 {

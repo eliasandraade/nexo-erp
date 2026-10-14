@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Common;
 using Nexo.Application.Features.Products;
 using Nexo.Application.Integrations.Pdf;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers;
 
@@ -51,6 +52,7 @@ public class ProductsController : ControllerBase
         => Ok(await _service.GetByIdAsync(id, ct));
 
     [HttpPost]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<ProductDto>> Create(
         [FromBody] CreateProductRequest request,
         CancellationToken ct)
@@ -60,6 +62,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<ProductDto>> Update(
         Guid id,
         [FromBody] UpdateProductRequest request,
@@ -67,6 +70,7 @@ public class ProductsController : ControllerBase
         => Ok(await _service.UpdateAsync(id, request, ct));
 
     [HttpPatch("{id:guid}/prices")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<ProductDto>> UpdatePrices(
         Guid id,
         [FromBody] UpdateProductPricesRequest request,
@@ -74,6 +78,7 @@ public class ProductsController : ControllerBase
         => Ok(await _service.UpdatePricesAsync(id, request, ct));
 
     [HttpPost("{id:guid}/activate")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<IActionResult> Activate(Guid id, CancellationToken ct)
     {
         await _service.ActivateAsync(id, ct);
@@ -81,6 +86,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/deactivate")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
     {
         await _service.DeactivateAsync(id, ct);
@@ -88,6 +94,7 @@ public class ProductsController : ControllerBase
     }
 
     [HttpPatch("{id:guid}/image")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<ProductDto>> SetImage(
         Guid id,
         [FromBody] SetProductImageRequest request,

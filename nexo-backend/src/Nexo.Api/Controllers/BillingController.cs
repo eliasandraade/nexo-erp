@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexo.Api.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Nexo.Application.Common.Interfaces;
@@ -60,7 +61,7 @@ public class BillingController : ControllerBase
     /// Activation happens via webhook, NOT via the success_url callback.
     /// </summary>
     [HttpPost("checkout")]
-    [Authorize(Roles = "Gerente,Diretoria")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<IActionResult> CreateCheckout([FromBody] CreateCheckoutBody body, CancellationToken ct)
     {
         if (!_flags.StripeEnabled)
@@ -112,7 +113,7 @@ public class BillingController : ControllerBase
     /// Returns { portalUrl } — frontend should redirect to this URL.
     /// </summary>
     [HttpPost("portal")]
-    [Authorize(Roles = "Gerente,Diretoria")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<IActionResult> CreatePortal([FromBody] CreatePortalBody? body, CancellationToken ct)
     {
         if (!_flags.StripeEnabled)

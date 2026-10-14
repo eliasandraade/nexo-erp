@@ -2,12 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Features.Reports;
 using Nexo.Infrastructure.Reports;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers;
 
 [ApiController]
 [Route("api/reports")]
-[Authorize]
+[Authorize(Roles = AppRoles.Management)]
 public class ReportsController : ControllerBase
 {
     private readonly ReportsService _service;

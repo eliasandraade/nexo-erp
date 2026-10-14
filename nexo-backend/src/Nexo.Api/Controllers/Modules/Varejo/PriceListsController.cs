@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Filters;
 using Nexo.Application.Modules.Varejo;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Varejo;
 
@@ -11,7 +12,7 @@ namespace Nexo.Api.Controllers.Modules.Varejo;
 /// </summary>
 [ApiController]
 [Route("api/varejo/price-lists")]
-[Authorize]
+[Authorize(Roles = AppRoles.Management)]
 [RequireModule("varejo")]
 public class PriceListsController : ControllerBase
 {

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Features.Categories;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers;
 
@@ -24,6 +25,7 @@ public class CategoriesController : ControllerBase
         => Ok(await _service.GetByIdAsync(id, ct));
 
     [HttpPost]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<CategoryDto>> Create(
         [FromBody] CreateCategoryRequest request,
         CancellationToken ct)
@@ -33,6 +35,7 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<CategoryDto>> Update(
         Guid id,
         [FromBody] UpdateCategoryRequest request,
@@ -40,6 +43,7 @@ public class CategoriesController : ControllerBase
         => Ok(await _service.UpdateAsync(id, request, ct));
 
     [HttpPost("{id:guid}/activate")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<IActionResult> Activate(Guid id, CancellationToken ct)
     {
         await _service.ActivateAsync(id, ct);
@@ -47,6 +51,7 @@ public class CategoriesController : ControllerBase
     }
 
     [HttpPost("{id:guid}/deactivate")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
     {
         await _service.DeactivateAsync(id, ct);

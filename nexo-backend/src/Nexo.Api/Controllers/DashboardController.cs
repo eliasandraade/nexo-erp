@@ -2,12 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Features.Dashboard;
 using Nexo.Infrastructure.Dashboard;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers;
 
 [ApiController]
 [Route("api/dashboard")]
-[Authorize]
+[Authorize(Roles = AppRoles.Management)]
 public class DashboardController : ControllerBase
 {
     private readonly DashboardService _service;

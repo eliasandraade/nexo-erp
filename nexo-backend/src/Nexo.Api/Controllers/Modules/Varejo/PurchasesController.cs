@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Filters;
 using Nexo.Application.Modules.Varejo;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Varejo;
 
@@ -20,15 +21,18 @@ public class PurchasesController : ControllerBase
     public PurchasesController(PurchaseService service) => _service = service;
 
     [HttpGet]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<IReadOnlyList<PurchaseDto>>> GetAll(CancellationToken ct)
         => Ok(await _service.GetAllAsync(ct));
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<PurchaseDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await _service.GetByIdAsync(id, ct));
 
     /// <summary>Cria uma compra em Draft.</summary>
     [HttpPost]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<PurchaseDto>> Create(
         [FromBody] CreatePurchaseRequest request,
         CancellationToken ct)
@@ -39,6 +43,7 @@ public class PurchasesController : ControllerBase
 
     /// <summary>Adiciona um produto à compra (apenas Draft).</summary>
     [HttpPost("{id:guid}/items")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<PurchaseDto>> AddItem(
         Guid id,
         [FromBody] AddPurchaseItemRequest request,
@@ -47,6 +52,7 @@ public class PurchasesController : ControllerBase
 
     /// <summary>Remove um item da compra (apenas Draft).</summary>
     [HttpDelete("{id:guid}/items/{itemId:guid}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<PurchaseDto>> RemoveItem(
         Guid id,
         Guid itemId,
@@ -58,6 +64,7 @@ public class PurchasesController : ControllerBase
     /// Operação atômica — uma transação por compra.
     /// </summary>
     [HttpPost("{id:guid}/confirm")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<PurchaseDto>> Confirm(Guid id, CancellationToken ct)
         => Ok(await _service.ConfirmAsync(id, ct));
 
@@ -65,6 +72,7 @@ public class PurchasesController : ControllerBase
     /// Cancela a compra. Se já confirmada, reverte o estoque automaticamente.
     /// </summary>
     [HttpPost("{id:guid}/cancel")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<PurchaseDto>> Cancel(Guid id, CancellationToken ct)
         => Ok(await _service.CancelAsync(id, ct));
 }

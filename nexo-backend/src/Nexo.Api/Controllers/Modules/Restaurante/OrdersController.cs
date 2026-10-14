@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Filters;
 using Nexo.Application.Modules.Restaurante;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Restaurante;
 
@@ -28,15 +29,18 @@ public class OrdersController : ControllerBase
     public OrdersController(OrderService service) => _service = service;
 
     [HttpGet]
+    [Authorize(Roles = AppRoles.RestaurantOps)]
     public async Task<ActionResult<IReadOnlyList<OrderDto>>> GetAll(CancellationToken ct)
         => Ok(await _service.GetAllAsync(ct));
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = AppRoles.RestaurantOps)]
     public async Task<ActionResult<OrderDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await _service.GetByIdAsync(id, ct));
 
     /// <summary>Abre uma comanda para a mesa. Mesa → Occupied.</summary>
     [HttpPost]
+    [Authorize(Roles = AppRoles.Floor)]
     public async Task<ActionResult<OrderDto>> Open(
         [FromBody] OpenOrderRequest request, CancellationToken ct)
     {
@@ -46,6 +50,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Adiciona um item à comanda (snapshot do preço atual do produto).</summary>
     [HttpPost("{id:guid}/items")]
+    [Authorize(Roles = AppRoles.Floor)]
     public async Task<ActionResult<OrderDto>> AddItem(
         Guid id, [FromBody] AddOrderItemRequest request, CancellationToken ct)
         => Ok(await _service.AddItemAsync(id, request, ct));
@@ -55,6 +60,7 @@ public class OrdersController : ControllerBase
     /// Valores válidos: Preparing | Ready | Delivered
     /// </summary>
     [HttpPatch("{id:guid}/items/{itemId:guid}/status")]
+    [Authorize(Roles = AppRoles.RestaurantOps)]
     public async Task<ActionResult<OrderDto>> UpdateItemStatus(
         Guid id, Guid itemId,
         [FromBody] UpdateOrderItemStatusRequest request, CancellationToken ct)
@@ -62,6 +68,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Cancela um item individual da comanda.</summary>
     [HttpDelete("{id:guid}/items/{itemId:guid}")]
+    [Authorize(Roles = AppRoles.Floor)]
     public async Task<ActionResult<OrderDto>> CancelItem(
         Guid id, Guid itemId, CancellationToken ct)
         => Ok(await _service.CancelItemAsync(id, itemId, ct));
@@ -71,6 +78,7 @@ public class OrdersController : ControllerBase
     /// Mesa permanece Occupied. Retorna saleId para exibir ao cliente.
     /// </summary>
     [HttpPost("{id:guid}/close")]
+    [Authorize(Roles = AppRoles.Floor)]
     public async Task<ActionResult<CloseOrderResponse>> Close(Guid id, CancellationToken ct)
         => Ok(await _service.CloseAsync(id, ct));
 
@@ -80,12 +88,14 @@ public class OrdersController : ControllerBase
     /// Idempotente: segunda chamada retorna 409.
     /// </summary>
     [HttpPost("{id:guid}/pay")]
+    [Authorize(Roles = AppRoles.Floor)]
     public async Task<ActionResult<OrderDto>> Pay(
         Guid id, [FromBody] PayOrderRequest request, CancellationToken ct)
         => Ok(await _service.PayAsync(id, request, ct));
 
     /// <summary>Cancela a comanda. Mesa → Available.</summary>
     [HttpPost("{id:guid}/cancel")]
+    [Authorize(Roles = AppRoles.Floor)]
     public async Task<ActionResult<OrderDto>> Cancel(Guid id, CancellationToken ct)
         => Ok(await _service.CancelAsync(id, ct));
 }

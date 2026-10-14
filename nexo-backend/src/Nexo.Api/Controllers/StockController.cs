@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Features.Stock;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers;
 
@@ -14,10 +15,12 @@ public class StockController : ControllerBase
     public StockController(StockService service) => _service = service;
 
     [HttpGet]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<IReadOnlyList<StockItemDto>>> GetAll(CancellationToken ct)
         => Ok(await _service.GetAllAsync(ct));
 
     [HttpGet("paged")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<StockPagedResponse>> GetPaged(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
@@ -31,15 +34,17 @@ public class StockController : ControllerBase
     }
 
     [HttpGet("product/{productId:guid}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<StockItemDto>> GetByProduct(Guid productId, CancellationToken ct)
         => Ok(await _service.GetByProductIdAsync(productId, ct));
 
     [HttpGet("product/{productId:guid}/movements")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<IReadOnlyList<StockMovementDto>>> GetMovements(Guid productId, CancellationToken ct)
         => Ok(await _service.GetMovementsAsync(productId, ct));
 
     [HttpPost("adjust")]
-    [Authorize(Roles = "Gerente,Diretoria,Estoquista")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<StockItemDto>> Adjust(
         [FromBody] AdjustStockRequest request,
         CancellationToken ct)

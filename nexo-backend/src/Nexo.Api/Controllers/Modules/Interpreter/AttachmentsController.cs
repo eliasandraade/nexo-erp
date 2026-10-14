@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Interpreter.Interfaces;
 using Nexo.Domain.Modules.Interpreter;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Interpreter;
 
@@ -12,7 +13,7 @@ namespace Nexo.Api.Controllers.Modules.Interpreter;
 /// </summary>
 [ApiController]
 [Route("api/v1/interpreter/attachments")]
-[Authorize]
+[Authorize(Roles = AppRoles.Management)]
 public class AttachmentsController : ControllerBase
 {
     private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)

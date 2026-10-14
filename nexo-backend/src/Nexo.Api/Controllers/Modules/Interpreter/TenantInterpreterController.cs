@@ -5,6 +5,7 @@ using Nexo.Application.Modules.Interpreter;
 using Nexo.Application.Modules.Interpreter.Interfaces;
 using Nexo.Domain.Exceptions;
 using Nexo.Domain.Modules.Interpreter;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Interpreter;
 
@@ -16,7 +17,7 @@ namespace Nexo.Api.Controllers.Modules.Interpreter;
 /// </summary>
 [ApiController]
 [Route("api/v1/tenants")]
-[Authorize]
+[Authorize(Roles = AppRoles.Management)]
 public class TenantInterpreterController : ControllerBase
 {
     private readonly ITenantStopwordRepository            _stopwordRepo;

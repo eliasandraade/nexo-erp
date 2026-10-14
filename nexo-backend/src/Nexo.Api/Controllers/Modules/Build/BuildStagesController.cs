@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Filters;
 using Nexo.Application.Modules.Build;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Build;
 
@@ -18,7 +19,7 @@ namespace Nexo.Api.Controllers.Modules.Build;
 /// </summary>
 [ApiController]
 [Route("api/v1/build")]
-[Authorize]
+[Authorize(Roles = AppRoles.Management)]
 [RequireModule("build")]
 public class BuildStagesController : ControllerBase
 {
