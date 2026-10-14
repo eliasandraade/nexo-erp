@@ -48,6 +48,8 @@ const MovimentacoesPage     = lazy(() => import("@/modules/inventory/pages/Movim
 const AjustesPage           = lazy(() => import("@/modules/inventory/pages/AjustesPage"));
 const InventarioPage        = lazy(() => import("@/modules/inventory/pages/InventarioPage"));
 const TransferenciasPage    = lazy(() => import("@/modules/inventory/pages/TransferenciasPage"));
+const ComprasPage           = lazy(() => import("@/modules/purchases/pages/ComprasPage"));
+const CompraDetailPage      = lazy(() => import("@/modules/purchases/pages/CompraDetailPage"));
 const ClientesPage          = lazy(() => import("@/modules/customers/pages/ClientesPage"));
 const CustomerFormPage      = lazy(() => import("@/modules/customers/pages/CustomerFormPage"));
 const FornecedoresPage      = lazy(() => import("@/modules/suppliers/pages/FornecedoresPage"));
@@ -291,6 +293,8 @@ export function AppRouter() {
                   <Route path="/estoque/ajustes"       element={<AjustesPage />} />
                   <Route path="/estoque/inventario"    element={<InventarioPage />} />
                   <Route path="/estoque/transferencias" element={<TransferenciasPage />} />
+                  <Route path="/compras"               element={<ComprasPage />} />
+                  <Route path="/compras/:id"           element={<CompraDetailPage />} />
                 </Route>
               </Route>
             </Route>

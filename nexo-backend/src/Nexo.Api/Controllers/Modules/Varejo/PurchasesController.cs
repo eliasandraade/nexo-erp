@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Nexo.Api.Filters;
 using Nexo.Application.Modules.Varejo;
 using Nexo.Api.Authorization;
 
@@ -12,8 +11,8 @@ namespace Nexo.Api.Controllers.Modules.Varejo;
 /// </summary>
 [ApiController]
 [Route("api/varejo/purchases")]
+// Compras are Core (stores and restaurants both buy) — no vertical module gate.
 [Authorize]
-[RequireModule("varejo")]
 public class PurchasesController : ControllerBase
 {
     private readonly PurchaseService _service;
@@ -59,20 +58,30 @@ public class PurchasesController : ControllerBase
         CancellationToken ct)
         => Ok(await _service.RemoveItemAsync(id, itemId, ct));
 
+    /// <summary>Envia o pedido ao fornecedor (itens congelados, sem efeito em estoque).</summary>
+    [HttpPost("{id:guid}/order")]
+    [Authorize(Roles = AppRoles.Stock)]
+    public async Task<ActionResult<PurchaseDto>> Order(Guid id, CancellationToken ct)
+        => Ok(await _service.OrderAsync(id, ct));
+
     /// <summary>
-    /// Confirma a compra: gera StockMovement(PurchaseEntry) e atualiza custo do produto.
-    /// Operação atômica — uma transação por compra.
+    /// Recebe a compra: entrada no estoque, custo do produto e conta a pagar ao fornecedor —
+    /// uma transação. Corpo opcional: vencimento, já pago, data e NF.
     /// </summary>
     [HttpPost("{id:guid}/confirm")]
     [Authorize(Roles = AppRoles.Management)]
-    public async Task<ActionResult<PurchaseDto>> Confirm(Guid id, CancellationToken ct)
-        => Ok(await _service.ConfirmAsync(id, ct));
+    public async Task<ActionResult<PurchaseDto>> Confirm(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] ReceivePurchaseRequest? request,
+        CancellationToken ct)
+        => Ok(await _service.ConfirmAsync(id, request, ct));
 
-    /// <summary>
-    /// Cancela a compra. Se já confirmada, reverte o estoque automaticamente.
-    /// </summary>
+    /// <summary>Cancela a compra; se recebida, estorna estoque e financeiro.</summary>
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Roles = AppRoles.Management)]
-    public async Task<ActionResult<PurchaseDto>> Cancel(Guid id, CancellationToken ct)
-        => Ok(await _service.CancelAsync(id, ct));
+    public async Task<ActionResult<PurchaseDto>> Cancel(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelPurchaseRequest? request,
+        CancellationToken ct)
+        => Ok(await _service.CancelAsync(id, request?.Reason, ct));
 }

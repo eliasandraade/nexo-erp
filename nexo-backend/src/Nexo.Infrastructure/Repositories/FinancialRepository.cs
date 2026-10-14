@@ -49,6 +49,12 @@ public class FinancialRepository : IFinancialRepository
             .OrderBy(x => x.DueDate)
             .ToListAsync(ct);
 
+    public async Task<IReadOnlyList<FinancialTransaction>> GetTransactionsByReferenceAsync(
+        string referenceType, Guid referenceId, CancellationToken ct = default)
+        => await _context.FinancialTransactions
+            .Where(x => x.ReferenceType == referenceType && x.ReferenceId == referenceId)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<FinancialTransaction>> GetTransactionsBySaleAsync(Guid saleId, CancellationToken ct = default)
         => await _context.FinancialTransactions
             .Where(x => x.ReferenceType == "Sale" && x.ReferenceId == saleId)

@@ -38,6 +38,8 @@ public class RetPurchaseItem : TenantEntity
 
         if (unitCost < 0)
             throw new DomainException("Unit cost cannot be negative.");
+        if (decimal.Round(quantity, 4) != quantity || decimal.Round(unitCost, 4) != unitCost)
+            throw new DomainException("Quantidade e custo têm no máximo 4 casas decimais.");
 
         return new RetPurchaseItem(tenantId)
         {
@@ -45,7 +47,7 @@ public class RetPurchaseItem : TenantEntity
             ProductId  = productId,
             Quantity   = quantity,
             UnitCost   = unitCost,
-            Total      = quantity * unitCost,
+            Total      = Math.Round(quantity * unitCost, 2, MidpointRounding.AwayFromZero),   // money in cents
             Notes      = notes?.Trim(),
         };
     }

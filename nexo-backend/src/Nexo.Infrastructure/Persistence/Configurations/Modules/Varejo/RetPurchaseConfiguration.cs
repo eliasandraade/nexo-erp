@@ -17,6 +17,19 @@ public class RetPurchaseConfiguration : IEntityTypeConfiguration<RetPurchase>
             .HasColumnName("tenant_id")
             .IsRequired();
 
+        // The store that receives the goods — stock is per store.
+        builder.Property(x => x.StoreId)
+            .HasColumnName("store_id")
+            .IsRequired();
+
+        builder.Property(x => x.OrderedAt)
+            .HasColumnName("ordered_at")
+            .HasColumnType("timestamptz");
+
+        builder.Property(x => x.CancellationReason)
+            .HasColumnName("cancellation_reason")
+            .HasMaxLength(500);
+
         builder.Property(x => x.PurchaseNumber)
             .HasColumnName("purchase_number")
             .IsRequired();
@@ -89,9 +102,9 @@ public class RetPurchaseConfiguration : IEntityTypeConfiguration<RetPurchase>
             .OnDelete(DeleteBehavior.Cascade);
 
         // Indexes
-        builder.HasIndex(x => new { x.TenantId, x.PurchaseNumber })
-            .IsUnique()
-            .HasDatabaseName("ix_ret_purchases_tenant_id_number");
+        // Numbered per receiving store.
+        builder.HasIndex(x => new { x.TenantId, x.StoreId, x.PurchaseNumber })
+            .IsUnique();
 
         builder.HasIndex(x => new { x.TenantId, x.Status })
             .HasDatabaseName("ix_ret_purchases_tenant_id_status");

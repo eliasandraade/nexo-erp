@@ -8,6 +8,18 @@ public record CreatePurchaseRequest(
     DateTime? ReceivedAt = null,
     string? Notes = null);
 
+/// <summary>
+/// Recebimento: entrada no estoque, custo e conta a pagar. DueDate = vencimento da conta (padrão:
+/// recebimento + prazo de pagamento do fornecedor); PaidNow = a conta já nasce paga.
+/// </summary>
+public record ReceivePurchaseRequest(
+    DateTime? DueDate = null,
+    bool PaidNow = false,
+    DateTime? ReceivedAt = null,
+    string? InvoiceNumber = null);
+
+public record CancelPurchaseRequest(string? Reason = null);
+
 public record AddPurchaseItemRequest(
     Guid ProductId,
     decimal Quantity,
@@ -39,4 +51,6 @@ public record PurchaseDto(
     DateTime? CancelledAt,
     string? Notes,
     IReadOnlyList<PurchaseItemDto> Items,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    DateTime? OrderedAt = null,
+    string? CancellationReason = null);

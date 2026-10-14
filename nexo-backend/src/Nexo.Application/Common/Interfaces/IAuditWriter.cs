@@ -43,6 +43,8 @@ public static class AuditActions
     public const string SaleCompleted          = "sale_completed";
     public const string SaleCancelled          = "sale_cancelled";
     public const string SaleReturned           = "sale_returned";
+    public const string PurchaseReceived       = "purchase_received";
+    public const string PurchaseCancelled      = "purchase_cancelled";
     public const string ManagerAuthorization   = "manager_authorization";
 
     // Tenants / Billing
