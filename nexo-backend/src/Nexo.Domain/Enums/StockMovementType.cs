@@ -11,4 +11,6 @@ public enum StockMovementType
     Transfer,       // transferência entre locais (futuro)
     Loss,           // perda / vencimento
     RecipeOutput,   // consumo de ingrediente por ficha técnica (módulo Restaurante)
+    TransferOut,    // saída por transferência para outra loja
+    TransferIn,     // entrada por transferência de outra loja
 }

@@ -30,6 +30,13 @@ public class StockMovement : StoreEntity
     // Navigation
     public Product? Product { get; private set; }
 
+    /// <summary>Records the movement in another store of the tenant (transfer destination).</summary>
+    public StockMovement InStore(Guid storeId)
+    {
+        SetStoreId(storeId);
+        return this;
+    }
+
     public static StockMovement Create(
         Guid tenantId,
         Guid productId,

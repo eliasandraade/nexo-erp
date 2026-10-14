@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<ProductService>();
         services.AddScoped<ProductPurchasePriceService>();
         services.AddScoped<StockService>();
+        services.AddScoped<StockOperationsService>();
         services.AddScoped<SaleService>();
         services.AddScoped<CashService>();
         services.AddScoped<FinancialService>();

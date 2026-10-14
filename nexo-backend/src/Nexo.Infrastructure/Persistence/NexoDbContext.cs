@@ -70,6 +70,10 @@ public class NexoDbContext : DbContext
     public DbSet<ProductPurchasePrice> ProductPurchasePrices => Set<ProductPurchasePrice>();
     public DbSet<StockItem> StockItems => Set<StockItem>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
+    public DbSet<InventoryCount> InventoryCounts => Set<InventoryCount>();
+    public DbSet<InventoryCountItem> InventoryCountItems => Set<InventoryCountItem>();
+    public DbSet<StockTransfer> StockTransfers => Set<StockTransfer>();
+    public DbSet<StockTransferItem> StockTransferItems => Set<StockTransferItem>();
     public DbSet<Sale> Sales => Set<Sale>();
     public DbSet<SaleItem> SaleItems => Set<SaleItem>();
     public DbSet<SalePayment> SalePayments => Set<SalePayment>();

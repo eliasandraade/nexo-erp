@@ -54,11 +54,11 @@ export default function EstoquePage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Ingredientes"
-        description="Insumos e ingredientes usados nos pratos. Controle de estoque e histórico de preços."
+        title="Estoque"
+        description="Saldo de cada produto nesta loja, alertas de mínimo e movimentações."
         actions={
-          <Button onClick={() => navigate("/produtos/novo?tipo=ingrediente")}>
-            <Plus className="h-4 w-4 mr-1" /> Novo ingrediente
+          <Button onClick={() => navigate("/produtos/novo")}>
+            <Plus className="h-4 w-4 mr-1" /> Novo produto
           </Button>
         }
       />

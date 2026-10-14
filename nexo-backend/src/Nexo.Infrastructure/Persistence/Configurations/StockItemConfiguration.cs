@@ -61,9 +61,12 @@ public class StockItemConfiguration : IEntityTypeConfiguration<StockItem>
         // One StockItem per product per store (not per tenant) — each store tracks its own stock
         builder.HasIndex(x => new { x.TenantId, x.StoreId, x.ProductId }).IsUnique();
 
+        // One product has one stock row PER STORE. This was mapped one-to-one (unique product_id),
+        // which made multi-store stock impossible and let EF delete another store's row as an
+        // orphan when a second row of the same product was tracked.
         builder.HasOne(x => x.Product)
-            .WithOne(x => x.StockItem)
-            .HasForeignKey<StockItem>(x => x.ProductId)
+            .WithMany()
+            .HasForeignKey(x => x.ProductId)
             .OnDelete(DeleteBehavior.Cascade);
 
         builder.HasOne<Nexo.Domain.Entities.Tenant>()

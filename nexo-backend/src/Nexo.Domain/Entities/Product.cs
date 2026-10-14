@@ -26,7 +26,6 @@ public class Product : StoreEntity
 
     // Navigation
     public Category? Category { get; private set; }
-    public StockItem? StockItem { get; private set; }
     public ICollection<SaleItem> SaleItems { get; private set; } = [];
     public ICollection<StockMovement> StockMovements { get; private set; } = [];
 

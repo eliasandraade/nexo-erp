@@ -9,7 +9,8 @@
 | #42 | RBAC backend completo | `8022737` | — | Em produção |
 | #43 | PDV: integridade de pagamentos | `4724495` | `AddSalePaymentTenderedAndChange` (aditiva) | Em produção |
 | #44 | Caixa 2.0 | `b6f55c6` | `AddCashSessionClosingDifference` (aditiva + backfill do histórico) | Em produção |
-| #45 | Cancelamento, estorno e devolução | — | `AddSaleReturns` (aditiva) | Em revisão |
+| #45 | Cancelamento, estorno e devolução | `093a482` | `AddSaleReturns` (aditiva) | Em produção |
+| #46 | Estoque avançado | — | `StockPerStoreCountsAndTransfers` (aditiva + troca de índice único por comum) | Em revisão |
 
 ---
 
@@ -150,3 +151,35 @@
   - `SaleReturnDomainTests`: 8 testes unitários.
   - `SaleReturnTests`: 8 testes de integração (parcial e depois total com desconto, quantidade acima do disponível, idempotência concorrente, venda a prazo, gaveta sem saldo, cancelamento com motivo, arredondamento sem deriva, brinde de valor zero).
   - Playwright: diálogo de devolução.
+
+## PR 46 — Estoque avançado
+
+- **Bug de integridade corrigido (multi-loja):**
+  - `Product ↔ StockItem` estava mapeado como **um para um**, com índice único em `stock_items.product_id`, embora o estoque seja por loja.
+  - Na prática, o mesmo produto não podia ter estoque em duas lojas.
+  - Pior: quando o EF rastreava duas linhas do mesmo produto, **apagava a da outra loja como órfã**. A transferência expôs o problema.
+  - Agora o mapeamento é um-para-muitos e o índice único virou comum, o que só relaxa a restrição. Continua único o par (tenant, loja, produto).
+- **Inventário (contagem física):**
+  - Abrir registra o saldo do sistema por produto (até 2.000 produtos). Só pode haver **um inventário aberto por loja**.
+  - Quando a contagem de um item é registrada, o saldo do sistema **naquele momento** é guardado junto.
+  - Ao aplicar, entra no estoque atual, com lock, apenas a **diferença** (contado − sistema na hora da contagem).
+    - Assim, **vendas feitas entre a contagem e a aplicação são preservadas**, não desfeitas.
+    - Exemplo: sistema 10, contado 8 → falta 2. Se depois vender 1, o estoque fica 7.
+  - A tela envia só os produtos digitados ali, então duas pessoas contando corredores diferentes não apagam o trabalho uma da outra.
+  - Cada ajuste gera um movimento `Adjustment` que referencia o inventário. Itens não contados ficam como estão.
+  - Inventário aplicado ou cancelado fica congelado, e tudo é auditado.
+- **Transferência entre lojas:**
+  - Sai da loja atual para outra loja **ativa** do tenant a que o usuário tem acesso.
+  - **O catálogo é por loja**, então o produto é mapeado para o produto de **mesmo código** na loja de destino. Se o destino não tiver esse produto cadastrado (ativo, com controle de estoque), a transferência é recusada com a lista dos produtos que faltam.
+  - É **atômica**: `TransferOut` no produto de origem e `TransferIn` no produto de destino, ou nenhum dos dois.
+  - As linhas das duas lojas são travadas em ordem determinística (pela chave primária, a mesma ordem das atualizações de venda do EF), com advisory lock por loja.
+  - A origem precisa ter saldo disponível. Transferências concorrentes nunca tiram mais do que existe.
+  - O histórico mostra cada transferência como enviada ou recebida, sempre com o produto da própria loja.
+- **Telas:**
+  - `/estoque/inventario`: abrir, contar, salvar, aplicar, cancelar e histórico.
+  - `/estoque/transferencias`: destino, quantidades por produto e histórico enviado/recebido.
+  - `/estoque` deixa de se chamar "Ingredientes".
+- **Testes:**
+  - `StockOperationsTests`: 5 testes de integração (venda depois da contagem preservada, um inventário aberto por loja, transferência para o produto equivalente com histórico dos dois lados, destino sem o produto, loja inválida ou alheia, concorrência).
+  - RBAC: 4 linhas novas.
+  - Playwright: inventário e transferência.

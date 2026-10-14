@@ -24,6 +24,8 @@ import {
   Boxes,
   CalendarClock,
   ClipboardList,
+  ClipboardCheck,
+  ArrowLeftRight,
   PackageCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -80,6 +82,8 @@ export const appRoutes: AppRoute[] = [
   // ── Estoque — management + estoquista ────────────────────────────────────
   { path: "/produtos",      label: "Produtos",       icon: Package,           group: "inventario",  roles: [...MGMT, "estoquista"] },
   { path: "/estoque",       label: "Estoque",        icon: Warehouse,         group: "inventario",  roles: [...MGMT, "estoquista"] },
+  { path: "/estoque/inventario",     label: "Inventário",     icon: ClipboardCheck, group: "inventario", roles: [...MGMT, "estoquista"] },
+  { path: "/estoque/transferencias", label: "Transferências", icon: ArrowLeftRight, group: "inventario", roles: [...MGMT, "estoquista"] },
 
   // ── Varejo ───────────────────────────────────────────────────────────────
   { path: "/pdv",           label: "PDV",            icon: ShoppingCart,      group: "varejo",      moduleKey: "varejo",      roles: [...MGMT, "vendedor"] },
