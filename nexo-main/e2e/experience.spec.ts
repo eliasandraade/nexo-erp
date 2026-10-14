@@ -194,3 +194,33 @@ test('Inventário: contagem salva e aplicada; transferência envia destino e qua
  expect(transferBody).toMatchObject({toStoreId:'qa-store-2',items:[{productId:'p1',quantity:4}]});
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Compras: criar pedido, adicionar item e receber com vencimento',async({page})=>{
+ await prepare(page);
+ const base={id:'qa-pur',purchaseNumber:7,status:'Draft',supplierId:'sup1',supplierName:'Distribuidora Teste',totalAmount:0,invoiceNumber:null,receivedAt:null,confirmedAt:null,cancelledAt:null,notes:null,items:[],createdAt:'2026-10-14T09:00:00Z',orderedAt:null,cancellationReason:null};
+ let current: any={...base}; let itemBody: any=null, receiveBody: any=null;
+ await page.route('http://localhost:5000/api/suppliers**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'sup1',name:'Distribuidora Teste',tradeName:null,isActive:true}])}));
+ await page.route('http://localhost:5000/api/products**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'p1',code:'A5',name:'Arroz 5kg',costPrice:20,salePrice:30,isActive:true}])}));
+ await page.route('http://localhost:5000/api/varejo/purchases**',route=>{const r=route.request();const p=new URL(r.url()).pathname;
+  const ok=(b:any)=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(b)});
+  if(r.method()==='POST'&&p.endsWith('/purchases')){current={...base};return ok(current);}
+  if(p.endsWith('/items')){itemBody=r.postDataJSON();current={...current,totalAmount:200,items:[{id:'i1',productId:'p1',productName:'Arroz 5kg',productCode:'A5',quantity:10,unitCost:20,total:200,notes:null}]};return ok(current);}
+  if(p.endsWith('/confirm')){receiveBody=r.postDataJSON();current={...current,status:'Confirmed',confirmedAt:'2026-10-14T10:00:00Z'};return ok(current);}
+  if(p.endsWith('/qa-pur'))return ok(current);
+  return ok([current]);});
+ await page.goto('/compras');
+ await page.getByLabel('Fornecedor').click();await page.getByRole('option',{name:'Distribuidora Teste'}).click();
+ await page.getByRole('button',{name:'Criar pedido'}).click();
+ await expect(page).toHaveURL(/\/compras\/qa-pur$/);
+ await page.getByLabel('Produto').click();await page.getByRole('option',{name:/Arroz 5kg/}).click();
+ await page.getByLabel('Quantidade').fill('10');
+ await page.getByRole('button',{name:'Adicionar'}).click();
+ await expect.poll(()=>itemBody).not.toBeNull();
+ expect(itemBody).toMatchObject({productId:'p1',quantity:10,unitCost:20});
+ await page.getByRole('button',{name:'Receber mercadoria'}).click();
+ await page.getByLabel('Vencimento da conta').fill('2026-11-14');
+ await page.getByRole('button',{name:'Confirmar recebimento'}).click();
+ await expect.poll(()=>receiveBody).not.toBeNull();
+ expect(receiveBody.paidNow).toBe(false);
+ expect(receiveBody.dueDate).toContain('2026-11-14');
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

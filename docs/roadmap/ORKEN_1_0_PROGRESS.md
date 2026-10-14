@@ -10,7 +10,8 @@
 | #43 | PDV: integridade de pagamentos | `4724495` | `AddSalePaymentTenderedAndChange` (aditiva) | Em produção |
 | #44 | Caixa 2.0 | `b6f55c6` | `AddCashSessionClosingDifference` (aditiva + backfill do histórico) | Em produção |
 | #45 | Cancelamento, estorno e devolução | `093a482` | `AddSaleReturns` (aditiva) | Em produção |
-| #46 | Estoque avançado | — | `StockPerStoreCountsAndTransfers` (aditiva + troca de índice único por comum) | Em revisão |
+| #46 | Estoque avançado | `c3f25e7` | `StockPerStoreCountsAndTransfers` (aditiva + troca de índice único por comum) | Em produção |
+| #47 | Compras completas | — | `PurchasesPerStoreOrderedAndCancellation` (store_id com backfill, índice por loja) | Em revisão |
 
 ---
 
@@ -183,3 +184,33 @@
   - `StockOperationsTests`: 5 testes de integração (venda depois da contagem preservada, um inventário aberto por loja, transferência para o produto equivalente com histórico dos dois lados, destino sem o produto, loja inválida ou alheia, concorrência).
   - RBAC: 4 linhas novas.
   - Playwright: inventário e transferência.
+
+## PR 47 — Compras completas
+
+**Fluxo:** pedido (em elaboração) → **pedido enviado** ao fornecedor (itens congelados) → **recebimento** → (cancelamento).
+
+- **Compras são Core:** saiu o gate do módulo varejo, porque o restaurante também compra insumos.
+- **Compra por loja:**
+  - `RetPurchase` virou `StoreEntity`, ligada à loja que recebe, porque o estoque é por loja.
+  - A migration atribui as compras existentes à loja padrão do tenant (a primeira loja ativa por nome, mesma regra do login).
+  - A numeração passa a ser por loja, sob advisory lock.
+- **Recebimento** (sob lock da compra, atômico):
+  - Entra no estoque (`PurchaseEntry`, com o custo no snapshot), só para produtos com controle de estoque.
+  - O custo do produto passa a ser o último custo de compra, regra que já existia. Custo médio ponderado é uma decisão contábil e fica como opção futura.
+  - Cria a **conta a pagar** ao fornecedor: `Payable` com `ReferenceType=Purchase`. O vencimento é o informado no recebimento; sem data, usa recebimento + **prazo de pagamento do fornecedor**. A conta pode já nascer **paga**.
+  - Guarda NF e data, e registra auditoria.
+- **Cancelamento:**
+  - Recebida: a mercadoria sai do estoque (`PurchaseReversal`), mas **nunca abaixo de zero**. Se parte já foi vendida, o cancelamento é recusado com uma orientação.
+  - Conta pendente é cancelada. Conta já paga vira **valor a receber do fornecedor** (`Receivable` com `ReferenceType=PurchaseCancellation`).
+  - O motivo fica guardado e há auditoria. Nada é apagado.
+- **Bugs corrigidos no caminho:**
+  - **Adicionar item à compra nunca funcionava:** dava `DbUpdateConcurrencyException` e erro 500, o mesmo bug de rastreamento do EF de outros agregados. Agora o item é marcado explicitamente como novo.
+  - **Fornecedor e cliente com documento "Outro" davam 500:** a UI oferecia o tipo, mas o enum não tinha o valor. `DocumentType.Other` foi adicionado.
+  - Tipos inválidos agora respondem 422, não 500.
+- **Telas:**
+  - `/compras`: lista e "Criar pedido".
+  - `/compras/:id`: itens; enviar pedido; receber com NF, vencimento e "já paga"; cancelar com motivo.
+  - Receber e cancelar ficam só para a gestão; o estoquista monta e envia o pedido.
+- **Testes:**
+  - `PurchaseFlowTests`: 8 testes de integração (recebimento completo com prazo do fornecedor, compra paga cancelada vira a receber, compra pendente cancelada, estoque já vendido bloqueia o cancelamento, fornecedor inativo, remoção de item, tipo de documento).
+  - Playwright: fluxo de compra.

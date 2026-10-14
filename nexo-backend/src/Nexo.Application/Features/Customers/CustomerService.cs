@@ -39,8 +39,11 @@ public class CustomerService
         if (await _customers.DocumentExistsAsync(request.DocumentNumber, ct: ct))
             throw new ConflictException($"Document number '{request.DocumentNumber}' is already registered.");
 
-        var personType   = Enum.Parse<PersonType>(request.PersonType, ignoreCase: true);
-        var documentType = Enum.Parse<DocumentType>(request.DocumentType, ignoreCase: true);
+        // Invalid values are a client error (422), not a crash.
+        if (!Enum.TryParse<PersonType>(request.PersonType, ignoreCase: true, out var personType) || !Enum.IsDefined(personType))
+            throw new DomainException("Tipo de pessoa inválido. Use \"Individual\" ou \"Company\".");
+        if (!Enum.TryParse<DocumentType>(request.DocumentType, ignoreCase: true, out var documentType) || !Enum.IsDefined(documentType))
+            throw new DomainException("Tipo de documento inválido. Use \"CPF\", \"CNPJ\" ou \"Other\".");
 
         var customer = Customer.Create(
             _currentTenant.Id,

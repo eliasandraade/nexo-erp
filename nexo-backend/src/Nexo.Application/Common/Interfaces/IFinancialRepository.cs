@@ -17,6 +17,8 @@ public interface IFinancialRepository
     Task<IReadOnlyList<FinancialTransaction>> GetTransactionsByAccountAsync(Guid accountId, CancellationToken ct = default);
     Task<IReadOnlyList<FinancialTransaction>> GetPendingTransactionsAsync(CancellationToken ct = default);
     Task<IReadOnlyList<FinancialTransaction>> GetTransactionsBySaleAsync(Guid saleId, CancellationToken ct = default);
+    /// <summary>Lançamentos created for a document (e.g. ReferenceType "Purchase" + the purchase id).</summary>
+    Task<IReadOnlyList<FinancialTransaction>> GetTransactionsByReferenceAsync(string referenceType, Guid referenceId, CancellationToken ct = default);
     Task AddTransactionAsync(FinancialTransaction transaction, CancellationToken ct = default);
 
     Task SaveChangesAsync(CancellationToken ct = default);

@@ -26,6 +26,7 @@ import {
   ClipboardList,
   ClipboardCheck,
   ArrowLeftRight,
+  ShoppingBag,
   PackageCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -84,6 +85,7 @@ export const appRoutes: AppRoute[] = [
   { path: "/estoque",       label: "Estoque",        icon: Warehouse,         group: "inventario",  roles: [...MGMT, "estoquista"] },
   { path: "/estoque/inventario",     label: "Inventário",     icon: ClipboardCheck, group: "inventario", roles: [...MGMT, "estoquista"] },
   { path: "/estoque/transferencias", label: "Transferências", icon: ArrowLeftRight, group: "inventario", roles: [...MGMT, "estoquista"] },
+  { path: "/compras",                label: "Compras",        icon: ShoppingBag,    group: "inventario", roles: [...MGMT, "estoquista"] },
 
   // ── Varejo ───────────────────────────────────────────────────────────────
   { path: "/pdv",           label: "PDV",            icon: ShoppingCart,      group: "varejo",      moduleKey: "varejo",      roles: [...MGMT, "vendedor"] },

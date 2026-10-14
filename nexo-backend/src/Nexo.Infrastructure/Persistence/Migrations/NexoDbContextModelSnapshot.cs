@@ -6543,6 +6543,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("cancellation_reason");
+
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("cancelled_at");
@@ -6565,6 +6570,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("notes");
 
+                    b.Property<DateTime?>("OrderedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("ordered_at");
+
                     b.Property<int>("PurchaseNumber")
                         .HasColumnType("integer")
                         .HasColumnName("purchase_number");
@@ -6578,6 +6587,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
 
                     b.Property<Guid>("SupplierId")
                         .HasColumnType("uuid")
@@ -6606,15 +6619,14 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "CreatedAt")
                         .HasDatabaseName("ix_ret_purchases_tenant_id_created_at");
 
-                    b.HasIndex("TenantId", "PurchaseNumber")
-                        .IsUnique()
-                        .HasDatabaseName("ix_ret_purchases_tenant_id_number");
-
                     b.HasIndex("TenantId", "Status")
                         .HasDatabaseName("ix_ret_purchases_tenant_id_status");
 
                     b.HasIndex("TenantId", "SupplierId")
                         .HasDatabaseName("ix_ret_purchases_tenant_id_supplier");
+
+                    b.HasIndex("TenantId", "StoreId", "PurchaseNumber")
+                        .IsUnique();
 
                     b.ToTable("ret_purchases", "nexo");
                 });
