@@ -12,7 +12,31 @@
 | #45 | Cancelamento, estorno e devolução | `093a482` | `AddSaleReturns` (aditiva) | Em produção |
 | #46 | Estoque avançado | `c3f25e7` | `StockPerStoreCountsAndTransfers` (aditiva + troca de índice único por comum) | Em produção |
 | #47 | Compras completas | `da3ba8b` | `PurchasesPerStoreOrderedAndCancellation` (store_id com backfill, índice por loja) | Em produção |
-| #48 | Listas de preço | — | `PriceListValidityAndPriority` (aditiva) | Em revisão |
+| #48 | Listas de preço | `024b1cd` | `PriceListValidityAndPriority` (aditiva + índice único parcial) | Em produção |
+| #49 | Modelo financeiro unificado (livro) | — | `UnifiedFinancialLedger` (aditiva + classificação e backfill do histórico à vista) | Em revisão |
+
+
+## Marcos por fase
+
+Estimativas honestas de maturidade, na mesma régua da auditoria de linha de base.
+
+**Fase 1 — Operação de venda (PRs 42–45)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Auth / papéis | 50% | ~80% | recuperação de senha, sessões, MFA (PRs 63–64) |
+| PDV | 40% | ~75% | limite de desconto por papel (regra comercial a decidir), atalhos avançados |
+| Caixa | 45% | ~80% | conciliação com o financeiro (PR 52) |
+| Vendas (cancelamento / devolução) | 50% | ~80% | documento fiscal da devolução (PR 66) |
+
+**Fase 2 — Estoque, compras e preço (PRs 46–48)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Estoque | 45% | ~75% | lotes e validade; custo médio ponderado (decisão contábil) |
+| Compras | 25% | ~75% | recebimento parcial, cotação |
+| Listas de preço | 20% | ~75% | grupos de clientes, preço por quantidade |
+| Produtos | 65% | ~70% | `DELETE /categories/{id}` |
 
 ---
 
@@ -258,3 +282,72 @@
   - PDV: se o preço mudar entre montar o carrinho e fechar a venda, a venda para antes de cobrar.
   - Vigência mostrada no dia local; prioridade inteira; vínculo de cliente valida que o cliente existe e troca a lista numa única gravação; contagem de itens correta na listagem; nomes de produtos de outras lojas aparecem.
   - +3 testes de integração (padrão única após reativar, cliente inexistente → 404, custo oculto na venda para o vendedor).
+
+## PR 49 — Modelo financeiro unificado
+
+- **Antes:** o financeiro só via parte do dinheiro.
+  - Venda em dinheiro ia só para a gaveta, e antes do PR 43 nenhuma venda à vista chegava ao financeiro.
+  - Estorno do Service era lançado como despesa.
+  - Não havia loja, competência nem categoria.
+  - Um título quitado podia ser cancelado e um cancelado podia ser pago.
+- **Agora: `FinancialTransaction` é o livro único.**
+  - Entram todas as formas de pagamento da venda, devoluções, cancelamentos, compras e Service.
+  - A gaveta (`CashMovement`) continua sendo o controle físico do caixa, não o livro.
+  - Campos novos:
+    - `category`, a linha gerencial: receita, dedução de receita, compras, despesas operacionais, folha, comissões, impostos, despesas financeiras, outras entradas e saídas;
+    - `competence_date`;
+    - `store_id`;
+    - `reverses_transaction_id`.
+- **Dois regimes sobre os mesmos lançamentos** (decisão aprovada: caixa e competência):
+  - **competência:** data do fato; tudo que não foi cancelado, inclusive em aberto;
+  - **caixa:** data do pagamento; só o que foi quitado.
+- **Regras contábeis aplicadas:**
+  - Estorno de receita é **dedução de receita**, nunca despesa (corrige o estorno do Service).
+  - Compra de mercadoria é **compras**: no regime de caixa é saída; no de competência não é despesa, porque o custo entra pelo CMV da venda (relatórios, PR 65).
+- **Máquina de estados:**
+  - valor maior que zero e em centavos;
+  - só um lançamento em aberto pode ser quitado, cancelado ou editado;
+  - quitado se corrige com estorno (`CreateReversal`), e o original continua visível.
+- **Lançamentos dos módulos** (`Sale*`, `Purchase*`, `Svc*`):
+  - não são editados nem cancelados no financeiro; corrigem-se na origem;
+  - receber um título a prazo de venda continua permitido;
+  - a referência não pode ser forjada num lançamento manual.
+- **Lançamento manual:**
+  - categoria coerente com a direção;
+  - competência (padrão: vencimento);
+  - loja opcional, validada.
+- **API:** `GET /api/financial/ledger?regime=accrual|cash&from&to&storeId&category`.
+  - Devolve totais do período por categoria, entradas, saídas e resultado.
+  - Devolve até 1000 lançamentos, com a flag `truncated`.
+- **Tela `/financeiro`** (gestão), a primeira tela do financeiro do núcleo:
+  - competência e caixa;
+  - mês;
+  - totais por categoria;
+  - lançamentos com origem e situação.
+- **Migration `UnifiedFinancialLedger` (aditiva):**
+  - classifica os lançamentos existentes;
+  - preenche competência e loja a partir da origem;
+  - liga estornos ao original;
+  - traz para o livro o histórico à vista: um lançamento quitado por pagamento de venda não cancelada, sem duplicar o que já estava lá, mais as devoluções em dinheiro.
+  - Os lançamentos do backfill reaproveitam o id do pagamento ou do movimento da gaveta, e o Down remove exatamente eles.
+  - Validada num Postgres descartável com histórico simulado:
+    - venda anterior ao PR 43;
+    - venda mista;
+    - venda a prazo;
+    - venda cancelada;
+    - devolução;
+    - suprimento;
+    - despesa manual;
+    - Up e Down conferidos.
+- **Testes:**
+  - unitários `FinancialTransactionTests`: 9 casos (centavos, estados, estorno, categorias);
+  - integração `FinancialLedgerTests`: 9 casos (dinheiro e devolução no livro, a prazo em competência × caixa, quitado imutável, lançamentos manuais inválidos, regime inválido);
+  - Service: estorno vira dedução ligada ao original;
+  - PDV: os testes atualizados refletem o dinheiro no livro;
+  - Playwright: tela do financeiro nos dois regimes.
+- **Fica para os próximos PRs:**
+  - recebimento parcial, juros e vencidos (PR 50);
+  - contas a pagar com recorrência (PR 51);
+  - fluxo de caixa e conciliação (PR 52);
+  - despesas do restaurante, Build e folha no livro (PR 53).
+

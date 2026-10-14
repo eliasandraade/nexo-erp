@@ -249,3 +249,24 @@ test('Listas de preço: definir preço e vincular cliente; PDV usa o preço reso
  await expect.poll(()=>linked).toBe(true);
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Financeiro: livro por competência e caixa, com categorias e lançamentos',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api';
+ const regimes: string[]=[];
+ const entry=(id:string,direction:'In'|'Out',category:string,amount:number,description:string,status='Paid',referenceType='Sale')=>({id,direction,category,amount,description,competenceDate:'2026-10-10T12:00:00Z',dueDate:'2026-10-10T12:00:00Z',paidAt:status==='Paid'?'2026-10-10T12:00:00Z':null,status,storeId:'qa-store',referenceType,referenceId:'r'+id,reversesTransactionId:null});
+ await page.route(`${API}/financial/ledger**`,route=>{const regime=new URL(route.request().url()).searchParams.get('regime')!;regimes.push(regime);
+  const accrual=regime==='accrual';
+  const entries=[entry('e1','In','Revenue',100,'Venda #1 — Dinheiro'),entry('e2','Out','RevenueDeduction',20,'Devolução Venda #1 — Dinheiro','Paid','SaleReturn')].concat(accrual?[entry('e3','In','Revenue',50,'Venda #2 — Outro a prazo','Pending')]:[]);
+  const rev=accrual?150:100;
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({regime:accrual?'Accrual':'Cash',from:'2026-10-01T03:00:00Z',to:'2026-11-01T03:00:00Z',totalIn:rev,totalOut:20,net:rev-20,
+   byCategory:[{category:'Revenue',in:rev,out:0,net:rev,count:accrual?2:1},{category:'RevenueDeduction',in:0,out:20,net:-20,count:1}],entries,truncated:false})});});
+ await page.goto('/financeiro');
+ await expect(page.getByRole('heading',{name:'Financeiro',exact:true})).toBeVisible();
+ await expect(page.getByText('Venda #2 — Outro a prazo')).toBeVisible();
+ await expect(page.getByText('Devoluções e estornos').first()).toBeVisible();
+ await expect(page.getByText('Em aberto',{exact:true})).toBeVisible();
+ await page.getByRole('tab',{name:'Caixa'}).click();
+ await expect.poll(()=>regimes.includes('cash')).toBe(true);
+ await expect(page.getByText('Venda #2 — Outro a prazo')).toHaveCount(0);
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

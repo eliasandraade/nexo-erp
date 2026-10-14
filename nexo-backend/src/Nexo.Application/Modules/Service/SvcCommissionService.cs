@@ -329,10 +329,10 @@ public class SvcCommissionService
 
         payout.MarkPaid(paidAt);                                  // keep the tracked entity in step with the row
         var professional = await _professionals.GetByIdAsync(payout.ProfessionalId, ct);
-        await _posting.PostSettledExpenseAsync(
+        await _posting.PostCommissionPayoutAsync(
             payout.TotalAmount, paidAt,
             Truncate($"Orken Service — repasse de comissão · {professional?.Name ?? "profissional"}", 500),
-            ServiceFinancialPostingService.CommissionPayoutReference, payout.Id, ct);
+            payout.Id, payout.StoreId, ct);
         await _commissions.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         return MapPayout(payout);

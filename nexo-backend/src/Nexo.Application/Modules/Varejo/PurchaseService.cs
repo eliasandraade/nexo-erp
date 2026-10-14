@@ -209,12 +209,13 @@ public class PurchaseService
                 var dueDate = request.DueDate?.ToUniversalTime()
                               ?? (purchase.ReceivedAt ?? DateTime.UtcNow).AddDays(supplier?.PaymentTermsDays ?? 0);
                 var payable = FinancialTransaction.Create(
-                    _currentTenant.Id, account.Id, TransactionType.Payable, purchase.TotalAmount,
+                    _currentTenant.Id, account.Id, TransactionType.Payable, FinancialCategory.Purchase, purchase.TotalAmount,
                     $"Compra #{purchase.PurchaseNumber} — {supplierName}" +
                         (purchase.InvoiceNumber is null ? "" : $" (NF {purchase.InvoiceNumber})"),
                     dueDate,
                     _currentUser.UserId,
-                    referenceType: PurchaseReference, referenceId: purchase.Id);
+                    referenceType: PurchaseReference, referenceId: purchase.Id,
+                    storeId: purchase.StoreId, competenceDate: purchase.ReceivedAt ?? DateTime.UtcNow);
                 if (request.PaidNow) payable.MarkPaid(DateTime.UtcNow);
                 await _financial.AddTransactionAsync(payable, ct);
             }
@@ -299,11 +300,14 @@ public class PurchaseService
                     {
                         var account = await _financial.GetDefaultByTypeAsync(FinancialAccountType.Receivable, ct)
                             ?? throw new DomainException("No active 'Contas a Receber' account found for this tenant.");
-                        await _financial.AddTransactionAsync(FinancialTransaction.Create(
-                            _currentTenant.Id, account.Id, TransactionType.Receivable, payable.Amount,
-                            $"Estorno — {payable.Description} (a receber do fornecedor)", DateTime.UtcNow,
+                        // The supplier owes the money back: a receivable, open until it is returned.
+                        var refund = FinancialTransaction.Create(
+                            _currentTenant.Id, account.Id, TransactionType.Receivable, FinancialCategory.Purchase,
+                            payable.Amount, $"Estorno — {payable.Description} (a receber do fornecedor)", DateTime.UtcNow,
                             _currentUser.UserId,
-                            referenceType: PurchaseCancellationReference, referenceId: purchase.Id), ct);
+                            referenceType: PurchaseCancellationReference, referenceId: purchase.Id,
+                            storeId: payable.StoreId, competenceDate: DateTime.UtcNow);
+                        await _financial.AddTransactionAsync(refund, ct);
                     }
                 }
             }

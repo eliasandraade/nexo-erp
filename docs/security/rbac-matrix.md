@@ -37,7 +37,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Configurações | Todos | — | Management | — | — |
 | Loja / slug público | Todos | — | Management | — | — |
 | Billing | Todos (status) | — | — | — | checkout/portal: Management |
-| Financeiro (contas, lançamentos) | Management | Management | Management | Management | Management |
+| Financeiro (contas, lançamentos, livro) | Management | Management | Management | Management | Management |
 | Dashboard / relatórios | Management | — | — | — | — |
 | Produtos / categorias | Todos | Stock | Stock (inclui preço) | Stock | — |
 | Custo de compra do produto | Stock | Stock | — | — | — |

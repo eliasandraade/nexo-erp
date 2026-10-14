@@ -38,63 +38,86 @@ public class ServiceFinancialPostingService
     private readonly IFinancialRepository _financial;
     private readonly ICurrentUser        _currentUser;
     private readonly ICurrentTenant      _currentTenant;
+    private readonly ICurrentStore       _currentStore;
 
     public ServiceFinancialPostingService(
-        IFinancialRepository financial, ICurrentUser currentUser, ICurrentTenant currentTenant)
+        IFinancialRepository financial, ICurrentUser currentUser, ICurrentTenant currentTenant,
+        ICurrentStore currentStore)
     {
         _financial     = financial;
         _currentUser   = currentUser;
         _currentTenant = currentTenant;
+        _currentStore  = currentStore;
     }
 
     /// <summary>Records money received for a Service order or customer package as settled revenue.</summary>
     public Task PostPaymentAsync(SvcPayment payment, string description, CancellationToken ct = default)
         => PostSettledAsync(
-            FinancialAccountType.Receivable, TransactionType.Receivable,
-            payment.Amount, payment.PaidAt, description, PaymentReference, payment.Id, ct);
+            FinancialAccountType.Receivable, TransactionType.Receivable, FinancialCategory.Revenue,
+            payment.Amount, payment.PaidAt, description, PaymentReference, payment.Id, StoreOf(payment.StoreId), ct);
 
     /// <summary>
-    /// Counter-entry for a voided payment: a settled payable of the same amount, so the net effect
-    /// on the period is zero while both sides remain auditable.
+    /// Counter-entry for a voided payment: a settled outflow of the same amount classified as a
+    /// revenue deduction (not an expense), so the period nets to zero and a DRE stays right while
+    /// both sides remain auditable.
     /// </summary>
-    public Task ReversePaymentAsync(SvcPayment payment, string description, CancellationToken ct = default)
-        => PostSettledAsync(
-            FinancialAccountType.Payable, TransactionType.Payable,
-            payment.Amount, payment.VoidedAt ?? DateTime.UtcNow, description,
-            PaymentVoidReference, payment.Id, ct);
+    public async Task ReversePaymentAsync(SvcPayment payment, string description, CancellationToken ct = default)
+    {
+        var when = payment.VoidedAt ?? DateTime.UtcNow;
+        var original = (await _financial.GetTransactionsByReferenceAsync(PaymentReference, payment.Id, ct))
+            .FirstOrDefault(t => t.Status == TransactionStatus.Paid);
+        if (original is not null)
+        {
+            await _financial.AddTransactionAsync(FinancialTransaction.CreateReversal(
+                original, await AccountIdAsync(FinancialAccountType.Payable, ct), description, when,
+                _currentUser.UserId, PaymentVoidReference, payment.Id), ct);
+            return;
+        }
+        // Payment recorded before the financeiro mirror existed: still post the deduction.
+        await PostSettledAsync(
+            FinancialAccountType.Payable, TransactionType.Payable, FinancialCategory.RevenueDeduction,
+            payment.Amount, when, description, PaymentVoidReference, payment.Id, StoreOf(payment.StoreId), ct);
+    }
 
-    /// <summary>Records an expense already paid (used by commission payouts).</summary>
-    public Task PostSettledExpenseAsync(
-        decimal amount, DateTime paidAt, string description,
-        string referenceType, Guid referenceId, CancellationToken ct = default)
-        => PostSettledAsync(
-            FinancialAccountType.Payable, TransactionType.Payable,
-            amount, paidAt, description, referenceType, referenceId, ct);
+    /// <summary>Records a commission payout already handed over.</summary>
+    public Task PostCommissionPayoutAsync(
+        decimal amount, DateTime paidAt, string description, Guid payoutId, Guid storeId, CancellationToken ct = default)
+        => amount <= 0 ? Task.CompletedTask : PostSettledAsync(   // nothing handed over, nothing to record
+            FinancialAccountType.Payable, TransactionType.Payable, FinancialCategory.Commission,
+            amount, paidAt, description, CommissionPayoutReference, payoutId, StoreOf(storeId), ct);
 
     private async Task PostSettledAsync(
-        FinancialAccountType accountType, TransactionType transactionType,
+        FinancialAccountType accountType, TransactionType transactionType, FinancialCategory category,
         decimal amount, DateTime when, string description,
-        string referenceType, Guid referenceId, CancellationToken ct)
+        string referenceType, Guid referenceId, Guid? storeId, CancellationToken ct)
     {
-        var account = await _financial.GetDefaultByTypeAsync(accountType, ct)
-            ?? throw new DomainException(
-                $"Tenant has no active '{Describe(accountType)}' account. " +
-                "It is created automatically for new tenants — an older tenant may need a backfill.");
-
         var transaction = FinancialTransaction.Create(
             tenantId:           _currentTenant.Id,
-            financialAccountId: account.Id,
+            financialAccountId: await AccountIdAsync(accountType, ct),
             transactionType:    transactionType,
+            category:           category,
             amount:             amount,
             description:        description,
             dueDate:            when,
             createdByUserId:    _currentUser.UserId,
             referenceType:      referenceType,
-            referenceId:        referenceId);
+            referenceId:        referenceId,
+            storeId:            storeId,
+            competenceDate:     when);
 
         transaction.MarkPaid(when);
         await _financial.AddTransactionAsync(transaction, ct);
     }
+
+    private async Task<Guid> AccountIdAsync(FinancialAccountType accountType, CancellationToken ct)
+        => (await _financial.GetDefaultByTypeAsync(accountType, ct)
+            ?? throw new DomainException(
+                $"Tenant has no active '{Describe(accountType)}' account. " +
+                "It is created automatically for new tenants — an older tenant may need a backfill.")).Id;
+
+    /// <summary>A record not saved yet has no StoreId — it is being created in the request's store.</summary>
+    private Guid? StoreOf(Guid storeId)
+        => storeId != Guid.Empty ? storeId : _currentStore.IsResolved ? _currentStore.Id : null;
 
     private static string Describe(FinancialAccountType type) => type switch
     {

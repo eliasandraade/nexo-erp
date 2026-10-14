@@ -91,7 +91,8 @@ public class PdvPaymentIntegrityTests
 
         confirmed.Payments.Sum(p => p.Amount).Should().Be(100m);
         (await CashMovementsForAsync(sale.Id)).Should().ContainSingle().Which.Amount.Should().Be(40m);
-        (await FinancialFor(sale.Id)).Should().ContainSingle().Which.Amount.Should().Be(60m);
+        // The livro sees both parts (PR 49): Pix 60 and the cash actually kept, 40
+        (await FinancialFor(sale.Id)).Select(t => t.Amount).Should().BeEquivalentTo([60m, 40m]);
     }
 
     [Fact]
@@ -221,11 +222,13 @@ public class PdvPaymentIntegrityTests
             .Where(m => m.ReferenceType == "SaleCancellation" && m.ReferenceId == sale.Id).ToListAsync();
         refunds.Should().ContainSingle().Which.Amount.Should().Be(30m);
 
+        // Both settled parts (cash and Pix) get a revenue-deduction counter-entry in the livro (PR 49)
         var counter = await db.FinancialTransactions.IgnoreQueryFilters()
             .Where(t => t.ReferenceType == "SaleCancellation" && t.ReferenceId == sale.Id).ToListAsync();
-        counter.Should().ContainSingle();
-        counter[0].Amount.Should().Be(30m);
-        counter[0].TransactionType.Should().Be(TransactionType.Payable);
+        counter.Should().HaveCount(2);
+        counter.Should().OnlyContain(t => t.Amount == 30m && t.TransactionType == TransactionType.Payable
+                                          && t.Category == FinancialCategory.RevenueDeduction
+                                          && t.ReversesTransactionId != null);
 
         var receivable = await db.FinancialTransactions.IgnoreQueryFilters()
             .SingleAsync(t => t.ReferenceType == "Sale" && t.ReferenceId == sale.Id && t.Amount == 40m);

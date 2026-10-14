@@ -29,6 +29,7 @@ import {
   ShoppingBag,
   Tags,
   PackageCheck,
+  Landmark,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
@@ -80,6 +81,7 @@ export const appRoutes: AppRoute[] = [
   { path: "/clientes",      label: "Clientes",       icon: Users,             group: "core",        roles: MGMT },
   { path: "/fornecedores",  label: "Fornecedores",   icon: Truck,             group: "core",        roles: MGMT },
   { path: "/caixa",         label: "Caixa",          icon: Wallet,            group: "core",        roles: MGMT },
+  { path: "/financeiro",    label: "Financeiro",     icon: Landmark,          group: "core",        roles: MGMT },
 
   // ── Estoque — management + estoquista ────────────────────────────────────
   { path: "/produtos",      label: "Produtos",       icon: Package,           group: "inventario",  roles: [...MGMT, "estoquista"] },

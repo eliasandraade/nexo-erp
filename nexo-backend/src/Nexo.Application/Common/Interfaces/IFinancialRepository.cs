@@ -21,5 +21,12 @@ public interface IFinancialRepository
     Task<IReadOnlyList<FinancialTransaction>> GetTransactionsByReferenceAsync(string referenceType, Guid referenceId, CancellationToken ct = default);
     Task AddTransactionAsync(FinancialTransaction transaction, CancellationToken ct = default);
 
+    /// <summary>Entries of the period in the regime's order (newest first), at most <paramref name="take"/>.</summary>
+    Task<IReadOnlyList<FinancialTransaction>> GetLedgerEntriesAsync(
+        Nexo.Application.Features.Financial.LedgerFilter filter, int take, CancellationToken ct = default);
+    /// <summary>Sums of the whole period by category and direction.</summary>
+    Task<IReadOnlyList<Nexo.Application.Features.Financial.LedgerTotalRow>> GetLedgerTotalsAsync(
+        Nexo.Application.Features.Financial.LedgerFilter filter, CancellationToken ct = default);
+
     Task SaveChangesAsync(CancellationToken ct = default);
 }

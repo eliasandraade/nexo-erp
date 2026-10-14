@@ -604,6 +604,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
 
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTime>("CompetenceDate")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("competence_date");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
@@ -639,11 +649,19 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("reference_type");
 
+                    b.Property<Guid?>("ReversesTransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reverses_transaction_id");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("status");
+
+                    b.Property<Guid?>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -663,11 +681,17 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("FinancialAccountId");
 
+                    b.HasIndex("ReversesTransactionId");
+
                     b.HasIndex("ReferenceType", "ReferenceId");
+
+                    b.HasIndex("TenantId", "CompetenceDate");
 
                     b.HasIndex("TenantId", "DueDate");
 
                     b.HasIndex("TenantId", "FinancialAccountId");
+
+                    b.HasIndex("TenantId", "PaidAt");
 
                     b.HasIndex("TenantId", "Status");
 
