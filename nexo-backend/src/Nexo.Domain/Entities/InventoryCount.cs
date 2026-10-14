@@ -7,9 +7,9 @@ public enum InventoryCountStatus { Open, Applied, Cancelled }
 
 /// <summary>
 /// Inventário (contagem física) of one store. Opening it snapshots what the system expects per
-/// product; the team types what was counted; applying it adjusts each product to the counted
-/// quantity — the difference is computed against the stock AT APPLY TIME (sales made while counting
-/// are not undone) and every change is an Adjustment movement referencing the count.
+/// product; when a count is typed, the system quantity AT THAT MOMENT is recorded with it; applying
+/// adds (counted − system at count) to the current stock. So sales made between typing the count
+/// and applying it are kept, and every change is an Adjustment movement referencing the count.
 /// </summary>
 public class InventoryCount : StoreEntity
 {
@@ -51,16 +51,17 @@ public class InventoryCount : StoreEntity
         return item;
     }
 
-    public void Count(Guid productId, decimal? counted)
+    /// <param name="systemNow">System quantity when the count is typed — the base of the difference.</param>
+    public void Count(Guid productId, decimal? counted, decimal systemNow)
     {
         EnsureOpen();
         var item = _items.FirstOrDefault(i => i.ProductId == productId)
             ?? throw new DomainException("Produto fora deste inventário.");
-        item.SetCounted(counted);
+        item.SetCounted(counted, systemNow);
         SetUpdatedAt();
     }
 
-    /// <summary>Freezes the system quantity at apply time and the difference of every counted item.</summary>
+    /// <summary>Freezes, per counted item, the stock before applying and the difference applied.</summary>
     public void MarkApplied(Guid userId, IReadOnlyDictionary<Guid, decimal> systemQuantities)
     {
         EnsureOpen();
@@ -102,9 +103,11 @@ public class InventoryCountItem : TenantEntity
     /// <summary>System quantity when the count was opened (reference for the team).</summary>
     public decimal ExpectedQuantity { get; private set; }
     public decimal? CountedQuantity { get; private set; }
-    /// <summary>System quantity when the count was applied — the base of the adjustment.</summary>
+    /// <summary>System quantity when the count was typed — the base of the difference.</summary>
+    public decimal? SystemQuantityAtCount { get; private set; }
+    /// <summary>Stock right before the adjustment was applied.</summary>
     public decimal? SystemQuantityAtApply { get; private set; }
-    /// <summary>Counted − system at apply (positive = sobra, negative = falta).</summary>
+    /// <summary>Counted − system at count (positive = sobra, negative = falta) — added to the stock.</summary>
     public decimal? Difference { get; private set; }
 
     internal static InventoryCountItem Create(Guid tenantId, Guid countId, Guid productId, decimal expected)
@@ -115,20 +118,21 @@ public class InventoryCountItem : TenantEntity
             ExpectedQuantity = expected,
         };
 
-    internal void SetCounted(decimal? counted)
+    internal void SetCounted(decimal? counted, decimal systemNow)
     {
         if (counted is < 0)
             throw new DomainException("A quantidade contada não pode ser negativa.");
         if (counted is { } c && decimal.Round(c, 4) != c)
             throw new DomainException("A quantidade contada tem no máximo 4 casas decimais.");
-        CountedQuantity = counted;
+        CountedQuantity       = counted;
+        SystemQuantityAtCount = counted.HasValue ? systemNow : null;
         SetUpdatedAt();
     }
 
-    internal void Freeze(decimal systemQuantity)
+    internal void Freeze(decimal stockBeforeApply)
     {
-        SystemQuantityAtApply = systemQuantity;
-        Difference            = CountedQuantity!.Value - systemQuantity;
+        SystemQuantityAtApply = stockBeforeApply;
+        Difference            = CountedQuantity!.Value - (SystemQuantityAtCount ?? stockBeforeApply);
         SetUpdatedAt();
     }
 }

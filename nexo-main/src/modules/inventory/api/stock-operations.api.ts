@@ -8,8 +8,10 @@ export interface InventoryCountItemDto {
   productCode: string;
   expectedQuantity: number;
   countedQuantity: number | null;
+  /** System quantity when the count was typed — the base of the difference. */
+  systemQuantityAtCount: number | null;
   systemQuantityAtApply: number | null;
-  /** Counted − system at apply: positive = sobra, negative = falta. */
+  /** Counted − system at count: positive = sobra, negative = falta. Added to the stock on apply. */
   difference: number | null;
 }
 

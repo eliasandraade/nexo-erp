@@ -16,6 +16,7 @@ public record InventoryCountItemDto(
     string ProductCode,
     decimal ExpectedQuantity,
     decimal? CountedQuantity,
+    decimal? SystemQuantityAtCount,
     decimal? SystemQuantityAtApply,
     decimal? Difference);
 

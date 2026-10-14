@@ -97,6 +97,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     product_id = table.Column<Guid>(type: "uuid", nullable: false),
                     expected_quantity = table.Column<decimal>(type: "numeric(18,4)", nullable: false),
                     counted_quantity = table.Column<decimal>(type: "numeric(18,4)", nullable: true),
+                    system_quantity_at_count = table.Column<decimal>(type: "numeric(18,4)", nullable: true),
                     system_quantity_at_apply = table.Column<decimal>(type: "numeric(18,4)", nullable: true),
                     difference = table.Column<decimal>(type: "numeric(18,4)", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
@@ -138,6 +139,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     stock_transfer_id = table.Column<Guid>(type: "uuid", nullable: false),
                     product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    destination_product_id = table.Column<Guid>(type: "uuid", nullable: false),
                     quantity = table.Column<decimal>(type: "numeric(18,4)", nullable: false),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     updated_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
@@ -147,6 +149,13 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 {
                     table.PrimaryKey("PK_stock_transfer_items", x => x.id);
                     table.CheckConstraint("ck_stock_transfer_items_quantity_positive", "quantity > 0");
+                    table.ForeignKey(
+                        name: "FK_stock_transfer_items_products_destination_product_id",
+                        column: x => x.destination_product_id,
+                        principalSchema: "nexo",
+                        principalTable: "products",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
                         name: "FK_stock_transfer_items_products_product_id",
                         column: x => x.product_id,
@@ -201,6 +210,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 table: "inventory_counts",
                 columns: new[] { "tenant_id", "store_id", "number" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_stock_transfer_items_destination_product_id",
+                schema: "nexo",
+                table: "stock_transfer_items",
+                column: "destination_product_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_stock_transfer_items_product_id",

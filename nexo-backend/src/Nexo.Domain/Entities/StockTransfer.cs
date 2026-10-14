@@ -43,13 +43,15 @@ public class StockTransfer : TenantEntity
         };
     }
 
-    public StockTransferItem AddItem(Guid productId, decimal quantity)
+    /// <param name="productId">The product in the origin store.</param>
+    /// <param name="destinationProductId">The same product (same code) in the destination store's catalogue.</param>
+    public StockTransferItem AddItem(Guid productId, Guid destinationProductId, decimal quantity)
     {
         if (quantity <= 0 || decimal.Round(quantity, 4) != quantity)
             throw new DomainException("A quantidade transferida deve ser positiva, com até 4 casas decimais.");
         if (_items.Any(i => i.ProductId == productId))
             throw new DomainException("O produto aparece mais de uma vez na transferência.");
-        var item = StockTransferItem.Create(TenantId, Id, productId, quantity);
+        var item = StockTransferItem.Create(TenantId, Id, productId, destinationProductId, quantity);
         _items.Add(item);
         return item;
     }
@@ -61,9 +63,17 @@ public class StockTransferItem : TenantEntity
     private StockTransferItem(Guid tenantId) : base(tenantId) { }
 
     public Guid StockTransferId { get; private set; }
+    /// <summary>Product in the origin store (each store has its own catalogue).</summary>
     public Guid ProductId { get; private set; }
+    /// <summary>The matching product (same code) in the destination store.</summary>
+    public Guid DestinationProductId { get; private set; }
     public decimal Quantity { get; private set; }
 
-    internal static StockTransferItem Create(Guid tenantId, Guid transferId, Guid productId, decimal quantity)
-        => new(tenantId) { StockTransferId = transferId, ProductId = productId, Quantity = quantity };
+    internal static StockTransferItem Create(
+        Guid tenantId, Guid transferId, Guid productId, Guid destinationProductId, decimal quantity)
+        => new(tenantId)
+        {
+            StockTransferId = transferId, ProductId = productId,
+            DestinationProductId = destinationProductId, Quantity = quantity,
+        };
 }

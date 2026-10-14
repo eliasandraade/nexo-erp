@@ -94,6 +94,8 @@ export const MOVEMENT_TYPE_LABEL: Record<string, string> = {
   Transfer:      "Transferência",
   Loss:          "Perda / vencimento",
   RecipeOutput:  "Consumo (receita)",
+  TransferOut:   "Transferência enviada",
+  TransferIn:    "Transferência recebida",
 };
 
 export const MOVEMENT_TYPE_VARIANT: Record<string, "success" | "danger" | "warning" | "info" | "neutral"> = {
@@ -106,6 +108,8 @@ export const MOVEMENT_TYPE_VARIANT: Record<string, "success" | "danger" | "warni
   Transfer:      "info",
   Loss:          "danger",
   RecipeOutput:  "warning",
+  TransferOut:   "info",
+  TransferIn:    "info",
 };
 
 // Movement types available for manual adjustment by the user

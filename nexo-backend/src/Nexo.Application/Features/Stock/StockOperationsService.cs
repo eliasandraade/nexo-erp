@@ -54,6 +54,8 @@ public class StockOperationsService
 
         await using var tx = await _uow.BeginTransactionAsync(ct);
         await _ops.LockSequenceAsync(StoreId(), "inventory-count", ct);
+        if (await _ops.HasOpenCountAsync(ct))
+            throw new ConflictException("Já existe um inventário em contagem nesta loja. Aplique ou cancele antes de abrir outro.");
         var stock = await _ops.GetStockInStoreAsync(_tenant.Id, StoreId(), productIds, ct);
         var count = InventoryCount.Open(_tenant.Id, await _ops.GetNextCountNumberAsync(ct), _user.UserId, request.Notes);
         foreach (var id in productIds)
@@ -85,8 +87,10 @@ public class StockOperationsService
         await _ops.LockCountAsync(id, _tenant.Id, ct);
         var count = await _ops.GetCountAsync(id, ct) ?? throw new NotFoundException("InventoryCount", id);
 
-        foreach (var entry in request.Items ?? [])
-            count.Count(entry.ProductId, entry.CountedQuantity);
+        var entries = request.Items ?? [];
+        var systemNow = await _ops.GetStockInStoreAsync(_tenant.Id, StoreId(), entries.Select(e => e.ProductId), ct);
+        foreach (var entry in entries)
+            count.Count(entry.ProductId, entry.CountedQuantity, systemNow.GetValueOrDefault(entry.ProductId)?.CurrentQuantity ?? 0m);
 
         await _ops.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -94,8 +98,9 @@ public class StockOperationsService
     }
 
     /// <summary>
-    /// Applies the count: each counted product is set to the counted quantity. The difference is
-    /// taken against the stock at this moment (locked), so sales made while counting are kept.
+    /// Applies the count: each counted product receives (counted − system when it was counted) on
+    /// top of its current, locked stock — so sales made between typing the count and applying it
+    /// are kept, not undone.
     /// </summary>
     public async Task<InventoryCountDto> ApplyCountAsync(Guid id, CancellationToken ct = default)
     {
@@ -126,7 +131,7 @@ public class StockOperationsService
                 _tenant.Id, item.ProductId, StockMovementType.Adjustment, item.Difference.Value,
                 before, stockItem.CurrentQuantity, _user.UserId,
                 referenceType: CountReference, referenceId: count.Id,
-                notes: $"Inventário #{count.Number}: contado {item.CountedQuantity:0.####}, sistema {before:0.####}"), ct);
+                notes: $"Inventário #{count.Number}: contado {item.CountedQuantity:0.####}, sistema na contagem {item.SystemQuantityAtCount:0.####}"), ct);
             adjusted++;
         }
 
@@ -165,8 +170,8 @@ public class StockOperationsService
         var to = request.ToStoreId;
         if (to == from)
             throw new DomainException("A loja de destino deve ser diferente da loja atual.");
-        if (!_user.StoreIds.Contains(to) || !await _ops.StoreBelongsToTenantAsync(to, ct))
-            throw new ForbiddenException("Você não tem acesso à loja de destino.");
+        if (!_user.StoreIds.Contains(to) || !await _ops.IsActiveStoreOfTenantAsync(to, ct))
+            throw new ForbiddenException("Você não tem acesso à loja de destino, ou ela está inativa.");
         if (request.Items is null || request.Items.Count == 0)
             throw new DomainException("Informe ao menos um produto para transferir.");
 
@@ -175,14 +180,26 @@ public class StockOperationsService
         if (ids.Any(id => !products.TryGetValue(id, out var p) || !p.TrackStock || !p.IsActive))
             throw new DomainException("Só produtos ativos com controle de estoque podem ser transferidos.");
 
+        // Each store has its own catalogue: the destination must have the same product (same code).
+        var counterparts = await _ops.GetProductsInStoreByCodeAsync(_tenant.Id, to, products.Values.Select(p => p.Code), ct);
+        var missing = products.Values
+            .Where(p => !counterparts.TryGetValue(p.Code, out var d) || !d.IsActive || !d.TrackStock)
+            .Select(p => $"{p.Name} ({p.Code})")
+            .ToList();
+        if (missing.Count > 0)
+            throw new DomainException(
+                $"A loja de destino não tem estes produtos cadastrados com o mesmo código e controle de estoque: {string.Join(", ", missing)}.");
+        Guid DestinationOf(Guid productId) => counterparts[products[productId].Code].Id;
+        var destinationIds = ids.Select(DestinationOf).ToList();
+
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
         // Always lock the lower store id first: two opposite transfers can't deadlock.
         foreach (var storeId in new[] { from, to }.OrderBy(s => s))
-            await _ops.LockStockAsync(_tenant.Id, storeId, ids, ct);
+            await _ops.LockStockAsync(_tenant.Id, storeId, storeId == from ? ids : destinationIds, ct);
 
         var origin = await _ops.GetStockInStoreAsync(_tenant.Id, from, ids, ct);
-        var destination = await _ops.GetStockInStoreAsync(_tenant.Id, to, ids, ct);
+        var destination = await _ops.GetStockInStoreAsync(_tenant.Id, to, destinationIds, ct);
 
         await _ops.LockSequenceAsync(_tenant.Id, "stock-transfer", ct);
         var transfer = StockTransfer.Create(
@@ -190,7 +207,8 @@ public class StockOperationsService
 
         foreach (var line in request.Items)
         {
-            var item = transfer.AddItem(line.ProductId, line.Quantity);
+            var destinationProductId = DestinationOf(line.ProductId);
+            var item = transfer.AddItem(line.ProductId, destinationProductId, line.Quantity);
             var product = products[line.ProductId];
 
             var source = origin.GetValueOrDefault(line.ProductId);
@@ -207,16 +225,16 @@ public class StockOperationsService
                 referenceType: TransferReference, referenceId: transfer.Id,
                 notes: $"Transferência #{transfer.Number}").InStore(from), ct);
 
-            var target = destination.GetValueOrDefault(line.ProductId);
+            var target = destination.GetValueOrDefault(destinationProductId);
             if (target is null)
             {
-                target = StockItem.CreateInStore(_tenant.Id, to, line.ProductId);
+                target = StockItem.CreateInStore(_tenant.Id, to, destinationProductId);
                 await _ops.AddStockItemAsync(target, ct);
             }
             var targetBefore = target.CurrentQuantity;
             target.ApplyMovement(item.Quantity);
             await _ops.AddMovementAsync(StockMovement.Create(
-                _tenant.Id, line.ProductId, StockMovementType.TransferIn, item.Quantity,
+                _tenant.Id, destinationProductId, StockMovementType.TransferIn, item.Quantity,
                 targetBefore, target.CurrentQuantity, _user.UserId,
                 referenceType: TransferReference, referenceId: transfer.Id,
                 notes: $"Transferência #{transfer.Number}").InStore(to), ct);
@@ -237,7 +255,8 @@ public class StockOperationsService
     {
         var store = StoreId();
         var transfers = await _ops.ListTransfersAsync(store, ct);
-        var products = await _ops.GetProductsAsync(transfers.SelectMany(t => t.Items).Select(i => i.ProductId), ct);
+        var products = await _ops.GetProductsAsync(
+            transfers.SelectMany(t => t.Items).SelectMany(i => new[] { i.ProductId, i.DestinationProductId }), ct);
         return transfers.Select(t => MapTransfer(t, products, store)).ToList();
     }
 
@@ -255,12 +274,16 @@ public class StockOperationsService
                 i.ProductId,
                 products.GetValueOrDefault(i.ProductId)?.Name ?? string.Empty,
                 products.GetValueOrDefault(i.ProductId)?.Code ?? string.Empty,
-                i.ExpectedQuantity, i.CountedQuantity, i.SystemQuantityAtApply, i.Difference))
+                i.ExpectedQuantity, i.CountedQuantity, i.SystemQuantityAtCount, i.SystemQuantityAtApply, i.Difference))
             .OrderBy(i => i.ProductName)
             .ToList());
 
     private static StockTransferDto MapTransfer(StockTransfer t, IReadOnlyDictionary<Guid, Product> products, Guid currentStore) => new(
         t.Id, t.Number, t.FromStoreId, t.ToStoreId, t.FromStoreId == currentStore ? "out" : "in", t.Notes, t.CreatedAt,
-        t.Items.Select(i => new StockTransferItemDto(
-            i.ProductId, products.GetValueOrDefault(i.ProductId)?.Name ?? string.Empty, i.Quantity)).ToList());
+        t.Items.Select(i =>
+        {
+            // Each store only sees its own catalogue: show the side that belongs to the current store.
+            var mine = t.FromStoreId == currentStore ? i.ProductId : i.DestinationProductId;
+            return new StockTransferItemDto(mine, products.GetValueOrDefault(mine)?.Name ?? string.Empty, i.Quantity);
+        }).ToList());
 }

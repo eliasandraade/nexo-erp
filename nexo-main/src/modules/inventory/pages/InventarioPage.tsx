@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardCheck, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -92,31 +92,32 @@ export default function InventarioPage() {
 
 function CountEditor({ count, onChanged }: { count: InventoryCountDto; onChanged: () => void }) {
   const editable = count.status === "Open";
+  // Local edits only. Only products typed here are sent, so two people counting different aisles of
+  // the same inventory never wipe each other, and a refetch never erases what is being typed.
   const [values, setValues] = useState<Record<string, string>>({});
   const [filter, setFilter] = useState("");
-
-  useEffect(() => {
-    setValues(Object.fromEntries(count.items.map((i) => [i.productId, i.countedQuantity?.toString() ?? ""])));
-  }, [count]);
+  const shown = (productId: string, counted: number | null) =>
+    values[productId] ?? (counted === null ? "" : counted.toString());
 
   const parsed = (raw: string | undefined) => {
     if (raw === undefined || raw.trim() === "") return null;
     const n = Number(raw.replace(",", "."));
     return Number.isFinite(n) && n >= 0 ? n : NaN;
   };
-  const invalid = count.items.some((i) => Number.isNaN(parsed(values[i.productId]) as number));
+  const edited = Object.keys(values);
+  const invalid = edited.some((id) => Number.isNaN(parsed(values[id]) as number));
   const rows = useMemo(
     () => count.items.filter((i) => `${i.productName} ${i.productCode}`.toLowerCase().includes(filter.toLowerCase())),
     [count.items, filter],
   );
 
   const save = useMutation({
-    mutationFn: () => saveCount(count.id, count.items.map((i) => ({ productId: i.productId, countedQuantity: parsed(values[i.productId]) }))),
-    onSuccess: () => { onChanged(); toast.success("Contagem salva."); },
+    mutationFn: () => saveCount(count.id, edited.map((id) => ({ productId: id, countedQuantity: parsed(values[id]) }))),
+    onSuccess: () => { setValues({}); onChanged(); toast.success("Contagem salva."); },
     onError: (e: Error) => toast.error(e.message),
   });
   const apply = useMutation({
-    mutationFn: async () => { await save.mutateAsync(); return applyCount(count.id); },
+    mutationFn: async () => { if (edited.length > 0) await save.mutateAsync(); return applyCount(count.id); },
     onSuccess: (c) => {
       onChanged();
       const adjusted = c.items.filter((i) => (i.difference ?? 0) !== 0).length;
@@ -135,7 +136,7 @@ function CountEditor({ count, onChanged }: { count: InventoryCountDto; onChanged
     <SectionCard
       title={`Inventário #${count.number} — ${STATUS_LABEL[count.status]}`}
       description={editable
-        ? "Informe a quantidade contada. Produtos sem contagem não são ajustados. O ajuste usa o estoque no momento de aplicar."
+        ? "Informe a quantidade contada logo após contar. Produtos sem contagem não são ajustados; vendas feitas depois da contagem são preservadas."
         : "Contagem encerrada. As diferenças abaixo já foram lançadas como ajustes de estoque."}
     >
       <div className="space-y-4">
@@ -165,7 +166,7 @@ function CountEditor({ count, onChanged }: { count: InventoryCountDto; onChanged
                       className="ml-auto w-24 text-right"
                       inputMode="decimal"
                       aria-label={`Quantidade contada de ${i.productName}`}
-                      value={values[i.productId] ?? ""}
+                      value={shown(i.productId, i.countedQuantity)}
                       onChange={(e) => setValues((v) => ({ ...v, [i.productId]: e.target.value }))}
                     />
                   ) : (

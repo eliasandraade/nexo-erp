@@ -1,9 +1,11 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Features.Auth;
 using Nexo.Application.Features.Products;
 using Nexo.Application.Features.Stock;
 using Nexo.Domain.Entities;
@@ -19,25 +21,31 @@ namespace Nexo.IntegrationTests.Stock;
 [Collection("Integration")]
 public class StockOperationsTests
 {
+    // "Z-" sorts last: the store a user lands in at login is the alphabetically first one, and other
+    // tests rely on the admin's original store staying the default.
     private const string SecondStoreSlug = "z-stock-ops-destination";
     private readonly TestWebApplicationFactory _factory;
     public StockOperationsTests(TestWebApplicationFactory factory) => _factory = factory;
 
     [Fact]
-    public async Task Applying_a_count_sets_the_counted_quantity_against_the_stock_at_apply_time()
+    public async Task Applying_a_count_keeps_sales_made_after_the_count_was_typed()
     {
-        var c = await StockerAsync("stockops.count");
-        var a = await ProductWithStockAsync(c, 10);
-        var b = await ProductWithStockAsync(c, 5);
+        var (c, _) = await StockerAsync("stockops.count");
+        await CancelOpenCountsAsync(c);
+        var (a, _) = await ProductWithStockAsync(c, 10);
+        var (b, _) = await ProductWithStockAsync(c, 5);
 
         var count = await OkAsync<InventoryCountDto>(await c.PostAsJsonAsync("/api/stock/counts",
             new CreateInventoryCountRequest([a, b], "contagem mensal")));
         count.Items.Single(i => i.ProductId == a).ExpectedQuantity.Should().Be(10);
 
-        await OkAsync<InventoryCountDto>(await c.PutAsJsonAsync($"/api/stock/counts/{count.Id}",
+        // shelf counted 8 while the system said 10 → 2 missing
+        var saved = await OkAsync<InventoryCountDto>(await c.PutAsJsonAsync($"/api/stock/counts/{count.Id}",
             new UpdateInventoryCountRequest([new InventoryCountEntry(a, 8)])));
-        // a unit leaves while counting (e.g. a sale) — it must not be undone by the count
-        (await c.PostAsJsonAsync("/api/stock/adjust", new AdjustStockRequest(a, 1, "ManualExit", "venda no meio da contagem")))
+        saved.Items.Single(i => i.ProductId == a).SystemQuantityAtCount.Should().Be(10);
+
+        // then one unit is sold before applying: shelf 7, system 9 — the sale must survive the count
+        (await c.PostAsJsonAsync("/api/stock/adjust", new AdjustStockRequest(a, 1, "ManualExit", "venda depois da contagem")))
             .EnsureSuccessStatusCode();
 
         var applied = await OkAsync<InventoryCountDto>(await c.PostAsync($"/api/stock/counts/{count.Id}/apply", null));
@@ -45,9 +53,9 @@ public class StockOperationsTests
         applied.Status.Should().Be("Applied");
         var itemA = applied.Items.Single(i => i.ProductId == a);
         itemA.SystemQuantityAtApply.Should().Be(9);
-        itemA.Difference.Should().Be(-1);
+        itemA.Difference.Should().Be(-2);
         applied.Items.Single(i => i.ProductId == b).Difference.Should().BeNull();   // not counted → untouched
-        (await StockAsync(c, a)).Should().Be(8);
+        (await StockAsync(c, a)).Should().Be(7);
         (await StockAsync(c, b)).Should().Be(5);
 
         (await c.PutAsJsonAsync($"/api/stock/counts/{count.Id}", new UpdateInventoryCountRequest([new InventoryCountEntry(a, 1)])))
@@ -57,13 +65,16 @@ public class StockOperationsTests
     }
 
     [Fact]
-    public async Task A_count_with_nothing_counted_cannot_be_applied_but_can_be_cancelled()
+    public async Task Only_one_count_is_open_per_store_and_an_empty_count_can_only_be_cancelled()
     {
-        var c = await StockerAsync("stockops.cancel");
-        var a = await ProductWithStockAsync(c, 3);
+        var (c, _) = await StockerAsync("stockops.cancel");
+        var (a, _) = await ProductWithStockAsync(c, 3);
+        await CancelOpenCountsAsync(c);
         var count = await OkAsync<InventoryCountDto>(await c.PostAsJsonAsync("/api/stock/counts",
             new CreateInventoryCountRequest([a])));
 
+        (await c.PostAsJsonAsync("/api/stock/counts", new CreateInventoryCountRequest([a])))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await c.PostAsync($"/api/stock/counts/{count.Id}/apply", null))
             .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         (await OkAsync<InventoryCountDto>(await c.PostAsync($"/api/stock/counts/{count.Id}/cancel", null)))
@@ -72,34 +83,49 @@ public class StockOperationsTests
     }
 
     [Fact]
-    public async Task A_transfer_moves_stock_between_stores_atomically()
+    public async Task A_transfer_lands_on_the_destination_store_product_with_the_same_code()
     {
-        var c = await StockerAsync("stockops.transfer");
+        var (c, login) = await StockerAsync("stockops.transfer");
         var destination = await OtherStoreAsync(c);
-        var a = await ProductWithStockAsync(c, 10);
+        var (a, code) = await ProductWithStockAsync(c, 10);
+        var counterpart = await CounterpartInStoreAsync(login, destination, code);
 
         var transfer = await OkAsync<StockTransferDto>(await c.PostAsJsonAsync("/api/stock/transfers",
             new CreateStockTransferRequest(destination, [new StockTransferItemInput(a, 4)], "reposição filial")));
 
         transfer.Direction.Should().Be("out");
+        transfer.Items.Single().ProductId.Should().Be(a);
         (await StockAsync(c, a)).Should().Be(6);
-        (await StockInStoreAsync(destination, a)).Should().Be(4);
+        (await StockInStoreAsync(destination, counterpart)).Should().Be(4);
         (await MovementTypesAsync(transfer.Id)).Should().BeEquivalentTo(["TransferOut", "TransferIn"]);
+
+        // the destination sees it — on its own product — in its history and stock
+        var there = await ClientInStoreAsync(login, destination);
+        var incoming = (await there.GetFromJsonAsync<List<StockTransferDto>>("/api/stock/transfers"))!
+            .Single(t => t.Id == transfer.Id);
+        incoming.Direction.Should().Be("in");
+        incoming.Items.Single().ProductId.Should().Be(counterpart);
+        (await StockAsync(there, counterpart)).Should().Be(4);
 
         // not enough at the origin → nothing moves
         (await c.PostAsJsonAsync("/api/stock/transfers",
                 new CreateStockTransferRequest(destination, [new StockTransferItemInput(a, 7)])))
             .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         (await StockAsync(c, a)).Should().Be(6);
-        (await StockInStoreAsync(destination, a)).Should().Be(4);
     }
 
     [Fact]
-    public async Task Transfers_need_a_different_store_of_the_tenant()
+    public async Task A_transfer_needs_the_product_in_the_destination_catalogue_and_a_valid_store()
     {
-        var c = await StockerAsync("stockops.invalid");
-        var a = await ProductWithStockAsync(c, 2);
+        var (c, _) = await StockerAsync("stockops.invalid");
+        var (a, _) = await ProductWithStockAsync(c, 2);
         var me = await CurrentStoreAsync(c);
+        var other = await OtherStoreAsync(c);
+
+        var noCounterpart = await c.PostAsJsonAsync("/api/stock/transfers",
+            new CreateStockTransferRequest(other, [new StockTransferItemInput(a, 1)]));
+        noCounterpart.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await StockAsync(c, a)).Should().Be(2);
 
         (await c.PostAsJsonAsync("/api/stock/transfers",
                 new CreateStockTransferRequest(me, [new StockTransferItemInput(a, 1)])))
@@ -112,9 +138,10 @@ public class StockOperationsTests
     [Fact]
     public async Task Concurrent_transfers_never_take_more_than_the_origin_holds()
     {
-        var c = await StockerAsync("stockops.race");
+        var (c, login) = await StockerAsync("stockops.race");
         var destination = await OtherStoreAsync(c);
-        var a = await ProductWithStockAsync(c, 5);
+        var (a, code) = await ProductWithStockAsync(c, 5);
+        var counterpart = await CounterpartInStoreAsync(login, destination, code);
         var second = _factory.CreateApiClient();
         second.DefaultRequestHeaders.Authorization = c.DefaultRequestHeaders.Authorization;
         var body = new CreateStockTransferRequest(destination, [new StockTransferItemInput(a, 3)]);
@@ -126,7 +153,7 @@ public class StockOperationsTests
         responses.Select(r => r.StatusCode).Should().BeEquivalentTo(
             [HttpStatusCode.OK, HttpStatusCode.UnprocessableEntity]);
         (await StockAsync(c, a)).Should().Be(2);
-        (await StockInStoreAsync(destination, a)).Should().Be(3);
+        (await StockInStoreAsync(destination, counterpart)).Should().Be(3);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -137,15 +164,41 @@ public class StockOperationsTests
         return (await resp.Content.ReadFromJsonAsync<T>())!;
     }
 
-    private static async Task<Guid> ProductWithStockAsync(HttpClient c, decimal quantity)
+    private static async Task<(Guid Id, string Code)> ProductWithStockAsync(HttpClient c, decimal quantity, string? code = null)
     {
-        var code = $"PR46-{Guid.NewGuid():N}"[..20];
-        var product = (await (await c.PostAsJsonAsync("/api/products",
-                new CreateProductRequest(Code: code, Name: code, Unit: "Un", SalePrice: 10m, CostPrice: 5m, TrackStock: true)))
-            .Content.ReadFromJsonAsync<ProductDto>())!;
-        (await c.PostAsJsonAsync("/api/stock/adjust",
-            new AdjustStockRequest(product.Id, quantity, "ManualEntry", "PR46"))).EnsureSuccessStatusCode();
-        return product.Id;
+        code ??= $"PR46-{Guid.NewGuid():N}"[..20];
+        var resp = await c.PostAsJsonAsync("/api/products",
+            new CreateProductRequest(Code: code, Name: code, Unit: "Un", SalePrice: 10m, CostPrice: 5m, TrackStock: true));
+        var product = await OkAsync<ProductDto>(resp);
+        if (quantity > 0)
+            (await c.PostAsJsonAsync("/api/stock/adjust",
+                new AdjustStockRequest(product.Id, quantity, "ManualEntry", "PR46"))).EnsureSuccessStatusCode();
+        return (product.Id, code);
+    }
+
+    /// <summary>Registers the same product (same code) in another store's catalogue.</summary>
+    private async Task<Guid> CounterpartInStoreAsync(string login, Guid storeId, string code)
+    {
+        var there = await ClientInStoreAsync(login, storeId);
+        return (await ProductWithStockAsync(there, 0, code)).Id;
+    }
+
+    private async Task<HttpClient> ClientInStoreAsync(string login, Guid storeId)
+    {
+        var (client, body) = await AuthClientFactory.LoginWithBodyAsync(_factory, login, TestCredentials.SameTenantManagerPassword);
+        var resp = await client.PostAsJsonAsync("/api/auth/switch-store",
+            new { storeId = storeId.ToString(), refreshToken = body.RefreshToken });
+        resp.EnsureSuccessStatusCode();
+        var switched = (await resp.Content.ReadFromJsonAsync<SwitchStoreResponse>())!;
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", switched.AccessToken);
+        return client;
+    }
+
+    private static async Task CancelOpenCountsAsync(HttpClient c)
+    {
+        var counts = (await c.GetFromJsonAsync<List<InventoryCountDto>>("/api/stock/counts"))!;
+        foreach (var open in counts.Where(x => x.Status == "Open"))
+            (await c.PostAsync($"/api/stock/counts/{open.Id}/cancel", null)).EnsureSuccessStatusCode();
     }
 
     private static async Task<decimal> StockAsync(HttpClient c, Guid productId)
@@ -185,26 +238,24 @@ public class StockOperationsTests
         var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
         var admin = await db.Users.IgnoreQueryFilters().FirstAsync(u => u.Login == TestCredentials.AdminLogin);
         return await db.Stores.IgnoreQueryFilters()
-            .Where(s => s.TenantId == admin.TenantId && s.Id != current)
+            .Where(s => s.TenantId == admin.TenantId && s.Id != current && s.Status == StoreStatus.Active)
+            .OrderBy(s => s.Name)
             .Select(s => s.Id).FirstAsync();
     }
 
-    private async Task<Guid> EnsureSecondStoreAsync()
+    private async Task EnsureSecondStoreAsync()
     {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
         var admin = await db.Users.IgnoreQueryFilters().FirstAsync(u => u.Login == TestCredentials.AdminLogin);
-        var existing = await db.Stores.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(s => s.TenantId == admin.TenantId && s.Slug == SecondStoreSlug);
-        if (existing is not null) return existing.Id;
-        var store = Store.Create(admin.TenantId, "Z-Filial-PR46", SecondStoreSlug);
-        db.Stores.Add(store);
+        if (await db.Stores.IgnoreQueryFilters().AnyAsync(s => s.TenantId == admin.TenantId && s.Slug == SecondStoreSlug))
+            return;
+        db.Stores.Add(Store.Create(admin.TenantId, "Z-Filial-PR46", SecondStoreSlug));
         await db.SaveChangesAsync();
-        return store.Id;
     }
 
     /// <summary>Fresh Estoquista, logged in AFTER the second store exists (its token lists both).</summary>
-    private async Task<HttpClient> StockerAsync(string login)
+    private async Task<(HttpClient Client, string Login)> StockerAsync(string login)
     {
         await EnsureSecondStoreAsync();
         using (var scope = _factory.Services.CreateScope())
@@ -221,6 +272,6 @@ public class StockOperationsTests
                 await db.SaveChangesAsync();
             }
         }
-        return await AuthClientFactory.LoginAsync(_factory, login, TestCredentials.SameTenantManagerPassword);
+        return (await AuthClientFactory.LoginAsync(_factory, login, TestCredentials.SameTenantManagerPassword), login);
     }
 }

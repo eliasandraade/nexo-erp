@@ -42,6 +42,7 @@ public class InventoryCountItemConfiguration : IEntityTypeConfiguration<Inventor
         builder.Property(x => x.ProductId).HasColumnName("product_id").IsRequired();
         builder.Property(x => x.ExpectedQuantity).HasColumnName("expected_quantity").HasColumnType("numeric(18,4)").IsRequired();
         builder.Property(x => x.CountedQuantity).HasColumnName("counted_quantity").HasColumnType("numeric(18,4)");
+        builder.Property(x => x.SystemQuantityAtCount).HasColumnName("system_quantity_at_count").HasColumnType("numeric(18,4)");
         builder.Property(x => x.SystemQuantityAtApply).HasColumnName("system_quantity_at_apply").HasColumnType("numeric(18,4)");
         builder.Property(x => x.Difference).HasColumnName("difference").HasColumnType("numeric(18,4)");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
@@ -92,12 +93,14 @@ public class StockTransferItemConfiguration : IEntityTypeConfiguration<StockTran
         builder.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
         builder.Property(x => x.StockTransferId).HasColumnName("stock_transfer_id").IsRequired();
         builder.Property(x => x.ProductId).HasColumnName("product_id").IsRequired();
+        builder.Property(x => x.DestinationProductId).HasColumnName("destination_product_id").IsRequired();
         builder.Property(x => x.Quantity).HasColumnName("quantity").HasColumnType("numeric(18,4)").IsRequired();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 
         builder.HasIndex(x => new { x.StockTransferId, x.ProductId }).IsUnique();
         builder.HasOne<Product>().WithMany().HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Product>().WithMany().HasForeignKey(x => x.DestinationProductId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
     }
 }

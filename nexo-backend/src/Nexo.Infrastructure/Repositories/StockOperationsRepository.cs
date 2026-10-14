@@ -72,8 +72,22 @@ public class StockOperationsRepository : IStockOperationsRepository
         return await _context.Products.Where(p => list.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
     }
 
-    public async Task<bool> StoreBelongsToTenantAsync(Guid storeId, CancellationToken ct = default)
-        => await _context.Stores.AnyAsync(s => s.Id == storeId, ct);   // tenant query filter applies
+    public async Task<bool> IsActiveStoreOfTenantAsync(Guid storeId, CancellationToken ct = default)
+        => await _context.Stores.AnyAsync(s => s.Id == storeId && s.Status == Nexo.Domain.Enums.StoreStatus.Active, ct);   // tenant filter applies
+
+    public async Task<bool> HasOpenCountAsync(CancellationToken ct = default)
+        => await _context.InventoryCounts.AnyAsync(c => c.Status == InventoryCountStatus.Open, ct);
+
+    public async Task<IReadOnlyDictionary<string, Product>> GetProductsInStoreByCodeAsync(
+        Guid tenantId, Guid storeId, IEnumerable<string> codes, CancellationToken ct = default)
+    {
+        var list = codes.Distinct().ToList();
+        // Explicit cross-store read, pinned to tenant + store (authorised by the caller).
+        var products = await _context.Products.IgnoreQueryFilters()
+            .Where(p => p.TenantId == tenantId && p.StoreId == storeId && list.Contains(p.Code))
+            .ToListAsync(ct);
+        return products.ToDictionary(p => p.Code, StringComparer.OrdinalIgnoreCase);
+    }
 
     public async Task LockStockAsync(Guid tenantId, Guid storeId, IEnumerable<Guid> productIds, CancellationToken ct = default)
     {
@@ -82,11 +96,13 @@ public class StockOperationsRepository : IStockOperationsRepository
 
         // Serialise stock operations of this store: FOR UPDATE can't lock a row that doesn't exist
         // yet, and a transfer/count may have to create the store's stock row for a product.
+        // Rows are locked in primary-key order — the order EF issues a sale's UPDATEs in — so a
+        // multi-item sale and a stock operation can't deadlock on each other.
         var storeKey = BitConverter.ToInt64(storeId.ToByteArray(), 8);
         await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({storeKey})", ct);
 
         await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM nexo.stock_items WHERE tenant_id = {tenantId} AND store_id = {storeId} AND product_id = ANY({ids}) ORDER BY product_id FOR UPDATE", ct);
+            $"SELECT 1 FROM nexo.stock_items WHERE tenant_id = {tenantId} AND store_id = {storeId} AND product_id = ANY({ids}) ORDER BY id FOR UPDATE", ct);
         foreach (var tracked in _context.ChangeTracker.Entries<StockItem>()
                      .Where(e => e.Entity.StoreId == storeId && ids.Contains(e.Entity.ProductId)).ToList())
             await tracked.ReloadAsync(ct);

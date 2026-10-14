@@ -39,10 +39,11 @@ export default function TransferenciasPage() {
     () => stock.filter((s) => `${s.productName} ${s.productCode}`.toLowerCase().includes(filter.toLowerCase())),
     [stock, filter],
   );
-  const lines = stock
-    .map((s) => ({ s, q: Number((quantities[s.productId] ?? "").replace(",", ".")) || 0 }))
-    .filter((l) => l.q > 0);
-  const invalid = lines.some((l) => l.q > l.s.availableQuantity);
+  const typed = stock
+    .filter((s) => (quantities[s.productId] ?? "").trim() !== "")
+    .map((s) => ({ s, q: Number((quantities[s.productId] ?? "").replace(",", ".")) }));
+  const lines = typed.filter((l) => Number.isFinite(l.q) && l.q > 0);
+  const invalid = typed.some((l) => !Number.isFinite(l.q) || l.q <= 0 || l.q > l.s.availableQuantity);
 
   const transfer = useMutation({
     mutationFn: () => createTransfer({
@@ -126,7 +127,10 @@ export default function TransferenciasPage() {
               ))}
             </TableBody>
           </Table>
-          {invalid && <p className="text-xs text-destructive">A quantidade não pode passar do disponível nesta loja.</p>}
+          {invalid && <p className="text-xs text-destructive">Use quantidades positivas, até o disponível nesta loja.</p>}
+          <p className="text-xs text-muted-foreground">
+            A loja de destino precisa ter o mesmo produto cadastrado (mesmo código) com controle de estoque.
+          </p>
           <div className="flex justify-end">
             <Button
               onClick={() => transfer.mutate()}

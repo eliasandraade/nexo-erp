@@ -22,7 +22,15 @@ public interface IStockOperationsRepository
     /// <summary>Active products that track stock, for "count everything".</summary>
     Task<IReadOnlyList<Guid>> GetTrackedProductIdsAsync(CancellationToken ct = default);
     Task<IReadOnlyDictionary<Guid, Product>> GetProductsAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
-    Task<bool> StoreBelongsToTenantAsync(Guid storeId, CancellationToken ct = default);
+    /// <summary>The store is an ACTIVE store of the current tenant.</summary>
+    Task<bool> IsActiveStoreOfTenantAsync(Guid storeId, CancellationToken ct = default);
+    Task<bool> HasOpenCountAsync(CancellationToken ct = default);
+    /// <summary>
+    /// Products of a SPECIFIC store of the current tenant by code — each store has its own catalogue,
+    /// so a transfer maps the origin product to the destination's product with the same code.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, Product>> GetProductsInStoreByCodeAsync(
+        Guid tenantId, Guid storeId, IEnumerable<string> codes, CancellationToken ct = default);
 
     /// <summary>
     /// Locks (FOR UPDATE) the stock rows of these products in a store of the current tenant, in a

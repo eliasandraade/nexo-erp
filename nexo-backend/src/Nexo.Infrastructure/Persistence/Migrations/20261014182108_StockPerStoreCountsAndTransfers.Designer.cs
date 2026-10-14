@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261014175836_StockPerStoreCountsAndTransfers")]
+    [Migration("20261014182108_StockPerStoreCountsAndTransfers")]
     partial class StockPerStoreCountsAndTransfers
     {
         /// <inheritdoc />
@@ -769,6 +769,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("SystemQuantityAtApply")
                         .HasColumnType("numeric(18,4)")
                         .HasColumnName("system_quantity_at_apply");
+
+                    b.Property<decimal?>("SystemQuantityAtCount")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("system_quantity_at_count");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -1812,6 +1816,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
 
+                    b.Property<Guid>("DestinationProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("destination_product_id");
+
                     b.Property<Guid>("ProductId")
                         .HasColumnType("uuid")
                         .HasColumnName("product_id");
@@ -1833,6 +1841,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("DestinationProductId");
 
                     b.HasIndex("ProductId");
 
@@ -7080,6 +7090,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Nexo.Domain.Entities.StockTransferItem", b =>
                 {
+                    b.HasOne("Nexo.Domain.Entities.Product", null)
+                        .WithMany()
+                        .HasForeignKey("DestinationProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("Nexo.Domain.Entities.Product", null)
                         .WithMany()
                         .HasForeignKey("ProductId")

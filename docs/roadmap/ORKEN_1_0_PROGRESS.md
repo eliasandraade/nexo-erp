@@ -160,23 +160,26 @@
   - Pior: quando o EF rastreava duas linhas do mesmo produto, **apagava a da outra loja como órfã**. A transferência expôs o problema.
   - Agora o mapeamento é um-para-muitos e o índice único virou comum, o que só relaxa a restrição. Continua único o par (tenant, loja, produto).
 - **Inventário (contagem física):**
-  - Abrir um inventário registra o saldo do sistema de cada produto que controla estoque (até 2.000 por inventário).
-  - A equipe informa o contado e pode salvar parcialmente.
-  - Ao aplicar, cada produto contado passa a ter exatamente a quantidade contada. A diferença é calculada sobre o estoque **no momento de aplicar**, com lock: vendas feitas durante a contagem não são desfeitas.
-  - Cada ajuste gera um movimento `Adjustment` com `ReferenceType=InventoryCount`. Itens não contados ficam como estão.
-  - O inventário aplicado ou cancelado fica congelado, e há auditoria.
+  - Abrir registra o saldo do sistema por produto (até 2.000 produtos). Só pode haver **um inventário aberto por loja**.
+  - Quando a contagem de um item é registrada, o saldo do sistema **naquele momento** é guardado junto.
+  - Ao aplicar, entra no estoque atual, com lock, apenas a **diferença** (contado − sistema na hora da contagem).
+    - Assim, **vendas feitas entre a contagem e a aplicação são preservadas**, não desfeitas.
+    - Exemplo: sistema 10, contado 8 → falta 2. Se depois vender 1, o estoque fica 7.
+  - A tela envia só os produtos digitados ali, então duas pessoas contando corredores diferentes não apagam o trabalho uma da outra.
+  - Cada ajuste gera um movimento `Adjustment` que referencia o inventário. Itens não contados ficam como estão.
+  - Inventário aplicado ou cancelado fica congelado, e tudo é auditado.
 - **Transferência entre lojas:**
-  - Sai da loja atual para outra loja do tenant a que o usuário tem acesso.
-  - É **atômica**: os movimentos `TransferOut` e `TransferIn` entram juntos ou nenhum entra.
-  - Usa lock das linhas das duas lojas em ordem determinística, mais advisory lock por loja, para criar com segurança a linha de destino que ainda não existe.
-  - A origem precisa ter saldo disponível.
-  - Duas transferências concorrentes nunca tiram mais do que existe (testado).
-  - A numeração sequencial é protegida por advisory lock com chave estável.
+  - Sai da loja atual para outra loja **ativa** do tenant a que o usuário tem acesso.
+  - **O catálogo é por loja**, então o produto é mapeado para o produto de **mesmo código** na loja de destino. Se o destino não tiver esse produto cadastrado (ativo, com controle de estoque), a transferência é recusada com a lista dos produtos que faltam.
+  - É **atômica**: `TransferOut` no produto de origem e `TransferIn` no produto de destino, ou nenhum dos dois.
+  - As linhas das duas lojas são travadas em ordem determinística (pela chave primária, a mesma ordem das atualizações de venda do EF), com advisory lock por loja.
+  - A origem precisa ter saldo disponível. Transferências concorrentes nunca tiram mais do que existe.
+  - O histórico mostra cada transferência como enviada ou recebida, sempre com o produto da própria loja.
 - **Telas:**
   - `/estoque/inventario`: abrir, contar, salvar, aplicar, cancelar e histórico.
   - `/estoque/transferencias`: destino, quantidades por produto e histórico enviado/recebido.
   - `/estoque` deixa de se chamar "Ingredientes".
 - **Testes:**
-  - `StockOperationsTests`: 5 testes de integração (contagem aplicada contra o estoque atual, cancelamento, transferência atômica sem perder a linha de origem, loja inválida ou alheia, concorrência).
+  - `StockOperationsTests`: 5 testes de integração (venda depois da contagem preservada, um inventário aberto por loja, transferência para o produto equivalente com histórico dos dois lados, destino sem o produto, loja inválida ou alheia, concorrência).
   - RBAC: 4 linhas novas.
   - Playwright: inventário e transferência.
