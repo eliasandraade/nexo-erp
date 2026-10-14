@@ -56,7 +56,15 @@
 - **Frontend:**
   - No PDV, Pix e cartão ficam travados no total, e o troco exibido vem do backend.
   - Na comanda, passa a ser possível pagar com troco em dinheiro. Antes, o troco aparecia, mas o pagamento era bloqueado.
+- **Decisão:** sem caixa aberto, o salão não recebe em dinheiro.
+  - O drawer da comanda avisa antes e mantém Pix e cartão liberados.
+  - Antes, o dinheiro era aceito e simplesmente não entrava em gaveta nenhuma.
+- **Valores em centavos:**
+  - O domínio (`Sale.RecalculateTotals`) arredonda subtotal, desconto e total para 2 casas (arredondamento comercial) e recusa ajuste negativo.
+  - Sem isso, 10% sobre 33,33 dava um total de 29,997, que nenhum Pix conseguia pagar.
+- **Retry no PDV:** um checkout que falhou na confirmação reaproveita o mesmo rascunho. O backend responde com a venda já confirmada, em vez de criar uma segunda venda.
+- **Cancelamento de vendas antigas:** estorna os movimentos reais de caixa da venda, inclusive o Pix e o cartão que entraram na gaveta antes deste PR. O dinheiro sai de um caixa aberto (o original ou o atual); dia fechado continua fechado.
 - **Decisão provisória:** cartão é tratado como recebido na hora. O prazo e as taxas da adquirente entram com as contas financeiras, nos PRs 49–52.
 - **Testes:**
   - `SalePaymentPlanTests`: 18 testes unitários.
-  - `PdvPaymentIntegrityTests`: 9 testes de integração (troco, Pix/cartão fora da gaveta, misto, retry, concorrência, caixa fechado).
+  - `PdvPaymentIntegrityTests`: 13 testes de integração (troco, Pix/cartão fora da gaveta, misto, retry, concorrência, caixa fechado, desconto fracionado, cancelamento com contrapartida).

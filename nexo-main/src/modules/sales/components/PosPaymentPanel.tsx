@@ -92,7 +92,7 @@ export function PosPaymentPanel({
         <Input
           id="pay-amount"
           value={isCash ? amountInput : total.toFixed(2).replace(".", ",")}
-          disabled={!isCash}
+          readOnly={!isCash}
           onChange={(e) => setAmountInput(e.target.value)}
           onKeyDown={handleKeyDown}
           inputMode="decimal"

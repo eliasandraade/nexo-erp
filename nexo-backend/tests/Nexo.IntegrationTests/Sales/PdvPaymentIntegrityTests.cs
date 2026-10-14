@@ -162,6 +162,76 @@ public class PdvPaymentIntegrityTests
         await ConfirmOkAsync(manager, pixSale.Id, new PaymentInput("Pix", "Cash", 15m));
     }
 
+    [Fact]
+    public async Task A_fractional_discount_is_kept_in_cents_so_pix_can_pay_the_exact_total()
+    {
+        var client = await AdminWithOpenCashAsync();
+        var sale = await DraftSaleAsync(client, price: 33.33m);
+
+        // 10% of 33,33 sent unrounded by an older client: 3.333 → total 30.00
+        var resp = await client.PostAsJsonAsync($"/api/sales/{sale.Id}/confirm",
+            new ConfirmSaleRequest([new PaymentInput("Pix", "Cash", 30.00m)], DiscountAmount: 3.333m));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+        (await resp.Content.ReadFromJsonAsync<SaleDto>())!.Total.Should().Be(30.00m);
+    }
+
+    [Fact]
+    public async Task A_negative_discount_is_rejected()
+    {
+        var client = await AdminWithOpenCashAsync();
+        var sale = await DraftSaleAsync(client, price: 10m);
+
+        var resp = await client.PostAsJsonAsync($"/api/sales/{sale.Id}/confirm",
+            new ConfirmSaleRequest([new PaymentInput("Cash", "Cash", 15m)], DiscountAmount: -5m));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task A_retry_with_another_method_is_a_conflict_not_a_replay()
+    {
+        var client = await AdminWithOpenCashAsync();
+        var sale = await DraftSaleAsync(client, price: 20m);
+        await ConfirmOkAsync(client, sale.Id, new PaymentInput("Cash", "Cash", 20m));
+
+        var resp = await client.PostAsJsonAsync($"/api/sales/{sale.Id}/confirm",
+            new ConfirmSaleRequest([new PaymentInput("Pix", "Cash", 20m)]));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Cancelling_reverses_only_the_cash_in_the_drawer_and_counters_settled_pix()
+    {
+        var client = await AdminWithOpenCashAsync();
+        var sale = await DraftSaleAsync(client, price: 100m);
+        // 30 cash + 30 Pix + 40 a prazo → Confirmed (cancellable)
+        var confirmed = await ConfirmOkAsync(client, sale.Id,
+            new PaymentInput("Cash", "Cash", 30m),
+            new PaymentInput("Pix", "Cash", 30m),
+            new PaymentInput("Credit", "Credit", 40m, DateTime.UtcNow.AddDays(30)));
+        confirmed.Status.Should().Be("Confirmed");
+
+        (await client.PostAsJsonAsync($"/api/sales/{sale.Id}/cancel", new { })).EnsureSuccessStatusCode();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        var refunds = await db.CashMovements.IgnoreQueryFilters()
+            .Where(m => m.ReferenceType == "SaleCancellation" && m.ReferenceId == sale.Id).ToListAsync();
+        refunds.Should().ContainSingle().Which.Amount.Should().Be(30m);
+
+        var counter = await db.FinancialTransactions.IgnoreQueryFilters()
+            .Where(t => t.ReferenceType == "SaleCancellation" && t.ReferenceId == sale.Id).ToListAsync();
+        counter.Should().ContainSingle();
+        counter[0].Amount.Should().Be(30m);
+        counter[0].TransactionType.Should().Be(TransactionType.Payable);
+
+        var receivable = await db.FinancialTransactions.IgnoreQueryFilters()
+            .SingleAsync(t => t.ReferenceType == "Sale" && t.ReferenceId == sale.Id && t.Amount == 40m);
+        receivable.Status.Should().Be(TransactionStatus.Cancelled);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private async Task<HttpClient> AdminWithOpenCashAsync()

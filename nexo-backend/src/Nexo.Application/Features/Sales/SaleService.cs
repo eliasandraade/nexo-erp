@@ -314,22 +314,26 @@ public class SaleService
                     await _stock.AddMovementAsync(reversal, ct);
                 }
 
-                // 2. Physical cash only: take it back out of the drawer (compensating entry)
-                if (sale.CashSessionId.HasValue)
+                // 2. Drawer: reverse exactly what this sale put in it (sales confirmed before
+                //    PR 43 also recorded Pix/card there). The money leaves an OPEN drawer — the
+                //    original one if still open, else the current one; a closed day stays closed.
+                var receipts = (await _cash.GetMovementsByReferenceAsync("Sale", sale.Id, ct))
+                    .Where(m => m.MovementType == CashMovementType.SaleReceipt)
+                    .ToList();
+                if (receipts.Count > 0)
                 {
-                    foreach (var p in sale.Payments.Where(p => p.MovesCashDrawer))
+                    var drawerId = await ResolveRefundCashSessionAsync(sale, ct);
+                    foreach (var receipt in receipts)
                     {
-                        var reversal = CashMovement.Create(
+                        await _cash.AddMovementAsync(CashMovement.Create(
                             _currentTenant.Id,
-                            sale.CashSessionId.Value,
+                            drawerId,
                             CashMovementType.Withdrawal,
-                            p.Amount,
+                            receipt.Amount,
                             $"Estorno Venda #{sale.Number}",
                             _currentUser.UserId,
                             referenceType: SaleCancellationReference,
-                            referenceId: sale.Id);
-
-                        await _cash.AddMovementAsync(reversal, ct);
+                            referenceId: sale.Id), ct);
                     }
                 }
 
@@ -390,6 +394,20 @@ public class SaleService
             "Nenhum caixa aberto. Abra o caixa para receber pagamentos em dinheiro.");
     }
 
+    private async Task<Guid> ResolveRefundCashSessionAsync(Sale sale, CancellationToken ct)
+    {
+        if (sale.CashSessionId.HasValue)
+        {
+            var original = await _cash.GetByIdAsync(sale.CashSessionId.Value, ct);
+            if (original is { IsOpen: true }) return original.Id;
+        }
+
+        var session = await _cash.GetOpenSessionByUserAsync(_currentUser.UserId, ct)
+                      ?? await _cash.GetOpenSessionAsync(ct);
+        return session?.Id ?? throw new DomainException(
+            "Nenhum caixa aberto para devolver o dinheiro desta venda. Abra o caixa e tente de novo.");
+    }
+
     private async Task<FinancialTransaction> NewSaleTransactionAsync(
         FinancialAccountType accountType, TransactionType type, decimal amount, string description,
         DateTime dueDate, string referenceType, Guid saleId, CancellationToken ct)
@@ -411,8 +429,14 @@ public class SaleService
     private static bool IsReplayOf(Sale sale, ConfirmSaleRequest request)
     {
         if (sale.Status is not (SaleStatus.Confirmed or SaleStatus.Paid)) return false;
-        var recorded  = sale.Payments.Select(p => p.Amount + p.ChangeAmount).OrderBy(x => x).ToList();
-        var requested = request.Payments.Select(p => p.Amount).OrderBy(x => x).ToList();
+        var recorded = sale.Payments
+            .Select(p => $"{p.Method}|{p.Type}|{p.Amount + p.ChangeAmount:F2}")
+            .OrderBy(x => x, StringComparer.Ordinal).ToList();
+        var requested = request.Payments
+            .Select(p => Enum.TryParse<PaymentMethod>(p.Method, true, out var m)
+                         && Enum.TryParse<PaymentType>(p.Type, true, out var t)
+                ? $"{m}|{t}|{p.Amount:F2}" : "?")
+            .OrderBy(x => x, StringComparer.Ordinal).ToList();
         return recorded.Count > 0 && recorded.SequenceEqual(requested);
     }
 

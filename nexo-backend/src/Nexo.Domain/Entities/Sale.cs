@@ -75,13 +75,20 @@ public class Sale : StoreEntity
         decimal surchargesAmount = 0)
     {
         EnsureCanBeModified();
-        Subtotal         = items.Sum(i => i.Total);
-        DiscountAmount   = discountAmount;
-        TaxAmount        = taxAmount;
-        SurchargesAmount = surchargesAmount;
+        if (discountAmount < 0 || taxAmount < 0 || surchargesAmount < 0)
+            throw new DomainException("Desconto, impostos e acréscimos não podem ser negativos.");
+
+        // Money is kept in cents: a 10% discount on 33,33 must not leave a 29,997 total that no
+        // Pix/card payment can ever match.
+        Subtotal         = Cents(items.Sum(i => i.Total));
+        DiscountAmount   = Cents(discountAmount);
+        TaxAmount        = Cents(taxAmount);
+        SurchargesAmount = Cents(surchargesAmount);
         Total            = Subtotal - DiscountAmount + TaxAmount + SurchargesAmount;
         SetUpdatedAt();
     }
+
+    private static decimal Cents(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
     // ── State transitions ─────────────────────────────────────────────────────
 
