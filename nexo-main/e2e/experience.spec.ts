@@ -165,3 +165,32 @@ test('Venda paga: devolução parcial envia itens, reembolso, motivo e chave de 
  expect(typeof posted.idempotencyKey).toBe('string');
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Inventário: contagem salva e aplicada; transferência envia destino e quantidades',async({page})=>{
+ await prepare(page);
+ const count={id:'qa-count',number:3,status:'Open',notes:null,createdAt:'2026-10-14T09:00:00Z',closedAt:null,countedItems:0,
+  items:[{productId:'p1',productName:'Arroz 5kg',productCode:'A5',expectedQuantity:10,countedQuantity:null,systemQuantityAtApply:null,difference:null}]};
+ let saved: any=null, applied=false, transferBody: any=null;
+ await page.route('**/api/stock/counts**',route=>{const r=route.request();const p=new URL(r.url()).pathname;
+  if(r.method()==='PUT'){saved=r.postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(count)});}
+  if(p.endsWith('/apply')){applied=true;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...count,status:'Applied',items:[{...count.items[0],countedQuantity:8,systemQuantityAtApply:10,difference:-2}]})});}
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([count])});});
+ await page.goto('/estoque/inventario');
+ await page.getByLabel('Quantidade contada de Arroz 5kg').fill('8');
+ await page.getByRole('button',{name:'Aplicar ajustes'}).click();
+ await expect.poll(()=>applied).toBe(true);
+ expect(saved.items).toEqual([{productId:'p1',countedQuantity:8}]);
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);await page.setViewportSize({width:1280,height:900});
+
+ await page.route('**/api/stores**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'qa-store',name:'Matriz'},{id:'qa-store-2',name:'Filial Centro'}])}));
+ await page.route('**/api/stock',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'s1',productId:'p1',productName:'Arroz 5kg',productCode:'A5',currentQuantity:10,reservedQuantity:0,availableQuantity:10,lastMovementAt:null}])}));
+ await page.route('**/api/stock/transfers',route=>{const r=route.request();
+  if(r.method()==='POST'){transferBody=r.postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'t1',number:1,fromStoreId:'qa-store',toStoreId:'qa-store-2',direction:'out',notes:null,createdAt:'2026-10-14T10:00:00Z',items:[{productId:'p1',productName:'Arroz 5kg',quantity:4}]})});}
+  return route.fulfill({status:200,contentType:'application/json',body:'[]'});});
+ await page.goto('/estoque/transferencias');
+ await page.getByLabel('Loja de destino').click();await page.getByRole('option',{name:'Filial Centro'}).click();
+ await page.getByLabel('Quantidade a transferir de Arroz 5kg').fill('4');
+ await page.getByRole('button',{name:/Transferir 1 produto/}).click();
+ await expect.poll(()=>transferBody).not.toBeNull();
+ expect(transferBody).toMatchObject({toStoreId:'qa-store-2',items:[{productId:'p1',quantity:4}]});
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

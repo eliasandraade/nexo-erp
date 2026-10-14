@@ -674,6 +674,122 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("financial_transactions", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Entities.InventoryCount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("closed_at");
+
+                    b.Property<Guid?>("ClosedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("closed_by_user_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "StoreId", "Number")
+                        .IsUnique();
+
+                    b.ToTable("inventory_counts", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.InventoryCountItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("CountedQuantity")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("counted_quantity");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<decimal?>("Difference")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("difference");
+
+                    b.Property<decimal>("ExpectedQuantity")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("expected_quantity");
+
+                    b.Property<Guid>("InventoryCountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inventory_count_id");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<decimal?>("SystemQuantityAtApply")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("system_quantity_at_apply");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("InventoryCountId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("inventory_count_items", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_inventory_count_items_counted_nonnegative", "counted_quantity IS NULL OR counted_quantity >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Nexo.Domain.Entities.ModuleDefinition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1531,8 +1647,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ProductId")
-                        .IsUnique();
+                    b.HasIndex("ProductId");
 
                     b.HasIndex("StoreId");
 
@@ -1622,6 +1737,111 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "StoreId", "ProductId");
 
                     b.ToTable("stock_movements", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.StockTransfer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid>("FromStoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_store_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("notes");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<Guid>("ToStoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_store_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FromStoreId");
+
+                    b.HasIndex("ToStoreId");
+
+                    b.HasIndex("TenantId", "FromStoreId");
+
+                    b.HasIndex("TenantId", "Number")
+                        .IsUnique();
+
+                    b.HasIndex("TenantId", "ToStoreId");
+
+                    b.ToTable("stock_transfers", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_stock_transfers_distinct_stores", "from_store_id <> to_store_id");
+                        });
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.StockTransferItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("StockTransferId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_transfer_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("StockTransferId", "ProductId")
+                        .IsUnique();
+
+                    b.ToTable("stock_transfer_items", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_stock_transfer_items_quantity_positive", "quantity > 0");
+                        });
                 });
 
             modelBuilder.Entity("Nexo.Domain.Entities.Store", b =>
@@ -6573,6 +6793,36 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("FinancialAccount");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Entities.InventoryCount", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.InventoryCountItem", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.InventoryCount", null)
+                        .WithMany("Items")
+                        .HasForeignKey("InventoryCountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Nexo.Domain.Entities.ModuleSubscription", b =>
                 {
                     b.HasOne("Nexo.Domain.Entities.PlatformUser", "GrantedBy")
@@ -6761,8 +7011,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Nexo.Domain.Entities.StockItem", b =>
                 {
                     b.HasOne("Nexo.Domain.Entities.Product", "Product")
-                        .WithOne("StockItem")
-                        .HasForeignKey("Nexo.Domain.Entities.StockItem", "ProductId")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -6802,6 +7052,48 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.StockTransfer", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("FromStoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("ToStoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.StockTransferItem", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Product", null)
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.StockTransfer", null)
+                        .WithMany("Items")
+                        .HasForeignKey("StockTransferId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Nexo.Domain.Entities.Store", b =>
@@ -8038,11 +8330,14 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Transactions");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Entities.InventoryCount", b =>
+                {
+                    b.Navigation("Items");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Entities.Product", b =>
                 {
                     b.Navigation("SaleItems");
-
-                    b.Navigation("StockItem");
 
                     b.Navigation("StockMovements");
                 });
@@ -8055,6 +8350,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Nexo.Domain.Entities.SaleReturn", b =>
+                {
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.StockTransfer", b =>
                 {
                     b.Navigation("Items");
                 });

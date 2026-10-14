@@ -63,6 +63,10 @@ public class RbacMatrixTests
         { "GET",    "/api/stock",                              Seller,  true  },   // PDV flags out-of-stock items
         { "GET",    "/api/stock",                              Kitchen, false },
         { "GET",    "/api/stock",                              Stocker, true  },
+        { "GET",    "/api/stock/counts",                       Stocker, true  },
+        { "GET",    "/api/stock/counts",                       Seller,  false },
+        { "POST",   "/api/stock/transfers",                    Seller,  false },
+        { "POST",   "/api/stock/transfers",                    Kitchen, false },
         { "GET",    $"/api/stock/product/{R}/movements",       Seller,  false },
         { "GET",    "/api/customers",                          Kitchen, false },   // personal data
         { "GET",    "/api/customers",                          Stocker, false },

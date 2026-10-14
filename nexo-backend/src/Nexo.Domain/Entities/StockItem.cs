@@ -39,6 +39,17 @@ public class StockItem : StoreEntity
         };
     }
 
+    /// <summary>
+    /// Stock record of ANOTHER store of the tenant (destination of a transfer). The interceptor only
+    /// fills the current store, so the store is set here explicitly.
+    /// </summary>
+    public static StockItem CreateInStore(Guid tenantId, Guid storeId, Guid productId)
+    {
+        var item = Create(tenantId, productId);
+        item.SetStoreId(storeId);
+        return item;
+    }
+
     public void ApplyMovement(decimal quantityChange)
     {
         CurrentQuantity += quantityChange;

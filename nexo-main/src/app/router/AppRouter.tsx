@@ -46,6 +46,8 @@ const ProductFormPage       = lazy(() => import("@/modules/products/pages/Produc
 const EstoquePage           = lazy(() => import("@/modules/inventory/pages/EstoquePage"));
 const MovimentacoesPage     = lazy(() => import("@/modules/inventory/pages/MovimentacoesPage"));
 const AjustesPage           = lazy(() => import("@/modules/inventory/pages/AjustesPage"));
+const InventarioPage        = lazy(() => import("@/modules/inventory/pages/InventarioPage"));
+const TransferenciasPage    = lazy(() => import("@/modules/inventory/pages/TransferenciasPage"));
 const ClientesPage          = lazy(() => import("@/modules/customers/pages/ClientesPage"));
 const CustomerFormPage      = lazy(() => import("@/modules/customers/pages/CustomerFormPage"));
 const FornecedoresPage      = lazy(() => import("@/modules/suppliers/pages/FornecedoresPage"));
@@ -287,6 +289,8 @@ export function AppRouter() {
                   <Route path="/estoque"               element={<EstoquePage />} />
                   <Route path="/estoque/movimentacoes" element={<MovimentacoesPage />} />
                   <Route path="/estoque/ajustes"       element={<AjustesPage />} />
+                  <Route path="/estoque/inventario"    element={<InventarioPage />} />
+                  <Route path="/estoque/transferencias" element={<TransferenciasPage />} />
                 </Route>
               </Route>
             </Route>

@@ -45,6 +45,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Clientes | Sales (dados pessoais: fora de Estoquista e Cozinha) | Management | Management | Management | — |
 | Fornecedores | Stock | Management | Management | Management | — |
 | Estoque | saldos: StockReaders (o PDV e o salão marcam itens sem estoque) · movimentações: Stock | — | — | — | ajuste: Stock |
+| Inventário / transferências | Stock | Stock | contagem: Stock | cancelar: Stock | aplicar inventário / transferir: Stock |
 | Compras | Stock | Stock (pedido, itens) | Stock | Stock (remover item) | confirmar / cancelar: Management |
 | Listas de preço | Management | Management | Management | Management | — |
 | PDV: preço resolvido | Sales | — | — | — | — |
