@@ -15,6 +15,7 @@ public class SaleService
     private readonly ICashRepository _cash;
     private readonly IFinancialRepository _financial;
     private readonly IUnitOfWork _uow;
+    private readonly IAuditWriter _audit;
     private readonly ICurrentTenant _currentTenant;
     private readonly ICurrentUser _currentUser;
 
@@ -25,9 +26,11 @@ public class SaleService
         ICashRepository cash,
         IFinancialRepository financial,
         IUnitOfWork uow,
+        IAuditWriter audit,
         ICurrentTenant currentTenant,
         ICurrentUser currentUser)
     {
+        _audit         = audit;
         _sales         = sales;
         _products      = products;
         _stock         = stock;
@@ -273,7 +276,7 @@ public class SaleService
     ///   cancels pending receivables and posts a counter-entry for revenue already settled
     ///   (Pix/card) — history is never deleted.
     /// </summary>
-    public async Task CancelAsync(Guid saleId, CancellationToken ct = default)
+    public async Task CancelAsync(Guid saleId, string? reason = null, CancellationToken ct = default)
     {
         await using var tx = await _uow.BeginTransactionAsync(ct);
         try
@@ -282,37 +285,18 @@ public class SaleService
             var sale = await _sales.GetByIdWithItemsAsync(saleId, ct)
                 ?? throw new NotFoundException("Sale", saleId);
 
-            // Domain enforces: cannot cancel Paid sales
-            sale.Cancel();
+            // Domain enforces: a paid sale is undone by a devolução, not a cancellation
+            sale.Cancel(_currentUser.UserId, reason);
 
             // Reverse side-effects only if stock was already deducted (sale was Confirmed)
             if (sale.WasConfirmed)
             {
-                // 1. Reverse stock
-                foreach (var item in sale.Items)
-                {
-                    var product = await _products.GetByIdAsync(item.ProductId, ct);
-                    if (product?.TrackStock != true) continue;
-
-                    var stockItem = await _stock.GetByProductIdAsync(item.ProductId, ct);
-                    if (stockItem is null) continue;
-
-                    var before = stockItem.CurrentQuantity;
-                    stockItem.ApplyMovement(item.Quantity);  // restore
-
-                    var reversal = StockMovement.Create(
-                        _currentTenant.Id,
-                        item.ProductId,
-                        StockMovementType.ReturnEntry,
-                        item.Quantity,
-                        before,
-                        stockItem.CurrentQuantity,
-                        _currentUser.UserId,
-                        referenceType: SaleCancellationReference,
-                        referenceId: sale.Id);
-
-                    await _stock.AddMovementAsync(reversal, ct);
-                }
+                // 1. Reverse stock — exactly what this sale took out (recipe items of the restaurant
+                //    left through their ingredients and are not re-entered as finished products)
+                var outputs = (await _stock.GetMovementsByReferenceAsync("Sale", sale.Id, ct))
+                    .Where(m => m.MovementType == StockMovementType.SaleOutput);
+                foreach (var output in outputs)
+                    await ReEnterStockAsync(output.ProductId, output.Quantity, SaleCancellationReference, sale.Id, ct);
 
                 // 2. Drawer: reverse exactly what this sale put in it (sales confirmed before
                 //    PR 43 also recorded Pix/card there). The money leaves an OPEN drawer — the
@@ -358,6 +342,11 @@ public class SaleService
                 }
             }
 
+            _audit.Stage(AuditActions.SaleCancelled, AuditSeverity.Warning, "Sale", sale.Id.ToString(),
+                $"Venda #{sale.Number} cancelada" + (sale.CancellationReason is null ? "" : $": {sale.CancellationReason}"),
+                tenantId: _currentTenant.Id, actorId: _currentUser.UserId, actorName: _currentUser.Name,
+                metadata: new { sale.Total, WasConfirmed = sale.WasConfirmed });
+
             await _sales.SaveChangesAsync(ct);
             await _stock.SaveChangesAsync(ct);
 
@@ -369,6 +358,166 @@ public class SaleService
             throw;
         }
     }
+
+    public const string SaleReturnReference = "SaleReturn";
+
+    /// <summary>
+    /// Devolução (total or partial) of a paid sale — the reversal path for sales that already took
+    /// the money. Atomically, under the sale lock:
+    ///   1. replay: the same idempotency key returns the devolução already recorded;
+    ///   2. each line ≤ what is still unreturned; the refund is the lines' share of the sale net of
+    ///      its discount, and the devolução that empties the sale refunds exactly what is left;
+    ///   3. stock re-enters only what the sale actually took out (recipe items — food served — don't);
+    ///   4. money goes back by the chosen method: physical cash leaves an open drawer that holds it
+    ///      (SaleRefund), Pix/card/transfer is a settled counter-entry in the financeiro;
+    ///   5. the sale becomes PartiallyReturned / Returned and the trail is audited.
+    /// </summary>
+    public async Task<SaleReturnDto> ReturnAsync(Guid saleId, CreateSaleReturnRequest request, CancellationToken ct = default)
+    {
+        if (request.Items is null || request.Items.Count == 0)
+            throw new DomainException("Selecione ao menos um item para devolver.");
+        if (!Enum.TryParse<PaymentMethod>(request.RefundMethod, ignoreCase: true, out var refundMethod)
+            || !SaleReturn.AllowedRefundMethods.Contains(refundMethod))
+            throw new DomainException("Forma de reembolso inválida. Use Dinheiro, Pix, cartão ou transferência.");
+
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        try
+        {
+            await _sales.LockAsync(saleId, ct);
+
+            if (request.IdempotencyKey is { } key && await _sales.GetReturnByIdempotencyKeyAsync(key, ct) is { } replay)
+            {
+                if (replay.SaleId != saleId)
+                    throw new ConflictException("Esta chave de devolução pertence a outra venda.");
+                await tx.CommitAsync(ct);
+                return MapReturn(replay);
+            }
+
+            var sale = await _sales.GetByIdWithItemsAsync(saleId, ct)
+                ?? throw new NotFoundException("Sale", saleId);
+            if (!sale.CanBeReturned)
+                throw sale.Status == SaleStatus.Confirmed
+                    ? new DomainException("Esta venda ainda tem valores a prazo em aberto: cancele a venda em vez de devolver.")
+                    : new ConflictException($"A venda #{sale.Number} não aceita devolução ({DescribeStatus(sale.Status)}).");
+
+            // What is still returnable per line
+            var previous = await _sales.GetReturnsBySaleAsync(sale.Id, ct);
+            var returned = previous.SelectMany(r => r.Items)
+                .GroupBy(i => i.SaleItemId)
+                .ToDictionary(g => g.Key, g => g.Sum(i => i.Quantity));
+            decimal Remaining(SaleItem i) => i.Quantity - returned.GetValueOrDefault(i.Id);
+
+            var requested = request.Items
+                .GroupBy(i => i.SaleItemId)
+                .Select(g => (SaleItemId: g.Key, Quantity: g.Sum(i => i.Quantity)))
+                .ToList();
+            var lines = new List<(SaleItem Item, decimal Quantity)>();
+            foreach (var (saleItemId, quantity) in requested)
+            {
+                var item = sale.Items.FirstOrDefault(i => i.Id == saleItemId)
+                    ?? throw new DomainException("Item não pertence a esta venda.");
+                if (quantity <= 0)
+                    throw new DomainException("A quantidade devolvida deve ser positiva.");
+                if (quantity > Remaining(item))
+                    throw new DomainException(
+                        $"Quantidade acima do disponível para devolução: restam {Remaining(item):0.####}.");
+                lines.Add((item, quantity));
+            }
+
+            // Refund: the lines' share of the sale net of its discount; the devolução that empties
+            // the sale refunds exactly what is left (absorbs rounding, couvert, service fee).
+            var factor = sale.Subtotal > 0 ? (sale.Subtotal - sale.DiscountAmount) / sale.Subtotal : 0m;
+            var amounts = lines
+                .Select(l => Math.Round(l.Item.Total * factor * l.Quantity / l.Item.Quantity, 2, MidpointRounding.AwayFromZero))
+                .ToList();
+            var fullyReturned = sale.Items.All(i =>
+                Remaining(i) - lines.Where(l => l.Item.Id == i.Id).Sum(l => l.Quantity) <= 0);
+            var refund = fullyReturned ? sale.Total - sale.ReturnedAmount : amounts.Sum();
+            if (fullyReturned) amounts[^1] += refund - amounts.Sum();
+            if (refund <= 0)
+                throw new DomainException("Não há valor a devolver para estes itens.");
+
+            // Money back
+            Guid? drawerId = refundMethod == PaymentMethod.Cash
+                ? await ResolveRefundCashSessionAsync(sale, refund, ct)
+                : null;
+
+            var saleReturn = SaleReturn.Create(
+                _currentTenant.Id, sale.Id, refundMethod, refund, request.Reason ?? string.Empty,
+                _currentUser.UserId, request.IdempotencyKey, drawerId);
+            for (var i = 0; i < lines.Count; i++)
+                saleReturn.AddItem(lines[i].Item.Id, lines[i].Item.ProductId, lines[i].Quantity, amounts[i]);
+            await _sales.AddReturnAsync(saleReturn, ct);
+
+            if (drawerId is { } drawer)
+            {
+                await _cash.AddMovementAsync(CashMovement.Create(
+                    _currentTenant.Id, drawer, CashMovementType.SaleRefund, refund,
+                    $"Devolução Venda #{sale.Number}", _currentUser.UserId,
+                    referenceType: SaleReturnReference, referenceId: saleReturn.Id), ct);
+            }
+            else
+            {
+                var counter = await NewSaleTransactionAsync(
+                    FinancialAccountType.Payable, TransactionType.Payable, refund,
+                    $"Devolução Venda #{sale.Number} — {DescribeMethod(refundMethod)}", DateTime.UtcNow,
+                    SaleReturnReference, saleReturn.Id, ct);
+                counter.MarkPaid(DateTime.UtcNow);
+                await _financial.AddTransactionAsync(counter, ct);
+            }
+
+            // Stock: only what this sale took out comes back
+            var deducted = (await _stock.GetMovementsByReferenceAsync("Sale", sale.Id, ct))
+                .Where(m => m.MovementType == StockMovementType.SaleOutput)
+                .Select(m => m.ProductId)
+                .ToHashSet();
+            foreach (var (item, quantity) in lines.Where(l => deducted.Contains(l.Item.ProductId)))
+                await ReEnterStockAsync(item.ProductId, quantity, SaleReturnReference, saleReturn.Id, ct);
+
+            sale.RegisterReturn(refund, fullyReturned);
+            _audit.Stage(AuditActions.SaleReturned, AuditSeverity.Warning, "Sale", sale.Id.ToString(),
+                $"Devolução de {refund:F2} na venda #{sale.Number} ({DescribeMethod(refundMethod)}): {saleReturn.Reason}",
+                tenantId: _currentTenant.Id, actorId: _currentUser.UserId, actorName: _currentUser.Name,
+                metadata: new { SaleReturnId = saleReturn.Id, refund, RefundMethod = refundMethod.ToString(), fullyReturned });
+
+            await _sales.SaveChangesAsync(ct);
+            await _stock.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return MapReturn(saleReturn);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new DomainException("O estoque mudou durante a devolução. Tente novamente.");
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
+    }
+
+    public async Task<IReadOnlyList<SaleReturnDto>> GetReturnsAsync(Guid saleId, CancellationToken ct = default)
+    {
+        _ = await _sales.GetByIdAsync(saleId, ct) ?? throw new NotFoundException("Sale", saleId);
+        return (await _sales.GetReturnsBySaleAsync(saleId, ct)).Select(MapReturn).ToList();
+    }
+
+    private async Task ReEnterStockAsync(Guid productId, decimal quantity, string referenceType, Guid referenceId, CancellationToken ct)
+    {
+        var stockItem = await _stock.GetByProductIdAsync(productId, ct);
+        if (stockItem is null) return;
+
+        var before = stockItem.CurrentQuantity;
+        stockItem.ApplyMovement(quantity);
+        await _stock.AddMovementAsync(StockMovement.Create(
+            _currentTenant.Id, productId, StockMovementType.ReturnEntry, quantity,
+            before, stockItem.CurrentQuantity, _currentUser.UserId,
+            referenceType: referenceType, referenceId: referenceId), ct);
+    }
+
+    private static SaleReturnDto MapReturn(SaleReturn r) => new(
+        r.Id, r.SaleId, r.RefundMethod.ToString(), r.RefundAmount, r.Reason, r.CreatedByUserId, r.CreatedAt,
+        r.Items.Select(i => new SaleReturnItemDto(i.SaleItemId, i.ProductId, i.Quantity, i.Amount)).ToList());
 
     // ── Payment helpers ───────────────────────────────────────────────────────
 
@@ -525,5 +674,8 @@ public class SaleService
             p.TenderedAmount,
             p.ChangeAmount)).ToList(),
         s.CreatedAt,
-        s.UpdatedAt);
+        s.UpdatedAt,
+        s.ReturnedAmount,
+        s.CancellationReason,
+        s.SurchargesAmount);
 }

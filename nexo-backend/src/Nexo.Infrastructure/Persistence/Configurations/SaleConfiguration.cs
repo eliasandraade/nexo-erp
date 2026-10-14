@@ -82,6 +82,19 @@ public class SaleConfiguration : IEntityTypeConfiguration<Sale>
             .HasColumnName("cancelled_at")
             .HasColumnType("timestamptz");
 
+        builder.Property(x => x.CancelledByUserId)
+            .HasColumnName("cancelled_by_user_id");
+
+        builder.Property(x => x.CancellationReason)
+            .HasColumnName("cancellation_reason")
+            .HasMaxLength(500);
+
+        builder.Property(x => x.ReturnedAmount)
+            .HasColumnName("returned_amount")
+            .HasColumnType("numeric(18,2)")
+            .HasDefaultValue(0m)
+            .IsRequired();
+
         builder.Property(x => x.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamptz")

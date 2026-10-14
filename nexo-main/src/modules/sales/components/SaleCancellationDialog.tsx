@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, ShieldCheck } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,16 +8,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { userService } from "@/modules/users/services/userService";
 
 export interface CancellationConfirmPayload {
   reason: string;
-  authorizedBy: string;
-  authorizedByLogin: string;
 }
 
 interface SaleCancellationDialogProps {
@@ -29,6 +25,11 @@ interface SaleCancellationDialogProps {
   isLoading?: boolean;
 }
 
+/**
+ * Cancellation of a sale that is not paid yet (a prazo still open). The screen is management-only
+ * and the API enforces the role, so the dialog asks for the reason — kept with the sale and in the
+ * audit trail. A paid sale is undone with a devolução, not here.
+ */
 export function SaleCancellationDialog({
   open,
   onClose,
@@ -37,49 +38,29 @@ export function SaleCancellationDialog({
   itemDescription,
   isLoading = false,
 }: SaleCancellationDialogProps) {
-  const [login, setLogin] = useState("");
-  const [password, setPassword] = useState("");
   const [reason, setReason] = useState("");
-  const [authError, setAuthError] = useState("");
+  const [error, setError] = useState("");
 
   function handleClose() {
-    setLogin("");
-    setPassword("");
     setReason("");
-    setAuthError("");
+    setError("");
     onClose();
   }
 
   function handleConfirm() {
-    setAuthError("");
-
     if (!reason.trim()) {
-      setAuthError("Informe o motivo do cancelamento.");
+      setError("Informe o motivo do cancelamento.");
       return;
     }
-
-    const result = userService.validateManagerAuthorization(login.trim(), password);
-    if (result.success === false) {
-      setAuthError(result.error);
-      return;
-    }
-
-    onConfirm({
-      reason: reason.trim(),
-      authorizedBy: result.user.name,
-      authorizedByLogin: result.user.login,
-    });
-
-    setLogin("");
-    setPassword("");
+    onConfirm({ reason: reason.trim() });
     setReason("");
-    setAuthError("");
+    setError("");
   }
 
   const title = mode === "full" ? "Cancelar venda" : "Cancelar item";
   const warningText =
     mode === "full"
-      ? "Toda a venda será cancelada. O estoque será restituído e o caixa ajustado (pagamentos em dinheiro)."
+      ? "A venda será cancelada: o estoque volta, o dinheiro sai do caixa e os valores a prazo são cancelados."
       : `O item "${itemDescription}" será cancelado. O estoque do produto será restituído.`;
 
   return (
@@ -104,46 +85,11 @@ export function SaleCancellationDialog({
               placeholder="Descreva o motivo..."
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              rows={2}
+              rows={3}
+              maxLength={500}
               disabled={isLoading}
             />
-          </div>
-
-          <div className="border rounded-md p-3 space-y-3 bg-muted/30">
-            <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              Autorização gerencial obrigatória
-            </p>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="cancel-login">Login do gerente / diretor</Label>
-              <Input
-                id="cancel-login"
-                placeholder="login"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
-                disabled={isLoading}
-                autoComplete="off"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="cancel-password">Senha</Label>
-              <Input
-                id="cancel-password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                disabled={isLoading}
-                autoComplete="new-password"
-                onKeyDown={(e) => { if (e.key === "Enter") handleConfirm(); }}
-              />
-            </div>
-
-            {authError && (
-              <p className="text-xs text-destructive font-medium">{authError}</p>
-            )}
+            {error && <p className="text-xs font-medium text-destructive">{error}</p>}
           </div>
         </div>
 

@@ -22,5 +22,9 @@ public interface ISaleRepository
     /// <summary>Explicitly tracks a new sale item as Added. Required because EF Core assigns
     /// Modified (not Added) to entities with non-sentinel Guids found in readonly backing fields.</summary>
     void TrackItem(SaleItem item);
+    Task AddReturnAsync(SaleReturn saleReturn, CancellationToken ct = default);
+    Task<SaleReturn?> GetReturnByIdempotencyKeyAsync(Guid key, CancellationToken ct = default);
+    /// <summary>Devoluções of a sale, oldest first, with their items.</summary>
+    Task<IReadOnlyList<SaleReturn>> GetReturnsBySaleAsync(Guid saleId, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
 }

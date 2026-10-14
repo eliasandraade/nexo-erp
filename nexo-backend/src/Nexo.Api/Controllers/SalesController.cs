@@ -76,11 +76,26 @@ public class SalesController : ControllerBase
 
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Roles = AppRoles.Management)]
-    public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Cancel(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CancelSaleRequest? request,
+        CancellationToken ct)
     {
-        await _service.CancelAsync(id, ct);
+        await _service.CancelAsync(id, request?.Reason, ct);
         return NoContent();
     }
+
+    /// <summary>Devolução (total or partial) of a paid sale — management only.</summary>
+    [HttpPost("{id:guid}/returns")]
+    [Authorize(Roles = AppRoles.Management)]
+    public async Task<ActionResult<SaleReturnDto>> CreateReturn(
+        Guid id, [FromBody] CreateSaleReturnRequest request, CancellationToken ct)
+        => Ok(await _service.ReturnAsync(id, request, ct));
+
+    [HttpGet("{id:guid}/returns")]
+    [Authorize(Roles = AppRoles.Management)]
+    public async Task<ActionResult<IReadOnlyList<SaleReturnDto>>> GetReturns(Guid id, CancellationToken ct)
+        => Ok(await _service.GetReturnsAsync(id, ct));
 
     [HttpGet("{id:guid}/receipt.pdf")]
     [Authorize(Roles = AppRoles.Sales)]

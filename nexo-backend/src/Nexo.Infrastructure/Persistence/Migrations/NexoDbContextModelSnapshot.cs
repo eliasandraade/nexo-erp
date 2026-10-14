@@ -1121,9 +1121,18 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("CancellationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("cancellation_reason");
+
                     b.Property<DateTime?>("CancelledAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("cancelled_at");
+
+                    b.Property<Guid?>("CancelledByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cancelled_by_user_id");
 
                     b.Property<Guid?>("CashSessionId")
                         .HasColumnType("uuid")
@@ -1157,6 +1166,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("paid_at");
+
+                    b.Property<decimal>("ReturnedAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("returned_amount");
 
                     b.Property<Guid>("SoldByUserId")
                         .HasColumnType("uuid")
@@ -1345,6 +1360,127 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("sale_payments", "nexo", t =>
                         {
                             t.HasCheckConstraint("ck_sale_payments_change_nonnegative", "change_amount >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.SaleReturn", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CashSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cash_session_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid?>("IdempotencyKey")
+                        .HasColumnType("uuid")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<decimal>("RefundAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("refund_amount");
+
+                    b.Property<string>("RefundMethod")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("refund_method");
+
+                    b.Property<Guid>("SaleId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sale_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SaleId");
+
+                    b.HasIndex("TenantId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_sale_returns_idempotency")
+                        .HasFilter("idempotency_key IS NOT NULL");
+
+                    b.HasIndex("TenantId", "SaleId");
+
+                    b.ToTable("sale_returns", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_sale_returns_refund_positive", "refund_amount > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.SaleReturnItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_id");
+
+                    b.Property<decimal>("Quantity")
+                        .HasColumnType("numeric(18,4)")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("SaleItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sale_item_id");
+
+                    b.Property<Guid>("SaleReturnId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sale_return_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SaleItemId");
+
+                    b.HasIndex("SaleReturnId");
+
+                    b.HasIndex("TenantId", "SaleItemId");
+
+                    b.ToTable("sale_return_items", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_sale_return_items_quantity_positive", "quantity > 0");
                         });
                 });
 
@@ -6586,6 +6722,42 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Sale");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Entities.SaleReturn", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Sale", null)
+                        .WithMany()
+                        .HasForeignKey("SaleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.SaleReturnItem", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.SaleItem", null)
+                        .WithMany()
+                        .HasForeignKey("SaleItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.SaleReturn", null)
+                        .WithMany("Items")
+                        .HasForeignKey("SaleReturnId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Nexo.Domain.Entities.StockItem", b =>
                 {
                     b.HasOne("Nexo.Domain.Entities.Product", "Product")
@@ -7880,6 +8052,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Items");
 
                     b.Navigation("Payments");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.SaleReturn", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildBudget", b =>

@@ -39,7 +39,10 @@ export function saleToLegacy(dto: SaleDto): CompletedSale {
   const change = Math.max(0, cashPaid - dto.total);
 
   const status: CompletedSale["status"] =
-    dto.status === "Cancelled" ? "cancelled" : "completed";
+    dto.status === "Cancelled" ? "cancelled"
+    : dto.status === "Returned" ? "returned"
+    : dto.status === "PartiallyReturned" ? "partially_returned"
+    : "completed";
 
   const timestamp = dto.confirmedAt ?? dto.paidAt ?? dto.createdAt;
 

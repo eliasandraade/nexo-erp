@@ -79,13 +79,14 @@ public class DashboardService
     private async Task<(int total, int cancelled, decimal revenue, decimal avgTicket)>
         GetSalesKpisAsync(CancellationToken ct)
     {
-        // SQL aggregations — never load all rows into memory
-        var total     = await _db.Sales.AsNoTracking().CountAsync(ct);
+        // SQL aggregations — never load all rows into memory.
+        // Realized sales only (drafts are abandoned checkouts, not revenue), net of devoluções.
+        var total     = await _db.Sales.AsNoTracking().CountAsync(s => s.Status != SaleStatus.Draft, ct);
         var cancelled = await _db.Sales.AsNoTracking().CountAsync(s => s.Status == SaleStatus.Cancelled, ct);
-        var active    = total - cancelled;
+        var active    = await _db.Sales.AsNoTracking().CountAsync(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned), ct);
         var revenue   = await _db.Sales.AsNoTracking()
-            .Where(s => s.Status != SaleStatus.Cancelled)
-            .SumAsync(s => (decimal?)s.Total, ct) ?? 0m;
+            .Where(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned))
+            .SumAsync(s => (decimal?)(s.Total - s.ReturnedAmount), ct) ?? 0m;
         var avg = active > 0 ? Math.Round(revenue / active, 2) : 0m;
         return (total, cancelled, Math.Round(revenue, 2), avg);
     }
@@ -96,9 +97,11 @@ public class DashboardService
     {
         // Project to anonymous type so EF can translate; map to DTO in memory.
         // Guid.ToString() and Math.Round can't be translated inside GroupBy Select.
-        var rows = await _db.SaleItems
+        var sold = await _db.SaleItems
             .AsNoTracking()
-            .Where(i => i.Sale!.Status != SaleStatus.Cancelled)
+            .Where(i => i.Sale!.Status == SaleStatus.Confirmed
+                     || i.Sale.Status == SaleStatus.Paid
+                     || i.Sale.Status == SaleStatus.PartiallyReturned)
             .GroupBy(i => new { i.ProductId, Name = i.Product!.Name })
             .Select(g => new
             {
@@ -107,11 +110,31 @@ public class DashboardService
                 Quantity = g.Sum(i => i.Quantity),
                 Revenue  = g.Sum(i => i.Total),
             })
-            .OrderByDescending(g => g.Revenue)
-            .Take(5)
             .ToListAsync(ct);
 
-        return rows
+        // What came back through devoluções of those (still realized) sales
+        var returned = await _db.SaleReturnItems
+            .AsNoTracking()
+            .Join(_db.SaleReturns, i => i.SaleReturnId, r => r.Id, (i, r) => new { i, r.SaleId })
+            .Join(_db.Sales.Where(s => s.Status == SaleStatus.PartiallyReturned), x => x.SaleId, s => s.Id, (x, _) => x.i)
+            .GroupBy(i => i.ProductId)
+            .Select(g => new { ProductId = g.Key, Quantity = g.Sum(i => i.Quantity), Amount = g.Sum(i => i.Amount) })
+            .ToDictionaryAsync(x => x.ProductId, ct);
+
+        return sold
+            .Select(r =>
+            {
+                var back = returned.GetValueOrDefault(r.ProductId);
+                return new
+                {
+                    r.ProductId, r.Name,
+                    Quantity = r.Quantity - (back?.Quantity ?? 0),
+                    Revenue  = r.Revenue - (back?.Amount ?? 0),
+                };
+            })
+            .Where(r => r.Quantity > 0)
+            .OrderByDescending(r => r.Revenue)
+            .Take(5)
             .Select(r => new TopProductDto(
                 r.ProductId.ToString(),
                 r.Name,
@@ -128,11 +151,11 @@ public class DashboardService
         // can't be translated by EF Core. Map to DTO in memory after query.
         var rows = await _db.Sales
             .AsNoTracking()
-            .Where(s => s.Status != SaleStatus.Cancelled)
+            .Where(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned))
             .Join(_db.Users,
                   s => s.SoldByUserId,
                   u => u.Id,
-                  (s, u) => new { u.FullName, s.Total })
+                  (s, u) => new { u.FullName, Total = s.Total - s.ReturnedAmount })
             .GroupBy(x => x.FullName)
             .Select(g => new
             {
@@ -157,12 +180,12 @@ public class DashboardService
 
         var rows = await _db.Sales
             .AsNoTracking()
-            .Where(s => s.Status != SaleStatus.Cancelled
+            .Where(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned)
                      && (s.ConfirmedAt ?? s.CreatedAt) >= cutoff)
             .Select(s => new
             {
                 Date  = (s.ConfirmedAt ?? s.CreatedAt).Date,
-                s.Total,
+                Total = s.Total - s.ReturnedAmount,
             })
             .ToListAsync(ct);
 
