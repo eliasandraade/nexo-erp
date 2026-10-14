@@ -46,7 +46,34 @@ public record ConfirmSaleRequest(
     /// </summary>
     IReadOnlySet<Guid>? SkipStockProductIds = null);
 
+public record CancelSaleRequest(string? Reason = null);
+
+/// <summary>
+/// Devolução of a paid sale. Items: which sale lines and how much of each. RefundMethod: how the
+/// money goes back ("Cash" from the drawer, or "Pix" | "Debit" | "Credit" | "Transfer").
+/// IdempotencyKey: generate once per dialog — a retry returns the devolução already recorded.
+/// </summary>
+public record CreateSaleReturnRequest(
+    List<SaleReturnItemInput> Items,
+    string RefundMethod,
+    string Reason,
+    Guid? IdempotencyKey = null);
+
+public record SaleReturnItemInput(Guid SaleItemId, decimal Quantity);
+
 // ── Responses ───────────────────────────────────────────────────────────────
+
+public record SaleReturnItemDto(Guid SaleItemId, Guid ProductId, decimal Quantity, decimal Amount);
+
+public record SaleReturnDto(
+    Guid Id,
+    Guid SaleId,
+    string RefundMethod,
+    decimal RefundAmount,
+    string Reason,
+    Guid CreatedByUserId,
+    DateTime CreatedAt,
+    IReadOnlyList<SaleReturnItemDto> Items);
 
 public record SaleItemDto(
     Guid Id,
@@ -103,4 +130,7 @@ public record SaleDto(
     IReadOnlyList<SaleItemDto> Items,
     IReadOnlyList<SalePaymentDto> Payments,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    decimal ReturnedAmount = 0,
+    string? CancellationReason = null,
+    decimal SurchargesAmount = 0);

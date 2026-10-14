@@ -37,6 +37,10 @@ public class Sale : StoreEntity
     public DateTime? ConfirmedAt { get; private set; }
     public DateTime? PaidAt { get; private set; }
     public DateTime? CancelledAt { get; private set; }
+    public Guid? CancelledByUserId { get; private set; }
+    public string? CancellationReason { get; private set; }
+    /// <summary>Sum refunded by devoluções (SaleReturn) so far.</summary>
+    public decimal ReturnedAmount { get; private set; }
 
     // Navigation
     public Customer? Customer { get; private set; }
@@ -124,13 +128,19 @@ public class Sale : StoreEntity
     /// Draft or Confirmed → Cancelled.
     /// Caller must reverse stock/cash/financial before calling this.
     /// </summary>
-    public void Cancel()
+    public void Cancel(Guid? cancelledByUserId = null, string? reason = null)
     {
-        if (Status == SaleStatus.Paid)
-            throw new DomainException("Paid sales cannot be cancelled. Create a return sale instead.");
+        if (Status is SaleStatus.Paid or SaleStatus.PartiallyReturned or SaleStatus.Returned)
+            throw new DomainException("Venda paga não é cancelada: registre uma devolução.");
 
         if (Status == SaleStatus.Cancelled)
             throw new DomainException("Sale is already cancelled.");
+
+        if (reason is { Length: > 500 })
+            throw new DomainException("O motivo do cancelamento tem no máximo 500 caracteres.");
+
+        CancelledByUserId  = cancelledByUserId;
+        CancellationReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
 
         Status      = SaleStatus.Cancelled;
         CancelledAt = DateTime.UtcNow;
@@ -152,6 +162,22 @@ public class Sale : StoreEntity
     }
 
     // ── Guards ────────────────────────────────────────────────────────────────
+
+    /// <summary>Paid / partially returned sales accept a devolução.</summary>
+    public bool CanBeReturned => Status is SaleStatus.Paid or SaleStatus.PartiallyReturned;
+
+    /// <summary>Records a devolução of <paramref name="amount"/>; fully returned when nothing is left.</summary>
+    public void RegisterReturn(decimal amount, bool fullyReturned)
+    {
+        if (!CanBeReturned)
+            throw new DomainException($"A venda #{Number} não aceita devolução no status {Status}.");
+        if (amount < 0 || ReturnedAmount + amount > Total)
+            throw new DomainException("O valor devolvido ultrapassa o total da venda.");
+
+        ReturnedAmount += amount;
+        Status = fullyReturned ? SaleStatus.Returned : SaleStatus.PartiallyReturned;
+        SetUpdatedAt();
+    }
 
     public bool IsInDraft   => Status == SaleStatus.Draft;
     public bool IsCancelled => Status == SaleStatus.Cancelled;

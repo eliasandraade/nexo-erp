@@ -1,13 +1,16 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, AlertCircle, Store, User, XCircle, FileDown, Loader2 } from "lucide-react";
+import { ArrowLeft, AlertCircle, Store, User, XCircle, FileDown, Loader2, Undo2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { getSale, cancelSale } from "../api/sales.api";
+import { getSale, cancelSale, createSaleReturn, listSaleReturns } from "../api/sales.api";
+import type { CreateSaleReturnRequest } from "../api/sales.api";
+import { SaleReturnDialog } from "../components/SaleReturnDialog";
+import { formatCurrency } from "@/lib/formatters";
 import { downloadPdf } from "@/services/pdf.api";
 import { saleToLegacy } from "../utils/saleAdapter";
 import { SaleSummaryCard } from "../components/SaleSummaryCard";
@@ -17,12 +20,18 @@ import { SaleCancellationDialog } from "../components/SaleCancellationDialog";
 import type { CancellationConfirmPayload } from "../components/SaleCancellationDialog";
 import { toast } from "sonner";
 
+const REFUND_LABEL: Record<string, string> = {
+  Cash: "Dinheiro", Pix: "Pix", Debit: "Cartão de débito", Credit: "Cartão de crédito", Transfer: "Transferência",
+};
+
 export default function VendaDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [returnDialogOpen, setReturnDialogOpen] = useState(false);
+  const [returnError, setReturnError] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const handleDownloadReceipt = async () => {
@@ -37,14 +46,35 @@ export default function VendaDetailPage() {
     }
   };
 
-  const { data: sale, isLoading, isError } = useQuery({
+  const { data: dto, isLoading, isError } = useQuery({
     queryKey: ["sale", id],
-    queryFn: () => getSale(id!).then(saleToLegacy),
+    queryFn: () => getSale(id!),
     enabled: !!id,
+  });
+  const sale = dto ? saleToLegacy(dto) : undefined;
+  const returnable = dto?.status === "Paid" || dto?.status === "PartiallyReturned";
+  const { data: returns = [] } = useQuery({
+    queryKey: ["sale", id, "returns"],
+    queryFn: () => listSaleReturns(id!),
+    enabled: !!id && !!dto && ["Paid", "PartiallyReturned", "Returned"].includes(dto.status),
+  });
+
+  const returnMutation = useMutation({
+    mutationFn: (req: CreateSaleReturnRequest) => createSaleReturn(id!, req),
+    onSuccess: (r) => {
+      queryClient.invalidateQueries({ queryKey: ["sale", id] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      queryClient.invalidateQueries({ queryKey: ["cash"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-operational"] });
+      setReturnDialogOpen(false);
+      setReturnError(null);
+      toast.success(`Devolução registrada: ${formatCurrency(r.refundAmount)} reembolsados.`);
+    },
+    onError: (err: Error) => setReturnError(err.message),
   });
 
   const cancelSaleMutation = useMutation({
-    mutationFn: (_payload: CancellationConfirmPayload) => cancelSale(id!),
+    mutationFn: (payload: CancellationConfirmPayload) => cancelSale(id!, payload.reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sale", id] });
       queryClient.invalidateQueries({ queryKey: ["sales"] });
@@ -59,7 +89,9 @@ export default function VendaDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["insights"] });
       queryClient.invalidateQueries({ queryKey: ["insights-stats"] });
       setCancelDialogOpen(false);
+      toast.success("Venda cancelada.");
     },
+    onError: (err: Error) => toast.error(err.message),
   });
 
   const backButton = (
@@ -82,7 +114,7 @@ export default function VendaDetailPage() {
     );
   }
 
-  if (isError || !sale) {
+  if (isError || !sale || !dto) {
     return (
       <div className="space-y-6">
         <PageHeader title="Detalhes da venda" actions={backButton} />
@@ -100,10 +132,11 @@ export default function VendaDetailPage() {
     );
   }
 
-  const canCancelSale = sale.status === "completed" || sale.status === "partially_cancelled";
+  // A sale with a prazo still open is cancelled; a paid one is undone by a devolução.
+  const canCancelSale = dto.status === "Confirmed" || dto.status === "Draft";
 
   const actions = (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Button
         variant="outline"
         size="sm"
@@ -117,6 +150,12 @@ export default function VendaDetailPage() {
         )}
         Baixar recibo
       </Button>
+      {returnable && (
+        <Button variant="outline" size="sm" onClick={() => { setReturnError(null); setReturnDialogOpen(true); }}>
+          <Undo2 className="h-4 w-4 mr-1.5" />
+          Registrar devolução
+        </Button>
+      )}
       {canCancelSale && (
         <Button
           variant="destructive"
@@ -153,40 +192,32 @@ export default function VendaDetailPage() {
         />
       </SectionCard>
 
-      {/* Cancellation history */}
-      {(sale.cancellationRecords?.length ?? 0) > 0 && (
+      {dto.cancellationReason && (
+        <SectionCard title="Cancelamento">
+          <p className="text-sm">Motivo: {dto.cancellationReason}</p>
+        </SectionCard>
+      )}
+
+      {returns.length > 0 && (
         <SectionCard
-          title="Histórico de cancelamentos"
-          description="Registros de cancelamentos aplicados a esta venda."
+          title="Devoluções"
+          description={`Total reembolsado: ${formatCurrency(dto.returnedAmount ?? 0)} de ${formatCurrency(dto.total)}.`}
         >
           <div className="space-y-3">
-            {sale.cancellationRecords!.map((record) => (
-              <div
-                key={record.id}
-                className="flex items-start justify-between text-sm border rounded-md p-3 bg-muted/20"
-              >
-                <div className="space-y-0.5">
-                  <p className="font-medium text-foreground">
-                    {record.type === "full" ? "Cancelamento total" : `Item cancelado: ${record.itemDescription}`}
+            {returns.map((r) => (
+              <div key={r.id} className="flex items-start justify-between gap-4 rounded-md border bg-muted/20 p-3 text-sm">
+                <div className="min-w-0 space-y-0.5">
+                  <p className="font-medium">
+                    {formatCurrency(r.refundAmount)} · {REFUND_LABEL[r.refundMethod] ?? r.refundMethod}
                   </p>
-                  <p className="text-muted-foreground text-xs">
-                    Motivo: {record.reason}
-                  </p>
-                  <p className="text-muted-foreground text-xs">
-                    Cancelado por: {record.cancelledBy} · Autorizado por: {record.authorizedBy}
-                  </p>
-                </div>
-                <div className="text-right shrink-0 ml-4">
+                  <p className="text-xs text-muted-foreground">Motivo: {r.reason}</p>
                   <p className="text-xs text-muted-foreground">
-                    {new Date(record.cancelledAt).toLocaleString("pt-BR", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {r.items.map((i) => `${i.quantity.toLocaleString("pt-BR")} × ${dto.items.find((s) => s.id === i.saleItemId)?.productName ?? "item"}`).join(" · ")}
                   </p>
                 </div>
+                <p className="shrink-0 text-xs text-muted-foreground">
+                  {new Date(r.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </p>
               </div>
             ))}
           </div>
@@ -215,6 +246,16 @@ export default function VendaDetailPage() {
           </div>
         </div>
       </SectionCard>
+
+      <SaleReturnDialog
+        open={returnDialogOpen}
+        sale={dto}
+        previousReturns={returns}
+        onClose={() => setReturnDialogOpen(false)}
+        onConfirm={(req) => returnMutation.mutate(req)}
+        isLoading={returnMutation.isPending}
+        error={returnError}
+      />
 
       {/* Full-sale cancellation dialog */}
       <SaleCancellationDialog

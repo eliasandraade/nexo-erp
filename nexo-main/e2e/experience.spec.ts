@@ -141,3 +141,27 @@ test('Caixa: esperado do backend, recebimentos por forma e histórico de fechame
   await page.screenshot({path:'test-results/caixa-'+width+'.png',fullPage:true});
  }
 });
+test('Venda paga: devolução parcial envia itens, reembolso, motivo e chave de idempotência',async({page})=>{
+ await prepare(page);
+ const sale={id:'qa-sale',number:42,status:'Paid',customerId:null,customerName:null,soldByUserId:'qa',soldByName:'Revisão local',cashSessionId:'qa-cash',subtotal:100,discountAmount:10,taxAmount:0,total:90,notes:null,confirmedAt:'2026-10-14T10:00:00Z',paidAt:'2026-10-14T10:00:00Z',cancelledAt:null,
+  items:[{id:'qa-item',productId:'qa-prod',productName:'Camiseta',productCode:'C1',quantity:2,unitPrice:50,costPrice:20,discountAmount:0,total:100,notes:null}],
+  payments:[{id:'p1',method:'Cash',type:'Cash',amount:90,dueDate:null,tenderedAmount:90,changeAmount:0}],createdAt:'2026-10-14T10:00:00Z',updatedAt:'2026-10-14T10:00:00Z',returnedAmount:0,cancellationReason:null};
+ let posted: any=null;
+ await page.route('**/api/sales/qa-sale**',async route=>{const r=route.request();const p=new URL(r.url()).pathname;
+  if(p.endsWith('/returns')&&r.method()==='POST'){posted=r.postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'qa-ret',saleId:'qa-sale',refundMethod:'Pix',refundAmount:45,reason:'Defeito',createdByUserId:'qa',createdAt:'2026-10-14T11:00:00Z',items:[{saleItemId:'qa-item',productId:'qa-prod',quantity:1,amount:45}]})});}
+  if(p.endsWith('/returns'))return route.fulfill({status:200,contentType:'application/json',body:'[]'});
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(sale)});});
+ await page.goto('/vendas/qa-sale');
+ await expect(page.getByRole('button',{name:'Cancelar venda'})).toHaveCount(0);
+ await page.getByRole('button',{name:'Registrar devolução'}).click();
+ await page.getByLabel('Quantidade devolvida de Camiseta').fill('1');
+ await expect(page.getByText('R$ 45,00')).toBeVisible();
+ await page.getByLabel('Motivo').fill('Defeito');
+ await page.getByRole('button',{name:'Confirmar devolução'}).click();
+ await expect.poll(()=>posted).not.toBeNull();
+ expect(posted.items).toEqual([{saleItemId:'qa-item',quantity:1}]);
+ expect(posted.refundMethod).toBe('Cash');
+ expect(posted.reason).toBe('Defeito');
+ expect(typeof posted.idempotencyKey).toBe('string');
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

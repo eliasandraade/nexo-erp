@@ -8,7 +8,8 @@
 |---|---|---|---|---|
 | #42 | RBAC backend completo | `8022737` | — | Em produção |
 | #43 | PDV: integridade de pagamentos | `4724495` | `AddSalePaymentTenderedAndChange` (aditiva) | Em produção |
-| #44 | Caixa 2.0 | — | `AddCashSessionClosingDifference` (aditiva + backfill do histórico) | Em revisão |
+| #44 | Caixa 2.0 | `b6f55c6` | `AddCashSessionClosingDifference` (aditiva + backfill do histórico) | Em produção |
+| #45 | Cancelamento, estorno e devolução | — | `AddSaleReturns` (aditiva) | Em revisão |
 
 ---
 
@@ -105,3 +106,47 @@
   - `CashSessionTests`: 8 testes unitários.
   - `CashSessionFlowTests`: 12 testes de integração (turno completo, movimentos inválidos, sangria acima do saldo, abertura concorrente, estorno ≠ sangria, estorno acima do saldo, limite da justificativa).
   - Playwright: tela do caixa em 1440 e 390 px.
+
+## PR 45 — Cancelamento, estorno e devolução
+
+**Política de reversão.** Toda operação que produz efeito tem um caminho de volta, e nada é apagado:
+
+| Situação | Caminho | Efeitos |
+|---|---|---|
+| Venda em rascunho | cancelar | nenhum |
+| Venda confirmada com valores a prazo em aberto | **cancelar** (motivo obrigatório na UI) | o estoque volta; o dinheiro sai da gaveta (`SaleRefund`); os recebíveis pendentes são cancelados; contrapartida para o que já foi liquidado |
+| Venda **paga** | **devolução** total ou parcial (`SaleReturn`) | o estoque volta só para o que a venda tirou; reembolso em dinheiro sai de uma gaveta aberta e com saldo (`SaleRefund`); Pix, cartão ou transferência viram contrapartida `Payable` liquidada (`ReferenceType=SaleReturn`) |
+
+- **Valor da devolução:**
+  - Cada linha devolvida vale a sua parte **proporcional** do que o cliente pagou, com desconto, imposto, couvert e taxa de serviço incluídos. É uma decisão de produto: quem devolve um item recebe de volta também a parte da taxa que pagou sobre ele.
+  - O valor é calculado pela fatia **acumulada** de cada item, então as devoluções de um item somam exatamente a sua parte, sem deriva de centavos entre devoluções parciais.
+  - A devolução que esvazia a venda reembolsa exatamente o que resta, e qualquer centavo de diferença vai para a maior linha.
+  - Nunca passa do total.
+  - **Valor zero:** a devolução de um brinde ou de um item com 100% de desconto é aceita. Ela move só o estoque, sem reembolso.
+- **Receita na data da venda:** a receita líquida é abatida na data da venda, não na data da devolução, então dias passados do dashboard podem mudar. O regime de competência formal entra no financeiro (PRs 49 a 52).
+- **Quantidade:** nunca passa do que ainda não foi devolvido.
+- **Status:** `Paid` → `PartiallyReturned` → `Returned`. `SaleStatus` ganhou os dois valores (gravados como texto) e `Sale.ReturnedAmount`.
+- **Ficha técnica (restaurante):** comida servida não volta ao estoque.
+  - Cancelamento e devolução só repõem o que a própria venda tirou (`SaleOutput`).
+  - Antes, o cancelamento devolvia ao estoque o produto pronto de itens que tinham saído pelos insumos.
+- **Idempotência e concorrência:**
+  - Cada abertura do diálogo gera uma chave nova, e um índice único `(tenant, idempotency_key)` impede dois reembolsos com a mesma chave.
+  - A devolução acontece sob lock da venda.
+  - O teste concorrente confirma que duas requisições com a mesma chave geram uma devolução só.
+- **Cancelamento:**
+  - Guarda o motivo e quem cancelou.
+  - O diálogo deixou de usar o stub de "senha do gerente", que sempre falhava. A tela já é só da gestão, e o backend garante o papel.
+  - Venda paga não é mais oferecida para cancelamento.
+- **Auditoria:** `sale_cancelled` e `sale_returned` (severidade `warning`).
+- **Receita líquida:**
+  - O dashboard, o relatório de vendas, o ranking de vendedores e produtos e o relatório de clientes contam só vendas realizadas (confirmadas, pagas e parcialmente devolvidas), sempre por `Total − ReturnedAmount`.
+  - Isso corrige um bug antigo: rascunhos de checkouts abandonados no PDV entravam como receita.
+- **Tela `/vendas/:id`:**
+  - "Registrar devolução", com quantidade por item, forma de reembolso, motivo e valor estimado;
+  - histórico de devoluções;
+  - motivo do cancelamento;
+  - filtro por "devolvidas" na lista.
+- **Testes:**
+  - `SaleReturnDomainTests`: 8 testes unitários.
+  - `SaleReturnTests`: 8 testes de integração (parcial e depois total com desconto, quantidade acima do disponível, idempotência concorrente, venda a prazo, gaveta sem saldo, cancelamento com motivo, arredondamento sem deriva, brinde de valor zero).
+  - Playwright: diálogo de devolução.

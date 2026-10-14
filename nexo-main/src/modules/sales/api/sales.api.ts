@@ -30,7 +30,7 @@ export interface SalePaymentDto {
 export interface SaleDto {
   id: string;
   number: number;
-  status: "Draft" | "Confirmed" | "Paid" | "Cancelled";
+  status: "Draft" | "Confirmed" | "Paid" | "Cancelled" | "PartiallyReturned" | "Returned";
   customerId?: string | null;
   customerName?: string | null;
   soldByUserId: string;
@@ -48,6 +48,10 @@ export interface SaleDto {
   payments: SalePaymentDto[];
   createdAt: string;
   updatedAt: string;
+  /** Refunded by devoluções so far. */
+  returnedAmount?: number;
+  cancellationReason?: string | null;
+  surchargesAmount?: number;
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────
@@ -155,6 +159,43 @@ export function confirmSale(saleId: string, req: ConfirmSaleRequest): Promise<Sa
   return apiClient.post<SaleDto>(`/sales/${saleId}/confirm`, req);
 }
 
-export function cancelSale(saleId: string): Promise<void> {
-  return apiClient.post<void>(`/sales/${saleId}/cancel`, {});
+export function cancelSale(saleId: string, reason?: string): Promise<void> {
+  return apiClient.post<void>(`/sales/${saleId}/cancel`, { reason });
+}
+
+// ── Devoluções ────────────────────────────────────────────────────────────────
+
+export interface SaleReturnItemDto {
+  saleItemId: string;
+  productId: string;
+  quantity: number;
+  amount: number;
+}
+
+export interface SaleReturnDto {
+  id: string;
+  saleId: string;
+  refundMethod: string;
+  refundAmount: number;
+  reason: string;
+  createdByUserId: string;
+  createdAt: string;
+  items: SaleReturnItemDto[];
+}
+
+export interface CreateSaleReturnRequest {
+  items: { saleItemId: string; quantity: number }[];
+  /** "Cash" leaves the drawer; "Pix" | "Debit" | "Credit" | "Transfer" are counter-entries. */
+  refundMethod: string;
+  reason: string;
+  /** One per dialog opening — a retry returns the devolução already recorded. */
+  idempotencyKey: string;
+}
+
+export function createSaleReturn(saleId: string, req: CreateSaleReturnRequest): Promise<SaleReturnDto> {
+  return apiClient.post<SaleReturnDto>(`/sales/${saleId}/returns`, req);
+}
+
+export function listSaleReturns(saleId: string): Promise<SaleReturnDto[]> {
+  return apiClient.get<SaleReturnDto[]>(`/sales/${saleId}/returns`);
 }

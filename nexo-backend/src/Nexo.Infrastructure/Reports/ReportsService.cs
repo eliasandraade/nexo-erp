@@ -24,14 +24,15 @@ public class ReportsService
         var toUtc   = to.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
 
         var sales = await _db.Sales
-            .Where(s => s.CreatedAt >= fromUtc && s.CreatedAt <= toUtc)
+            .Where(s => s.CreatedAt >= fromUtc && s.CreatedAt <= toUtc && s.Status != SaleStatus.Draft)
             .AsNoTracking()
-            .Select(s => new { s.Total, s.Status })
+            .Select(s => new { s.Total, s.ReturnedAmount, s.Status })
             .ToListAsync(ct);
 
-        var active    = sales.Where(s => s.Status != SaleStatus.Cancelled).ToList();
+        // Realized sales net of devoluções; drafts (abandoned checkouts) are not sales.
+        var active    = sales.Where(s => s.Status is SaleStatus.Confirmed or SaleStatus.Paid or SaleStatus.PartiallyReturned).ToList();
         var cancelled = sales.Where(s => s.Status == SaleStatus.Cancelled).ToList();
-        var revenue   = active.Sum(s => s.Total);
+        var revenue   = active.Sum(s => s.Total - s.ReturnedAmount);
 
         return new SalesReportDto(
             TotalSales:     sales.Count,
@@ -85,14 +86,14 @@ public class ReportsService
             .CountAsync(c => c.IsActive && c.CreatedAt >= monthStart, ct);
 
         var withPurchases = await _db.Sales
-            .Where(s => s.Status == SaleStatus.Paid && s.CustomerId != null)
+            .Where(s => (s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned) && s.CustomerId != null)
             .Select(s => s.CustomerId)
             .Distinct()
             .CountAsync(ct);
 
         var avgPurchase = await _db.Sales
-            .Where(s => s.Status == SaleStatus.Paid && s.CustomerId != null)
-            .Select(s => (decimal?)s.Total)
+            .Where(s => (s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned) && s.CustomerId != null)
+            .Select(s => (decimal?)(s.Total - s.ReturnedAmount))
             .AverageAsync(ct) ?? 0m;
 
         return new CustomerReportDto(

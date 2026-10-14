@@ -32,7 +32,8 @@ public class CashRepository : ICashRepository
     {
         var rows = await _context.SalePayments
             .Where(p => p.Sale!.CashSessionId == sessionId
-                        && (p.Sale.Status == SaleStatus.Confirmed || p.Sale.Status == SaleStatus.Paid))
+                        && (p.Sale.Status == SaleStatus.Confirmed || p.Sale.Status == SaleStatus.Paid
+                            || p.Sale.Status == SaleStatus.PartiallyReturned || p.Sale.Status == SaleStatus.Returned))
             .GroupBy(p => new { p.Method, p.Type })
             .Select(g => new { g.Key.Method, g.Key.Type, Count = g.Count(), Amount = g.Sum(p => p.Amount) })
             .ToListAsync(ct);

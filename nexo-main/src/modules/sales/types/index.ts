@@ -1,6 +1,6 @@
 export type PaymentMethod = "cash" | "pix" | "card";
 
-export type SaleStatus = "completed" | "cancelled" | "partially_cancelled";
+export type SaleStatus = "completed" | "cancelled" | "partially_cancelled" | "partially_returned" | "returned";
 
 export const paymentMethodLabels: Record<PaymentMethod, string> = {
   cash: "Dinheiro",
@@ -12,6 +12,8 @@ export const saleStatusLabels: Record<SaleStatus, string> = {
   completed: "Concluída",
   cancelled: "Cancelada",
   partially_cancelled: "Parcial. cancelada",
+  partially_returned: "Parc. devolvida",
+  returned: "Devolvida",
 };
 
 export interface CartItem {

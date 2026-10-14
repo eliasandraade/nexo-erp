@@ -13,6 +13,23 @@ public class SaleRepository : ISaleRepository
 
     public SaleRepository(NexoDbContext context) => _context = context;
 
+    public async Task AddReturnAsync(SaleReturn saleReturn, CancellationToken ct = default)
+    {
+        await _context.SaleReturns.AddAsync(saleReturn, ct);
+        foreach (var item in saleReturn.Items)
+            _context.Entry(item).State = EntityState.Added;
+    }
+
+    public async Task<SaleReturn?> GetReturnByIdempotencyKeyAsync(Guid key, CancellationToken ct = default)
+        => await _context.SaleReturns.Include(r => r.Items)
+            .FirstOrDefaultAsync(r => r.IdempotencyKey == key, ct);
+
+    public async Task<IReadOnlyList<SaleReturn>> GetReturnsBySaleAsync(Guid saleId, CancellationToken ct = default)
+        => await _context.SaleReturns.Include(r => r.Items)
+            .Where(r => r.SaleId == saleId)
+            .OrderBy(r => r.CreatedAt)
+            .ToListAsync(ct);
+
     public async Task LockAsync(Guid id, CancellationToken ct = default)
     {
         await _context.Database.ExecuteSqlInterpolatedAsync(
@@ -130,5 +147,17 @@ public class SaleRepository : ISaleRepository
         => _context.Entry(item).State = EntityState.Added;
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
-        => await _context.SaveChangesAsync(ct);
+    {
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+            when (ex.InnerException is Npgsql.PostgresException pg
+                  && pg.SqlState == Npgsql.PostgresErrorCodes.UniqueViolation
+                  && pg.ConstraintName == "ux_sale_returns_idempotency")
+        {
+            throw new Nexo.Domain.Exceptions.ConflictException("Esta devolução já foi registrada.");
+        }
+    }
 }

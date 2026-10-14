@@ -63,6 +63,8 @@ export function SalesFilters({ filters, onChange }: SalesFiltersProps) {
           <SelectItem value="Paid">Pagas</SelectItem>
           <SelectItem value="Confirmed">Confirmadas</SelectItem>
           <SelectItem value="Cancelled">Canceladas</SelectItem>
+          <SelectItem value="PartiallyReturned">Parcialmente devolvidas</SelectItem>
+          <SelectItem value="Returned">Devolvidas</SelectItem>
           <SelectItem value="Draft">Rascunho</SelectItem>
         </SelectContent>
       </Select>

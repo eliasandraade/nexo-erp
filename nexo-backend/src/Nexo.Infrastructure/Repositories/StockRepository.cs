@@ -98,6 +98,12 @@ public class StockRepository : IStockRepository
     public async Task AddMovementAsync(StockMovement movement, CancellationToken ct = default)
         => await _context.StockMovements.AddAsync(movement, ct);
 
+    public async Task<IReadOnlyList<StockMovement>> GetMovementsByReferenceAsync(
+        string referenceType, Guid referenceId, CancellationToken ct = default)
+        => await _context.StockMovements
+            .Where(x => x.ReferenceType == referenceType && x.ReferenceId == referenceId)
+            .ToListAsync(ct);
+
     public async Task<IReadOnlyList<StockMovement>> GetMovementsByProductAsync(Guid productId, CancellationToken ct = default)
         => await _context.StockMovements
             .Where(x => x.ProductId == productId)
