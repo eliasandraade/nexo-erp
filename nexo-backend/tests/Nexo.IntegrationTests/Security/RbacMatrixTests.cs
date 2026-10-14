@@ -40,6 +40,9 @@ public class RbacMatrixTests
         { "POST",   $"/api/sales/{R}/cancel",                  Seller,  false },
         { "POST",   $"/api/sales/{R}/cancel",                  Manager, true  },
         { "GET",    "/api/sales",                              Seller,  false },
+        { "POST",   $"/api/sales/{R}/returns",                 Seller,  false },
+        { "POST",   $"/api/sales/{R}/returns",                 Manager, true  },
+        { "GET",    $"/api/sales/{R}/returns",                 Seller,  false },
         { "GET",    $"/api/varejo/pdv/resolve-price?productId={R}", Seller, true },
         { "GET",    "/api/varejo/price-lists",                 Seller,  false },
         // ── Caixa ──

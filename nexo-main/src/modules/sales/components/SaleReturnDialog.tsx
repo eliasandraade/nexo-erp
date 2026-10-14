@@ -36,8 +36,8 @@ interface SaleReturnDialogProps {
 
 /**
  * Devolução of a paid sale: pick how much of each item comes back, how the money goes back and why.
- * The estimate mirrors the backend (each line's share of the sale net of its discount); the backend
- * decides the final value and closes the sale exactly on the last devolução.
+ * The estimate mirrors the backend (each line's proportional share of what was paid — discount,
+ * tax, couvert and service fee included); the backend decides the final value to the cent.
  */
 export function SaleReturnDialog({
   open, sale, previousReturns, onClose, onConfirm, isLoading, error,
@@ -64,7 +64,7 @@ export function SaleReturnDialog({
     return map;
   }, [previousReturns]);
 
-  const factor = sale.subtotal > 0 ? (sale.subtotal - sale.discountAmount) / sale.subtotal : 0;
+  const factor = sale.subtotal > 0 ? sale.total / sale.subtotal : 0;
   const lines = sale.items.map((item) => {
     const remaining = Math.max(0, item.quantity - (returnedByItem[item.id] ?? 0));
     const raw = quantities[item.id] ?? "";

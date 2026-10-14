@@ -110,6 +110,8 @@ public class DashboardService
                 Quantity = g.Sum(i => i.Quantity),
                 Revenue  = g.Sum(i => i.Total),
             })
+            .OrderByDescending(g => g.Revenue)
+            .Take(50)   // candidates; the net ranking below picks the top 5
             .ToListAsync(ct);
 
         // What came back through devoluções of those (still realized) sales

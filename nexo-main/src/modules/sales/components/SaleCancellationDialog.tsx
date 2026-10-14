@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import {
   Dialog,
@@ -41,6 +41,10 @@ export function SaleCancellationDialog({
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (open) { setReason(""); setError(""); }
+  }, [open]);
+
   function handleClose() {
     setReason("");
     setError("");
@@ -52,8 +56,8 @@ export function SaleCancellationDialog({
       setError("Informe o motivo do cancelamento.");
       return;
     }
+    // Keep the typed reason until the dialog closes — a failed request must not lose it.
     onConfirm({ reason: reason.trim() });
-    setReason("");
     setError("");
   }
 

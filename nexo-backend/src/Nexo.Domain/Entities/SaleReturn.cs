@@ -38,13 +38,13 @@ public class SaleReturn : TenantEntity
     {
         if (!AllowedRefundMethods.Contains(refundMethod))
             throw new DomainException("Forma de reembolso inválida.");
-        if (refundAmount <= 0 || decimal.Round(refundAmount, 2) != refundAmount)
-            throw new DomainException("O valor da devolução deve ser positivo, em centavos.");
+        if (refundAmount < 0 || decimal.Round(refundAmount, 2) != refundAmount)
+            throw new DomainException("O valor da devolução não pode ser negativo e é em centavos.");
         if (string.IsNullOrWhiteSpace(reason))
             throw new DomainException("Informe o motivo da devolução.");
         if (reason.Trim().Length > 500)
             throw new DomainException("O motivo da devolução tem no máximo 500 caracteres.");
-        if ((refundMethod == PaymentMethod.Cash) != cashSessionId.HasValue)
+        if ((refundMethod == PaymentMethod.Cash && refundAmount > 0) != cashSessionId.HasValue)
             throw new DomainException("Reembolso em dinheiro sai de um caixa; os demais, não.");
 
         return new SaleReturn(tenantId)

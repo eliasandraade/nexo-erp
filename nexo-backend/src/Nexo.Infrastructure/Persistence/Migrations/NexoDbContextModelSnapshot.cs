@@ -1427,7 +1427,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.ToTable("sale_returns", "nexo", t =>
                         {
-                            t.HasCheckConstraint("ck_sale_returns_refund_positive", "refund_amount > 0");
+                            t.HasCheckConstraint("ck_sale_returns_refund_nonnegative", "refund_amount >= 0");
                         });
                 });
 

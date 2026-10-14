@@ -424,21 +424,36 @@ public class SaleService
                 lines.Add((item, quantity));
             }
 
-            // Refund: the lines' share of the sale net of its discount; the devolução that empties
-            // the sale refunds exactly what is left (absorbs rounding, couvert, service fee).
-            var factor = sale.Subtotal > 0 ? (sale.Subtotal - sale.DiscountAmount) / sale.Subtotal : 0m;
+            // Refund: each line's proportional share of what the customer paid (discount, tax,
+            // couvert and service fee included). A line's amount is the change in its item's
+            // CUMULATIVE share, so the devoluções of an item always add up to exactly its share —
+            // no rounding drift across partial returns. The devolução that empties the sale refunds
+            // exactly what is left; any cent of difference goes on the largest line.
+            var factor = sale.Subtotal > 0 ? sale.Total / sale.Subtotal : 0m;
+            decimal Share(SaleItem i, decimal quantity) => i.Quantity <= 0 ? 0m
+                : Math.Round(i.Total * factor * quantity / i.Quantity, 2, MidpointRounding.AwayFromZero);
             var amounts = lines
-                .Select(l => Math.Round(l.Item.Total * factor * l.Quantity / l.Item.Quantity, 2, MidpointRounding.AwayFromZero))
+                .Select(l =>
+                {
+                    var before = returned.GetValueOrDefault(l.Item.Id);
+                    return Share(l.Item, before + l.Quantity) - Share(l.Item, before);
+                })
                 .ToList();
             var fullyReturned = sale.Items.All(i =>
                 Remaining(i) - lines.Where(l => l.Item.Id == i.Id).Sum(l => l.Quantity) <= 0);
-            var refund = fullyReturned ? sale.Total - sale.ReturnedAmount : amounts.Sum();
-            if (fullyReturned) amounts[^1] += refund - amounts.Sum();
-            if (refund <= 0)
-                throw new DomainException("Não há valor a devolver para estes itens.");
+            var left = sale.Total - sale.ReturnedAmount;
+            var refund = fullyReturned ? left : Math.Min(amounts.Sum(), left);
+            var difference = refund - amounts.Sum();
+            if (difference != 0)
+            {
+                var largest = amounts.IndexOf(amounts.Max());
+                amounts[largest] += difference;
+                if (amounts[largest] < 0)
+                    throw new DomainException("Não foi possível distribuir o valor da devolução. Devolva os itens em outra combinação.");
+            }
 
-            // Money back
-            Guid? drawerId = refundMethod == PaymentMethod.Cash
+            // Money back — a zero-value devolução (gift, 100% discount) only moves stock
+            Guid? drawerId = refundMethod == PaymentMethod.Cash && refund > 0
                 ? await ResolveRefundCashSessionAsync(sale, refund, ct)
                 : null;
 
@@ -449,7 +464,11 @@ public class SaleService
                 saleReturn.AddItem(lines[i].Item.Id, lines[i].Item.ProductId, lines[i].Quantity, amounts[i]);
             await _sales.AddReturnAsync(saleReturn, ct);
 
-            if (drawerId is { } drawer)
+            if (refund == 0)
+            {
+                // nothing to pay back
+            }
+            else if (drawerId is { } drawer)
             {
                 await _cash.AddMovementAsync(CashMovement.Create(
                     _currentTenant.Id, drawer, CashMovementType.SaleRefund, refund,
@@ -619,9 +638,12 @@ public class SaleService
 
     private static string DescribeStatus(SaleStatus status) => status switch
     {
-        SaleStatus.Cancelled => "cancelada",
-        SaleStatus.Paid      => "paga",
-        _                    => "confirmada",
+        SaleStatus.Cancelled         => "cancelada",
+        SaleStatus.Paid              => "paga",
+        SaleStatus.PartiallyReturned => "parcialmente devolvida",
+        SaleStatus.Returned          => "devolvida",
+        SaleStatus.Draft             => "rascunho",
+        _                            => "confirmada",
     };
 
     private static string DescribeMethod(PaymentMethod method) => method switch

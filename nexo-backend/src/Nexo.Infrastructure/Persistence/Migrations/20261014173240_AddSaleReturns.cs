@@ -54,7 +54,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_sale_returns", x => x.id);
-                    table.CheckConstraint("ck_sale_returns_refund_positive", "refund_amount > 0");
+                    table.CheckConstraint("ck_sale_returns_refund_nonnegative", "refund_amount >= 0");
                     table.ForeignKey(
                         name: "FK_sale_returns_sales_sale_id",
                         column: x => x.sale_id,

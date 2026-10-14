@@ -118,9 +118,12 @@
 | Venda **paga** | **devolução** total ou parcial (`SaleReturn`) | o estoque volta só para o que a venda tirou; reembolso em dinheiro sai de uma gaveta aberta e com saldo (`SaleRefund`); Pix, cartão ou transferência viram contrapartida `Payable` liquidada (`ReferenceType=SaleReturn`) |
 
 - **Valor da devolução:**
-  - Cada linha devolvida vale a sua parte do líquido da venda, já descontada.
-  - A devolução que esvazia a venda reembolsa exatamente o que resta (absorve arredondamento, couvert e taxa de serviço).
+  - Cada linha devolvida vale a sua parte **proporcional** do que o cliente pagou, com desconto, imposto, couvert e taxa de serviço incluídos. É uma decisão de produto: quem devolve um item recebe de volta também a parte da taxa que pagou sobre ele.
+  - O valor é calculado pela fatia **acumulada** de cada item, então as devoluções de um item somam exatamente a sua parte, sem deriva de centavos entre devoluções parciais.
+  - A devolução que esvazia a venda reembolsa exatamente o que resta, e qualquer centavo de diferença vai para a maior linha.
   - Nunca passa do total.
+  - **Valor zero:** a devolução de um brinde ou de um item com 100% de desconto é aceita. Ela move só o estoque, sem reembolso.
+- **Receita na data da venda:** a receita líquida é abatida na data da venda, não na data da devolução, então dias passados do dashboard podem mudar. O regime de competência formal entra no financeiro (PRs 49 a 52).
 - **Quantidade:** nunca passa do que ainda não foi devolvido.
 - **Status:** `Paid` → `PartiallyReturned` → `Returned`. `SaleStatus` ganhou os dois valores (gravados como texto) e `Sale.ReturnedAmount`.
 - **Ficha técnica (restaurante):** comida servida não volta ao estoque.
@@ -145,5 +148,5 @@
   - filtro por "devolvidas" na lista.
 - **Testes:**
   - `SaleReturnDomainTests`: 8 testes unitários.
-  - `SaleReturnTests`: 6 testes de integração (parcial e depois total com desconto, quantidade acima do disponível, idempotência concorrente, venda a prazo, gaveta sem saldo, cancelamento com motivo).
+  - `SaleReturnTests`: 8 testes de integração (parcial e depois total com desconto, quantidade acima do disponível, idempotência concorrente, venda a prazo, gaveta sem saldo, cancelamento com motivo, arredondamento sem deriva, brinde de valor zero).
   - Playwright: diálogo de devolução.

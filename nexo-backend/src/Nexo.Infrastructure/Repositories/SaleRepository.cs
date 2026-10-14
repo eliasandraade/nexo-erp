@@ -147,5 +147,17 @@ public class SaleRepository : ISaleRepository
         => _context.Entry(item).State = EntityState.Added;
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
-        => await _context.SaveChangesAsync(ct);
+    {
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+            when (ex.InnerException is Npgsql.PostgresException pg
+                  && pg.SqlState == Npgsql.PostgresErrorCodes.UniqueViolation
+                  && pg.ConstraintName == "ux_sale_returns_idempotency")
+        {
+            throw new Nexo.Domain.Exceptions.ConflictException("Esta devolução já foi registrada.");
+        }
+    }
 }

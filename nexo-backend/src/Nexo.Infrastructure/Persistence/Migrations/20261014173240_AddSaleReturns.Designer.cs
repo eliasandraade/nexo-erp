@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261014082911_AddSaleReturns")]
+    [Migration("20261014173240_AddSaleReturns")]
     partial class AddSaleReturns
     {
         /// <inheritdoc />
@@ -1430,7 +1430,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.ToTable("sale_returns", "nexo", t =>
                         {
-                            t.HasCheckConstraint("ck_sale_returns_refund_positive", "refund_amount > 0");
+                            t.HasCheckConstraint("ck_sale_returns_refund_nonnegative", "refund_amount >= 0");
                         });
                 });
 

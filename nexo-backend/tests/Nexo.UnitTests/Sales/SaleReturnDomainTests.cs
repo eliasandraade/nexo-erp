@@ -23,7 +23,7 @@ public class SaleReturnDomainTests
 
     [Theory]
     [InlineData(PaymentMethod.Mixed, 10, "x")]
-    [InlineData(PaymentMethod.Pix, 0, "x")]
+    [InlineData(PaymentMethod.Pix, -1, "x")]
     [InlineData(PaymentMethod.Pix, 10.001, "x")]
     [InlineData(PaymentMethod.Pix, 10, " ")]
     public void Invalid_devolucoes_are_rejected(PaymentMethod method, decimal amount, string reason)

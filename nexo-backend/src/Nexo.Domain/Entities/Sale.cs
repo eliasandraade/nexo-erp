@@ -171,7 +171,7 @@ public class Sale : StoreEntity
     {
         if (!CanBeReturned)
             throw new DomainException($"A venda #{Number} não aceita devolução no status {Status}.");
-        if (amount <= 0 || ReturnedAmount + amount > Total)
+        if (amount < 0 || ReturnedAmount + amount > Total)
             throw new DomainException("O valor devolvido ultrapassa o total da venda.");
 
         ReturnedAmount += amount;

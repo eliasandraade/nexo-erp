@@ -9,7 +9,7 @@ public class SaleReturnConfiguration : IEntityTypeConfiguration<SaleReturn>
     public void Configure(EntityTypeBuilder<SaleReturn> builder)
     {
         builder.ToTable("sale_returns", t =>
-            t.HasCheckConstraint("ck_sale_returns_refund_positive", "refund_amount > 0"));
+            t.HasCheckConstraint("ck_sale_returns_refund_nonnegative", "refund_amount >= 0"));
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id");

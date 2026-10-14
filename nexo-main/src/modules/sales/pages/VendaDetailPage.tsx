@@ -133,7 +133,7 @@ export default function VendaDetailPage() {
   }
 
   // A sale with a prazo still open is cancelled; a paid one is undone by a devolução.
-  const canCancelSale = dto.status === "Confirmed";
+  const canCancelSale = dto.status === "Confirmed" || dto.status === "Draft";
 
   const actions = (
     <div className="flex flex-wrap items-center gap-2">

@@ -132,6 +132,75 @@ public class SaleReturnTests
         await CloseAsync(c, session.Id);
     }
 
+    [Fact]
+    public async Task Partial_returns_never_drift_and_a_free_gift_still_closes_the_sale()
+    {
+        var (c, session) = await ManagerWithDrawerAsync("ret.rounding", opening: 10m);
+        // A: 3 × 1,00 with 1,00 item discount → 2,00 · B: free gift (5,00 − 5,00) → total 2,00
+        var a = await ProductAsync(c, 1m);
+        var b = await ProductAsync(c, 5m);
+        var draft = (await (await c.PostAsJsonAsync("/api/sales", new CreateSaleRequest(CashSessionId: session.Id)))
+            .Content.ReadFromJsonAsync<SaleDto>())!;
+        (await c.PostAsJsonAsync($"/api/sales/{draft.Id}/items", new AddSaleItemRequest(a, 3, 1m, DiscountAmount: 1m))).EnsureSuccessStatusCode();
+        (await c.PostAsJsonAsync($"/api/sales/{draft.Id}/items", new AddSaleItemRequest(b, 1, 5m, DiscountAmount: 5m))).EnsureSuccessStatusCode();
+        var sale = (await (await c.PostAsJsonAsync($"/api/sales/{draft.Id}/confirm",
+            new ConfirmSaleRequest([new PaymentInput("Cash", "Cash", 2m)]))).Content.ReadFromJsonAsync<SaleDto>())!;
+        var lineA = sale.Items.Single(i => i.ProductId == a).Id;
+        var lineB = sale.Items.Single(i => i.ProductId == b).Id;
+
+        async Task<SaleReturnDto> Return(params (Guid Line, decimal Qty)[] lines)
+        {
+            var resp = await c.PostAsJsonAsync($"/api/sales/{sale.Id}/returns", new CreateSaleReturnRequest(
+                lines.Select(l => new SaleReturnItemInput(l.Line, l.Qty)).ToList(), "Pix", "teste de arredondamento"));
+            resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+            return (await resp.Content.ReadFromJsonAsync<SaleReturnDto>())!;
+        }
+
+        (await Return((lineA, 1))).RefundAmount.Should().Be(0.67m);
+        (await Return((lineA, 1))).RefundAmount.Should().Be(0.66m);            // cumulative share 1,33
+        (await Return((lineB, 1), (lineA, 1))).RefundAmount.Should().Be(0.67m); // order-independent, closes exactly
+
+        var final = await SaleAsync(c, sale.Id);
+        final.Status.Should().Be("Returned");
+        final.ReturnedAmount.Should().Be(2m);
+        await CloseAsync(c, session.Id);
+    }
+
+    [Fact]
+    public async Task Returning_only_a_free_gift_moves_stock_without_money()
+    {
+        var (c, session) = await ManagerWithDrawerAsync("ret.gift", opening: 0m);
+        var a = await ProductAsync(c, 10m);
+        var gift = await ProductAsync(c, 3m);
+        var draft = (await (await c.PostAsJsonAsync("/api/sales", new CreateSaleRequest(CashSessionId: session.Id)))
+            .Content.ReadFromJsonAsync<SaleDto>())!;
+        (await c.PostAsJsonAsync($"/api/sales/{draft.Id}/items", new AddSaleItemRequest(a, 1, 10m))).EnsureSuccessStatusCode();
+        (await c.PostAsJsonAsync($"/api/sales/{draft.Id}/items", new AddSaleItemRequest(gift, 1, 3m, DiscountAmount: 3m))).EnsureSuccessStatusCode();
+        var sale = (await (await c.PostAsJsonAsync($"/api/sales/{draft.Id}/confirm",
+            new ConfirmSaleRequest([new PaymentInput("Pix", "Cash", 10m)]))).Content.ReadFromJsonAsync<SaleDto>())!;
+
+        var resp = await c.PostAsJsonAsync($"/api/sales/{sale.Id}/returns", new CreateSaleReturnRequest(
+            [new SaleReturnItemInput(sale.Items.Single(i => i.ProductId == gift).Id, 1)], "Cash", "brinde devolvido"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK, await resp.Content.ReadAsStringAsync());
+        (await resp.Content.ReadFromJsonAsync<SaleReturnDto>())!.RefundAmount.Should().Be(0m);
+        (await StockOfAsync(c, gift)).Should().Be(10);              // back in stock
+        (await DrawerAsync(c, session.Id)).Summary!.Refunds.Should().Be(0m);
+        (await SaleAsync(c, sale.Id)).Status.Should().Be("PartiallyReturned");
+        await CloseAsync(c, session.Id);
+    }
+
+    private static async Task<Guid> ProductAsync(HttpClient c, decimal price)
+    {
+        var code = $"PR45-{Guid.NewGuid():N}"[..20];
+        var product = (await (await c.PostAsJsonAsync("/api/products",
+                new CreateProductRequest(Code: code, Name: code, Unit: "Un", SalePrice: price, CostPrice: 0.5m, TrackStock: true)))
+            .Content.ReadFromJsonAsync<ProductDto>())!;
+        (await c.PostAsJsonAsync("/api/stock/adjust",
+            new AdjustStockRequest(product.Id, 10, "ManualEntry", "PR45"))).EnsureSuccessStatusCode();
+        return product.Id;
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private static Task<HttpResponseMessage> PostReturnAsync(
