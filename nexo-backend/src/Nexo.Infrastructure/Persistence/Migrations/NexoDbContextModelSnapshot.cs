@@ -261,9 +261,22 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("closing_balance");
 
+                    b.Property<string>("ClosingNotes")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("closing_notes");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
+
+                    b.Property<decimal?>("Difference")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("difference_amount");
+
+                    b.Property<decimal?>("ExpectedBalance")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("expected_balance");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(500)

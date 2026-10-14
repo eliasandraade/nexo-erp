@@ -43,6 +43,18 @@ public class CashSessionConfiguration : IEntityTypeConfiguration<CashSession>
             .HasColumnName("closing_balance")
             .HasColumnType("numeric(18,2)");
 
+        builder.Property(x => x.ExpectedBalance)
+            .HasColumnName("expected_balance")
+            .HasColumnType("numeric(18,2)");
+
+        builder.Property(x => x.Difference)
+            .HasColumnName("difference_amount")
+            .HasColumnType("numeric(18,2)");
+
+        builder.Property(x => x.ClosingNotes)
+            .HasColumnName("closing_notes")
+            .HasMaxLength(500);
+
         builder.Property(x => x.OpenedAt)
             .HasColumnName("opened_at")
             .HasColumnType("timestamptz")

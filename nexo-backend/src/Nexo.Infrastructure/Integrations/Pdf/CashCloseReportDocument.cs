@@ -43,8 +43,31 @@ internal sealed class CashCloseReportDocument : IDocument
                 col.Item().PaddingTop(8).LineHorizontal(1);
                 col.Item().PaddingTop(8).Text("Valores:").Bold();
                 col.Item().Text($"Saldo inicial: {s.OpeningBalance.ToString("C2", Ptbr)}");
+                if (s.Summary is { } sum)
+                {
+                    col.Item().Text($"Vendas em dinheiro: {sum.CashSales.ToString("C2", Ptbr)}");
+                    col.Item().Text($"Suprimentos: {sum.Deposits.ToString("C2", Ptbr)}");
+                    col.Item().Text($"Sangrias: {sum.Withdrawals.ToString("C2", Ptbr)}");
+                    if (sum.Refunds > 0)
+                        col.Item().Text($"Estornos de venda: {sum.Refunds.ToString("C2", Ptbr)}");
+                    col.Item().Text($"Saldo esperado: {sum.ExpectedBalance.ToString("C2", Ptbr)}").Bold();
+                }
                 if (s.ClosingBalance.HasValue)
-                    col.Item().Text($"Saldo final: {s.ClosingBalance.Value.ToString("C2", Ptbr)}");
+                    col.Item().Text($"Saldo contado: {s.ClosingBalance.Value.ToString("C2", Ptbr)}").Bold();
+                if (s.Difference is { } diff)
+                    col.Item().Text(diff == 0
+                        ? "Diferença: sem divergência"
+                        : $"Diferença: {diff.ToString("C2", Ptbr)} ({(diff > 0 ? "sobra" : "falta")})").Bold();
+                if (!string.IsNullOrWhiteSpace(s.ClosingNotes))
+                    col.Item().Text($"Justificativa: {s.ClosingNotes}");
+
+                if (s.Summary is { ReceiptsByMethod.Count: > 0 } byMethod)
+                {
+                    col.Item().PaddingTop(8).Text("Recebimentos por forma de pagamento:").Bold();
+                    foreach (var r in byMethod.ReceiptsByMethod)
+                        col.Item().Text($"{MethodLabel(r.Method)}{(r.Type == "Credit" ? " (a prazo)" : "")}: " +
+                                        $"{r.Amount.ToString("C2", Ptbr)} em {r.Count} pagamento(s)");
+                }
 
                 if (s.Movements is { Count: > 0 })
                 {
@@ -66,7 +89,7 @@ internal sealed class CashCloseReportDocument : IDocument
                         foreach (var m in s.Movements)
                         {
                             table.Cell().Text(m.Description);
-                            table.Cell().Text(m.MovementType);
+                            table.Cell().Text(MovementLabel(m.MovementType));
                             table.Cell().AlignRight().Text(m.Amount.ToString("C2", Ptbr));
                         }
                     });
@@ -82,4 +105,26 @@ internal sealed class CashCloseReportDocument : IDocument
             page.Footer().AlignCenter().Text("Gerado pelo Orken").FontSize(8).FontColor(Colors.Grey.Medium);
         });
     }
+
+    private static string MovementLabel(string type) => type switch
+    {
+        "SaleReceipt" => "Venda (dinheiro)",
+        "Deposit"     => "Suprimento",
+        "Withdrawal"  => "Sangria",
+        "SaleRefund"  => "Estorno de venda",
+        "Opening"     => "Abertura",
+        "Closing"     => "Fechamento",
+        _             => type,
+    };
+
+    private static string MethodLabel(string method) => method switch
+    {
+        "Cash"     => "Dinheiro",
+        "Pix"      => "Pix",
+        "Debit"    => "Cartão de débito",
+        "Credit"   => "Cartão de crédito",
+        "Transfer" => "Transferência",
+        "Check"    => "Cheque",
+        _          => method,
+    };
 }

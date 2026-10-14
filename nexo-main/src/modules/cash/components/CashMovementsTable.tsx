@@ -15,7 +15,7 @@ interface CashMovementsTableProps {
   movements: CashMovementDto[];
 }
 
-const OUTFLOW_TYPES: CashMovementType[] = ["Withdrawal"];
+const OUTFLOW_TYPES: CashMovementType[] = ["Withdrawal", "SaleRefund"];
 const NEUTRAL_TYPES: CashMovementType[] = ["Opening", "Closing"];
 
 function formatTime(iso: string) {

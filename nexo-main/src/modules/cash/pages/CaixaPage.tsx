@@ -12,7 +12,10 @@ import {
   useOpenCashSession,
   useCloseCashSession,
   useAddCashMovement,
+  useAllSessions,
 } from "../hooks/use-cash";
+import { CashReceiptsByMethod } from "../components/CashReceiptsByMethod";
+import { CashHistoryTable } from "../components/CashHistoryTable";
 import { CashStatusBanner } from "../components/CashStatusBanner";
 import { CashKpiCards } from "../components/CashKpiCards";
 import { CashMovementsTable } from "../components/CashMovementsTable";
@@ -45,9 +48,12 @@ export default function CaixaPage() {
   const { data: openSession, isLoading: sessionLoading } = useOpenSession();
   const { data: sessionDetail } = useSessionById(openSession?.id);
 
+  const { data: history } = useAllSessions();
+
   const movements = sessionDetail?.movements ?? [];
+  // The backend computes the expected balance; the local derivation only covers the first paint.
   const expectedBalance = openSession
-    ? deriveExpectedBalance(openSession.openingBalance, movements)
+    ? sessionDetail?.summary?.expectedBalance ?? deriveExpectedBalance(openSession.openingBalance, movements)
     : 0;
 
   const openMutation = useOpenCashSession();
@@ -67,7 +73,7 @@ export default function CaixaPage() {
         title="Caixa"
         description="Controle de abertura, fechamento e movimentações do caixa."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {!isOpen && !sessionLoading && (
               <Button onClick={() => setOpenModal(true)}>
                 <Wallet className="h-4 w-4 mr-1.5" />
@@ -126,6 +132,18 @@ export default function CaixaPage() {
         </SectionCard>
       )}
 
+      {isOpen && sessionDetail?.summary && (
+        <SectionCard title="Recebimentos por forma de pagamento">
+          <CashReceiptsByMethod receipts={sessionDetail.summary.receiptsByMethod} />
+        </SectionCard>
+      )}
+
+      {history && (
+        <SectionCard title="Fechamentos anteriores">
+          <CashHistoryTable sessions={history} />
+        </SectionCard>
+      )}
+
       <CashOpenModal
         open={openModal}
         onOpenChange={setOpenModal}
@@ -173,9 +191,9 @@ export default function CaixaPage() {
           open={closeModal}
           onOpenChange={setCloseModal}
           expectedBalance={expectedBalance}
-          onConfirm={(closingBalance, _notes) =>
+          onConfirm={(closingBalance, notes) =>
             closeMutation.mutate(
-              { id: openSession.id, req: { closingBalance } },
+              { id: openSession.id, req: { closingBalance, notes: notes || undefined } },
               {
                 onSuccess: () => {
                   setCloseModal(false);

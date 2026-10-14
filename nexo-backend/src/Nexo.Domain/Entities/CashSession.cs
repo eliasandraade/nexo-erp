@@ -1,10 +1,16 @@
 using Nexo.Domain.Common;
 using Nexo.Domain.Enums;
+using Nexo.Domain.Exceptions;
 
 namespace Nexo.Domain.Entities;
 
 /// <summary>
-/// Representa um turno de caixa. Apenas uma sessão pode estar Open por tenant por vez.
+/// Um turno de caixa (uma gaveta física). Um usuário tem no máximo uma sessão aberta por loja.
+///
+/// O saldo ESPERADO é do domínio, não da tela: abertura + entradas (vendas em dinheiro, suprimentos)
+/// − saídas (sangrias, estornos de venda). No fechamento a sessão guarda o esperado, o CONTADO
+/// (<see cref="ClosingBalance"/>) e a <see cref="Difference"/> (contado − esperado: positivo = sobra,
+/// negativo = falta), congelados para o histórico mesmo que algo mude depois.
 /// </summary>
 public class CashSession : StoreEntity
 {
@@ -15,7 +21,10 @@ public class CashSession : StoreEntity
     public Guid OpenedByUserId { get; private set; }
     public Guid? ClosedByUserId { get; private set; }
     public decimal OpeningBalance { get; private set; }
-    public decimal? ClosingBalance { get; private set; }
+    public decimal? ClosingBalance { get; private set; }   // contado na gaveta ao fechar
+    public decimal? ExpectedBalance { get; private set; }  // esperado no momento do fechamento
+    public decimal? Difference { get; private set; }       // contado − esperado
+    public string? ClosingNotes { get; private set; }
     public DateTime OpenedAt { get; private set; }
     public DateTime? ClosedAt { get; private set; }
     public string? Notes { get; private set; }
@@ -28,6 +37,9 @@ public class CashSession : StoreEntity
 
     public static CashSession Open(Guid tenantId, Guid openedByUserId, decimal openingBalance, string? notes = null)
     {
+        if (openingBalance < 0 || decimal.Round(openingBalance, 2) != openingBalance)
+            throw new DomainException("O saldo de abertura deve ser um valor positivo com até duas casas decimais.");
+
         return new CashSession(tenantId)
         {
             Status           = CashSessionStatus.Open,
@@ -38,16 +50,41 @@ public class CashSession : StoreEntity
         };
     }
 
-    public void Close(Guid closedByUserId, decimal closingBalance)
+    /// <summary>Expected drawer balance: opening + inflows − outflows.</summary>
+    public static decimal ExpectedBalanceFrom(decimal openingBalance, IEnumerable<CashMovement> movements)
+        => openingBalance
+           + movements.Where(m => m.MovementType.IsInflow()).Sum(m => m.Amount)
+           - movements.Where(m => m.MovementType.IsOutflow()).Sum(m => m.Amount);
+
+    /// <summary>
+    /// Closes the session against what was counted in the drawer. The expected balance and the
+    /// difference are computed here from the session's movements and frozen on the session.
+    /// </summary>
+    public void Close(Guid closedByUserId, decimal countedBalance, IEnumerable<CashMovement> movements, string? notes = null)
     {
-        if (Status == CashSessionStatus.Closed)
-            throw new InvalidOperationException("Cash session is already closed.");
+        EnsureOpen();
+        if (countedBalance < 0 || decimal.Round(countedBalance, 2) != countedBalance)
+            throw new DomainException("O valor contado deve ser positivo e ter até duas casas decimais.");
+
+        if (notes is { Length: > 500 })
+            throw new DomainException("A justificativa do fechamento tem no máximo 500 caracteres.");
+
+        var expected = ExpectedBalanceFrom(OpeningBalance, movements.Where(m => m.CashSessionId == Id));
 
         Status           = CashSessionStatus.Closed;
         ClosedByUserId   = closedByUserId;
-        ClosingBalance   = closingBalance;
+        ClosingBalance   = countedBalance;
+        ExpectedBalance  = expected;
+        Difference       = countedBalance - expected;
+        ClosingNotes     = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
         ClosedAt         = DateTime.UtcNow;
         SetUpdatedAt();
+    }
+
+    public void EnsureOpen()
+    {
+        if (Status != CashSessionStatus.Open)
+            throw new DomainException("Este caixa já está fechado.");
     }
 
     public bool IsOpen => Status == CashSessionStatus.Open;

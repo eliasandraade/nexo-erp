@@ -7,7 +7,8 @@
 | PR | Tema | Merge | Migration | Estado |
 |---|---|---|---|---|
 | #42 | RBAC backend completo | `8022737` | — | Em produção |
-| #43 | PDV: integridade de pagamentos | — | `AddSalePaymentTenderedAndChange` (aditiva) | Em revisão |
+| #43 | PDV: integridade de pagamentos | `4724495` | `AddSalePaymentTenderedAndChange` (aditiva) | Em produção |
+| #44 | Caixa 2.0 | — | `AddCashSessionClosingDifference` (aditiva + backfill do histórico) | Em revisão |
 
 ---
 
@@ -68,3 +69,39 @@
 - **Testes:**
   - `SalePaymentPlanTests`: 18 testes unitários.
   - `PdvPaymentIntegrityTests`: 13 testes de integração (troco, Pix/cartão fora da gaveta, misto, retry, concorrência, caixa fechado, desconto fracionado, cancelamento com contrapartida).
+
+## PR 44 — Caixa 2.0
+
+- **Divergência no domínio:**
+  - `CashSession.Close` calcula o saldo **esperado**: abertura + vendas em dinheiro + suprimentos − sangrias − estornos de venda.
+  - Guarda o **contado** e a **diferença** (contado − esperado: positiva é sobra, negativa é falta), mais a justificativa.
+  - Esses valores ficam congelados no histórico.
+  - A migration preenche esperado e diferença dos fechamentos antigos a partir dos próprios movimentos. Só preenche as colunas novas.
+- **Movimento manual:**
+  - Aceita só suprimento (`Deposit`) e sangria (`Withdrawal`), com motivo obrigatório e no máximo 2 casas decimais.
+  - Antes dava para lançar `SaleReceipt`, `Opening` e `Closing` à mão, ou seja, forjar uma venda no caixa.
+  - Sangria acima do saldo da gaveta é recusada.
+  - Caixa fechado não aceita movimento nem um segundo fechamento.
+- **Estorno de venda** tem tipo próprio (`SaleRefund`), separado da sangria nos relatórios.
+- **Concorrência:**
+  - Lock da sessão, com escopo de tenant, no fechamento, nos movimentos manuais e também quando uma venda ou um estorno grava na gaveta. Assim nada cai num caixa que está fechando.
+  - Advisory lock por usuário na abertura: dois "abrir caixa" simultâneos geram um caixa só.
+  - O estorno de venda não pode tirar da gaveta mais do que ela tem.
+- **Histórico antigo:** antes do PR 43, Pix e cartão também eram gravados como `SaleReceipt`, com o meio na descrição. O backfill conta como dinheiro só os recebimentos que eram dinheiro de fato.
+  - Um caixa que estava aberto durante o deploy pode mostrar esperado inflado até ser fechado. O efeito é pontual e vale só para essa sessão.
+- **Resumo da sessão (backend):**
+  - totais de vendas em dinheiro, suprimentos, sangrias e estornos;
+  - saldo esperado ao vivo;
+  - recebimentos por forma de pagamento (Pix e cartão aparecem, mas não entram na gaveta).
+- **Auditoria:** abrir, movimentar e fechar geram registro. O fechamento com divergência entra como `warning`.
+- **Tela `/caixa`:**
+  - saldo esperado vindo do backend;
+  - recebimentos por forma de pagamento;
+  - histórico de fechamentos com esperado, contado e diferença;
+  - a justificativa do fechamento é enviada (antes era descartada);
+  - o layout no celular não rola mais na horizontal.
+- **PDF de fechamento:** inclui os totais, o esperado, o contado, a diferença e os recebimentos por forma de pagamento.
+- **Testes:**
+  - `CashSessionTests`: 8 testes unitários.
+  - `CashSessionFlowTests`: 12 testes de integração (turno completo, movimentos inválidos, sangria acima do saldo, abertura concorrente, estorno ≠ sangria, estorno acima do saldo, limite da justificativa).
+  - Playwright: tela do caixa em 1440 e 390 px.

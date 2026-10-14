@@ -96,7 +96,7 @@ public sealed class PdfControllerTests
         tenant.Id.Returns(TenantId);
         user.UserId.Returns(UserId);
 
-        var service    = new CashService(cash, tenant, user);
+        var service    = new CashService(cash, Substitute.For<IUnitOfWork>(), Substitute.For<IAuditWriter>(), tenant, user);
         var controller = new CashController(service, renderer);
 
         return new CashSut(controller, cash, renderer);
