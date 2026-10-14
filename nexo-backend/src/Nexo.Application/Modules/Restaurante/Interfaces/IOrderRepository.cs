@@ -5,6 +5,8 @@ namespace Nexo.Application.Modules.Restaurante.Interfaces;
 public interface IOrderRepository
 {
     Task<RestOrder?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    /// <summary>Row lock on the order and its current status, read under the lock.</summary>
+    Task<RestOrderStatus?> LockAndGetStatusAsync(Guid id, CancellationToken ct = default);
     Task<RestOrder?> GetByIdWithItemsAsync(Guid id, CancellationToken ct = default);
     Task<RestOrder?> GetOpenOrderForTableAsync(Guid tableId, CancellationToken ct = default);
     Task<IReadOnlyList<RestOrder>> GetAllAsync(CancellationToken ct = default);

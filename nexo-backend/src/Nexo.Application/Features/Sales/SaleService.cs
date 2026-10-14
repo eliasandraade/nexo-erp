@@ -112,53 +112,50 @@ public class SaleService
         return MapToDto(sale, allItems, []);
     }
 
+    /// <summary>ReferenceType of the financeiro lançamentos that mirror a sale (credit and settled non-cash).</summary>
+    public const string SaleReference = "Sale";
+    /// <summary>ReferenceType of the counter-entries posted when a sale is cancelled.</summary>
+    public const string SaleCancellationReference = "SaleCancellation";
+
     /// <summary>
     /// Confirms a Draft sale atomically:
-    ///   1. Validates payment sum == sale total
-    ///   2. Deducts stock (with optimistic concurrency guard)
-    ///   3. Creates SalePayment records
-    ///   4. Generates CashMovement for each Cash payment
-    ///   5. Generates FinancialTransaction for each Credit payment
-    ///   6. Transitions sale: Draft → Confirmed (→ Paid if fully cash)
-    ///
-    /// Throws DbUpdateConcurrencyException if stock was modified by a concurrent transaction.
-    /// Caller should retry on concurrency conflicts.
+    ///   1. Locks the sale row — concurrent confirmations serialise; a retry of an already
+    ///      confirmed sale with the same payments is answered with the sale (idempotent replay)
+    ///   2. Builds the payment plan (<see cref="SalePaymentPlan"/>): validation + troco
+    ///   3. Deducts stock (optimistic concurrency guard)
+    ///   4. Records SalePayments and their effects — physical cash → CashMovement in an OPEN
+    ///      session (net of troco); Pix/card/transfer à vista → settled revenue in the financeiro;
+    ///      a prazo → pending receivable
+    ///   5. Draft → Confirmed (→ Paid when nothing is a prazo)
     /// </summary>
     public async Task<SaleDto> ConfirmAsync(Guid saleId, ConfirmSaleRequest request, CancellationToken ct = default)
     {
         if (request.Payments is null || request.Payments.Count == 0)
-            throw new DomainException("At least one payment is required to confirm a sale.");
+            throw new DomainException("Informe ao menos um pagamento para concluir a venda.");
 
         await using var tx = await _uow.BeginTransactionAsync(ct);
         try
         {
+            await _sales.LockAsync(saleId, ct);
             var sale = await _sales.GetByIdWithItemsAsync(saleId, ct)
                 ?? throw new NotFoundException("Sale", saleId);
 
             if (!sale.IsInDraft)
-                throw new DomainException($"Sale #{sale.Number} cannot be confirmed. Current status: {sale.Status}.");
+            {
+                if (IsReplayOf(sale, request))
+                {
+                    await tx.CommitAsync(ct);
+                    return MapToDto(sale, sale.Items.ToList(), sale.Payments.ToList());
+                }
+                throw new ConflictException($"A venda #{sale.Number} já foi {DescribeStatus(sale.Status)}.");
+            }
 
             if (!sale.Items.Any())
                 throw new DomainException("Cannot confirm a sale with no items.");
 
-            // Recalculate totals with final discount/tax
+            // Recalculate totals with final discount/tax, then plan the payments against it
             sale.RecalculateTotals(sale.Items, request.DiscountAmount, request.TaxAmount, request.SurchargesAmount);
-
-            // Validate: sum of payments must equal sale total
-            var paymentTotal = request.Payments.Sum(p => p.Amount);
-            if (paymentTotal != sale.Total)
-                throw new DomainException(
-                    $"Payment total ({paymentTotal:C}) does not match sale total ({sale.Total:C}).");
-
-            // Validate individual payment inputs
-            foreach (var p in request.Payments)
-            {
-                if (p.Amount <= 0)
-                    throw new DomainException("Payment amounts must be positive.");
-
-                if (string.Equals(p.Type, "Credit", StringComparison.OrdinalIgnoreCase) && p.DueDate is null)
-                    throw new DomainException("DueDate is required for credit (a prazo) payments.");
-            }
+            var plan = SalePaymentPlan.Build(request.Payments, sale.Total);
 
             // 1. Deduct stock for all tracked products
             foreach (var item in sale.Items)
@@ -193,71 +190,53 @@ public class SaleService
                 await _stock.AddMovementAsync(movement, ct);
             }
 
-            // 2. Auto-link open cash session of the selling user (if not already set)
-            if (sale.CashSessionId is null)
+            // 2. Physical cash needs an open drawer to land in
+            if (plan.Any(p => p.MovesCashDrawer))
             {
-                var openSession = await _cash.GetOpenSessionByUserAsync(_currentUser.UserId, ct);
-                if (openSession is not null)
-                    sale.LinkCashSession(openSession.Id);
+                var sessionId = await ResolveOpenCashSessionAsync(sale, ct);
+                if (sale.CashSessionId != sessionId) sale.LinkCashSession(sessionId);
             }
 
-            // 3. Create SalePayment records + generate CashMovements / FinancialTransactions
+            // 3. Payments and their effects
             var hasCreditPayment = false;
-
-            foreach (var p in request.Payments)
+            foreach (var p in plan)
             {
-                var method      = Enum.Parse<PaymentMethod>(p.Method, ignoreCase: true);
-                var paymentType = Enum.Parse<PaymentType>(p.Type, ignoreCase: true);
-
                 var payment = SalePayment.Create(
-                    _currentTenant.Id,
-                    sale.Id,
-                    method,
-                    paymentType,
-                    p.Amount,
-                    p.DueDate);
-
+                    _currentTenant.Id, sale.Id, p.Method, p.Type, p.Applied, p.DueDate, p.Change);
                 await _sales.AddPaymentAsync(payment, ct);
 
-                if (paymentType == PaymentType.Cash)
+                if (p.MovesCashDrawer)
                 {
-                    // À vista: generate CashMovement in the linked session
-                    if (sale.CashSessionId.HasValue)
-                    {
-                        var cashMovement = CashMovement.Create(
-                            _currentTenant.Id,
-                            sale.CashSessionId.Value,
-                            CashMovementType.SaleReceipt,
-                            p.Amount,
-                            $"Venda #{sale.Number} — {method}",
-                            _currentUser.UserId,
-                            referenceType: "Sale",
-                            referenceId: sale.Id);
-
-                        await _cash.AddMovementAsync(cashMovement, ct);
-                    }
-                }
-                else // Credit
-                {
-                    hasCreditPayment = true;
-
-                    // A prazo: generate FinancialTransaction (Receivable)
-                    var receivableAccount = await _financial.GetDefaultByTypeAsync(FinancialAccountType.Receivable, ct)
-                        ?? throw new DomainException(
-                            "No active 'Contas a Receber' account found for this tenant. " +
-                            "Please set up a default Receivable account in financial settings.");
-
-                    var transaction = FinancialTransaction.Create(
+                    // Net of troco: the drawer keeps exactly what was applied to the sale.
+                    await _cash.AddMovementAsync(CashMovement.Create(
                         _currentTenant.Id,
-                        receivableAccount.Id,
-                        TransactionType.Receivable,
-                        p.Amount,
-                        $"Venda #{sale.Number} — {method} a prazo",
-                        p.DueDate!.Value,
+                        sale.CashSessionId!.Value,
+                        CashMovementType.SaleReceipt,
+                        p.Applied,
+                        p.Change > 0
+                            ? $"Venda #{sale.Number} — Dinheiro (recebido {p.Tendered:F2}, troco {p.Change:F2})"
+                            : $"Venda #{sale.Number} — Dinheiro",
                         _currentUser.UserId,
                         referenceType: "Sale",
-                        referenceId: sale.Id);
-
+                        referenceId: sale.Id), ct);
+                }
+                else if (p.IsSettledNonCash)
+                {
+                    // Pix / card / transfer: money already received, outside the drawer.
+                    var transaction = await NewSaleTransactionAsync(
+                        FinancialAccountType.Receivable, TransactionType.Receivable, p.Applied,
+                        $"Venda #{sale.Number} — {DescribeMethod(p.Method)}", DateTime.UtcNow,
+                        SaleReference, sale.Id, ct);
+                    transaction.MarkPaid(DateTime.UtcNow);
+                    await _financial.AddTransactionAsync(transaction, ct);
+                }
+                else // a prazo
+                {
+                    hasCreditPayment = true;
+                    var transaction = await NewSaleTransactionAsync(
+                        FinancialAccountType.Receivable, TransactionType.Receivable, p.Applied,
+                        $"Venda #{sale.Number} — {DescribeMethod(p.Method)} a prazo", p.DueDate!.Value,
+                        SaleReference, sale.Id, ct);
                     await _financial.AddTransactionAsync(transaction, ct);
                 }
             }
@@ -265,7 +244,7 @@ public class SaleService
             // 4. Transition state machine
             sale.Confirm();
             if (!hasCreditPayment)
-                sale.MarkPaid();  // All cash → immediately Paid
+                sale.MarkPaid();  // nothing a prazo → immediately Paid
 
             await _sales.SaveChangesAsync(ct);
             await _stock.SaveChangesAsync(ct);
@@ -290,13 +269,16 @@ public class SaleService
     /// <summary>
     /// Cancels a sale atomically.
     /// - Draft cancellation: no side-effects.
-    /// - Confirmed cancellation: reverses stock, reverses CashMovements, cancels FinancialTransactions.
+    /// - Confirmed cancellation: reverses stock, takes the physical cash back out of the drawer,
+    ///   cancels pending receivables and posts a counter-entry for revenue already settled
+    ///   (Pix/card) — history is never deleted.
     /// </summary>
     public async Task CancelAsync(Guid saleId, CancellationToken ct = default)
     {
         await using var tx = await _uow.BeginTransactionAsync(ct);
         try
         {
+            await _sales.LockAsync(saleId, ct);
             var sale = await _sales.GetByIdWithItemsAsync(saleId, ct)
                 ?? throw new NotFoundException("Sale", saleId);
 
@@ -326,17 +308,16 @@ public class SaleService
                         before,
                         stockItem.CurrentQuantity,
                         _currentUser.UserId,
-                        referenceType: "SaleCancellation",
+                        referenceType: SaleCancellationReference,
                         referenceId: sale.Id);
 
                     await _stock.AddMovementAsync(reversal, ct);
                 }
 
-                // 2. Reverse CashMovements (compensating entry)
+                // 2. Physical cash only: take it back out of the drawer (compensating entry)
                 if (sale.CashSessionId.HasValue)
                 {
-                    var cashPayments = sale.Payments.Where(p => p.Type == PaymentType.Cash);
-                    foreach (var p in cashPayments)
+                    foreach (var p in sale.Payments.Where(p => p.MovesCashDrawer))
                     {
                         var reversal = CashMovement.Create(
                             _currentTenant.Id,
@@ -345,17 +326,32 @@ public class SaleService
                             p.Amount,
                             $"Estorno Venda #{sale.Number}",
                             _currentUser.UserId,
-                            referenceType: "SaleCancellation",
+                            referenceType: SaleCancellationReference,
                             referenceId: sale.Id);
 
                         await _cash.AddMovementAsync(reversal, ct);
                     }
                 }
 
-                // 3. Cancel open FinancialTransactions linked to this sale
-                var openTransactions = await _financial.GetTransactionsBySaleAsync(sale.Id, ct);
-                foreach (var finTx in openTransactions.Where(t => t.Status == TransactionStatus.Pending || t.Status == TransactionStatus.Overdue))
-                    finTx.Cancel();
+                // 3. Financeiro: cancel what is still pending, counter-entry for what was settled
+                var transactions = await _financial.GetTransactionsBySaleAsync(sale.Id, ct);
+                foreach (var finTx in transactions)
+                {
+                    if (finTx.Status is TransactionStatus.Pending or TransactionStatus.Overdue)
+                    {
+                        finTx.Cancel();
+                    }
+                    else if (finTx.Status == TransactionStatus.Paid
+                             && finTx.TransactionType == TransactionType.Receivable)
+                    {
+                        var counter = await NewSaleTransactionAsync(
+                            FinancialAccountType.Payable, TransactionType.Payable, finTx.Amount,
+                            $"Estorno — {finTx.Description}", DateTime.UtcNow,
+                            SaleCancellationReference, sale.Id, ct);
+                        counter.MarkPaid(DateTime.UtcNow);
+                        await _financial.AddTransactionAsync(counter, ct);
+                    }
+                }
             }
 
             await _sales.SaveChangesAsync(ct);
@@ -369,6 +365,74 @@ public class SaleService
             throw;
         }
     }
+
+    // ── Payment helpers ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The open drawer the cash of this sale lands in: the session the sale was opened against (it
+    /// must still be open), else the seller's own open session, else the store's open session —
+    /// the PDV and the salão sell on the drawer the management opened.
+    /// </summary>
+    private async Task<Guid> ResolveOpenCashSessionAsync(Sale sale, CancellationToken ct)
+    {
+        if (sale.CashSessionId.HasValue)
+        {
+            var linked = await _cash.GetByIdAsync(sale.CashSessionId.Value, ct);
+            if (linked is null || !linked.IsOpen)
+                throw new DomainException(
+                    "O caixa desta venda foi fechado. Abra um caixa e refaça a venda para receber em dinheiro.");
+            return linked.Id;
+        }
+
+        var session = await _cash.GetOpenSessionByUserAsync(_currentUser.UserId, ct)
+                      ?? await _cash.GetOpenSessionAsync(ct);
+        return session?.Id ?? throw new DomainException(
+            "Nenhum caixa aberto. Abra o caixa para receber pagamentos em dinheiro.");
+    }
+
+    private async Task<FinancialTransaction> NewSaleTransactionAsync(
+        FinancialAccountType accountType, TransactionType type, decimal amount, string description,
+        DateTime dueDate, string referenceType, Guid saleId, CancellationToken ct)
+    {
+        var account = await _financial.GetDefaultByTypeAsync(accountType, ct)
+            ?? throw new DomainException(accountType == FinancialAccountType.Receivable
+                ? "No active 'Contas a Receber' account found for this tenant. Please set up a default Receivable account in financial settings."
+                : "No active 'Contas a Pagar' account found for this tenant. Please set up a default Payable account in financial settings.");
+
+        return FinancialTransaction.Create(
+            _currentTenant.Id, account.Id, type, amount, description, dueDate, _currentUser.UserId,
+            referenceType: referenceType, referenceId: saleId);
+    }
+
+    /// <summary>
+    /// A retry of a confirmation that already went through (network timeout, double click): same
+    /// number of lines and the same amounts handed over. Anything else is a real conflict.
+    /// </summary>
+    private static bool IsReplayOf(Sale sale, ConfirmSaleRequest request)
+    {
+        if (sale.Status is not (SaleStatus.Confirmed or SaleStatus.Paid)) return false;
+        var recorded  = sale.Payments.Select(p => p.Amount + p.ChangeAmount).OrderBy(x => x).ToList();
+        var requested = request.Payments.Select(p => p.Amount).OrderBy(x => x).ToList();
+        return recorded.Count > 0 && recorded.SequenceEqual(requested);
+    }
+
+    private static string DescribeStatus(SaleStatus status) => status switch
+    {
+        SaleStatus.Cancelled => "cancelada",
+        SaleStatus.Paid      => "paga",
+        _                    => "confirmada",
+    };
+
+    private static string DescribeMethod(PaymentMethod method) => method switch
+    {
+        PaymentMethod.Cash     => "Dinheiro",
+        PaymentMethod.Pix      => "Pix",
+        PaymentMethod.Debit    => "Cartão de débito",
+        PaymentMethod.Credit   => "Cartão de crédito",
+        PaymentMethod.Transfer => "Transferência",
+        PaymentMethod.Check    => "Cheque",
+        _                      => "Outro",
+    };
 
     // ── Mapping ───────────────────────────────────────────────────────────────
 
@@ -405,7 +469,9 @@ public class SaleService
             p.Method.ToString(),
             p.Type.ToString(),
             p.Amount,
-            p.DueDate)).ToList(),
+            p.DueDate,
+            p.TenderedAmount,
+            p.ChangeAmount)).ToList(),
         s.CreatedAt,
         s.UpdatedAt);
 }

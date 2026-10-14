@@ -92,12 +92,18 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
   const isExact   = Math.abs(remaining) < 0.01;
   const isOver    = remaining < -0.005;
   const hasCash   = entries.some(e => e.method === "cash");
+  const cashPaid  = entries
+    .filter(e => e.method === "cash")
+    .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
   const troco     = isOver && hasCash
     ? Math.round((totalPaid - total) * 100) / 100
     : 0;
+  // Same rule as the backend: only physical cash can exceed the total, and the troco must be
+  // smaller than the cash handed over (Pix/card are always exact).
+  const overpaidWithoutCash = isOver && troco >= cashPaid;
 
   const canConfirm =
-    isExact &&
+    (isExact || (isOver && !overpaidWithoutCash)) &&
     entries.every(e => {
       const v = parseFloat(e.amount);
       return !isNaN(v) && v > 0;
@@ -283,6 +289,11 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
               <span>Troco (dinheiro)</span>
               <span className="tabular-nums">R$ {troco.toFixed(2)}</span>
             </div>
+          )}
+          {overpaidWithoutCash && (
+            <p className="pt-2 text-xs text-red-500">
+              Só pagamento em dinheiro pode passar do total. Ajuste Pix e cartão para o valor exato.
+            </p>
           )}
         </div>
 

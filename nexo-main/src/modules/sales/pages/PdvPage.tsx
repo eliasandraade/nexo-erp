@@ -26,8 +26,10 @@ function toCompletedSale(
   subtotal: number,
   discountTotal: number,
 ): CompletedSale {
+  // The troco the backend actually recorded; the local estimate is only a fallback.
+  const recorded    = dto.payments.reduce((sum, p) => sum + (p.changeAmount ?? 0), 0);
   const cashPayment = payments.find((p) => p.method === "cash");
-  const change      = cashPayment ? Math.max(0, cashPayment.amount - dto.total) : 0;
+  const change      = recorded > 0 ? recorded : cashPayment ? Math.max(0, cashPayment.amount - dto.total) : 0;
 
   return {
     id:           `#${dto.number}`,

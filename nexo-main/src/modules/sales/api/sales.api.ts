@@ -18,8 +18,13 @@ export interface SalePaymentDto {
   id: string;
   method: string;
   type: string;
+  /** Value applied to the sale. */
   amount: number;
   dueDate?: string | null;
+  /** Physical cash handed over (cash only). */
+  tenderedAmount?: number | null;
+  /** Troco given back (cash only). */
+  changeAmount?: number;
 }
 
 export interface SaleDto {

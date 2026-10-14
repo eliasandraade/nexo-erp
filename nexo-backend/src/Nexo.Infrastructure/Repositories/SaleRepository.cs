@@ -13,6 +13,10 @@ public class SaleRepository : ISaleRepository
 
     public SaleRepository(NexoDbContext context) => _context = context;
 
+    public async Task LockAsync(Guid id, CancellationToken ct = default)
+        => await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.sales WHERE id = {id} FOR UPDATE", ct);
+
     public async Task<Sale?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _context.Sales.FirstOrDefaultAsync(x => x.Id == id, ct);
 
