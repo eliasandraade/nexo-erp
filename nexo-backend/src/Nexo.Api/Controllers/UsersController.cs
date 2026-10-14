@@ -80,7 +80,7 @@ public class UsersController : ControllerBase
     /// own account — otherwise the 204/403 answer would let any user guess a colleague's password.
     /// </summary>
     [HttpPost("{id:guid}/change-password")]
-    [EnableRateLimiting("auth-login")]
+    [EnableRateLimiting("credential-check")]
     public async Task<IActionResult> ChangePassword(
         Guid id,
         [FromBody] ChangePasswordRequest request,
@@ -120,7 +120,7 @@ public class UsersController : ControllerBase
     /// Accessible to all authenticated users (Vendedor needs manager approval).
     /// </summary>
     [HttpPost("validate-manager")]
-    [EnableRateLimiting("auth-login")]
+    [EnableRateLimiting("credential-check")]
     public async Task<ActionResult<ValidateManagerResponse>> ValidateManager(
         [FromBody] ValidateManagerRequest request,
         CancellationToken ct)

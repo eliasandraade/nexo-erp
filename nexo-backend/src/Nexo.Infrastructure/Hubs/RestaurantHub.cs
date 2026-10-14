@@ -5,7 +5,8 @@ using Nexo.Application.Common.Interfaces;
 
 namespace Nexo.Infrastructure.Hubs;
 
-[Authorize]
+// Same set as AppRoles.RestaurantOps (Nexo.Api) — floor and kitchen; Estoquista has no use for order events.
+[Authorize(Roles = "Gerente,Diretoria,Vendedor,Cozinha")]
 public class RestaurantHub : Hub
 {
     private readonly ICurrentUser _currentUser;

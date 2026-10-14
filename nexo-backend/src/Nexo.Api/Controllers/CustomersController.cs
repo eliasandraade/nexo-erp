@@ -16,12 +16,16 @@ public class CustomersController : ControllerBase
     public CustomersController(CustomerService service) => _service = service;
 
     [HttpGet]
+
+    [Authorize(Roles = AppRoles.Sales)]
     public async Task<ActionResult<IReadOnlyList<CustomerDto>>> GetAll(
         [FromQuery] bool includeInactive = false,
         CancellationToken ct = default)
         => Ok(await _service.GetAllAsync(includeInactive, ct));
 
     [HttpGet("paged")]
+
+    [Authorize(Roles = AppRoles.Sales)]
     public async Task<ActionResult<PagedResult<CustomerDto>>> GetPaged(
         [FromQuery] int page             = 1,
         [FromQuery] int pageSize         = 25,
@@ -35,6 +39,8 @@ public class CustomersController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+
+    [Authorize(Roles = AppRoles.Sales)]
     public async Task<ActionResult<CustomerDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await _service.GetByIdAsync(id, ct));
 

@@ -385,7 +385,7 @@ public class AuthController : ControllerBase
     /// Used before sensitive operations (sale cancellation, high discounts, etc).
     /// </summary>
     [HttpPost("verify-manager")]
-    [EnableRateLimiting("auth-login")]
+    [EnableRateLimiting("credential-check")]
     [Authorize]
     public async Task<ActionResult<VerifyManagerResponse>> VerifyManager(
         [FromBody] VerifyManagerRequest request,

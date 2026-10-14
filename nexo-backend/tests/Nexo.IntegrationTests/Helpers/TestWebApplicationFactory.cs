@@ -109,6 +109,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // POSTs from one client IP; with the limiter on, the window is exhausted and later
         // tests get 429. The policy stays enabled in production (config default true).
         builder.UseSetting("RateLimiting:PublicBooking:Enabled", "false");
+        builder.UseSetting("RateLimiting:CredentialCheck:Enabled", "false");
     }
 
     /// <summary>Creates an HttpClient pre-configured for the test server.</summary>

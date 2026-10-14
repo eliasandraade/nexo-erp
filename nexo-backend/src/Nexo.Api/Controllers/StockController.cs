@@ -15,12 +15,12 @@ public class StockController : ControllerBase
     public StockController(StockService service) => _service = service;
 
     [HttpGet]
-    [Authorize(Roles = AppRoles.Stock)]
+    [Authorize(Roles = AppRoles.StockReaders)]
     public async Task<ActionResult<IReadOnlyList<StockItemDto>>> GetAll(CancellationToken ct)
         => Ok(await _service.GetAllAsync(ct));
 
     [HttpGet("paged")]
-    [Authorize(Roles = AppRoles.Stock)]
+    [Authorize(Roles = AppRoles.StockReaders)]
     public async Task<ActionResult<StockPagedResponse>> GetPaged(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
@@ -34,7 +34,7 @@ public class StockController : ControllerBase
     }
 
     [HttpGet("product/{productId:guid}")]
-    [Authorize(Roles = AppRoles.Stock)]
+    [Authorize(Roles = AppRoles.StockReaders)]
     public async Task<ActionResult<StockItemDto>> GetByProduct(Guid productId, CancellationToken ct)
         => Ok(await _service.GetByProductIdAsync(productId, ct));
 

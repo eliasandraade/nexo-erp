@@ -21,23 +21,23 @@ public class RbacCoverageTests
     /// </summary>
     private static readonly HashSet<string> OpenToAnyTenantUser = new(StringComparer.Ordinal)
     {
-        // Own session / profile
-        "Auth.*",
-        // Own account only — enforced in the action (id must be the caller, or caller is management)
+        // Own session / account (GetById and ChangePassword enforce "self or management" in the action)
+        "Auth.Me", "Auth.SwitchStore", "Auth.Logout",
         "Users.GetById", "Users.ChangePassword",
-        // A Vendedor asks a manager to type their credentials (rate-limited)
-        "Users.ValidateManager",
-        "Store.*", "Tenants.*", "Features.*", "Settings.Get",
-        // Billing status is shown to everyone (trial banner); changes are role-gated
-        "Billing.*",
+        // A Vendedor asks a manager to type their credentials (rate-limited per user)
+        "Auth.VerifyManager", "Users.ValidateManager",
+        // Shell data every role renders: stores, own tenant, feature flags, settings, billing banner
+        "Store.GetMyStores", "Tenants.GetById", "Tenants.GetBySlug", "Features.GetFeatures",
+        "Settings.Get", "Billing.GetSubscriptions",
         // Catalog reads used by PDV / salão / cozinha
         "Products.GetAll", "Products.GetPaged", "Products.GetById", "Products.GetProductSheet",
         "Categories.GetAll", "Categories.GetById",
-        "Customers.GetAll", "Customers.GetPaged", "Customers.GetById",
         // Lookups with no tenant data
-        "Barcode.*", "Lookup.*", "Weather.*",
-        // Service: preset/settings reads drive navigation for every role (decided in #38)
-        "Service.*",
+        "Integrations.Barcode.LookupBarcode", "Integrations.Lookup.LookupCep", "Integrations.Lookup.LookupCnpj",
+        "Integrations.Weather.GetCurrent", "Integrations.Weather.GetHistory",
+        // Service preset/settings reads drive navigation for every role (decided in #38)
+        "Modules.Service.Service.GetPreset", "Modules.Service.Service.GetSettings",
+        "Modules.Service.Service.GetPublicBooking",
     };
 
     /// <summary>Controllers that are anonymous by design (public menu, public booking, health…).</summary>
@@ -65,10 +65,7 @@ public class RbacCoverageTests
     public void Allow_list_has_no_stale_entries()
     {
         var names = ApiActions().Select(Name).ToHashSet();
-        var controllers = names.Select(n => n.Split('.')[0]).ToHashSet();
-        var stale = OpenToAnyTenantUser.Where(e => e.EndsWith(".*")
-            ? !controllers.Contains(e[..^2])
-            : !names.Contains(e));
+        var stale = OpenToAnyTenantUser.Where(e => !names.Contains(e));
         string.Join(", ", stale).Should().BeEmpty("allow-list entries must point at real actions");
     }
 
@@ -80,8 +77,12 @@ public class RbacCoverageTests
             .SelectMany(t => t.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly))
             .Where(m => m.GetCustomAttributes<Microsoft.AspNetCore.Mvc.Routing.HttpMethodAttribute>().Any());
 
-    private static string Name(MethodInfo m) =>
-        $"{m.DeclaringType!.Name.Replace("Controller", "")}.{m.Name.Replace("Async", "")}";
+    /// <summary>Namespace-qualified so same-named controllers (two Orders, two Reports) never share an entry.</summary>
+    private static string Name(MethodInfo m)
+    {
+        var type = m.DeclaringType!.FullName!.Replace("Nexo.Api.Controllers.", "");
+        return $"{type[..^"Controller".Length]}.{m.Name.Replace("Async", "")}";
+    }
 
     private static bool IsAnonymous(MethodInfo m) =>
         m.GetCustomAttribute<AllowAnonymousAttribute>() is not null
@@ -92,10 +93,5 @@ public class RbacCoverageTests
         m.GetCustomAttributes<AuthorizeAttribute>().Concat(m.DeclaringType!.GetCustomAttributes<AuthorizeAttribute>())
             .Any(a => !string.IsNullOrEmpty(a.Roles) || !string.IsNullOrEmpty(a.Policy));
 
-    private static bool IsAllowListed(MethodInfo m)
-    {
-        var name = Name(m);
-        var controller = name.Split('.')[0];
-        return OpenToAnyTenantUser.Contains(name) || OpenToAnyTenantUser.Contains($"{controller}.*");
-    }
+    private static bool IsAllowListed(MethodInfo m) => OpenToAnyTenantUser.Contains(Name(m));
 }

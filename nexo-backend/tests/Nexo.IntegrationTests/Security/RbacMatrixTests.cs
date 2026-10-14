@@ -57,12 +57,18 @@ public class RbacMatrixTests
         { "POST",   $"/api/customers/{R}/deactivate",          Manager, true  },
         { "GET",    "/api/suppliers",                          Seller,  false },
         { "GET",    "/api/suppliers",                          Stocker, true  },
-        { "GET",    "/api/stock",                              Seller,  false },
+        { "GET",    "/api/stock",                              Seller,  true  },   // PDV flags out-of-stock items
+        { "GET",    "/api/stock",                              Kitchen, false },
         { "GET",    "/api/stock",                              Stocker, true  },
+        { "GET",    $"/api/stock/product/{R}/movements",       Seller,  false },
+        { "GET",    "/api/customers",                          Kitchen, false },   // personal data
+        { "GET",    "/api/customers",                          Stocker, false },
+        { "PATCH",  $"/api/products/{R}/prices",               Seller,  false },
         { "GET",    "/api/varejo/purchases",                   Stocker, true  },
         { "POST",   $"/api/varejo/purchases/{R}/confirm",      Stocker, false },
         { "POST",   $"/api/varejo/purchases/{R}/confirm",      Manager, true  },
         { "POST",   "/api/integrations/storage/upload",        Seller,  false },
+        { "POST",   "/api/integrations/storage/upload",        Stocker, true  },
         // ── Gestão ──
         { "GET",    "/api/dashboard/summary",                  Seller,  false },
         { "GET",    "/api/dashboard/summary",                  Stocker, false },
@@ -73,6 +79,8 @@ public class RbacMatrixTests
         { "GET",    "/api/restaurante/orders",                 Stocker, false },
         { "PATCH",  $"/api/restaurante/orders/{R}/items/{R}/status", Kitchen, true },
         { "POST",   $"/api/restaurante/orders/{R}/pay",        Kitchen, false },
+        { "POST",   "/api/restaurante/orders",                 Kitchen, false },
+        { "POST",   $"/api/restaurante/orders/{R}/cancel",     Kitchen, false },
         { "POST",   $"/api/restaurante/orders/{R}/pay",        Seller,  true  },
         { "POST",   "/api/restaurante/tables",                 Seller,  false },
         { "PATCH",  $"/api/restaurante/tables/{R}/status",     Seller,  true  },

@@ -20,6 +20,9 @@ public static class AppRoles
     /// <summary>Catalog and inventory upkeep: products, categories, stock adjustments, purchases.</summary>
     public const string Stock = "Gerente,Diretoria,Estoquista";
 
+    /// <summary>Stock levels: kept by stock, read by the PDV and the salão to flag what is out of stock.</summary>
+    public const string StockReaders = "Gerente,Diretoria,Estoquista,Vendedor";
+
     /// <summary>Restaurant floor service: tables, comandas, delivery, payment of comandas.</summary>
     public const string Floor = "Gerente,Diretoria,Vendedor";
 

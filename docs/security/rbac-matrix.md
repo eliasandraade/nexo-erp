@@ -25,6 +25,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | `Floor` | Gerente, Diretoria, Vendedor |
 | `RestaurantOps` | Gerente, Diretoria, Vendedor, Cozinha |
 | `RecipeReaders` | Gerente, Diretoria, Estoquista, Cozinha |
+| `StockReaders` | Gerente, Diretoria, Estoquista, Vendedor |
 
 "Todos" na matriz abaixo significa qualquer usuário autenticado do tenant.
 
@@ -41,9 +42,9 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Dashboard / relatórios | Management | — | — | — | — |
 | Produtos / categorias | Todos | Stock | Stock (inclui preço) | Stock | — |
 | Custo de compra do produto | Stock | Stock | — | — | — |
-| Clientes | Todos | Management | Management | Management | — |
+| Clientes | Sales (dados pessoais: fora de Estoquista e Cozinha) | Management | Management | Management | — |
 | Fornecedores | Stock | Management | Management | Management | — |
-| Estoque | Stock | — | — | — | ajuste: Stock |
+| Estoque | saldos: StockReaders (o PDV e o salão marcam itens sem estoque) · movimentações: Stock | — | — | — | ajuste: Stock |
 | Compras | Stock | Stock (pedido, itens) | Stock | Stock (remover item) | confirmar / cancelar: Management |
 | Listas de preço | Management | Management | Management | Management | — |
 | PDV: preço resolvido | Sales | — | — | — | — |
@@ -52,6 +53,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Storage (upload/exclusão) | — | Stock | — | Stock | — |
 | Restaurante: áreas / mesas | RestaurantOps | Management | Management · status da mesa: Floor | — | — |
 | Restaurante: comandas | RestaurantOps | Floor | itens: Floor · status do item: RestaurantOps | remover item: Floor | fechar, pagar, cancelar (antes de pagar): Floor |
+| Restaurante: tempo real (SignalR `RestaurantHub`) | RestaurantOps | — | — | — | — |
 | Restaurante: delivery | Floor | Floor | Floor | — | cancelar / recusar: Floor |
 | Restaurante: adicionais, configurações | RestaurantOps | Management | Management | Management | — |
 | Restaurante: cupons, zonas | Floor | Management | Management | Management | — |
@@ -72,9 +74,22 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
   espelha a UI, onde `/caixa` é só gestão. O "Caixa 2.0" (PR 44) revisita o caixa por operador.
 - **Clientes:** a criação fica com a gestão porque nenhuma tela operacional cria cliente. O delivery
   cria o cliente pelo próprio fluxo do pedido.
-- **Credenciais:** `change-password`, `validate-manager`, `verify-manager`, `register` e
-  `resend-verification` passaram a ter rate limit (`auth-login`). Trocar senha só vale para a
-  própria conta: antes, a resposta 204/403 deixava adivinhar a senha de um colega.
+- **Credenciais:**
+  - `change-password`, `validate-manager` e `verify-manager` usam o rate limit `credential-check`,
+    particionado pelo usuário autenticado. Ele não pode ser forjado via `X-Forwarded-For`, e vários
+    terminais da mesma loja não se bloqueiam entre si.
+  - `register` e `resend-verification`, que são anônimos, usam `auth-login`.
+  - Trocar senha só vale para a própria conta. Antes, a resposta 204/403 deixava adivinhar a senha
+    de um colega.
+- **Preço de venda:** o Estoquista altera preço porque a tela `/produtos` já é dele. Se o negócio
+  quiser separar quem cadastra de quem precifica, basta trocar uma linha (`PATCH /products/{id}/prices`).
+
+## Pendências conhecidas (fora do escopo do PR 42)
+
+- **Custo exposto:** `GET /products` devolve `CostPrice` a qualquer papel. Para esconder o custo de
+  Vendedor e Cozinha é preciso um DTO separado. Vai junto com as listas de preço (PR 48).
+- **Categorias:** `DELETE /categories/{id}` é chamado pela UI (`ManageCategoriesDialog`), mas a
+  ação não existe no backend. É um bug anterior a este PR.
 
 ## Como isso é garantido
 
