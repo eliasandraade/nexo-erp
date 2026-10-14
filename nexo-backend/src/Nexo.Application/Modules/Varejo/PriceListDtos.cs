@@ -5,11 +5,17 @@ namespace Nexo.Application.Modules.Varejo;
 public record CreatePriceListRequest(
     string Name,
     string? Description = null,
-    bool IsDefault = false);
+    bool IsDefault = false,
+    DateTime? ValidFrom = null,
+    DateTime? ValidUntil = null,
+    int Priority = 0);
 
 public record UpdatePriceListRequest(
     string Name,
-    string? Description = null);
+    string? Description = null,
+    DateTime? ValidFrom = null,
+    DateTime? ValidUntil = null,
+    int Priority = 0);
 
 public record SetProductPriceRequest(
     Guid ProductId,
@@ -31,7 +37,12 @@ public record PriceListDto(
     bool IsDefault,
     bool IsActive,
     int ItemCount,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    DateTime? ValidFrom = null,
+    DateTime? ValidUntil = null,
+    int Priority = 0);
+
+public record PriceListCustomerDto(Guid CustomerId, string Name);
 
 public record PriceListDetailDto(
     Guid Id,
@@ -40,7 +51,11 @@ public record PriceListDetailDto(
     bool IsDefault,
     bool IsActive,
     IReadOnlyList<PriceListItemDto> Items,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    DateTime? ValidFrom = null,
+    DateTime? ValidUntil = null,
+    int Priority = 0,
+    IReadOnlyList<PriceListCustomerDto>? Customers = null);
 
 // ── PDV ───────────────────────────────────────────────────────────────────────
 

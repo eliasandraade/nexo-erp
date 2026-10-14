@@ -16,6 +16,7 @@ import { PosPaymentPanel } from "../components/PosPaymentPanel";
 import { PosSaleSuccessModal } from "../components/PosSaleSuccessModal";
 import type { CompletedSale, PaymentEntry, ProductSearchResult } from "../types";
 import type { SaleDto } from "../api/sales.api";
+import { resolvePrice } from "../api/sales.api";
 
 /** Maps a confirmed SaleDto + cart snapshot into the CompletedSale shape
  *  that PosSaleSuccessModal expects — without touching the modal's contract. */
@@ -54,8 +55,16 @@ export default function PdvPage() {
   const { data: cashSession, isLoading: cashLoading, isError: cashError, refetch: retryCash } = useOpenSession();
   const hasOpenSession = cashSession?.status === "Open";
 
-  function handleAddProduct(product: ProductSearchResult) {
-    cart.addItem(product);
+  // The server decides the price of each line (price lists); the cart shows that same price so
+  // the total paid matches the sale. If the lookup fails, the catalogue price is used.
+  async function handleAddProduct(product: ProductSearchResult) {
+    try {
+      const resolved = await resolvePrice(product.id);
+      const price = typeof resolved?.resolvedPrice === "number" ? resolved.resolvedPrice : product.price;
+      cart.addItem({ ...product, price });
+    } catch {
+      cart.addItem(product);
+    }
   }
 
   function handleFinalize(payments: PaymentEntry[]) {

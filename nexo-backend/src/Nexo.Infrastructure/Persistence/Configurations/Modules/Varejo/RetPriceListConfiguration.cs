@@ -36,6 +36,19 @@ public class RetPriceListConfiguration : IEntityTypeConfiguration<RetPriceList>
             .HasDefaultValue(true)
             .IsRequired();
 
+        builder.Property(x => x.ValidFrom)
+            .HasColumnName("valid_from")
+            .HasColumnType("timestamptz");
+
+        builder.Property(x => x.ValidUntil)
+            .HasColumnName("valid_until")
+            .HasColumnType("timestamptz");
+
+        builder.Property(x => x.Priority)
+            .HasColumnName("priority")
+            .HasDefaultValue(0)
+            .IsRequired();
+
         builder.Property(x => x.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamptz")
@@ -64,5 +77,10 @@ public class RetPriceListConfiguration : IEntityTypeConfiguration<RetPriceList>
 
         builder.HasIndex(x => new { x.TenantId, x.IsDefault })
             .HasDatabaseName("ix_ret_price_lists_tenant_id_is_default");
+
+        // At most one default list per tenant (active or not) — two defaults priced sales unpredictably.
+        builder.HasIndex(x => x.TenantId, "ux_ret_price_lists_one_default")
+            .IsUnique()
+            .HasFilter("is_default");
     }
 }

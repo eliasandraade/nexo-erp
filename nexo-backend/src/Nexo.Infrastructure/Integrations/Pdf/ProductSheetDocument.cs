@@ -42,7 +42,7 @@ internal sealed class ProductSheetDocument : IDocument
 
                 col.Item().PaddingTop(8).Column(info =>
                 {
-                    info.Item().Text($"Preço de custo: {p.CostPrice.ToString("C2", Ptbr)}");
+                    info.Item().Text($"Preço de custo: {(p.CostPrice ?? 0m).ToString("C2", Ptbr)}");
                     info.Item().Text($"Preço de venda: {p.SalePrice.ToString("C2", Ptbr)}");
                     info.Item().Text($"Unidade: {p.Unit}");
                     info.Item().Text($"Status: {(p.IsActive ? "Ativo" : "Inativo")}");

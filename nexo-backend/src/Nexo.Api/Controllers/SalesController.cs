@@ -46,7 +46,7 @@ public class SalesController : ControllerBase
     [HttpGet("{id:guid}")]
     [Authorize(Roles = AppRoles.Sales)]
     public async Task<ActionResult<SaleDto>> GetById(Guid id, CancellationToken ct)
-        => Ok(await _service.GetByIdAsync(id, ct));
+        => Ok(VisibleTo(await _service.GetByIdAsync(id, ct)));
 
     [HttpPost]
     [Authorize(Roles = AppRoles.Sales)]
@@ -64,7 +64,7 @@ public class SalesController : ControllerBase
         Guid id,
         [FromBody] AddSaleItemRequest request,
         CancellationToken ct)
-        => Ok(await _service.AddItemAsync(id, request, ct));
+        => Ok(VisibleTo(await _service.AddItemAsync(id, request, ct, priceFromServer: true)));   // never trust the client price
 
     [HttpPost("{id:guid}/confirm")]
     [Authorize(Roles = AppRoles.Sales)]
@@ -72,7 +72,7 @@ public class SalesController : ControllerBase
         Guid id,
         [FromBody] ConfirmSaleRequest request,
         CancellationToken ct)
-        => Ok(await _service.ConfirmAsync(id, request, ct));
+        => Ok(VisibleTo(await _service.ConfirmAsync(id, request, ct)));
 
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Roles = AppRoles.Management)]
@@ -106,4 +106,10 @@ public class SalesController : ControllerBase
         var result  = _pdfRenderer.RenderSaleReceipt(request);
         return File(result.Bytes, "application/pdf", result.FileName);
     }
+
+    /// <summary>Line costs are for management and stock; the PDV gets the sale without them.</summary>
+    private SaleDto VisibleTo(SaleDto sale)
+        => AppRoles.Stock.Split(',').Any(User.IsInRole)
+            ? sale
+            : sale with { Items = sale.Items.Select(i => i with { CostPrice = null }).ToList() };
 }

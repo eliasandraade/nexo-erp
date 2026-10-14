@@ -70,7 +70,7 @@ public sealed class PdfControllerTests
         tenant.Id.Returns(TenantId);
         user.UserId.Returns(UserId);
 
-        var service    = new SaleService(sales, products, stock, cash, financial, uow, Substitute.For<IAuditWriter>(), tenant, user);
+        var service    = new SaleService(sales, products, stock, cash, financial, uow, Substitute.For<IAuditWriter>(), Substitute.For<IPriceResolver>(), tenant, user);
         var controller = new SalesController(service, renderer);
 
         return new SaleSut(controller, sales, renderer);

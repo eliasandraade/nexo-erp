@@ -41,7 +41,7 @@ public record ProductDto(
     string? Description,
     Guid? CategoryId,
     string Unit,
-    decimal CostPrice,
+    decimal? CostPrice,      // null for roles that must not see costs (Vendedor, Cozinha)
     decimal SalePrice,
     bool TrackStock,
     decimal? MinStockQuantity,

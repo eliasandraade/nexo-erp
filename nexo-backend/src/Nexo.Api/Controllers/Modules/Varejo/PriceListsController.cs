@@ -52,6 +52,23 @@ public class PriceListsController : ControllerBase
         => Ok(await _service.SetAsDefaultAsync(id, ct));
 
     /// <summary>Define ou atualiza o preço de um produto nesta lista.</summary>
+    [HttpPost("{id:guid}/activate")]
+    public async Task<ActionResult<PriceListDto>> Activate(Guid id, CancellationToken ct)
+        => Ok(await _service.SetActiveAsync(id, true, ct));
+
+    [HttpPost("{id:guid}/deactivate")]
+    public async Task<ActionResult<PriceListDto>> Deactivate(Guid id, CancellationToken ct)
+        => Ok(await _service.SetActiveAsync(id, false, ct));
+
+    /// <summary>Vincula o cliente a esta lista (substitui a lista anterior do cliente).</summary>
+    [HttpPut("{id:guid}/customers/{customerId:guid}")]
+    public async Task<ActionResult<PriceListDetailDto>> LinkCustomer(Guid id, Guid customerId, CancellationToken ct)
+        => Ok(await _service.LinkCustomerAsync(id, customerId, ct));
+
+    [HttpDelete("{id:guid}/customers/{customerId:guid}")]
+    public async Task<ActionResult<PriceListDetailDto>> UnlinkCustomer(Guid id, Guid customerId, CancellationToken ct)
+        => Ok(await _service.UnlinkCustomerAsync(id, customerId, ct));
+
     [HttpPut("{id:guid}/products")]
     public async Task<ActionResult<PriceListDetailDto>> SetProductPrice(
         Guid id,

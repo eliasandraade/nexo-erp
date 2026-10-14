@@ -16,6 +16,7 @@ public class SaleService
     private readonly IFinancialRepository _financial;
     private readonly IUnitOfWork _uow;
     private readonly IAuditWriter _audit;
+    private readonly IPriceResolver _prices;
     private readonly ICurrentTenant _currentTenant;
     private readonly ICurrentUser _currentUser;
 
@@ -27,10 +28,12 @@ public class SaleService
         IFinancialRepository financial,
         IUnitOfWork uow,
         IAuditWriter audit,
+        IPriceResolver prices,
         ICurrentTenant currentTenant,
         ICurrentUser currentUser)
     {
         _audit         = audit;
+        _prices        = prices;
         _sales         = sales;
         _products      = products;
         _stock         = stock;
@@ -79,7 +82,13 @@ public class SaleService
         return MapToDto(sale, [], []);
     }
 
-    public async Task<SaleDto> AddItemAsync(Guid saleId, AddSaleItemRequest request, CancellationToken ct = default)
+    /// <param name="priceFromServer">
+    /// true for anything coming from the API: the unit price is resolved here (price lists, customer,
+    /// validity) and the client's UnitPrice is ignored — a client never sets its own price. Internal
+    /// callers that already priced the line (the restaurant comanda, with its modifiers) pass false.
+    /// </param>
+    public async Task<SaleDto> AddItemAsync(Guid saleId, AddSaleItemRequest request, CancellationToken ct = default,
+        bool priceFromServer = false)
     {
         var sale = await _sales.GetByIdWithItemsAsync(saleId, ct)
             ?? throw new NotFoundException("Sale", saleId);
@@ -93,12 +102,16 @@ public class SaleService
         if (!product.IsActive)
             throw new DomainException($"Product '{product.Name}' is inactive.");
 
+        var unitPrice = priceFromServer
+            ? await _prices.ResolveUnitPriceAsync(product.Id, sale.CustomerId, ct)
+            : request.UnitPrice;
+
         var item = SaleItem.Create(
             _currentTenant.Id,
             sale.Id,
             product.Id,
             request.Quantity,
-            request.UnitPrice,
+            unitPrice,
             product.CostPrice,       // snapshot cost at time of sale
             request.DiscountAmount,
             request.Notes);

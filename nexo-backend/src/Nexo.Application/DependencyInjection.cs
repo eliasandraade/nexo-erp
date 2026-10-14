@@ -1,3 +1,4 @@
+using Nexo.Application.Common.Interfaces;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Features.Auth;
@@ -59,6 +60,7 @@ public static class DependencyInjection
         // ── Módulo Varejo ─────────────────────────────────────────────────────
         services.AddScoped<PurchaseService>();
         services.AddScoped<PriceListService>();
+        services.AddScoped<IPriceResolver>(sp => sp.GetRequiredService<PriceListService>());
 
         // ── Módulo Build (Orken Build — Gestão de Obras) ─────────────────────
         services.AddScoped<BuildProjectService>();

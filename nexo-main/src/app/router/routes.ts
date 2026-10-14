@@ -27,6 +27,7 @@ import {
   ClipboardCheck,
   ArrowLeftRight,
   ShoppingBag,
+  Tags,
   PackageCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -89,6 +90,7 @@ export const appRoutes: AppRoute[] = [
 
   // ── Varejo ───────────────────────────────────────────────────────────────
   { path: "/pdv",           label: "PDV",            icon: ShoppingCart,      group: "varejo",      moduleKey: "varejo",      roles: [...MGMT, "vendedor"] },
+  { path: "/listas-de-preco", label: "Listas de preço", icon: Tags,           group: "varejo",      moduleKey: "varejo",      roles: MGMT },
 
   // ── Restaurante — operação (vendedor) e gestão (gerente/diretoria) ───────
   { path: "/restaurante",            label: "Salão",         icon: UtensilsCrossed,   group: "restaurante", moduleKey: "restaurante", roles: [...MGMT, "vendedor"] },

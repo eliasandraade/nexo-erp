@@ -11,7 +11,8 @@
 | #44 | Caixa 2.0 | `b6f55c6` | `AddCashSessionClosingDifference` (aditiva + backfill do histórico) | Em produção |
 | #45 | Cancelamento, estorno e devolução | `093a482` | `AddSaleReturns` (aditiva) | Em produção |
 | #46 | Estoque avançado | `c3f25e7` | `StockPerStoreCountsAndTransfers` (aditiva + troca de índice único por comum) | Em produção |
-| #47 | Compras completas | — | `PurchasesPerStoreOrderedAndCancellation` (store_id com backfill, índice por loja) | Em revisão |
+| #47 | Compras completas | `da3ba8b` | `PurchasesPerStoreOrderedAndCancellation` (store_id com backfill, índice por loja) | Em produção |
+| #48 | Listas de preço | — | `PriceListValidityAndPriority` (aditiva) | Em revisão |
 
 ---
 
@@ -28,7 +29,7 @@
   - `RbacCoverageTests`, um guard estrutural: ação nova sem papel quebra o build;
   - `RbacMatrixTests`, 66 casos por papel.
 - **Matriz:** [`docs/security/rbac-matrix.md`](../security/rbac-matrix.md).
-- **Riscos restantes:** `CostPrice` exposto em `GET /products` (resolver no PR 48); `DELETE /categories/{id}` não existe.
+- **Riscos restantes:** ~~`CostPrice` exposto em `GET /products`~~ (resolvido no PR 48); `DELETE /categories/{id}` não existe.
 - **Maturidade:** Auth/Segurança e papéis 50% → ~80%.
 
 ## PR 43 — PDV: integridade de pagamentos
@@ -218,3 +219,42 @@
 - **Testes:**
   - `PurchaseFlowTests`: 10 testes de integração (vencimento contado do recebimento, produto duplicado, recebimento completo com prazo do fornecedor, compra paga cancelada vira a receber, compra pendente cancelada, estoque já vendido bloqueia o cancelamento, fornecedor inativo, remoção de item, tipo de documento).
   - Playwright: fluxo de compra.
+
+## PR 48 — Listas de preço
+
+- **Bug de integridade corrigido:**
+  - A venda usava o **preço unitário enviado pelo cliente** (`AddSaleItemRequest.UnitPrice`), então qualquer chamada direta à API podia vender pelo preço que quisesse.
+  - Agora **o servidor define o preço** de cada linha vinda da API e ignora o valor enviado.
+  - Só o fechamento da comanda do restaurante, que é uma chamada interna com o preço já calculado (adicionais incluídos), passa o preço adiante.
+- **Resolução (`IPriceResolver`):**
+  - Candidatas: a lista do cliente e a lista padrão.
+  - Só contam listas **ativas**, **dentro da vigência** e que tenham o produto.
+  - Vence a de **maior prioridade**; no empate, a do cliente. Exemplo: uma promoção na lista padrão com prioridade maior vale até para quem tem tabela própria.
+  - Sem candidata, vale o preço do produto.
+- **Listas:**
+  - vigência (`valid_from`, `valid_until`) e prioridade;
+  - preço sempre em centavos;
+  - ativar e desativar;
+  - **vincular e desvincular cliente**, com no máximo uma lista por cliente (vincular a outra troca a anterior).
+  - "Grupos de clientes" não existe como entidade no produto, então o vínculo é por cliente.
+- **Bug corrigido:** adicionar um produto novo a uma lista sofria o mesmo problema de rastreamento do EF dos outros agregados. Agora o item é marcado explicitamente como novo.
+- **Custo protegido:**
+  - `GET /products` devolve `CostPrice = null` para quem não é da gestão nem do estoque (vendedor, cozinha).
+  - A ficha PDF do produto, que mostra o custo, ficou restrita ao papel de estoque.
+- **PDV:** ao adicionar um produto, busca o preço resolvido, o mesmo que o servidor vai cobrar. Se a busca falhar, usa o preço do catálogo.
+- **Tela `/listas-de-preco`** (gestão, módulo varejo):
+  - criar;
+  - editar nome, vigência e prioridade;
+  - tornar padrão;
+  - ativar e desativar;
+  - preços por produto;
+  - clientes vinculados.
+- **Testes:**
+  - `PriceListTests`: 8 testes de integração (preço do servidor contra o do cliente, precedência cliente/padrão/prioridade, vigência expirada e futura, lista inativa, itens novos e atualizados com vínculo único de cliente, custo oculto ao vendedor).
+  - Playwright: tela de listas.
+- **Revisão independente (corrigido antes do merge):**
+  - O custo ainda vazava por dois caminhos: as linhas da venda (`SaleItemDto.CostPrice`) e a ficha técnica do restaurante. Agora as linhas vêm sem custo para quem não é da gestão nem do estoque, e a ficha técnica ficou restrita ao estoque (nenhuma tela da cozinha usa a ficha).
+  - Era possível ter duas listas padrão: uma padrão inativa mantinha a marca e podia ser reativada. Agora, ao definir uma padrão, todas as outras perdem a marca, inclusive as inativas. Entrou também um índice único parcial, `ux_ret_price_lists_one_default`, e a migration desmarca as duplicadas antes, mantendo a padrão mais recente.
+  - PDV: se o preço mudar entre montar o carrinho e fechar a venda, a venda para antes de cobrar.
+  - Vigência mostrada no dia local; prioridade inteira; vínculo de cliente valida que o cliente existe e troca a lista numa única gravação; contagem de itens correta na listagem; nomes de produtos de outras lojas aparecem.
+  - +3 testes de integração (padrão única após reativar, cliente inexistente → 404, custo oculto na venda para o vendedor).

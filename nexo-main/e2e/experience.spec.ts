@@ -224,3 +224,28 @@ test('Compras: criar pedido, adicionar item e receber com vencimento',async({pag
  expect(receiveBody.dueDate).toContain('2026-11-14');
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Listas de preço: definir preço e vincular cliente; PDV usa o preço resolvido',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api';
+ const detail={id:'pl1',name:'Atacado',description:null,isDefault:false,isActive:true,createdAt:'2026-10-14T09:00:00Z',validFrom:null,validUntil:null,priority:0,items:[],customers:[]};
+ let priceBody: any=null, linked=false;
+ await page.route(`${API}/varejo/price-lists**`,route=>{const r=route.request();const p=new URL(r.url()).pathname;
+  const ok=(b:any)=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(b)});
+  if(p.endsWith('/products')){priceBody=r.postDataJSON();return ok({...detail,items:[{id:'i1',productId:'p1',productName:'Arroz 5kg',productCode:'A5',price:priceBody.price}]});}
+  if(p.includes('/customers/')){linked=true;return ok({...detail,customers:[{customerId:'c1',name:'Mercado Bom'}]});}
+  if(p.endsWith('/pl1'))return ok(detail);
+  return ok([{...detail,itemCount:0}]);});
+ await page.route(`${API}/products**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'p1',code:'A5',name:'Arroz 5kg',costPrice:null,salePrice:30,isActive:true,trackStock:true}])}));
+ await page.route(`${API}/customers**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'c1',name:'Mercado Bom',isActive:true}])}));
+ await page.goto('/listas-de-preco');
+ await page.getByRole('button',{name:'Atacado'}).click();
+ await page.getByLabel('Produto').click();await page.getByRole('option',{name:/Arroz 5kg/}).click();
+ await page.getByLabel('Preço na lista').fill('27,50');
+ await page.getByRole('button',{name:'Definir preço'}).click();
+ await expect.poll(()=>priceBody).not.toBeNull();
+ expect(priceBody).toEqual({productId:'p1',price:27.5});
+ await page.getByLabel('Vincular cliente').click();await page.getByRole('option',{name:'Mercado Bom'}).click();
+ await page.getByRole('button',{name:'Vincular'}).click();
+ await expect.poll(()=>linked).toBe(true);
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});
