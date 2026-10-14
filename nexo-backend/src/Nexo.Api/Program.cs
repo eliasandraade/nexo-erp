@@ -207,6 +207,32 @@ try
                 });
         });
 
+        // Authenticated credential checks (change own password, manager override). Partitioned by
+        // the signed-in user — unforgeable, unlike X-Forwarded-For, and several PDV terminals of the
+        // same store behind one IP don't throttle each other. Overridable via RateLimiting:CredentialCheck:*.
+        var credEnabled = builder.Configuration.GetValue("RateLimiting:CredentialCheck:Enabled", true);
+        var credPermit  = builder.Configuration.GetValue("RateLimiting:CredentialCheck:PermitLimit", 10);
+        var credWindow  = builder.Configuration.GetValue("RateLimiting:CredentialCheck:WindowSeconds", 300);
+
+        options.AddPolicy("credential-check", httpContext =>
+        {
+            if (!credEnabled)
+                return RateLimitPartition.GetNoLimiter("credential-check:disabled");
+
+            var userId = httpContext.User.FindFirst("sub")?.Value
+                ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? "anonymous";
+
+            return RateLimitPartition.GetFixedWindowLimiter($"cred|{userId}|{httpContext.Request.Path}", _ =>
+                new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit          = credPermit,
+                    Window               = TimeSpan.FromSeconds(credWindow),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit           = 0,
+                });
+        });
+
         // Public booking POST (portal de agendamento) — per-IP fixed window so an abusive client
         // can't flood appointment creation. Defaults overridable via RateLimiting:PublicBooking:*.
         var pubEnabled = builder.Configuration.GetValue("RateLimiting:PublicBooking:Enabled", true);

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Nexo.Api.Filters;
 using Nexo.Domain.Modules.Restaurante;
 using Nexo.Infrastructure.Persistence;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Restaurante;
 
@@ -13,7 +14,7 @@ namespace Nexo.Api.Controllers.Modules.Restaurante;
 /// </summary>
 [ApiController]
 [Route("api/restaurante/financeiro")]
-[Authorize]
+[Authorize(Roles = AppRoles.Management)]
 [RequireModule("restaurante")]
 public class FinanceiroController : ControllerBase
 {

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Filters;
 using Nexo.Application.Modules.Restaurante;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Restaurante;
 
@@ -16,15 +17,18 @@ public class AreasController : ControllerBase
     public AreasController(AreaService service) => _service = service;
 
     [HttpGet]
+    [Authorize(Roles = AppRoles.RestaurantOps)]
     public async Task<ActionResult<IReadOnlyList<AreaDto>>> GetAll(
         [FromQuery] bool includeInactive = false, CancellationToken ct = default)
         => Ok(await _service.GetAllAsync(includeInactive, ct));
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = AppRoles.RestaurantOps)]
     public async Task<ActionResult<AreaDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await _service.GetByIdAsync(id, ct));
 
     [HttpPost]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<AreaDto>> Create(
         [FromBody] CreateAreaRequest request, CancellationToken ct)
     {
@@ -33,6 +37,7 @@ public class AreasController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<AreaDto>> Update(
         Guid id, [FromBody] UpdateAreaRequest request, CancellationToken ct)
         => Ok(await _service.UpdateAsync(id, request, ct));

@@ -8,5 +8,5 @@ namespace Nexo.Api.Controllers.Modules.Service;
 /// </summary>
 internal static class ServiceRoles
 {
-    public const string Management = "Gerente,Diretoria";
+    public const string Management = Nexo.Api.Authorization.AppRoles.Management;
 }

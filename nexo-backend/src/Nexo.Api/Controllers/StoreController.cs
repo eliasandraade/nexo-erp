@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexo.Api.Authorization;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Stores;
 using Nexo.Domain.Entities;
@@ -84,7 +85,7 @@ public class StoreController : ControllerBase
     /// Retorna 409 se o slug já estiver em uso por outra store.
     /// </summary>
     [HttpPatch("{id:guid}/public-slug")]
-    [Authorize(Roles = "Gerente,Diretoria")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<IActionResult> SetPublicSlug(
         Guid id, [FromBody] SetPublicSlugRequest request, CancellationToken ct)
     {

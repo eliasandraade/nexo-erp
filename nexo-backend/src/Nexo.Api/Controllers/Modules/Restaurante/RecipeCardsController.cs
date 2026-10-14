@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Filters;
 using Nexo.Application.Modules.Restaurante;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Modules.Restaurante;
 
@@ -20,19 +21,23 @@ public class RecipeCardsController : ControllerBase
     public RecipeCardsController(RecipeCardService service) => _service = service;
 
     [HttpGet]
+    [Authorize(Roles = AppRoles.RecipeReaders)]
     public async Task<ActionResult<IReadOnlyList<RecipeCardDto>>> GetAll(
         [FromQuery] bool includeInactive = false, CancellationToken ct = default)
         => Ok(await _service.GetAllAsync(includeInactive, ct));
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = AppRoles.RecipeReaders)]
     public async Task<ActionResult<RecipeCardDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await _service.GetByIdAsync(id, ct));
 
     [HttpGet("product/{productId:guid}")]
+    [Authorize(Roles = AppRoles.RecipeReaders)]
     public async Task<ActionResult<RecipeCardDto>> GetByProduct(Guid productId, CancellationToken ct)
         => Ok(await _service.GetByProductIdAsync(productId, ct));
 
     [HttpPost]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<RecipeCardDto>> Create(
         [FromBody] CreateRecipeCardRequest request, CancellationToken ct)
     {
@@ -41,24 +46,28 @@ public class RecipeCardsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<RecipeCardDto>> Update(
         Guid id, [FromBody] UpdateRecipeCardRequest request, CancellationToken ct)
         => Ok(await _service.UpdateAsync(id, request, ct));
 
     /// <summary>Adiciona ou substitui um ingrediente na ficha técnica.</summary>
     [HttpPost("{id:guid}/ingredients")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<RecipeCardDto>> AddIngredient(
         Guid id, [FromBody] AddIngredientRequest request, CancellationToken ct)
         => Ok(await _service.AddIngredientAsync(id, request, ct));
 
     /// <summary>Remove um ingrediente da ficha técnica.</summary>
     [HttpDelete("{id:guid}/ingredients/{ingredientId:guid}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<RecipeCardDto>> RemoveIngredient(
         Guid id, Guid ingredientId, CancellationToken ct)
         => Ok(await _service.RemoveIngredientAsync(id, ingredientId, ct));
 
     /// <summary>Upload ou substituição da imagem da ficha técnica. Máximo 5 MB; JPEG, PNG ou WebP.</summary>
     [HttpPost("{id:guid}/image")]
+    [Authorize(Roles = AppRoles.Stock)]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<RecipeCardDto>> UploadImage(
         Guid id, IFormFile file, CancellationToken ct)

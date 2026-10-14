@@ -327,6 +327,7 @@ public class AuthController : ControllerBase
     /// Sends a verification email. User must verify before logging in.
     /// </summary>
     [HttpPost("register")]
+    [EnableRateLimiting("auth-login")]
     [AllowAnonymous]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {
@@ -369,6 +370,7 @@ public class AuthController : ControllerBase
     /// to prevent email enumeration attacks.
     /// </summary>
     [HttpPost("resend-verification")]
+    [EnableRateLimiting("auth-login")]
     [AllowAnonymous]
     public async Task<IActionResult> ResendVerification([FromBody] ResendVerificationRequest request, CancellationToken ct)
     {
@@ -383,6 +385,7 @@ public class AuthController : ControllerBase
     /// Used before sensitive operations (sale cancellation, high discounts, etc).
     /// </summary>
     [HttpPost("verify-manager")]
+    [EnableRateLimiting("credential-check")]
     [Authorize]
     public async Task<ActionResult<VerifyManagerResponse>> VerifyManager(
         [FromBody] VerifyManagerRequest request,

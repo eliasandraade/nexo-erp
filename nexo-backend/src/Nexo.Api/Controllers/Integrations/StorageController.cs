@@ -5,6 +5,7 @@ using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.DTOs;
 using Nexo.Application.Integrations.Options;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers.Integrations;
 
@@ -63,6 +64,7 @@ public class StorageController : ControllerBase
     /// Valid contexts: product-image, restaurant-logo, restaurant-cover.
     /// </summary>
     [HttpPost("upload")]
+    [Authorize(Roles = AppRoles.Stock)]
     [RequestSizeLimit(20 * 1024 * 1024)]
     public async Task<IActionResult> Upload(
         IFormFile file,
@@ -122,6 +124,7 @@ public class StorageController : ControllerBase
     /// The key must belong to the current tenant (prefix tenants/{tenantId}/).
     /// </summary>
     [HttpDelete("{*key}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<IActionResult> Delete(string key, CancellationToken ct)
     {
         // Feature flag gate

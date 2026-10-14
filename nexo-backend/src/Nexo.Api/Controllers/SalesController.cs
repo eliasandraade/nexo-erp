@@ -4,6 +4,7 @@ using Nexo.Api.Attributes;
 using Nexo.Application.Common;
 using Nexo.Application.Features.Sales;
 using Nexo.Application.Integrations.Pdf;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers;
 
@@ -23,10 +24,12 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<IReadOnlyList<SaleDto>>> GetAll(CancellationToken ct)
         => Ok(await _service.GetAllAsync(ct));
 
     [HttpGet("paged")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<PagedResult<SaleListItemDto>>> GetPaged(
         [FromQuery] int page            = 1,
         [FromQuery] int pageSize        = 25,
@@ -41,10 +44,12 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = AppRoles.Sales)]
     public async Task<ActionResult<SaleDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await _service.GetByIdAsync(id, ct));
 
     [HttpPost]
+    [Authorize(Roles = AppRoles.Sales)]
     public async Task<ActionResult<SaleDto>> Create(
         [FromBody] CreateSaleRequest request,
         CancellationToken ct)
@@ -54,6 +59,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpPost("{id:guid}/items")]
+    [Authorize(Roles = AppRoles.Sales)]
     public async Task<ActionResult<SaleDto>> AddItem(
         Guid id,
         [FromBody] AddSaleItemRequest request,
@@ -61,6 +67,7 @@ public class SalesController : ControllerBase
         => Ok(await _service.AddItemAsync(id, request, ct));
 
     [HttpPost("{id:guid}/confirm")]
+    [Authorize(Roles = AppRoles.Sales)]
     public async Task<ActionResult<SaleDto>> Confirm(
         Guid id,
         [FromBody] ConfirmSaleRequest request,
@@ -68,6 +75,7 @@ public class SalesController : ControllerBase
         => Ok(await _service.ConfirmAsync(id, request, ct));
 
     [HttpPost("{id:guid}/cancel")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<IActionResult> Cancel(Guid id, CancellationToken ct)
     {
         await _service.CancelAsync(id, ct);
@@ -75,6 +83,7 @@ public class SalesController : ControllerBase
     }
 
     [HttpGet("{id:guid}/receipt.pdf")]
+    [Authorize(Roles = AppRoles.Sales)]
     public async Task<IActionResult> GetSaleReceipt(Guid id, CancellationToken ct)
     {
         var sale    = await _service.GetByIdAsync(id, ct);

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Common;
 using Nexo.Application.Features.Suppliers;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers;
 
@@ -15,12 +16,14 @@ public class SuppliersController : ControllerBase
     public SuppliersController(SupplierService service) => _service = service;
 
     [HttpGet]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<IReadOnlyList<SupplierDto>>> GetAll(
         [FromQuery] bool includeInactive = false,
         CancellationToken ct = default)
         => Ok(await _service.GetAllAsync(includeInactive, ct));
 
     [HttpGet("paged")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<PagedResult<SupplierDto>>> GetPaged(
         [FromQuery] int page             = 1,
         [FromQuery] int pageSize         = 25,
@@ -34,10 +37,12 @@ public class SuppliersController : ControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = AppRoles.Stock)]
     public async Task<ActionResult<SupplierDto>> GetById(Guid id, CancellationToken ct)
         => Ok(await _service.GetByIdAsync(id, ct));
 
     [HttpPost]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<SupplierDto>> Create(
         [FromBody] CreateSupplierRequest request,
         CancellationToken ct)
@@ -47,6 +52,7 @@ public class SuppliersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<ActionResult<SupplierDto>> Update(
         Guid id,
         [FromBody] UpdateSupplierRequest request,
@@ -54,6 +60,7 @@ public class SuppliersController : ControllerBase
         => Ok(await _service.UpdateAsync(id, request, ct));
 
     [HttpPost("{id:guid}/activate")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<IActionResult> Activate(Guid id, CancellationToken ct)
     {
         await _service.ActivateAsync(id, ct);
@@ -61,6 +68,7 @@ public class SuppliersController : ControllerBase
     }
 
     [HttpPost("{id:guid}/deactivate")]
+    [Authorize(Roles = AppRoles.Management)]
     public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
     {
         await _service.DeactivateAsync(id, ct);

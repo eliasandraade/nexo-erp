@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Features.Products;
+using Nexo.Api.Authorization;
 
 namespace Nexo.Api.Controllers;
 
 [ApiController]
 [Route("api/products/{productId:guid}/purchase-prices")]
-[Authorize]
+[Authorize(Roles = AppRoles.Stock)]
 public class ProductPurchasePricesController : ControllerBase
 {
     private readonly ProductPurchasePriceService _service;

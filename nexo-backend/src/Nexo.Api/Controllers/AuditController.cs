@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Nexo.Api.Authorization;
 using Nexo.Application.Features.Audit;
 using Nexo.Infrastructure.Audit;
 
@@ -8,7 +9,7 @@ namespace Nexo.Api.Controllers;
 [ApiController]
 [Route("api/audit")]
 // The audit trail holds IPs, e-mails and impersonation records — same audience as the screen.
-[Authorize(Roles = "Diretoria")]
+[Authorize(Roles = AppRoles.Directors)]
 public class AuditController : ControllerBase
 {
     private readonly AuditQueryService _service;
