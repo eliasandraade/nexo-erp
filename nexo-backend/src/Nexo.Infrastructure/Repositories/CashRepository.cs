@@ -13,10 +13,10 @@ public class CashRepository : ICashRepository
 
     public CashRepository(NexoDbContext context) => _context = context;
 
-    public async Task LockSessionAsync(Guid sessionId, CancellationToken ct = default)
+    public async Task LockSessionAsync(Guid sessionId, Guid tenantId, CancellationToken ct = default)
     {
         await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM nexo.cash_sessions WHERE id = {sessionId} FOR UPDATE", ct);
+            $"SELECT 1 FROM nexo.cash_sessions WHERE id = {sessionId} AND tenant_id = {tenantId} FOR UPDATE", ct);
         var tracked = _context.ChangeTracker.Entries<CashSession>().FirstOrDefault(e => e.Entity.Id == sessionId);
         if (tracked is not null) await tracked.ReloadAsync(ct);
     }

@@ -33,8 +33,10 @@ public class CashService
 
     public async Task<CashSessionDto?> GetOpenSessionAsync(CancellationToken ct = default)
     {
+        // Polled by the PDV and the comanda just to know a drawer is open — keep it light.
+        // The summary lives on GET /sessions/{id}.
         var session = await _cash.GetOpenSessionAsync(ct);
-        return session is null ? null : await MapWithSummaryAsync(session, includeMovements: false, ct);
+        return session is null ? null : MapToDto(session, null, null);
     }
 
     /// <summary>History: every session of the store, newest first, with expected/counted/difference.</summary>
@@ -84,7 +86,7 @@ public class CashService
     {
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
-        await _cash.LockSessionAsync(sessionId, ct);
+        await _cash.LockSessionAsync(sessionId, _currentTenant.Id, ct);
         var session = await _cash.GetByIdAsync(sessionId, ct)
             ?? throw new NotFoundException("CashSession", sessionId);
 
@@ -123,7 +125,7 @@ public class CashService
 
         await using var tx = await _uow.BeginTransactionAsync(ct);
 
-        await _cash.LockSessionAsync(sessionId, ct);
+        await _cash.LockSessionAsync(sessionId, _currentTenant.Id, ct);
         var session = await _cash.GetByIdAsync(sessionId, ct)
             ?? throw new NotFoundException("CashSession", sessionId);
         session.EnsureOpen();
@@ -176,7 +178,9 @@ public class CashService
             Deposits:        Sum(CashMovementType.Deposit),
             Withdrawals:     Sum(CashMovementType.Withdrawal),
             Refunds:         Sum(CashMovementType.SaleRefund),
-            ExpectedBalance: s.IsOpen ? CashSession.ExpectedBalanceFrom(s.OpeningBalance, movements) : s.ExpectedBalance ?? 0,
+            ExpectedBalance: s.IsOpen || s.ExpectedBalance is null
+                ? CashSession.ExpectedBalanceFrom(s.OpeningBalance, movements)
+                : s.ExpectedBalance.Value,
             ReceiptsByMethod: payments);
     }
 

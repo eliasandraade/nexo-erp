@@ -33,7 +33,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 nullable: true);
 
             // Backfill the history: expected and difference of sessions closed before this change,
-            // computed from their own movements (only fills the new, empty columns).
+            // computed from their own movements (only fills the new, empty columns). Legacy Pix/card
+            // receipts — recorded as SaleReceipt before PR 43 — are left out of the drawer.
             migrationBuilder.Sql(@"
                 UPDATE nexo.cash_sessions s
                 SET expected_balance  = s.opening_balance + COALESCE(m.net, 0),
@@ -41,7 +42,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 FROM (
                     SELECT cs.id,
                            (SELECT SUM(CASE
-                                       WHEN mv.movement_type IN ('SaleReceipt', 'Deposit')   THEN mv.amount
+                                       WHEN mv.movement_type = 'Deposit'                     THEN mv.amount
+                                       -- before PR 43 Pix/card also became 'SaleReceipt', tagged
+                                       -- with the method in the description: only physical cash counts
+                                       WHEN mv.movement_type = 'SaleReceipt'
+                                            AND mv.description !~ '— (Pix|Debit|Credit|Transfer|Check|Mixed|Other)$'
+                                                                                             THEN mv.amount
                                        WHEN mv.movement_type IN ('Withdrawal', 'SaleRefund') THEN -mv.amount
                                        ELSE 0 END)
                             FROM nexo.cash_movements mv

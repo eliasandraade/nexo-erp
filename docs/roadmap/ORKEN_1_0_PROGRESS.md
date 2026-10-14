@@ -83,7 +83,12 @@
   - Sangria acima do saldo da gaveta é recusada.
   - Caixa fechado não aceita movimento nem um segundo fechamento.
 - **Estorno de venda** tem tipo próprio (`SaleRefund`), separado da sangria nos relatórios.
-- **Concorrência:** lock da sessão no fechamento e nos movimentos, e advisory lock por usuário na abertura. Dois "abrir caixa" simultâneos geram um caixa só.
+- **Concorrência:**
+  - Lock da sessão, com escopo de tenant, no fechamento, nos movimentos manuais e também quando uma venda ou um estorno grava na gaveta. Assim nada cai num caixa que está fechando.
+  - Advisory lock por usuário na abertura: dois "abrir caixa" simultâneos geram um caixa só.
+  - O estorno de venda não pode tirar da gaveta mais do que ela tem.
+- **Histórico antigo:** antes do PR 43, Pix e cartão também eram gravados como `SaleReceipt`, com o meio na descrição. O backfill conta como dinheiro só os recebimentos que eram dinheiro de fato.
+  - Um caixa que estava aberto durante o deploy pode mostrar esperado inflado até ser fechado. O efeito é pontual e vale só para essa sessão.
 - **Resumo da sessão (backend):**
   - totais de vendas em dinheiro, suprimentos, sangrias e estornos;
   - saldo esperado ao vivo;
@@ -98,5 +103,5 @@
 - **PDF de fechamento:** inclui os totais, o esperado, o contado, a diferença e os recebimentos por forma de pagamento.
 - **Testes:**
   - `CashSessionTests`: 8 testes unitários.
-  - `CashSessionFlowTests`: 10 testes de integração (turno completo, movimentos inválidos, sangria acima do saldo, abertura concorrente, estorno ≠ sangria).
+  - `CashSessionFlowTests`: 12 testes de integração (turno completo, movimentos inválidos, sangria acima do saldo, abertura concorrente, estorno ≠ sangria, estorno acima do saldo, limite da justificativa).
   - Playwright: tela do caixa em 1440 e 390 px.

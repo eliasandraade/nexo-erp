@@ -109,6 +109,7 @@ export function CashCloseModal({
             <Textarea
               id="close-notes"
               placeholder="Observações sobre o fechamento..."
+              maxLength={500}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}

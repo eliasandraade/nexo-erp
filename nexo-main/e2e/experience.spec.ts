@@ -127,7 +127,7 @@ test('Caixa: esperado do backend, recebimentos por forma e histórico de fechame
  await prepare(page);
  const open={id:'qa-cash',status:'Open',openedByUserId:'qa',openedByName:'Revisão local',closedByUserId:null,closedByName:null,openingBalance:100,closingBalance:null,openedAt:'2026-10-14T08:00:00Z',closedAt:null,notes:null,movements:null,expectedBalance:null,difference:null,closingNotes:null,summary:null};
  const summary={openingBalance:100,cashSales:20,deposits:50,withdrawals:30,refunds:0,expectedBalance:140,receiptsByMethod:[{method:'Cash',type:'Cash',count:1,amount:20},{method:'Pix',type:'Cash',count:1,amount:15}]};
- const closed={...open,id:'qa-old',status:'Closed',closedByName:'Revisão local',closingBalance:135,closedAt:'2026-10-13T20:00:00Z',expectedBalance:140,difference:-5,closingNotes:'Faltou troco'};
+ const closed={...open,id:'qa-old',status:'Closed',closedByName:'Revisão local',closingBalance:85,closedAt:'2026-10-13T20:00:00Z',expectedBalance:90,difference:-5,closingNotes:'Faltou troco'};
  await page.route('**/api/cash/sessions**',route=>{const p=new URL(route.request().url()).pathname;
   const body=p.endsWith('/sessions/open')?open:p.endsWith('/sessions/qa-cash')?{...open,movements:[],summary}:p.endsWith('/sessions')?[open,closed]:{};
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});});

@@ -133,6 +133,38 @@ public class CashSessionFlowTests
         await CloseAsync(c, session.Id);
     }
 
+    [Fact]
+    public async Task A_refund_cannot_take_more_cash_than_the_drawer_holds()
+    {
+        var c = await FreshManagerAsync("cash2.refund.empty");
+        var session = await OpenAsync(c, 0m);
+        var saleId = await SellAsync(c, session.Id, 30m,
+            new PaymentInput("Cash", "Cash", 10m),
+            new PaymentInput("Credit", "Credit", 20m, DateTime.UtcNow.AddDays(10)));
+        await MoveOkAsync(c, session.Id, "Withdrawal", 10m, "levou tudo ao cofre");
+
+        var cancel = await c.PostAsJsonAsync($"/api/sales/{saleId}/cancel", new { });
+
+        cancel.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await c.GetFromJsonAsync<SaleDto>($"/api/sales/{saleId}"))!.Status.Should().Be("Confirmed");
+        await CloseAsync(c, session.Id);
+    }
+
+    [Fact]
+    public async Task Closing_notes_are_limited_and_the_open_check_stays_light()
+    {
+        var c = await FreshManagerAsync("cash2.notes");
+        var session = await OpenAsync(c, 0m);
+
+        var open = (await c.GetFromJsonAsync<CashSessionDto>("/api/cash/sessions/open"))!;
+        open.Summary.Should().BeNull();   // polled by PDV/comanda: no movements, no aggregation
+
+        (await c.PostAsJsonAsync($"/api/cash/sessions/{session.Id}/close",
+                new CloseCashSessionRequest(0m, new string('x', 501))))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        await CloseAsync(c, session.Id);
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private static async Task<CashSessionDto> OpenAsync(HttpClient c, decimal opening)

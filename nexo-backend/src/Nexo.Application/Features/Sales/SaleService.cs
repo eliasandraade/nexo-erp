@@ -322,7 +322,7 @@ public class SaleService
                     .ToList();
                 if (receipts.Count > 0)
                 {
-                    var drawerId = await ResolveRefundCashSessionAsync(sale, ct);
+                    var drawerId = await ResolveRefundCashSessionAsync(sale, receipts.Sum(r => r.Amount), ct);
                     foreach (var receipt in receipts)
                     {
                         await _cash.AddMovementAsync(CashMovement.Create(
@@ -375,37 +375,65 @@ public class SaleService
     /// <summary>
     /// The open drawer the cash of this sale lands in: the session the sale was opened against (it
     /// must still be open), else the seller's own open session, else the store's open session —
-    /// the PDV and the salão sell on the drawer the management opened.
+    /// the PDV and the salão sell on the drawer the management opened. The chosen session is
+    /// row-locked and re-checked, so cash never lands in a drawer that is closing concurrently.
     /// </summary>
     private async Task<Guid> ResolveOpenCashSessionAsync(Sale sale, CancellationToken ct)
     {
         if (sale.CashSessionId.HasValue)
         {
-            var linked = await _cash.GetByIdAsync(sale.CashSessionId.Value, ct);
-            if (linked is null || !linked.IsOpen)
-                throw new DomainException(
-                    "O caixa desta venda foi fechado. Abra um caixa e refaça a venda para receber em dinheiro.");
-            return linked.Id;
+            var linked = await LockIfOpenAsync(sale.CashSessionId.Value, ct);
+            return linked?.Id ?? throw new DomainException(
+                "O caixa desta venda foi fechado. Abra um caixa e refaça a venda para receber em dinheiro.");
         }
 
-        var session = await _cash.GetOpenSessionByUserAsync(_currentUser.UserId, ct)
-                      ?? await _cash.GetOpenSessionAsync(ct);
-        return session?.Id ?? throw new DomainException(
-            "Nenhum caixa aberto. Abra o caixa para receber pagamentos em dinheiro.");
+        foreach (var candidate in new[]
+                 {
+                     await _cash.GetOpenSessionByUserAsync(_currentUser.UserId, ct),
+                     await _cash.GetOpenSessionAsync(ct),
+                 })
+        {
+            if (candidate is null) continue;
+            var locked = await LockIfOpenAsync(candidate.Id, ct);
+            if (locked is not null) return locked.Id;
+        }
+
+        throw new DomainException("Nenhum caixa aberto. Abra o caixa para receber pagamentos em dinheiro.");
     }
 
-    private async Task<Guid> ResolveRefundCashSessionAsync(Sale sale, CancellationToken ct)
+    /// <summary>
+    /// The open drawer the refund of a cancelled sale leaves from — the original if still open,
+    /// else the current one (a closed day stays closed) — locked, and holding enough money.
+    /// </summary>
+    private async Task<Guid> ResolveRefundCashSessionAsync(Sale sale, decimal refund, CancellationToken ct)
     {
-        if (sale.CashSessionId.HasValue)
+        var candidates = new List<Guid>();
+        if (sale.CashSessionId.HasValue) candidates.Add(sale.CashSessionId.Value);
+        if (await _cash.GetOpenSessionByUserAsync(_currentUser.UserId, ct) is { } mine) candidates.Add(mine.Id);
+        if (await _cash.GetOpenSessionAsync(ct) is { } store) candidates.Add(store.Id);
+
+        foreach (var id in candidates.Distinct())
         {
-            var original = await _cash.GetByIdAsync(sale.CashSessionId.Value, ct);
-            if (original is { IsOpen: true }) return original.Id;
+            var session = await LockIfOpenAsync(id, ct);
+            if (session is null) continue;
+
+            var available = CashSession.ExpectedBalanceFrom(
+                session.OpeningBalance, await _cash.GetMovementsBySessionAsync(session.Id, ct));
+            if (refund > available)
+                throw new DomainException(
+                    $"O caixa não tem dinheiro suficiente para devolver {refund:F2} (disponível {available:F2}).");
+            return session.Id;
         }
 
-        var session = await _cash.GetOpenSessionByUserAsync(_currentUser.UserId, ct)
-                      ?? await _cash.GetOpenSessionAsync(ct);
-        return session?.Id ?? throw new DomainException(
+        throw new DomainException(
             "Nenhum caixa aberto para devolver o dinheiro desta venda. Abra o caixa e tente de novo.");
+    }
+
+    private async Task<CashSession?> LockIfOpenAsync(Guid sessionId, CancellationToken ct)
+    {
+        await _cash.LockSessionAsync(sessionId, _currentTenant.Id, ct);
+        var session = await _cash.GetByIdAsync(sessionId, ct);
+        return session is { IsOpen: true } ? session : null;
     }
 
     private async Task<FinancialTransaction> NewSaleTransactionAsync(

@@ -66,6 +66,9 @@ public class CashSession : StoreEntity
         if (countedBalance < 0 || decimal.Round(countedBalance, 2) != countedBalance)
             throw new DomainException("O valor contado deve ser positivo e ter até duas casas decimais.");
 
+        if (notes is { Length: > 500 })
+            throw new DomainException("A justificativa do fechamento tem no máximo 500 caracteres.");
+
         var expected = ExpectedBalanceFrom(OpeningBalance, movements.Where(m => m.CashSessionId == Id));
 
         Status           = CashSessionStatus.Closed;

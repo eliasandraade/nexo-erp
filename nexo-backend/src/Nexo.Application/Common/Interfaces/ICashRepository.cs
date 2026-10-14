@@ -16,7 +16,7 @@ public interface ICashRepository
     Task AddMovementAsync(CashMovement movement, CancellationToken ct = default);
     Task<IReadOnlyList<CashMovement>> GetMovementsBySessionAsync(Guid sessionId, CancellationToken ct = default);
     /// <summary>Row lock on the session for the current transaction (close, manual movements).</summary>
-    Task LockSessionAsync(Guid sessionId, CancellationToken ct = default);
+    Task LockSessionAsync(Guid sessionId, Guid tenantId, CancellationToken ct = default);
     /// <summary>Transaction-scoped advisory lock per user, so one user can't open two drawers at once.</summary>
     Task LockUserOpeningAsync(Guid userId, CancellationToken ct = default);
     /// <summary>Confirmed/paid sale payments of the session grouped by method and type.</summary>
