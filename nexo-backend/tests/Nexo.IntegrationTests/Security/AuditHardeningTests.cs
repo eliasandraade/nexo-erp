@@ -96,7 +96,9 @@ public class AuditHardeningTests
     // ── Sale lines cannot be negative ────────────────────────────────────────
     [Theory]
     [InlineData(-1, 10, 0)]
-    [InlineData(1, -10, 0)]
+    // The client's unit price is ignored (the server prices the line — PR 48), so an "inflated"
+    // price can't make room for a discount bigger than the real line total.
+    [InlineData(1, 1000, 11)]
     [InlineData(1, 10, 11)]
     public async Task Sale_items_with_negative_quantity_price_or_excess_discount_are_rejected(
         decimal quantity, decimal unitPrice, decimal discount)
@@ -110,6 +112,20 @@ public class AuditHardeningTests
             new AddSaleItemRequest(product, quantity, unitPrice, DiscountAmount: discount));
         r.IsSuccessStatusCode.Should().BeFalse();
         ((int)r.StatusCode).Should().BeOneOf(400, 422);
+    }
+
+    [Fact]
+    public async Task A_negative_client_price_is_ignored_and_the_server_price_is_used()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var product = await CreateProductAsync(c, isIngredient: false);
+        var sale = await (await c.PostAsJsonAsync("/api/sales", new CreateSaleRequest()))
+            .Content.ReadFromJsonAsync<SaleDto>();
+
+        var r = await c.PostAsJsonAsync($"/api/sales/{sale!.Id}/items", new AddSaleItemRequest(product, 1, -10m));
+
+        r.IsSuccessStatusCode.Should().BeTrue();
+        (await r.Content.ReadFromJsonAsync<SaleDto>())!.Items.Single().UnitPrice.Should().BeGreaterThan(0);
     }
 
     // ── Public menu ──────────────────────────────────────────────────────────

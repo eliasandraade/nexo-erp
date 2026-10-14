@@ -36,6 +36,19 @@ public class RetPriceListConfiguration : IEntityTypeConfiguration<RetPriceList>
             .HasDefaultValue(true)
             .IsRequired();
 
+        builder.Property(x => x.ValidFrom)
+            .HasColumnName("valid_from")
+            .HasColumnType("timestamptz");
+
+        builder.Property(x => x.ValidUntil)
+            .HasColumnName("valid_until")
+            .HasColumnType("timestamptz");
+
+        builder.Property(x => x.Priority)
+            .HasColumnName("priority")
+            .HasDefaultValue(0)
+            .IsRequired();
+
         builder.Property(x => x.CreatedAt)
             .HasColumnName("created_at")
             .HasColumnType("timestamptz")

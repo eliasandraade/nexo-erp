@@ -6472,6 +6472,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("name");
 
+                    b.Property<int>("Priority")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("priority");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -6479,6 +6485,14 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("updated_at");
+
+                    b.Property<DateTime?>("ValidFrom")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("valid_from");
+
+                    b.Property<DateTime?>("ValidUntil")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("valid_until");
 
                     b.HasKey("Id");
 

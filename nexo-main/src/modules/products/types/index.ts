@@ -30,7 +30,8 @@ export interface ProductDto {
   description: string | null;
   categoryId: string | null;
   unit: string;
-  costPrice: number;
+  /** null for roles that do not see costs (vendedor, cozinha). */
+  costPrice: number | null;
   salePrice: number;
   trackStock: boolean;
   minStockQuantity: number | null;
@@ -75,7 +76,7 @@ export function dtoToProduct(dto: ProductDto): Product {
     unit:             (dto.unit as ProductUnit) ?? "Un",
     isActive:         dto.isActive,
     isIngredient:     dto.isIngredient,
-    costPrice:        dto.costPrice,
+    costPrice:        dto.costPrice ?? 0,
     salePrice:        dto.salePrice,
     trackStock:       dto.trackStock,
     minStockQuantity: dto.minStockQuantity ?? 0,

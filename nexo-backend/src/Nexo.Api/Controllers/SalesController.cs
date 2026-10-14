@@ -64,7 +64,7 @@ public class SalesController : ControllerBase
         Guid id,
         [FromBody] AddSaleItemRequest request,
         CancellationToken ct)
-        => Ok(await _service.AddItemAsync(id, request, ct));
+        => Ok(await _service.AddItemAsync(id, request, ct, priceFromServer: true));   // never trust the client price
 
     [HttpPost("{id:guid}/confirm")]
     [Authorize(Roles = AppRoles.Sales)]

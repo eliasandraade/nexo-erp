@@ -30,7 +30,7 @@ public class RbacCoverageTests
         "Store.GetMyStores", "Tenants.GetById", "Tenants.GetBySlug", "Features.GetFeatures",
         "Settings.Get", "Billing.GetSubscriptions",
         // Catalog reads used by PDV / salão / cozinha
-        "Products.GetAll", "Products.GetPaged", "Products.GetById", "Products.GetProductSheet",
+        "Products.GetAll", "Products.GetPaged", "Products.GetById",
         "Categories.GetAll", "Categories.GetById",
         // Lookups with no tenant data
         "Integrations.Barcode.LookupBarcode", "Integrations.Lookup.LookupCep", "Integrations.Lookup.LookupCnpj",

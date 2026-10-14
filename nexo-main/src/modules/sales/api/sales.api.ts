@@ -199,3 +199,19 @@ export function createSaleReturn(saleId: string, req: CreateSaleReturnRequest): 
 export function listSaleReturns(saleId: string): Promise<SaleReturnDto[]> {
   return apiClient.get<SaleReturnDto[]>(`/sales/${saleId}/returns`);
 }
+
+// ── Preço resolvido (listas de preço) ──────────────────────────────────────────
+
+export interface ResolvedPriceDto {
+  productId: string;
+  resolvedPrice: number;
+  source: "PriceList" | "Default";
+  priceListName: string | null;
+}
+
+/** The price the server will charge for this product (price lists, customer, validity). */
+export function resolvePrice(productId: string, customerId?: string): Promise<ResolvedPriceDto> {
+  const qs = new URLSearchParams({ productId });
+  if (customerId) qs.set("customerId", customerId);
+  return apiClient.get<ResolvedPriceDto>(`/varejo/pdv/resolve-price?${qs}`);
+}

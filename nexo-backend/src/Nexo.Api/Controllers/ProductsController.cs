@@ -28,7 +28,7 @@ public class ProductsController : ControllerBase
         [FromQuery] bool includeInactive = false,
         [FromQuery] bool? isIngredient = null,
         CancellationToken ct = default)
-        => Ok(await _service.GetAllAsync(includeInactive, isIngredient, ct));
+        => Ok((await _service.GetAllAsync(includeInactive, isIngredient, ct)).Select(VisibleTo).ToList());
 
     [HttpGet("paged")]
     public async Task<ActionResult<PagedResult<ProductDto>>> GetPaged(
@@ -43,13 +43,18 @@ public class ProductsController : ControllerBase
     {
         page     = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
-        return Ok(await _service.GetPagedAsync(
-            page, pageSize, search, includeInactive, isIngredient, categoryId, unit, ct));
+        var result = await _service.GetPagedAsync(
+            page, pageSize, search, includeInactive, isIngredient, categoryId, unit, ct);
+        return Ok(result with { Items = result.Items.Select(VisibleTo).ToList() });
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProductDto>> GetById(Guid id, CancellationToken ct)
-        => Ok(await _service.GetByIdAsync(id, ct));
+        => Ok(VisibleTo(await _service.GetByIdAsync(id, ct)));
+
+    /// <summary>Cost prices are for management and stock; the PDV and the kitchen get the product without them.</summary>
+    private ProductDto VisibleTo(ProductDto product)
+        => AppRoles.Stock.Split(',').Any(User.IsInRole) ? product : product with { CostPrice = null };
 
     [HttpPost]
     [Authorize(Roles = AppRoles.Stock)]
@@ -102,6 +107,7 @@ public class ProductsController : ControllerBase
         => Ok(await _service.SetImageUrlAsync(id, request.ImageUrl, ct));
 
     [HttpGet("{id:guid}/sheet.pdf")]
+    [Authorize(Roles = AppRoles.Stock)]   // the sheet shows the cost price
     public async Task<IActionResult> GetProductSheet(Guid id, CancellationToken ct)
     {
         var product = await _service.GetByIdAsync(id, ct);
