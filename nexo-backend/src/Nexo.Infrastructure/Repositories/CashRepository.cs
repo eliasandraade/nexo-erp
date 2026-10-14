@@ -20,7 +20,17 @@ public class CashRepository : ICashRepository
             x => x.Status == CashSessionStatus.Open && x.OpenedByUserId == userId, ct);
 
     public async Task<CashSession?> GetOpenSessionAsync(CancellationToken ct = default)
-        => await _context.CashSessions.FirstOrDefaultAsync(x => x.Status == CashSessionStatus.Open, ct);
+        => await _context.CashSessions
+            .Where(x => x.Status == CashSessionStatus.Open)
+            .OrderBy(x => x.OpenedAt)
+            .FirstOrDefaultAsync(ct);
+
+    public async Task<IReadOnlyList<CashMovement>> GetMovementsByReferenceAsync(
+        string referenceType, Guid referenceId, CancellationToken ct = default)
+        => await _context.CashMovements
+            .Where(x => x.ReferenceType == referenceType && x.ReferenceId == referenceId)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(ct);
 
     public async Task<IReadOnlyList<CashSession>> GetAllAsync(CancellationToken ct = default)
         => await _context.CashSessions

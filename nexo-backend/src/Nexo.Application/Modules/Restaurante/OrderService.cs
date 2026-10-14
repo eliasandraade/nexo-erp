@@ -384,6 +384,11 @@ public class OrderService
         OrderDto? payResult = null;
         await _uow.ExecuteInTransactionAsync(async innerCt =>
         {
+            // Serialise concurrent payments of the same comanda (double tap, two waiters): the second
+            // one sees Paid under the lock instead of deducting the recipe ingredients again.
+            if (await _orders.LockAndGetStatusAsync(order.Id, innerCt) == RestOrderStatus.Paid)
+                throw new ConflictException("This order has already been paid.");
+
             var recipeProductIds = new HashSet<Guid>();
             foreach (var item in order.ActiveItems)
             {

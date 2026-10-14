@@ -8,7 +8,8 @@ public class SalePaymentConfiguration : IEntityTypeConfiguration<SalePayment>
 {
     public void Configure(EntityTypeBuilder<SalePayment> builder)
     {
-        builder.ToTable("sale_payments");
+        builder.ToTable("sale_payments", t =>
+            t.HasCheckConstraint("ck_sale_payments_change_nonnegative", "change_amount >= 0"));
 
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id");
@@ -37,6 +38,18 @@ public class SalePaymentConfiguration : IEntityTypeConfiguration<SalePayment>
             .HasColumnName("amount")
             .HasColumnType("numeric(18,2)")
             .IsRequired();
+
+        builder.Property(x => x.TenderedAmount)
+            .HasColumnName("tendered_amount")
+            .HasColumnType("numeric(18,2)");
+
+        builder.Property(x => x.ChangeAmount)
+            .HasColumnName("change_amount")
+            .HasColumnType("numeric(18,2)")
+            .HasDefaultValue(0m)
+            .IsRequired();
+
+        builder.Ignore(x => x.MovesCashDrawer);
 
         builder.Property(x => x.DueDate)
             .HasColumnName("due_date")

@@ -13,6 +13,21 @@ public class SaleRepository : ISaleRepository
 
     public SaleRepository(NexoDbContext context) => _context = context;
 
+    public async Task LockAsync(Guid id, CancellationToken ct = default)
+    {
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.sales WHERE id = {id} FOR UPDATE", ct);
+
+        // A caller may already track this sale from before the lock (the restaurant reads it to
+        // build the comanda): refresh it so the status checked under the lock is the committed one.
+        var tracked = _context.ChangeTracker.Entries<Sale>().FirstOrDefault(e => e.Entity.Id == id);
+        if (tracked is not null)
+        {
+            await tracked.ReloadAsync(ct);
+            await tracked.Collection(s => s.Payments).LoadAsync(ct);
+        }
+    }
+
     public async Task<Sale?> GetByIdAsync(Guid id, CancellationToken ct = default)
         => await _context.Sales.FirstOrDefaultAsync(x => x.Id == id, ct);
 

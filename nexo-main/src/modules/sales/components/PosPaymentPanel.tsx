@@ -37,8 +37,11 @@ export function PosPaymentPanel({
     setAmountInput(total > 0 ? total.toFixed(2).replace(".", ",") : "");
   }, [total, method]);
 
-  const parsedAmount = parseFloat(amountInput.replace(",", ".")) || 0;
-  const change = method === "cash" ? Math.max(0, parsedAmount - total) : 0;
+  // Only physical cash can exceed the total (troco). Pix and card are always the exact total —
+  // the backend rejects them above it.
+  const isCash = method === "cash";
+  const parsedAmount = isCash ? parseFloat(amountInput.replace(",", ".")) || 0 : total;
+  const change = isCash ? Math.max(0, Math.round((parsedAmount - total) * 100) / 100) : 0;
   const isSufficient = parsedAmount >= total - 0.001;
 
   const canFinalize =
@@ -46,7 +49,7 @@ export function PosPaymentPanel({
 
   function handleFinalize() {
     if (!canFinalize) return;
-    const payments: PaymentEntry[] = [{ method, amount: parsedAmount }];
+    const payments: PaymentEntry[] = [{ method, amount: Math.round(parsedAmount * 100) / 100 }];
     onFinalize(payments);
   }
 
@@ -84,11 +87,12 @@ export function PosPaymentPanel({
       {/* Amount input */}
       <div className="space-y-1.5">
         <Label htmlFor="pay-amount" className="text-xs">
-          Valor recebido (R$)
+          {isCash ? "Valor recebido (R$)" : "Valor (R$)"}
         </Label>
         <Input
           id="pay-amount"
-          value={amountInput}
+          value={isCash ? amountInput : total.toFixed(2).replace(".", ",")}
+          readOnly={!isCash}
           onChange={(e) => setAmountInput(e.target.value)}
           onKeyDown={handleKeyDown}
           inputMode="decimal"

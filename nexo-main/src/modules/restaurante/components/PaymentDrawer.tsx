@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Plus, X, Users } from "lucide-react";
 import { usePayOrder } from "../hooks/useOrderMutations";
+import { useOpenSession } from "@/modules/cash/hooks/use-cash";
 import { useFoodSettings } from "../hooks/useFoodSettings";
 import type { OrderDto, PaymentInputDto } from "../types";
 
@@ -52,6 +53,9 @@ interface PaymentDrawerProps {
 export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerProps) {
   const navigate = useNavigate();
   const payMut   = usePayOrder(storeId);
+  // Physical cash needs an open caixa (the backend refuses it otherwise); Pix and card don't.
+  const { data: openCash, isSuccess: cashChecked } = useOpenSession();
+  const noOpenCash = cashChecked && !openCash;
   const { data: settings } = useFoodSettings(storeId);
 
   // ── Total calculation ──────────────────────────────────────────────────────
@@ -92,12 +96,21 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
   const isExact   = Math.abs(remaining) < 0.01;
   const isOver    = remaining < -0.005;
   const hasCash   = entries.some(e => e.method === "cash");
+  const cashPaid  = entries
+    .filter(e => e.method === "cash")
+    .reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
   const troco     = isOver && hasCash
     ? Math.round((totalPaid - total) * 100) / 100
     : 0;
+  // Same rule as the backend: only physical cash can exceed the total, and the troco must be
+  // smaller than the cash handed over (Pix/card are always exact).
+  const overpaidWithoutCash = isOver && troco >= cashPaid;
+
+  const cashBlocked = noOpenCash && hasCash;
 
   const canConfirm =
-    isExact &&
+    !cashBlocked &&
+    (isExact || (isOver && !overpaidWithoutCash)) &&
     entries.every(e => {
       const v = parseFloat(e.amount);
       return !isNaN(v) && v > 0;
@@ -283,6 +296,17 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
               <span>Troco (dinheiro)</span>
               <span className="tabular-nums">R$ {troco.toFixed(2)}</span>
             </div>
+          )}
+          {cashBlocked && (
+            <p className="pt-2 text-xs text-amber-600 dark:text-amber-400">
+              Nenhum caixa aberto: pagamento em dinheiro indisponível. Peça ao gerente para abrir o
+              caixa ou receba por Pix ou cartão.
+            </p>
+          )}
+          {overpaidWithoutCash && (
+            <p className="pt-2 text-xs text-red-500">
+              Só pagamento em dinheiro pode passar do total. Ajuste Pix e cartão para o valor exato.
+            </p>
           )}
         </div>
 

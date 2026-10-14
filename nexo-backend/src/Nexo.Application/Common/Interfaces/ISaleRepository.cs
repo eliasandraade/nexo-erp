@@ -7,6 +7,11 @@ namespace Nexo.Application.Common.Interfaces;
 public interface ISaleRepository
 {
     Task<Sale?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    /// <summary>
+    /// Row lock (SELECT … FOR UPDATE) on the sale for the current transaction, so two confirmations
+    /// of the same sale serialise instead of both seeing Draft.
+    /// </summary>
+    Task LockAsync(Guid id, CancellationToken ct = default);
     Task<Sale?> GetByIdWithItemsAsync(Guid id, CancellationToken ct = default);
     Task<Sale?> GetByNumberAsync(int number, CancellationToken ct = default);
     Task<IReadOnlyList<Sale>> GetAllAsync(CancellationToken ct = default);

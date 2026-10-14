@@ -30,9 +30,9 @@ public record PaymentInput(
     DateTime? DueDate = null);  // required when Type = "Credit"
 
 /// <summary>
-/// Confirms a Draft sale.
-/// The sum of all Payments must equal Sale.Total.
-/// At least one PaymentInput is required.
+/// Confirms a Draft sale. At least one PaymentInput is required and the lines must cover the total.
+/// For physical cash, send what the customer handed over: the excess over the total is the troco
+/// (see SalePaymentPlan). Pix/card/transfer must not exceed the total.
 /// </summary>
 public record ConfirmSaleRequest(
     List<PaymentInput> Payments,
@@ -64,8 +64,10 @@ public record SalePaymentDto(
     Guid Id,
     string Method,
     string Type,
-    decimal Amount,
-    DateTime? DueDate);
+    decimal Amount,              // applied to the sale
+    DateTime? DueDate,
+    decimal? TenderedAmount = null,  // physical cash handed over
+    decimal ChangeAmount = 0);       // troco
 
 public record SaleListItemDto(
     Guid Id,

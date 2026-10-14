@@ -100,11 +100,9 @@ export function usePosCart() {
    * Always bounded to [0, subtotal] so the total never goes negative.
    */
   const discountTotal = useMemo(() => {
-    if (discountMode === "amount") {
-      return Math.min(discountValue, subtotal);
-    }
-    // percentage: derive R$ amount then cap at subtotal
-    return Math.min((discountValue / 100) * subtotal, subtotal);
+    // Money in cents, like the backend: 10% of 33,33 is 3,33 — never 3,333.
+    const raw = discountMode === "amount" ? discountValue : (discountValue / 100) * subtotal;
+    return Math.round(Math.min(Math.max(0, raw), subtotal) * 100) / 100;
   }, [discountMode, discountValue, subtotal]);
 
   const total = useMemo(

@@ -7,7 +7,9 @@ public interface ICashRepository
     Task<CashSession?> GetByIdAsync(Guid id, CancellationToken ct = default);
     /// <summary>Returns the open session for a specific user (1 per tenant+user rule).</summary>
     Task<CashSession?> GetOpenSessionByUserAsync(Guid userId, CancellationToken ct = default);
+    /// <summary>The store's earliest-opened open session (deterministic fallback drawer).</summary>
     Task<CashSession?> GetOpenSessionAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<CashMovement>> GetMovementsByReferenceAsync(string referenceType, Guid referenceId, CancellationToken ct = default);
     Task<IReadOnlyList<CashSession>> GetAllAsync(CancellationToken ct = default);
     Task AddSessionAsync(CashSession session, CancellationToken ct = default);
     Task AddMovementAsync(CashMovement movement, CancellationToken ct = default);

@@ -1281,6 +1281,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("amount");
 
+                    b.Property<decimal>("ChangeAmount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("change_amount");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
@@ -1303,6 +1309,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
+                    b.Property<decimal?>("TenderedAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("tendered_amount");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -1319,7 +1329,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "SaleId");
 
-                    b.ToTable("sale_payments", "nexo");
+                    b.ToTable("sale_payments", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_sale_payments_change_nonnegative", "change_amount >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Nexo.Domain.Entities.StockItem", b =>
