@@ -39,11 +39,19 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 nullable: false,
                 defaultValue: new Guid("00000000-0000-0000-0000-000000000000"));
 
-            // Existing purchases had no store. Give each the tenant's default store (the same rule as
-            // login: first active store by name; any store if none is active) so they stay visible.
+            // Existing purchases had no store. Use the store that actually received the goods (their
+            // stock movements), else the store of their products (catalogue is per store), else the
+            // tenant's default store (first active by name, as at login) so they stay visible.
             migrationBuilder.Sql(@"
                 UPDATE nexo.ret_purchases p
                 SET store_id = COALESCE(
+                    (SELECT sm.store_id FROM nexo.stock_movements sm
+                     WHERE sm.reference_type = 'Purchase' AND sm.reference_id = p.id
+                     LIMIT 1),
+                    (SELECT pr.store_id FROM nexo.ret_purchase_items i
+                     JOIN nexo.products pr ON pr.id = i.product_id
+                     WHERE i.purchase_id = p.id
+                     LIMIT 1),
                     (SELECT s.id FROM nexo.stores s
                      WHERE s.tenant_id = p.tenant_id AND s.status = 'Active'
                      ORDER BY s.name LIMIT 1),

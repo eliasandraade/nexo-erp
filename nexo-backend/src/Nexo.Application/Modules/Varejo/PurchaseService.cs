@@ -103,6 +103,9 @@ public class PurchaseService
 
     public async Task<PurchaseDto> AddItemAsync(Guid purchaseId, AddPurchaseItemRequest request, CancellationToken ct = default)
     {
+        // Under the purchase lock: an item can't sneak in while the purchase is being received.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _purchases.LockAsync(purchaseId, _currentTenant.Id, ct);
         var purchase = await _purchases.GetByIdWithItemsAsync(purchaseId, ct)
             ?? throw new NotFoundException("Purchase", purchaseId);
 
@@ -114,16 +117,20 @@ public class PurchaseService
         var item = purchase.AddItem(_currentTenant.Id, request.ProductId, request.Quantity, request.UnitCost, request.Notes);
         _purchases.TrackItem(item);
         await _purchases.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return await GetByIdAsync(purchaseId, ct);
     }
 
     public async Task<PurchaseDto> RemoveItemAsync(Guid purchaseId, Guid itemId, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _purchases.LockAsync(purchaseId, _currentTenant.Id, ct);
         var purchase = await _purchases.GetByIdWithItemsAsync(purchaseId, ct)
             ?? throw new NotFoundException("Purchase", purchaseId);
 
         purchase.RemoveItem(itemId);
         await _purchases.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return await GetByIdAsync(purchaseId, ct);
     }
 
@@ -154,6 +161,7 @@ public class PurchaseService
 
             purchase.Confirm(request.ReceivedAt, request.InvoiceNumber);
 
+            var createdStock = new Dictionary<Guid, StockItem>();
             foreach (var item in purchase.Items)
             {
                 var product = await _products.GetByIdAsync(item.ProductId, ct)
@@ -161,11 +169,13 @@ public class PurchaseService
 
                 if (product.TrackStock)
                 {
-                    var stockItem = await _stock.GetByProductIdAsync(item.ProductId, ct);
+                    var stockItem = createdStock.GetValueOrDefault(item.ProductId)
+                                    ?? await _stock.GetByProductIdAsync(item.ProductId, ct);
                     if (stockItem is null)
                     {
                         stockItem = StockItem.Create(_currentTenant.Id, item.ProductId);
                         await _stock.AddStockItemAsync(stockItem, ct);
+                        createdStock[item.ProductId] = stockItem;
                     }
 
                     var qtyBefore = stockItem.CurrentQuantity;
@@ -217,6 +227,11 @@ public class PurchaseService
             await _purchases.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return await GetByIdAsync(purchaseId, ct);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            // Stock of one of the products changed concurrently (a sale, a count) — nothing was saved.
+            throw new DomainException("O estoque mudou durante a operação. Tente novamente.");
         }
         catch
         {
@@ -301,6 +316,11 @@ public class PurchaseService
             await _purchases.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return await GetByIdAsync(purchaseId, ct);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            // Stock of one of the products changed concurrently (a sale, a count) — nothing was saved.
+            throw new DomainException("O estoque mudou durante a operação. Tente novamente.");
         }
         catch
         {

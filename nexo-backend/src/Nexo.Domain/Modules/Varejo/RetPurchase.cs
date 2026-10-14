@@ -54,7 +54,7 @@ public class RetPurchase : StoreEntity
             UserId         = userId,
             TotalAmount    = 0m,
             InvoiceNumber  = invoiceNumber?.Trim(),
-            ReceivedAt     = receivedAt ?? DateTime.UtcNow,
+            ReceivedAt     = Utc(receivedAt),   // set on receipt unless known upfront
             Notes          = notes?.Trim(),
         };
     }
@@ -70,6 +70,8 @@ public class RetPurchase : StoreEntity
     {
         EnsureIsDraft();
 
+        if (_items.Any(i => i.ProductId == productId))
+            throw new DomainException("Este produto já está no pedido. Remova a linha e lance de novo com a quantidade total.");
         var item = RetPurchaseItem.Create(
             tenantId, Id, productId, quantity, unitCost, notes);
 
@@ -115,7 +117,8 @@ public class RetPurchase : StoreEntity
         if (!_items.Any())
             throw new DomainException("Cannot confirm a purchase with no items.");
 
-        if (receivedAt.HasValue) ReceivedAt = receivedAt;
+        // Received = when the goods arrive (now unless informed) — never when the draft was created.
+        ReceivedAt = Utc(receivedAt) ?? DateTime.UtcNow;
         if (!string.IsNullOrWhiteSpace(invoiceNumber)) InvoiceNumber = invoiceNumber.Trim();
         Status      = RetPurchaseStatus.Confirmed;
         ConfirmedAt = DateTime.UtcNow;
@@ -151,6 +154,14 @@ public class RetPurchase : StoreEntity
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static DateTime? Utc(DateTime? value) => value switch
+    {
+        null => null,
+        { Kind: DateTimeKind.Utc } v => v,
+        { Kind: DateTimeKind.Unspecified } v => DateTime.SpecifyKind(v, DateTimeKind.Utc),
+        { } v => v.ToUniversalTime(),
+    };
 
     private void RecalculateTotal()
     {

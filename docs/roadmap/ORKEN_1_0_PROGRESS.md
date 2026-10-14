@@ -192,13 +192,17 @@
 - **Compras são Core:** saiu o gate do módulo varejo, porque o restaurante também compra insumos.
 - **Compra por loja:**
   - `RetPurchase` virou `StoreEntity`, ligada à loja que recebe, porque o estoque é por loja.
-  - A migration atribui as compras existentes à loja padrão do tenant (a primeira loja ativa por nome, mesma regra do login).
+  - A migration atribui cada compra existente à loja que de fato recebeu a mercadoria, pelos movimentos de estoque. Na falta deles, usa a loja dos produtos; sem nenhuma pista, a loja padrão do tenant.
   - A numeração passa a ser por loja, sob advisory lock.
 - **Recebimento** (sob lock da compra, atômico):
   - Entra no estoque (`PurchaseEntry`, com o custo no snapshot), só para produtos com controle de estoque.
   - O custo do produto passa a ser o último custo de compra, regra que já existia. Custo médio ponderado é uma decisão contábil e fica como opção futura.
   - Cria a **conta a pagar** ao fornecedor: `Payable` com `ReferenceType=Purchase`. O vencimento é o informado no recebimento; sem data, usa recebimento + **prazo de pagamento do fornecedor**. A conta pode já nascer **paga**.
   - Guarda NF e data, e registra auditoria.
+  - A data de recebimento é a do recebimento, não a da criação do rascunho; datas sem fuso são aceitas como UTC.
+  - O mesmo produto não pode aparecer em duas linhas do pedido.
+  - Adicionar ou remover item é feito sob o lock da compra, para nada entrar numa compra que está sendo recebida.
+  - Um conflito concorrente de estoque (uma venda, um inventário) devolve "tente novamente" em vez de erro 500.
 - **Cancelamento:**
   - Recebida: a mercadoria sai do estoque (`PurchaseReversal`), mas **nunca abaixo de zero**. Se parte já foi vendida, o cancelamento é recusado com uma orientação.
   - Conta pendente é cancelada. Conta já paga vira **valor a receber do fornecedor** (`Receivable` com `ReferenceType=PurchaseCancellation`).
@@ -212,5 +216,5 @@
   - `/compras/:id`: itens; enviar pedido; receber com NF, vencimento e "já paga"; cancelar com motivo.
   - Receber e cancelar ficam só para a gestão; o estoquista monta e envia o pedido.
 - **Testes:**
-  - `PurchaseFlowTests`: 8 testes de integração (recebimento completo com prazo do fornecedor, compra paga cancelada vira a receber, compra pendente cancelada, estoque já vendido bloqueia o cancelamento, fornecedor inativo, remoção de item, tipo de documento).
+  - `PurchaseFlowTests`: 10 testes de integração (vencimento contado do recebimento, produto duplicado, recebimento completo com prazo do fornecedor, compra paga cancelada vira a receber, compra pendente cancelada, estoque já vendido bloqueia o cancelamento, fornecedor inativo, remoção de item, tipo de documento).
   - Playwright: fluxo de compra.

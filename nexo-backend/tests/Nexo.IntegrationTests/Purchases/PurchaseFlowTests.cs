@@ -121,6 +121,31 @@ public class PurchaseFlowTests
     }
 
     [Fact]
+    public async Task The_due_date_counts_from_when_the_goods_arrive_and_dates_without_zone_are_accepted()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var purchase = await DraftAsync(c, await SupplierAsync(c, paymentTermsDays: 10), await ProductAsync(c), quantity: 1, unitCost: 9m);
+
+        // received on a known day, sent without a time zone (as a plain date picker would)
+        var resp = await c.PostAsync($"{Base}/{purchase.Id}/confirm", JsonContent.Create(new { receivedAt = "2026-11-02T10:00:00" }));
+        var received = await OkAsync<PurchaseDto>(resp);
+
+        received.ReceivedAt!.Value.Date.Should().Be(new DateTime(2026, 11, 2));
+        (await FinancialAsync("Purchase", purchase.Id)).Single().DueDate.Date.Should().Be(new DateTime(2026, 11, 12));
+    }
+
+    [Fact]
+    public async Task The_same_product_cannot_be_added_twice()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var product = await ProductAsync(c);
+        var purchase = await DraftAsync(c, await SupplierAsync(c), product, quantity: 1, unitCost: 2m);
+
+        (await c.PostAsJsonAsync($"{Base}/{purchase.Id}/items", new AddPurchaseItemRequest(product, 3, 2m)))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
     public async Task Draft_items_can_be_removed_and_the_total_follows()
     {
         var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
