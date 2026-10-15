@@ -49,4 +49,12 @@ public class FiscalController : ControllerBase
     [HttpPut("products/{id:guid}")]
     public async Task<ActionResult<ProductFiscalDto>> UpdateProduct(Guid id, [FromBody] UpdateProductFiscalRequest request, CancellationToken ct)
         => Ok(await _service.UpdateProductAsync(id, request, ct));
+
+    [HttpGet("customers/{id:guid}")]
+    public async Task<ActionResult<CustomerFiscalDto>> GetCustomer(Guid id, CancellationToken ct)
+        => Ok(await _service.GetCustomerAsync(id, ct));
+
+    [HttpPut("customers/{id:guid}")]
+    public async Task<ActionResult<CustomerFiscalDto>> UpdateCustomer(Guid id, [FromBody] UpdateCustomerFiscalRequest request, CancellationToken ct)
+        => Ok(await _service.UpdateCustomerAsync(id, request, ct));
 }

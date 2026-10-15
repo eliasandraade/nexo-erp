@@ -728,7 +728,7 @@ test('Fiscal: emissor da loja, produtos para revisar e dados fiscais do produto'
  await page.getByLabel('CNPJ').fill('11.222.333/0001-81');
  await page.getByLabel('Inscrição estadual').fill('ISENTO');
  await page.getByLabel('Logradouro').fill('Rua das Flores');
- await page.getByLabel('Número').fill('100');
+ await page.getByLabel('Número',{exact:true}).fill('100');
  await page.getByLabel('Bairro').fill('Centro');
  await page.getByLabel('Município',{exact:true}).fill('São Paulo');
  await page.getByLabel('Código IBGE do município').fill('3550308');

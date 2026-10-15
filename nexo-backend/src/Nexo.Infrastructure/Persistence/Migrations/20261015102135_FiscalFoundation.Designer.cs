@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261015095952_FiscalFoundation")]
+    [Migration("20261015102135_FiscalFoundation")]
     partial class FiscalFoundation
     {
         /// <inheritdoc />
@@ -400,6 +400,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("jsonb")
                         .HasColumnName("address_json");
 
+                    b.Property<string>("CityIbgeCode")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("city_ibge_code");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
@@ -453,9 +458,19 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(30)")
                         .HasColumnName("phone");
 
+                    b.Property<string>("StateRegistration")
+                        .HasMaxLength(14)
+                        .HasColumnType("character varying(14)")
+                        .HasColumnName("state_registration");
+
                     b.Property<Guid?>("StoreId")
                         .HasColumnType("uuid")
                         .HasColumnName("store_id");
+
+                    b.Property<string>("TaxpayerIndicator")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("taxpayer_indicator");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -872,11 +887,35 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("municipal_registration");
 
+                    b.Property<long?>("NfceNextNumber")
+                        .HasColumnType("bigint")
+                        .HasColumnName("nfce_next_number");
+
+                    b.Property<int?>("NfceSeries")
+                        .HasColumnType("integer")
+                        .HasColumnName("nfce_series");
+
+                    b.Property<long?>("NfeNextNumber")
+                        .HasColumnType("bigint")
+                        .HasColumnName("nfe_next_number");
+
+                    b.Property<int?>("NfeSeries")
+                        .HasColumnType("integer")
+                        .HasColumnName("nfe_series");
+
                     b.Property<string>("Number")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("number");
+
+                    b.Property<string>("OperationNature")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasDefaultValue("Venda de mercadoria")
+                        .HasColumnName("operation_nature");
 
                     b.Property<string>("State")
                         .IsRequired()
@@ -1447,6 +1486,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)")
                         .HasColumnName("tax_situation");
+
+                    b.Property<string>("TaxUnit")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)")
+                        .HasColumnName("tax_unit");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")

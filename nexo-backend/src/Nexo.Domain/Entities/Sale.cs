@@ -98,10 +98,6 @@ public class Sale : StoreEntity
 
     // ── State transitions ─────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Draft → Confirmed.
-    /// Called after stock has been deducted and payment records have been persisted.
-    /// </summary>
     /// <summary>The consumer's CPF/CNPJ for the nota, set while the sale is still being closed.</summary>
     public void SetConsumerDocument(string? digits)
     {
@@ -110,6 +106,10 @@ public class Sale : StoreEntity
         ConsumerDocument = string.IsNullOrEmpty(digits) ? null : digits;
     }
 
+    /// <summary>
+    /// Draft → Confirmed.
+    /// Called after stock has been deducted and payment records have been persisted.
+    /// </summary>
     public void Confirm()
     {
         if (Status != SaleStatus.Draft)

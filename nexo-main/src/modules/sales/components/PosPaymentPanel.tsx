@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { PaymentMethod, PaymentEntry } from "../types";
 import { paymentMethodLabels } from "../types";
 import { formatCurrency } from "@/lib/formatters";
-import { formatDocument, isCnpj, isCpf, onlyDigits } from "@/lib/fiscal-codes";
+import { formatDocument, isCnpj, isCpf, normalizeDocument } from "@/lib/fiscal-codes";
 
 interface PosPaymentPanelProps {
   total: number;
@@ -33,14 +33,20 @@ export function PosPaymentPanel({
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amountInput, setAmountInput] = useState("");
   const [consumerDoc, setConsumerDoc] = useState("");
+  const [docTouched, setDocTouched] = useState(false);
 
   // a new sale starts without the previous customer's CPF
   useEffect(() => {
-    if (cartEmpty) setConsumerDoc("");
+    if (cartEmpty) {
+      setConsumerDoc("");
+      setDocTouched(false);
+    }
   }, [cartEmpty]);
 
-  const documentDigits = onlyDigits(consumerDoc);
+  const documentDigits = normalizeDocument(consumerDoc);
   const documentInvalid = documentDigits.length > 0 && !isCpf(documentDigits) && !isCnpj(documentDigits);
+  // say it once the number looks complete (or the field was left), not from the first digit
+  const showDocumentError = documentInvalid && (docTouched || documentDigits.length >= 11);
 
   // Auto-fill amount when total or method changes
   useEffect(() => {
@@ -118,14 +124,14 @@ export function PosPaymentPanel({
           id="pay-document"
           value={consumerDoc}
           onChange={(e) => setConsumerDoc(formatDocument(e.target.value))}
+          onBlur={() => setDocTouched(true)}
           onKeyDown={handleKeyDown}
-          inputMode="numeric"
           autoComplete="off"
           placeholder="000.000.000-00"
-          aria-invalid={documentInvalid}
-          aria-describedby={documentInvalid ? "pay-document-error" : undefined}
+          aria-invalid={showDocumentError}
+          aria-describedby={showDocumentError ? "pay-document-error" : undefined}
         />
-        {documentInvalid && (
+        {showDocumentError && (
           <p id="pay-document-error" className="text-xs text-red-500">
             {documentDigits.length < 11 ? "Digite o CPF completo." : "CPF/CNPJ inválido. Confira os números."}
           </p>

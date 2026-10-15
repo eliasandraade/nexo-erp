@@ -25,6 +25,11 @@ export interface FiscalProfileInput {
   cityIbgeCode: string;
   state: string;
   zipCode: string;
+  operationNature: string | null;
+  nfceSeries: number | null;
+  nfceNextNumber: number | null;
+  nfeSeries: number | null;
+  nfeNextNumber: number | null;
 }
 
 export interface FiscalProfileDto extends FiscalProfileInput {
@@ -42,9 +47,33 @@ export interface ProductFiscalDto {
   origin: number | null;
   cfop: string | null;
   taxSituation: string | null;
+  taxUnit: string | null;
+  /** The product's own unit (used when there is no tax unit). */
+  unit: string | null;
 }
 
-export type ProductFiscalInput = Pick<ProductFiscalDto, "ncm" | "cest" | "origin" | "cfop" | "taxSituation">;
+export type ProductFiscalInput = Pick<ProductFiscalDto, "ncm" | "cest" | "origin" | "cfop" | "taxSituation" | "taxUnit">;
+
+export type TaxpayerIndicator = "ContribuinteIcms" | "Isento" | "NaoContribuinte";
+
+export const TAXPAYER_INDICATORS: { value: TaxpayerIndicator; label: string }[] = [
+  { value: "ContribuinteIcms", label: "Contribuinte do ICMS (tem IE)" },
+  { value: "Isento", label: "Isento de inscrição estadual" },
+  { value: "NaoContribuinte", label: "Não contribuinte (consumidor)" },
+];
+
+export interface CustomerFiscalDto {
+  customerId: string;
+  name: string;
+  documentType: string;
+  documentNumber: string;
+  documentValid: boolean;
+  stateRegistration: string | null;
+  taxpayerIndicator: TaxpayerIndicator | null;
+  cityIbgeCode: string | null;
+}
+
+export type CustomerFiscalInput = Pick<CustomerFiscalDto, "stateRegistration" | "taxpayerIndicator" | "cityIbgeCode">;
 
 export interface FiscalProductIssueDto {
   productId: string;
@@ -63,6 +92,7 @@ export interface FiscalReadinessDto {
   productsWithInvalidBarcode: number;
   productsToFix: FiscalProductIssueDto[];
   emissionAvailable: boolean;
+  provider: string;
 }
 
 /** Origem da mercadoria (tabela da NF-e). */
@@ -86,3 +116,5 @@ export const saveFiscalProfile = (input: FiscalProfileInput) => apiClient.put<Fi
 export const getFiscalReadiness = () => apiClient.get<FiscalReadinessDto>("/fiscal/readiness");
 export const getProductFiscal = (id: string) => apiClient.get<ProductFiscalDto>(`/fiscal/products/${id}`);
 export const saveProductFiscal = (id: string, input: ProductFiscalInput) => apiClient.put<ProductFiscalDto>(`/fiscal/products/${id}`, input);
+export const getCustomerFiscal = (id: string) => apiClient.get<CustomerFiscalDto>(`/fiscal/customers/${id}`);
+export const saveCustomerFiscal = (id: string, input: CustomerFiscalInput) => apiClient.put<CustomerFiscalDto>(`/fiscal/customers/${id}`, input);

@@ -30,6 +30,7 @@ public class Product : StoreEntity
     public int? FiscalOrigin { get; private set; }                  // origem da mercadoria, 0–8 (tabela da NF-e)
     public string? Cfop { get; private set; }                       // CFOP padrão de venda, 4 dígitos
     public string? TaxSituation { get; private set; }               // CST (2 dígitos) ou CSOSN (3 dígitos) do ICMS
+    public string? TaxUnit { get; private set; }                    // unidade tributável (ex.: UN, KG); vazio = a unidade do produto
 
     // Navigation
     public Category? Category { get; private set; }
@@ -110,8 +111,9 @@ public class Product : StoreEntity
     public void Activate()   { IsActive = true;  SetUpdatedAt(); }
 
     /// <summary>Fiscal data as typed by the accountant; empty strings clear a field.</summary>
-    public void UpdateFiscal(string? ncm, string? cest, int? origin, string? cfop, string? taxSituation)
+    public void UpdateFiscal(string? ncm, string? cest, int? origin, string? cfop, string? taxSituation, string? taxUnit = null)
     {
+        TaxUnit      = string.IsNullOrWhiteSpace(taxUnit) ? null : taxUnit.Trim().ToUpperInvariant();
         Ncm          = Clean(ncm);
         Cest         = Clean(cest);
         FiscalOrigin = origin;

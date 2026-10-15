@@ -1,25 +1,36 @@
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common;
-using Nexo.Domain.Exceptions;
 using Nexo.Application.Features.Fiscal;
+using Nexo.Application.Integrations.Options;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
+using Nexo.Domain.Exceptions;
 using Nexo.Infrastructure.Persistence;
+using Npgsql;
 
 namespace Nexo.Infrastructure.Fiscal;
 
 /// <summary>
-/// Fiscal foundation: who issues (per-store profile), what is sold (product fiscal data) and how
-/// far the store is from issuing. No nota is issued and nothing leaves the system — emission needs
-/// a provider and a certificate, which are a later step.
+/// Fiscal foundation: who issues (per-store profile), what is sold (product fiscal data), who buys
+/// (customer IE) and how far the store is from issuing. No nota is issued and nothing leaves the
+/// system — emission goes through <see cref="IFiscalDocumentProvider"/>, which in the 1.0 is none.
 /// </summary>
 public class FiscalService
 {
     private const int IssueListLimit = 50;
 
     private readonly NexoDbContext _db;
+    private readonly IFiscalDocumentProvider _provider;
+    private readonly IIntegrationFeatureFlags _flags;
 
-    public FiscalService(NexoDbContext db) => _db = db;
+    public FiscalService(NexoDbContext db, IFiscalDocumentProvider provider, IIntegrationFeatureFlags flags)
+    {
+        _db       = db;
+        _provider = provider;
+        _flags    = flags;
+    }
+
+    // ── Issuer profile ──────────────────────────────────────────────────────────
 
     public async Task<FiscalProfileDto?> GetProfileAsync(CancellationToken ct)
     {
@@ -29,22 +40,38 @@ public class FiscalService
 
     public async Task<FiscalProfileDto> SaveProfileAsync(Guid tenantId, SaveFiscalProfileRequest r, CancellationToken ct)
     {
+        try
+        {
+            return await UpsertProfileAsync(tenantId, r, ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            // Two first saves at once: the other one created the row — apply this one on top of it.
+            _db.ChangeTracker.Clear();
+            return await UpsertProfileAsync(tenantId, r, ct);
+        }
+    }
+
+    private async Task<FiscalProfileDto> UpsertProfileAsync(Guid tenantId, SaveFiscalProfileRequest r, CancellationToken ct)
+    {
         var profile = await _db.FiscalProfiles.FirstOrDefaultAsync(ct);
         if (profile is null)
         {
             profile = FiscalProfile.Create(tenantId);
             _db.FiscalProfiles.Add(profile);
         }
-        var ie = r.StateRegistration.Trim();
         profile.Update(
-            r.LegalName, r.TradeName, FiscalCodes.Digits(r.Cnpj),
-            ie.Equals("ISENTO", StringComparison.OrdinalIgnoreCase) ? "ISENTO" : FiscalCodes.Digits(ie),
-            r.MunicipalRegistration, Enum.Parse<TaxRegime>(r.TaxRegime, true),
+            r.LegalName, r.TradeName, FiscalCodes.Document(r.Cnpj),
+            FiscalRules.NormalizeStateRegistration(r.StateRegistration)!,
+            r.MunicipalRegistration, Enum.Parse<TaxRegime>(r.TaxRegime.Trim(), true),
             r.Street, r.Number, r.Complement, r.District, r.CityName, r.CityIbgeCode.Trim(),
             r.State.Trim().ToUpperInvariant(), FiscalCodes.Digits(r.ZipCode));
+        profile.UpdateNumbering(r.OperationNature, r.NfceSeries, r.NfceNextNumber, r.NfeSeries, r.NfeNextNumber);
         await _db.SaveChangesAsync(ct);
         return Map(profile);
     }
+
+    // ── Product ────────────────────────────────────────────────────────────────
 
     public async Task<ProductFiscalDto> GetProductAsync(Guid productId, CancellationToken ct)
     {
@@ -57,10 +84,33 @@ public class FiscalService
     {
         var p = await _db.Products.FirstOrDefaultAsync(x => x.Id == productId, ct)
                 ?? throw new NotFoundException("Produto não encontrado.");
-        p.UpdateFiscal(Digits(r.Ncm), Digits(r.Cest), r.Origin, Digits(r.Cfop), Digits(r.TaxSituation));
+        p.UpdateFiscal(Digits(r.Ncm), Digits(r.Cest), r.Origin, Digits(r.Cfop), Digits(r.TaxSituation), r.TaxUnit);
         await _db.SaveChangesAsync(ct);
         return Map(p);
     }
+
+    // ── Customer ───────────────────────────────────────────────────────────────
+
+    public async Task<CustomerFiscalDto> GetCustomerAsync(Guid customerId, CancellationToken ct)
+    {
+        var c = await _db.Customers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == customerId, ct)
+                ?? throw new NotFoundException("Cliente não encontrado.");
+        return Map(c);
+    }
+
+    public async Task<CustomerFiscalDto> UpdateCustomerAsync(Guid customerId, UpdateCustomerFiscalRequest r, CancellationToken ct)
+    {
+        var c = await _db.Customers.FirstOrDefaultAsync(x => x.Id == customerId, ct)
+                ?? throw new NotFoundException("Cliente não encontrado.");
+        TaxpayerIndicator? indicator = string.IsNullOrWhiteSpace(r.TaxpayerIndicator)
+            ? null
+            : Enum.Parse<TaxpayerIndicator>(r.TaxpayerIndicator.Trim(), true);
+        c.UpdateFiscal(FiscalRules.NormalizeStateRegistration(r.StateRegistration), indicator, r.CityIbgeCode);
+        await _db.SaveChangesAsync(ct);
+        return Map(c);
+    }
+
+    // ── Readiness ──────────────────────────────────────────────────────────────
 
     public async Task<FiscalReadinessDto> GetReadinessAsync(CancellationToken ct)
     {
@@ -83,7 +133,8 @@ public class FiscalService
             ProductsWithoutNcm: products.Count(p => string.IsNullOrEmpty(p.Ncm)),
             ProductsWithInvalidBarcode: products.Count(p => !string.IsNullOrWhiteSpace(p.Barcode) && !FiscalCodes.IsGtin(p.Barcode)),
             ProductsToFix: issues.Take(IssueListLimit).ToList(),
-            EmissionAvailable: false);
+            EmissionAvailable: _flags.FiscalEnabled && _provider.IsConfigured,
+            Provider: _provider.Name);
     }
 
     private static List<string> Problems(string? ncm, string? barcode)
@@ -99,8 +150,19 @@ public class FiscalService
 
     private static FiscalProfileDto Map(FiscalProfile p) => new(
         p.LegalName, p.TradeName, p.Cnpj, p.StateRegistration, p.MunicipalRegistration, p.TaxRegime.ToString(), p.Crt,
-        p.Street, p.Number, p.Complement, p.District, p.CityName, p.CityIbgeCode, p.State, p.ZipCode, p.UpdatedAt);
+        p.Street, p.Number, p.Complement, p.District, p.CityName, p.CityIbgeCode, p.State, p.ZipCode, p.UpdatedAt,
+        p.OperationNature, p.NfceSeries, p.NfceNextNumber, p.NfeSeries, p.NfeNextNumber);
 
     private static ProductFiscalDto Map(Product p) =>
-        new(p.Id, p.Code, p.Name, p.Barcode, p.Ncm, p.Cest, p.FiscalOrigin, p.Cfop, p.TaxSituation);
+        new(p.Id, p.Code, p.Name, p.Barcode, p.Ncm, p.Cest, p.FiscalOrigin, p.Cfop, p.TaxSituation, p.TaxUnit, p.Unit.ToString());
+
+    private static CustomerFiscalDto Map(Customer c) => new(
+        c.Id, c.Name, c.DocumentType.ToString(), c.DocumentNumber,
+        c.DocumentType switch
+        {
+            DocumentType.Cpf => FiscalCodes.IsCpf(c.DocumentNumber),
+            DocumentType.Cnpj => FiscalCodes.IsCnpj(c.DocumentNumber),
+            _ => false,
+        },
+        c.StateRegistration, c.TaxpayerIndicator?.ToString(), c.CityIbgeCode);
 }

@@ -13,7 +13,7 @@ import { isGtin } from "@/lib/fiscal-codes";
 import { FISCAL_KEY, ORIGINS, getProductFiscal, saveProductFiscal, type ProductFiscalInput } from "../api/fiscal.api";
 import { fiscalProblems } from "../lib/validation";
 
-const EMPTY: ProductFiscalInput = { ncm: null, cest: null, origin: null, cfop: null, taxSituation: null };
+const EMPTY: ProductFiscalInput = { ncm: null, cest: null, origin: null, cfop: null, taxSituation: null, taxUnit: null };
 
 /**
  * Dados fiscais de um produto — o que o contador informa (NCM, CEST, origem, CFOP, CST/CSOSN).
@@ -29,14 +29,19 @@ export function ProductFiscalDialog({ productId, open, onOpenChange }: Readonly<
     queryKey: [...FISCAL_KEY, "product", productId],
     queryFn: () => getProductFiscal(productId!),
     enabled: open && !!productId,
+    refetchOnWindowFocus: false,   // a refetch would reset what is being typed
   });
 
+  // Every opening starts from what is saved — never from edits that were cancelled, nor from the
+  // previous product's values while the next one loads.
   useEffect(() => {
-    if (product.data) {
-      const { ncm, cest, origin, cfop, taxSituation } = product.data;
-      setForm({ ncm, cest, origin, cfop, taxSituation });
+    if (!open || !product.data || product.data.productId !== productId) {
+      setForm(EMPTY);
+      return;
     }
-  }, [product.data]);
+    const { ncm, cest, origin, cfop, taxSituation, taxUnit } = product.data;
+    setForm({ ncm, cest, origin, cfop, taxSituation, taxUnit });
+  }, [open, productId, product.data]);
 
   const save = useMutation({
     mutationFn: () => saveProductFiscal(productId!, form),
@@ -60,7 +65,9 @@ export function ProductFiscalDialog({ productId, open, onOpenChange }: Readonly<
           <DialogTitle>Dados fiscais{product.data ? ` — ${product.data.name}` : ""}</DialogTitle>
           <DialogDescription>Peça ao seu contador. O Orken guarda estes dados para a nota; não calcula imposto.</DialogDescription>
         </DialogHeader>
-        {product.isLoading ? <Skeleton className="h-48 w-full" /> : (
+        {product.isError && <p className="text-sm text-destructive">Não foi possível carregar os dados fiscais deste produto.</p>}
+        {product.isLoading && <Skeleton className="h-48 w-full" />}
+        {product.data && (
           <form
             id="product-fiscal-form"
             className="grid gap-3 sm:grid-cols-2"
@@ -95,6 +102,10 @@ export function ProductFiscalDialog({ productId, open, onOpenChange }: Readonly<
               <Label htmlFor="pf-cst">CST / CSOSN do ICMS</Label>
               <Input id="pf-cst" inputMode="numeric" placeholder="102" value={form.taxSituation ?? ""} onChange={set("taxSituation")} />
             </div>
+            <div className="space-y-1">
+              <Label htmlFor="pf-unit">Unidade tributável</Label>
+              <Input id="pf-unit" placeholder={product.data.unit ?? "UN"} value={form.taxUnit ?? ""} onChange={set("taxUnit")} />
+            </div>
             {barcode && !isGtin(barcode) && (
               <p className="text-sm text-warning sm:col-span-2">
                 O código de barras ({barcode}) não é um GTIN válido: na nota ele vai como “SEM GTIN”. Corrija no cadastro do produto se for um código de fábrica.
@@ -109,7 +120,7 @@ export function ProductFiscalDialog({ productId, open, onOpenChange }: Readonly<
         )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
-          <Button type="submit" form="product-fiscal-form" disabled={problems.length > 0 || save.isPending || product.isLoading}>
+          <Button type="submit" form="product-fiscal-form" disabled={problems.length > 0 || save.isPending || !product.data || product.isError}>
             {save.isPending ? "Salvando…" : "Salvar"}
           </Button>
         </DialogFooter>

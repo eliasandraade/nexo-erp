@@ -46,6 +46,24 @@ public class FiscalFoundationTests
         profile.ZipCode.Should().Be("01001000");
         profile.Crt.Should().Be(1);
 
+        (await admin.PutAsJsonAsync("/api/fiscal/profile", Profile() with { State = "RJ" })).StatusCode
+            .Should().Be(HttpStatusCode.BadRequest, "3550308 is a city in SP, not in RJ");
+        (await admin.PutAsJsonAsync("/api/fiscal/profile", Profile() with { StateRegistration = "P-01100424.3/002" })).StatusCode
+            .Should().Be(HttpStatusCode.BadRequest, "letters in the IE are refused, not dropped");
+        (await admin.PutAsJsonAsync("/api/fiscal/profile", Profile(regime: "3"))).StatusCode
+            .Should().Be(HttpStatusCode.BadRequest, "the regime is chosen by name");
+
+        // a branch opened after July 2026 has an alphanumeric CNPJ; series and numbering are kept for emission
+        var alpha = await admin.PutAsJsonAsync("/api/fiscal/profile", Profile(cnpj: "12.abc.345/01DE-35") with
+        {
+            OperationNature = "Venda de mercadoria adquirida", NfceSeries = 1, NfceNextNumber = 1520,
+        });
+        alpha.StatusCode.Should().Be(HttpStatusCode.OK, await alpha.Content.ReadAsStringAsync());
+        var withNumbering = await admin.GetFromJsonAsync<FiscalProfileDto>("/api/fiscal/profile");
+        withNumbering!.Cnpj.Should().Be("12ABC34501DE35");
+        withNumbering.OperationNature.Should().Be("Venda de mercadoria adquirida");
+        (withNumbering.NfceSeries, withNumbering.NfceNextNumber).Should().Be((1, 1520L));
+
         (await admin.PutAsJsonAsync("/api/fiscal/profile", Profile(regime: "LucroPresumido"))).EnsureSuccessStatusCode();
         (await admin.GetFromJsonAsync<FiscalProfileDto>("/api/fiscal/profile"))!.Crt.Should().Be(3, "regime normal");
         (await admin.GetFromJsonAsync<FiscalReadinessDto>("/api/fiscal/readiness"))!.ProfileComplete.Should().BeTrue();
@@ -68,10 +86,10 @@ public class FiscalFoundationTests
         (await admin.PutAsJsonAsync($"/api/fiscal/products/{product.Id}", new UpdateProductFiscalRequest("123", null, 9, "1102", "1")))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        var ok = await admin.PutAsJsonAsync($"/api/fiscal/products/{product.Id}", new UpdateProductFiscalRequest("6109.10.00", "28.038.00", 0, "5102", "102"));
+        var ok = await admin.PutAsJsonAsync($"/api/fiscal/products/{product.Id}", new UpdateProductFiscalRequest("6109.10.00", "28.038.00", 0, "5102", "102", "un"));
         ok.StatusCode.Should().Be(HttpStatusCode.OK, await ok.Content.ReadAsStringAsync());
         var fiscal = await admin.GetFromJsonAsync<ProductFiscalDto>($"/api/fiscal/products/{product.Id}");
-        fiscal.Should().BeEquivalentTo(new { Ncm = "61091000", Cest = "2803800", Origin = 0, Cfop = "5102", TaxSituation = "102" });
+        fiscal.Should().BeEquivalentTo(new { Ncm = "61091000", Cest = "2803800", Origin = 0, Cfop = "5102", TaxSituation = "102", TaxUnit = "UN" });
 
         var after = await admin.GetFromJsonAsync<FiscalReadinessDto>("/api/fiscal/readiness");
         after!.ProductsToFix.Should().Contain(p => p.ProductId == product.Id)
@@ -104,5 +122,31 @@ public class FiscalFoundationTests
             new ConfirmSaleRequest([new PaymentInput("Pix", "Cash", 10m)], ConsumerDocument: "529.982.247-25"));
         right.StatusCode.Should().Be(HttpStatusCode.OK, await right.Content.ReadAsStringAsync());
         (await right.Content.ReadFromJsonAsync<SaleDto>())!.ConsumerDocument.Should().Be("52998224725");
+
+        // the same checkout replayed is idempotent; a retry that changes the CPF is not the same checkout
+        (await admin.PostAsJsonAsync($"/api/sales/{draft.Id}/confirm",
+            new ConfirmSaleRequest([new PaymentInput("Pix", "Cash", 10m)], ConsumerDocument: "52998224725"))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await admin.PostAsJsonAsync($"/api/sales/{draft.Id}/confirm",
+            new ConfirmSaleRequest([new PaymentInput("Pix", "Cash", 10m)], ConsumerDocument: "11.222.333/0001-81"))).StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task A_company_customer_keeps_its_state_registration_for_the_nfe()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var created = await admin.PostAsJsonAsync("/api/customers", new
+        {
+            personType = "Company", name = "Mercado Bom Ltda", documentType = "CNPJ",
+            documentNumber = string.Concat(Guid.NewGuid().ToString("N").Where(char.IsAsciiDigit)).PadRight(14, '7')[..14],
+        });
+        created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var id = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        (await admin.PutAsJsonAsync($"/api/fiscal/customers/{id}", new UpdateCustomerFiscalRequest(null, "ContribuinteIcms", null)))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "an ICMS taxpayer needs the IE");
+        var ok = await admin.PutAsJsonAsync($"/api/fiscal/customers/{id}", new UpdateCustomerFiscalRequest("110.042.490.114", "ContribuinteIcms", "3550308"));
+        ok.StatusCode.Should().Be(HttpStatusCode.OK, await ok.Content.ReadAsStringAsync());
+        var fiscal = await admin.GetFromJsonAsync<CustomerFiscalDto>($"/api/fiscal/customers/{id}");
+        fiscal.Should().BeEquivalentTo(new { StateRegistration = "110042490114", TaxpayerIndicator = "ContribuinteIcms", CityIbgeCode = "3550308" });
     }
 }

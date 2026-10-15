@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   FISCAL_KEY, TAX_REGIMES, getFiscalProfile, getFiscalReadiness, saveFiscalProfile,
-  type FiscalProfileInput, type TaxRegime,
+  type FiscalProfileDto, type FiscalProfileInput, type TaxRegime,
 } from "../api/fiscal.api";
 import { ProductFiscalDialog } from "../components/ProductFiscalDialog";
 import { STATES, profileProblems } from "../lib/validation";
@@ -23,7 +23,21 @@ import { STATES, profileProblems } from "../lib/validation";
 const EMPTY: FiscalProfileInput = {
   legalName: "", tradeName: null, cnpj: "", stateRegistration: "", municipalRegistration: null, taxRegime: "SimplesNacional",
   street: "", number: "", complement: null, district: "", cityName: "", cityIbgeCode: "", state: "", zipCode: "",
+  operationNature: "Venda de mercadoria", nfceSeries: null, nfceNextNumber: null, nfeSeries: null, nfeNextNumber: null,
 };
+
+function toInput(p: FiscalProfileDto): FiscalProfileInput {
+  return {
+    legalName: p.legalName, tradeName: p.tradeName, cnpj: p.cnpj, stateRegistration: p.stateRegistration,
+    municipalRegistration: p.municipalRegistration, taxRegime: p.taxRegime, street: p.street, number: p.number,
+    complement: p.complement, district: p.district, cityName: p.cityName, cityIbgeCode: p.cityIbgeCode, state: p.state,
+    zipCode: p.zipCode, operationNature: p.operationNature, nfceSeries: p.nfceSeries, nfceNextNumber: p.nfceNextNumber,
+    nfeSeries: p.nfeSeries, nfeNextNumber: p.nfeNextNumber,
+  };
+}
+
+/** "" → null, otherwise the integer typed (NaN is kept so validation can complain). */
+const toNumber = (v: string) => (v.trim() === "" ? null : Number(v));
 
 /**
  * Fiscal (base): os dados que a nota fiscal vai precisar — o emissor desta loja e os dados fiscais
@@ -94,13 +108,10 @@ function ProfileSection() {
   const qc = useQueryClient();
   const [form, setForm] = useState<FiscalProfileInput>(EMPTY);
   const [touched, setTouched] = useState(false);
-  const profile = useQuery({ queryKey: [...FISCAL_KEY, "profile"], queryFn: getFiscalProfile });
+  const profile = useQuery({ queryKey: [...FISCAL_KEY, "profile"], queryFn: getFiscalProfile, refetchOnWindowFocus: false });
 
   useEffect(() => {
-    if (profile.data) {
-      const { crt: _crt, updatedAt: _u, ...input } = profile.data;
-      setForm(input);
-    }
+    if (profile.data) setForm(toInput(profile.data));
   }, [profile.data]);
 
   const save = useMutation({
@@ -113,6 +124,10 @@ function ProfileSection() {
   });
 
   const problems = profileProblems(form);
+  const numeric = (key: "nfceSeries" | "nfceNextNumber" | "nfeSeries" | "nfeNextNumber") => ({
+    value: form[key] === null ? "" : String(form[key]),
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [key]: toNumber(e.target.value) }),
+  });
   const text = (key: keyof FiscalProfileInput) => ({
     value: (form[key] as string | null) ?? "",
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [key]: e.target.value }),
@@ -151,6 +166,16 @@ function ProfileSection() {
           </Select>
         </Field>
         <Field id="fp-cep" label="CEP"><Input id="fp-cep" inputMode="numeric" placeholder="00000-000" {...text("zipCode")} /></Field>
+        <Field id="fp-nature" label="Natureza da operação" className="sm:col-span-2 lg:col-span-4">
+          <Input id="fp-nature" maxLength={60} {...text("operationNature")} />
+        </Field>
+        <Field id="fp-nfce-series" label="Série da NFC-e"><Input id="fp-nfce-series" type="number" min={0} max={889} {...numeric("nfceSeries")} /></Field>
+        <Field id="fp-nfce-next" label="Próximo número da NFC-e"><Input id="fp-nfce-next" type="number" min={1} {...numeric("nfceNextNumber")} /></Field>
+        <Field id="fp-nfe-series" label="Série da NF-e"><Input id="fp-nfe-series" type="number" min={0} max={889} {...numeric("nfeSeries")} /></Field>
+        <Field id="fp-nfe-next" label="Próximo número da NF-e"><Input id="fp-nfe-next" type="number" min={1} {...numeric("nfeNextNumber")} /></Field>
+        <p className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-4">
+          Séries e numeração ficam guardadas para quando a emissão começar. Se a loja já emite por outro sistema, use a próxima numeração dele.
+        </p>
         {touched && problems.length > 0 && (
           <ul className="list-disc pl-5 text-sm text-destructive sm:col-span-2 lg:col-span-4">
             {problems.map((p) => <li key={p}>{p}</li>)}

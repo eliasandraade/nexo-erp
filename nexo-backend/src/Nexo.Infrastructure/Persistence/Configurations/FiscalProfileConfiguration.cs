@@ -27,6 +27,12 @@ internal sealed class FiscalProfileConfiguration : IEntityTypeConfiguration<Fisc
         b.Property(x => x.CityIbgeCode).HasColumnName("city_ibge_code").HasMaxLength(7).IsRequired();
         b.Property(x => x.State).HasColumnName("state").HasMaxLength(2).IsRequired();
         b.Property(x => x.ZipCode).HasColumnName("zip_code").HasMaxLength(8).IsRequired();
+        b.Property(x => x.OperationNature).HasColumnName("operation_nature").HasMaxLength(60)
+            .HasDefaultValue(FiscalProfile.DefaultOperationNature).IsRequired();
+        b.Property(x => x.NfceSeries).HasColumnName("nfce_series");
+        b.Property(x => x.NfceNextNumber).HasColumnName("nfce_next_number");
+        b.Property(x => x.NfeSeries).HasColumnName("nfe_series");
+        b.Property(x => x.NfeNextNumber).HasColumnName("nfe_next_number");
         b.Ignore(x => x.Crt);
     }
 }

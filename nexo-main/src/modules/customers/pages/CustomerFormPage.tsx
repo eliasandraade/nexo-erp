@@ -5,7 +5,8 @@ import { SectionCard } from "@/components/shared/SectionCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Landmark, Save } from "lucide-react";
+import { CustomerFiscalDialog } from "@/modules/fiscal/components/CustomerFiscalDialog";
 import { toast } from "sonner";
 import {
   useCustomer,
@@ -23,6 +24,7 @@ import type { CustomerFormInput } from "../types";
 export default function CustomerFormPage() {
   const { id } = useParams();
   const isEdit = Boolean(id);
+  const [fiscalOpen, setFiscalOpen] = useState(false);
   const navigate = useNavigate();
 
   const { data: existing, isLoading } = useCustomer(id);
@@ -95,6 +97,11 @@ export default function CustomerFormPage() {
         description="Cadastre e configure as informações do cliente."
         actions={
           <div className="flex items-center gap-2">
+            {isEdit && (
+              <Button variant="outline" onClick={() => setFiscalOpen(true)}>
+                <Landmark className="h-4 w-4 mr-2" /> Dados fiscais
+              </Button>
+            )}
             <Button variant="outline" onClick={() => navigate("/clientes")}>
               <ArrowLeft className="h-4 w-4 mr-2" /> Cancelar
             </Button>
@@ -131,6 +138,7 @@ export default function CustomerFormPage() {
 
         {isEdit && <CustomerSummaryCard customer={existing ?? null} />}
       </div>
+      {isEdit && id && <CustomerFiscalDialog customerId={id} open={fiscalOpen} onOpenChange={setFiscalOpen} />}
     </div>
   );
 }

@@ -29,6 +29,16 @@ public class FiscalProfile : StoreEntity
     public string State { get; private set; } = string.Empty;          // UF, 2 letters
     public string ZipCode { get; private set; } = string.Empty;        // CEP, 8 digits
 
+    /// <summary>Natureza da operação printed on the nota of a sale ("Venda de mercadoria").</summary>
+    public string OperationNature { get; private set; } = DefaultOperationNature;
+    public const string DefaultOperationNature = "Venda de mercadoria";
+
+    // Series and next number of each model, for when emission starts (the provider then owns the sequence)
+    public int? NfceSeries { get; private set; }
+    public long? NfceNextNumber { get; private set; }
+    public int? NfeSeries { get; private set; }
+    public long? NfeNextNumber { get; private set; }
+
     /// <summary>
     /// Código de Regime Tributário as the NF-e layout writes it (1 Simples, 2 Simples acima do
     /// sublimite, 3 regime normal, 4 MEI) — a mapping of the layout, not a tax decision.
@@ -62,6 +72,16 @@ public class FiscalProfile : StoreEntity
         CityIbgeCode = cityIbgeCode;
         State = state;
         ZipCode = zipCode;
+        SetUpdatedAt();
+    }
+
+    public void UpdateNumbering(string? operationNature, int? nfceSeries, long? nfceNextNumber, int? nfeSeries, long? nfeNextNumber)
+    {
+        OperationNature = string.IsNullOrWhiteSpace(operationNature) ? DefaultOperationNature : operationNature.Trim();
+        NfceSeries = nfceSeries;
+        NfceNextNumber = nfceNextNumber;
+        NfeSeries = nfeSeries;
+        NfeNextNumber = nfeNextNumber;
         SetUpdatedAt();
     }
 

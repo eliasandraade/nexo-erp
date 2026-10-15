@@ -58,6 +58,38 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 maxLength: 3,
                 nullable: true);
 
+            migrationBuilder.AddColumn<string>(
+                name: "tax_unit",
+                schema: "nexo",
+                table: "products",
+                type: "character varying(6)",
+                maxLength: 6,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "city_ibge_code",
+                schema: "nexo",
+                table: "customers",
+                type: "character varying(7)",
+                maxLength: 7,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "state_registration",
+                schema: "nexo",
+                table: "customers",
+                type: "character varying(14)",
+                maxLength: 14,
+                nullable: true);
+
+            migrationBuilder.AddColumn<string>(
+                name: "taxpayer_indicator",
+                schema: "nexo",
+                table: "customers",
+                type: "character varying(20)",
+                maxLength: 20,
+                nullable: true);
+
             migrationBuilder.CreateTable(
                 name: "fiscal_profiles",
                 schema: "nexo",
@@ -78,6 +110,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     city_ibge_code = table.Column<string>(type: "character varying(7)", maxLength: 7, nullable: false),
                     state = table.Column<string>(type: "character varying(2)", maxLength: 2, nullable: false),
                     zip_code = table.Column<string>(type: "character varying(8)", maxLength: 8, nullable: false),
+                    operation_nature = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false, defaultValue: "Venda de mercadoria"),
+                    nfce_series = table.Column<int>(type: "integer", nullable: true),
+                    nfce_next_number = table.Column<long>(type: "bigint", nullable: true),
+                    nfe_series = table.Column<int>(type: "integer", nullable: true),
+                    nfe_next_number = table.Column<long>(type: "bigint", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     updated_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -152,6 +189,26 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 name: "tax_situation",
                 schema: "nexo",
                 table: "products");
+
+            migrationBuilder.DropColumn(
+                name: "tax_unit",
+                schema: "nexo",
+                table: "products");
+
+            migrationBuilder.DropColumn(
+                name: "city_ibge_code",
+                schema: "nexo",
+                table: "customers");
+
+            migrationBuilder.DropColumn(
+                name: "state_registration",
+                schema: "nexo",
+                table: "customers");
+
+            migrationBuilder.DropColumn(
+                name: "taxpayer_indicator",
+                schema: "nexo",
+                table: "customers");
         }
     }
 }

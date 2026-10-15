@@ -1,17 +1,32 @@
 namespace Nexo.Application.Common;
 
 /// <summary>
-/// Check digits and formats of Brazilian fiscal identifiers (CPF, CNPJ, GTIN/EAN, NCM, CEST, código IBGE).
-/// Pure functions on digits only — masks (dots, dashes, slashes) are ignored.
+/// Check digits and formats of Brazilian fiscal identifiers (CPF, CNPJ — numeric and the
+/// alphanumeric one issued since July 2026 —, GTIN/EAN, NCM, CEST, código IBGE). Pure functions;
+/// masks (dots, dashes, slashes) are ignored.
 /// </summary>
 public static class FiscalCodes
 {
+    /// <summary>IBGE state codes (first two digits of a city code) by UF.</summary>
+    public static readonly IReadOnlyDictionary<string, int> IbgeStateCodes = new Dictionary<string, int>
+    {
+        ["RO"] = 11, ["AC"] = 12, ["AM"] = 13, ["RR"] = 14, ["PA"] = 15, ["AP"] = 16, ["TO"] = 17,
+        ["MA"] = 21, ["PI"] = 22, ["CE"] = 23, ["RN"] = 24, ["PB"] = 25, ["PE"] = 26, ["AL"] = 27, ["SE"] = 28, ["BA"] = 29,
+        ["MG"] = 31, ["ES"] = 32, ["RJ"] = 33, ["SP"] = 35,
+        ["PR"] = 41, ["SC"] = 42, ["RS"] = 43,
+        ["MS"] = 50, ["MT"] = 51, ["GO"] = 52, ["DF"] = 53,
+    };
+
     public static string Digits(string? value) => new((value ?? string.Empty).Where(char.IsAsciiDigit).ToArray());
+
+    /// <summary>Letters and digits only, upper case — how a CPF/CNPJ is stored (the new CNPJ has letters).</summary>
+    public static string Document(string? value)
+        => new((value ?? string.Empty).Where(char.IsAsciiLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
     public static bool IsCpf(string? value)
     {
-        var d = Digits(value);
-        if (d.Length != 11 || AllSame(d)) return false;
+        var d = Document(value);
+        if (d.Length != 11 || !d.All(char.IsAsciiDigit) || AllSame(d)) return false;
         return d[9] - '0' == Mod11(d, 9, 10) && d[10] - '0' == Mod11(d, 10, 11);
 
         static int Mod11(string d, int count, int startWeight)
@@ -23,10 +38,14 @@ public static class FiscalCodes
         }
     }
 
+    /// <summary>
+    /// CNPJ, numeric or alphanumeric (12 letters/digits + 2 numeric check digits). Each character
+    /// counts as its ASCII code minus 48 — the Receita rule, which keeps the old numeric CNPJ valid.
+    /// </summary>
     public static bool IsCnpj(string? value)
     {
-        var d = Digits(value);
-        if (d.Length != 14 || AllSame(d)) return false;
+        var d = Document(value);
+        if (d.Length != 14 || !char.IsAsciiDigit(d[12]) || !char.IsAsciiDigit(d[13]) || AllSame(d)) return false;
         return d[12] - '0' == Check(d, 12) && d[13] - '0' == Check(d, 13);
 
         static int Check(string d, int count)
@@ -43,11 +62,16 @@ public static class FiscalCodes
         }
     }
 
-    /// <summary>GTIN-8/12/13/14 (EAN/UPC) with a valid check digit — the "código de barras" of the NF-e.</summary>
+    /// <summary>
+    /// GTIN-8/12/13/14 (EAN/UPC) with a valid check digit — the "código de barras" of the NF-e.
+    /// In-store codes (GTIN-13 starting with 2, e.g. scale labels) and all-zero codes are not GTINs:
+    /// on the nota they go as "SEM GTIN".
+    /// </summary>
     public static bool IsGtin(string? value)
     {
         var raw = (value ?? string.Empty).Trim();
         if (raw.Length is not (8 or 12 or 13 or 14) || !raw.All(char.IsAsciiDigit)) return false;
+        if (raw.All(c => c == '0') || (raw.Length == 13 && raw[0] == '2')) return false;
         var sum = 0;
         for (var i = raw.Length - 2; i >= 0; i--)
             sum += (raw[i] - '0') * ((raw.Length - 2 - i) % 2 == 0 ? 3 : 1);
@@ -60,9 +84,15 @@ public static class FiscalCodes
     /// <summary>CEST: 7 digits.</summary>
     public static bool IsCest(string? value) => Exactly(value, 7);
 
-    /// <summary>Código IBGE do município: 7 digits, starting with a valid state code (11–53).</summary>
+    /// <summary>Código IBGE do município: 7 digits, starting with a valid state code.</summary>
     public static bool IsIbgeCity(string? value)
-        => Exactly(value, 7) && int.Parse(value!.Trim()[..2]) is >= 11 and <= 53;
+        => Exactly(value, 7) && IbgeStateCodes.Values.Contains(int.Parse(value!.Trim()[..2]));
+
+    /// <summary>The city code belongs to the UF (3550308 is in SP, not in RJ).</summary>
+    public static bool IbgeCityInState(string? cityCode, string? state)
+        => IsIbgeCity(cityCode)
+           && IbgeStateCodes.TryGetValue((state ?? string.Empty).Trim().ToUpperInvariant(), out var code)
+           && int.Parse(cityCode!.Trim()[..2]) == code;
 
     private static bool Exactly(string? value, int length)
     {

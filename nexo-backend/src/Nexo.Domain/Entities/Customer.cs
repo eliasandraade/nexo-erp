@@ -21,6 +21,11 @@ public class Customer : TenantEntity
     public string? Notes { get; private set; }
     public bool IsActive { get; private set; }
 
+    // Dados fiscais (PR 66) — para a NF-e de um cliente empresa
+    public string? StateRegistration { get; private set; }          // IE (digits) or "ISENTO"
+    public TaxpayerIndicator? TaxpayerIndicator { get; private set; }
+    public string? CityIbgeCode { get; private set; }               // 7 digits; the address stays in AddressJson
+
     /// <summary>
     /// Optional store affiliation. Null = customer is shared across all stores in the tenant.
     /// Set to scope a customer to a specific store (e.g. loyalty program per filial).
@@ -79,6 +84,14 @@ public class Customer : TenantEntity
         AddressJson = addressJson;
         CreditLimit = creditLimit;
         Notes       = notes?.Trim();
+        SetUpdatedAt();
+    }
+
+    public void UpdateFiscal(string? stateRegistration, TaxpayerIndicator? indicator, string? cityIbgeCode)
+    {
+        StateRegistration = string.IsNullOrWhiteSpace(stateRegistration) ? null : stateRegistration.Trim();
+        TaxpayerIndicator = indicator;
+        CityIbgeCode      = string.IsNullOrWhiteSpace(cityIbgeCode) ? null : cityIbgeCode.Trim();
         SetUpdatedAt();
     }
 

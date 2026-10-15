@@ -1016,7 +1016,7 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - campo opcional no PDV, com máscara e conferência dos dígitos antes de finalizar;
   - o servidor confere de novo (422 com mensagem; a venda continua em rascunho);
   - fica gravado na venda (`consumer_document`) e sai no recibo.
-- **Validadores** (servidor e navegador, mesmas regras): CPF, CNPJ, GTIN-8/12/13/14, NCM, CEST e código IBGE.
+- **Validadores** (servidor e navegador, mesmas regras): CPF, CNPJ (numérico e alfanumérico), GTIN-8/12/13/14, NCM, CEST e código IBGE por UF.
 - **Tela `/fiscal`** (gerência): aviso de que a emissão ainda não existe, indicadores, formulário do emissor e lista de produtos para revisar com correção em diálogo.
 - **Migração `FiscalFoundation`** (aditiva: tabela nova e colunas anuláveis), validada num Postgres descartável (sobe → desce → sobe).
 - **Testes:**
@@ -1024,4 +1024,18 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - integração: perfil recusado com CNPJ/IBGE/UF errados e salvo sem máscara, CRT por regime, produto listado até ganhar NCM, formatos fiscais inválidos → 400, CPF na nota inválido → 422 com a venda em rascunho, válido gravado só com dígitos;
   - Vitest dos validadores e das regras da tela;
   - Playwright: tela fiscal (CNPJ inválido barrado, emissor salvo, produto corrigido) e CPF na nota no PDV.
-- **Fica para depois:** emissão de verdade (provedor, certificado A1, série/número, contingência e documento fiscal da devolução), unificar o CNPJ cadastrado em `Tenant.TaxId` e nas configurações da empresa com o do emissor, e clientes do portal público que hoje guardam um identificador no lugar do CPF.
+- **Completa o que a missão pede para a base fiscal:**
+  - **natureza da operação** e **série/próximo número** da NFC-e e da NF-e no emissor (guardados para quando a emissão começar);
+  - **unidade tributável** no produto (vazia = a unidade do produto);
+  - **dados fiscais do cliente**: inscrição estadual, indicador (contribuinte, isento, não contribuinte) e código IBGE do município, em `GET/PUT /api/fiscal/customers/{id}` e no botão "Dados fiscais" da tela do cliente. Contribuinte do ICMS exige IE;
+  - **contrato do provedor** (`IFiscalDocumentProvider`): o 1.0 usa `NotConfiguredFiscalProvider`, que responde "não disponível" e não envia nada. "Emissão disponível" só fica verdadeira com `Integrations:Features:FiscalEnabled` ligado **e** um provedor configurado.
+  - impostos: não há motor tributário (a missão proíbe improvisar). O produto guarda CST/CSOSN e CFOP informados pelo contador; o cálculo virá das regras oficiais via provedor.
+- **Correções da revisão independente** (sem bloqueadores):
+  - **CNPJ alfanumérico** (emitido desde julho de 2026) aceito no servidor, no navegador, no emissor e no CPF/CNPJ na nota; guardado em maiúsculas, sem máscara;
+  - o diálogo de dados fiscais do produto não mostra mais edições canceladas nem os dados de outro produto, e não salva se a leitura falhou;
+  - duas primeiras gravações simultâneas do emissor não dão mais 500: a segunda é aplicada sobre a primeira;
+  - repetir uma venda já confirmada pedindo outro CPF na nota responde 409, em vez de devolver a venda antiga como se tivesse dado certo;
+  - IE com letras é recusada (antes as letras sumiam); o regime só vale pelo nome (antes "3" virava MEI); o código IBGE precisa ser da UF escolhida (servidor e tela);
+  - códigos internos (13 dígitos começando por 2, como etiqueta de balança) e zeros não contam como GTIN;
+  - o aviso de CPF incompleto no PDV só aparece quando o número parece completo ou ao sair do campo.
+- **Fica para depois:** emissão de verdade (provedor, certificado A1, contingência e documento fiscal da devolução); unificar o CNPJ de `Tenant.TaxId`, das configurações da empresa e do emissor; clientes do portal público que hoje guardam um identificador no lugar do CPF; mascarar o CPF do consumidor para o papel vendedor (LGPD); conferir CST × CSOSN pelo regime antes de emitir.
