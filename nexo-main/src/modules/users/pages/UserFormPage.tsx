@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "../services/userService";
-import { adminResetPassword, resendInvite } from "../api/users.api";
+import { adminDisableMfa, adminResetPassword, resendInvite } from "../api/users.api";
 import type { UserFormInput } from "../types";
 import { UserMainDataSection, UserAccessSection, UserSecuritySection } from "../components/UserFormSections";
 import { UserSummaryCard } from "../components/UserSummaryCard";
@@ -96,6 +96,16 @@ export default function UserFormPage() {
     }
   };
 
+  const handleDisableMfa = async () => {
+    if (!window.confirm("Desativar a verificação em duas etapas deste usuário? Use só se a pessoa perdeu o celular e os códigos.")) return;
+    try {
+      await adminDisableMfa(id!);
+      toast({ title: "Verificação em duas etapas desativada", description: "A pessoa pode ativar de novo no perfil." });
+    } catch (err) {
+      toast({ title: "Não foi possível desativar", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    }
+  };
+
   const handleSave = async () => {
     if (!validate()) {
       toast({ title: "Preencha os campos obrigatórios", variant: "destructive" });
@@ -178,6 +188,9 @@ export default function UserFormPage() {
                 {!isNew && (
                   <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
                     <Button type="button" variant="outline" size="sm" disabled={resending} onClick={handleResendInvite}>Reenviar convite por e-mail</Button>
+                    {existingUser?.mfaEnabled && (
+                      <Button type="button" variant="outline" size="sm" onClick={handleDisableMfa}>Desativar verificação em duas etapas</Button>
+                    )}
                     <span className="text-xs text-muted-foreground">Manda um novo link para a pessoa criar a senha (o anterior deixa de valer).</span>
                   </div>
                 )}

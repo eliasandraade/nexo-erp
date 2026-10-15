@@ -299,5 +299,6 @@ public class UserService
         LastAccessAt:          u.LastAccessAt,
         PasswordChangedAt:     u.PasswordChangedAt,
         CreatedAt:             u.CreatedAt,
-        UpdatedAt:             u.UpdatedAt);
+        UpdatedAt:             u.UpdatedAt,
+        MfaEnabled:            u.MfaEnabled);
 }

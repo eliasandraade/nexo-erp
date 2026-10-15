@@ -15,6 +15,7 @@ export interface UserApiDto {
   passwordChangedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  mfaEnabled?: boolean;
 }
 
 export interface CreateUserPayload {
@@ -80,6 +81,10 @@ export interface StoreBriefDto {
 /** E-mails a fresh invite link (the previous one stops working). */
 export const resendInvite = (id: string): Promise<void> =>
   apiClient.post<void>(`/users/${id}/resend-invite`);
+
+/** Turns off two-step verification for someone who lost the phone and the recovery codes. */
+export const adminDisableMfa = (id: string): Promise<void> =>
+  apiClient.post<void>(`/users/${id}/mfa/disable`);
 
 export const listAvailableStores = (): Promise<StoreBriefDto[]> =>
   apiClient.get<StoreBriefDto[]>("/stores");

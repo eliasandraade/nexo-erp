@@ -31,6 +31,9 @@ public static class AuditActions
     public const string UserLoginFailed        = "user_login_failed";
     public const string UserLoginLocked        = "user_login_locked";
     public const string UserInvited            = "user_invited";
+    public const string UserMfaEnabled         = "user_mfa_enabled";
+    public const string UserMfaDisabled        = "user_mfa_disabled";
+    public const string UserMfaFailed          = "user_mfa_failed";
 
     // Users
     public const string UserCreated            = "user_created";

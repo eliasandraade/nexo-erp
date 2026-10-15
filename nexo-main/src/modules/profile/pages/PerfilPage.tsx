@@ -12,6 +12,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { fetchMySessions, revokeAllSessions } from "@/modules/auth/services/authService";
+import { MfaSection } from "../components/MfaSection";
 import {
   roleLabels,
   statusLabels,
@@ -417,6 +418,8 @@ export default function PerfilPage() {
           </div>
         </form>
       </SectionCard>
+
+      <MfaSection />
 
       <SectionCard title="Sessões ativas" description="Aparelhos conectados à sua conta. Trocar a senha também encerra todas.">
         {sessionsQ.isLoading ? (

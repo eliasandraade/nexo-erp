@@ -88,6 +88,20 @@ public record LoginOutcome
     public string? ErrorCode { get; init; }
     public bool IsSuccess => Response is not null;
 
+    /// <summary>Password right, two-step verification on: the client sends a code with this challenge.</summary>
+    public string? MfaChallenge { get; init; }
+
     public static LoginOutcome Ok(LoginResponse r) => new() { Response = r };
+    public static LoginOutcome NeedsMfa(string challenge) => new() { MfaChallenge = challenge };
     public static LoginOutcome Fail(string code) => new() { ErrorCode = code };
 }
+
+/// <summary>Second step of a sign-in: the challenge from the first step and a TOTP or recovery code.</summary>
+public record MfaVerifyRequest(string Challenge, string? Code, string? RecoveryCode = null);
+
+public record MfaStatusDto(bool Enabled, bool SetupPending, int RecoveryCodesLeft);
+public record MfaSetupDto(string Secret, string OtpAuthUri);
+public record MfaSetupRequest(string Password);
+public record MfaEnableRequest(string Code);
+public record MfaEnabledDto(IReadOnlyList<string> RecoveryCodes);
+public record MfaDisableRequest(string Password, string? Code, string? RecoveryCode = null);

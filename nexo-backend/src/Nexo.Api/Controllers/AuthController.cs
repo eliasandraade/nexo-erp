@@ -77,42 +77,10 @@ public class AuthController : ControllerBase
 
         var outcome = await _authService.LoginAsync(request, ipAddress, userAgent, ct);
 
+        if (outcome.MfaChallenge is not null)
+            return Ok(new { mfaRequired = true, mfaChallenge = outcome.MfaChallenge });
         if (outcome.IsSuccess)
-        {
-            // Set httpOnly cookies for tokens
-            // Secure=true always except local Development — Railway terminates TLS at proxy,
-            // so IsHttps is false inside the container even on production HTTPS.
-            var isSecure = !string.Equals(
-                HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().EnvironmentName,
-                "Development", StringComparison.OrdinalIgnoreCase);
-            var cookieOptions = new CookieOptions
-            {
-                HttpOnly = true,
-                Secure   = isSecure,
-                // SameSite=None required for cross-site cookies (frontend on orken.com.br, backend on railway.app)
-                // Strict would silently drop cookies on cross-origin requests even with credentials:include
-                SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
-                Path     = "/",
-                Domain   = null
-            };
-
-            var accessCookieOptions = new CookieOptions(cookieOptions)
-            {
-                Expires = outcome.Response.AccessTokenExpiresAt
-            };
-            var refreshCookieOptions = new CookieOptions(cookieOptions)
-            {
-                // Refresh token cookie expires after 7 days (server controls actual expiry via Redis)
-                Expires = DateTimeOffset.UtcNow.AddDays(7)
-            };
-            
-            Response.Cookies.Append("nexo_access", outcome.Response!.AccessToken, accessCookieOptions);
-            Response.Cookies.Append("nexo_refresh", outcome.Response!.RefreshToken, refreshCookieOptions);
-            return Ok(new LoginResponse(outcome.Response.AccessToken, outcome.Response.RefreshToken, outcome.Response.AccessTokenExpiresAt, outcome.Response.Session));
-        }
-
-        if (outcome.ErrorCode == "email_not_verified")
-            return Unauthorized(new { error = "E-mail não verificado. Verifique sua caixa de entrada.", code = "email_not_verified" });
+            return SignedIn(outcome.Response!);
 
         if (outcome.ErrorCode == "account_locked")
             return StatusCode(StatusCodes.Status429TooManyRequests, new
@@ -121,11 +89,96 @@ public class AuthController : ControllerBase
                 code = "account_locked",
             });
 
+        if (outcome.ErrorCode == "email_not_verified")
+            return Unauthorized(new { error = "E-mail não verificado. Verifique sua caixa de entrada.", code = "email_not_verified" });
+
         if (outcome.ErrorCode == "account_blocked")
             return Unauthorized(new { error = "Conta bloqueada. Entre em contato com o suporte." });
 
-        // Platform user fallback: if login looks like an email, try PlatformUsers table.
-        return Unauthorized(new { error = "Invalid login or password." });
+        return Unauthorized(new { error = "Login ou senha incorretos." });
+    }
+
+    /// <summary>Sets the auth cookies and returns the session (login and the second step share this).</summary>
+    private ActionResult<LoginResponse> SignedIn(LoginResponse response)
+    {
+        // Set httpOnly cookies for tokens
+        // Secure=true always except local Development — Railway terminates TLS at proxy,
+        // so IsHttps is false inside the container even on production HTTPS.
+        var isSecure = !string.Equals(
+            HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().EnvironmentName,
+            "Development", StringComparison.OrdinalIgnoreCase);
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure   = isSecure,
+            // SameSite=None required for cross-site cookies (frontend on orken.com.br, backend on railway.app)
+            // Strict would silently drop cookies on cross-origin requests even with credentials:include
+            SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+            Path     = "/",
+            Domain   = null
+        };
+
+        var accessCookieOptions = new CookieOptions(cookieOptions)
+        {
+            Expires = response.AccessTokenExpiresAt
+        };
+        var refreshCookieOptions = new CookieOptions(cookieOptions)
+        {
+            // Refresh token cookie expires after 7 days (server controls actual expiry via Redis)
+            Expires = DateTimeOffset.UtcNow.AddDays(7)
+        };
+        
+        Response.Cookies.Append("nexo_access", response.AccessToken, accessCookieOptions);
+        Response.Cookies.Append("nexo_refresh", response.RefreshToken, refreshCookieOptions);
+        return Ok(new LoginResponse(response.AccessToken, response.RefreshToken, response.AccessTokenExpiresAt, response.Session));
+    }
+
+    /// <summary>Second step of the sign-in: the challenge plus a code from the authenticator app (or a recovery code).</summary>
+    [HttpPost("mfa/verify")]
+    [AllowAnonymous]
+    [EnableRateLimiting("auth-login")]
+    public async Task<ActionResult<LoginResponse>> VerifyMfa([FromBody] MfaVerifyRequest request, CancellationToken ct)
+    {
+        var userAgentRaw = Request.Headers.UserAgent.ToString();
+        var outcome = await _authService.VerifyMfaAsync(request, HttpContext.Connection.RemoteIpAddress?.ToString(),
+            string.IsNullOrWhiteSpace(userAgentRaw) ? null : userAgentRaw.Length > 500 ? userAgentRaw[..500] : userAgentRaw, ct);
+        if (outcome.IsSuccess) return SignedIn(outcome.Response!);
+        return outcome.ErrorCode switch
+        {
+            "account_locked" => StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Muitas tentativas. Tente de novo em 15 minutos.", code = "account_locked" }),
+            "invalid_challenge" => Unauthorized(new { error = "A verificação expirou. Entre com sua senha de novo.", code = "invalid_challenge" }),
+            _ => Unauthorized(new { error = "Código inválido.", code = "invalid_code" }),
+        };
+    }
+
+    /// <summary>The signed-in user's two-step verification status.</summary>
+    [HttpGet("mfa")]
+    [Authorize]
+    public async Task<ActionResult<MfaStatusDto>> MfaStatus([FromServices] MfaService mfa, CancellationToken ct)
+        => Ok(await mfa.GetStatusAsync(_currentUser.UserId, ct));
+
+    /// <summary>Starts the setup: a new secret (manual key + otpauth link for the QR code).</summary>
+    [HttpPost("mfa/setup")]
+    [Authorize]
+    [EnableRateLimiting("credential-check")]
+    public async Task<ActionResult<MfaSetupDto>> MfaSetup([FromBody] MfaSetupRequest request, [FromServices] MfaService mfa, CancellationToken ct)
+        => Ok(await mfa.StartSetupAsync(_currentUser.UserId, request.Password, ct));
+
+    /// <summary>Turns it on with a first code; returns the recovery codes (shown once).</summary>
+    [HttpPost("mfa/enable")]
+    [Authorize]
+    [EnableRateLimiting("credential-check")]
+    public async Task<ActionResult<MfaEnabledDto>> MfaEnable([FromBody] MfaEnableRequest request, [FromServices] MfaService mfa, CancellationToken ct)
+        => Ok(await mfa.EnableAsync(_currentUser.UserId, request.Code, ct));
+
+    /// <summary>Turns it off: password plus a code (or a recovery code).</summary>
+    [HttpPost("mfa/disable")]
+    [Authorize]
+    [EnableRateLimiting("credential-check")]
+    public async Task<IActionResult> MfaDisable([FromBody] MfaDisableRequest request, [FromServices] MfaService mfa, CancellationToken ct)
+    {
+        await mfa.DisableAsync(_currentUser.UserId, request, ct);
+        return NoContent();
     }
 
     /// <summary>

@@ -128,6 +128,15 @@ public class UsersController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>Turns off two-step verification for someone who lost the phone and the codes. Diretoria only.</summary>
+    [HttpPost("{id:guid}/mfa/disable")]
+    [Authorize(Roles = AppRoles.Directors)]
+    public async Task<IActionResult> DisableMfa(Guid id, [FromServices] Nexo.Application.Features.Auth.MfaService mfa, CancellationToken ct)
+    {
+        await mfa.AdminDisableAsync(id, _currentUser.UserId, _currentUser.Name, ct);
+        return NoContent();
+    }
+
     [HttpPost("validate-manager")]
     [EnableRateLimiting("credential-check")]
     public async Task<ActionResult<ValidateManagerResponse>> ValidateManager(

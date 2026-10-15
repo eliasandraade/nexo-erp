@@ -632,3 +632,45 @@ test('Usuários: novo usuário recebe convite por e-mail em vez de senha digitad
  await page.getByRole('button',{name:'Salvar'}).click();
  await expect.poll(()=>body).toMatchObject({login:'ana',sendInvite:true,password:''});
 });
+test('Conta: entrar com verificação em duas etapas',async({page})=>{
+ let verify: any=null;
+ await page.route('http://localhost:5000/api/auth/login',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({mfaRequired:true,mfaChallenge:'ch1'})}));
+ await page.route('http://localhost:5000/api/auth/mfa/verify',r=>{verify=r.request().postDataJSON();
+  return verify.code==='123456'
+   ? r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({accessToken:'a',refreshToken:'b',accessTokenExpiresAt:new Date(Date.now()+9e5).toISOString(),session:{userId:'qa',tenantId:'qa',name:'QA',role:'diretoria',login:'qa',email:'qa@t.dev',activeModules:['varejo'],storeId:'qa-store',storeIds:['qa-store'],companyName:'Ambiente de teste',type:'tenant'}})})
+   : r.fulfill({status:401,contentType:'application/json',body:JSON.stringify({error:'Código inválido.',code:'invalid_code'})});});
+ await page.route('http://localhost:5000/api/**',r=>r.fallback());
+ await page.goto('/login');
+ await page.getByLabel('Login').fill('qa');
+ await page.getByLabel('Senha',{exact:true}).fill('qualquer');
+ await page.getByRole('button',{name:'Entrar'}).click();
+ await expect(page.getByLabel('Código do aplicativo autenticador')).toBeVisible();
+ await page.getByLabel('Código do aplicativo autenticador').fill('000000');
+ await page.getByRole('button',{name:'Confirmar'}).click();
+ await expect(page.getByRole('alert')).toContainText('Código inválido');
+ await page.getByLabel('Código do aplicativo autenticador').fill('123456');
+ await page.getByRole('button',{name:'Confirmar'}).click();
+ await expect.poll(()=>verify).toEqual({challenge:'ch1',code:'123456',recoveryCode:null});
+ await expect(page).not.toHaveURL(/\/login/);
+});
+test('Conta: ativar a verificação em duas etapas no perfil',async({page})=>{
+ await prepare(page);
+ let enabled=false;
+ const secret=Array.from(crypto.getRandomValues(new Uint8Array(32)),b=>'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'[b%32]).join('');
+ await page.route('http://localhost:5000/api/users/qa',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'qa',fullName:'Revisão Local',email:'qa@teste.dev',login:'qa',phone:null,role:'diretoria',status:'Active',requirePasswordChange:false,notes:null,lastAccessAt:null,passwordChangedAt:null,createdAt:new Date().toISOString(),updatedAt:null})}));
+ await page.route('http://localhost:5000/api/auth/sessions',r=>r.fulfill({status:200,contentType:'application/json',body:'[]'}));
+ await page.route('http://localhost:5000/api/auth/mfa',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({enabled,setupPending:false,recoveryCodesLeft:enabled?8:0})}));
+ await page.route('http://localhost:5000/api/auth/mfa/setup',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({secret,otpAuthUri:`otpauth://totp/Orken:qa?secret=${secret}&issuer=Orken&digits=6&period=30`})}));
+ await page.route('http://localhost:5000/api/auth/mfa/enable',r=>{enabled=true;return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({recoveryCodes:['abcde-fghjk','mnpqr-stuvw']})});});
+ await page.goto('/perfil');
+ await page.getByRole('button',{name:'Ativar verificação em duas etapas'}).click();
+ await page.getByLabel('Sua senha').fill(String(Date.now()));
+ await page.getByRole('button',{name:'Continuar'}).click();
+ await expect(page.getByRole('img',{name:/QR code/})).toBeVisible();
+ await expect(page.getByText(secret)).toBeVisible();
+ await page.getByLabel(/Digite o código de 6 números/).fill('123456');
+ await page.getByRole('button',{name:'Ativar',exact:true}).click();
+ await expect(page.getByText('abcde-fghjk')).toBeVisible();
+ await expect(page.getByRole('button',{name:/Já guardei/})).toBeVisible();
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

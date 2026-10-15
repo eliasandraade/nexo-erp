@@ -102,17 +102,44 @@ async function request<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  if (res.status === 401 && !isRetry) {
+  // sign-in calls answer 401 for wrong credentials/codes: no token refresh for those
+  const anonymousAuth = path.startsWith("/auth/login") || path.startsWith("/auth/mfa/verify");
+  if (res.status === 401 && !isRetry && !anonymousAuth) {
     const refreshed = await attemptRefresh();
     if (refreshed) {
       return request<T>(method, path, body, true);
     }
     clearTokens();
-    throw new ApiError(401, "Unauthorized");
+    // keep the server's explanation (wrong code, unverified e-mail, blocked account…)
+    let unauthorized = "Unauthorized";
+    let reason: string | undefined;
+    try {
+      const err = await res.json();
+      unauthorized = err?.error ?? err?.message ?? unauthorized;
+      reason = err?.code;
+    } catch {
+      // empty or non-JSON body
+    }
+    throw new ApiError(401, unauthorized, reason);
+  }
+
+  if (res.status === 401) {
+    let message = "Unauthorized";
+    let reason: string | undefined;
+    try {
+      const err = await res.json();
+      message = err?.error ?? err?.message ?? message;
+      reason = err?.code;
+    } catch {
+      // empty or non-JSON body
+    }
+    if (!anonymousAuth) clearTokens();
+    throw new ApiError(401, message, reason);
   }
 
   if (!res.ok) {
     let message = res.statusText;
+    let code: string | undefined;
     try {
       const err = await res.json();
       if (Array.isArray(err?.details) && err.details.length > 0) {
@@ -120,10 +147,12 @@ async function request<T>(
       } else {
         message = err?.error ?? err?.message ?? message;
       }
+      code = err?.code;
     } catch {
       // ignore parse failure
     }
-    throw new ApiError(res.status, message);
+    if (res.status === 429 && !message) message = "Muitas tentativas. Aguarde alguns minutos.";
+    throw new ApiError(res.status, message, code);
   }
 
   if (res.status === 204) return undefined as unknown as T;
@@ -150,7 +179,15 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
       return requestForm<T>(path, form);
     }
     clearTokens();
-    throw new ApiError(401, "Unauthorized");
+    // keep the server's explanation (wrong code, unverified e-mail, blocked account…)
+    let unauthorized = "Unauthorized";
+    try {
+      const err = await res.json();
+      unauthorized = err?.error ?? err?.message ?? unauthorized;
+    } catch {
+      // empty or non-JSON body
+    }
+    throw new ApiError(401, unauthorized);
   }
 
   if (!res.ok) {
@@ -189,7 +226,9 @@ export const apiClient = {
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
-    message: string
+    message: string,
+    /** Machine-readable reason from the server body ({ code }), when it sends one. */
+    public readonly code?: string
   ) {
     super(message);
     this.name = "ApiError";
