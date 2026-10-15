@@ -3,6 +3,7 @@
 > Registro contínuo da missão ORKEN 1.0, um PR por linha.
 > - Linha de base: `docs/audits/ORKEN_PRODUCT_STATUS_2026-10.md` (~45% de maturidade comercial).
 > - Ordem planejada: PRs 42 → 74. A ordem pode mudar quando aparecer uma dependência real.
+> - **Auditoria final:** [`docs/audits/ORKEN_PRODUCT_STATUS_1_0.md`](../audits/ORKEN_PRODUCT_STATUS_1_0.md) (15/10/2026).
 
 | PR | Tema | Merge | Migration | Estado |
 |---|---|---|---|---|
@@ -40,7 +41,7 @@
 | #71 | Configurações reais (sem toggle placebo) (GitHub #73) | `dc70835` | — | Em produção |
 | #72 | Feature flags reais (remove infraestrutura morta) (GitHub #74) | `84c280a` | — | Em produção |
 | #73 | Nexo → Orken (visível corrigido, interno classificado) (GitHub #75) | `6b8a24e` | — | Em produção |
-| #74 | Código morto e documentação (arquivos órfãos, docs antigas, branches) | — | — | Em revisão |
+| #74 | Código morto e documentação (arquivos órfãos, docs antigas, branches) (GitHub #76) | `da2b561` | — | Em produção |
 
 ## Marcos por fase
 
@@ -89,6 +90,54 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
 | Avisos ao cliente | 0% | ~70% | WhatsApp/SMS (integração paga); aviso à loja quando o cliente cancela |
 | Financeiro do Service | 0% | ~75% | exportação; comparação entre períodos |
 | **Orken Service (total)** | 65% | ~85% | — |
+
+**Build (PR 60)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Orken Build | 55% | ~65% | relatórios; custo por etapa; telas de converter orçamento e editar diário; PDF de orçamento |
+
+**Billing (PRs 61–62)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Billing | 30% | ~45% | **PR 62 aguardando decisão do dono** (preços, planos, Pix/boleto, trial, pacote); bloqueio de trial no backend |
+
+**Auth (PRs 63–64b)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Autenticação e sessões | 60% | ~80% | MFA no login da plataforma; IP real atrás do proxy; troca obrigatória cobrada no backend |
+| Usuários | 65% | ~85% | — |
+| Autorização / papéis | 50% | ~85% | papel "profissional" no Service |
+
+**Relatórios e fiscal (PRs 65, 65b, 66)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Relatórios (núcleo) | 15% | ~60% | DRE com CMV; margem por produto; comparação entre períodos |
+| Dashboard | 50% | ~68% | — |
+| Fiscal | 0% | ~25% | emissão de NFC-e/NF-e (provedor pago e certificado — decisão do dono) |
+
+**Engenharia (PRs 67–70)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| CI/CD e infra | 40% | ~70% | Dependabot/CodeQL; lockfile NuGet; digest de imagens; E2E contra backend real |
+| Saúde | — | ~85% | healthcheck da Railway em `/health/ready` (dono) |
+| Observabilidade | — | ~70% | destino OTLP e alertas |
+| Storage | 65% | ~75% | bucket privado (dono); anexos do interpretador fora do disco do container |
+
+**Configurações e limpeza (PRs 71–74)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Configurações | 35% | ~70% | criar/editar loja; regras por papel |
+| Feature flags | 25% | ~80% | — (infraestrutura morta removida; switches de config com efeito) |
+| Nomes "Nexo" visíveis | — | 0 restantes | interno classificado em `docs/engineering/NEXO_TO_ORKEN.md` |
+| Código morto | — | 13 arquivos, 2 scripts, 70 branches removidos | componentes de UI (shadcn) sem uso ficam como biblioteca |
+
+**Remedição na auditoria final.** A auditoria de 15/10 ([`ORKEN_PRODUCT_STATUS_1_0.md`](../audits/ORKEN_PRODUCT_STATUS_1_0.md)) mediu de novo, com evidência por arquivo, e **ficou abaixo** de algumas estimativas acima: Service ~80% (não 85%), Menu ~68% (não 75%), financeiro ~70% (não 75%), PDV ~70% (não 75%), estoque ~70% (não 75%). Vale o número da auditoria.
 
 ---
 
@@ -1208,3 +1257,4 @@ Levantamento: as **6 flags da plataforma** (tela "Recursos", `/api/features`, so
   - o painel de IA da plataforma prometia chaves "criptografadas com AES-256", mas elas são só codificadas; a tela agora avisa para não cadastrar chaves de produção;
   - o "Resultado" por competência do financeiro não desconta o custo das mercadorias vendidas; agora se chama "Resultado (antes do CMV)" e explica que o lucro real é menor.
 - Rotas órfãs: nenhuma — toda rota do roteador tem tela, e as telas sem rota foram as removidas acima.
+- **Em produção** (merge `da2b561`): backend e frontend com deploy `SUCCESS` na Railway; `/produtos` 200; `/health` 20/20. As 70 branches da lista foram apagadas do GitHub, mais as 3 desta reta final (`chore/nexo-orken-debt`, `feat/flags-cleanup`, `chore/dead-code`).

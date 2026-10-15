@@ -80,3 +80,13 @@ Ficaram: as `archive/*` (guardadas de propósito), as não incorporadas, as de P
 | `ui/orken-frontend-polish` | `49e8cbb` | 2026-06-15 |
 | `ux/orken-menu-complete-review` | `c536fcb` | 2026-06-16 |
 | `ux/platform-admin-operator-console` | `d104f44` | 2026-06-16 |
+
+**Apagadas depois desta lista** (PRs da reta final, já no `master`):
+
+| Branch | SHA | Data |
+|---|---|---|
+| `chore/nexo-orken-debt` | `948a3d9` | 2026-10-15 |
+| `feat/flags-cleanup` | `2bf1794` | 2026-10-15 |
+| `chore/dead-code` | `803c030` | 2026-10-15 |
+
+**Ficaram:** `archive/*`; `codex/orken-experience` e `feature/delivery-zones-and-coupons` (já no `master`, mas com worktree local); e as que **não** estão no `master` — `feature/orken-service-closure-prC-comissao`, `feature/orken-service-v1-planning`, `fix/redis-connectivity` e `fix/refresh-rotation-race` (PR aberto de outra sessão). Apagar trabalho não incorporado é decisão do dono.
