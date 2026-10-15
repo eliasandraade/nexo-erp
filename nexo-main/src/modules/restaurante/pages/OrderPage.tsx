@@ -85,9 +85,11 @@ export default function OrderPage() {
 
   // ── Total display (inclui taxa de serviço quando presente) ────────────────
   const showServiceFee = order.serviceFeeAmount > 0;
+  const deliveryFee    = order.deliveryFeeAmount ?? 0;
+  const discount       = order.discountAmount ?? 0;
   const displayTotal   = order.total > 0
     ? order.total
-    : order.itemsSubtotal + order.couvertAmount;
+    : order.itemsSubtotal + order.couvertAmount + deliveryFee - discount;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -162,7 +164,19 @@ export default function OrderPage() {
                 <span className="text-foreground">R$ {order.serviceFeeAmount.toFixed(2)}</span>
               </div>
             )}
-            {(order.couvertAmount > 0 || showServiceFee) && (
+            {deliveryFee > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Taxa de entrega</span>
+                <span className="text-foreground">R$ {deliveryFee.toFixed(2)}</span>
+              </div>
+            )}
+            {discount > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Desconto (cupom)</span>
+                <span className="text-foreground">− R$ {discount.toFixed(2)}</span>
+              </div>
+            )}
+            {(order.couvertAmount > 0 || showServiceFee || deliveryFee > 0 || discount > 0) && (
               <div className="flex justify-between font-semibold border-t border-border pt-1.5 mt-1">
                 <span>Total</span>
                 <span>R$ {displayTotal.toFixed(2)}</span>

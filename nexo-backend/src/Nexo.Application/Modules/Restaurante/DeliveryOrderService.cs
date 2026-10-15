@@ -134,12 +134,25 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
 
         await SaveOrderWithRetryAsync(order, _repo.GetNextOrderNumberAsync, ct);
 
+        // A catalog product is priced by the catalog, never by the caller: this endpoint is reachable by
+        // any floor user, and the price flows into the comanda and the sale. Lines without a ProductId
+        // (unmapped external items) keep the declared price — they never reach the comanda.
         foreach (var itemReq in request.Items ?? [])
         {
+            var name = itemReq.ProductName;
+            var price = itemReq.UnitPrice;
+            if (itemReq.ProductId is { } productId)
+            {
+                var product = await _products.GetByIdAsync(productId, ct)
+                    ?? throw new NotFoundException("Product", productId);
+                name  = product.Name;
+                price = product.SalePrice;
+            }
+
             var item = order.AddItem(
                 _currentTenant.Id,
-                itemReq.ProductName,
-                itemReq.UnitPrice,
+                name,
+                price,
                 itemReq.Quantity,
                 itemReq.ProductId,
                 notes: itemReq.Notes);
@@ -147,12 +160,21 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
 
             foreach (var modReq in itemReq.Modifiers ?? [])
             {
-                var modifier = item.AddModifier(
+                var label = modReq.Label;
+                var modPrice = modReq.Price;
+                if (modReq.ModifierId is { } modifierId)
+                {
+                    var modifier = await _modifierGroups.GetModifierByIdAsync(modifierId, ct)
+                        ?? throw new NotFoundException("Modifier", modifierId);
+                    label    = modifier.Name;
+                    modPrice = modifier.PriceAdjustment;
+                }
+                var mod = item.AddModifier(
                     _currentTenant.Id,
-                    modReq.Label,
-                    modReq.Price,
+                    label,
+                    modPrice,
                     modReq.ModifierId);
-                _repo.TrackModifier(modifier);
+                _repo.TrackModifier(mod);
             }
         }
 
@@ -485,6 +507,8 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         if (request.EstimatedMinutes.HasValue)
             deliveryOrder.SetEstimatedMinutes(request.EstimatedMinutes.Value);
 
+        // What the customer was quoted travels with the comanda, so the sale charges exactly that.
+        restOrder.ApplyDeliveryTerms(deliveryOrder.DeliveryFee, deliveryOrder.DiscountAmount);
         deliveryOrder.Accept(restOrder.Id);
         await _repo.SaveChangesAsync(ct);
 

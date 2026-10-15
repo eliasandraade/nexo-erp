@@ -364,17 +364,21 @@ public class OrderService
         // ServiceFeeAmount = ItemsSubtotal × (ServiceFeePercent / 100)
         //                   ↑ service fee is applied ONLY to ItemsSubtotal, never to couvert
         // CouvertAmount   = set at order open (auto) or recalculated here (manual, see above)
-        // SurchargesAmount = CouvertAmount + ServiceFeeAmount
-        // GrandTotal      = ItemsSubtotal + SurchargesAmount
+        // DeliveryFee     = taxa de entrega of the delivery order (0 for salão/balcão)
+        // SurchargesAmount = CouvertAmount + ServiceFeeAmount + DeliveryFee
+        // Discount        = coupon of the delivery order (0 otherwise)
+        // GrandTotal      = ItemsSubtotal + SurchargesAmount − Discount  (= what the customer was quoted)
         // ─────────────────────────────────────────────────────────────────────────────
+        // Taxa de serviço is for table/counter service: a delivery or takeaway order was quoted without it.
         decimal serviceFeeAmount = 0;
-        if (settings is { ServiceFeeEnabled: true } && settings.ServiceFeePercent.HasValue)
+        if (settings is { ServiceFeeEnabled: true } && settings.ServiceFeePercent.HasValue
+            && order.OrderType is not (RestOrderType.Delivery or RestOrderType.Takeaway))
             serviceFeeAmount = Math.Round(order.ItemsSubtotal * (settings.ServiceFeePercent.Value / 100m), 2);
 
         order.SetServiceFee(serviceFeeAmount);
 
-        decimal surchargesAmount = order.CouvertAmount + serviceFeeAmount;
-        decimal grandTotal       = order.ItemsSubtotal + surchargesAmount;
+        decimal surchargesAmount = order.SurchargesAmount;
+        decimal grandTotal       = order.Total;
         decimal paymentsTotal    = request.Payments.Sum(p => p.Amount);
 
         if (paymentsTotal < grandTotal)
@@ -404,6 +408,7 @@ public class OrderService
             await _saleService.ConfirmAsync(order.SaleId.Value,
                 new ConfirmSaleRequest(
                     payments,
+                    DiscountAmount: order.DiscountAmount,
                     SurchargesAmount: surchargesAmount > 0 ? surchargesAmount : 0,
                     SkipStockProductIds: recipeProductIds.Count > 0 ? recipeProductIds : null),
                 innerCt);
@@ -502,7 +507,9 @@ public class OrderService
         OpenedAt:         o.OpenedAt,
         ClosedAt:         o.ClosedAt,
         CancelledAt:      o.CancelledAt,
-        Items:            o.Items.Select(MapItem).ToList());
+        Items:            o.Items.Select(MapItem).ToList(),
+        DeliveryFeeAmount: o.DeliveryFeeAmount,
+        DiscountAmount:   o.DiscountAmount);
 
     private static OrderItemDto MapItem(RestOrderItem i) => new(
         Id:              i.Id,

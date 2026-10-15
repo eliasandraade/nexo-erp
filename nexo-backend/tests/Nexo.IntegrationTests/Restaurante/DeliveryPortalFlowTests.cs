@@ -459,6 +459,88 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
         final.Status.Should().Be("Delivered");
     }
 
+    // ── Pedido → venda (PR 54) ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_delivery_order_becomes_a_sale_charging_exactly_what_the_customer_was_quoted()
+    {
+        var product = await CreateMenuProductAsync("SALE");   // R$ 29,90 in the catalog
+        (await _client.PostAsJsonAsync("/api/stock/adjust",
+            new Nexo.Application.Features.Stock.AdjustStockRequest(product.Id, 5, "ManualEntry", "PR54"))).EnsureSuccessStatusCode();
+
+        // the generic endpoint never takes the caller's price for a catalog product
+        var create = await _client.PostAsJsonAsync("/api/restaurante/delivery-orders", new CreateDeliveryOrderRequest(
+            Channel: "WhatsApp", OrderType: "Delivery", CustomerName: "Bia", CustomerPhone: "11955554444",
+            DeliveryAddressJson: "{\"street\":\"Rua A\",\"number\":\"10\",\"neighborhood\":\"Centro\"}", DeliveryFee: 7.50m,
+            Items: [new CreateDeliveryOrderItemRequest(product.Id, "Qualquer nome", UnitPrice: 0.01m, Quantity: 1)]));
+        create.StatusCode.Should().Be(HttpStatusCode.Created, await create.Content.ReadAsStringAsync());
+        var delivery = (await create.Content.ReadFromJsonAsync<DeliveryOrderDto>())!;
+        delivery.Items.Single().UnitPrice.Should().Be(29.90m);
+
+        // a coupon on the order (the portal applies it; simulated here)
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            var d = await db.RestDeliveryOrders.IgnoreQueryFilters().FirstAsync(x => x.Id == delivery.Id);
+            d.ApplyCoupon("PR54", 5m);
+            await db.SaveChangesAsync();
+        }
+
+        var accepted = (await (await _client.PostAsJsonAsync(
+            $"/api/restaurante/delivery-orders/{delivery.Id}/accept", new { })).Content.ReadFromJsonAsync<DeliveryOrderDto>())!;
+        var orderId = accepted.RestOrderId!.Value;
+        (await _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/close", new { })).EnsureSuccessStatusCode();
+
+        // a 10% taxa de serviço is on for the salão — the delivery quote never had it
+        (string StoreType, bool Couvert, decimal? CouvertPrice, bool CouvertAuto, bool Fee, decimal? FeePct, string Types)? previous = null;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            var storeId = await db.RestOrders.IgnoreQueryFilters().Where(o => o.Id == orderId).Select(o => o.StoreId).FirstAsync();
+            var settings = await db.FoodServiceSettings.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.StoreId == storeId);
+            if (settings is not null)
+            {
+                previous = (settings.StoreType, settings.CouvertEnabled, settings.CouvertPricePerPerson, settings.CouvertAutomatic,
+                            settings.ServiceFeeEnabled, settings.ServiceFeePercent, settings.OrderTypesEnabled);
+                settings.Update(settings.StoreType, settings.CouvertEnabled, settings.CouvertPricePerPerson,
+                    settings.CouvertAutomatic, true, 10m, settings.OrderTypesEnabled);
+                await db.SaveChangesAsync();
+            }
+        }
+
+        HttpResponseMessage pay;
+        try
+        {
+            pay = await _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/pay",
+                new PayOrderRequest([new PaymentInputDto("Cash", "Cash", 100m)]));
+        }
+        finally
+        {
+            if (previous is { } p)
+            {
+                using var scope = _factory.Services.CreateScope();
+                var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+                var storeId = await db.RestOrders.IgnoreQueryFilters().Where(o => o.Id == orderId).Select(o => o.StoreId).FirstAsync();
+                var settings = await db.FoodServiceSettings.IgnoreQueryFilters().FirstAsync(x => x.StoreId == storeId);
+                settings.Update(p.StoreType, p.Couvert, p.CouvertPrice, p.CouvertAuto, p.Fee, p.FeePct, p.Types);
+                await db.SaveChangesAsync();
+            }
+        }
+        pay.StatusCode.Should().Be(HttpStatusCode.OK, await pay.Content.ReadAsStringAsync());
+        var order = (await pay.Content.ReadFromJsonAsync<OrderDto>())!;
+        order.ServiceFeeAmount.Should().Be(0m);
+        order.Total.Should().Be(29.90m + 7.50m - 5m);
+
+        order.ItemsSubtotal.Should().Be(29.90m);
+        order.DeliveryFeeAmount.Should().Be(7.50m);
+        order.DiscountAmount.Should().Be(5m);
+        order.Total.Should().Be(order.ItemsSubtotal + order.CouvertAmount + order.ServiceFeeAmount + 7.50m - 5m);
+
+        var sale = await _client.GetFromJsonAsync<Nexo.Application.Features.Sales.SaleDto>($"/api/sales/{order.SaleId}");
+        sale!.Total.Should().Be(order.Total);                                  // the sale charges the quote
+        sale.Status.Should().Be("Paid");
+    }
+
     // ── 11. Rastreamento em /api/public/orders/{token} ────────────────────────
 
     [Fact]

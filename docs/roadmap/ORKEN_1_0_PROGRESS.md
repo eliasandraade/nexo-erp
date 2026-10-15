@@ -17,7 +17,8 @@
 | #50 | Contas a receber | `645fb56` | `LedgerCustomerAndSettlement` (aditiva + cliente do título + reexecução idempotente do backfill) | Em produção |
 | #51 | Contas a pagar e recorrências | `0bc1844` | `PayablesSupplierAndRecurrences` (aditiva + fornecedor das compras) | Em produção |
 | #52 | Fluxo de caixa | `fbdb126` | `AccountOpeningBalance` (aditiva) | Em produção |
-| #53 | Integração financeira das verticais | — | `VerticalExpensesInLedger` (backfill: despesas do restaurante e movimentações confirmadas) | Em revisão |
+| #53 | Integração financeira das verticais | `511f9c4` | `VerticalExpensesInLedger` (backfill: despesas do restaurante e movimentações confirmadas) | Em produção |
+| #54 | Menu: pedido → venda | — | `RestOrderDeliveryTerms` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -550,4 +551,23 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
 | Integração das verticais | ○ | ~80% | data de pagamento na tela de despesas do restaurante, folha a partir do cadastro de funcionários |
 
 Livro único, competência × caixa, títulos com baixa parcial, recorrências, fluxo de caixa e verticais no livro: o financeiro deixou de ser cinco registros paralelos.
+
+## PR 54 — Menu: pedido → venda
+
+- **Antes:** a comanda já virava venda (`SaleService`), mas o pedido de delivery perdia dinheiro no caminho.
+  - O total cotado ao cliente era itens + taxa de entrega − desconto do cupom. Ao ser aceito, o pedido virava uma comanda só com os itens.
+  - Na venda, a **taxa de entrega sumia da receita** e o **desconto do cupom não era aplicado**: o valor cobrado diferia do cotado.
+  - Além disso, a **taxa de serviço (10% do garçom)** era cobrada também em delivery e retirada.
+  - E o endpoint genérico `POST /api/restaurante/delivery-orders`, acessível a qualquer usuário do salão, **aceitava o preço enviado pelo cliente**, que seguia até a venda.
+- **Agora:**
+  - A comanda carrega `delivery_fee_amount` e `discount_amount` do pedido aceito.
+  - O total é itens + couvert + serviço + entrega − desconto.
+  - A venda é confirmada com a entrega nos acréscimos e o cupom no desconto, então **cobra exatamente o que foi cotado**. O livro registra essa receita.
+  - Taxa de serviço só em salão e balcão; delivery e retirada não pagam.
+  - No endpoint genérico, **produto do catálogo usa o preço e o nome do catálogo** (e o adicional usa o do cadastro). Item sem produto (externo, não mapeado) mantém o preço declarado, mas nunca chega à comanda.
+- **Telas:** a conta da comanda e o fechamento mostram taxa de entrega e desconto do cupom.
+- **Decisão registrada:** preço próprio por marketplace (iFood com preço diferente do salão) fica para listas de preço por canal, uma regra comercial a decidir. Hoje vale o preço do catálogo.
+- **Testes:** integração em `DeliveryPortalFlowTests`. Com taxa de serviço de 10% ligada no salão:
+  - o pedido por WhatsApp com preço adulterado sai com o preço do catálogo;
+  - com entrega de R$ 7,50 e cupom de R$ 5, a venda fecha em R$ 32,40, igual ao cotado, sem taxa de serviço.
 
