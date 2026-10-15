@@ -14,6 +14,8 @@ public class UserService
     private readonly ICurrentTenant _currentTenant;
 
     private readonly IUserSessionRevoker? _sessions;
+    private readonly IUserInviter? _inviter;
+    private readonly Nexo.Application.Features.Auth.LoginAttemptGuard? _attempts;
 
     public UserService(
         IUserRepository users,
@@ -21,8 +23,12 @@ public class UserService
         IAuditWriter audit,
         ICurrentUser currentUser,
         ICurrentTenant currentTenant,
-        IUserSessionRevoker? sessions = null)
+        IUserSessionRevoker? sessions = null,
+        IUserInviter? inviter = null,
+        Nexo.Application.Features.Auth.LoginAttemptGuard? attempts = null)
     {
+        _attempts = attempts;
+        _inviter = inviter;
         _sessions = sessions;
         _users = users;
         _hasher = hasher;
@@ -53,7 +59,15 @@ public class UserService
             throw new ConflictException($"Email '{request.Email}' is already in use.");
 
         var role = ParseRole(request.Role);
-        var hash = _hasher.Hash(request.Password);
+        var invite = request.SendInvite;
+        if (invite && (string.IsNullOrWhiteSpace(request.Email) || _inviter is null))
+            throw new DomainException("Informe o e-mail para enviar o convite.");
+        if (invite && !_inviter!.CanInvite)
+            throw new DomainException("O envio de e-mails não está configurado: defina uma senha para este usuário.");
+        if (!invite && (string.IsNullOrEmpty(request.Password) || request.Password.Length < 6))
+            throw new DomainException("A senha deve ter no mínimo 6 caracteres.");
+        // invited: nobody knows this password — the person sets one through the link
+        var hash = _hasher.Hash(invite ? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)) : request.Password);
 
         var user = User.Create(
             tenantId:               _currentTenant.Id,
@@ -78,8 +92,22 @@ public class UserService
 
         await _users.AddAsync(user, ct);
         await _users.SaveChangesAsync(ct);
+        if (invite) await _inviter!.SendInviteAsync(user.Id, ct);
 
         return MapToDto(user);
+    }
+
+    /// <summary>E-mails a fresh invite link (the previous one stops working).</summary>
+    public async Task ResendInviteAsync(Guid id, CancellationToken ct = default)
+    {
+        var user = await _users.GetByIdAsync(id, ct) ?? throw new NotFoundException("User", id);
+        if (_inviter is null || !_inviter.CanInvite)
+            throw new DomainException("O envio de e-mails não está configurado.");
+        if (string.IsNullOrWhiteSpace(user.Email))
+            throw new DomainException("Este usuário não tem e-mail.");
+        if (user.Status is not (UserStatus.Active or UserStatus.PendingVerification))
+            throw new DomainException("Usuário bloqueado ou inativo não recebe convite.");
+        await _inviter.SendInviteAsync(user.Id, ct);
     }
 
     public async Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken ct = default)
@@ -88,6 +116,7 @@ public class UserService
             ?? throw new NotFoundException("User", id);
 
         var role = ParseRole(request.Role);
+        var previousEmail = user.Email;
 
         user.UpdateProfile(
             fullName: request.FullName,
@@ -98,6 +127,12 @@ public class UserService
 
         if (request.Status is not null)
             user.SetStatus(ParseStatus(request.Status));
+
+        // A pending invite/reset link went to the old address (maybe a typo): it must stop working.
+        // Same when the account is blocked or deactivated.
+        if (!string.Equals(previousEmail, user.Email, StringComparison.OrdinalIgnoreCase)
+            || user.Status is not (UserStatus.Active or UserStatus.PendingVerification))
+            user.ClearPasswordResetToken();
 
         _audit.Stage(
             actionType:  AuditActions.UserUpdated,
@@ -121,8 +156,14 @@ public class UserService
         var user = await _users.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("User", id);
 
+        var account = Nexo.Application.Features.Auth.LoginAttemptGuard.ForUser(user.Id);
+        if (_attempts is not null && await _attempts.IsLockedAsync(account, ct))
+            throw new ForbiddenException("Muitas tentativas com senha errada. Tente de novo em 15 minutos.");
         if (!_hasher.Verify(request.CurrentPassword, user.PasswordHash))
-            throw new ForbiddenException("Current password is incorrect.");
+        {
+            if (_attempts is not null) await _attempts.RegisterFailureAsync(account, ct);
+            throw new ForbiddenException("A senha atual está incorreta.");
+        }
 
         user.ChangePasswordHash(_hasher.Hash(request.NewPassword));
         // a changed password ends every session (a stolen session must not survive it)
@@ -151,7 +192,10 @@ public class UserService
         var user = await _users.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("User", id);
 
-        user.ChangePasswordHash(_hasher.Hash(request.NewPassword), clearRequireChange: true);
+        user.ChangePasswordHash(_hasher.Hash(request.NewPassword), clearRequireChange: false);
+        // the manager knows this password: the person replaces it on the next sign-in
+        user.RequirePasswordChangeOnNextLogin();
+        user.ClearPasswordResetToken();   // an older invite/reset link must not override it
         user.BumpSecurityStamp();
         if (_sessions is not null) await _sessions.RevokeAllAsync(user.Id, ct);
 
@@ -185,8 +229,12 @@ public class UserService
         if (user.Role != UserRole.Gerente && user.Role != UserRole.Diretoria)
             return new ValidateManagerResponse(false, "Usuário não possui autorização gerencial.", null, null);
 
+        var managerAccount = Nexo.Application.Features.Auth.LoginAttemptGuard.ForUser(user.Id);
+        if (_attempts is not null && await _attempts.IsLockedAsync(managerAccount, ct))
+            return new ValidateManagerResponse(false, "Muitas tentativas. Tente de novo em 15 minutos.", null, null);
         if (!_hasher.Verify(request.Password, user.PasswordHash))
         {
+            if (_attempts is not null) await _attempts.RegisterFailureAsync(managerAccount, ct);
             _audit.Stage(
                 actionType:  AuditActions.ManagerAuthorization,
                 severity:    AuditSeverity.Critical,

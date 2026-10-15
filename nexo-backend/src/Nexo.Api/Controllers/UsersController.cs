@@ -119,6 +119,15 @@ public class UsersController : ControllerBase
     /// Validates manager-level credentials for authorizing sensitive POS operations.
     /// Accessible to all authenticated users (Vendedor needs manager approval).
     /// </summary>
+    /// <summary>E-mails a fresh invite link to choose the password. Diretoria only.</summary>
+    [HttpPost("{id:guid}/resend-invite")]
+    [Authorize(Roles = AppRoles.Directors)]
+    public async Task<IActionResult> ResendInvite(Guid id, CancellationToken ct)
+    {
+        await _userService.ResendInviteAsync(id, ct);
+        return NoContent();
+    }
+
     [HttpPost("validate-manager")]
     [EnableRateLimiting("credential-check")]
     public async Task<ActionResult<ValidateManagerResponse>> ValidateManager(

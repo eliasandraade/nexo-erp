@@ -26,6 +26,7 @@ export interface CreateUserPayload {
   phone?: string | null;
   notes?: string | null;
   requirePasswordChange?: boolean;
+  sendInvite?: boolean;
 }
 
 export interface UpdateUserPayload {
@@ -75,6 +76,10 @@ export interface StoreBriefDto {
   name:   string;
   status: string;
 }
+
+/** E-mails a fresh invite link (the previous one stops working). */
+export const resendInvite = (id: string): Promise<void> =>
+  apiClient.post<void>(`/users/${id}/resend-invite`);
 
 export const listAvailableStores = (): Promise<StoreBriefDto[]> =>
   apiClient.get<StoreBriefDto[]>("/stores");

@@ -44,11 +44,12 @@ export const userService = {
       fullName:              input.name.trim(),
       email:                 input.email.trim(),
       login:                 input.login.trim(),
-      password:              input.password ?? "nexo@temp",
+      password:              input.sendInvite ? "" : input.password ?? "",
       role:                  input.role,
       phone:                 input.phone || null,
       notes:                 input.notes || null,
-      requirePasswordChange: input.requirePasswordChange,
+      requirePasswordChange: input.sendInvite ? false : input.requirePasswordChange,
+      sendInvite:            input.sendInvite ?? false,
     }));
   },
 

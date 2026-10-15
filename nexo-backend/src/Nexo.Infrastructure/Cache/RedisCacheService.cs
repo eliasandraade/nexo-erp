@@ -161,6 +161,23 @@ public class RedisCacheService : ICacheService
         }
     }
 
+    public async Task<long?> IncrementAsync(string key, TimeSpan window, CancellationToken ct = default)
+    {
+        if (RedisUnavailable) return null;
+        try
+        {
+            var db = _redis.GetDatabase();
+            var value = await db.StringIncrementAsync(key).WaitAsync(_callTimeout, ct);
+            if (value == 1) await db.KeyExpireAsync(key, window).WaitAsync(_callTimeout, ct);
+            return value;
+        }
+        catch (Exception ex)
+        {
+            TripCircuit(ex, "INCR", key);
+            return null;
+        }
+    }
+
     public async Task SetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default)
     {
         if (RedisUnavailable) return;

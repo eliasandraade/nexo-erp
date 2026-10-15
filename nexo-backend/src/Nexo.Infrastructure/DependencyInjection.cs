@@ -250,6 +250,7 @@ public static class DependencyInjection
         services.AddScoped<RegistrationService>();
         services.AddScoped<AccountSecurityService>();
         services.AddScoped<IUserSessionRevoker>(sp => sp.GetRequiredService<AccountSecurityService>());
+        services.AddScoped<IUserInviter>(sp => sp.GetRequiredService<AccountSecurityService>());
 
         // ── Audit ─────────────────────────────────────────────────────────────
         services.AddScoped<IAuditWriter, AuditWriterService>();

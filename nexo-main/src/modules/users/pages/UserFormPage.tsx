@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "../services/userService";
-import { adminResetPassword } from "../api/users.api";
+import { adminResetPassword, resendInvite } from "../api/users.api";
 import type { UserFormInput } from "../types";
 import { UserMainDataSection, UserAccessSection, UserSecuritySection } from "../components/UserFormSections";
 import { UserSummaryCard } from "../components/UserSummaryCard";
@@ -18,6 +18,7 @@ const defaultForm: UserFormInput = {
   name: "", email: "", login: "", phone: "",
   role: "vendedor", company: "Andrade Systems", store: "", status: "active",
   password: "", passwordConfirm: "", requirePasswordChange: false, blocked: false, notes: "",
+  sendInvite: true,
 };
 
 export default function UserFormPage() {
@@ -75,11 +76,24 @@ export default function UserFormPage() {
     if ((form.role === "gerente" || form.role === "vendedor") && (!form.store || form.store === "none")) {
       e.store = "Loja é obrigatória para este perfil";
     }
-    if (isNew && !form.password) e.password = "Senha é obrigatória";
-    if (isNew && form.password && form.password.length < 6) e.password = "Senha deve ter ao menos 6 caracteres";
-    if (form.password && form.password !== form.passwordConfirm) e.passwordConfirm = "Senhas não conferem";
+    if (isNew && !form.sendInvite && !form.password) e.password = "Senha é obrigatória";
+    if (isNew && !form.sendInvite && form.password && form.password.length < 6) e.password = "Senha deve ter ao menos 6 caracteres";
+    if (!(isNew && form.sendInvite) && form.password && form.password !== form.passwordConfirm) e.passwordConfirm = "Senhas não conferem";
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  const [resending, setResending] = useState(false);
+  const handleResendInvite = async () => {
+    setResending(true);
+    try {
+      await resendInvite(id!);
+      toast({ title: "Convite reenviado", description: `Enviamos um novo link para ${form.email.trim()}.` });
+    } catch (err) {
+      toast({ title: "Não foi possível reenviar", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setResending(false);
+    }
   };
 
   const handleSave = async () => {
@@ -97,7 +111,10 @@ export default function UserFormPage() {
           await adminResetPassword(id!, form.password);
         }
       }
-      toast({ title: isNew ? "Usuário criado com sucesso" : "Usuário atualizado com sucesso" });
+      toast({
+        title: isNew ? "Usuário criado com sucesso" : "Usuário atualizado com sucesso",
+        description: isNew && form.sendInvite ? `Enviamos para ${form.email.trim()} o link para criar a senha.` : undefined,
+      });
       navigate("/usuarios");
     } catch (err) {
       const detail = err instanceof Error ? err.message : undefined;
@@ -158,6 +175,12 @@ export default function UserFormPage() {
             <TabsContent value="seguranca">
               <SectionCard title="Segurança">
                 <UserSecuritySection form={form} onChange={onChange} errors={errors} isEdit={!isNew} />
+                {!isNew && (
+                  <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                    <Button type="button" variant="outline" size="sm" disabled={resending} onClick={handleResendInvite}>Reenviar convite por e-mail</Button>
+                    <span className="text-xs text-muted-foreground">Manda um novo link para a pessoa criar a senha (o anterior deixa de valer).</span>
+                  </div>
+                )}
               </SectionCard>
             </TabsContent>
           </Tabs>

@@ -66,6 +66,15 @@ public class AuthController : ControllerBase
         var userAgentRaw = Request.Headers.UserAgent.ToString();
         var userAgent = string.IsNullOrWhiteSpace(userAgentRaw) ? null
             : userAgentRaw.Length > 500 ? userAgentRaw[..500] : userAgentRaw;
+        // An e-mail login may be a platform operator: check that first, with its own lockout —
+        // otherwise every platform sign-in counted as a wrong password for a same-named tenant
+        // user (and could lock the operator out), and platform logins had no per-account limit.
+        if (request.Login.Contains('@'))
+        {
+            var platformAttempt = await TryPlatformLoginAsync(request, ct);
+            if (platformAttempt is not null) return platformAttempt;
+        }
+
         var outcome = await _authService.LoginAsync(request, ipAddress, userAgent, ct);
 
         if (outcome.IsSuccess)
@@ -105,38 +114,59 @@ public class AuthController : ControllerBase
         if (outcome.ErrorCode == "email_not_verified")
             return Unauthorized(new { error = "E-mail não verificado. Verifique sua caixa de entrada.", code = "email_not_verified" });
 
+        if (outcome.ErrorCode == "account_locked")
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                error = $"Muitas tentativas com senha errada. Tente de novo em {AuthService.LockoutWindow.TotalMinutes:0} minutos ou use \"Esqueci a senha\".",
+                code = "account_locked",
+            });
+
         if (outcome.ErrorCode == "account_blocked")
             return Unauthorized(new { error = "Conta bloqueada. Entre em contato com o suporte." });
 
         // Platform user fallback: if login looks like an email, try PlatformUsers table.
-        if (outcome.ErrorCode == "invalid_credentials" && request.Login.Contains('@'))
-        {
-            var email = request.Login.Trim().ToLowerInvariant();
-            var platformUser = await _db.PlatformUsers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(u => u.Email == email, ct);
-
-            if (platformUser is not null && _hasher.Verify(request.Password, platformUser.PasswordHash))
-            {
-                var platformResult = _jwt.GeneratePlatformToken(platformUser);
-                var platformSession = new SessionDto(
-                    UserId:        platformUser.Id.ToString(),
-                    TenantId:      string.Empty,
-                    Name:          platformUser.Email,
-                    Role:          platformUser.Role,
-                    Login:         platformUser.Email,
-                    Email:         platformUser.Email,
-                    ActiveModules: [],
-                    StoreId:       null,
-                    StoreIds:      [],
-                    CompanyName:   "NexoERP Platform",
-                    Type:          "platform");
-
-                return Ok(new LoginResponse(platformResult.AccessToken, string.Empty, platformResult.ExpiresAt, platformSession));
-            }
-        }
-
         return Unauthorized(new { error = "Invalid login or password." });
+    }
+
+    /// <summary>
+    /// Platform operator sign-in through the shared login form. Null = not a platform account
+    /// (or wrong password: the tenant login runs next). Locked operators get 429.
+    /// </summary>
+    private async Task<ActionResult<LoginResponse>?> TryPlatformLoginAsync(LoginRequest request, CancellationToken ct)
+    {
+        var email = request.Login.Trim().ToLowerInvariant();
+        var platformUser = await _db.PlatformUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Email == email, ct);
+        if (platformUser is null) return null;
+
+        var attempts = HttpContext.RequestServices.GetRequiredService<LoginAttemptGuard>();
+        var account = LoginAttemptGuard.ForPlatform(platformUser.Id);
+        if (await attempts.IsLockedAsync(account, ct))
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                error = $"Muitas tentativas com senha errada. Tente de novo em {AuthService.LockoutWindow.TotalMinutes:0} minutos.",
+                code = "account_locked",
+            });
+        if (!_hasher.Verify(request.Password, platformUser.PasswordHash))
+        {
+            await attempts.RegisterFailureAsync(account, ct);
+            return null;
+        }
+        await attempts.ResetAsync(account, ct);
+
+        var platformResult = _jwt.GeneratePlatformToken(platformUser);
+        var platformSession = new SessionDto(
+            UserId:        platformUser.Id.ToString(),
+            TenantId:      string.Empty,
+            Name:          platformUser.Email,
+            Role:          platformUser.Role,
+            Login:         platformUser.Email,
+            Email:         platformUser.Email,
+            ActiveModules: [],
+            StoreId:       null,
+            StoreIds:      [],
+            CompanyName:   "NexoERP Platform",
+            Type:          "platform");
+        return Ok(new LoginResponse(platformResult.AccessToken, string.Empty, platformResult.ExpiresAt, platformSession));
     }
 
     /// <summary>
@@ -230,7 +260,8 @@ public class AuthController : ControllerBase
             StoreId:       _currentUser.StoreId == Guid.Empty ? null : _currentUser.StoreId.ToString(),
             StoreIds:      stores.Select(s => s.Id.ToString()).ToList(),
             CompanyName:   tenant?.TradeName ?? tenant?.CompanyName ?? "",
-            TrialEndsAt:   trialEndsAt));
+            TrialEndsAt:   trialEndsAt,
+            RequirePasswordChange: user.RequirePasswordChange));
     }
 
     /// <summary>

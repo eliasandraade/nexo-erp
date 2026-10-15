@@ -28,6 +28,9 @@ public static class AuditActions
     public const string UserLoggedOut          = "user_logged_out";
     public const string UserPasswordChanged    = "user_password_changed";
     public const string UserSessionRevoked     = "user_session_revoked";
+    public const string UserLoginFailed        = "user_login_failed";
+    public const string UserLoginLocked        = "user_login_locked";
+    public const string UserInvited            = "user_invited";
 
     // Users
     public const string UserCreated            = "user_created";

@@ -10,6 +10,7 @@ const MIN = 6;
 export default function ResetPasswordPage() {
   const [params] = useSearchParams();
   const [token] = useState(() => params.get("token") ?? "");
+  const [invite] = useState(() => params.get("convite") === "1");
   const navigate = useNavigate();
   // keep the token out of the address bar / history once read
   useEffect(() => {
@@ -51,11 +52,13 @@ export default function ResetPasswordPage() {
   return (
     <div>
       <div className="mb-8">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-primary">Recuperar acesso</span>
+        <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-primary">{invite ? "Boas-vindas" : "Recuperar acesso"}</span>
         <h1 className="mt-4 font-sans text-[26px] sm:text-[28px] font-semibold text-foreground leading-[1.1] tracking-tight">
-          Criar nova senha
+          {invite ? "Criar sua senha" : "Criar nova senha"}
         </h1>
-        <p className="mt-3 text-[13px] text-muted-foreground">Depois de salvar, você entra de novo em todos os aparelhos.</p>
+        <p className="mt-3 text-[13px] text-muted-foreground">
+          {invite ? "Escolha a senha do seu acesso. Depois é só entrar com o seu login." : "Depois de salvar, você entra de novo em todos os aparelhos."}
+        </p>
       </div>
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         <div>

@@ -17,7 +17,7 @@ public sealed record UserSessionDto(Guid Id, DateTime StartedAt, DateTime LastUs
 /// Account recovery and session control for tenant users: password reset by e-mail (one-time,
 /// hashed, 1 h), "sair de todos os dispositivos", and the revocation every password change uses.
 /// </summary>
-public sealed class AccountSecurityService : IUserSessionRevoker
+public sealed class AccountSecurityService : IUserSessionRevoker, IUserInviter
 {
     public const int MinPasswordLength = 6;
     private static readonly TimeSpan ResetLifetime = TimeSpan.FromHours(1);
@@ -74,8 +74,10 @@ public sealed class AccountSecurityService : IUserSessionRevoker
         var frontendUrl = (_config["App:FrontendUrl"] ?? string.Empty).TrimEnd('/');
         foreach (var (user, company) in accounts.Select(a => (a.User, a.Company)))
         {
-            // a link sent in the last minutes stays the valid one
-            if (user.PasswordResetExpiresAt is { } exp && exp > now.Add(ResetLifetime - ResetCooldown)) continue;
+            // a reset link sent in the last minutes stays the valid one (an invite — longer-lived —
+            // doesn't hold back a reset: asking to reset replaces it)
+            if (user.PasswordResetExpiresAt is { } exp
+                && exp > now.Add(ResetLifetime - ResetCooldown) && exp <= now.Add(ResetLifetime)) continue;
 
             var token = NewToken();
             user.SetPasswordResetToken(Hash(token), now.Add(ResetLifetime));
@@ -115,6 +117,57 @@ public sealed class AccountSecurityService : IUserSessionRevoker
         await _db.SaveChangesAsync(ct);
         await ForgetStampAsync(user.Id, ct);
         return true;
+    }
+
+    // ── Invite ────────────────────────────────────────────────────────────────
+
+    private static readonly TimeSpan InviteLifetime = TimeSpan.FromHours(72);
+
+    /// <summary>
+    /// E-mails a just-created user a link (72 h, one use) to choose their own password — the
+    /// manager never knows it. Reuses the reset link (same endpoint and page).
+    /// </summary>
+    public bool CanInvite => _email.CanDeliver;
+
+    public async Task SendInviteAsync(Guid userId, CancellationToken ct = default)
+    {
+        var row = await (
+                from u in _db.Users.IgnoreQueryFilters()
+                join t in _db.Tenants.IgnoreQueryFilters() on u.TenantId equals t.Id
+                where u.Id == userId
+                select new { User = u, Company = t.TradeName ?? t.CompanyName })
+            .FirstOrDefaultAsync(ct);
+        if (row is null || string.IsNullOrWhiteSpace(row.User.Email)) return;
+
+        var token = NewToken();
+        row.User.SetPasswordResetToken(Hash(token), DateTime.UtcNow.Add(InviteLifetime));
+        _audit.Stage(AuditActions.UserInvited, AuditSeverity.Info, "User", row.User.Id.ToString(),
+            $"Invite e-mailed to '{row.User.Login}'.", tenantId: row.User.TenantId);
+        await _db.SaveChangesAsync(ct);
+
+        var frontendUrl = (_config["App:FrontendUrl"] ?? string.Empty).TrimEnd('/');
+        var link = $"{frontendUrl}/redefinir-senha?token={Uri.EscapeDataString(token)}&convite=1";
+        var result = await _email.SendAsync(row.User.Email, $"Seu acesso ao Orken — {row.Company}",
+            InviteHtml(row.User.FullName, row.User.Login, row.Company, link), ct);
+        if (result != EmailSendResult.Sent)
+            _logger.LogWarning("Invite e-mail for user {UserId} not delivered ({Result})", row.User.Id, result);
+    }
+
+    private static string InviteHtml(string name, string login, string company, string link)
+    {
+        var e = (string v) => WebUtility.HtmlEncode(v);
+        return $"""
+            <!DOCTYPE html>
+            <html lang="pt-BR"><body style="margin:0;padding:24px;background:#f6f7f9;font-family:Arial,Helvetica,sans-serif;color:#111827">
+              <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:12px;padding:28px">
+                <p style="margin:0 0 12px;font-size:15px">Olá, {e(name)}.</p>
+                <p style="margin:0 0 8px;font-size:15px"><strong>{e(company)}</strong> criou um acesso para você no Orken.</p>
+                <p style="margin:0 0 20px;font-size:15px">Seu login: <strong>{e(login)}</strong></p>
+                <p style="margin:0 0 20px"><a href="{e(link)}" style="display:inline-block;background:#4f46e5;color:#ffffff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:600">Criar minha senha</a></p>
+                <p style="margin:0;font-size:13px;color:#6b7280">O link vale por 72 horas e só pode ser usado uma vez. Se expirar, use "Esqueci a senha" na tela de login.</p>
+              </div>
+            </body></html>
+            """;
     }
 
     // ── Sessions ──────────────────────────────────────────────────────────────
@@ -158,6 +211,9 @@ public sealed class AccountSecurityService : IUserSessionRevoker
             await _cache.RemoveAsync($"refresh:valid:{s.RefreshJti}", ct);
         }
         await _cache.RemoveAsync($"user:stamp:{userId}", ct);
+        // a new password ends any lockout (the 429 tells people to use "Esqueci a senha")
+        await _cache.RemoveAsync($"login:fail:{userId}", ct);
+        await _cache.RemoveAsync($"login:locked:{userId}", ct);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

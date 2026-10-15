@@ -94,6 +94,7 @@ function PerfilSkeleton() {
 
 export default function PerfilPage() {
   const { session, logout } = useAuth();
+  const mustChange = !!session?.requirePasswordChange;
   const navigate = useNavigate();
   const sessionsQ = useQuery({ queryKey: ["auth", "sessions"], queryFn: fetchMySessions });
   const [confirmAll, setConfirmAll] = useState(false);
@@ -273,6 +274,13 @@ export default function PerfilPage() {
       </div>
 
       {/* ── Segurança ───────────────────────────────────────────────────── */}
+      {mustChange && (
+        <div role="alert" className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-[13px] text-foreground">
+          <p className="font-semibold">Crie sua própria senha para continuar.</p>
+          <p className="mt-0.5 text-muted-foreground">A senha atual foi definida pelo gestor. Troque-a abaixo — depois você entra de novo com a nova.</p>
+        </div>
+      )}
+
       <SectionCard
         title="Segurança"
         description="Altere sua senha de acesso ao sistema."

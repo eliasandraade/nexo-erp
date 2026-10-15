@@ -14,6 +14,9 @@ public class AuthService
     private readonly ISessionStore _sessions;
     private readonly ICurrentTenant _currentTenant;
 
+    private readonly IAuditWriter? _audit;
+    private readonly LoginAttemptGuard? _attempts;
+
     public AuthService(
         IUserRepository users,
         ITenantRepository tenants,
@@ -22,7 +25,9 @@ public class AuthService
         IJwtTokenService jwt,
         ICacheService cache,
         ISessionStore sessions,
-        ICurrentTenant currentTenant)
+        ICurrentTenant currentTenant,
+        IAuditWriter? audit = null,
+        LoginAttemptGuard? attempts = null)
     {
         _users    = users;
         _tenants  = tenants;
@@ -31,8 +36,12 @@ public class AuthService
         _jwt      = jwt;
         _cache    = cache;
         _sessions = sessions;
+        _audit = audit;
+        _attempts = attempts;
         _currentTenant = currentTenant;
     }
+
+    public static readonly TimeSpan LockoutWindow = LoginAttemptGuard.Window;
 
     /// <summary>
     /// Authenticates a user and returns access + refresh tokens wrapped in LoginOutcome.
@@ -53,10 +62,19 @@ public class AuthService
         if (user.Status == UserStatus.Inactive || user.Status == UserStatus.Blocked)
             return LoginOutcome.Fail("account_blocked");
 
-        if (!_hasher.Verify(request.Password, user.PasswordHash))
-            return LoginOutcome.Fail("invalid_credentials");
+        // Per-account lockout: the IP limiter alone is easy to dodge (rotating addresses). While
+        // locked the password is not even checked — a guess can't be confirmed meanwhile.
+        var account = LoginAttemptGuard.ForUser(user.Id);
+        if (_attempts is not null && await _attempts.IsLockedAsync(account, ct))
+            return LoginOutcome.Fail("account_locked");
 
+        if (!_hasher.Verify(request.Password, user.PasswordHash))
+            return await WrongPasswordAsync(user, account, ct);
+
+        if (_attempts is not null) await _attempts.ResetAsync(account, ct);
         user.RecordAccess();
+        _audit?.Stage(AuditActions.UserLoggedIn, AuditSeverity.Info, "User", user.Id.ToString(),
+            $"User '{user.Login}' signed in.", tenantId: user.TenantId, actorId: user.Id, actorName: user.FullName);
         await _users.SaveChangesAsync(ct);
 
         // Load tenant slug + active modules for JWT claims
@@ -104,13 +122,27 @@ public class AuthService
             StoreId:       storeId == Guid.Empty ? null : storeId.ToString(),
             StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
             CompanyName:   companyName,
-            TrialEndsAt:   trialEndsAt);
+            TrialEndsAt:   trialEndsAt,
+            RequirePasswordChange: user.RequirePasswordChange);
 
         return LoginOutcome.Ok(new LoginResponse(
             tokens.AccessToken,
             tokens.RefreshToken,
             tokens.AccessTokenExpiresAt,
             session));
+    }
+
+    /// <summary>Counts the wrong password (maybe locking the account) and audits it.</summary>
+    private async Task<LoginOutcome> WrongPasswordAsync(Domain.Entities.User user, string account, CancellationToken ct)
+    {
+        var lockedNow = _attempts is not null && await _attempts.RegisterFailureAsync(account, ct);
+        _audit?.Stage(lockedNow ? AuditActions.UserLoginLocked : AuditActions.UserLoginFailed,
+            lockedNow ? AuditSeverity.Critical : AuditSeverity.Warning, "User", user.Id.ToString(),
+            lockedNow ? $"Login of '{user.Login}' paused for {LockoutWindow.TotalMinutes:0} min after {LoginAttemptGuard.MaxFailures} wrong passwords."
+                      : $"Wrong password for '{user.Login}'.",
+            tenantId: user.TenantId, actorName: "anonymous", actorType: "system");
+        if (_audit is not null) await _users.SaveChangesAsync(ct);
+        return LoginOutcome.Fail(lockedNow ? "account_locked" : "invalid_credentials");
     }
 
     /// <summary>
@@ -251,7 +283,8 @@ public class AuthService
             StoreId:       requestedStoreId.ToString(),
             StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
             CompanyName:   tenant.TradeName ?? tenant.CompanyName,
-            TrialEndsAt:   trialEndsAt);
+            TrialEndsAt:   trialEndsAt,
+            RequirePasswordChange: user.RequirePasswordChange);
 
         return new SwitchStoreResponse(
             tokens.AccessToken,
@@ -301,8 +334,14 @@ public class AuthService
         if (user.TenantId != _currentTenant.Id)
             return new VerifyManagerResponse(false, null, null, null);
 
-        if (!_hasher.Verify(request.Password, user.PasswordHash))
+        var account = LoginAttemptGuard.ForUser(user.Id);
+        if (_attempts is not null && await _attempts.IsLockedAsync(account, ct))
             return new VerifyManagerResponse(false, null, null, null);
+        if (!_hasher.Verify(request.Password, user.PasswordHash))
+        {
+            if (_attempts is not null) await _attempts.RegisterFailureAsync(account, ct);
+            return new VerifyManagerResponse(false, null, null, null);
+        }
 
         if (!user.IsManager())
             return new VerifyManagerResponse(false, null, null, null);

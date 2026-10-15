@@ -42,7 +42,8 @@ public record SessionDto(
     string CompanyName = "",
     string Type = "tenant",
     bool IsNewAccount = false,
-    DateTime? TrialEndsAt = null);
+    DateTime? TrialEndsAt = null,
+    bool RequirePasswordChange = false);
 
 public record LoginResponse(
     string AccessToken,

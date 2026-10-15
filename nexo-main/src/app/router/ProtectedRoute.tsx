@@ -26,6 +26,11 @@ export function ProtectedRoute() {
 
   if (!session) return isReady ? <Navigate to="/login" replace /> : null;
 
+  // A temporary password (set by a manager) is replaced before anything else.
+  if (session.requirePasswordChange && !location.pathname.startsWith("/perfil")) {
+    return <Navigate to="/perfil?trocar-senha=1" replace />;
+  }
+
   // If trial has expired and no paid modules are active, force the upgrade page.
   // Allow /assinatura and /perfil so the user can still manage their account.
   const BYPASS = ["/assinatura", "/perfil"];

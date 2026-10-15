@@ -83,6 +83,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
             // production's Redis-backed behaviour. See InMemoryCacheService for details.
             services.RemoveAll<ICacheService>();
             services.AddScoped<ICacheService, InMemoryCacheService>();
+
+            // E-mail "delivers" (to nowhere) so features gated on a configured provider — invites,
+            // the customer e-mails job — behave as in production. Nothing leaves the test host.
+            services.RemoveAll<Nexo.Application.Common.Interfaces.IEmailService>();
+            services.AddScoped<Nexo.Application.Common.Interfaces.IEmailService, DeliveringTestEmailService>();
         });
 
         // JWT overrides so test tokens validate against the test server.
