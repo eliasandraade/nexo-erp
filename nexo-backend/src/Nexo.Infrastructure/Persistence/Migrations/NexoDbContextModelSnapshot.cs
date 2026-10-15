@@ -5551,6 +5551,9 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ux_svc_commission_entries_source")
                         .HasFilter("kind = 'Earning' AND reversed_at IS NULL");
 
+                    b.HasIndex("TenantId", "StoreId", "RecognizedAt")
+                        .HasDatabaseName("ix_svc_commission_entries_store_recognized");
+
                     b.ToTable("svc_commission_entries", "nexo", t =>
                         {
                             t.HasCheckConstraint("ck_svc_commission_entries_kind", "(kind = 'Earning' AND base_amount >= 0 AND commission_amount >= 0 AND reversal_of_entry_id IS NULL) OR (kind = 'Reversal' AND base_amount <= 0 AND commission_amount <= 0 AND reversal_of_entry_id IS NOT NULL AND reversed_at IS NULL)");
@@ -5717,6 +5720,9 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SubjectId")
                         .HasDatabaseName("ix_svc_customer_packages_subject_id");
+
+                    b.HasIndex("TenantId", "StoreId", "CreatedAt")
+                        .HasDatabaseName("ix_svc_customer_packages_store_created");
 
                     b.HasIndex("TenantId", "StoreId", "Status")
                         .HasDatabaseName("ix_svc_customer_packages_tenant_store_status");
@@ -6174,7 +6180,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("StoreId")
                         .HasDatabaseName("ix_svc_package_usages_store_id");
 
-                    b.HasIndex("TenantId");
+                    b.HasIndex("TenantId", "StoreId", "CreatedAt")
+                        .HasDatabaseName("ix_svc_package_usages_store_created");
 
                     b.ToTable("svc_package_usages", "nexo");
                 });
@@ -6269,6 +6276,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("StoreId")
                         .HasDatabaseName("ix_svc_payments_store_id");
+
+                    b.HasIndex("VoidedAt")
+                        .HasDatabaseName("ix_svc_payments_voided_at")
+                        .HasFilter("voided_at IS NOT NULL");
 
                     b.HasIndex("TenantId", "StoreId", "Status")
                         .HasDatabaseName("ix_svc_payments_tenant_store_status");

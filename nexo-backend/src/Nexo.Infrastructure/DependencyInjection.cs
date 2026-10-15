@@ -169,6 +169,7 @@ public static class DependencyInjection
         services.AddScoped<ISvcRecordEntryRepository, SvcRecordEntryRepository>();
         services.AddScoped<ISvcAppointmentRepository, SvcAppointmentRepository>();
         services.AddScoped<ISvcTimeBlockRepository, SvcTimeBlockRepository>();
+        services.AddScoped<ISvcFinanceQueries, SvcFinanceQueries>();
         services.AddScoped<ISvcOrderRepository, SvcOrderRepository>();
         services.AddScoped<ISvcOrderItemRepository, SvcOrderItemRepository>();
         services.AddScoped<ISvcPackageRepository, SvcPackageRepository>();

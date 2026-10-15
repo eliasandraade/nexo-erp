@@ -681,3 +681,27 @@ export const createTimeBlock = (body: { professionalId: string | null; startsAt:
   apiClient.post<SvcTimeBlockDto>("/v1/service/time-blocks", body);
 
 export const deleteTimeBlock = (id: string) => apiClient.delete<void>(`/v1/service/time-blocks/${id}`);
+
+// ── Finance panel (PR59) ──────────────────────────────────────────────────────
+export interface SvcFinanceSummaryDto {
+  from: string;
+  to: string;
+  received: number;
+  paymentsCount: number;
+  averageTicket: number;
+  receivedFromOrders: number;
+  receivedFromPackages: number;
+  voided: number;
+  voidedCount: number;
+  byMethod: { method: SvcPaymentMethod; amount: number; count: number }[];
+  byDay: { day: string; amount: number }[];
+  /** professionalId null = not informed. */
+  byProfessional: { professionalId: string | null; name: string; receivedFromOrders: number; packageServices: number; commission: number }[];
+  commissionTotal: number;
+  packagesSold: number;
+  packagesSoldValue: number;
+  appointments: { total: number; completed: number; cancelled: number; noShow: number; open: number };
+}
+/** Period in Brazil days (yyyy-mm-dd), both inclusive. */
+export const fetchServiceFinance = (from: string, to: string) =>
+  apiClient.get<SvcFinanceSummaryDto>(`/v1/service/finance/summary?from=${from}&to=${to}`);

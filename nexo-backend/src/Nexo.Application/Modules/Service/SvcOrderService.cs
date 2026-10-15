@@ -247,7 +247,7 @@ public class SvcOrderService
         if (professionalId is not { } pid) return;
         var professional = await _professionals.GetByIdAsync(pid, ct)
             ?? throw new NotFoundException("SvcProfessional", pid);
-        if (!professional.IsActive) throw new DomainException("Professional is not active.");
+        if (!professional.IsActive) throw new DomainException("Este profissional está inativo.");
     }
 
     /// <summary>
@@ -258,7 +258,7 @@ public class SvcOrderService
     private async Task EnsureNotCommissionedAsync(Guid itemId, CancellationToken ct)
     {
         if (await _commissions.EntryExistsForSourceAsync(SvcCommissionSource.OrderItem, itemId, ct))
-            throw new DomainException("This item already earned commission and can no longer be changed.");
+            throw new DomainException("Este item já gerou comissão e não pode mais ser alterado.");
     }
 
     private async Task EnsureNoItemRequiresSubjectAsync(Guid orderId, CancellationToken ct)

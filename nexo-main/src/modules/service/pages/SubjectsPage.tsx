@@ -30,6 +30,7 @@ import { useSubjects, useSetSubjectActive } from "../hooks/useSubjects";
 import { useServicePreset } from "../context/ServicePresetContext";
 import { SubjectDialog } from "../components/SubjectDialog";
 import { SubjectRecordsDialog } from "../components/SubjectRecordsDialog";
+import { pluralPt } from "../lib/plural";
 
 const KIND_LABELS: Record<SvcSubjectKind, string> = {
   Pet: "Pet",
@@ -76,8 +77,8 @@ export default function SubjectsPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Cadastros"
-        title={`${term}s`}
-        description={`${term}s dos clientes atendidos.`}
+        title={pluralPt(term)}
+        description={`${pluralPt(term)} dos clientes atendidos.`}
         actions={
           <Button onClick={() => setEditDialog({ open: true, editing: null })}>
             <Plus className="mr-2 h-4 w-4" /> Novo {term.toLowerCase()}
@@ -103,7 +104,7 @@ export default function SubjectsPage() {
           <EmptyState
             icon={Boxes}
             title={`Nenhum ${term.toLowerCase()} cadastrado`}
-            description={`Cadastre os ${term.toLowerCase()}s dos seus clientes.`}
+            description={`Cadastre os ${pluralPt(term.toLowerCase())} dos seus clientes.`}
             action={
               <Button variant="outline" onClick={() => setEditDialog({ open: true, editing: null })}>
                 <Plus className="mr-2 h-4 w-4" /> Cadastrar {term.toLowerCase()}

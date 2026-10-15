@@ -219,7 +219,7 @@ public class SvcCustomerPackageService
     private async Task<SvcProfessional> ResolveConsumingProfessionalAsync(Guid pid, CancellationToken ct)
     {
         var professional = await _professionals.GetByIdAsync(pid, ct) ?? throw new NotFoundException("SvcProfessional", pid);
-        if (!professional.IsActive) throw new DomainException("Professional is not active.");
+        if (!professional.IsActive) throw new DomainException("Este profissional está inativo.");
         return professional;
     }
 

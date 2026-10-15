@@ -35,5 +35,6 @@ public class SvcPaymentConfiguration : IEntityTypeConfiguration<SvcPayment>
         builder.HasIndex(x => x.CustomerPackageId).HasDatabaseName("ix_svc_payments_customer_package_id");
         builder.HasIndex("TenantId", "StoreId", "Status").HasDatabaseName("ix_svc_payments_tenant_store_status");
         builder.HasIndex(x => x.PaidAt).HasDatabaseName("ix_svc_payments_paid_at");
+        builder.HasIndex(x => x.VoidedAt).HasFilter("voided_at IS NOT NULL").HasDatabaseName("ix_svc_payments_voided_at");
     }
 }

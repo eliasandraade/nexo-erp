@@ -69,6 +69,8 @@ public class SvcCommissionEntryConfiguration : IEntityTypeConfiguration<SvcCommi
         builder.HasIndex(x => new { x.ProfessionalId, x.RecognizedAt })
             .HasDatabaseName("ix_svc_commission_entries_professional_recognized");
         builder.HasIndex(x => x.PayoutId).HasDatabaseName("ix_svc_commission_entries_payout_id");
+        // finance panel: a store's period
+        builder.HasIndex("TenantId", "StoreId", "RecognizedAt").HasDatabaseName("ix_svc_commission_entries_store_recognized");
         builder.HasIndex(x => x.CustomerId).HasDatabaseName("ix_svc_commission_entries_customer_id");
     }
 }

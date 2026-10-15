@@ -122,7 +122,7 @@ public class SvcAppointmentService
 
         var professional = await _professionals.GetByIdAsync(professionalId, ct)
             ?? throw new NotFoundException("SvcProfessional", professionalId);
-        if (!professional.IsActive) throw new DomainException("Professional is not active.");
+        if (!professional.IsActive) throw new DomainException("Este profissional está inativo.");
 
         var catalog = await _catalog.GetByIdAsync(catalogItemId, ct)
             ?? throw new NotFoundException("SvcCatalogItem", catalogItemId);

@@ -29,6 +29,7 @@ import type { SvcCatalogItemDto } from "../api/service.api";
 import { useCatalog, useSetCatalogItemActive } from "../hooks/useCatalog";
 import { useServicePreset } from "../context/ServicePresetContext";
 import { CatalogItemDialog } from "../components/CatalogItemDialog";
+import { pluralPt } from "../lib/plural";
 
 export default function CatalogoPage() {
   const { labels } = useServicePreset();
@@ -59,7 +60,7 @@ export default function CatalogoPage() {
       <PageHeader
         eyebrow="Cadastros"
         title="Catálogo"
-        description={`${term}s oferecidos, com duração e preço.`}
+        description={`${pluralPt(term)}: duração e preço.`}
         actions={
           <Button onClick={() => setDialog({ open: true, editing: null })}>
             <Plus className="mr-2 h-4 w-4" /> Novo {term.toLowerCase()}
@@ -85,7 +86,7 @@ export default function CatalogoPage() {
           <EmptyState
             icon={BookMarked}
             title="Catálogo vazio"
-            description={`Cadastre os ${term.toLowerCase()}s oferecidos.`}
+            description="Cadastre aqui o que você oferece, com duração e preço."
             action={
               <Button variant="outline" onClick={() => setDialog({ open: true, editing: null })}>
                 <Plus className="mr-2 h-4 w-4" /> Cadastrar {term.toLowerCase()}

@@ -85,6 +85,7 @@ const OrderDetailPage       = lazy(() => import("@/modules/service/pages/OrderDe
 const PacotesPage           = lazy(() => import("@/modules/service/pages/PacotesPage"));
 const CustomerPackagesPage  = lazy(() => import("@/modules/service/pages/CustomerPackagesPage"));
 const CustomerPackageDetailPage = lazy(() => import("@/modules/service/pages/CustomerPackageDetailPage"));
+const ServiceFinancePage = lazy(() => import("@/modules/service/pages/FinanceiroPage"));
 const PagamentosPage        = lazy(() => import("@/modules/service/pages/PagamentosPage"));
 const ServicePortalPage     = lazy(() => import("@/modules/service/pages/ServicePortalPage"));
 
@@ -212,6 +213,7 @@ export function AppRouter() {
                       <Route path="/service/customer-packages" element={<CustomerPackagesPage />} />
                       <Route path="/service/customer-packages/:id" element={<CustomerPackageDetailPage />} />
                       <Route path="/service/pagamentos" element={<PagamentosPage />} />
+                      <Route path="/service/financeiro" element={<ServiceFinancePage />} />
                       <Route path="/service/profissionais" element={<ProfissionaisPage />} />
                       <Route path="/service/catalogo" element={<CatalogoPage />} />
                       <Route path="/service/subjects" element={<SubjectsPage />} />
