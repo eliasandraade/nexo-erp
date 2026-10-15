@@ -57,6 +57,11 @@ public sealed record SalesWindow(DateOnly From, DateOnly To)
             error = "A data final vem antes da inicial.";
             return null;
         }
+        if (t.Year > 9000)
+        {
+            error = "Data final inválida.";
+            return null;
+        }
         var window = new SalesWindow(f, t);
         if (window.Days > MaxDays)
         {

@@ -2,14 +2,19 @@ import { describe, expect, it } from "vitest";
 import { fmtPeriod, methodLabel, periodProblem, presetPeriod } from "./period";
 
 describe("report periods", () => {
-  const now = new Date(2026, 2, 15, 22, 30); // 15/03/2026 22:30 local
+  const now = new Date("2026-03-15T22:30:00-03:00"); // 15/03/2026 22:30 in São Paulo
 
   it("builds the presets from the local calendar day", () => {
     expect(presetPeriod("today", now)).toEqual({ from: "2026-03-15", to: "2026-03-15" });
     expect(presetPeriod("7d", now)).toEqual({ from: "2026-03-09", to: "2026-03-15" });
     expect(presetPeriod("month", now)).toEqual({ from: "2026-03-01", to: "2026-03-15" });
     expect(presetPeriod("lastMonth", now)).toEqual({ from: "2026-02-01", to: "2026-02-28" });
-    expect(presetPeriod("lastMonth", new Date(2026, 0, 10))).toEqual({ from: "2025-12-01", to: "2025-12-31" });
+    expect(presetPeriod("lastMonth", new Date("2026-01-10T12:00:00-03:00"))).toEqual({ from: "2025-12-01", to: "2025-12-31" });
+  });
+
+  it("counts the São Paulo day even when the browser is elsewhere", () => {
+    // 02:00 UTC on the 16th is still 23:00 on the 15th in São Paulo
+    expect(presetPeriod("today", new Date("2026-03-16T02:00:00Z"))).toEqual({ from: "2026-03-15", to: "2026-03-15" });
   });
 
   it("explains a period the server would refuse", () => {

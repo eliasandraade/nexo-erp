@@ -8,9 +8,16 @@ export const MAX_DAYS = 366;
 const iso = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-/** Calendar days in the browser's zone — for an operation in Brazil, the Brazil day the server also uses. */
+/** Today's date in São Paulo — the calendar the server counts sales by, whatever zone the browser is in. */
+export function brazilToday(now = new Date()): Date {
+  const [y, m, d] = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" })
+    .format(now).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** Presets in Brazil calendar days (same as the server: a sale belongs to its day in São Paulo). */
 export function presetPeriod(preset: Exclude<PeriodPreset, "custom">, now = new Date()): Period {
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const today = brazilToday(now);
   if (preset === "today") return { from: iso(today), to: iso(today) };
   if (preset === "7d") {
     const start = new Date(today);

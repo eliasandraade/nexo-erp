@@ -11,8 +11,11 @@ namespace Nexo.Infrastructure.Reports;
 /// The single definition of "sales of a period", used by the dashboard and the sales report so the two
 /// never disagree. A sale belongs to the Brazil day it was confirmed (created, if never confirmed).
 /// Booked = confirmed, paid, partially or fully returned (drafts are abandoned checkouts; cancelled
-/// sales are counted apart). Realized = booked minus the fully returned. Returns are subtracted from
-/// the sale they belong to. Store scoping comes from the global query filters.
+/// sales are counted apart — only those that had been confirmed; a cancelled draft is an abandoned
+/// checkout). Realized = booked minus the fully returned. Returns are subtracted from the sale they
+/// belong to, in the sale's period: a closed month changes if one of its sales is returned later
+/// (the ledger books the refund on the refund day instead). Store scoping comes from the global
+/// query filters.
 /// </summary>
 public class SalesAnalytics
 {
@@ -34,7 +37,7 @@ public class SalesAnalytics
     public async Task<SalesKpis> KpisAsync(SalesWindow w, CancellationToken ct)
     {
         var byStatus = await InWindow(w)
-            .Where(s => s.Status != SaleStatus.Draft)
+            .Where(s => s.Status != SaleStatus.Draft && (s.Status != SaleStatus.Cancelled || s.ConfirmedAt != null))
             .GroupBy(s => s.Status)
             .Select(g => new
             {
@@ -68,11 +71,14 @@ public class SalesAnalytics
             Discounts: Math.Round(booked.Sum(x => x.Discount) + itemDiscounts, 2));
     }
 
-    /// <summary>Best sellers by net revenue (what was sold minus what came back).</summary>
+    /// <summary>
+    /// Best sellers by net revenue (what was sold minus what came back). Adds up to the net revenue
+    /// except for sales whose items total zero but that still charge a fee (couvert, service).
+    /// </summary>
     public async Task<IReadOnlyList<SalesReportProductDto>> TopProductsAsync(SalesWindow w, int take, CancellationToken ct)
     {
         // The sale-level discount (and any surcharge) is spread over the items by their share of the
-        // subtotal — the same way a devolução refunds — so products add up to the net revenue.
+        // subtotal — the same way a devolução refunds.
         var sold = await _db.SaleItems.AsNoTracking()
             .Join(Booked(w), i => i.SaleId, s => s.Id, (i, s) => new
             {
@@ -106,9 +112,9 @@ public class SalesAnalytics
     public async Task<IReadOnlyList<SalesReportSellerDto>> SellersAsync(SalesWindow w, int take, CancellationToken ct)
     {
         var rows = await Booked(w)
-            .Join(_db.Users, s => s.SoldByUserId, u => u.Id, (s, u) => new { u.FullName, s.Status, Net = s.Total - s.ReturnedAmount })
-            .GroupBy(x => x.FullName)
-            .Select(g => new { Name = g.Key, Sales = g.Count(x => x.Status != SaleStatus.Returned), Revenue = g.Sum(x => x.Net) })
+            .Join(_db.Users, s => s.SoldByUserId, u => u.Id, (s, u) => new { u.Id, u.FullName, s.Status, Net = s.Total - s.ReturnedAmount })
+            .GroupBy(x => new { x.Id, x.FullName })
+            .Select(g => new { Name = g.Key.FullName, Sales = g.Count(x => x.Status != SaleStatus.Returned), Revenue = g.Sum(x => x.Net) })
             .OrderByDescending(g => g.Revenue)
             .Take(take)
             .ToListAsync(ct);
@@ -150,7 +156,7 @@ public class SalesAnalytics
     /// <summary>The sales of the window, oldest first, for the spreadsheet export (drafts left out).</summary>
     public IAsyncEnumerable<SaleExportRow> ExportRows(SalesWindow w)
         => InWindow(w)
-            .Where(s => s.Status != SaleStatus.Draft)
+            .Where(s => s.Status != SaleStatus.Draft && (s.Status != SaleStatus.Cancelled || s.ConfirmedAt != null))
             .OrderBy(s => s.ConfirmedAt ?? s.CreatedAt).ThenBy(s => s.Number)
             .Select(s => new SaleExportRow(
                 s.Number,

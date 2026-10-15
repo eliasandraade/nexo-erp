@@ -985,3 +985,13 @@ O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnab
 - **Estoque e clientes:** os alertas do relatório usam o disponível (em mão − reservado), como o painel; "novos no mês" segue o calendário do Brasil; "já compraram" conta as vendas confirmadas também (antes, só as pagas).
 - **Tela `/relatorios`** (gerência): Hoje, 7 dias, Este mês, Mês passado ou datas escolhidas (com aviso antes de pedir um período inválido); faturamento por dia, produtos, vendedores, formas de pagamento com participação, estoque de agora e clientes; botão "Exportar planilha".
 - **Testes:** unitários do período (calendário do Brasil, limites, padrão) e da planilha (fórmula, separador); integração: venda às 23h30 cai no dia certo, devolução abatida, cancelada à parte, formas de pagamento, produtos somando o líquido, planilha com as três vendas, períodos inválidos → 400, painel informando o período e os 30 dias; Vitest dos atalhos de período; Playwright da tela (período inválido, download, 390 px).
+- **Correções da revisão independente** (sem bloqueadores):
+  - planilha que falha no meio do download corta a conexão em vez de gerar um segundo erro no log; o erro antes do início não vai mais com o cabeçalho de anexo;
+  - os atalhos de período da tela usam o dia de São Paulo, não o fuso do navegador (um caixa em Manaus ou num computador em UTC pedia o dia errado);
+  - venda cancelada ainda em rascunho (checkout abandonado) não conta como cancelada, nem no painel, nem no relatório, nem na planilha;
+  - data final absurda (ano 9999) responde 400, não 500;
+  - vendedores com o mesmo nome não se misturam mais;
+  - período com todas as vendas devolvidas não mostra mais "nenhuma venda";
+  - o seletor de período virou um grupo de opções acessível, e o gráfico ganhou a tabela "Ver dia a dia" como alternativa em texto;
+  - fica documentado: a devolução é abatida no período da venda, então um mês fechado muda se uma venda dele for devolvida depois (o razão financeiro lança o estorno no dia do estorno).
+- **Fica para depois:** o download de arquivos não renova um token vencido (comportamento anterior, também do PDF); índice por `COALESCE(confirmed_at, created_at)` se as vendas crescerem muito.

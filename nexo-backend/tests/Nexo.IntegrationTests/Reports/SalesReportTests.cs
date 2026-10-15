@@ -43,11 +43,15 @@ public class SalesReportTests
         var credit = await PaidSaleAsync(c, session.Id, 12m, 1,
             payments: [new PaymentInput("Credit", "Credit", 12m, DateTime.UtcNow.AddDays(5))]);
         (await c.PostAsJsonAsync($"/api/sales/{credit.Id}/cancel", new CancelSaleRequest("Desistiu"))).EnsureSuccessStatusCode();
+        // an abandoned checkout that gets cancelled is not a cancelled sale
+        var abandoned = (await (await c.PostAsJsonAsync("/api/sales", new CreateSaleRequest(CashSessionId: session.Id)))
+            .Content.ReadFromJsonAsync<SaleDto>())!;
+        (await c.PostAsJsonAsync($"/api/sales/{abandoned.Id}/cancel", new CancelSaleRequest("Desistiu no caixa"))).EnsureSuccessStatusCode();
         await CloseAsync(c, session.Id);
 
         // 23:30 in Brazil on 31/03/2001 is already 1 April in UTC
         var day = new DateOnly(2001, 3, 31);
-        await MoveSalesToAsync(BusinessClock.DayStartUtc(day).AddHours(23.5), a.Id, b.Id, credit.Id);
+        await MoveSalesToAsync(BusinessClock.DayStartUtc(day).AddHours(23.5), a.Id, b.Id, credit.Id, abandoned.Id);
 
         var report = await c.GetFromJsonAsync<SalesReportDto>("/api/reports/sales?from=2001-03-31&to=2001-03-31");
         report!.TotalSales.Should().Be(2);
@@ -81,6 +85,7 @@ public class SalesReportTests
     [InlineData("from=2001-13-01")]
     [InlineData("from=2001-03-31&to=2001-03-01")]
     [InlineData("from=2000-01-01&to=2001-03-31")]
+    [InlineData("from=9999-12-31&to=9999-12-31")]
     public async Task A_bad_period_is_a_clear_400(string query)
     {
         var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
@@ -108,7 +113,7 @@ public class SalesReportTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
         await db.Sales.IgnoreQueryFilters().Where(s => ids.Contains(s.Id))
-            .ExecuteUpdateAsync(u => u.SetProperty(s => s.ConfirmedAt, atUtc).SetProperty(s => s.CreatedAt, atUtc));
+            .ExecuteUpdateAsync(u => u.SetProperty(s => s.ConfirmedAt, s => s.ConfirmedAt != null ? atUtc : null).SetProperty(s => s.CreatedAt, atUtc));
     }
 
     private static async Task<SaleDto> PaidSaleAsync(

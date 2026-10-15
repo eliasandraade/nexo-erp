@@ -11,13 +11,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/formatters";
 import {
   REPORTS_KEY, exportSales, getCustomerReport, getInventoryReport, getSalesReport, type SalesReportDto,
 } from "../api/reports.api";
-import { fmtPeriod, methodLabel, periodProblem, presetPeriod, type Period, type PeriodPreset } from "../lib/period";
+import { fmtDay, fmtPeriod, methodLabel, periodProblem, presetPeriod, type Period, type PeriodPreset } from "../lib/period";
 
 const SalesByDayChart = lazy(() => import("../components/SalesByDayChart"));
 
@@ -76,7 +76,7 @@ export default function RelatoriosPage() {
     <div className="space-y-6">
       <PageHeader
         title="Relatórios"
-        description="Quanto vendeu, o que mais saiu, quem vendeu e como recebeu. Valores já sem as devoluções."
+        description="Quanto vendeu, o que mais saiu, quem vendeu e como recebeu. Valores já sem as devoluções, abatidas no dia da venda."
         actions={
           <Button variant="outline" onClick={() => void onExport()} disabled={exporting}>
             <Download className="mr-1 h-4 w-4" /> {exporting ? "Exportando…" : "Exportar planilha"}
@@ -85,11 +85,16 @@ export default function RelatoriosPage() {
       />
 
       <div className="space-y-3">
-        <Tabs value={preset} onValueChange={(v) => setPreset(v as PeriodPreset)}>
-          <TabsList className="h-auto flex-wrap">
-            {PRESETS.map((p) => <TabsTrigger key={p.value} value={p.value}>{p.label}</TabsTrigger>)}
-          </TabsList>
-        </Tabs>
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          aria-label="Período do relatório"
+          className="flex-wrap justify-start"
+          value={preset}
+          onValueChange={(v) => { if (v) setPreset(v as PeriodPreset); }}
+        >
+          {PRESETS.map((p) => <ToggleGroupItem key={p.value} value={p.value}>{p.label}</ToggleGroupItem>)}
+        </ToggleGroup>
         {preset === "custom" && (
           <form
             className="flex flex-wrap items-end gap-3"
@@ -149,7 +154,7 @@ export default function RelatoriosPage() {
 
 function SalesSection({ report }: Readonly<{ report: SalesReportDto }>) {
   const paidTotal = report.payments.reduce((t, p) => t + p.amount, 0);
-  const sold = report.days.some((d) => d.sales > 0 || d.revenue > 0);
+  const sold = report.totalSales > 0 || report.returnedSales > 0;
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -173,9 +178,26 @@ function SalesSection({ report }: Readonly<{ report: SalesReportDto }>) {
 
       <SectionCard title="Faturamento por dia">
         {sold ? (
-          <Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
-            <SalesByDayChart days={report.days} />
-          </Suspense>
+          <>
+            <Suspense fallback={<Skeleton className="h-[260px] w-full" />}>
+              <SalesByDayChart days={report.days} />
+            </Suspense>
+            <details className="mt-3 text-sm">
+              <summary className="cursor-pointer text-muted-foreground">Ver dia a dia</summary>
+              <Table>
+                <TableHeader><TableRow><TableHead>Dia</TableHead><TableHead className="text-right">Vendas</TableHead><TableHead className="text-right">Faturamento</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {report.days.filter((d) => d.sales > 0 || d.revenue !== 0).map((d) => (
+                    <TableRow key={d.date}>
+                      <TableCell>{fmtDay(d.date)}</TableCell>
+                      <TableCell className="text-right tabular-nums">{d.sales}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatCurrency(d.revenue)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </details>
+          </>
         ) : (
           <p className="py-10 text-center text-sm text-muted-foreground">Nenhuma venda finalizada neste período.</p>
         )}

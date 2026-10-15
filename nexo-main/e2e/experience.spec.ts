@@ -693,7 +693,7 @@ test('Relatórios: vendas do período sem as devoluções, estoque, clientes e p
  await expect(page.getByText('Dinheiro',{exact:true})).toBeVisible();
  await expect(page.getByText('R$ 5.230,50')).toBeVisible();
  await expect(page.getByText('Novos neste mês')).toBeVisible();
- await page.getByRole('tab',{name:'Escolher datas'}).click();
+ await page.getByRole('radio',{name:'Escolher datas'}).click();
  await page.getByLabel('De').fill('2026-03-10');
  await page.getByLabel('Até').fill('2026-03-01');
  await expect(page.getByText('A data final vem antes da inicial.')).toBeVisible();
