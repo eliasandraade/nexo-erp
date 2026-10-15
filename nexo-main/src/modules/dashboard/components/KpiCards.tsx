@@ -38,19 +38,19 @@ export function KpiCards() {
 
   const kpis: KpiDef[] = [
     {
-      label:  "Faturamento",
+      label:  "Faturamento do mês",
       value:  formatCurrency(summary?.totalRevenue ?? 0),
-      sub:    `${summary?.totalSales ?? 0} venda(s) no período`,
+      sub:    "já sem as devoluções",
       subOk:  true,
     },
     {
       label:  "Ticket médio",
       value:  formatCurrency(summary?.averageTicket ?? 0),
-      sub:    "por venda ativa",
+      sub:    "por venda no mês",
       subOk:  true,
     },
     {
-      label:  "Vendas",
+      label:  "Vendas do mês",
       value:  String(summary?.totalSales ?? 0),
       sub:    (summary?.cancelledCount ?? 0) > 0
         ? `${summary!.cancelledCount} cancelada(s)`

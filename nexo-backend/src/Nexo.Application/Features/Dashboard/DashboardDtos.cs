@@ -1,7 +1,7 @@
 namespace Nexo.Application.Features.Dashboard;
 
 public record DashboardSummaryDto(
-    // Sales KPIs
+    // Sales KPIs — current month to date (Brazil days): realized sales, net of returns
     int     TotalSales,
     int     CancelledCount,
     decimal TotalRevenue,
@@ -20,7 +20,11 @@ public record DashboardSummaryDto(
     IReadOnlyList<StockAlertDto> StockAlerts,
 
     // Cash
-    bool HasOpenCashSession
+    bool HasOpenCashSession,
+
+    // The period of the sales figures (yyyy-MM-dd, Brazil): the 1st of the month to today
+    string PeriodFrom,
+    string PeriodTo
 );
 
 public record TopProductDto(

@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Dashboard;
+using Nexo.Application.Features.Reports;
 using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
+using Nexo.Infrastructure.Reports;
 
 namespace Nexo.Infrastructure.Dashboard;
 
@@ -12,6 +14,7 @@ public class DashboardService
     private readonly ICurrentTenant _currentTenant;
     private readonly ICurrentStore _currentStore;
     private readonly ICacheService _cache;
+    private readonly SalesAnalytics _sales;
 
     // The summary is built from ~11 sequential DB round-trips. A short Redis TTL
     // collapses that to a single cache GET on warm cache — for the same store,
@@ -29,175 +32,59 @@ public class DashboardService
         NexoDbContext db,
         ICurrentTenant currentTenant,
         ICurrentStore currentStore,
-        ICacheService cache)
+        ICacheService cache,
+        SalesAnalytics sales)
     {
         _db            = db;
         _currentTenant = currentTenant;
         _currentStore  = currentStore;
         _cache         = cache;
+        _sales         = sales;
     }
 
     public async Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken ct = default)
     {
-        // Scope the cache to tenant + store so isolation is never crossed.
-        var cacheKey = $"dashboard:summary:{_currentTenant.Id}:{_currentStore.Id}";
+        // Scope the cache to tenant + store so isolation is never crossed; the day in the key makes a
+        // new month (and the chart's 30 days) start at midnight in Brazil, not 30 s later by chance.
+        var month    = SalesWindow.MonthToDate();
+        var cacheKey = $"dashboard:summary:{_currentTenant.Id}:{_currentStore.Id}:{month.To:yyyyMMdd}";
 
         var cached = await _cache.GetAsync<DashboardSummaryDto>(cacheKey, ct);
         if (cached is not null) return cached;
 
-        var fresh = await ComputeSummaryAsync(ct);
+        var fresh = await ComputeSummaryAsync(month, ct);
         await _cache.SetAsync(cacheKey, fresh, _cacheTtl, ct);
         return fresh;
     }
 
-    private async Task<DashboardSummaryDto> ComputeSummaryAsync(CancellationToken ct)
+    /// <summary>
+    /// Sales figures are the current month to date (Brazil) — the same definition as the sales
+    /// report (<see cref="SalesAnalytics"/>); the chart shows the last 30 days.
+    /// </summary>
+    private async Task<DashboardSummaryDto> ComputeSummaryAsync(SalesWindow month, CancellationToken ct)
     {
         // Sequential — DbContext is not thread-safe for concurrent queries
-        var (totalSales, cancelledCount, totalRevenue, averageTicket) = await GetSalesKpisAsync(ct);
-        var topProducts    = await GetTopProductsAsync(ct);
-        var topSellers     = await GetTopSellersAsync(ct);
-        var salesByDay     = await GetSalesByDayAsync(ct);
+        var kpis        = await _sales.KpisAsync(month, ct);
+        var topProducts = await _sales.TopProductsAsync(month, 5, ct);
+        var topSellers  = await _sales.SellersAsync(month, 4, ct);
+        var salesByDay  = await _sales.ByDayAsync(SalesWindow.LastDays(30), ct);
         var (zeroCount, lowCount, alerts) = await GetStockAlertsAsync(ct);
-        var hasOpenCash    = await _db.CashSessions.AnyAsync(c => c.Status == CashSessionStatus.Open, ct);
+        var hasOpenCash = await _db.CashSessions.AnyAsync(c => c.Status == CashSessionStatus.Open, ct);
 
         return new DashboardSummaryDto(
-            TotalSales:        totalSales,
-            CancelledCount:    cancelledCount,
-            TotalRevenue:      totalRevenue,
-            AverageTicket:     averageTicket,
-            TopProducts:       topProducts,
-            TopSellers:        topSellers,
-            SalesByDay:        salesByDay,
+            TotalSales:        kpis.Sales,
+            CancelledCount:    kpis.Cancelled,
+            TotalRevenue:      kpis.Net,
+            AverageTicket:     kpis.AverageTicket,
+            TopProducts:       topProducts.Select(p => new TopProductDto(p.ProductId, p.ProductName, p.Quantity, p.Revenue)).ToList(),
+            TopSellers:        topSellers.Select(x => new TopSellerDto(x.SellerName, x.Sales, x.Revenue)).ToList(),
+            SalesByDay:        salesByDay.Select(d => new SalesByDayDto(d.Date, d.Revenue)).ToList(),
             ZeroStockCount:    zeroCount,
             LowStockCount:     lowCount,
             StockAlerts:       alerts,
-            HasOpenCashSession: hasOpenCash);
-    }
-
-    // ── Sales KPIs ────────────────────────────────────────────────────────────
-
-    private async Task<(int total, int cancelled, decimal revenue, decimal avgTicket)>
-        GetSalesKpisAsync(CancellationToken ct)
-    {
-        // SQL aggregations — never load all rows into memory.
-        // Realized sales only (drafts are abandoned checkouts, not revenue), net of devoluções.
-        var total     = await _db.Sales.AsNoTracking().CountAsync(s => s.Status != SaleStatus.Draft, ct);
-        var cancelled = await _db.Sales.AsNoTracking().CountAsync(s => s.Status == SaleStatus.Cancelled, ct);
-        var active    = await _db.Sales.AsNoTracking().CountAsync(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned), ct);
-        var revenue   = await _db.Sales.AsNoTracking()
-            .Where(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned))
-            .SumAsync(s => (decimal?)(s.Total - s.ReturnedAmount), ct) ?? 0m;
-        var avg = active > 0 ? Math.Round(revenue / active, 2) : 0m;
-        return (total, cancelled, Math.Round(revenue, 2), avg);
-    }
-
-    // ── Top Products ──────────────────────────────────────────────────────────
-
-    private async Task<IReadOnlyList<TopProductDto>> GetTopProductsAsync(CancellationToken ct)
-    {
-        // Project to anonymous type so EF can translate; map to DTO in memory.
-        // Guid.ToString() and Math.Round can't be translated inside GroupBy Select.
-        var sold = await _db.SaleItems
-            .AsNoTracking()
-            .Where(i => i.Sale!.Status == SaleStatus.Confirmed
-                     || i.Sale.Status == SaleStatus.Paid
-                     || i.Sale.Status == SaleStatus.PartiallyReturned)
-            .GroupBy(i => new { i.ProductId, Name = i.Product!.Name })
-            .Select(g => new
-            {
-                g.Key.ProductId,
-                g.Key.Name,
-                Quantity = g.Sum(i => i.Quantity),
-                Revenue  = g.Sum(i => i.Total),
-            })
-            .OrderByDescending(g => g.Revenue)
-            .Take(50)   // candidates; the net ranking below picks the top 5
-            .ToListAsync(ct);
-
-        // What came back through devoluções of those (still realized) sales
-        var returned = await _db.SaleReturnItems
-            .AsNoTracking()
-            .Join(_db.SaleReturns, i => i.SaleReturnId, r => r.Id, (i, r) => new { i, r.SaleId })
-            .Join(_db.Sales.Where(s => s.Status == SaleStatus.PartiallyReturned), x => x.SaleId, s => s.Id, (x, _) => x.i)
-            .GroupBy(i => i.ProductId)
-            .Select(g => new { ProductId = g.Key, Quantity = g.Sum(i => i.Quantity), Amount = g.Sum(i => i.Amount) })
-            .ToDictionaryAsync(x => x.ProductId, ct);
-
-        return sold
-            .Select(r =>
-            {
-                var back = returned.GetValueOrDefault(r.ProductId);
-                return new
-                {
-                    r.ProductId, r.Name,
-                    Quantity = r.Quantity - (back?.Quantity ?? 0),
-                    Revenue  = r.Revenue - (back?.Amount ?? 0),
-                };
-            })
-            .Where(r => r.Quantity > 0)
-            .OrderByDescending(r => r.Revenue)
-            .Take(5)
-            .Select(r => new TopProductDto(
-                r.ProductId.ToString(),
-                r.Name,
-                r.Quantity,
-                Math.Round(r.Revenue, 2)))
-            .ToList();
-    }
-
-    // ── Top Sellers ───────────────────────────────────────────────────────────
-
-    private async Task<IReadOnlyList<TopSellerDto>> GetTopSellersAsync(CancellationToken ct)
-    {
-        // Project to anonymous type; OrderByDescending on DTO constructor property
-        // can't be translated by EF Core. Map to DTO in memory after query.
-        var rows = await _db.Sales
-            .AsNoTracking()
-            .Where(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned))
-            .Join(_db.Users,
-                  s => s.SoldByUserId,
-                  u => u.Id,
-                  (s, u) => new { u.FullName, Total = s.Total - s.ReturnedAmount })
-            .GroupBy(x => x.FullName)
-            .Select(g => new
-            {
-                Name    = g.Key,
-                Count   = g.Count(),
-                Revenue = g.Sum(x => x.Total),
-            })
-            .OrderByDescending(g => g.Revenue)
-            .Take(4)
-            .ToListAsync(ct);
-
-        return rows
-            .Select(r => new TopSellerDto(r.Name, r.Count, Math.Round(r.Revenue, 2)))
-            .ToList();
-    }
-
-    // ── Sales by Day (last 30 days) ────────────────────────────────────────────
-
-    private async Task<IReadOnlyList<SalesByDayDto>> GetSalesByDayAsync(CancellationToken ct)
-    {
-        var cutoff = DateTime.UtcNow.AddDays(-30);
-
-        var rows = await _db.Sales
-            .AsNoTracking()
-            .Where(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned)
-                     && (s.ConfirmedAt ?? s.CreatedAt) >= cutoff)
-            .Select(s => new
-            {
-                Date  = (s.ConfirmedAt ?? s.CreatedAt).Date,
-                Total = s.Total - s.ReturnedAmount,
-            })
-            .ToListAsync(ct);
-
-        return rows
-            .GroupBy(r => r.Date)
-            .Select(g => new SalesByDayDto(
-                g.Key.ToString("yyyy-MM-dd"),
-                Math.Round(g.Sum(r => r.Total), 2)))
-            .OrderBy(x => x.Date)
-            .ToList();
+            HasOpenCashSession: hasOpenCash,
+            PeriodFrom:        month.From.ToString("yyyy-MM-dd"),
+            PeriodTo:          month.To.ToString("yyyy-MM-dd"));
     }
 
     // ── Stock Alerts ──────────────────────────────────────────────────────────

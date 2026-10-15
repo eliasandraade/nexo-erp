@@ -74,6 +74,14 @@ public class ExceptionHandlingMiddleware
         string error,
         string[]? details = null)
     {
+        // A streamed download (e.g. the sales spreadsheet) failed midway: the status already went
+        // out, so cut the connection — the browser reports a failed download, not a broken file.
+        if (ctx.Response.HasStarted)
+        {
+            ctx.Abort();
+            return;
+        }
+        ctx.Response.Headers.Remove("Content-Disposition");
         ctx.Response.StatusCode = statusCode;
         ctx.Response.ContentType = "application/json";
 

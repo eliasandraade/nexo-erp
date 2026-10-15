@@ -16,7 +16,7 @@ export function SellerRanking() {
 
   return (
     <div className="bg-card rounded-md border border-border p-5">
-      <h3 className="text-sm font-semibold text-foreground mb-4">Ranking de vendedores</h3>
+      <h3 className="text-sm font-semibold text-foreground mb-4">Ranking de vendedores do mês</h3>
 
       {isLoading ? (
         <div className="space-y-3">
