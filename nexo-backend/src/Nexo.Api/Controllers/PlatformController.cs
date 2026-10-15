@@ -594,6 +594,28 @@ public class PlatformController : ControllerBase
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // ERRORS (PR 69) — unexpected errors grouped by kind, most recent first
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Errors seen in the last <paramref name="days"/> days (1–90, default 7), at most 100 kinds.</summary>
+    [HttpGet("errors")]
+    public async Task<IActionResult> GetErrors([FromQuery] int days = 7, CancellationToken ct = default)
+    {
+        var since = DateTime.UtcNow.AddDays(-Math.Clamp(days, 1, 90));
+        var rows = await _db.ErrorEvents.AsNoTracking()
+            .Where(e => e.LastSeenAt >= since)
+            .OrderByDescending(e => e.LastSeenAt)
+            .Take(100)
+            .Select(e => new
+            {
+                e.Id, e.ExceptionType, e.Summary, e.Route, e.Method, e.Count,
+                e.FirstSeenAt, e.LastSeenAt, e.LastRequestId, e.LastTenantId, e.StackTop,
+            })
+            .ToListAsync(ct);
+        return Ok(rows);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // HEALTH
     // ─────────────────────────────────────────────────────────────────────────
 

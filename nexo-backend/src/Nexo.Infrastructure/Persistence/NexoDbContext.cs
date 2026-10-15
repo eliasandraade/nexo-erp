@@ -68,6 +68,7 @@ public class NexoDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<Product> Products => Set<Product>();
     public DbSet<FiscalProfile> FiscalProfiles => Set<FiscalProfile>();
+    public DbSet<ErrorEvent> ErrorEvents => Set<ErrorEvent>();
     public DbSet<ProductPurchasePrice> ProductPurchasePrices => Set<ProductPurchasePrice>();
     public DbSet<StockItem> StockItems => Set<StockItem>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();

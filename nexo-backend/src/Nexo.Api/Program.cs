@@ -31,8 +31,15 @@ try
         cfg.ReadFrom.Configuration(ctx.Configuration)
            .ReadFrom.Services(services)
            .Enrich.FromLogContext()
-           .WriteTo.Console(
-               outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
+           .Enrich.With(new Nexo.Api.Observability.RequestIdEnricher(services.GetRequiredService<IHttpContextAccessor>()));
+
+        // Structured logs: one JSON object per line outside development (RequestId, TenantId,
+        // UserId, Route… become searchable fields in the platform's log viewer); readable text in dev.
+        if (ctx.HostingEnvironment.IsDevelopment())
+            cfg.WriteTo.Console(
+                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj} {RequestId}{NewLine}{Exception}");
+        else
+            cfg.WriteTo.Console(Nexo.Api.Observability.RequestLogging.JsonFormatter());
 
         if (!ctx.HostingEnvironment.IsDevelopment())
         {
@@ -46,6 +53,7 @@ try
     // ── Application layers ────────────────────────────────────────────────────
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+    Nexo.Api.Observability.OpenTelemetrySetup.AddOrkenTelemetry(builder.Services, builder.Configuration, builder.Environment);
     // Títulos vencidos: hourly Pending → Overdue. Service customer e-mails: confirmations and
     // reminders every two minutes. Not in Testing (tests call the jobs' passes directly).
     if (!builder.Environment.IsEnvironment("Testing"))
@@ -150,7 +158,7 @@ try
                   // every non-simple request was preceded by a fresh OPTIONS round-trip,
                   // doubling latency on the cold first load.
                   .SetPreflightMaxAge(TimeSpan.FromHours(24))
-                  .WithExposedHeaders("Content-Disposition", "Content-Length");
+                  .WithExposedHeaders("Content-Disposition", "Content-Length", Nexo.Api.Middleware.CorrelationIdMiddleware.Header);
         });
     });
 
@@ -414,16 +422,11 @@ try
     // rejections) carries the Access-Control-Allow-Origin header.
     app.UseCors("NexoFrontend");
 
+    app.UseMiddleware<CorrelationIdMiddleware>();
+    // request log outside the exception handler: it records the status the client really got
+    Nexo.Api.Observability.RequestLogging.UseOrkenRequestLogging(app);
     app.UseMiddleware<ExceptionHandlingMiddleware>();
-    app.UseMiddleware<RequestLoggingRedactionMiddleware>();
 
-    app.UseSerilogRequestLogging(opts =>
-    {
-        opts.MessageTemplate =
-            "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
-        // health probes run every few seconds: keep them out of the log unless they fail
-        opts.GetLevel = Nexo.Api.Health.HealthEndpoints.RequestLogLevel;
-    });
 
     if (!app.Environment.IsProduction())
     {
