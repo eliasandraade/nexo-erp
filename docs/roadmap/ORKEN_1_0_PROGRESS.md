@@ -13,7 +13,8 @@
 | #46 | Estoque avançado | `c3f25e7` | `StockPerStoreCountsAndTransfers` (aditiva + troca de índice único por comum) | Em produção |
 | #47 | Compras completas | `da3ba8b` | `PurchasesPerStoreOrderedAndCancellation` (store_id com backfill, índice por loja) | Em produção |
 | #48 | Listas de preço | `024b1cd` | `PriceListValidityAndPriority` (aditiva + índice único parcial) | Em produção |
-| #49 | Modelo financeiro unificado (livro) | — | `UnifiedFinancialLedger` (aditiva + classificação e backfill do histórico à vista) | Em revisão |
+| #49 | Modelo financeiro unificado (livro) | `d6634a5` | `UnifiedFinancialLedger` (aditiva + classificação e backfill do histórico à vista) | Em produção |
+| #50 | Contas a receber | — | `LedgerCustomerAndSettlement` (aditiva + cliente do título + reexecução idempotente do backfill) | Em revisão |
 
 
 ## Marcos por fase
@@ -361,4 +362,44 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
   - contas a pagar com recorrência (PR 51);
   - fluxo de caixa e conciliação (PR 52);
   - despesas do restaurante, Build e folha no livro (PR 53).
+
+## PR 50 — Contas a receber
+
+- **Baixa total ou parcial** (`POST /api/financial/transactions/{id}/settle`), sob trava da linha:
+  - o título é baixado pelo **valor recebido + desconto**;
+  - uma baixa menor que o saldo **desmembra o título**: a parte baixada fica quitada e o restante continua em aberto, com o mesmo vencimento, competência, categoria, loja e cliente (`parent_transaction_id`);
+  - os dois regimes continuam exatos: competência vê o título inteiro e caixa vê só o que entrou.
+- **Juros e multa** viram um lançamento próprio de **receitas financeiras** (categoria nova `FinancialIncome`).
+- **Desconto concedido** vira **despesa financeira**.
+  - Num título a pagar (PR 51), a mesma operação é espelhada: juros pagos são despesa e desconto obtido é receita.
+  - Esses ajustes (referência `Settlement`) não são editáveis à mão.
+- **Parcelamento** (`POST /api/financial/transactions/installments`):
+  - de 1 a 60 parcelas mensais;
+  - os centavos são divididos por igual e a última parcela fica com a sobra, então as parcelas somam exatamente o total;
+  - cliente e loja validados;
+  - categoria coerente com a direção.
+- **Cliente no título** (`customer_id`), vindo da venda (inclusive estorno e devolução) e do pagamento do Service. O lançamento manual também aceita cliente.
+- **Vencidos:**
+  - a listagem mostra como vencido o título em aberto com vencimento antes de hoje (dia do Brasil, `BusinessClock`);
+  - o job `OverdueTitlesJob` (o primeiro `BackgroundService` do produto) grava `Overdue` de hora em hora, com um UPDATE idempotente;
+  - um título renegociado para uma data futura volta a "em aberto".
+- **`GET /api/financial/receivables`** (e `/payables`):
+  - filtros: em aberto, vencidos, recebidos ou todos; período de vencimento; cliente;
+  - **aging** do que está em aberto: a vencer, 1–30, 31–60 e mais de 60 dias.
+- **Tela `/financeiro/receber`:**
+  - aging;
+  - abas;
+  - **Receber** (valor, data, juros, multa, desconto, prévia do que fica em aberto);
+  - **Novo recebimento** parcelado.
+- **Cancelar uma venda a prazo parcialmente recebida:** o restante em aberto é cancelado e o que entrou é estornado como dedução de receita, ligada ao original e ao cliente.
+- **Migration:**
+  - aditiva;
+  - preenche o cliente a partir da origem;
+  - **reexecuta o backfill à vista do PR 49**, idempotente por pagamento, para cobrir vendas em dinheiro confirmadas pelo container antigo durante aquela migration;
+  - validada num Postgres descartável: a venda da janela entrou, a venda já registrada não duplicou e o cliente foi preenchido.
+- **Testes:**
+  - +4 unitários (desmembramento, limite da baixa, categorias dos ajustes, renegociação);
+  - `ReceivablesTests`, 5 de integração: baixa parcial nos dois regimes, parcelas e centavos, juros e desconto, aging com job de vencidos e renegociação, cancelamento de venda a prazo parcialmente recebida, parcelamentos inválidos;
+  - Playwright: tela de contas a receber.
+- **Decisão pendente (regra comercial e contábil, não implementada):** baixar um título como **perda** (calote) e cobrar juros ou multa **automaticamente** por percentual. Hoje juros e multa são informados na baixa.
 

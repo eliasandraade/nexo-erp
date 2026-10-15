@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Service;
 using Nexo.Application.Modules.Varejo;
@@ -11,6 +12,7 @@ public class FinancialService
 {
     private readonly IFinancialRepository _financial;
     private readonly IStoreRepository _stores;
+    private readonly ICustomerRepository _customers;
     private readonly IUnitOfWork _uow;
     private readonly ICurrentTenant _currentTenant;
     private readonly ICurrentUser _currentUser;
@@ -19,11 +21,12 @@ public class FinancialService
     public const int LedgerEntryLimit = 1000;
 
     public FinancialService(
-        IFinancialRepository financial, IStoreRepository stores, IUnitOfWork uow,
+        IFinancialRepository financial, IStoreRepository stores, ICustomerRepository customers, IUnitOfWork uow,
         ICurrentTenant currentTenant, ICurrentUser currentUser)
     {
         _financial     = financial;
         _stores        = stores;
+        _customers     = customers;
         _uow           = uow;
         _currentTenant = currentTenant;
         _currentUser   = currentUser;
@@ -37,6 +40,7 @@ public class FinancialService
     public static bool IsSystemOwned(string? referenceType)
         => referenceType is not null
            && (ServiceFinancialPostingService.IsServiceManaged(referenceType)
+               || referenceType == FinancialTransaction.SettlementReference
                || referenceType.StartsWith("Sale", StringComparison.OrdinalIgnoreCase)
                || referenceType.StartsWith("Purchase", StringComparison.OrdinalIgnoreCase));
 
@@ -155,6 +159,8 @@ public class FinancialService
 
         if (request.StoreId is { } storeId)
             _ = await _stores.GetByIdAsync(storeId, ct) ?? throw new NotFoundException("Store", storeId);
+        if (request.CustomerId is { } customerId)
+            _ = await _customers.GetByIdAsync(customerId, ct) ?? throw new NotFoundException("Customer", customerId);
 
         var tx = FinancialTransaction.Create(
             _currentTenant.Id,
@@ -168,7 +174,8 @@ public class FinancialService
             request.ReferenceType,
             request.ReferenceId,
             request.StoreId,
-            Utc(request.CompetenceDate ?? request.DueDate));
+            Utc(request.CompetenceDate ?? request.DueDate),
+            request.CustomerId);
 
         await _financial.AddTransactionAsync(tx, ct);
         await _financial.SaveChangesAsync(ct);
@@ -221,6 +228,163 @@ public class FinancialService
         DateTimeKind.Local => value.ToUniversalTime(),
         _                  => DateTime.SpecifyKind(value, DateTimeKind.Utc),
     };
+
+    // ── Baixa ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Baixa total ou parcial, under the título's row lock. Money received/paid = Amount; juros + multa
+    /// become a financial income (receivable) / expense (payable) lançamento; a desconto settles part of
+    /// the título without money and is the opposite financial lançamento. Service títulos are settled
+    /// at the origin.
+    /// </summary>
+    public async Task<SettlementResultDto> SettleAsync(Guid id, SettleTransactionRequest request, CancellationToken ct = default)
+    {
+        if (request.Amount < 0 || request.Interest < 0 || request.Fine < 0 || request.Discount < 0)
+            throw new DomainException("Valores da baixa não podem ser negativos.");
+        foreach (var v in new[] { request.Amount, request.Interest, request.Fine, request.Discount })
+            if (decimal.Round(v, 2) != v)
+                throw new DomainException("Valores da baixa vão até centavos.");
+        var paidAt = request.PaidAt is { } p ? Utc(p) : DateTime.UtcNow;
+        if (paidAt > DateTime.UtcNow.AddDays(1))
+            throw new DomainException("A data da baixa não pode estar no futuro.");
+
+        await using var scope = await _uow.BeginTransactionAsync(ct);
+        await _financial.LockTransactionAsync(id, _currentTenant.Id, ct);
+        var tx = await _financial.GetTransactionByIdAsync(id, ct)
+            ?? throw new NotFoundException("FinancialTransaction", id);
+        EnsureNotServiceManaged(tx);
+
+        var remainder = tx.Settle(request.Amount + request.Discount, paidAt);
+        if (remainder is not null) await _financial.AddTransactionAsync(remainder, ct);
+
+        var isReceivable = tx.TransactionType == TransactionType.Receivable;
+        var adjustments = new List<FinancialTransaction>();
+        var charges = request.Interest + request.Fine;
+        if (charges > 0)
+            adjustments.Add(tx.CreateSettlementAdjustment(
+                await DefaultAccountIdAsync(tx.TransactionType, ct), tx.TransactionType, charges,
+                $"Juros/multa — {tx.Description}", paidAt, _currentUser.UserId));
+        if (request.Discount > 0)
+        {
+            var opposite = isReceivable ? TransactionType.Payable : TransactionType.Receivable;
+            adjustments.Add(tx.CreateSettlementAdjustment(
+                await DefaultAccountIdAsync(opposite, ct), opposite, request.Discount,
+                $"Desconto {(isReceivable ? "concedido" : "obtido")} — {tx.Description}", paidAt, _currentUser.UserId));
+        }
+        foreach (var a in adjustments) await _financial.AddTransactionAsync(a, ct);
+
+        await _financial.SaveChangesAsync(ct);
+        await scope.CommitAsync(ct);
+        return new SettlementResultDto(
+            MapTransactionToDto(tx),
+            remainder is null ? null : MapTransactionToDto(remainder),
+            adjustments.Select(MapTransactionToDto).ToList());
+    }
+
+    // ── Títulos ──────────────────────────────────────────────────────────────
+
+    /// <summary>Most títulos a listing carries; the aging always covers every open título.</summary>
+    public const int TitleListLimit = 500;
+
+    public async Task<TitlesDto> GetTitlesAsync(TitlesFilter filter, CancellationToken ct = default)
+    {
+        var today = BusinessClock.TodayStartUtc();
+        var titles = await _financial.GetTitlesAsync(filter, today, TitleListLimit + 1, ct);
+        var page = titles.Take(TitleListLimit).ToList();
+        var names = await _financial.GetCustomerNamesAsync(
+            page.Where(t => t.CustomerId.HasValue).Select(t => t.CustomerId!.Value), ct);
+
+        var open = await _financial.GetOpenTitleRowsAsync(filter.Type, filter.CustomerId, ct);
+        decimal Bucket(int min, int max) => open
+            .Where(r => r.DueDate < today && BusinessClock.DaysOverdue(r.DueDate) is var d && d >= min && d <= max)
+            .Sum(r => r.Amount);
+        var aging = new AgingDto(
+            NotDue:        open.Where(r => r.DueDate >= today).Sum(r => r.Amount),
+            Overdue1To30:  Bucket(1, 30),
+            Overdue31To60: Bucket(31, 60),
+            OverdueOver60: Bucket(61, int.MaxValue),
+            TotalOpen:     open.Sum(r => r.Amount),
+            OpenCount:     open.Count,
+            OverdueCount:  open.Count(r => r.DueDate < today));
+
+        return new TitlesDto(page.Select(t => MapTitle(t, names, today)).ToList(), aging, titles.Count > TitleListLimit);
+    }
+
+    private static TitleDto MapTitle(FinancialTransaction t, IReadOnlyDictionary<Guid, string> names, DateTime today)
+    {
+        var late = t.IsOpen && t.DueDate < today;
+        return new TitleDto(
+            t.Id, t.Description, t.CustomerId,
+            t.CustomerId is { } c && names.TryGetValue(c, out var n) ? n : null,
+            t.Amount, t.DueDate, t.CompetenceDate, t.PaidAt,
+            late ? TransactionStatus.Overdue.ToString() : t.Status.ToString(),
+            late ? BusinessClock.DaysOverdue(t.DueDate) : 0,
+            t.Category.ToString(), t.StoreId, t.ReferenceType, t.ReferenceId, t.ParentTransactionId);
+    }
+
+    // ── Parcelamento ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a manual título split in monthly installments: the cents are divided evenly and the last
+    /// installment takes the rest, so the parcelas always add up to the total.
+    /// </summary>
+    public async Task<IReadOnlyList<FinancialTransactionDto>> CreateInstallmentsAsync(
+        CreateInstallmentsRequest request, CancellationToken ct = default)
+    {
+        if (!Enum.TryParse<TransactionType>(request.TransactionType, ignoreCase: true, out var type) || !Enum.IsDefined(type))
+            throw new DomainException("Tipo de lançamento inválido: use Receivable ou Payable.");
+        if (request.Installments is < 1 or > 60)
+            throw new DomainException("Parcele em 1 a 60 vezes.");
+        if (decimal.Round(request.TotalAmount, 2) != request.TotalAmount || request.TotalAmount < 0.01m * request.Installments)
+            throw new DomainException("O total precisa estar em centavos e cobrir ao menos R$ 0,01 por parcela.");
+        if (string.IsNullOrWhiteSpace(request.Description))
+            throw new DomainException("O lançamento precisa de uma descrição.");
+
+        var category = FinancialCategoryRules.DefaultFor(type);
+        if (request.Category is not null
+            && (!Enum.TryParse(request.Category, ignoreCase: true, out category) || !Enum.IsDefined(category)))
+            throw new DomainException("Categoria inválida.");
+        if (!category.IsAllowedForManualEntry(type))
+            throw new DomainException("Esta categoria não combina com o tipo do lançamento.");
+        if (request.CustomerId is { } customerId)
+            _ = await _customers.GetByIdAsync(customerId, ct) ?? throw new NotFoundException("Customer", customerId);
+        if (request.StoreId is { } storeId)
+            _ = await _stores.GetByIdAsync(storeId, ct) ?? throw new NotFoundException("Store", storeId);
+
+        Guid accountId;
+        if (request.FinancialAccountId is { } given)
+            accountId = (await _financial.GetAccountByIdAsync(given, ct) ?? throw new NotFoundException("FinancialAccount", given)).Id;
+        else
+            accountId = await DefaultAccountIdAsync(type, ct);
+
+        var cents = (long)(request.TotalAmount * 100);
+        var each = cents / request.Installments;
+        var first = Utc(request.FirstDueDate);
+        var created = new List<FinancialTransaction>();
+        for (var i = 0; i < request.Installments; i++)
+        {
+            var amount = (i == request.Installments - 1 ? cents - each * (request.Installments - 1) : each) / 100m;
+            var due = first.AddMonths(i);
+            var description = request.Installments == 1
+                ? request.Description.Trim()
+                : $"{request.Description.Trim()} ({i + 1}/{request.Installments})";
+            var tx = FinancialTransaction.Create(
+                _currentTenant.Id, accountId, type, category, amount, description, due, _currentUser.UserId,
+                storeId: request.StoreId, competenceDate: request.CompetenceDate is { } c ? Utc(c) : due,
+                customerId: request.CustomerId);
+            await _financial.AddTransactionAsync(tx, ct);
+            created.Add(tx);
+        }
+        await _financial.SaveChangesAsync(ct);
+        return created.Select(MapTransactionToDto).ToList();
+    }
+
+    private async Task<Guid> DefaultAccountIdAsync(TransactionType type, CancellationToken ct)
+        => (await _financial.GetDefaultByTypeAsync(
+                type == TransactionType.Receivable ? FinancialAccountType.Receivable : FinancialAccountType.Payable, ct)
+            ?? throw new DomainException(type == TransactionType.Receivable
+                ? "Nenhuma conta 'Contas a Receber' ativa."
+                : "Nenhuma conta 'Contas a Pagar' ativa.")).Id;
 
     // ── Ledger ───────────────────────────────────────────────────────────────
 
@@ -308,5 +472,7 @@ public class FinancialService
         t.Category.ToString(),
         t.CompetenceDate,
         t.StoreId,
-        t.ReversesTransactionId);
+        t.ReversesTransactionId,
+        t.CustomerId,
+        t.ParentTransactionId);
 }

@@ -94,6 +94,45 @@ public class FinancialRepository : IFinancialRepository
         return query;
     }
 
+    public async Task<IReadOnlyList<FinancialTransaction>> GetTitlesAsync(
+        TitlesFilter f, DateTime todayStartUtc, int take, CancellationToken ct = default)
+    {
+        var query = _context.FinancialTransactions.Where(x => x.TransactionType == f.Type);
+        query = f.Status switch
+        {
+            TitleStatusFilter.Open    => query.Where(x => x.Status == TransactionStatus.Pending || x.Status == TransactionStatus.Overdue),
+            // overdue = flagged by the job, or pending and already past due (the job runs hourly)
+            TitleStatusFilter.Overdue => query.Where(x => x.Status == TransactionStatus.Overdue
+                                                          || (x.Status == TransactionStatus.Pending && x.DueDate < todayStartUtc)),
+            TitleStatusFilter.Settled => query.Where(x => x.Status == TransactionStatus.Paid),
+            _                         => query,
+        };
+        if (f.DueFrom is { } from) query = query.Where(x => x.DueDate >= from);
+        if (f.DueTo is { } to) query = query.Where(x => x.DueDate < to);
+        if (f.CustomerId is { } customerId) query = query.Where(x => x.CustomerId == customerId);
+        query = f.Status == TitleStatusFilter.Settled
+            ? query.OrderByDescending(x => x.PaidAt).ThenByDescending(x => x.CreatedAt)
+            : query.OrderBy(x => x.DueDate).ThenBy(x => x.CreatedAt);
+        return await query.Take(take).ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<OpenTitleRow>> GetOpenTitleRowsAsync(
+        TransactionType type, Guid? customerId, CancellationToken ct = default)
+    {
+        var query = _context.FinancialTransactions.Where(x => x.TransactionType == type
+            && (x.Status == TransactionStatus.Pending || x.Status == TransactionStatus.Overdue));
+        if (customerId is { } id) query = query.Where(x => x.CustomerId == id);
+        var rows = await query.Select(x => new { x.DueDate, x.Amount }).ToListAsync(ct);
+        return rows.Select(r => new OpenTitleRow(r.DueDate, r.Amount)).ToList();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, string>> GetCustomerNamesAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
+    {
+        var list = ids.Distinct().ToList();
+        if (list.Count == 0) return new Dictionary<Guid, string>();
+        return await _context.Customers.Where(c => list.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
+    }
+
     public async Task LockTransactionAsync(Guid id, Guid tenantId, CancellationToken ct = default)
     {
         await _context.Database.ExecuteSqlInterpolatedAsync(

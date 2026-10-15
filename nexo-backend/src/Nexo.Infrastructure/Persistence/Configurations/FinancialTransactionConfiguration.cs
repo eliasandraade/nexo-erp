@@ -44,6 +44,12 @@ public class FinancialTransactionConfiguration : IEntityTypeConfiguration<Financ
         builder.Property(x => x.ReversesTransactionId)
             .HasColumnName("reverses_transaction_id");
 
+        builder.Property(x => x.ParentTransactionId)
+            .HasColumnName("parent_transaction_id");
+
+        builder.Property(x => x.CustomerId)
+            .HasColumnName("customer_id");
+
         builder.Property(x => x.Amount)
             .HasColumnName("amount")
             .HasColumnType("numeric(18,2)")
@@ -98,6 +104,9 @@ public class FinancialTransactionConfiguration : IEntityTypeConfiguration<Financ
         builder.HasIndex(x => new { x.TenantId, x.CompetenceDate });
         builder.HasIndex(x => new { x.TenantId, x.PaidAt });
         builder.HasIndex(x => x.ReversesTransactionId);
+        // Contas a receber / a pagar: open títulos by direction and due date; a customer's títulos
+        builder.HasIndex(x => new { x.TenantId, x.TransactionType, x.Status, x.DueDate });
+        builder.HasIndex(x => new { x.TenantId, x.CustomerId });
         builder.Ignore(x => x.IsOpen);
 
         builder.HasOne(x => x.FinancialAccount)

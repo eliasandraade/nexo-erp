@@ -88,6 +88,41 @@ public class FinancialController : ControllerBase
         return Ok(await _service.GetLedgerAsync(new LedgerFilter(parsedRegime, start, end, storeId, parsedCategory), ct));
     }
 
+    /// <summary>Contas a receber: open/overdue/settled títulos with the aging of what is open.</summary>
+    [HttpGet("receivables")]
+    public Task<ActionResult<TitlesDto>> GetReceivables(
+        [FromQuery] string status = "open", [FromQuery] DateTime? dueFrom = null, [FromQuery] DateTime? dueTo = null,
+        [FromQuery] Guid? customerId = null, CancellationToken ct = default)
+        => TitlesAsync(TransactionType.Receivable, status, dueFrom, dueTo, customerId, ct);
+
+    /// <summary>Contas a pagar: open/overdue/settled títulos with the aging of what is open.</summary>
+    [HttpGet("payables")]
+    public Task<ActionResult<TitlesDto>> GetPayables(
+        [FromQuery] string status = "open", [FromQuery] DateTime? dueFrom = null, [FromQuery] DateTime? dueTo = null,
+        CancellationToken ct = default)
+        => TitlesAsync(TransactionType.Payable, status, dueFrom, dueTo, null, ct);
+
+    private async Task<ActionResult<TitlesDto>> TitlesAsync(
+        TransactionType type, string status, DateTime? dueFrom, DateTime? dueTo, Guid? customerId, CancellationToken ct)
+    {
+        if (!Enum.TryParse<TitleStatusFilter>(status, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
+            return UnprocessableEntity(new { error = "Situação inválida: use open, overdue, settled ou all." });
+        return Ok(await _service.GetTitlesAsync(new TitlesFilter(
+            type, parsed, dueFrom?.ToUniversalTime(), dueTo?.ToUniversalTime(), customerId), ct));
+    }
+
+    /// <summary>Baixa total ou parcial, com juros, multa e desconto.</summary>
+    [HttpPost("transactions/{id:guid}/settle")]
+    public async Task<ActionResult<SettlementResultDto>> Settle(
+        Guid id, [FromBody] SettleTransactionRequest request, CancellationToken ct)
+        => Ok(await _service.SettleAsync(id, request, ct));
+
+    /// <summary>Título manual parcelado (mensal).</summary>
+    [HttpPost("transactions/installments")]
+    public async Task<ActionResult<IReadOnlyList<FinancialTransactionDto>>> CreateInstallments(
+        [FromBody] CreateInstallmentsRequest request, CancellationToken ct)
+        => Ok(await _service.CreateInstallmentsAsync(request, ct));
+
     [HttpGet("transactions/pending")]
     public async Task<ActionResult<IReadOnlyList<FinancialTransactionDto>>> GetPending(CancellationToken ct)
         => Ok(await _service.GetPendingTransactionsAsync(ct));

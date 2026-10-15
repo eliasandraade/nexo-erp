@@ -72,6 +72,57 @@ public class FinancialTransactionTests
             .Should().Throw<DomainException>();
 
     [Fact]
+    public void A_partial_settlement_splits_the_titulo_keeping_its_facts()
+    {
+        var tx = Revenue(100m);
+        var remainder = tx.Settle(40m, DateTime.UtcNow);
+
+        tx.Amount.Should().Be(40m);
+        tx.Status.Should().Be(TransactionStatus.Paid);
+        remainder.Should().NotBeNull();
+        remainder!.Amount.Should().Be(60m);
+        remainder.Status.Should().Be(TransactionStatus.Pending);
+        remainder.ParentTransactionId.Should().Be(tx.Id);
+        remainder.CompetenceDate.Should().Be(tx.CompetenceDate);
+        remainder.DueDate.Should().Be(tx.DueDate);
+        remainder.StoreId.Should().Be(Store);
+        remainder.ReferenceId.Should().Be(tx.ReferenceId);
+
+        // settling the remainder in two steps keeps pointing at the original título
+        remainder.Settle(10m, DateTime.UtcNow)!.ParentTransactionId.Should().Be(tx.Id);
+    }
+
+    [Fact]
+    public void A_settlement_cannot_cover_more_than_the_balance_or_nothing()
+    {
+        FluentActions.Invoking(() => Revenue(100m).Settle(100.01m, DateTime.UtcNow)).Should().Throw<DomainException>();
+        FluentActions.Invoking(() => Revenue(100m).Settle(0m, DateTime.UtcNow)).Should().Throw<DomainException>();
+        Revenue(100m).Settle(100m, DateTime.UtcNow).Should().BeNull();   // full baixa: no remainder
+    }
+
+    [Fact]
+    public void Interest_received_is_financial_income_and_a_discount_granted_is_financial_expense()
+    {
+        var tx = Revenue();
+        tx.CreateSettlementAdjustment(Account, TransactionType.Receivable, 2m, "Juros", DateTime.UtcNow, User)
+            .Category.Should().Be(FinancialCategory.FinancialIncome);
+        var discount = tx.CreateSettlementAdjustment(Account, TransactionType.Payable, 5m, "Desconto", DateTime.UtcNow, User);
+        discount.Category.Should().Be(FinancialCategory.FinancialExpense);
+        discount.Status.Should().Be(TransactionStatus.Paid);
+        discount.ParentTransactionId.Should().Be(tx.Id);
+        discount.ReferenceType.Should().Be(FinancialTransaction.SettlementReference);
+    }
+
+    [Fact]
+    public void Renegotiating_an_overdue_titulo_to_a_future_date_reopens_it()
+    {
+        var tx = Revenue();
+        tx.MarkOverdue();
+        tx.Update(100m, "Renegociado", DateTime.UtcNow.AddDays(10));
+        tx.Status.Should().Be(TransactionStatus.Pending);
+    }
+
+    [Fact]
     public void Manual_categories_follow_the_direction()
     {
         FinancialCategory.Revenue.IsAllowedForManualEntry(TransactionType.Receivable).Should().BeTrue();
