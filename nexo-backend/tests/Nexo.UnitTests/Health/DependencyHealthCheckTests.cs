@@ -19,6 +19,7 @@ public class DependencyHealthCheckTests
         public bool Fail;
         public Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task DeleteAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
+        public string GetSignedUrl(string key, TimeSpan ttl) => "https://signed/" + key;
         public Task PingAsync(CancellationToken ct = default)
         {
             Pings++;

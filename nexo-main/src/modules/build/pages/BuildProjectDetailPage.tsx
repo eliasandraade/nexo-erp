@@ -33,7 +33,7 @@ import {
   getWeatherCurrent, getWeatherHistory,
   type WeatherResult,
 } from "@/services/weather.api";
-import { uploadFile } from "@/services/storage.api";
+import { uploadPrivateFile } from "@/services/storage.api";
 import { ApiError } from "@/services/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
@@ -990,7 +990,7 @@ function TabDiario({ projectId }: { projectId: string }) {
     setUploadingLogId(logId);
     try {
       // Persist only the durable storage key — the public URL is composed on read.
-      const { key } = await uploadFile(file, "build-daily-log");
+      const { key } = await uploadPrivateFile(file, "build-daily-log");
       addPhotoMut.mutate({ logId, req: { storageKey: key } }, {
         onSuccess: () => toast.success("Foto adicionada!"),
         onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao salvar foto."),

@@ -1114,4 +1114,22 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - Service — financeiro (receita, comissões e resultado por profissional), Restaurante e Obras, **só para quem tem o módulo**.
 - Vendas, produtos, vendedores, formas de pagamento, estoque e clientes ficam na própria página (PR 65).
 - Playwright: os atalhos aparecem e levam às telas certas.
+
+## PR 70 — Storage privado
+
+Antes: tudo ia para um bucket com acesso público; prontuário (Service) e fotos de obra ficavam acessíveis para sempre a quem tivesse a URL, e o servidor aceitava gravar qualquer chave (de outro tenant, ou inventada) num registro.
+
+- **Arquivos privados** (contextos `service-record` e `build-daily-log`):
+  - vão para `private/tenants/{tenant}/…` — no **bucket privado** quando `Integrations:Storage:R2:PrivateBucketName` estiver configurado;
+  - nunca recebem URL pública: o upload devolve `{ key, url }` com URL **assinada que expira em 15 minutos**; prontuário e diário de obra devolvem URLs assinadas na leitura (`IPrivateFileUrls`), novas a cada carregamento;
+  - `GET /api/integrations/storage/signed-url?key=…` (gerência) renova a URL de um arquivo privado do próprio tenant.
+- **Arquivos públicos** (logo, capa, imagem de produto — aparecem no portal e no cardápio públicos) continuam com URL pública, como pede a missão.
+- **Isolamento:** prontuário só aceita anexo da pasta privada de prontuário do próprio tenant; foto de obra, só da pasta privada de diário do próprio tenant. Chave de outro tenant, pública, com `..` ou inventada → 422. Excluir e assinar exigem a pasta do tenant.
+- **Quem envia o quê:** imagem de produto — estoque e gerência; logo e capa, prontuário e foto de obra — só gerência (antes o estoquista enviava qualquer um).
+- **Conteúdo verificado:** os primeiros bytes do arquivo precisam bater com o tipo declarado (JPEG, PNG, WebP, PDF); um ZIP chamado de `.jpg` é recusado.
+- **Assinatura local** (SigV4 do SDK da AWS para o R2, sem chamada externa); bucket certo pela chave (`private/` → bucket privado).
+- **Frontend:** o diário de obra envia fotos pelo upload privado; o cliente de storage separa contextos públicos e privados.
+- **Testes:** unitários (layout de chaves, dono da chave, `..`, URL assinada no bucket privado e nunca na URL pública, papéis por contexto, assinatura de arquivo falsa, só gerência apaga privado, só privado do próprio tenant é assinado); integração (prontuário recusa chave pública e de outro tenant; foto de obra recusa chave pública, de outro tenant e URL externa).
+- **Para o dono (Cloudflare + Railway, não mudado aqui):** criar um bucket R2 **sem acesso público** e configurar `Integrations__Storage__R2__PrivateBucketName`. Até lá, os arquivos privados ficam no bucket atual sob `private/` e só são entregues assinados — mas um bucket público serve qualquer chave a quem a souber, então o bucket privado é o que fecha a porta de vez.
+- **Fica para depois:** anexos do interpretador e imagens de ficha técnica gravados no disco do container (não são servidos, e somem a cada deploy); URLs de logo/capa/produto aceitam qualquer endereço externo.
 - **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.

@@ -20,7 +20,7 @@ public class BuildDailyLogService
     private readonly IBuildProjectRepository       _projects;
     private readonly IBuildDailyLogRepository      _logs;
     private readonly IBuildDailyLogPhotoRepository _photos;
-    private readonly IStoragePublicUrlResolver     _urls;
+    private readonly IPrivateFileUrls     _urls;
     private readonly ICurrentTenant                _currentTenant;
     private readonly ICurrentUser                  _currentUser;
 
@@ -28,7 +28,7 @@ public class BuildDailyLogService
         IBuildProjectRepository       projects,
         IBuildDailyLogRepository      logs,
         IBuildDailyLogPhotoRepository photos,
-        IStoragePublicUrlResolver     urls,
+        IPrivateFileUrls     urls,
         ICurrentTenant                currentTenant,
         ICurrentUser                  currentUser)
     {
@@ -118,6 +118,9 @@ public class BuildDailyLogService
         return MapToDto(log, log.Photos, _urls);
     }
 
+    /// <summary>Upload folder of site photos (see StorageController "build-daily-log").</summary>
+    public const string PhotosFolder = "build/daily-logs";
+
     public async Task<BuildDailyLogDto> AddPhotoAsync(
         Guid                   logId,
         AddDailyLogPhotoRequest request,
@@ -126,8 +129,9 @@ public class BuildDailyLogService
         var log = await _logs.GetByIdWithPhotosAsync(logId, ct)
             ?? throw new NotFoundException("BuildDailyLog", logId);
 
-        if (string.IsNullOrWhiteSpace(request.StorageKey))
-            throw new DomainException("StorageKey is required.");
+        // Site photos are private: only files uploaded to this tenant's private daily-log folder.
+        if (!StorageKeys.IsPrivateOf(request.StorageKey, _currentTenant.Id, PhotosFolder))
+            throw new DomainException("Foto inválida: envie pelo upload do diário de obra e use a chave devolvida.");
 
         var photo = BuildDailyLogPhoto.Create(
             tenantId:   _currentTenant.Id,
@@ -164,7 +168,7 @@ public class BuildDailyLogService
     internal static BuildDailyLogDto MapToDto(
         BuildDailyLog log,
         IEnumerable<BuildDailyLogPhoto> photos,
-        IStoragePublicUrlResolver? urls = null)
+        IPrivateFileUrls? urls = null)
     {
         var photoList = photos.Select(p => MapPhotoToDto(p, urls)).ToList();
         return new BuildDailyLogDto(
@@ -186,11 +190,11 @@ public class BuildDailyLogService
     internal static BuildDailyLogDto MapToDtoNoPhotos(BuildDailyLog log) =>
         MapToDto(log, log.Photos);
 
-    private static BuildDailyLogPhotoDto MapPhotoToDto(BuildDailyLogPhoto p, IStoragePublicUrlResolver? urls) => new(
+    private static BuildDailyLogPhotoDto MapPhotoToDto(BuildDailyLogPhoto p, IPrivateFileUrls? urls) => new(
         Id:         p.Id,
         DailyLogId: p.DailyLogId,
         StorageKey: p.StorageKey,
-        Url:        urls?.ResolvePublicUrl(p.StorageKey),
+        Url:        urls?.For(p.StorageKey),
         Caption:    p.Caption,
         CreatedAt:  p.CreatedAt);
 }

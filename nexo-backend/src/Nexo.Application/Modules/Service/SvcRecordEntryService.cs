@@ -12,7 +12,7 @@ namespace Nexo.Application.Modules.Service;
 /// Use cases for SvcRecordEntry — internal annotations/history with durable attachment refs.
 /// The context (customer or subject) is validated through tenant-filtered repositories, so a
 /// cross-tenant context is invisible → NotFound → 404. Attachment public URLs are composed at
-/// read time from the durable storageKey (IStoragePublicUrlResolver); they are never persisted.
+/// read time from the durable storageKey as short-lived signed URLs (IPrivateFileUrls); never persisted.
 /// </summary>
 public class SvcRecordEntryService
 {
@@ -22,7 +22,7 @@ public class SvcRecordEntryService
     private readonly ICustomerRepository        _customers;
     private readonly ICurrentTenant             _currentTenant;
     private readonly ICurrentUser               _currentUser;
-    private readonly IStoragePublicUrlResolver  _urls;
+    private readonly IPrivateFileUrls           _urls;
 
     public SvcRecordEntryService(
         ISvcRecordEntryRepository repo,
@@ -31,7 +31,7 @@ public class SvcRecordEntryService
         ICustomerRepository       customers,
         ICurrentTenant            currentTenant,
         ICurrentUser              currentUser,
-        IStoragePublicUrlResolver urls)
+        IPrivateFileUrls          urls)
     {
         _repo          = repo;
         _subjects      = subjects;
@@ -41,6 +41,9 @@ public class SvcRecordEntryService
         _currentUser   = currentUser;
         _urls          = urls;
     }
+
+    /// <summary>Upload folder of record attachments (see StorageController "service-record").</summary>
+    public const string RecordsFolder = "service/records";
 
     public async Task<IReadOnlyList<SvcRecordEntryDto>> GetByContextAsync(
         SvcRecordContextType contextType, Guid contextId, CancellationToken ct = default)
@@ -56,6 +59,11 @@ public class SvcRecordEntryService
         var contextId   = request.ContextId!.Value;
 
         await EnsureContextExistsAsync(contextType, contextId, ct);
+
+        // Records are private: only files uploaded to this tenant's private record folder may be
+        // attached — never another tenant's key, a public one or one made up by the caller.
+        if (request.Attachments?.Any(a => !StorageKeys.IsPrivateOf(a.StorageKey, _currentTenant.Id, RecordsFolder)) == true)
+            throw new DomainException("Anexo inválido: envie o arquivo pelo upload de prontuário e use a chave devolvida.");
 
         var attachmentsJson = (request.Attachments is { Count: > 0 })
             ? JsonSerializer.Serialize(request.Attachments)
@@ -121,6 +129,6 @@ public class SvcRecordEntryService
             ContentType: a.ContentType,
             SizeBytes:   a.SizeBytes,
             Caption:     a.Caption,
-            Url:         _urls.ResolvePublicUrl(a.StorageKey))).ToList();
+            Url:         _urls.For(a.StorageKey))).ToList();
     }
 }
