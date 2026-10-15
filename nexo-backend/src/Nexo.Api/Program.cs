@@ -30,7 +30,8 @@ try
     {
         cfg.ReadFrom.Configuration(ctx.Configuration)
            .ReadFrom.Services(services)
-           .Enrich.FromLogContext();
+           .Enrich.FromLogContext()
+           .Enrich.With(new Nexo.Api.Observability.RequestIdEnricher(services.GetRequiredService<IHttpContextAccessor>()));
 
         // Structured logs: one JSON object per line outside development (RequestId, TenantId,
         // UserId, Route… become searchable fields in the platform's log viewer); readable text in dev.
@@ -38,7 +39,7 @@ try
             cfg.WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj} {RequestId}{NewLine}{Exception}");
         else
-            cfg.WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter());
+            cfg.WriteTo.Console(Nexo.Api.Observability.RequestLogging.JsonFormatter());
 
         if (!ctx.HostingEnvironment.IsDevelopment())
         {
@@ -157,7 +158,7 @@ try
                   // every non-simple request was preceded by a fresh OPTIONS round-trip,
                   // doubling latency on the cold first load.
                   .SetPreflightMaxAge(TimeSpan.FromHours(24))
-                  .WithExposedHeaders("Content-Disposition", "Content-Length");
+                  .WithExposedHeaders("Content-Disposition", "Content-Length", Nexo.Api.Middleware.CorrelationIdMiddleware.Header);
         });
     });
 
@@ -422,23 +423,10 @@ try
     app.UseCors("NexoFrontend");
 
     app.UseMiddleware<CorrelationIdMiddleware>();
+    // request log outside the exception handler: it records the status the client really got
+    Nexo.Api.Observability.RequestLogging.UseOrkenRequestLogging(app);
     app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-    app.UseSerilogRequestLogging(opts =>
-    {
-        opts.MessageTemplate =
-            "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
-        // health probes run every few seconds: keep them out of the log unless they fail
-        opts.GetLevel = Nexo.Api.Health.HealthEndpoints.RequestLogLevel;
-        // ids only — never names, e-mails or bodies
-        opts.EnrichDiagnosticContext = (diag, http) =>
-        {
-            if (http.GetEndpoint() is Microsoft.AspNetCore.Routing.RouteEndpoint route)
-                diag.Set("Route", route.RoutePattern.RawText);
-            foreach (var (claim, field) in new[] { ("tenantId", "TenantId"), ("storeId", "StoreId"), ("userId", "UserId") })
-                if (http.User.FindFirst(claim)?.Value is { } value) diag.Set(field, value);
-        };
-    });
 
     if (!app.Environment.IsProduction())
     {

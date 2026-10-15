@@ -12,9 +12,10 @@ namespace Nexo.Api.Observability;
 /// Without it nothing is collected or sent anywhere.
 /// <list type="bullet">
 /// <item>Metrics: HTTP server and client, .NET runtime and the API's own meter (<see cref="OrkenMetrics"/>).</item>
-/// <item>Traces: a sample of requests (<c>Observability:TraceSampleRatio</c>, default 10%), following
-/// the caller's decision when it sends one; health probes are never traced. Query strings are
-/// redacted by the instrumentation.</item>
+/// <item>Traces: a sample of requests (<c>Observability:TraceSampleRatio</c>, default 10%). A caller's
+/// <c>traceparent</c> cannot force sampling (the ratio applies to remote parents too); health probes
+/// are never traced. Spans carry the route template, not the raw path (no booking tokens, CNPJs or
+/// ids), and the instrumentation redacts query strings.</item>
 /// </list>
 /// </summary>
 public static class OpenTelemetrySetup
@@ -39,8 +40,16 @@ public static class OpenTelemetrySetup
                 .AddMeter(OrkenMetrics.MeterName)
                 .AddOtlpExporter())
             .WithTracing(tracing => tracing
-                .SetSampler(new ParentBasedSampler(new TraceIdRatioBasedSampler(ratio)))
-                .AddAspNetCoreInstrumentation(o => o.Filter = http => !http.Request.Path.StartsWithSegments("/health"))
+                .SetSampler(new ParentBasedSampler(
+                    new TraceIdRatioBasedSampler(ratio),
+                    remoteParentSampled: new TraceIdRatioBasedSampler(ratio),
+                    remoteParentNotSampled: new AlwaysOffSampler()))
+                .AddAspNetCoreInstrumentation(o =>
+                {
+                    o.Filter = http => !http.Request.Path.StartsWithSegments("/health");
+                    o.EnrichWithHttpResponse = (activity, response) =>
+                        activity.SetTag("url.path", RequestLogging.RouteOf(response.HttpContext));
+                })
                 .AddHttpClientInstrumentation()
                 .AddOtlpExporter());
 

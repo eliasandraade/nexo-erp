@@ -40,20 +40,20 @@ public static class ErrorFingerprint
         if (IsDatabaseError(root)) return type + ": database error";
         var masked = Mask(root.Message);
         var text = $"{type}: {masked}";
-        return text.Length <= MaxSummary ? text : text[..MaxSummary];
+        return Cut(text, MaxSummary);
     }
 
     /// <summary>The first frames of the stack (method names and line numbers only — never values).</summary>
     public static string StackTop(Exception ex)
     {
         var text = string.Join('\n', Frames(Root(ex)).Take(12));
-        return text.Length <= MaxStack ? text : text[..MaxStack];
+        return Cut(text, MaxStack);
     }
 
     public static string Mask(string message)
     {
         var sb = new StringBuilder(message.Length);
-        foreach (var word in message.Split(' '))
+        foreach (var word in MaskQuoted(message).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
         {
             if (sb.Length > 0) sb.Append(' ');
             sb.Append(MaskWord(word));
@@ -61,9 +61,45 @@ public static class ErrorFingerprint
         return sb.ToString();
     }
 
+    /// <summary>Whole quoted spans become '***' — a quoted value may have spaces ('João Silva').</summary>
+    private static string MaskQuoted(string message)
+    {
+        var sb = new StringBuilder(message.Length);
+        for (var i = 0; i < message.Length; i++)
+        {
+            var close = ClosingQuote(message[i]);
+            if (close is null) { sb.Append(message[i]); continue; }
+            var end = message.IndexOf(close.Value, i + 1);
+            sb.Append("'***'");
+            if (end < 0) break;   // unterminated: mask the rest
+            i = end;
+        }
+        return sb.ToString();
+    }
+
+    private static char? ClosingQuote(char c) => c switch
+    {
+        '\'' => '\'',
+        '"' => '"',
+        '‘' => '’',
+        '“' => '”',
+        _ => null,
+    };
+
+    /// <summary>Truncates without splitting a surrogate pair (an emoji cut in half is invalid UTF-8).</summary>
+    private static string Cut(string text, int max)
+    {
+        if (text.Length <= max) return text;
+        var end = char.IsHighSurrogate(text[max - 1]) ? max - 1 : max;
+        return text[..end];
+    }
+
     private static string MaskWord(string word)
     {
         if (word.Contains('@')) return "***";
+        // name=value, Email:value — keep the name, hide the value
+        var sep = word.IndexOfAny(['=', ':']);
+        if (sep > 0 && sep < word.Length - 1) return word[..(sep + 1)] + "***";
         // a formatted document or phone ("529.982.247-25", "(11) 98765-4321") is many short runs
         if (word.Count(char.IsAsciiDigit) >= 6) return "####";
         if (word.Length >= 2 && word[0] is '\'' or '"') return "'***'";

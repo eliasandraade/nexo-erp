@@ -7,18 +7,21 @@ const DAYS = [1, 7, 30] as const;
 
 function ErrorRow({ error }: Readonly<{ error: PlatformErrorEvent }>) {
   const [open, setOpen] = useState(false);
+  const detailsId = `error-${error.id}`;
+  const route = error.route === "unmatched" ? "rota não identificada" : error.route;
   return (
     <li className="border-b border-border last:border-0">
       <button
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
+        aria-controls={detailsId}
         className="flex w-full items-start gap-2 px-4 py-3 text-left hover:bg-muted/40"
       >
         {open ? <ChevronDown className="mt-0.5 h-4 w-4 shrink-0" /> : <ChevronRight className="mt-0.5 h-4 w-4 shrink-0" />}
         <span className="min-w-0 flex-1">
           <span className="block break-words text-sm font-medium text-foreground">{error.summary}</span>
-          <span className="block break-all font-mono text-xs text-muted-foreground">{error.method} /{error.route}</span>
+          <span className="block break-all font-mono text-xs text-muted-foreground">{error.method} {route}</span>
         </span>
         <span className="shrink-0 text-right text-xs text-muted-foreground tabular-nums">
           <span className="block font-semibold text-foreground">{error.count}×</span>
@@ -26,7 +29,7 @@ function ErrorRow({ error }: Readonly<{ error: PlatformErrorEvent }>) {
         </span>
       </button>
       {open && (
-        <div className="space-y-2 px-4 pb-3 text-xs text-muted-foreground">
+        <div id={detailsId} className="space-y-2 px-4 pb-3 text-xs text-muted-foreground">
           <p>Primeira vez: {new Date(error.firstSeenAt).toLocaleString("pt-BR")}</p>
           {error.lastRequestId && <p>Último código: <code className="break-all">{error.lastRequestId}</code></p>}
           {error.lastTenantId && <p>Último tenant: <code className="break-all">{error.lastTenantId}</code></p>}
@@ -51,7 +54,7 @@ export function RecentErrors() {
       <div className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-3">
         <AlertTriangle className="h-4 w-4 text-primary" />
         <h2 id="recent-errors-title" className="flex-1 text-sm font-medium text-foreground">Erros inesperados</h2>
-        <div className="flex gap-1">
+        <div className="flex gap-1" role="group" aria-label="Período">
           {DAYS.map((d) => (
             <button
               key={d}

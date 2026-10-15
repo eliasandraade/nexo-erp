@@ -68,6 +68,16 @@ public class ExceptionHandlingMiddleware
             _logger.LogWarning("Domain rule violation: {Message}", ex.Message);
             await WriteErrorAsync(ctx, 422, ex.Message);
         }
+        catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
+        {
+            // the caller went away (closed tab, timeout): nothing failed, nobody to answer
+            _logger.LogInformation("Request aborted by the client.");
+        }
+        catch (Exception ex) when (ctx.RequestAborted.IsCancellationRequested)
+        {
+            // same, surfacing as a driver error (e.g. Npgsql cancelling a command)
+            _logger.LogInformation(ex, "Request aborted by the client.");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception.");
@@ -77,8 +87,7 @@ public class ExceptionHandlingMiddleware
     }
 
     /// <summary>The route template ("api/sales/{id:guid}"), never the raw path with its ids.</summary>
-    private static string RouteOf(HttpContext ctx)
-        => ctx.GetEndpoint() is RouteEndpoint route ? route.RoutePattern.RawText ?? "unknown" : "unmatched";
+    private static string RouteOf(HttpContext ctx) => Nexo.Api.Observability.RequestLogging.RouteOf(ctx);
 
     private static Guid? TenantOf(HttpContext ctx)
         => Guid.TryParse(ctx.User.FindFirst("tenantId")?.Value, out var id) ? id : null;

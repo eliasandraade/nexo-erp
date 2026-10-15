@@ -1095,6 +1095,15 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
 - **Logs persistentes:** o arquivo de log dentro do container some a cada deploy; o que persiste é o `error_events` (no banco) e o histórico de logs da Railway (JSON pesquisável por `RequestId`).
 - **Migração `ObservabilityErrorEvents`** (aditiva: tabela nova), validada num Postgres descartável (sobe → desce → sobe).
 - **Testes:** unitários (mascaramento, erro de banco, mesma impressão digital para o mesmo erro, ID de chamador aceito só quando sensato); integração (cabeçalho em toda resposta, ID do chamador ecoado, ID injetado recusado, `requestId` no corpo do erro igual ao cabeçalho, duas ocorrências viram uma linha com contagem 2 e sem dado pessoal, só a plataforma lista); Playwright da seção de erros.
+- **Correções da revisão independente** (sem bloqueadores):
+  - o `RequestId` de cada linha de log agora é o nosso (o ASP.NET Core punha o id da conexão do Kestrel e ele prevalecia sobre o do contexto do Serilog — só a linha final da requisição levava o id certo);
+  - o log de requisição fica fora do tratamento de exceções: um 404/422 não aparece mais como "respondeu 500" com a mensagem de domínio anexada, e o 500 não sai duas vezes;
+  - cliente que desiste (aba fechada, timeout) não vira erro rastreado nem 500 no log;
+  - o caminho gravado no log e nos spans é o **modelo da rota** (`/api/service/public/bookings/{token}`), nunca o caminho cru — que vazaria token de agendamento, CNPJ e ids;
+  - mascaramento reforçado: trecho entre aspas inteiro (inclusive aspas curvas e com espaços), `nome=valor`, quebras de linha; o resumo nunca corta um emoji ao meio (o banco recusaria o texto);
+  - o JSON de log usa as chaves que o visualizador da Railway lê (`time`, `level` como debug/info/warn/error, `message`) com Serilog.Expressions 5.0;
+  - `X-Request-Id` exposto ao navegador por CORS; um `traceparent` de fora não força mais a amostragem;
+  - seção de erros: grupo de períodos com rótulo, linha ligada aos detalhes (`aria-controls`), "rota não identificada" no lugar de "unmatched".
 - **Para o dono (opcional):** para ver métricas e traces, configurar um destino OTLP (Grafana Cloud, Honeycomb…) por variáveis `OTEL_*` na Railway.
 
 ## PR 65b — Relatórios: os das outras áreas na mesma página
