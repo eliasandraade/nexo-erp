@@ -6560,6 +6560,63 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("svc_subjects", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcTimeBlock", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime>("EndsAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("ends_at");
+
+                    b.Property<Guid?>("ProfessionalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("professional_id");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTime>("StartsAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("starts_at");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProfessionalId");
+
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_svc_time_blocks_store_id");
+
+                    b.HasIndex("TenantId", "StoreId", "StartsAt")
+                        .HasDatabaseName("ix_svc_time_blocks_store_starts");
+
+                    b.ToTable("svc_time_blocks", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Varejo.RetCustomerPriceList", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8416,6 +8473,29 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_svc_subjects_tenants");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Service.SvcTimeBlock", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Service.SvcProfessional", null)
+                        .WithMany()
+                        .HasForeignKey("ProfessionalId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_svc_time_blocks_professionals");
+
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_time_blocks_stores");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_svc_time_blocks_tenants");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Varejo.RetCustomerPriceList", b =>

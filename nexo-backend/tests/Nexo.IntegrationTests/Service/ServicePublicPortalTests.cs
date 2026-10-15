@@ -153,6 +153,26 @@ public class ServicePublicPortalTests
     }
 
     [Fact]
+    public async Task A_block_removes_its_slots_from_the_portal_and_refuses_booking_them()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+        var catalog = await CreateCatalogAsync(admin, durationMinutes: 60);
+        var pub = _factory.CreateApiClient();
+
+        var before = await GetAvailabilityAsync(pub, slug, catalog, professional);
+        var pick = before.Slots.First(s => s.StartsAt > DateTime.UtcNow.AddDays(1));
+        (await admin.PostAsJsonAsync("/api/v1/service/time-blocks",
+                new { professionalId = professional, startsAt = pick.StartsAt, endsAt = pick.EndsAt, reason = "Folga" }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var after = await GetAvailabilityAsync(pub, slug, catalog, professional);
+        after.Slots.Select(s => s.Raw).Should().NotContain(pick.Raw, "a blocked slot must disappear from availability");
+        (await BookAsync(pub, slug, catalog, professional, pick.Raw)).StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task Availability_is_empty_when_professional_has_no_working_hours()
     {
         var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);

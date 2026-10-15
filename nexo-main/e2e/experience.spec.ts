@@ -382,4 +382,55 @@ test('Adicionais: grupo do produto, opção com preço e remoção',async({page}
  await expect.poll(()=>removedGroup).toBe(true);
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Service: agenda da semana com bloqueio, abrir comanda e concluir direto',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api';
+ let blockBody: any=null, statusBody: any=null, orderFor: string|null=null, deletedBlock: string|null=null;
+ const today=new Date(); const iso=(h:number)=>{const d=new Date(today);d.setHours(h,0,0,0);return d.toISOString();};
+ const appt={id:'a1',customerId:'c1',professionalId:'pr1',catalogItemId:'s1',subjectId:null,startsAt:iso(14),endsAt:iso(15),status:'Scheduled',notes:null,priceSnapshot:50,cancellationReason:null,createdAt:iso(9),updatedAt:iso(9)};
+ await page.route(`${API}/v1/service/appointments**`,route=>{const r=route.request();
+  if(r.method()==='PATCH'){statusBody=r.postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...appt,status:'Completed'})});}
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([appt])});});
+ await page.route(`${API}/v1/service/time-blocks**`,route=>{const r=route.request();
+  if(r.method()==='POST'){blockBody=r.postDataJSON();return route.fulfill({status:201,contentType:'application/json',body:'{}'});}
+  if(r.method()==='DELETE'){deletedBlock=new URL(r.url()).pathname.split('/').pop()!;return route.fulfill({status:204,body:''});}
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'b1',professionalId:'pr1',startsAt:iso(12),endsAt:iso(13),reason:'Almoço',createdAt:iso(8)}])});});
+ await page.route(`${API}/v1/service/professionals**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'pr1',name:'Rafa',isActive:true}])}));
+ await page.route(`${API}/v1/service/catalog**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'s1',name:'Corte',isActive:true}])}));
+ await page.route(`${API}/customers**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'c1',name:'Bruno',isActive:true}])}));
+ await page.route(`${API}/v1/service/orders/from-appointment/**`,route=>{orderFor=new URL(route.request().url()).pathname.split('/').pop()!;
+  // the appointment already has a comanda: the agenda opens the existing one
+  return route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({message:'Já existe uma comanda para este agendamento.'})});});
+ await page.route(/\/v1\/service\/orders\?appointmentId=a1/,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'o9',appointmentId:'a1',status:'Open',items:[]}])}));
+ await page.goto('/service/agenda');
+ await expect(page.getByText('Almoço')).toBeVisible();
+ await expect(page.getByText('Bruno')).toBeVisible();
+ await page.getByRole('tab',{name:'Semana'}).click();
+ await expect(page.getByText('Almoço')).toBeVisible();
+ // concluir straight from Scheduled
+ await page.getByRole('button',{name:'Ações do agendamento'}).click();
+ await page.getByRole('menuitem',{name:'Concluir'}).click();
+ await expect.poll(()=>statusBody).not.toBeNull();
+ expect(statusBody.status).toBe('Completed');
+ // block the store for a holiday
+ await page.getByRole('button',{name:'Bloquear horário'}).click();
+ await page.getByLabel('Motivo').fill('Feriado');
+ await page.getByText('O dia todo').click();
+ await expect(page.getByRole('button',{name:'Bloquear',exact:true})).toBeDisabled();   // whole store is never the default
+ await page.getByLabel('Para').click();
+ await page.getByRole('option',{name:'Loja inteira (feriado)'}).click();
+ await page.getByRole('button',{name:'Bloquear',exact:true}).click();
+ await expect.poll(()=>blockBody).not.toBeNull();
+ expect(blockBody).toMatchObject({professionalId:null,reason:'Feriado'});
+ // removing a block takes two taps
+ await page.getByRole('button',{name:/^Remover bloqueio de Rafa/}).click();
+ expect(deletedBlock).toBeNull();
+ await page.getByRole('button',{name:/^Confirmar remoção do bloqueio de Rafa/}).click();
+ await expect.poll(()=>deletedBlock).toBe('b1');
+ // open the comanda of the appointment
+ await page.getByRole('button',{name:'Ações do agendamento'}).click();
+ await page.getByRole('menuitem',{name:'Abrir comanda'}).click();
+ await expect.poll(()=>orderFor).toBe('a1');
+ await expect(page).toHaveURL(/\/service\/ordens\/o9$/);
+});
 

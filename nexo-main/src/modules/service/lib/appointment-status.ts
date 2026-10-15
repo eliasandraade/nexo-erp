@@ -26,8 +26,9 @@ export const APPOINTMENT_STATUS_VARIANTS: Record<SvcAppointmentStatus, BadgeVari
  * backend still enforces the machine (422 on an invalid transition).
  */
 const TRANSITIONS: Record<SvcAppointmentStatus, SvcAppointmentStatus[]> = {
-  Scheduled: ["Confirmed", "Cancelled", "NoShow"],
-  Confirmed: ["InProgress", "Cancelled", "NoShow"],
+  // the service was done: concluir straight from the agenda (PR 56)
+  Scheduled: ["Confirmed", "InProgress", "Completed", "Cancelled", "NoShow"],
+  Confirmed: ["InProgress", "Completed", "Cancelled", "NoShow"],
   InProgress: ["Completed", "Cancelled"],
   Completed: [],
   NoShow: [],

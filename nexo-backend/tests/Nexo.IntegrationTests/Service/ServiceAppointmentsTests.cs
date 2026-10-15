@@ -69,7 +69,92 @@ public class ServiceAppointmentsTests
         var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
         var ctx = await SetupAsync(c);
         var id = await CreateAppointmentAsync(c, ctx, Base.AddHours(2), Base.AddHours(3));
-        (await Patch(c, id, "Completed")).Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await Patch(c, id, "Completed")).Should().Be(HttpStatusCode.OK);          // concluir directly (PR 56)
+        (await Patch(c, id, "Confirmed")).Should().Be(HttpStatusCode.UnprocessableEntity);   // terminal
+    }
+
+    // ── Bloqueios de agenda (PR 56) ──────────────────────────────────────────
+
+    [Fact]
+    public async Task A_block_stops_new_bookings_for_its_professional_and_a_store_block_for_everyone()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c);
+        var other = await CreateProfessionalAsync(c);
+        var day = Base.AddDays(20);
+
+        var lunch = await c.PostAsJsonAsync("/api/v1/service/time-blocks",
+            new { professionalId = ctx.ProfessionalId, startsAt = day.AddHours(2), endsAt = day.AddHours(3), reason = "Almoço" });
+        lunch.StatusCode.Should().Be(HttpStatusCode.Created, await lunch.Content.ReadAsStringAsync());
+
+        (await PostAppointment(c, ctx, day.AddHours(2).AddMinutes(30), day.AddHours(3).AddMinutes(30)))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);                  // overlaps the block
+        (await PostAppointment(c, ctx with { ProfessionalId = other }, day.AddHours(2), day.AddHours(3)))
+            .StatusCode.Should().Be(HttpStatusCode.Created);                   // someone else's block
+
+        // holiday for the whole store
+        var holiday = await c.PostAsJsonAsync("/api/v1/service/time-blocks",
+            new { startsAt = day.AddDays(1), endsAt = day.AddDays(2), reason = "Feriado" });
+        holiday.StatusCode.Should().Be(HttpStatusCode.Created);
+        (await PostAppointment(c, ctx with { ProfessionalId = other }, day.AddDays(1).AddHours(1), day.AddDays(1).AddHours(2)))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var list = await c.GetFromJsonAsync<List<JsonElement>>(
+            $"/api/v1/service/time-blocks?from={Uri.EscapeDataString(day.ToString("O"))}&to={Uri.EscapeDataString(day.AddDays(3).ToString("O"))}&professionalId={ctx.ProfessionalId}");
+        list!.Should().HaveCount(2);                                           // its lunch + the store holiday
+
+        // removing the block frees the time
+        var lunchId = (await lunch.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await c.DeleteAsync($"/api/v1/service/time-blocks/{lunchId}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await PostAppointment(c, ctx, day.AddHours(2), day.AddHours(3))).StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task A_booking_made_before_a_block_can_still_be_edited_in_its_slot()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c);
+        var day = Base.AddDays(30);
+        var id = await CreateAppointmentAsync(c, ctx, day.AddHours(1), day.AddHours(2));
+        (await c.PostAsJsonAsync("/api/v1/service/time-blocks",
+            new { startsAt = day, endsAt = day.AddDays(1), reason = "Feriado" })).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var keep = await c.PutAsJsonAsync($"/api/v1/service/appointments/{id}", new
+        {
+            customerId = ctx.CustomerId, professionalId = ctx.ProfessionalId, catalogItemId = ctx.CatalogItemId,
+            startsAt = day.AddHours(1), endsAt = day.AddHours(2), notes = "Confirmar por telefone",
+        });
+        keep.StatusCode.Should().Be(HttpStatusCode.OK, await keep.Content.ReadAsStringAsync());   // same slot: allowed
+        var move = await c.PutAsJsonAsync($"/api/v1/service/appointments/{id}", new
+        {
+            customerId = ctx.CustomerId, professionalId = ctx.ProfessionalId, catalogItemId = ctx.CatalogItemId,
+            startsAt = day.AddHours(3), endsAt = day.AddHours(4),
+        });
+        move.StatusCode.Should().Be(HttpStatusCode.Conflict);                                     // into the block: refused
+    }
+
+    [Fact]
+    public async Task Two_simultaneous_bookings_of_the_same_slot_never_both_succeed()
+    {
+        var c1 = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var c2 = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c1);
+        var day = Base.AddDays(40);
+        var results = await Task.WhenAll(
+            PostAppointment(c1, ctx, day.AddHours(1), day.AddHours(2)),
+            PostAppointment(c2, ctx, day.AddHours(1).AddMinutes(30), day.AddHours(2).AddMinutes(30)));
+        results.Select(r => r.StatusCode).Should().BeEquivalentTo(new[] { HttpStatusCode.Created, HttpStatusCode.Conflict });
+    }
+
+    [Fact]
+    public async Task An_invalid_block_is_rejected()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        (await c.PostAsJsonAsync("/api/v1/service/time-blocks", new { startsAt = Base.AddHours(3), endsAt = Base.AddHours(2) }))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await c.PostAsJsonAsync("/api/v1/service/time-blocks",
+                new { professionalId = Guid.NewGuid(), startsAt = Base, endsAt = Base.AddHours(1) }))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]

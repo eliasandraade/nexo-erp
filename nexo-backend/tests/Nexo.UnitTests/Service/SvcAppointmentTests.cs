@@ -87,10 +87,18 @@ public class SvcAppointmentTests
     }
 
     [Theory]
-    [InlineData(SvcAppointmentStatus.InProgress)]  // Scheduled cannot jump to InProgress
-    [InlineData(SvcAppointmentStatus.Completed)]   // Scheduled cannot jump to Completed
-    public void Invalid_transition_from_scheduled_throws(SvcAppointmentStatus to)
-        => ((Action)(() => New().ChangeStatus(to, null)))
+    [InlineData(SvcAppointmentStatus.InProgress)]  // PR 56: concluir straight from the agenda
+    [InlineData(SvcAppointmentStatus.Completed)]
+    public void A_scheduled_appointment_can_be_started_or_concluded_directly(SvcAppointmentStatus to)
+    {
+        var a = New();
+        a.ChangeStatus(to, null);
+        a.Status.Should().Be(to);
+    }
+
+    [Fact]
+    public void A_scheduled_appointment_cannot_go_back_to_scheduled()
+        => ((Action)(() => New().ChangeStatus(SvcAppointmentStatus.Scheduled, null)))
             .Should().Throw<DomainException>().WithMessage("*status*");
 
     [Fact]
