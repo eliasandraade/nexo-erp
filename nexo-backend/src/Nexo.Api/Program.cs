@@ -469,7 +469,7 @@ try
     });
     app.MapHub<RestaurantHub>("/hubs/restaurant");
     app.MapControllers();
-    app.MapHealthChecks("/health");
+    Nexo.Api.Health.HealthEndpoints.MapOrkenHealth(app);
 
     Log.Information("Nexo API starting on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();

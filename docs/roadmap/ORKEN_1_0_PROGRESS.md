@@ -1052,3 +1052,17 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
 - **Playwright no CI** com 1 nova tentativa (só no CI), para um runner lento não reprovar um PR que não mexeu no teste.
 - **Cadeia de dependências:** a instalação (CI e Docker) usa `--ignore-scripts`, então nenhum pacote roda script de instalação na máquina de build (os binários nativos vêm como pacotes opcionais do lockfile); o Playwright roda pelos scripts do projeto (`npm run e2e:install` / `e2e:critical`), sem `npx` baixando pacote na hora. Apontado pelo SonarCloud (S6505/S8543).
 - **Para regerar o lock** depois de mudar dependências: `docker run --rm -v "$PWD:/w" -w /w node:20-slim npm install --package-lock-only` dentro de `nexo-main`.
+
+## PR 68 — Saúde e resiliência
+
+- **Três endpoints de saúde** (sem login, `Cache-Control: no-store`, resposta em JSON com status, nome de cada verificação, descrição curta fixa e duração — nunca texto de exceção, host ou string de conexão):
+  - `/health/live`: só diz que o processo responde. Não verifica nada, para que uma queda de banco ou de cache não faça a plataforma reiniciar um processo saudável;
+  - `/health/ready`: pode receber tráfego? 503 **só** se o PostgreSQL estiver fora; Redis e storage fora aparecem como `Degraded` (200);
+  - `/health`: relatório completo (inclui o armazenamento de anexos do interpretador), com os mesmos códigos do ready. Continua respondendo 200 enquanto o banco estiver de pé, então os smoke tests de deploy seguem iguais.
+- **Verificações:**
+  - PostgreSQL: `CanConnect` com limite de 3 s;
+  - Redis: `PING` com limite de 1 s; sem Redis configurado (dev, testes) é saudável; fora do ar, degrada (o cache já é fail-open);
+  - storage de objetos (R2): só quando o storage está ligado; o resultado vale por 1 minuto, porque a sonda roda muitas vezes e cada consulta ao R2 é cobrada.
+- **Correção encontrada no caminho:** o "ping" do R2 listava **todos os buckets da conta**, coisa que o token da aplicação não tem permissão de fazer, então falharia sempre. Agora lista no máximo um objeto do bucket da aplicação.
+- **Testes:** integração (live sem verificações; ready com Postgres saudável e sem o armazenamento de anexos; relatório completo sem vazar detalhes) e unitários (Redis não configurado, storage fora degrada e não é consultado de novo por 1 minuto, storage desligado não é consultado).
+- **Para o dono (configuração da Railway, não mudada aqui):** apontar o healthcheck do serviço da API para `/health/ready`.
