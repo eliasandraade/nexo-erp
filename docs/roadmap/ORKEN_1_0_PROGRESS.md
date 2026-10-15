@@ -1039,3 +1039,12 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - códigos internos (13 dígitos começando por 2, como etiqueta de balança) e zeros não contam como GTIN;
   - o aviso de CPF incompleto no PDV só aparece quando o número parece completo ou ao sair do campo.
 - **Fica para depois:** emissão de verdade (provedor, certificado A1, contingência e documento fiscal da devolução); unificar o CNPJ de `Tenant.TaxId`, das configurações da empresa e do emissor; clientes do portal público que hoje guardam um identificador no lugar do CPF; mascarar o CPF do consumidor para o papel vendedor (LGPD); conferir CST × CSOSN pelo regime antes de emitir.
+
+## PR 67 — CI do frontend
+
+- **Workflow `frontend-ci`** (em todo PR e push no master que toque o frontend): instalação pelo lockfile (`npm ci`), typecheck, lint, Vitest, build de produção e a suíte crítica de Playwright (API simulada, sem backend). Em falha, o relatório do Playwright fica como artefato por 7 dias.
+- **Lockfile versionado:** `nexo-main/package-lock.json` deixa de ser ignorado. O lock gerado no Windows não traz os binários nativos de outras plataformas (bug do npm #4828, por isso o Dockerfile instalava sem lock e cada deploy resolvia versões novas). O lock agora é gerado no Linux (`npm install --package-lock-only` em `node:20-slim`) e traz os binários de todas as plataformas (25 variantes do Rollup); `npm ci` funciona no Windows, no CI e no Docker.
+- **Build reproduzível:** o Dockerfile do frontend passa a usar `COPY package.json package-lock.json` + `npm ci`. Imagem construída e servida localmente (página e rota SPA 200).
+- **Lint limpo:** os 30 erros eram `any` no arquivo de testes de navegador; viraram um tipo `Json` (o que o `postDataJSON()` do Playwright devolve). Ficam 16 avisos, sem erro.
+- **Playwright no CI** com 1 nova tentativa (só no CI), para um runner lento não reprovar um PR que não mexeu no teste.
+- **Para regerar o lock** depois de mudar dependências: `docker run --rm -v "$PWD:/w" -w /w node:20-slim npm install --package-lock-only` dentro de `nexo-main`.

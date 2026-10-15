@@ -1,4 +1,6 @@
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Page, type Request as PwRequest } from '@playwright/test';
+/** A request or response body as the tests see it — what Playwright's postDataJSON() returns. */
+type Json = ReturnType<PwRequest['postDataJSON']>;
 const modules = ['varejo', 'restaurante', 'service', 'build'];
 const session = { userId:'qa', tenantId:'qa', name:'Revisão local', role:'diretoria', login:'qa', modules, activeModules:modules, companyName:'Ambiente de teste', storeId:'qa-store', storeIds:['qa-store'], type:'tenant' };
 const preset = {key:'barbearia',displayName:'Barbearia',labels:{customer:'Cliente',professional:'Profissional',catalogItem:'Serviço',appointment:'Agendamento',order:'Ordem',subject:'Cadastro'},capabilities:{appointments:true,orders:true,packages:true,commissions:false,subjectKind:null}};
@@ -146,7 +148,7 @@ test('Venda paga: devolução parcial envia itens, reembolso, motivo e chave de 
  const sale={id:'qa-sale',number:42,status:'Paid',customerId:null,customerName:null,soldByUserId:'qa',soldByName:'Revisão local',cashSessionId:'qa-cash',subtotal:100,discountAmount:10,taxAmount:0,total:90,notes:null,confirmedAt:'2026-10-14T10:00:00Z',paidAt:'2026-10-14T10:00:00Z',cancelledAt:null,
   items:[{id:'qa-item',productId:'qa-prod',productName:'Camiseta',productCode:'C1',quantity:2,unitPrice:50,costPrice:20,discountAmount:0,total:100,notes:null}],
   payments:[{id:'p1',method:'Cash',type:'Cash',amount:90,dueDate:null,tenderedAmount:90,changeAmount:0}],createdAt:'2026-10-14T10:00:00Z',updatedAt:'2026-10-14T10:00:00Z',returnedAmount:0,cancellationReason:null};
- let posted: any=null;
+ let posted: Json=null;
  await page.route('**/api/sales/qa-sale**',async route=>{const r=route.request();const p=new URL(r.url()).pathname;
   if(p.endsWith('/returns')&&r.method()==='POST'){posted=r.postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'qa-ret',saleId:'qa-sale',refundMethod:'Pix',refundAmount:45,reason:'Defeito',createdByUserId:'qa',createdAt:'2026-10-14T11:00:00Z',items:[{saleItemId:'qa-item',productId:'qa-prod',quantity:1,amount:45}]})});}
   if(p.endsWith('/returns'))return route.fulfill({status:200,contentType:'application/json',body:'[]'});
@@ -169,7 +171,7 @@ test('Inventário: contagem salva e aplicada; transferência envia destino e qua
  await prepare(page);
  const count={id:'qa-count',number:3,status:'Open',notes:null,createdAt:'2026-10-14T09:00:00Z',closedAt:null,countedItems:0,
   items:[{productId:'p1',productName:'Arroz 5kg',productCode:'A5',expectedQuantity:10,countedQuantity:null,systemQuantityAtApply:null,difference:null}]};
- let saved: any=null, applied=false, transferBody: any=null;
+ let saved: Json=null, applied=false, transferBody: Json=null;
  await page.route('**/api/stock/counts**',route=>{const r=route.request();const p=new URL(r.url()).pathname;
   if(r.method()==='PUT'){saved=r.postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(count)});}
   if(p.endsWith('/apply')){applied=true;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...count,status:'Applied',items:[{...count.items[0],countedQuantity:8,systemQuantityAtApply:10,difference:-2}]})});}
@@ -197,11 +199,11 @@ test('Inventário: contagem salva e aplicada; transferência envia destino e qua
 test('Compras: criar pedido, adicionar item e receber com vencimento',async({page})=>{
  await prepare(page);
  const base={id:'qa-pur',purchaseNumber:7,status:'Draft',supplierId:'sup1',supplierName:'Distribuidora Teste',totalAmount:0,invoiceNumber:null,receivedAt:null,confirmedAt:null,cancelledAt:null,notes:null,items:[],createdAt:'2026-10-14T09:00:00Z',orderedAt:null,cancellationReason:null};
- let current: any={...base}; let itemBody: any=null, receiveBody: any=null;
+ let current: Json={...base}; let itemBody: Json=null, receiveBody: Json=null;
  await page.route('http://localhost:5000/api/suppliers**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'sup1',name:'Distribuidora Teste',tradeName:null,isActive:true}])}));
  await page.route('http://localhost:5000/api/products**',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'p1',code:'A5',name:'Arroz 5kg',costPrice:20,salePrice:30,isActive:true}])}));
  await page.route('http://localhost:5000/api/varejo/purchases**',route=>{const r=route.request();const p=new URL(r.url()).pathname;
-  const ok=(b:any)=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(b)});
+  const ok=(b:Json)=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(b)});
   if(r.method()==='POST'&&p.endsWith('/purchases')){current={...base};return ok(current);}
   if(p.endsWith('/items')){itemBody=r.postDataJSON();current={...current,totalAmount:200,items:[{id:'i1',productId:'p1',productName:'Arroz 5kg',productCode:'A5',quantity:10,unitCost:20,total:200,notes:null}]};return ok(current);}
   if(p.endsWith('/confirm')){receiveBody=r.postDataJSON();current={...current,status:'Confirmed',confirmedAt:'2026-10-14T10:00:00Z'};return ok(current);}
@@ -228,9 +230,9 @@ test('Listas de preço: definir preço e vincular cliente; PDV usa o preço reso
  await prepare(page);
  const API='http://localhost:5000/api';
  const detail={id:'pl1',name:'Atacado',description:null,isDefault:false,isActive:true,createdAt:'2026-10-14T09:00:00Z',validFrom:null,validUntil:null,priority:0,items:[],customers:[]};
- let priceBody: any=null, linked=false;
+ let priceBody: Json=null, linked=false;
  await page.route(`${API}/varejo/price-lists**`,route=>{const r=route.request();const p=new URL(r.url()).pathname;
-  const ok=(b:any)=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(b)});
+  const ok=(b:Json)=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(b)});
   if(p.endsWith('/products')){priceBody=r.postDataJSON();return ok({...detail,items:[{id:'i1',productId:'p1',productName:'Arroz 5kg',productCode:'A5',price:priceBody.price}]});}
   if(p.includes('/customers/')){linked=true;return ok({...detail,customers:[{customerId:'c1',name:'Mercado Bom'}]});}
   if(p.endsWith('/pl1'))return ok(detail);
@@ -273,7 +275,7 @@ test('Financeiro: livro por competência e caixa, com categorias e lançamentos'
 test('Contas a receber: aging, baixa parcial com juros e novo parcelamento',async({page})=>{
  await prepare(page);
  const API='http://localhost:5000/api';
- let settleBody: any=null, installmentsBody: any=null;
+ let settleBody: Json=null, installmentsBody: Json=null;
  const title={id:'t1',description:'Venda #12 — Outro a prazo',customerId:'c1',customerName:'Mercado Bom',amount:100,dueDate:'2026-09-01T12:00:00Z',competenceDate:'2026-08-01T12:00:00Z',paidAt:null,status:'Overdue',daysOverdue:43,category:'Revenue',storeId:'qa-store',referenceType:'Sale',referenceId:'s12',parentTransactionId:null};
  await page.route(`${API}/financial/receivables**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[title],aging:{notDue:50,overdue1To30:0,overdue31To60:100,overdueOver60:0,totalOpen:150,openCount:2,overdueCount:1},truncated:false})}));
  await page.route(`${API}/financial/transactions/t1/settle`,route=>{settleBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:'{}'});});
@@ -301,7 +303,7 @@ test('Contas a receber: aging, baixa parcial com juros e novo parcelamento',asyn
 test('Contas a pagar: fornecedor no título, pagamento com desconto e recorrência mensal',async({page})=>{
  await prepare(page);
  const API='http://localhost:5000/api';
- let settleBody: any=null, recurrenceBody: any=null;
+ let settleBody: Json=null, recurrenceBody: Json=null;
  const title={id:'p1',description:'Compra #7 — Atacadão',customerId:null,customerName:null,supplierId:'s1',supplierName:'Atacadão',amount:500,dueDate:'2026-10-20T15:00:00Z',competenceDate:'2026-10-05T15:00:00Z',paidAt:null,status:'Pending',daysOverdue:0,category:'Purchase',storeId:'qa-store',referenceType:'Purchase',referenceId:'c7',parentTransactionId:null};
  await page.route(`${API}/financial/payables**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[title],aging:{notDue:500,overdue1To30:0,overdue31To60:0,overdueOver60:0,totalOpen:500,openCount:1,overdueCount:0},truncated:false})}));
  await page.route(`${API}/financial/transactions/p1/settle`,route=>{settleBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:'{}'});});
@@ -332,7 +334,7 @@ test('Contas a pagar: fornecedor no título, pagamento com desconto e recorrênc
 test('Fluxo de caixa: saldo projetado por dia, vencidos à parte e saldo inicial',async({page})=>{
  await prepare(page);
  const API='http://localhost:5000/api';
- let openingBody: any=null;
+ let openingBody: Json=null;
  const buckets=[{start:'2026-10-15',end:'2026-10-15',realizedIn:300,realizedOut:50,projectedIn:0,projectedOut:0,balance:1250},
   {start:'2026-10-16',end:'2026-10-16',realizedIn:0,realizedOut:0,projectedIn:0,projectedOut:1800,balance:-550}];
  await page.route(`${API}/financial/cash-flow**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({from:'2026-10-15',to:'2026-10-16',granularity:'Day',openingBalance:1000,openingBalanceConfigured:false,overdueIn:120,overdueOut:0,closingBalance:-550,buckets})}));
@@ -354,7 +356,7 @@ test('Fluxo de caixa: saldo projetado por dia, vencidos à parte e saldo inicial
 test('Adicionais: grupo do produto, opção com preço e remoção',async({page})=>{
  await prepare(page);
  const API='http://localhost:5000/api';
- let groupBody: any=null, optionBody: any=null, removedGroup=false;
+ let groupBody: Json=null, optionBody: Json=null, removedGroup=false;
  const groups=[{id:'g1',productId:'p1',name:'Ponto da carne',isRequired:true,minSelections:1,maxSelections:1,sortOrder:0,isActive:true,
    modifiers:[{id:'m1',name:'Ao ponto',priceAdjustment:0,sortOrder:0,isActive:true}]}];
  await page.route(`${API}/products**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'p1',code:'B1',name:'Burger da casa',costPrice:null,salePrice:32,isActive:true,trackStock:false}])}));
@@ -385,7 +387,7 @@ test('Adicionais: grupo do produto, opção com preço e remoção',async({page}
 test('Service: agenda da semana com bloqueio, abrir comanda e concluir direto',async({page})=>{
  await prepare(page);
  const API='http://localhost:5000/api';
- let blockBody: any=null, statusBody: any=null, orderFor: string|null=null, deletedBlock: string|null=null;
+ let blockBody: Json=null, statusBody: Json=null, orderFor: string|null=null, deletedBlock: string|null=null;
  const today=new Date(); const iso=(h:number)=>{const d=new Date(today);d.setHours(h,0,0,0);return d.toISOString();};
  const appt={id:'a1',customerId:'c1',professionalId:'pr1',catalogItemId:'s1',subjectId:null,startsAt:iso(14),endsAt:iso(15),status:'Scheduled',notes:null,priceSnapshot:50,cancellationReason:null,createdAt:iso(9),updatedAt:iso(9)};
  await page.route(`${API}/v1/service/appointments**`,route=>{const r=route.request();
@@ -457,7 +459,7 @@ test('Portal público: cliente vê e cancela o próprio agendamento pelo link',a
 });
 test('Service: estornar um consumo de pacote pede motivo',async({page})=>{
  await prepare(page);
- const API='http://localhost:5000/api'; let reverseBody: any=null;
+ const API='http://localhost:5000/api'; let reverseBody: Json=null;
  const cp=(reversed:boolean)=>({id:'cp1',storeId:'s',code:'PKG-1',packageId:'p1',customerId:'c1',subjectId:null,status:reversed?'Active':'Consumed',startsAt:new Date().toISOString(),expiresAt:null,priceSnapshot:100,notes:null,
   items:[{id:'i1',customerPackageId:'cp1',catalogItemId:'s1',nameSnapshot:'Corte',totalQuantity:1,remainingQuantity:reversed?1:0,createdAt:new Date().toISOString(),updatedAt:null}],
   usages:[{id:'u1',customerPackageId:'cp1',customerPackageItemId:'i1',catalogItemId:'s1',orderId:null,orderItemId:null,quantity:1,notes:null,professionalId:null,appointmentId:null,baseAmountSnapshot:100,commissionPercentSnapshot:null,createdAt:new Date().toISOString(),reversedAt:reversed?new Date().toISOString():null,reversalReason:reversed?'Serviço errado':null}],
@@ -476,7 +478,7 @@ test('Service: estornar um consumo de pacote pede motivo',async({page})=>{
 });
 test('Service: liga os avisos por e-mail com o lembrete escolhido',async({page})=>{
  await prepare(page);
- let body: any=null;
+ let body: Json=null;
  await page.route('http://localhost:5000/api/v1/service/settings/customer-emails',route=>{body=route.request().postDataJSON();
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({isConfigured:true,publicBookingEnabled:false,customerEmailsEnabled:true,reminderHoursBefore:body.reminderHoursBefore})});});
  await page.route('http://localhost:5000/api/v1/service/settings/public-booking',route=>route.fulfill({status:200,contentType:'application/json',
@@ -510,7 +512,7 @@ test('Service: financeiro do período por profissional',async({page})=>{
 });
 test('Service: profissional por item da comanda',async({page})=>{
  await prepare(page);
- const API='http://localhost:5000/api'; let updateBody: any=null, addBody: any=null;
+ const API='http://localhost:5000/api'; let updateBody: Json=null, addBody: Json=null;
  const order={id:'o1',code:'OS-1',customerId:'c1',subjectId:null,professionalId:'p1',appointmentId:null,status:'Open',notes:null,cancellationReason:null,totalAmount:60,
   items:[{id:'i1',orderId:'o1',catalogItemId:'s1',professionalId:null,nameSnapshot:'Corte',descriptionSnapshot:null,quantity:1,unitPriceSnapshot:60,totalAmount:60}],createdAt:new Date().toISOString(),updatedAt:null};
  await page.route(`${API}/v1/service/orders/o1/items/i1`,route=>{updateBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(order)});});
@@ -533,7 +535,7 @@ test('Service: profissional por item da comanda',async({page})=>{
 });
 test('Build: etapas reordenadas e editadas, desvio com sinal certo e estorno de despesa',async({page})=>{
  await prepare(page);
- const API='http://localhost:5000/api'; let reorderBody: any=null, stageBody: any=null, voided: string|null=null;
+ const API='http://localhost:5000/api'; let reorderBody: Json=null, stageBody: Json=null, voided: string|null=null;
  const now=new Date().toISOString();
  const stage=(id:string,name:string,order:number)=>({id,projectId:'b1',name,description:null,order,status:'Pending',progressPercent:0,plannedStartDate:null,plannedEndDate:null,actualStartDate:null,actualEndDate:null,createdAt:now,updatedAt:now});
  const stages=[stage('s1','Fundação',0),stage('s2','Alvenaria',1)];
@@ -564,7 +566,7 @@ test('Build: etapas reordenadas e editadas, desvio com sinal certo e estorno de 
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
 test('Conta: esqueci a senha e redefinição pelo link',async({page})=>{
- let asked: any=null, reset: any=null;
+ let asked: Json=null, reset: Json=null;
  await page.route('http://localhost:5000/api/auth/forgot-password',r=>{asked=r.request().postDataJSON();return r.fulfill({status:202,contentType:'application/json',body:'{"message":"ok"}'});});
  await page.route('http://localhost:5000/api/auth/reset-password',r=>{reset=r.request().postDataJSON();
   return reset.token==='bom'?r.fulfill({status:200,contentType:'application/json',body:'{"message":"ok"}'}):r.fulfill({status:400,contentType:'application/json',body:JSON.stringify({error:'Este link é inválido ou expirou. Peça um novo.'})});});
@@ -615,7 +617,7 @@ test('Conta: senha definida pelo gestor leva à troca obrigatória',async({page}
 });
 test('Usuários: novo usuário recebe convite por e-mail em vez de senha digitada',async({page})=>{
  await prepare(page);
- let body: any=null;
+ let body: Json=null;
  await page.route('http://localhost:5000/api/users',r=>{if(r.request().method()==='POST'){body=r.request().postDataJSON();
   return r.fulfill({status:201,contentType:'application/json',body:JSON.stringify({id:'u9',tenantId:'qa',fullName:'Ana',email:'ana@teste.dev',login:'ana',phone:null,role:'diretoria',status:'Active',requirePasswordChange:false,notes:null,lastAccessAt:null,passwordChangedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()})});}
   return r.fulfill({status:200,contentType:'application/json',body:'[]'});});
@@ -633,7 +635,7 @@ test('Usuários: novo usuário recebe convite por e-mail em vez de senha digitad
  await expect.poll(()=>body).toMatchObject({login:'ana',sendInvite:true,password:''});
 });
 test('Conta: entrar com verificação em duas etapas',async({page})=>{
- let verify: any=null;
+ let verify: Json=null;
  await page.route('http://localhost:5000/api/auth/login',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({mfaRequired:true,mfaChallenge:'ch1'})}));
  await page.route('http://localhost:5000/api/auth/mfa/verify',r=>{verify=r.request().postDataJSON();
   return verify.code==='123456'
@@ -710,7 +712,7 @@ test('Relatórios: vendas do período sem as devoluções, estoque, clientes e p
 test('Fiscal: emissor da loja, produtos para revisar e dados fiscais do produto',async({page})=>{
  await prepare(page);
  const API='http://localhost:5000/api';
- let savedProfile:any=null, savedProduct:any=null;
+ let savedProfile:Json=null, savedProduct:Json=null;
  const readiness={profileComplete:false,profileMissing:['Preencha os dados do emissor'],activeProducts:12,productsWithoutNcm:2,productsWithInvalidBarcode:1,emissionAvailable:false,
   productsToFix:[{productId:'p1',code:'CAM01',name:'Camiseta básica',barcode:'123',ncm:null,problems:['Sem NCM','Código de barras não é um GTIN válido (irá como SEM GTIN)']}]};
  await page.route(`${API}/fiscal/readiness`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(readiness)}));
