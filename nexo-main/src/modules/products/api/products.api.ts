@@ -98,8 +98,8 @@ export function deactivateProduct(id: string): Promise<void> {
 
 // ── Categories ────────────────────────────────────────────────────────────────
 
-export function fetchCategories(): Promise<CategoryDto[]> {
-  return apiClient.get<CategoryDto[]>("/categories");
+export function fetchCategories(includeInactive = false): Promise<CategoryDto[]> {
+  return apiClient.get<CategoryDto[]>(includeInactive ? "/categories?includeInactive=true" : "/categories");
 }
 
 export interface CategoryPayload {

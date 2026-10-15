@@ -20,8 +20,8 @@ public class CategoryRepository : ICategoryRepository
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
 
-    public async Task<bool> HasChildrenAsync(Guid id, CancellationToken ct = default)
-        => await _context.Categories.AnyAsync(x => x.ParentCategoryId == id, ct);
+    public async Task<bool> HasActiveChildrenAsync(Guid id, CancellationToken ct = default)
+        => await _context.Categories.AnyAsync(x => x.ParentCategoryId == id && x.IsActive, ct);
 
     public async Task AddAsync(Category category, CancellationToken ct = default)
         => await _context.Categories.AddAsync(category, ct);

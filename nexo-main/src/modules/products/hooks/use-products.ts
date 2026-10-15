@@ -47,10 +47,11 @@ export function useProductsPaged(params: ProductsPagedParams) {
   });
 }
 
-export function useCategories() {
+/** `includeInactive` also brings removed categories — to show the name products still carry, never to pick one. */
+export function useCategories(includeInactive = false) {
   return useQuery({
-    queryKey: CATEGORIES_KEY,
-    queryFn: fetchCategories,
+    queryKey: [...CATEGORIES_KEY, includeInactive],
+    queryFn: () => fetchCategories(includeInactive),
     staleTime: 5 * 60_000, // categories change rarely — 5 min cache
   });
 }

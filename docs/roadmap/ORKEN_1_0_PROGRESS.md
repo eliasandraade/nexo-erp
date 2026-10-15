@@ -1204,6 +1204,7 @@ Levantamento: as **6 flags da plataforma** (tela "Recursos", `/api/features`, so
 - **Branches:** 70 branches remotas já incorporadas ao `master` foram apagadas; a lista com o SHA de cada uma (para recriar, se preciso) está em `docs/engineering/BRANCH_CLEANUP_2026-10.md`. Ficaram as `archive/*`, as não incorporadas, as de PR aberto (inclusive o GitHub #64, de outra sessão) e duas incorporadas que ainda têm worktree local em uso.
 - **Telas que não diziam a verdade** (apontadas pela auditoria final):
   - excluir categoria chamava uma rota que nunca existiu (405); agora a categoria sai da lista (desativada) e os produtos continuam com ela;
+    - revisão independente: a lista de produtos passou a mostrar o nome da categoria removida (antes mostrava "—"), e uma categoria pai cujas subcategorias foram todas removidas também pode ser removida (antes contava as inativas e respondia 409 para sempre); mensagem em português; testes de integração novos.
   - o painel de IA da plataforma prometia chaves "criptografadas com AES-256", mas elas são só codificadas; a tela agora avisa para não cadastrar chaves de produção;
   - o "Resultado" por competência do financeiro não desconta o custo das mercadorias vendidas; agora se chama "Resultado (antes do CMV)" e explica que o lucro real é menor.
 - Rotas órfãs: nenhuma — toda rota do roteador tem tela, e as telas sem rota foram as removidas acima.
