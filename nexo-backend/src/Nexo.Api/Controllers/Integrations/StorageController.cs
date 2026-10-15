@@ -24,7 +24,9 @@ namespace Nexo.Api.Controllers.Integrations;
 [Authorize]
 public class StorageController : ControllerBase
 {
-    private sealed record UploadContext(string Folder, bool IsPrivate, string[] Roles);
+    /// <param name="NeedsPrivateBucket">Too sensitive to sit in a public bucket even unlisted (clinical-like
+    /// records): in production, refused until the private bucket is configured.</param>
+    private sealed record UploadContext(string Folder, bool IsPrivate, string[] Roles, bool NeedsPrivateBucket = false);
 
     private static readonly string[] Stock = AppRoles.Stock.Split(',');
     private static readonly string[] Management = AppRoles.Management.Split(',');
@@ -38,7 +40,7 @@ public class StorageController : ControllerBase
             ["service-portal-logo"]  = new("service/portal/logo", false, Management),
             ["service-portal-cover"] = new("service/portal/cover", false, Management),
             ["build-daily-log"]      = new("build/daily-logs", true, Management),
-            ["service-record"]       = new("service/records", true, Management),
+            ["service-record"]       = new("service/records", true, Management, NeedsPrivateBucket: true),
         };
 
     // MIME type → file extension
@@ -56,6 +58,7 @@ public class StorageController : ControllerBase
     private readonly IIntegrationFeatureFlags _flags;
     private readonly StorageOptions           _opts;
     private readonly ICurrentTenant           _tenant;
+    private readonly IHostEnvironment         _env;
     private readonly ILogger<StorageController> _logger;
 
     public StorageController(
@@ -64,6 +67,7 @@ public class StorageController : ControllerBase
         IIntegrationFeatureFlags flags,
         IOptions<StorageOptions> opts,
         ICurrentTenant tenant,
+        IHostEnvironment env,
         ILogger<StorageController> logger)
     {
         _storage     = storage;
@@ -71,6 +75,7 @@ public class StorageController : ControllerBase
         _flags       = flags;
         _opts        = opts.Value;
         _tenant      = tenant;
+        _env         = env;
         _logger      = logger;
     }
 
@@ -95,6 +100,9 @@ public class StorageController : ControllerBase
 
         if (!target.Roles.Any(User.IsInRole))
             return Forbid();
+
+        if (target.NeedsPrivateBucket && string.IsNullOrWhiteSpace(_opts.R2.PrivateBucketName) && _env.IsProduction())
+            return StatusCode(503, new { error = "Armazenamento privado ainda não configurado. Anexos de prontuário ficam indisponíveis até lá." });
 
         var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
         if (!_opts.AllowedContentTypes.Contains(contentType) || !Extensions.TryGetValue(contentType, out var ext))
@@ -167,8 +175,9 @@ public class StorageController : ControllerBase
         if (!StorageKeys.IsOfTenant(key, _tenant.Id))
             return Forbid();
 
-        // private files (records, site photos) are management's, as their upload
-        if (StorageKeys.IsPrivate(key) && !Management.Any(User.IsInRole))
+        // who may delete is who may upload to that folder (unknown folders: management only)
+        var roles = RolesForKey(key) ?? Management;
+        if (!roles.Any(User.IsInRole))
             return Forbid();
 
         try
@@ -181,6 +190,16 @@ public class StorageController : ControllerBase
             _logger.LogError(ex, "[Storage] Delete failed — key={Key}", key);
             return StatusCode(503, new { error = "Falha ao excluir arquivo." });
         }
+    }
+
+    private string[]? RolesForKey(string key)
+    {
+        var rest = StorageKeys.IsPrivate(key) ? key[StorageKeys.PrivatePrefix.Length..] : key;
+        rest = rest[$"tenants/{_tenant.Id}/".Length..];
+        return Contexts.Values
+            .Where(c => c.IsPrivate == StorageKeys.IsPrivate(key) && rest.StartsWith(c.Folder + "/", StringComparison.Ordinal))
+            .Select(c => c.Roles)
+            .FirstOrDefault();
     }
 }
 

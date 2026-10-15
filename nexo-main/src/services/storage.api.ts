@@ -48,5 +48,6 @@ export async function getSignedUrl(key: string): Promise<PrivateUploadResult> {
 }
 
 export async function deleteFile(key: string): Promise<void> {
-  return apiClient.delete<void>(`/integrations/storage/${encodeURIComponent(key)}`);
+  // one segment at a time: an encoded "/" (%2F) is not decoded in the path and the key would not match
+  return apiClient.delete<void>(`/integrations/storage/${key.split("/").map(encodeURIComponent).join("/")}`);
 }

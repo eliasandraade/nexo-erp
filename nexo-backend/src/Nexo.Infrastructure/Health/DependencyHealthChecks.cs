@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Integrations.Contracts;
+using Microsoft.Extensions.Options;
 using Nexo.Application.Integrations.Options;
 using Nexo.Infrastructure.Persistence;
 using StackExchange.Redis;
@@ -111,12 +112,14 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
 
     private readonly IStorageProvider _storage;
     private readonly IIntegrationFeatureFlags _flags;
+    private readonly bool _hasPrivateBucket;
     private readonly ILogger<ObjectStorageHealthCheck> _logger;
 
-    public ObjectStorageHealthCheck(IStorageProvider storage, IIntegrationFeatureFlags flags, ILogger<ObjectStorageHealthCheck> logger)
+    public ObjectStorageHealthCheck(IStorageProvider storage, IIntegrationFeatureFlags flags, IOptions<StorageOptions> options, ILogger<ObjectStorageHealthCheck> logger)
     {
         _storage = storage;
         _flags   = flags;
+        _hasPrivateBucket = !string.IsNullOrWhiteSpace(options.Value.R2.PrivateBucketName);
         _logger  = logger;
     }
 
@@ -133,7 +136,10 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
             try
             {
                 await _storage.PingAsync(cancellationToken).WaitAsync(Timeout, cancellationToken);
-                result = HealthCheckResult.Healthy("reachable");
+                // reachable, but private files would sit in the public bucket: say so until configured
+                result = _hasPrivateBucket
+                    ? HealthCheckResult.Healthy("reachable")
+                    : HealthCheckResult.Degraded("reachable — private bucket not configured");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

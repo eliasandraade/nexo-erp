@@ -9,6 +9,9 @@ public static class StorageKeys
 {
     public const string PrivatePrefix = "private/";
 
+    // Comparisons are ordinal (case-sensitive), like the object store: "PRIVATE/..." or "TENANTS/..." is
+    // another key, never an alias of the tenant's folder. Tenant ids are always lower-case GUIDs.
+
     public static string Build(Guid tenantId, string pathSegment, string fileName, bool isPrivate)
         => $"{(isPrivate ? PrivatePrefix : string.Empty)}tenants/{tenantId}/{pathSegment}/{fileName}";
 
@@ -19,7 +22,7 @@ public static class StorageKeys
     {
         if (string.IsNullOrWhiteSpace(key) || key.Contains("..", StringComparison.Ordinal)) return false;
         var rest = IsPrivate(key) ? key[PrivatePrefix.Length..] : key;
-        return rest.StartsWith($"tenants/{tenantId}/", StringComparison.OrdinalIgnoreCase);
+        return rest.StartsWith($"tenants/{tenantId}/", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -30,11 +33,11 @@ public static class StorageKeys
     public static bool IsPrivateOf(string? key, Guid tenantId, string pathSegment)
         => !string.IsNullOrWhiteSpace(key)
            && !key.Contains("..", StringComparison.Ordinal)
-           && key.StartsWith($"{PrivatePrefix}tenants/{tenantId}/{pathSegment}/", StringComparison.OrdinalIgnoreCase)
+           && key.StartsWith($"{PrivatePrefix}tenants/{tenantId}/{pathSegment}/", StringComparison.Ordinal)
            && key.Length > $"{PrivatePrefix}tenants/{tenantId}/{pathSegment}/".Length;
 }
 
-/// <summary>Short-lived signed URLs for private files (records, site photos).</summary>
+/// <summary>Short-lived signed URLs for private files (records, site photos) of the current tenant.</summary>
 public interface IPrivateFileUrls
 {
     /// <summary>A URL valid for a few minutes, or null when storage is off or the key is blank.</summary>

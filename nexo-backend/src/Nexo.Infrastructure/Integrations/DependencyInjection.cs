@@ -141,7 +141,7 @@ public static class IntegrationsDependencyInjection
             configuration.GetSection(StorageOptions.SectionKey));
         services.AddSingleton<IStorageProvider, CloudflareR2Provider>();
         services.AddSingleton<IStoragePublicUrlResolver, StoragePublicUrlResolver>();
-        services.AddSingleton<IPrivateFileUrls, PrivateFileUrls>();
+        services.AddScoped<IPrivateFileUrls, PrivateFileUrls>();   // scoped: signs only the current tenant's keys
 
         // ── Open Food Facts ───────────────────────────────────────────────────
         var offOpts = configuration.GetSection(OpenFoodFactsOptions.SectionKey).Get<OpenFoodFactsOptions>() ?? new OpenFoodFactsOptions();

@@ -30,6 +30,7 @@ public class PrivateStorageTests
     [InlineData("private/tenants/11111111-1111-1111-1111-111111111111/build/daily-logs/a.jpg", false)] // other place
     [InlineData("private/tenants/11111111-1111-1111-1111-111111111111/service/records/", false)]        // no file
     [InlineData("private/tenants/11111111-1111-1111-1111-111111111111/service/records/../../x", false)] // traversal
+    [InlineData("PRIVATE/tenants/11111111-1111-1111-1111-111111111111/service/records/a.pdf", false)]   // case is another key
     [InlineData("https://evil.example/a.pdf", false)]
     [InlineData(null, false)]
     public void Only_this_tenants_record_folder_is_accepted_for_records(string? key, bool ok)

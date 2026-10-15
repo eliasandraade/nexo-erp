@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.DTOs;
 using Nexo.Application.Integrations.Options;
@@ -34,6 +35,18 @@ public class DependencyHealthCheckTests
         return flags;
     }
 
+    private static IOptions<StorageOptions> Bucket(string privateBucket)
+        => Options.Create(new StorageOptions { R2 = new R2Options { PrivateBucketName = privateBucket } });
+
+    [Fact]
+    public async Task Reachable_storage_without_a_private_bucket_is_degraded()
+    {
+        var result = await new ObjectStorageHealthCheck(new FlakyStorage(), Flags(storage: true), Bucket(""), NullLogger<ObjectStorageHealthCheck>.Instance)
+            .CheckHealthAsync(new HealthCheckContext());
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("private bucket");
+    }
+
     [Fact]
     public async Task Redis_not_configured_is_healthy()
     {
@@ -45,7 +58,7 @@ public class DependencyHealthCheckTests
     public async Task Storage_outage_degrades_and_is_not_pinged_again_for_a_minute()
     {
         var storage = new FlakyStorage { Fail = true };
-        var check = new ObjectStorageHealthCheck(storage, Flags(storage: true), NullLogger<ObjectStorageHealthCheck>.Instance);
+        var check = new ObjectStorageHealthCheck(storage, Flags(storage: true), Bucket("orken-private"), NullLogger<ObjectStorageHealthCheck>.Instance);
 
         var first = await check.CheckHealthAsync(new HealthCheckContext());
         var second = await check.CheckHealthAsync(new HealthCheckContext());
@@ -59,7 +72,7 @@ public class DependencyHealthCheckTests
     public async Task A_probe_that_gives_up_leaves_no_verdict_behind()
     {
         var storage = new FlakyStorage();
-        var check = new ObjectStorageHealthCheck(storage, Flags(storage: true), NullLogger<ObjectStorageHealthCheck>.Instance);
+        var check = new ObjectStorageHealthCheck(storage, Flags(storage: true), Bucket("orken-private"), NullLogger<ObjectStorageHealthCheck>.Instance);
         using var gaveUp = new CancellationTokenSource();
         await gaveUp.CancelAsync();
 
@@ -72,7 +85,7 @@ public class DependencyHealthCheckTests
     public async Task Disabled_storage_is_not_pinged()
     {
         var storage = new FlakyStorage();
-        var result = await new ObjectStorageHealthCheck(storage, Flags(storage: false), NullLogger<ObjectStorageHealthCheck>.Instance).CheckHealthAsync(new HealthCheckContext());
+        var result = await new ObjectStorageHealthCheck(storage, Flags(storage: false), Bucket(""), NullLogger<ObjectStorageHealthCheck>.Instance).CheckHealthAsync(new HealthCheckContext());
         result.Status.Should().Be(HealthStatus.Healthy);
         storage.Pings.Should().Be(0);
     }
