@@ -421,6 +421,8 @@ try
     {
         opts.MessageTemplate =
             "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
+        // health probes run every few seconds: keep them out of the log unless they fail
+        opts.GetLevel = Nexo.Api.Health.HealthEndpoints.RequestLogLevel;
     });
 
     if (!app.Environment.IsProduction())

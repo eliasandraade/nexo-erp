@@ -28,6 +28,16 @@ public static class HealthEndpoints
         [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable,
     };
 
+    /// <summary>Request log level: errors stay errors; successful health probes are not logged.</summary>
+    public static Serilog.Events.LogEventLevel RequestLogLevel(HttpContext http, double elapsedMs, Exception? ex)
+    {
+        if (ex is not null || http.Response.StatusCode >= StatusCodes.Status500InternalServerError)
+            return Serilog.Events.LogEventLevel.Error;
+        if (http.Request.Path.StartsWithSegments("/health"))
+            return Serilog.Events.LogEventLevel.Verbose;
+        return Serilog.Events.LogEventLevel.Information;
+    }
+
     public static void MapOrkenHealth(this WebApplication app)
     {
         app.MapHealthChecks("/health/live", Options(_ => false));
@@ -54,7 +64,8 @@ public static class HealthEndpoints
             {
                 name = e.Key,
                 status = e.Value.Status.ToString(),
-                description = e.Value.Description,
+                // a check that threw has the exception's text as its description — never published
+                description = e.Value.Exception is null ? e.Value.Description : "check failed",
                 durationMs = Math.Round(e.Value.Duration.TotalMilliseconds),
             }),
         };

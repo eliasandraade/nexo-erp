@@ -1065,4 +1065,13 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - storage de objetos (R2): só quando o storage está ligado; o resultado vale por 1 minuto, porque a sonda roda muitas vezes e cada consulta ao R2 é cobrada.
 - **Correção encontrada no caminho:** o "ping" do R2 listava **todos os buckets da conta**, coisa que o token da aplicação não tem permissão de fazer, então falharia sempre. Agora lista no máximo um objeto do bucket da aplicação.
 - **Testes:** integração (live sem verificações; ready com Postgres saudável e sem o armazenamento de anexos; relatório completo sem vazar detalhes) e unitários (Redis não configurado, storage fora degrada e não é consultado de novo por 1 minuto, storage desligado não é consultado).
+- **Mudança de comportamento intencional:** antes, `/health` só olhava o armazenamento de anexos e respondia 200 mesmo com o banco fora; agora responde 503 quando o PostgreSQL cai.
+- **Correções da revisão independente** (sem bloqueadores):
+  - sonda cancelada pelo cliente não guarda mais "storage fora" por 1 minuto;
+  - o limite de 3 s do PostgreSQL cancela a tentativa de conexão (antes ela continuava rodando num contexto já descartado);
+  - nenhuma verificação anexa a exceção ao resultado (vai para o log), e o JSON troca qualquer descrição de verificação que lançou exceção por "check failed";
+  - o Redis é resolvido dentro da verificação (connection string inválida vira `Degraded`, não 500);
+  - o resultado guardado do storage é trocado de forma atômica;
+  - o armazenamento de anexos fora agora degrada de verdade (devolvia `Unhealthy` direto e derrubaria o `/health`);
+  - sondas de saúde bem-sucedidas saem do log de requisições (rodam a cada poucos segundos); falhas continuam como erro.
 - **Para o dono (configuração da Railway, não mudada aqui):** apontar o healthcheck do serviço da API para `/health/ready`.

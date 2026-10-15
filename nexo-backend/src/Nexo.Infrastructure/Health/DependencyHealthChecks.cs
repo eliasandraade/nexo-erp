@@ -1,6 +1,6 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Logging;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.Options;
 using Nexo.Infrastructure.Persistence;
@@ -14,28 +14,44 @@ public static class HealthTags
     public const string Ready = "ready";
 }
 
+// The checks below never attach the exception to their result: what went wrong goes to the log,
+// the public health body only carries fixed descriptions.
+
 /// <summary>
 /// PostgreSQL — the one dependency the API cannot work without: unhealthy here means "do not send
-/// traffic". A short timeout keeps the probe from hanging behind a stuck pool.
+/// traffic". The timeout cancels the connection attempt itself, so nothing keeps running on the
+/// DbContext after the probe answered.
 /// </summary>
 public sealed class DatabaseHealthCheck : IHealthCheck
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(3);
     private readonly NexoDbContext _db;
+    private readonly ILogger<DatabaseHealthCheck> _logger;
 
-    public DatabaseHealthCheck(NexoDbContext db) => _db = db;
+    public DatabaseHealthCheck(NexoDbContext db, ILogger<DatabaseHealthCheck> logger)
+    {
+        _db     = db;
+        _logger = logger;
+    }
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)
     {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(Timeout);
         try
         {
-            var ok = await _db.Database.CanConnectAsync(ct).WaitAsync(Timeout, ct);
-            return ok ? HealthCheckResult.Healthy("reachable") : HealthCheckResult.Unhealthy("unreachable");
+            return await _db.Database.CanConnectAsync(cts.Token)
+                ? HealthCheckResult.Healthy("reachable")
+                : HealthCheckResult.Unhealthy("unreachable");
         }
-        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException or DbUpdateException or InvalidOperationException
-                                       or Npgsql.NpgsqlException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return HealthCheckResult.Unhealthy("unreachable", ex);
+            throw;   // the caller gave up — not a database verdict
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Health: PostgreSQL unreachable.");
+            return HealthCheckResult.Unhealthy("unreachable");
         }
     }
 }
@@ -47,21 +63,33 @@ public sealed class DatabaseHealthCheck : IHealthCheck
 public sealed class RedisHealthCheck : IHealthCheck
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(1);
-    private readonly IConnectionMultiplexer? _redis;
+    private readonly IServiceProvider _services;
+    private readonly ILogger<RedisHealthCheck> _logger;
 
-    public RedisHealthCheck(IServiceProvider services) => _redis = services.GetService<IConnectionMultiplexer>();
+    public RedisHealthCheck(IServiceProvider services, ILogger<RedisHealthCheck> logger)
+    {
+        _services = services;
+        _logger   = logger;
+    }
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)
     {
-        if (_redis is null) return HealthCheckResult.Healthy("not configured");
         try
         {
-            await _redis.GetDatabase().PingAsync().WaitAsync(Timeout, ct);
+            // resolved here, inside the try: the multiplexer factory throws on a bad connection string
+            var redis = _services.GetService<IConnectionMultiplexer>();
+            if (redis is null) return HealthCheckResult.Healthy("not configured");
+            await redis.GetDatabase().PingAsync().WaitAsync(Timeout, ct);
             return HealthCheckResult.Healthy("reachable");
         }
-        catch (Exception ex) when (ex is TimeoutException or RedisException or OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            return HealthCheckResult.Degraded("unreachable — cache bypassed", ex);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Health: Redis unreachable; cache is bypassed.");
+            return HealthCheckResult.Degraded("unreachable — cache bypassed");
         }
     }
 }
@@ -75,38 +103,48 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan Reuse = TimeSpan.FromMinutes(1);
+
+    private sealed record Snapshot(DateTime At, HealthCheckResult Result);
+
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private (DateTime At, HealthCheckResult Result)? _last;
+    private Snapshot? _last;
 
     private readonly IStorageProvider _storage;
     private readonly IIntegrationFeatureFlags _flags;
+    private readonly ILogger<ObjectStorageHealthCheck> _logger;
 
-    public ObjectStorageHealthCheck(IStorageProvider storage, IIntegrationFeatureFlags flags)
+    public ObjectStorageHealthCheck(IStorageProvider storage, IIntegrationFeatureFlags flags, ILogger<ObjectStorageHealthCheck> logger)
     {
         _storage = storage;
         _flags   = flags;
+        _logger  = logger;
     }
 
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)
     {
         if (!_flags.StorageEnabled) return HealthCheckResult.Healthy("disabled");
-        if (_last is { } fresh && DateTime.UtcNow - fresh.At < Reuse) return fresh.Result;
+        if (Fresh() is { } cached) return cached;
 
         await _gate.WaitAsync(ct);
         try
         {
-            if (_last is { } again && DateTime.UtcNow - again.At < Reuse) return again.Result;
+            if (Fresh() is { } again) return again;
             HealthCheckResult result;
             try
             {
                 await _storage.PingAsync(ct).WaitAsync(Timeout, ct);
                 result = HealthCheckResult.Healthy("reachable");
             }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                result = HealthCheckResult.Degraded("unreachable — uploads unavailable", ex);
+                throw;   // the probe gave up; keep no verdict
             }
-            _last = (DateTime.UtcNow, result);
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Health: object storage unreachable; uploads unavailable.");
+                result = HealthCheckResult.Degraded("unreachable — uploads unavailable");
+            }
+            Volatile.Write(ref _last, new Snapshot(DateTime.UtcNow, result));
             return result;
         }
         finally
@@ -114,4 +152,7 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
             _gate.Release();
         }
     }
+
+    private HealthCheckResult? Fresh()
+        => Volatile.Read(ref _last) is { } s && DateTime.UtcNow - s.At < Reuse ? s.Result : null;
 }
