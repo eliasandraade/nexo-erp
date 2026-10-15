@@ -153,3 +153,29 @@ export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
 export async function resendVerification(email: string): Promise<void> {
   await apiClient.post("/auth/resend-verification", { email });
 }
+
+// ── Account recovery & sessions (PR 63) ─────────────────────────────────────────
+
+/** Always resolves the same way, whether or not the address has an account. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await apiClient.post("/auth/forgot-password", { email });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  await apiClient.post("/auth/reset-password", { token, newPassword });
+}
+
+export interface UserSessionDto {
+  id: string;
+  startedAt: string;
+  lastUsedAt: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+}
+
+export const fetchMySessions = () => apiClient.get<UserSessionDto[]>("/auth/sessions");
+
+/** Ends every session, this one included. */
+export async function revokeAllSessions(): Promise<void> {
+  await apiClient.post("/auth/sessions/revoke-all", { confirm: true });
+}

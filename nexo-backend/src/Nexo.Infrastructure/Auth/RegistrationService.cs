@@ -195,7 +195,7 @@ public class RegistrationService
             var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
             await _cache.SetAsync(
                 $"refresh:valid:{refreshClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId),
+                new RefreshTokenEntry(user.Id, user.TenantId, null, user.SecurityStamp),
                 ttl, ct);
         }
 

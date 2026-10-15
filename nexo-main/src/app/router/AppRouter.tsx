@@ -21,6 +21,8 @@ import LoginPage      from "@/modules/auth/pages/LoginPage";
 import RegisterPage   from "@/modules/auth/pages/RegisterPage";
 import CheckEmailPage from "@/modules/auth/pages/CheckEmailPage";
 import VerifyEmailPage from "@/modules/auth/pages/VerifyEmailPage";
+import ForgotPasswordPage from "@/modules/auth/pages/ForgotPasswordPage";
+import ResetPasswordPage from "@/modules/auth/pages/ResetPasswordPage";
 import NotFoundPage   from "@/pages/NotFoundPage";
 
 // ── Lazy imports: everything else ────────────────────────────────────────────
@@ -174,6 +176,9 @@ export function AppRouter() {
               <Route path="/register"     element={<RegisterPage />} />
               <Route path="/check-email"  element={<CheckEmailPage />} />
               <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/esqueci-senha"   element={<ForgotPasswordPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
             </Route>
 
             {/* ── Varejo: PDV — vendedor + management ────────────────────────── */}

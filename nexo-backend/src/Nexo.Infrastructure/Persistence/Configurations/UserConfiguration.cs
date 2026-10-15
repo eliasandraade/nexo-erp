@@ -75,6 +75,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(x => x.VerificationTokenExpiry)
             .HasColumnName("verification_token_expiry")
             .HasColumnType("timestamptz");
+        builder.Property(x => x.PasswordResetTokenHash).HasColumnName("password_reset_token_hash").HasMaxLength(64);
+        builder.Property(x => x.PasswordResetExpiresAt).HasColumnName("password_reset_expires_at").HasColumnType("timestamptz");
+        builder.HasIndex(x => x.PasswordResetTokenHash).IsUnique().HasFilter("password_reset_token_hash IS NOT NULL")
+            .HasDatabaseName("ux_users_password_reset_token_hash");
 
         builder.HasIndex(x => x.VerificationToken)
             .IsUnique()

@@ -322,6 +322,64 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
+    // ── Account recovery & sessions ──────────────────────────────────────────
+
+    /// <summary>
+    /// Asks for a password-reset link by e-mail. Always answers the same (202), whether or not an
+    /// account uses that address — no account enumeration. Rate-limited like login.
+    /// </summary>
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting("auth-login")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword(
+        [FromBody] ForgotPasswordRequest request, [FromServices] AccountSecurityService accounts, CancellationToken ct)
+    {
+        await accounts.RequestPasswordResetAsync(request.Email, ct);
+        return Accepted(new { message = "Se houver uma conta com este e-mail, enviamos um link para criar uma nova senha." });
+    }
+
+    /// <summary>Sets a new password from the e-mailed link (one use, 1 h). Ends every session.</summary>
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("auth-login")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword(
+        [FromBody] ResetPasswordRequest request, [FromServices] AccountSecurityService accounts, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length < AccountSecurityService.MinPasswordLength)
+            return BadRequest(new { error = $"A senha deve ter no mínimo {AccountSecurityService.MinPasswordLength} caracteres." });
+        if (!await accounts.ResetPasswordAsync(request.Token, request.NewPassword, ct))
+            return BadRequest(new { error = "Este link é inválido ou expirou. Peça um novo." });
+        return Ok(new { message = "Senha alterada. Entre com a nova senha." });
+    }
+
+    /// <summary>The signed-in user's active sessions (devices).</summary>
+    [HttpGet("sessions")]
+    [Authorize]
+    public async Task<ActionResult<IReadOnlyList<UserSessionDto>>> Sessions(
+        [FromServices] AccountSecurityService accounts, CancellationToken ct)
+        => Ok(await accounts.ListSessionsAsync(_currentUser.UserId, ct));
+
+    /// <summary>"Sair de todos os dispositivos" — including this one (cookies cleared).</summary>
+    [HttpPost("sessions/revoke-all")]
+    [Authorize]
+    public async Task<IActionResult> RevokeAllSessions(
+        [FromBody] RevokeAllSessionsRequest request, [FromServices] AccountSecurityService accounts, CancellationToken ct)
+    {
+        // The JSON body is the CSRF guard: with SameSite=None cookies, a cross-site <form> could
+        // otherwise sign the user out everywhere; it can't send application/json without preflight.
+        _ = request;
+        await accounts.SignOutEverywhereAsync(_currentUser.UserId, ct);
+        // Secure is fine on localhost too (browsers treat it as a secure context)
+        var expired = new CookieOptions
+        {
+            HttpOnly = true, Secure = true, SameSite = SameSiteMode.None,
+            Path = "/", Expires = DateTimeOffset.UtcNow.AddSeconds(-1),
+        };
+        Response.Cookies.Append("nexo_access", "", expired);
+        Response.Cookies.Append("nexo_refresh", "", expired);
+        return NoContent();
+    }
+
     /// <summary>
     /// Self-registration: creates tenant + store + user + subscription + settings atomically.
     /// Sends a verification email. User must verify before logging in.
@@ -398,3 +456,7 @@ public class AuthController : ControllerBase
         return Ok(result);
     }
 }
+
+public sealed record ForgotPasswordRequest(string? Email);
+public sealed record ResetPasswordRequest(string? Token, string NewPassword);
+public sealed record RevokeAllSessionsRequest(bool Confirm = true);
