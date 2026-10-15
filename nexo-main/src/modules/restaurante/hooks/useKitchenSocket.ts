@@ -133,8 +133,17 @@ export function useKitchenSocket(
       }
     });
 
-    connection.onreconnected(() => {
+    connection.onreconnected(async () => {
       retryCountRef.current = 0;
+      // A reconnect is a new server connection: it is in no group until it joins the store again
+      try {
+        await connection.invoke("JoinStore", storeId);
+      } catch (err) {
+        if (cancelled) return;   // the component is gone: don't leave a poller behind
+        console.warn("[SignalR] Rejoin after reconnect failed — falling back to polling:", err);
+        startPolling();
+        return;
+      }
       stopPolling();
       setMode("realtime");
       invalidateAll();

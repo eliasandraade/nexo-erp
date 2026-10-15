@@ -8,7 +8,7 @@ import { OrderItemRow } from "../components/OrderItemRow";
 import { AddItemDrawer } from "../components/AddItemDrawer";
 import { PaymentDrawer } from "../components/PaymentDrawer";
 import { useActiveOrder, useOrder } from "../hooks/useActiveOrder";
-import { useAddItem, useCloseOrder, useCancelOrder } from "../hooks/useOrderMutations";
+import { useAddItem, useCloseOrder, useCancelOrder, useCancelOrderItem } from "../hooks/useOrderMutations";
 import { printKitchen, printReceipt } from "../utils/print";
 import type { AddOrderItemRequest, OrderStatus } from "../types";
 
@@ -35,6 +35,7 @@ export default function OrderPage() {
 
   const addItemMut    = useAddItem(storeId);
   const closeOrderMut = useCloseOrder(storeId);
+  const cancelItemMut = useCancelOrderItem(storeId);
   const cancelMut     = useCancelOrder(storeId);
 
   const [addDrawerOpen, setAddDrawerOpen] = useState(false);
@@ -85,6 +86,7 @@ export default function OrderPage() {
 
   // ── Total display (inclui taxa de serviço quando presente) ────────────────
   const showServiceFee = order.serviceFeeAmount > 0;
+  const isModifiable   = order.status === "Open" || order.status === "InPreparation" || order.status === "Ready";
   const deliveryFee    = order.deliveryFeeAmount ?? 0;
   const discount       = order.discountAmount ?? 0;
   const displayTotal   = order.total > 0
@@ -139,7 +141,16 @@ export default function OrderPage() {
             Nenhum item adicionado.
           </p>
         ) : (
-          sortedItems.map((item) => <OrderItemRow key={item.id} item={item} />)
+          sortedItems.map((item) => (
+            <OrderItemRow
+              key={item.id}
+              item={item}
+              cancelling={cancelItemMut.isPending}
+              onCancel={isModifiable && !order.fromDeliveryOrder
+                ? () => cancelItemMut.mutate({ orderId: order.id, itemId: item.id })
+                : undefined}
+            />
+          ))
         )}
       </div>
 

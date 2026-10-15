@@ -98,11 +98,36 @@ export const payOrder = (
 export const cancelOrder = (orderId: string): Promise<OrderDto> =>
   apiClient.post<OrderDto>(`/restaurante/orders/${orderId}/cancel`, {});
 
+export const cancelOrderItem = (orderId: string, itemId: string): Promise<OrderDto> =>
+  apiClient.delete<OrderDto>(`/restaurante/orders/${orderId}/items/${itemId}`);
+
 // ── Modifiers ─────────────────────────────────────────────────────────────────
 export const getModifierGroups = (productId: string): Promise<ModifierGroupDto[]> =>
   apiClient.get<ModifierGroupDto[]>(
     `/restaurante/modifier-groups?productId=${productId}`
   );
+
+export interface ModifierGroupInput {
+  name: string;
+  isRequired: boolean;
+  minSelections: number;
+  maxSelections: number;
+  sortOrder: number;
+}
+
+export const createModifierGroup = (productId: string, body: ModifierGroupInput) =>
+  apiClient.post<ModifierGroupDto>("/restaurante/modifier-groups", { productId, ...body });
+export const updateModifierGroup = (groupId: string, body: ModifierGroupInput) =>
+  apiClient.put<ModifierGroupDto>(`/restaurante/modifier-groups/${groupId}`, body);
+export const removeModifierGroup = (groupId: string) =>
+  apiClient.delete<void>(`/restaurante/modifier-groups/${groupId}`);
+export const addModifier = (groupId: string, name: string, priceAdjustment: number, sortOrder: number) =>
+  apiClient.post<ModifierGroupDto>(`/restaurante/modifier-groups/${groupId}/modifiers`,
+    { groupId, name, priceAdjustment, sortOrder });
+export const updateModifier = (groupId: string, modifierId: string, name: string, priceAdjustment: number, sortOrder: number) =>
+  apiClient.put<unknown>(`/restaurante/modifier-groups/${groupId}/modifiers/${modifierId}`, { name, priceAdjustment, sortOrder });
+export const removeModifier = (groupId: string, modifierId: string) =>
+  apiClient.delete<void>(`/restaurante/modifier-groups/${groupId}/modifiers/${modifierId}`);
 
 // ── Kitchen (polling path) ────────────────────────────────────────────────────
 export const listKitchenOrders = (): Promise<OrderDto[]> =>

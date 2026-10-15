@@ -5,6 +5,7 @@ import {
   addOrderItem,
   updateItemStatus,
   closeOrder,
+  cancelOrderItem,
   payOrder,
   cancelOrder,
 } from "../api/restaurante.api";
@@ -23,6 +24,7 @@ function useInvalidateOnSuccess(storeId: string) {
   return () => {
     qc.invalidateQueries({ queryKey: TABLES_KEY(storeId) });
     qc.invalidateQueries({ queryKey: ORDERS_KEY(storeId) });
+    qc.invalidateQueries({ queryKey: ["orders", "active", storeId] });   // comanda opened from a table
     qc.invalidateQueries({ queryKey: ["kitchen-items", storeId] });
   };
 }
@@ -76,7 +78,18 @@ export function useCloseOrder(storeId: string) {
   return useMutation({
     mutationFn: (orderId: string) => closeOrder(orderId),
     onSuccess: invalidate,
-    onError: () => toast.error("Erro ao fechar a conta. Tente novamente."),
+    onError: (e: Error) => toast.error(e.message || "Erro ao fechar a conta. Tente novamente."),
+  });
+}
+
+// ── useCancelOrderItem ────────────────────────────────────────────────────────
+
+export function useCancelOrderItem(storeId: string) {
+  const invalidate = useInvalidateOnSuccess(storeId);
+  return useMutation({
+    mutationFn: ({ orderId, itemId }: { orderId: string; itemId: string }) => cancelOrderItem(orderId, itemId),
+    onSuccess: () => { invalidate(); toast.success("Item cancelado."); },
+    onError: (e: Error) => toast.error(e.message || "Não foi possível cancelar o item."),
   });
 }
 

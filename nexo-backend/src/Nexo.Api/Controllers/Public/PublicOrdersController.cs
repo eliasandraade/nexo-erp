@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Modules.Restaurante;
@@ -54,6 +55,7 @@ public class PublicOrdersController : ControllerBase
     /// A loja é resolvida pelo PublicSlug; preços são sempre lidos do catálogo.
     /// </summary>
     [HttpPost("api/public/orders")]
+    [EnableRateLimiting("public-orders")]
     public async Task<ActionResult<DeliveryOrderDto>> CreateOrder(
         CreatePortalOrderRequest request, CancellationToken ct)
     {
@@ -72,6 +74,7 @@ public class PublicOrdersController : ControllerBase
 
     [HttpPost("api/public/coupons/validate")]
     [AllowAnonymous]
+    [EnableRateLimiting("public-orders")]
     public async Task<IActionResult> ValidateCoupon(
         [FromBody] ValidateCouponRequest req, CancellationToken ct)
         => Ok(await _couponSvc.ValidatePublicAsync(req, ct));

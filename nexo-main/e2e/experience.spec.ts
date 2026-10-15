@@ -351,3 +351,35 @@ test('Fluxo de caixa: saldo projetado por dia, vencidos à parte e saldo inicial
  expect(openingBody.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Adicionais: grupo do produto, opção com preço e remoção',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api';
+ let groupBody: any=null, optionBody: any=null, removedGroup=false;
+ const groups=[{id:'g1',productId:'p1',name:'Ponto da carne',isRequired:true,minSelections:1,maxSelections:1,sortOrder:0,isActive:true,
+   modifiers:[{id:'m1',name:'Ao ponto',priceAdjustment:0,sortOrder:0,isActive:true}]}];
+ await page.route(`${API}/products**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'p1',code:'B1',name:'Burger da casa',costPrice:null,salePrice:32,isActive:true,trackStock:false}])}));
+ await page.route(`${API}/restaurante/modifier-groups**`,route=>{const r=route.request();const path=new URL(r.url()).pathname;
+  if(r.method()==='POST'&&path.endsWith('/modifiers')){optionBody=r.postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:'{}'});}
+  if(r.method()==='POST'){groupBody=r.postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:'{}'});}
+  if(r.method()==='DELETE'){removedGroup=true;return route.fulfill({status:204,body:''});}
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(groups)});});
+ await page.goto('/restaurante/adicionais');
+ await expect(page.getByRole('heading',{name:'Adicionais',exact:true})).toBeVisible();
+ await page.getByLabel('Produto').click();await page.getByRole('option',{name:'Burger da casa'}).click();
+ await expect(page.getByText('Ao ponto')).toBeVisible();
+ await page.getByLabel('Nova opção').fill('Bacon extra');
+ await page.getByLabel('Preço').fill('4,50');
+ await page.getByRole('button',{name:'Adicionar'}).click();
+ await expect.poll(()=>optionBody).not.toBeNull();
+ expect(optionBody).toMatchObject({groupId:'g1',name:'Bacon extra',priceAdjustment:4.5});
+ await page.getByLabel('Nome do grupo').fill('Acompanhamento');
+ await page.getByRole('button',{name:'Criar grupo'}).click();
+ await expect.poll(()=>groupBody).not.toBeNull();
+ expect(groupBody).toMatchObject({productId:'p1',name:'Acompanhamento',isRequired:false,minSelections:0,maxSelections:1});
+ await page.getByRole('button',{name:'Remover grupo Ponto da carne'}).click();
+ expect(removedGroup).toBe(false);                                         // first tap only arms it
+ await page.getByRole('button',{name:'Confirmar remoção do grupo Ponto da carne'}).click();
+ await expect.poll(()=>removedGroup).toBe(true);
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});
+

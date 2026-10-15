@@ -188,7 +188,7 @@ public class OrderService
         var groups = await _modifierGroups.GetByProductIdAsync(product.Id, ct);
         var requestedModifierIds = (request.Modifiers ?? []).Select(m => m.ModifierId).ToHashSet();
 
-        foreach (var group in groups.Where(g => g.IsRequired))
+        foreach (var group in groups.Where(g => g.IsRequired && g.Modifiers.Any(m => m.IsActive)))
         {
             var hasSelection = group.Modifiers.Any(m => requestedModifierIds.Contains(m.Id));
             if (!hasSelection)
@@ -209,10 +209,15 @@ public class OrderService
             if (!modifier.IsActive)
                 throw new DomainException($"Modifier '{modifier.Name}' is not active.");
 
+            if (!groups.Any(g => g.Modifiers.Any(m => m.Id == modifier.Id)))
+                throw new DomainException($"O adicional '{modifier.Name}' não está disponível para este produto.");
+
             var snap = item.ApplyModifier(
                 _currentTenant.Id, modifier.Id, modifier.Name, modifier.PriceAdjustment);
             _orders.TrackModifier(snap);
         }
+        if (item.Total < 0)
+            throw new DomainException("Os adicionais deixariam o item com valor negativo.");
 
         await _orders.SaveChangesAsync(ct);
         // Fire-and-forget: SignalR notification (UX complement; polling fallback is authoritative)
@@ -266,8 +271,36 @@ public class OrderService
         var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
             ?? throw new NotFoundException("Order", orderId);
 
+        // A delivery/portal order was quoted to the customer (items, coupon): changing it here would
+        // charge something the customer never saw. Refuse or cancel the order in the delivery hub.
+        if (order.FromDeliveryOrder)
+            throw new DomainException("Pedido de delivery: para mudar os itens, recuse ou cancele o pedido no painel de entregas.");
+        var item = order.Items.FirstOrDefault(i => i.Id == itemId)
+            ?? throw new NotFoundException("OrderItem", itemId);
+        if (item.Status == RestOrderItemStatus.Delivered)
+            throw new DomainException("Item já entregue não pode ser cancelado.");
+        if (item.Status == RestOrderItemStatus.Cancelled)
+            throw new DomainException("Este item já está cancelado.");
+
         order.CancelItem(itemId);
+
+        // What is left decides the comanda's status (e.g. the last pending dish cancelled → ready)
+        var active = order.ActiveItems;
+        if (active.Count > 0)
+        {
+            if (active.All(i => i.Status == RestOrderItemStatus.Ready) && order.Status is RestOrderStatus.Open or RestOrderStatus.InPreparation)
+                order.SetReady();
+            else if (order.Status == RestOrderStatus.Open && active.All(i => i.Status != RestOrderItemStatus.Pending))
+                order.SetInPreparation();
+        }
         await _orders.SaveChangesAsync(ct);
+
+        // The kitchen must see it now (realtime screens don't poll), and the delivery tracking too
+        // fire-and-forget on purpose: the push must not die with the request
+        _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, RestOrderItemStatus.Cancelled.ToString(), CancellationToken.None);
+        _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString(), CancellationToken.None);
+        try { await _deliverySync.SyncFromRestOrderAsync(order.Id, order.Status, ct); }
+        catch (Exception ex) { _logger.LogError(ex, "DeliveryOrder sync failed for RestOrder {Id} → {Status}", order.Id, order.Status); }
         return Map(order);
     }
 

@@ -18,7 +18,8 @@
 | #51 | Contas a pagar e recorrências | `0bc1844` | `PayablesSupplierAndRecurrences` (aditiva + fornecedor das compras) | Em produção |
 | #52 | Fluxo de caixa | `fbdb126` | `AccountOpeningBalance` (aditiva) | Em produção |
 | #53 | Integração financeira das verticais | `511f9c4` | `VerticalExpensesInLedger` (backfill: despesas do restaurante e movimentações confirmadas) | Em produção |
-| #54 | Menu: pedido → venda | — | `RestOrderDeliveryTerms` (aditiva) | Em revisão |
+| #54 | Menu: pedido → venda | `9d950c5` | `RestOrderDeliveryTerms` (aditiva + termos cotados nas comandas abertas) | Em produção |
+| #55 | Fechamento do Menu | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -583,4 +584,49 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - **Fechamento:** a resposta devolve o total certo.
   - **Migration:** comandas aceitas de delivery e ainda não pagas recebem os termos cotados; as pagas ficam como estavam.
   - +1 teste (cupom maior que o pedido depois de cancelar item; retirada sem taxa). O teste da taxa de serviço passa a criar as configurações quando faltam.
+
+## PR 55 — Fechamento do Menu
+
+- **Adicionais pela tela** (`/restaurante/adicionais`, gestão). Antes só existia a API.
+  - Por produto: criar grupo (nome, obrigatório), ajustar mínimo e máximo, remover grupo.
+  - Opções: incluir com preço (pode ser negativo, por exemplo "sem queijo") e remover.
+  - Endpoint novo `DELETE /api/restaurante/modifier-groups/{id}`, que desativa o grupo; o histórico dos pedidos guarda os snapshots.
+- **Cancelar item da comanda pela tela.** O endpoint existia sem UI. Na comanda em aberto, "Cancelar item" pede confirmação no segundo toque.
+- **Fechamento recusado** (por exemplo, cupom maior que o pedido) mostra o motivo do servidor, em vez de uma mensagem genérica.
+- **Cozinha em tempo real:** depois de uma reconexão automática, o SignalR volta a entrar no grupo da loja. Antes, a conexão reconectada não recebia mais nenhum evento; se a reentrada falhar, a tela cai no polling.
+- **Portal público:**
+  - **rate limit** por IP em criar pedido e validar cupom (`public-orders`, 20 por minuto, configurável);
+  - loja inativa ou tenant sem **Orken Menu** ativo: o cardápio continua visível, mas `acceptingOrders` é falso e pedidos são recusados. Antes, o portal recebia pedidos que ninguém conseguia aceitar.
+- **Já estava pronto (a auditoria estava desatualizada):** a cozinha já mostrava os adicionais dos itens.
+- **Testes:**
+  - integração: portal sem módulo ativo mostra o cardápio e recusa o pedido; grupo removido sai do produto;
+  - Playwright: tela de adicionais.
+- **Revisão independente (corrigido antes do merge):**
+  - **Cancelar item:**
+    - atualiza a comanda aberta pela mesa (antes a tela ficava desatualizada);
+    - avisa a cozinha em tempo real (antes o prato cancelado continuava na tela e era preparado);
+    - recalcula o status da comanda (o último prato pendente cancelado deixa a comanda pronta) e sincroniza o rastreio do delivery;
+    - item entregue ou já cancelado é recusado com o motivo.
+  - **Comanda de delivery mantém a cotação:** os itens não são cancelados pela comanda; muda-se pelo painel de entregas (recusar ou cancelar o pedido). Recotar com o cliente fica para depois.
+  - **Adicionais:**
+    - grupo obrigatório sem opções não trava o produto (salão e portal);
+    - mínimo ≤ máximo validado no domínio, com erro 422 em vez de 500;
+    - remover grupo desativa as opções e pede confirmação;
+    - adicional de outro produto ou de grupo removido é recusado no salão;
+    - item com valor negativo é recusado;
+    - "1.000" lido como mil;
+    - rótulos com o nome do grupo.
+  - **SignalR:** uma reentrada que falha depois de a tela fechar não deixa polling órfão.
+  - **RBAC:** linha nova na matriz para remover grupo.
+- **Fica para depois:** integrações iFood, Rappi e AnotaAí (dependem de contrato e API dos parceiros); editar opção já criada (hoje remove e cria de novo).
+
+## Marco — Orken Menu (PRs 54–55)
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Delivery, portal e balcão → venda | 🔴 | ~85% | atualizar o pedido de delivery quando itens da comanda são cancelados |
+| Cardápio e adicionais | 35% | ~75% | editar opção, adicionais na tela de produto |
+| Cozinha / KDS | 55% | ~70% | tempos de preparo e alertas |
+| Portal público | 45% | ~70% | integrações de marketplace |
+| **Orken Menu (geral)** | **50%** | **~75%** | integrações iFood, Rappi e AnotaAí |
 

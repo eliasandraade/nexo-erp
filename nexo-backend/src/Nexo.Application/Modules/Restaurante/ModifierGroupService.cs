@@ -69,6 +69,14 @@ public class ModifierGroupService
         return Map(modifier);
     }
 
+    /// <summary>Removes a group from the product (deactivated: history of past orders keeps its snapshots).</summary>
+    public async Task DeactivateGroupAsync(Guid groupId, CancellationToken ct = default)
+    {
+        var group = await _repo.GetByIdWithModifiersAsync(groupId, ct) ?? throw new NotFoundException("ModifierGroup", groupId);
+        group.Deactivate();
+        await _repo.SaveChangesAsync(ct);
+    }
+
     public async Task DeleteModifierAsync(Guid modifierId, CancellationToken ct = default)
     {
         var modifier = await _repo.GetModifierByIdAsync(modifierId, ct)
@@ -80,7 +88,7 @@ public class ModifierGroupService
     private static short ToShort(int value, string fieldName)
     {
         if (value is < 0 or > 32767)
-            throw new ArgumentOutOfRangeException(fieldName, value, $"{fieldName} must be between 0 and 32767.");
+            throw new DomainException($"{fieldName}: use um número entre 0 e 32767.");
         return (short)value;
     }
 
