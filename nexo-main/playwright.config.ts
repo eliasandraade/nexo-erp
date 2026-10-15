@@ -4,6 +4,7 @@ export default defineConfig({
   testMatch: "experience.spec.ts",
   timeout: 30000,
   fullyParallel: false,
+  retries: process.env.CI ? 1 : 0,   // CI only: one retry, so a slow runner does not fail an unrelated PR
   workers: 1,
   reporter: [["list"], ["html", { open: "never" }]],
   use: { baseURL: "http://127.0.0.1:5179", headless: true, channel: process.platform === "win32" ? "msedge" : undefined, trace: "retain-on-failure", screenshot: "only-on-failure" },

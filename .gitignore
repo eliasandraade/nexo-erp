@@ -56,8 +56,7 @@ Thumbs.db
 *.zip
 .claude/
 
-# Lockfiles (platform-specific, let Railway regenerate)
-nexo-main/package-lock.json
+# Lockfiles: nexo-main/package-lock.json IS versioned (generated on Linux, has every platform binary).
 nexo-main/bun.lock
 nexo-main/bun.lockb
 .gstack/

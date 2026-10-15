@@ -4,17 +4,12 @@
 FROM node:20-slim AS build
 WORKDIR /app
 
-# Install deps first for better layer caching.
-# Intentionally install WITHOUT package-lock.json: the committed lockfile is
-# generated on Windows and omits the Linux Rollup native binary, so both `npm
-# ci` and a lockfile-respecting `npm install` skip @rollup/rollup-linux-x64-gnu
-# and `vite build` crashes (npm optional-deps bug #4828). Resolving fresh lets
-# npm pick the correct platform binary.
-# Tradeoff: deps resolve to latest semver-compatible versions rather than the
-# exact locked ones. To restore `npm ci` reproducibility, regenerate a
-# cross-platform package-lock.json (npm install on any OS with npm >= 10).
-COPY package.json ./
-RUN npm install --no-audit --no-fund
+# Install deps first for better layer caching — exactly the versions in the committed lockfile.
+# The lockfile is generated on Linux (`npm install --package-lock-only` in node:20-slim), so it
+# lists the native binaries of every platform (Rollup's linux-x64-gnu included) and `npm ci` works
+# here and on Windows alike (npm optional-deps bug #4828 hits locks generated on a single OS).
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund --ignore-scripts
 
 # Build the production bundle. `vite build` runs in production mode and reads
 # the committed .env.production (bakes VITE_API_BASE_URL into the bundle).

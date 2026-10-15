@@ -31,7 +31,8 @@
 | #64a | Auth: bloqueio por tentativas, auditoria de login, troca obrigatória, convite (GitHub #63) | `e5ec8ca` | — | Em produção |
 | #64b | Auth: verificação em duas etapas (TOTP) (GitHub #65) | `baad911` | `AuthMfaTotp` (aditiva) | Em produção |
 | #65 | Relatórios do núcleo e painel com período (GitHub #66) | `0b260f9` | — | Em produção |
-| #66 | Fiscal: base (emissor, dados fiscais do produto, CPF na nota) | — | `FiscalFoundation` (aditiva) | Em revisão |
+| #66 | Fiscal: base (emissor, produto, cliente, CPF na nota) (GitHub #67) | `291acb5` | `FiscalFoundation` (aditiva) | Em produção |
+| #67 | CI do frontend e lockfile versionado | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -1039,3 +1040,15 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - códigos internos (13 dígitos começando por 2, como etiqueta de balança) e zeros não contam como GTIN;
   - o aviso de CPF incompleto no PDV só aparece quando o número parece completo ou ao sair do campo.
 - **Fica para depois:** emissão de verdade (provedor, certificado A1, contingência e documento fiscal da devolução); unificar o CNPJ de `Tenant.TaxId`, das configurações da empresa e do emissor; clientes do portal público que hoje guardam um identificador no lugar do CPF; mascarar o CPF do consumidor para o papel vendedor (LGPD); conferir CST × CSOSN pelo regime antes de emitir.
+
+- **Em produção** (merge `291acb5`): `GET /api/fiscal/readiness` passou de 404 para 401 sem token (a API subiu, então a migração foi aplicada), o bundle trocou, `/fiscal` responde 200 e `/health` 20/20.
+
+## PR 67 — CI do frontend
+
+- **Workflow `frontend-ci`** (em todo PR e push no master que toque o frontend): instalação pelo lockfile (`npm ci`), typecheck, lint, Vitest, build de produção e a suíte crítica de Playwright (API simulada, sem backend). Em falha, o relatório do Playwright fica como artefato por 7 dias.
+- **Lockfile versionado:** `nexo-main/package-lock.json` deixa de ser ignorado. O lock gerado no Windows não traz os binários nativos de outras plataformas (bug do npm #4828, por isso o Dockerfile instalava sem lock e cada deploy resolvia versões novas). O lock agora é gerado no Linux (`npm install --package-lock-only` em `node:20-slim`) e traz os binários de todas as plataformas (25 variantes do Rollup); `npm ci` funciona no Windows, no CI e no Docker.
+- **Build reproduzível:** o Dockerfile do frontend passa a usar `COPY package.json package-lock.json` + `npm ci`. Imagem construída e servida localmente (página e rota SPA 200).
+- **Lint limpo:** os 30 erros eram `any` no arquivo de testes de navegador; viraram um tipo `Json` (o que o `postDataJSON()` do Playwright devolve). Ficam 16 avisos, sem erro.
+- **Playwright no CI** com 1 nova tentativa (só no CI), para um runner lento não reprovar um PR que não mexeu no teste.
+- **Cadeia de dependências:** a instalação (CI e Docker) usa `--ignore-scripts`, então nenhum pacote roda script de instalação na máquina de build (os binários nativos vêm como pacotes opcionais do lockfile); o Playwright roda pelos scripts do projeto (`npm run e2e:install` / `e2e:critical`), sem `npx` baixando pacote na hora. Apontado pelo SonarCloud (S6505/S8543).
+- **Para regerar o lock** depois de mudar dependências: `docker run --rm -v "$PWD:/w" -w /w node:20-slim npm install --package-lock-only` dentro de `nexo-main`.
