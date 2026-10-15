@@ -34,7 +34,8 @@ public sealed record PublicBookingSettingsDto(
     string? Address,
     // ── Customer e-mails (PR58) ──
     bool    CustomerEmailsEnabled = false,
-    int     ReminderHoursBefore = 24);
+    int     ReminderHoursBefore = 24,
+    bool    EmailDeliveryAvailable = true);
 
 /// <summary>Turns the customer e-mails (confirmation + reminder) on or off — separate from booking and branding.</summary>
 public sealed record UpdateCustomerEmailsRequest(bool CustomerEmailsEnabled, int ReminderHoursBefore);

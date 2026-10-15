@@ -725,3 +725,13 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - unitário: padrões e limites;
   - Playwright: ligar os avisos e escolher o lembrete.
 - **Migração validada** num Postgres descartável (up → down → up).
+- **Correções da revisão independente** (sem bloqueadores; 4 should-fix e menores):
+  - **lote:** confirmações e lembretes saem de consultas separadas, e o "lembrete vencido" usa a antecedência de cada loja no próprio SQL. Antes, agendamentos dentro de 72 h que ainda não estavam na hora ocupavam o lote de 100 e atrasavam os outros;
+  - **rajada e falhas:** os envios são espaçados (600 ms). Falha temporária (429, 5xx ou timeout) devolve o e-mail para a próxima passada; recusa definitiva (endereço inválido) não repete. O HttpClient do Resend tem timeout de 10 s, e timeout não derruba mais o lote;
+  - **destinatário:** a confirmação só sai quando o e-mail digitado na reserva é o do cadastro. Um telefone compartilhado ou reciclado não leva o link a outra pessoa;
+  - **remarcação:** mudar o horário ou o cliente zera o lembrete já enviado;
+  - o claim reconfere situação e horário (cancelado ou passado não recebe); cliente inativo e e-mail vazio ficam de fora; o join do cliente exige o mesmo tenant;
+  - o lembrete só é suprimido quando a confirmação saiu de fato; confirmação com mais de um dia não é enviada;
+  - **sem provedor configurado:** o job não reivindica nada e a tela avisa;
+  - o log de erro do Resend não grava mais o corpo da resposta, que podia ter o destinatário;
+  - o formulário não perde a edição quando outra seção salva.

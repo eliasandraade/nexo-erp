@@ -18,10 +18,10 @@ export function PortalCustomerEmailsForm({ settings }: { settings: PublicBooking
   const [enabled, setEnabled] = useState(false);
   const [hours, setHours] = useState(24);
 
-  useEffect(() => {
-    setEnabled(settings.customerEmailsEnabled ?? false);
-    setHours(settings.reminderHoursBefore ?? 24);
-  }, [settings]);
+  // re-sync only when these values change — another section saving must not wipe an unsaved edit
+  const savedEnabled = settings.customerEmailsEnabled ?? false;
+  const savedHours = settings.reminderHoursBefore ?? 24;
+  useEffect(() => { setEnabled(savedEnabled); setHours(savedHours); }, [savedEnabled, savedHours]);
 
   const save = () => mut.mutate(
     { customerEmailsEnabled: enabled, reminderHoursBefore: hours },
@@ -63,7 +63,7 @@ export function PortalCustomerEmailsForm({ settings }: { settings: PublicBooking
           Lembrete
         </label>
         <Select value={String(hours)} onValueChange={(v) => setHours(Number(v))} disabled={!enabled}>
-          <SelectTrigger id="reminder-hours" className="h-9 w-56" aria-label="Quando enviar o lembrete"><SelectValue /></SelectTrigger>
+          <SelectTrigger id="reminder-hours" className="h-9 w-56"><SelectValue /></SelectTrigger>
           <SelectContent>
             {[...new Set([...LEADS, hours])].sort((a, b) => a - b).map((h) => (
               <SelectItem key={h} value={String(h)}>{h} horas antes</SelectItem>
@@ -71,6 +71,12 @@ export function PortalCustomerEmailsForm({ settings }: { settings: PublicBooking
           </SelectContent>
         </Select>
       </div>
+
+      {settings.emailDeliveryAvailable === false && (
+        <p role="note" className="text-xs text-amber-600">
+          O envio de e-mails não está configurado neste ambiente: os avisos ficam aguardando até ele ser ativado.
+        </p>
+      )}
 
       <Button onClick={save} disabled={mut.isPending}>
         {mut.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Salvando...</> : "Salvar avisos"}

@@ -23,7 +23,7 @@ public class ServiceCustomerEmailsJob : BackgroundService
 {
     private static readonly TimeSpan FirstRun = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(2);
-    private const int MaxReminderHours = 72;
+    private static readonly TimeSpan Pause = TimeSpan.FromMilliseconds(600);   // provider rate limit
     private const int BatchSize = 100;
 
     private readonly IServiceScopeFactory _scopes;
@@ -40,16 +40,24 @@ public class ServiceCustomerEmailsJob : BackgroundService
         try { await Task.Delay(FirstRun, stoppingToken); }
         catch (OperationCanceledException) { return; }
 
+        var warnedNoProvider = false;
         using var timer = new PeriodicTimer(Interval);
         do
         {
             try
             {
                 using var scope = _scopes.CreateScope();
-                var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
                 var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                if (!email.CanDeliver)
+                {
+                    // nothing is claimed: once a provider is configured, the pending e-mails go out
+                    if (!warnedNoProvider) _logger.LogWarning("No e-mail provider configured; Service customer e-mails are on hold.");
+                    warnedNoProvider = true;
+                    continue;
+                }
+                var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
                 var frontendUrl = scope.ServiceProvider.GetRequiredService<IConfiguration>()["App:FrontendUrl"] ?? "http://localhost:5173";
-                var sent = await RunOnceAsync(db, email, frontendUrl, DateTime.UtcNow, _logger, stoppingToken);
+                var sent = await RunOnceAsync(db, email, frontendUrl, DateTime.UtcNow, _logger, stoppingToken, Pause);
                 if (sent > 0) _logger.LogInformation("Service customer e-mails sent: {Count}", sent);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
@@ -61,75 +69,123 @@ public class ServiceCustomerEmailsJob : BackgroundService
         while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
     }
 
-    internal sealed record Candidate(
-        Guid Id, DateTime StartsAt, string Token, string? Email, string CustomerName, string ServiceName,
-        string ProfessionalName, string StoreName, string? Slug, string TimeZoneId, int ReminderHours, bool ConfirmationPending,
-        DateTime? ReminderSentAt, SvcAppointmentStatus Status);
-
-    /// <summary>One pass: pending confirmations, then due reminders. Returns how many e-mails went out.</summary>
-    public static async Task<int> RunOnceAsync(
-        NexoDbContext db, IEmailService email, string frontendUrl, DateTime nowUtc, ILogger logger, CancellationToken ct)
+    internal sealed class Candidate
     {
-        var horizon = nowUtc.AddHours(MaxReminderHours);
-        var candidates = await (
-                from a in db.SvcAppointments.IgnoreQueryFilters()
-                join s in db.SvcSettings.IgnoreQueryFilters() on new { a.TenantId, a.StoreId } equals new { s.TenantId, s.StoreId }
-                join c in db.Customers.IgnoreQueryFilters() on a.CustomerId equals c.Id
-                join st in db.Stores.IgnoreQueryFilters() on a.StoreId equals st.Id
-                join cat in db.SvcCatalogItems.IgnoreQueryFilters() on a.CatalogItemId equals cat.Id
-                join p in db.SvcProfessionals.IgnoreQueryFilters() on a.ProfessionalId equals p.Id
-                where s.CustomerEmailsEnabled && a.PublicToken != null && c.Email != null
-                   && a.StartsAt > nowUtc
-                   && (a.Status == SvcAppointmentStatus.Scheduled || a.Status == SvcAppointmentStatus.Confirmed)
-                   && (a.ConfirmationEmailPending || (a.ReminderSentAt == null && a.StartsAt <= horizon))
-                orderby a.StartsAt
-                select new Candidate(
-                    a.Id, a.StartsAt, a.PublicToken!, c.Email, c.Name, cat.Name, p.Name,
-                    s.DisplayName ?? st.Name, st.PublicSlug, s.TimeZoneId, s.ReminderHoursBefore,
-                    a.ConfirmationEmailPending, a.ReminderSentAt, a.Status))
-            .AsNoTracking()
-            .Take(BatchSize)
-            .ToListAsync(ct);
+        public Guid Id { get; init; }
+        public DateTime StartsAt { get; init; }
+        public DateTime CreatedAt { get; init; }
+        public string Token { get; init; } = "";
+        public string Email { get; init; } = "";
+        public string CustomerName { get; init; } = "";
+        public string ServiceName { get; init; } = "";
+        public string ProfessionalName { get; init; } = "";
+        public string StoreName { get; init; } = "";
+        public string? Slug { get; init; }
+        public string TimeZoneId { get; init; } = "";
+        public int ReminderHours { get; init; }
+        public bool ConfirmationPending { get; init; }
+        public DateTime? ReminderSentAt { get; init; }
+        public SvcAppointmentStatus Status { get; init; }
+    }
+
+    /// <summary>Open, upcoming bookings of stores with e-mails on, whose customer has an address.</summary>
+    private static IQueryable<Candidate> Candidates(NexoDbContext db, DateTime nowUtc) =>
+        from a in db.SvcAppointments.IgnoreQueryFilters()
+        join s in db.SvcSettings.IgnoreQueryFilters() on new { a.TenantId, a.StoreId } equals new { s.TenantId, s.StoreId }
+        join c in db.Customers.IgnoreQueryFilters() on new { Id = a.CustomerId, a.TenantId } equals new { c.Id, c.TenantId }
+        join st in db.Stores.IgnoreQueryFilters() on a.StoreId equals st.Id
+        join cat in db.SvcCatalogItems.IgnoreQueryFilters() on a.CatalogItemId equals cat.Id
+        join p in db.SvcProfessionals.IgnoreQueryFilters() on a.ProfessionalId equals p.Id
+        where s.CustomerEmailsEnabled && a.PublicToken != null
+           && c.IsActive && c.Email != null && c.Email != ""
+           && a.StartsAt > nowUtc
+           && (a.Status == SvcAppointmentStatus.Scheduled || a.Status == SvcAppointmentStatus.Confirmed)
+        select new Candidate
+        {
+            Id = a.Id, StartsAt = a.StartsAt, CreatedAt = a.CreatedAt, Token = a.PublicToken!, Email = c.Email!,
+            CustomerName = c.Name, ServiceName = cat.Name, ProfessionalName = p.Name,
+            StoreName = s.DisplayName ?? st.Name, Slug = st.PublicSlug, TimeZoneId = s.TimeZoneId,
+            ReminderHours = s.ReminderHoursBefore, ConfirmationPending = a.ConfirmationEmailPending,
+            ReminderSentAt = a.ReminderSentAt, Status = a.Status,
+        };
+
+    /// <summary>
+    /// One pass: pending confirmations, then due reminders — two queries, so rows not due yet never
+    /// take a batch slot. Returns how many e-mails went out. <paramref name="pause"/> spaces the
+    /// sends (provider rate limit).
+    /// </summary>
+    public static async Task<int> RunOnceAsync(
+        NexoDbContext db, IEmailService email, string frontendUrl, DateTime nowUtc, ILogger logger, CancellationToken ct,
+        TimeSpan? pause = null)
+    {
+        var confirmationsSince = nowUtc.AddDays(-1);      // a confirmation days late would only confuse
+        var confirmations = await Candidates(db, nowUtc)
+            .Where(x => x.ConfirmationPending && x.CreatedAt >= confirmationsSince)
+            .OrderBy(x => x.CreatedAt).Take(BatchSize).AsNoTracking().ToListAsync(ct);
+        var reminders = await Candidates(db, nowUtc)
+            .Where(x => x.ReminderSentAt == null && x.StartsAt <= nowUtc.AddHours(x.ReminderHours))
+            .OrderBy(x => x.StartsAt).Take(BatchSize).AsNoTracking().ToListAsync(ct);
 
         var sent = 0;
-        foreach (var c in candidates)
+        var confirmed = new HashSet<Guid>();
+        foreach (var c in confirmations)
         {
-            if (c.ConfirmationPending && await ClaimConfirmationAsync(db, c.Id, ct)
-                && await SendAsync(email, c, isReminder: false, frontendUrl, logger, ct))
-                sent++;
-
-            var reminderDue = c.ReminderSentAt is null && c.StartsAt <= nowUtc.AddHours(c.ReminderHours);
-            // a booking made inside the reminder window just got its confirmation: no reminder on top of it
-            if (reminderDue && c.ConfirmationPending) { await ClaimReminderAsync(db, c.Id, nowUtc, ct); continue; }
-            if (reminderDue && await ClaimReminderAsync(db, c.Id, nowUtc, ct)
-                && await SendAsync(email, c, isReminder: true, frontendUrl, logger, ct))
-                sent++;
+            if (!await ClaimConfirmationAsync(db, c.Id, nowUtc, ct)) continue;
+            var result = await SendAsync(email, c, isReminder: false, frontendUrl, logger, ct);
+            if (result == EmailSendResult.Sent) { sent++; confirmed.Add(c.Id); }
+            else if (result == EmailSendResult.Failed) await ReleaseConfirmationAsync(db, c.Id, ct);
+            await PauseAsync(pause, ct);
+        }
+        foreach (var c in reminders)
+        {
+            if (!await ClaimReminderAsync(db, c.Id, nowUtc, ct)) continue;
+            // booked inside the reminder window and confirmed just now: no reminder on top of it
+            if (confirmed.Contains(c.Id)) continue;
+            var result = await SendAsync(email, c, isReminder: true, frontendUrl, logger, ct);
+            if (result == EmailSendResult.Sent) sent++;
+            else if (result == EmailSendResult.Failed) await ReleaseReminderAsync(db, c.Id, ct);
+            await PauseAsync(pause, ct);
         }
         return sent;
     }
 
-    private static async Task<bool> ClaimConfirmationAsync(NexoDbContext db, Guid id, CancellationToken ct)
+    private static Task PauseAsync(TimeSpan? pause, CancellationToken ct)
+        => pause is { } p && p > TimeSpan.Zero ? Task.Delay(p, ct) : Task.CompletedTask;
+
+    // Claims re-check the booking: one cancelled or moved since the read is not e-mailed.
+    private static async Task<bool> ClaimConfirmationAsync(NexoDbContext db, Guid id, DateTime nowUtc, CancellationToken ct)
         => await db.SvcAppointments.IgnoreQueryFilters()
-            .Where(a => a.Id == id && a.ConfirmationEmailPending)
+            .Where(a => a.Id == id && a.ConfirmationEmailPending && a.StartsAt > nowUtc
+                     && (a.Status == SvcAppointmentStatus.Scheduled || a.Status == SvcAppointmentStatus.Confirmed))
             .ExecuteUpdateAsync(u => u.SetProperty(a => a.ConfirmationEmailPending, false), ct) == 1;
 
     private static async Task<bool> ClaimReminderAsync(NexoDbContext db, Guid id, DateTime nowUtc, CancellationToken ct)
         => await db.SvcAppointments.IgnoreQueryFilters()
-            .Where(a => a.Id == id && a.ReminderSentAt == null)
+            .Where(a => a.Id == id && a.ReminderSentAt == null && a.StartsAt > nowUtc
+                     && (a.Status == SvcAppointmentStatus.Scheduled || a.Status == SvcAppointmentStatus.Confirmed))
             .ExecuteUpdateAsync(u => u.SetProperty(a => a.ReminderSentAt, nowUtc), ct) == 1;
 
-    private static async Task<bool> SendAsync(
+    // A temporary failure (rate limit, provider down, timeout) gives the e-mail back for the next pass.
+    private static Task ReleaseConfirmationAsync(NexoDbContext db, Guid id, CancellationToken ct)
+        => db.SvcAppointments.IgnoreQueryFilters().Where(a => a.Id == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(a => a.ConfirmationEmailPending, true), ct);
+
+    private static Task ReleaseReminderAsync(NexoDbContext db, Guid id, CancellationToken ct)
+        => db.SvcAppointments.IgnoreQueryFilters().Where(a => a.Id == id)
+            .ExecuteUpdateAsync(u => u.SetProperty(a => a.ReminderSentAt, (DateTime?)null), ct);
+
+    private static async Task<EmailSendResult> SendAsync(
         IEmailService email, Candidate c, bool isReminder, string frontendUrl, ILogger logger, CancellationToken ct)
     {
         try
         {
             var (subject, html) = BuildEmail(c, isReminder, frontendUrl);
-            return await email.SendAsync(c.Email!, subject, html, ct);
+            return await email.SendAsync(c.Email, subject, html, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogWarning(ex, "Service e-mail for appointment {ApptId} failed", c.Id);
-            return false;
+            return EmailSendResult.Failed;
         }
     }
 

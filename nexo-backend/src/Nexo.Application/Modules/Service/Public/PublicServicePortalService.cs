@@ -211,7 +211,10 @@ public sealed class PublicServicePortalService
         if (ctx.Settings.AutoConfirmAppointments)
             appt.ChangeStatus(SvcAppointmentStatus.Confirmed, null);
         // sent by the reminders job, so the booking never waits on the e-mail provider
-        if (ctx.Settings.CustomerEmailsEnabled && !string.IsNullOrWhiteSpace(customer.Email))
+        // Only when the address on file is the one typed now: a phone found on file may belong to
+        // someone else (shared or recycled number) — their e-mail must not get this booking's link.
+        var typedEmail = request.Email?.Trim().ToLowerInvariant();
+        if (ctx.Settings.CustomerEmailsEnabled && !string.IsNullOrEmpty(typedEmail) && typedEmail == customer.Email)
             appt.RequestConfirmationEmail();
 
         await _appointments.AddAsync(appt, ct);

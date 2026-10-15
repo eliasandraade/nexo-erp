@@ -73,6 +73,8 @@ export interface PublicBookingSettingsDto {
   // Customer e-mails (PR58) — confirmation of portal bookings + reminder, both with the customer's link.
   customerEmailsEnabled?: boolean;
   reminderHoursBefore?: number;
+  /** False when the server has no e-mail provider configured (nothing would be delivered). */
+  emailDeliveryAvailable?: boolean;
 }
 export interface UpdateCustomerEmailsRequest {
   customerEmailsEnabled: boolean;

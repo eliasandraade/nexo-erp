@@ -17,11 +17,14 @@ public class SvcSettingsService
 {
     private readonly ISvcSettingsRepository _repo;
     private readonly ICurrentTenant         _currentTenant;
+    private readonly bool                   _emailDelivery;
 
-    public SvcSettingsService(ISvcSettingsRepository repo, ICurrentTenant currentTenant)
+    public SvcSettingsService(ISvcSettingsRepository repo, ICurrentTenant currentTenant, IEmailService? email = null)
     {
         _repo          = repo;
         _currentTenant = currentTenant;
+        // without a provider the e-mails would only reach the log: the screen says so
+        _emailDelivery = email?.CanDeliver ?? true;
     }
 
     public async Task<string?> ResolveEffectivePresetKeyAsync(CancellationToken ct = default)
@@ -119,7 +122,7 @@ public class SvcSettingsService
         return Map(settings);
     }
 
-    private static PublicBookingSettingsDto Map(SvcSettings s) => new(
+    private PublicBookingSettingsDto Map(SvcSettings s) => new(
         IsConfigured:            true,
         PublicBookingEnabled:    s.PublicBookingEnabled,
         BookingDaysAhead:        s.BookingDaysAhead,
@@ -136,5 +139,6 @@ public class SvcSettingsService
         WhatsApp:                s.WhatsApp,
         Address:                 s.Address,
         CustomerEmailsEnabled:   s.CustomerEmailsEnabled,
-        ReminderHoursBefore:     s.ReminderHoursBefore);
+        ReminderHoursBefore:     s.ReminderHoursBefore,
+        EmailDeliveryAvailable:  _emailDelivery);
 }

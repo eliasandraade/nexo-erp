@@ -517,24 +517,29 @@ public class ServicePublicPortalTests
     private sealed class CapturingEmail : Nexo.Application.Common.Interfaces.IEmailService
     {
         public List<(string To, string Subject, string Html)> Sent { get; } = [];
+        /// <summary>Addresses whose next send fails temporarily (rate limit / provider down).</summary>
+        public HashSet<string> FailOnce { get; } = [];
+        public bool CanDeliver => true;
         public Task SendVerificationEmailAsync(string toEmail, string toName, string verificationUrl, CancellationToken ct = default)
             => Task.CompletedTask;
-        public Task<bool> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
+        public Task<Nexo.Application.Common.Interfaces.EmailSendResult> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
         {
+            if (FailOnce.Remove(toEmail)) return Task.FromResult(Nexo.Application.Common.Interfaces.EmailSendResult.Failed);
             Sent.Add((toEmail, subject, html));
-            return Task.FromResult(true);
+            return Task.FromResult(Nexo.Application.Common.Interfaces.EmailSendResult.Sent);
         }
     }
 
     /// <summary>Runs the job's pass until it has nothing left (the shared database has other bookings).</summary>
-    private async Task<CapturingEmail> RunEmailsJobAsync(DateTime nowUtc)
+    private async Task<CapturingEmail> RunEmailsJobAsync(DateTime nowUtc, CapturingEmail? email = null)
     {
-        var email = new CapturingEmail();
+        email ??= new CapturingEmail();
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
         for (var i = 0; i < 20; i++)
             if (await Nexo.Infrastructure.Jobs.ServiceCustomerEmailsJob.RunOnceAsync(
-                    db, email, "https://app.test", nowUtc, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, default) == 0)
+                    db, email, "https://app.test", nowUtc, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, default) == 0
+                && i > 0)   // at least two passes: a temporary failure is retried on the next one
                 break;
         return email;
     }
@@ -609,6 +614,42 @@ public class ServicePublicPortalTests
             (await pub.PostAsync($"/api/public/service/{slug}/appointments/{token}/cancel", null))
                 .StatusCode.Should().Be(HttpStatusCode.OK);
             (await RunEmailsJobAsync(slots[1].StartsAt.AddHours(-1))).Sent.Should().NotContain(m => m.To == cancelled);
+        }
+        finally { await SetCustomerEmailsAsync(admin, false); }
+    }
+
+    [Fact]
+    public async Task Confirmation_goes_only_to_the_address_typed_now_and_a_temporary_failure_is_retried()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        (await SetCustomerEmailsAsync(admin, true, 24)).StatusCode.Should().Be(HttpStatusCode.OK);
+        try
+        {
+            var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+            var catalog = await CreateCatalogAsync(admin);
+            var pub = _factory.CreateApiClient();
+            var slots = (await GetAvailabilityAsync(pub, slug, catalog, professional)).Slots
+                .Where(s => s.StartsAt > DateTime.UtcNow.AddDays(2)).Take(2).ToList();
+            var phone = NextPhone();
+            var owner = $"dono{Guid.NewGuid():N}@teste.dev";
+            var other = $"outro{Guid.NewGuid():N}@teste.dev";
+            Task<HttpResponseMessage> Book(string slot, string mail) => pub.PostAsJsonAsync($"/api/public/service/{slug}/appointments", new
+            {
+                customerName = "Mesmo Telefone", phone, email = mail, catalogItemId = catalog, professionalId = professional, startsAt = slot,
+            });
+
+            (await Book(slots[0].Raw, owner)).StatusCode.Should().Be(HttpStatusCode.Created);
+            var fake = new CapturingEmail();
+            fake.FailOnce.Add(owner);                              // the provider refuses for a moment
+            (await RunEmailsJobAsync(DateTime.UtcNow, fake)).Sent.Should().ContainSingle(m => m.To == owner,
+                "a temporary failure gives the e-mail back and the next pass sends it");
+
+            // someone else books with the same phone and their own address: nobody gets this confirmation
+            (await Book(slots[1].Raw, other)).StatusCode.Should().Be(HttpStatusCode.Created);
+            var after = (await RunEmailsJobAsync(DateTime.UtcNow)).Sent;
+            after.Should().NotContain(m => m.To == owner, "the address on file is not the one typed now");
+            after.Should().NotContain(m => m.To == other);
         }
         finally { await SetCustomerEmailsAsync(admin, false); }
     }

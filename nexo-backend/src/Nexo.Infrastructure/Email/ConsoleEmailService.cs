@@ -20,9 +20,11 @@ public class ConsoleEmailService : IEmailService
         return Task.CompletedTask;
     }
 
-    public Task<bool> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
+    public bool CanDeliver => false;
+
+    public Task<EmailSendResult> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
     {
-        _logger.LogInformation("=== EMAIL ===\nTo: {Email}\nSubject: {Subject}\n=============", toEmail, subject);
-        return Task.FromResult(true);
+        _logger.LogInformation("=== EMAIL (not delivered) ===\nSubject: {Subject}\n=============", subject);
+        return Task.FromResult(EmailSendResult.Sent);
     }
 }

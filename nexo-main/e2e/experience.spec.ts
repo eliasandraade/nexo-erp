@@ -485,7 +485,7 @@ test('Service: liga os avisos por e-mail com o lembrete escolhido',async({page})
  const toggle=page.getByRole('switch',{name:/Avisar clientes por e-mail/});
  await expect(toggle).toHaveAttribute('aria-checked','false');
  await toggle.click();
- await page.getByLabel('Quando enviar o lembrete').click();
+ await page.getByLabel('Lembrete').click();
  await page.getByRole('option',{name:'2 horas antes',exact:true}).click();
  await page.getByRole('button',{name:'Salvar avisos'}).click();
  await expect.poll(()=>body).toEqual({customerEmailsEnabled:true,reminderHoursBefore:2});

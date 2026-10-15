@@ -74,7 +74,9 @@ public class ResendEmailService : IEmailService
         }
     }
 
-    public async Task<bool> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
+    public bool CanDeliver => !string.IsNullOrWhiteSpace(_apiKey);
+
+    public async Task<EmailSendResult> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
     {
         var payload = new { from = FromAddress, to = new[] { toEmail }, subject, html };
         using var request = new HttpRequestMessage(HttpMethod.Post, ResendApiUrl)
@@ -83,12 +85,25 @@ public class ResendEmailService : IEmailService
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
 
-        using var response = await _http.SendAsync(request, ct);
-        if (response.IsSuccessStatusCode) return true;
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(request, ct);
+        }
+        catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            _logger.LogWarning("Resend unreachable or timed out sending \"{Subject}\": {Error}", subject, ex.Message);
+            return EmailSendResult.Failed;
+        }
 
-        var error = await response.Content.ReadAsStringAsync(ct);
-        _logger.LogError("Resend API error {Status} sending \"{Subject}\": {Error}", (int)response.StatusCode, subject, error);
-        return false;
+        using (response)
+        {
+            if (response.IsSuccessStatusCode) return EmailSendResult.Sent;
+            var status = (int)response.StatusCode;
+            // the body may echo the recipient: only the status goes to the log
+            _logger.LogError("Resend API error {Status} sending \"{Subject}\"", status, subject);
+            return status == 429 || status >= 500 ? EmailSendResult.Failed : EmailSendResult.Rejected;
+        }
     }
 
     private static string BuildVerificationHtml(string name, string verificationUrl)

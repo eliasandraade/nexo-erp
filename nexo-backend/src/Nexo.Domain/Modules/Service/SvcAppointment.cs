@@ -102,6 +102,8 @@ public class SvcAppointment : StoreEntity
 
         // the old link belongs to the previous customer: it must stop working
         if (customerId != CustomerId && PublicToken is not null) PublicToken = NewPublicToken();
+        // the reminder already sent was for another time or person
+        if (startsAt != StartsAt || customerId != CustomerId) ReminderSentAt = null;
         CustomerId     = customerId;
         ProfessionalId = professionalId;
         CatalogItemId  = catalogItemId;
