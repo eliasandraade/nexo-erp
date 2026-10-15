@@ -345,6 +345,17 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
   - Service: estorno vira dedução ligada ao original;
   - PDV: os testes atualizados refletem o dinheiro no livro;
   - Playwright: tela do financeiro nos dois regimes.
+- **Revisão independente (corrigido antes do merge):**
+  - **Backfill decidia por venda, não por pagamento.** Numa venda antiga paga com Pix + a prazo cujo título a prazo já foi quitado, o Pix nunca entraria no livro. Agora cada pagamento é reconhecido individualmente (mesma venda, valor e descrição exata). Revalidado no Postgres descartável com esse cenário.
+  - **Corrida entre pagar e cancelar:** quitar, cancelar e editar rodam sob trava da linha (`FOR UPDATE`), e o cancelamento de venda ou de compra trava os mesmos lançamentos.
+  - **Resultado por competência:** deixa de fora as compras de mercadoria, que vão para o estoque. O campo `result` está separado de `net`.
+  - **Título de compra em aberto:** voltou a ser editável (renegociar vencimento ou valor).
+  - **Contas padrão:** a única conta a receber ou a pagar ativa não pode ser desativada, porque vendas e compras dependem dela.
+  - **Datas sem fuso:** normalizadas para UTC.
+  - **Vínculo de estorno no histórico:** pareado um a um.
+  - **Extrato da conta:** limitado aos 500 lançamentos mais recentes.
+- **Decisão de comportamento:** pagar um lançamento já quitado agora responde 422 (antes era aceito em silêncio). Nenhum cliente atual faz isso.
+- **Janela de deploy:** vendas em dinheiro confirmadas pelo container antigo durante a migration podem ficar fora do livro. A migration do PR 50 reexecuta o mesmo backfill, que é idempotente por pagamento.
 - **Fica para os próximos PRs:**
   - recebimento parcial, juros e vencidos (PR 50);
   - contas a pagar com recorrência (PR 51);

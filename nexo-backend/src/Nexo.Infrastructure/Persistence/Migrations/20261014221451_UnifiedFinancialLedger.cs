@@ -68,16 +68,27 @@ UPDATE nexo.financial_transactions c SET reverses_transaction_id = o.id
   FROM nexo.financial_transactions o
  WHERE c.reference_type = 'SvcPaymentVoid' AND o.reference_type = 'SvcPayment'
    AND o.reference_id = c.reference_id AND o.status = 'Paid';
-UPDATE nexo.financial_transactions c SET reverses_transaction_id = o.id
-  FROM nexo.financial_transactions o
- WHERE c.reference_type = 'SaleCancellation' AND o.reference_type = 'Sale'
-   AND o.reference_id = c.reference_id AND c.description = 'Estorno — ' || o.description;");
+-- Sale counter-entries: pair each with one original (same sale, description and amount, in order)
+WITH c AS (
+    SELECT id, reference_id, description, amount,
+           row_number() OVER (PARTITION BY reference_id, description, amount ORDER BY created_at, id) AS rn
+      FROM nexo.financial_transactions WHERE reference_type = 'SaleCancellation'),
+     o AS (
+    SELECT id, reference_id, 'Estorno — ' || description AS description, amount,
+           row_number() OVER (PARTITION BY reference_id, description, amount ORDER BY created_at, id) AS rn
+      FROM nexo.financial_transactions WHERE reference_type = 'Sale' AND status = 'Paid')
+UPDATE nexo.financial_transactions ft SET reverses_transaction_id = o.id
+  FROM c JOIN o ON o.reference_id = c.reference_id AND o.description = c.description
+               AND o.amount = c.amount AND o.rn = c.rn
+ WHERE ft.id = c.id;");
 
             // ── Bring à-vista sale money into the livro ───────────────────────────────
             // Until now cash (and, before PR 43, every à-vista method) only reached the drawer.
-            // One settled Revenue entry per payment of every sale still standing; a payment already
-            // mirrored (Pix/card since PR 43) is skipped. The entry reuses the payment's id, so the
-            // backfill is idempotent with its own rows and Down removes exactly them.
+            // One settled Revenue entry per payment of every sale still standing. A payment already in
+            // the livro (Pix/card since PR 43, cash posted by the new code) is recognised PER PAYMENT —
+            // same sale, amount and the exact description the posting writes — so it is never doubled
+            // and no other payment of the sale is skipped. The entry reuses the payment's id, so Down
+            // removes exactly the backfill.
             migrationBuilder.Sql(@"
 INSERT INTO nexo.financial_transactions
     (id, tenant_id, financial_account_id, transaction_type, category, amount, description,
@@ -99,9 +110,13 @@ SELECT sp.id, sp.tenant_id, acc.id, 'Receivable', 'Revenue', sp.amount,
  WHERE sp.type = 'Cash' AND sp.amount > 0
    AND s.status NOT IN ('Draft', 'Cancelled')
    AND NOT EXISTS (SELECT 1 FROM nexo.financial_transactions x WHERE x.id = sp.id)
-   AND (sp.method = 'Cash' OR NOT EXISTS (
-            SELECT 1 FROM nexo.financial_transactions ft
-             WHERE ft.reference_type = 'Sale' AND ft.reference_id = s.id AND ft.status = 'Paid'));
+   AND NOT EXISTS (
+        SELECT 1 FROM nexo.financial_transactions ft
+         WHERE ft.reference_type = 'Sale' AND ft.reference_id = s.id AND ft.amount = sp.amount
+           AND ft.description = 'Venda #' || s.number || ' — ' || CASE sp.method
+                WHEN 'Cash' THEN 'Dinheiro' WHEN 'Pix' THEN 'Pix' WHEN 'Debit' THEN 'Cartão de débito'
+                WHEN 'Credit' THEN 'Cartão de crédito' WHEN 'Transfer' THEN 'Transferência'
+                WHEN 'Check' THEN 'Cheque' ELSE 'Outro' END);
 
 -- Cash refunds of devoluções left only the drawer: their revenue deduction joins the livro.
 INSERT INTO nexo.financial_transactions
@@ -118,7 +133,9 @@ SELECT m.id, m.tenant_id, acc.id, 'Payable', 'RevenueDeduction', m.amount, m.des
                  WHERE a.tenant_id = m.tenant_id AND a.is_active AND a.account_type = 'Payable'
                  ORDER BY a.code LIMIT 1) acc ON true
  WHERE m.movement_type = 'SaleRefund' AND m.reference_type = 'SaleReturn' AND m.amount > 0
-   AND NOT EXISTS (SELECT 1 FROM nexo.financial_transactions x WHERE x.id = m.id);");
+   AND NOT EXISTS (SELECT 1 FROM nexo.financial_transactions x WHERE x.id = m.id)
+   AND NOT EXISTS (SELECT 1 FROM nexo.financial_transactions x
+                    WHERE x.reference_type = 'SaleReturn' AND x.reference_id = r.id);");
 
             // ── Store dimension, from each record of origin ───────────────────────────
             migrationBuilder.Sql(@"

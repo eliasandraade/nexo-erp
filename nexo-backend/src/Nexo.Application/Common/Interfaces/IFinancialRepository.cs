@@ -21,6 +21,11 @@ public interface IFinancialRepository
     Task<IReadOnlyList<FinancialTransaction>> GetTransactionsByReferenceAsync(string referenceType, Guid referenceId, CancellationToken ct = default);
     Task AddTransactionAsync(FinancialTransaction transaction, CancellationToken ct = default);
 
+    /// <summary>Row lock (FOR UPDATE) on a lançamento, reloading it if tracked — serialises pay × cancel.</summary>
+    Task LockTransactionAsync(Guid id, Guid tenantId, CancellationToken ct = default);
+    /// <summary>Row locks on every lançamento of a record of origin (e.g. a sale being cancelled).</summary>
+    Task LockTransactionsByReferenceAsync(string referenceType, Guid referenceId, Guid tenantId, CancellationToken ct = default);
+
     /// <summary>Entries of the period in the regime's order (newest first), at most <paramref name="take"/>.</summary>
     Task<IReadOnlyList<FinancialTransaction>> GetLedgerEntriesAsync(
         Nexo.Application.Features.Financial.LedgerFilter filter, int take, CancellationToken ct = default);

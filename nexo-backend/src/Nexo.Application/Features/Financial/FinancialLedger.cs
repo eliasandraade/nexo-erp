@@ -41,7 +41,8 @@ public record LedgerDto(
     DateTime To,
     decimal TotalIn,
     decimal TotalOut,
-    decimal Net,
+    decimal Net,                // entradas − saídas
+    decimal Result,             // competência: Net without compras de mercadoria; caixa: = Net
     IReadOnlyList<LedgerCategoryTotalDto> ByCategory,
     IReadOnlyList<LedgerEntryDto> Entries,
     bool Truncated);

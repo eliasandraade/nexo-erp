@@ -1,5 +1,6 @@
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Service;
+using Nexo.Application.Modules.Varejo;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Domain.Exceptions;
@@ -10,6 +11,7 @@ public class FinancialService
 {
     private readonly IFinancialRepository _financial;
     private readonly IStoreRepository _stores;
+    private readonly IUnitOfWork _uow;
     private readonly ICurrentTenant _currentTenant;
     private readonly ICurrentUser _currentUser;
 
@@ -17,10 +19,12 @@ public class FinancialService
     public const int LedgerEntryLimit = 1000;
 
     public FinancialService(
-        IFinancialRepository financial, IStoreRepository stores, ICurrentTenant currentTenant, ICurrentUser currentUser)
+        IFinancialRepository financial, IStoreRepository stores, IUnitOfWork uow,
+        ICurrentTenant currentTenant, ICurrentUser currentUser)
     {
         _financial     = financial;
         _stores        = stores;
+        _uow           = uow;
         _currentTenant = currentTenant;
         _currentUser   = currentUser;
     }
@@ -87,6 +91,13 @@ public class FinancialService
     {
         var account = await _financial.GetAccountByIdAsync(id, ct)
             ?? throw new NotFoundException("FinancialAccount", id);
+
+        // Sales and purchases post to the active Contas a Receber / a Pagar: never leave a tenant without one.
+        if (account.IsActive && account.AccountType is FinancialAccountType.Receivable or FinancialAccountType.Payable
+            && (await _financial.GetAllAccountsAsync(includeInactive: false, ct))
+                .Count(a => a.AccountType == account.AccountType) <= 1)
+            throw new DomainException("Esta é a única conta ativa do tipo: vendas e compras dependem dela. Ative outra antes.");
+
         account.Deactivate();
         await _financial.SaveChangesAsync(ct);
     }
@@ -152,52 +163,64 @@ public class FinancialService
             category,
             request.Amount,
             request.Description,
-            request.DueDate,
+            Utc(request.DueDate),
             _currentUser.UserId,
             request.ReferenceType,
             request.ReferenceId,
             request.StoreId,
-            request.CompetenceDate ?? request.DueDate);
+            Utc(request.CompetenceDate ?? request.DueDate));
 
         await _financial.AddTransactionAsync(tx, ct);
         await _financial.SaveChangesAsync(ct);
         return MapTransactionToDto(tx);
     }
 
-    public async Task<FinancialTransactionDto> UpdateTransactionAsync(Guid id, UpdateTransactionRequest request, CancellationToken ct = default)
+    public Task<FinancialTransactionDto> UpdateTransactionAsync(Guid id, UpdateTransactionRequest request, CancellationToken ct = default)
+        => WithLockedTransactionAsync(id, tx =>
+        {
+            // A supplier's open bill can be renegotiated; other module entries are fixed at the origin.
+            if (tx.ReferenceType != PurchaseService.PurchaseReference) EnsureNotSystemOwned(tx);
+            tx.Update(request.Amount, request.Description, Utc(request.DueDate));   // open entries only (domain)
+        }, ct);
+
+    public Task<FinancialTransactionDto> MarkPaidAsync(Guid id, MarkTransactionPaidRequest request, CancellationToken ct = default)
+        => WithLockedTransactionAsync(id, tx =>
+        {
+            EnsureNotServiceManaged(tx);
+            tx.MarkPaid(request.PaidAt is { } paidAt ? Utc(paidAt) : null);
+        }, ct);
+
+    public Task<FinancialTransactionDto> CancelTransactionAsync(Guid id, CancellationToken ct = default)
+        => WithLockedTransactionAsync(id, tx =>
+        {
+            EnsureNotSystemOwned(tx);
+            tx.Cancel();   // open entries only — a settled one is reversed, not cancelled (domain)
+        }, ct);
+
+    /// <summary>
+    /// Pay, cancel and edit run under a row lock, as does cancelling the sale or purchase behind the
+    /// entry: a concurrent pay × cancel can never leave money received on a cancelled título.
+    /// </summary>
+    private async Task<FinancialTransactionDto> WithLockedTransactionAsync(
+        Guid id, Action<FinancialTransaction> change, CancellationToken ct)
     {
+        await using var scope = await _uow.BeginTransactionAsync(ct);
+        await _financial.LockTransactionAsync(id, _currentTenant.Id, ct);
         var tx = await _financial.GetTransactionByIdAsync(id, ct)
             ?? throw new NotFoundException("FinancialTransaction", id);
-
-        EnsureNotSystemOwned(tx);
-
-        tx.Update(request.Amount, request.Description, request.DueDate);   // open entries only (domain)
+        change(tx);
         await _financial.SaveChangesAsync(ct);
+        await scope.CommitAsync(ct);
         return MapTransactionToDto(tx);
     }
 
-    public async Task<FinancialTransactionDto> MarkPaidAsync(Guid id, MarkTransactionPaidRequest request, CancellationToken ct = default)
+    /// <summary>timestamptz takes UTC: a date-only or zone-less value is read as UTC.</summary>
+    private static DateTime Utc(DateTime value) => value.Kind switch
     {
-        var tx = await _financial.GetTransactionByIdAsync(id, ct)
-            ?? throw new NotFoundException("FinancialTransaction", id);
-        EnsureNotServiceManaged(tx);
-
-        tx.MarkPaid(request.PaidAt);
-        await _financial.SaveChangesAsync(ct);
-        return MapTransactionToDto(tx);
-    }
-
-    public async Task<FinancialTransactionDto> CancelTransactionAsync(Guid id, CancellationToken ct = default)
-    {
-        var tx = await _financial.GetTransactionByIdAsync(id, ct)
-            ?? throw new NotFoundException("FinancialTransaction", id);
-
-        EnsureNotSystemOwned(tx);
-
-        tx.Cancel();   // open entries only — a settled one is reversed, not cancelled (domain)
-        await _financial.SaveChangesAsync(ct);
-        return MapTransactionToDto(tx);
-    }
+        DateTimeKind.Utc   => value,
+        DateTimeKind.Local => value.ToUniversalTime(),
+        _                  => DateTime.SpecifyKind(value, DateTimeKind.Utc),
+    };
 
     // ── Ledger ───────────────────────────────────────────────────────────────
 
@@ -222,8 +245,13 @@ public class FinancialService
 
         var totalIn  = byCategory.Sum(c => c.In);
         var totalOut = byCategory.Sum(c => c.Out);
+        // Competência: buying stock is not an expense (its cost reaches the result through the CMV
+        // of what is sold), so the result leaves compras out. Caixa: every real outflow counts.
+        var result = filter.Regime == LedgerRegime.Accrual
+            ? byCategory.Where(c => c.Category != nameof(FinancialCategory.Purchase)).Sum(c => c.Net)
+            : totalIn - totalOut;
         return new LedgerDto(
-            filter.Regime.ToString(), filter.From, filter.To, totalIn, totalOut, totalIn - totalOut, byCategory,
+            filter.Regime.ToString(), filter.From, filter.To, totalIn, totalOut, totalIn - totalOut, result, byCategory,
             entries.Take(LedgerEntryLimit).Select(MapLedgerEntry).ToList(),
             Truncated: entries.Count > LedgerEntryLimit);
     }

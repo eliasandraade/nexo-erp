@@ -42,6 +42,7 @@ public class FinancialRepository : IFinancialRepository
         => await _context.FinancialTransactions
             .Where(x => x.FinancialAccountId == accountId)
             .OrderByDescending(x => x.DueDate)
+            .Take(500)   // every à-vista sale lands on Contas a Receber now: the statement shows the latest
             .ToListAsync(ct);
 
     public async Task<IReadOnlyList<FinancialTransaction>> GetPendingTransactionsAsync(CancellationToken ct = default)
@@ -91,6 +92,24 @@ public class FinancialRepository : IFinancialRepository
         if (f.StoreId is { } storeId) query = query.Where(x => x.StoreId == storeId);
         if (f.Category is { } category) query = query.Where(x => x.Category == category);
         return query;
+    }
+
+    public async Task LockTransactionAsync(Guid id, Guid tenantId, CancellationToken ct = default)
+    {
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.financial_transactions WHERE id = {id} AND tenant_id = {tenantId} FOR UPDATE", ct);
+        var tracked = _context.ChangeTracker.Entries<FinancialTransaction>().FirstOrDefault(e => e.Entity.Id == id);
+        if (tracked is not null) await tracked.ReloadAsync(ct);
+    }
+
+    public async Task LockTransactionsByReferenceAsync(
+        string referenceType, Guid referenceId, Guid tenantId, CancellationToken ct = default)
+    {
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.financial_transactions WHERE reference_type = {referenceType} AND reference_id = {referenceId} AND tenant_id = {tenantId} ORDER BY id FOR UPDATE", ct);
+        foreach (var tracked in _context.ChangeTracker.Entries<FinancialTransaction>()
+                     .Where(e => e.Entity.ReferenceType == referenceType && e.Entity.ReferenceId == referenceId).ToList())
+            await tracked.ReloadAsync(ct);
     }
 
     public async Task AddTransactionAsync(FinancialTransaction transaction, CancellationToken ct = default)

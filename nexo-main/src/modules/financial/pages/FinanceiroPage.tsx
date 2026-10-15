@@ -92,10 +92,10 @@ export default function FinanceiroPage() {
             <MetricBlock label="Saídas" value={formatCurrency(data.totalOut)} icon={ArrowUpRight} />
             <MetricBlock
               label="Resultado"
-              value={formatCurrency(data.net)}
+              value={formatCurrency(data.result)}
               icon={Scale}
-              variant={data.net < 0 ? "danger" : "default"}
-              caption={regime === "accrual" ? "Inclui o que ainda está em aberto" : "Só o que foi quitado"}
+              variant={data.result < 0 ? "danger" : "default"}
+              caption={regime === "accrual" ? "Inclui o que está em aberto; compras de mercadoria vão para o estoque, não para o resultado" : "Só o que foi quitado"}
             />
           </div>
 

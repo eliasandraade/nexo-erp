@@ -37,6 +37,8 @@ export interface LedgerDto {
   totalIn: number;
   totalOut: number;
   net: number;
+  /** Competência: net without compras de mercadoria (stock, not expense); caixa: = net. */
+  result: number;
   byCategory: LedgerCategoryTotalDto[];
   entries: LedgerEntryDto[];
   truncated: boolean;

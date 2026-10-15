@@ -289,6 +289,7 @@ public class PurchaseService
                 }
 
                 // 2. Financeiro: pending payable cancelled; paid payable → receivable from the supplier
+                await _financial.LockTransactionsByReferenceAsync(PurchaseReference, purchase.Id, _currentTenant.Id, ct);   // vs. a concurrent pay
                 var payables = await _financial.GetTransactionsByReferenceAsync(PurchaseReference, purchase.Id, ct);
                 foreach (var payable in payables.Where(t => t.TransactionType == TransactionType.Payable))
                 {

@@ -75,7 +75,10 @@ public class FinancialLedgerTests
         var receivable = (await EntriesAsync("Sale", sale.Id)).Should().ContainSingle().Subject;
         receivable.Status.Should().Be(TransactionStatus.Pending);
 
-        (await LedgerAsync(c, "accrual", since)).Entries.Should().Contain(e => e.Id == receivable.Id);
+        var accrual = await LedgerAsync(c, "accrual", since);
+        accrual.Entries.Should().Contain(e => e.Id == receivable.Id);
+        // competência: compras de mercadoria go to stock, not to the result
+        accrual.Result.Should().Be(accrual.Net - accrual.ByCategory.Where(x => x.Category == "Purchase").Sum(x => x.Net));
         (await LedgerAsync(c, "cash", since)).Entries.Should().NotContain(e => e.Id == receivable.Id);
 
         // Receiving a sale's receivable is allowed; cancelling it is not (cancel the sale)
@@ -124,6 +127,18 @@ public class FinancialLedgerTests
             account, type, decimal.Parse(amount, System.Globalization.CultureInfo.InvariantCulture), "PR49 inválido",
             DateTime.UtcNow, ReferenceType: referenceType, ReferenceId: referenceType is null ? null : Guid.NewGuid(),
             Category: category)))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task The_only_active_receivable_account_cannot_be_deactivated()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var receivables = (await c.GetFromJsonAsync<List<FinancialAccountDto>>("/api/financial/accounts"))!
+            .Where(a => a.AccountType == "Receivable" && a.IsActive).ToList();
+        if (receivables.Count != 1) return;   // another test left a second one: nothing to prove here
+
+        (await c.PostAsync($"/api/financial/accounts/{receivables[0].Id}/deactivate", null))
             .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
     }
 

@@ -342,6 +342,7 @@ public class SaleService
                 }
 
                 // 3. Financeiro: cancel what is still pending, counter-entry for what was settled
+                await _financial.LockTransactionsByReferenceAsync(SaleReference, sale.Id, _currentTenant.Id, ct);   // vs. a concurrent pay
                 var transactions = await _financial.GetTransactionsBySaleAsync(sale.Id, ct);
                 foreach (var finTx in transactions)
                 {
