@@ -128,7 +128,7 @@ public class SaleService
         return MapToDto(sale, allItems, []);
     }
 
-    /// <summary>ReferenceType of the financeiro lançamentos that mirror a sale (credit and settled non-cash).</summary>
+    /// <summary>ReferenceType of the lançamentos that mirror a sale's payments (every method — cash, Pix, card, a prazo).</summary>
     public const string SaleReference = "Sale";
     /// <summary>ReferenceType of the counter-entries posted when a sale is cancelled.</summary>
     public const string SaleCancellationReference = "SaleCancellation";
@@ -235,14 +235,21 @@ public class SaleService
                         _currentUser.UserId,
                         referenceType: "Sale",
                         referenceId: sale.Id), ct);
+
+                    // …and the livro: the drawer is the gaveta, the financeiro sees every sale.
+                    var ledger = await NewSaleTransactionAsync(
+                        FinancialAccountType.Receivable, TransactionType.Receivable, FinancialCategory.Revenue,
+                        p.Applied, $"Venda #{sale.Number} — Dinheiro", DateTime.UtcNow, SaleReference, sale, ct);
+                    ledger.MarkPaid(DateTime.UtcNow);
+                    await _financial.AddTransactionAsync(ledger, ct);
                 }
                 else if (p.IsSettledNonCash)
                 {
                     // Pix / card / transfer: money already received, outside the drawer.
                     var transaction = await NewSaleTransactionAsync(
-                        FinancialAccountType.Receivable, TransactionType.Receivable, p.Applied,
+                        FinancialAccountType.Receivable, TransactionType.Receivable, FinancialCategory.Revenue, p.Applied,
                         $"Venda #{sale.Number} — {DescribeMethod(p.Method)}", DateTime.UtcNow,
-                        SaleReference, sale.Id, ct);
+                        SaleReference, sale, ct);
                     transaction.MarkPaid(DateTime.UtcNow);
                     await _financial.AddTransactionAsync(transaction, ct);
                 }
@@ -250,9 +257,9 @@ public class SaleService
                 {
                     hasCreditPayment = true;
                     var transaction = await NewSaleTransactionAsync(
-                        FinancialAccountType.Receivable, TransactionType.Receivable, p.Applied,
+                        FinancialAccountType.Receivable, TransactionType.Receivable, FinancialCategory.Revenue, p.Applied,
                         $"Venda #{sale.Number} — {DescribeMethod(p.Method)} a prazo", p.DueDate!.Value,
-                        SaleReference, sale.Id, ct);
+                        SaleReference, sale, ct);
                     await _financial.AddTransactionAsync(transaction, ct);
                 }
             }
@@ -335,22 +342,22 @@ public class SaleService
                 }
 
                 // 3. Financeiro: cancel what is still pending, counter-entry for what was settled
+                await _financial.LockTransactionsByReferenceAsync(SaleReference, sale.Id, _currentTenant.Id, ct);   // vs. a concurrent pay
                 var transactions = await _financial.GetTransactionsBySaleAsync(sale.Id, ct);
                 foreach (var finTx in transactions)
                 {
-                    if (finTx.Status is TransactionStatus.Pending or TransactionStatus.Overdue)
+                    if (finTx.IsOpen)
                     {
                         finTx.Cancel();
                     }
                     else if (finTx.Status == TransactionStatus.Paid
                              && finTx.TransactionType == TransactionType.Receivable)
                     {
-                        var counter = await NewSaleTransactionAsync(
-                            FinancialAccountType.Payable, TransactionType.Payable, finTx.Amount,
-                            $"Estorno — {finTx.Description}", DateTime.UtcNow,
-                            SaleCancellationReference, sale.Id, ct);
-                        counter.MarkPaid(DateTime.UtcNow);
-                        await _financial.AddTransactionAsync(counter, ct);
+                        // Revenue reversed as a revenue deduction (never as an expense)
+                        await _financial.AddTransactionAsync(FinancialTransaction.CreateReversal(
+                            finTx, await DefaultAccountIdAsync(FinancialAccountType.Payable, ct),
+                            $"Estorno — {finTx.Description}", DateTime.UtcNow, _currentUser.UserId,
+                            SaleCancellationReference, sale.Id), ct);
                     }
                 }
             }
@@ -477,23 +484,20 @@ public class SaleService
                 saleReturn.AddItem(lines[i].Item.Id, lines[i].Item.ProductId, lines[i].Quantity, amounts[i]);
             await _sales.AddReturnAsync(saleReturn, ct);
 
-            if (refund == 0)
+            if (refund > 0)
             {
-                // nothing to pay back
-            }
-            else if (drawerId is { } drawer)
-            {
-                await _cash.AddMovementAsync(CashMovement.Create(
-                    _currentTenant.Id, drawer, CashMovementType.SaleRefund, refund,
-                    $"Devolução Venda #{sale.Number}", _currentUser.UserId,
-                    referenceType: SaleReturnReference, referenceId: saleReturn.Id), ct);
-            }
-            else
-            {
+                // Cash leaves the drawer…
+                if (drawerId is { } drawer)
+                    await _cash.AddMovementAsync(CashMovement.Create(
+                        _currentTenant.Id, drawer, CashMovementType.SaleRefund, refund,
+                        $"Devolução Venda #{sale.Number}", _currentUser.UserId,
+                        referenceType: SaleReturnReference, referenceId: saleReturn.Id), ct);
+
+                // …and every refund, whatever the method, is a revenue deduction in the livro.
                 var counter = await NewSaleTransactionAsync(
-                    FinancialAccountType.Payable, TransactionType.Payable, refund,
+                    FinancialAccountType.Payable, TransactionType.Payable, FinancialCategory.RevenueDeduction, refund,
                     $"Devolução Venda #{sale.Number} — {DescribeMethod(refundMethod)}", DateTime.UtcNow,
-                    SaleReturnReference, saleReturn.Id, ct);
+                    SaleReturnReference, sale, ct, referenceId: saleReturn.Id);
                 counter.MarkPaid(DateTime.UtcNow);
                 await _financial.AddTransactionAsync(counter, ct);
             }
@@ -618,18 +622,20 @@ public class SaleService
     }
 
     private async Task<FinancialTransaction> NewSaleTransactionAsync(
-        FinancialAccountType accountType, TransactionType type, decimal amount, string description,
-        DateTime dueDate, string referenceType, Guid saleId, CancellationToken ct)
-    {
-        var account = await _financial.GetDefaultByTypeAsync(accountType, ct)
+        FinancialAccountType accountType, TransactionType type, FinancialCategory category, decimal amount,
+        string description, DateTime dueDate, string referenceType, Sale sale, CancellationToken ct,
+        Guid? referenceId = null)
+        => FinancialTransaction.Create(
+            _currentTenant.Id, await DefaultAccountIdAsync(accountType, ct), type, category, amount, description,
+            dueDate, _currentUser.UserId,
+            referenceType: referenceType, referenceId: referenceId ?? sale.Id,
+            storeId: sale.StoreId, competenceDate: DateTime.UtcNow);
+
+    private async Task<Guid> DefaultAccountIdAsync(FinancialAccountType accountType, CancellationToken ct)
+        => (await _financial.GetDefaultByTypeAsync(accountType, ct)
             ?? throw new DomainException(accountType == FinancialAccountType.Receivable
                 ? "No active 'Contas a Receber' account found for this tenant. Please set up a default Receivable account in financial settings."
-                : "No active 'Contas a Pagar' account found for this tenant. Please set up a default Payable account in financial settings.");
-
-        return FinancialTransaction.Create(
-            _currentTenant.Id, account.Id, type, amount, description, dueDate, _currentUser.UserId,
-            referenceType: referenceType, referenceId: saleId);
-    }
+                : "No active 'Contas a Pagar' account found for this tenant. Please set up a default Payable account in financial settings.")).Id;
 
     /// <summary>
     /// A retry of a confirmation that already went through (network timeout, double click): same

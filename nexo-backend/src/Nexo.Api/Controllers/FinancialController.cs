@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Authorization;
 using Nexo.Application.Features.Financial;
+using Nexo.Domain.Enums;
 
 namespace Nexo.Api.Controllers;
 
@@ -58,6 +59,34 @@ public class FinancialController : ControllerBase
     }
 
     // ── Transactions ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The livro in one regime: competência (fact date, open entries count) or caixa (payment date,
+    /// settled only). Period [from, to) in UTC instants; default: the last 30 days.
+    /// </summary>
+    [HttpGet("ledger")]
+    public async Task<ActionResult<LedgerDto>> GetLedger(
+        [FromQuery] string regime = "accrual",
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null,
+        [FromQuery] Guid? storeId = null,
+        [FromQuery] string? category = null,
+        CancellationToken ct = default)
+    {
+        if (!Enum.TryParse<LedgerRegime>(regime, ignoreCase: true, out var parsedRegime) || !Enum.IsDefined(parsedRegime))
+            return UnprocessableEntity(new { error = "Regime inválido: use accrual (competência) ou cash (caixa)." });
+        FinancialCategory? parsedCategory = null;
+        if (category is not null)
+        {
+            if (!Enum.TryParse<FinancialCategory>(category, ignoreCase: true, out var c) || !Enum.IsDefined(c))
+                return UnprocessableEntity(new { error = "Categoria inválida." });
+            parsedCategory = c;
+        }
+
+        var end   = (to ?? DateTime.UtcNow).ToUniversalTime();
+        var start = (from ?? end.AddDays(-30)).ToUniversalTime();
+        return Ok(await _service.GetLedgerAsync(new LedgerFilter(parsedRegime, start, end, storeId, parsedCategory), ct));
+    }
 
     [HttpGet("transactions/pending")]
     public async Task<ActionResult<IReadOnlyList<FinancialTransactionDto>>> GetPending(CancellationToken ct)

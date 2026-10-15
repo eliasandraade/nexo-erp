@@ -27,6 +27,23 @@ public class FinancialTransactionConfiguration : IEntityTypeConfiguration<Financ
             .HasMaxLength(20)
             .IsRequired();
 
+        builder.Property(x => x.Category)
+            .HasColumnName("category")
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
+        builder.Property(x => x.CompetenceDate)
+            .HasColumnName("competence_date")
+            .HasColumnType("timestamptz")
+            .IsRequired();
+
+        builder.Property(x => x.StoreId)
+            .HasColumnName("store_id");
+
+        builder.Property(x => x.ReversesTransactionId)
+            .HasColumnName("reverses_transaction_id");
+
         builder.Property(x => x.Amount)
             .HasColumnName("amount")
             .HasColumnType("numeric(18,2)")
@@ -77,6 +94,11 @@ public class FinancialTransactionConfiguration : IEntityTypeConfiguration<Financ
         builder.HasIndex(x => new { x.TenantId, x.DueDate });
         builder.HasIndex(x => new { x.TenantId, x.FinancialAccountId });
         builder.HasIndex(x => new { x.ReferenceType, x.ReferenceId });
+        // Os dois regimes do livro: competência e caixa
+        builder.HasIndex(x => new { x.TenantId, x.CompetenceDate });
+        builder.HasIndex(x => new { x.TenantId, x.PaidAt });
+        builder.HasIndex(x => x.ReversesTransactionId);
+        builder.Ignore(x => x.IsOpen);
 
         builder.HasOne(x => x.FinancialAccount)
             .WithMany(x => x.Transactions)

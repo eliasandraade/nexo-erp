@@ -162,7 +162,7 @@ public class RbacMatrixTests
             .GetProperty("accessToken").GetString();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-        foreach (var url in new[] { "/api/dashboard/summary", "/api/financial/accounts", "/api/restaurante/employees" })
+        foreach (var url in new[] { "/api/dashboard/summary", "/api/financial/accounts", "/api/financial/ledger", "/api/restaurante/employees" })
             (await client.GetAsync(url)).StatusCode.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
     }
 

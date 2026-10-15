@@ -276,6 +276,10 @@ public class ServicePaymentsTests
         reversal!.TransactionType.Should().Be(TransactionType.Payable);
         reversal.Amount.Should().Be(80m);
         reversal.Status.Should().Be(TransactionStatus.Paid);
+        // An estorno of revenue is a revenue deduction, never an expense (PR 49)
+        reversal.Category.Should().Be(FinancialCategory.RevenueDeduction);
+        reversal.ReversesTransactionId.Should().Be((await FindTransactionAsync("SvcPayment", paymentId))!.Id);
+        reversal.StoreId.Should().NotBeNull();
     }
 
     private async Task<FinancialTransaction?> FindTransactionAsync(string referenceType, Guid referenceId)
