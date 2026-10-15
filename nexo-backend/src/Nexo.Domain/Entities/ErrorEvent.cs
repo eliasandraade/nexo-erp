@@ -11,7 +11,7 @@ namespace Nexo.Domain.Entities;
 /// </summary>
 public class ErrorEvent : BaseEntity
 {
-    private ErrorEvent() { }   // EF Core
+    protected ErrorEvent() { }   // EF Core
 
     public string Fingerprint { get; private set; } = string.Empty;
     public string ExceptionType { get; private set; } = string.Empty;

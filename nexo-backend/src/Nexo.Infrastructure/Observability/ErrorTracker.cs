@@ -28,17 +28,17 @@ public sealed class ErrorTracker : IErrorTracker
         _unhandled = metrics.UnhandledErrors;
     }
 
-    public async Task TrackAsync(ErrorOccurrence o, CancellationToken ct = default)
+    public async Task TrackAsync(ErrorOccurrence occurrence, CancellationToken ct = default)
     {
-        _unhandled.Add(1, new KeyValuePair<string, object?>("route", o.Route));
+        _unhandled.Add(1, new KeyValuePair<string, object?>("route", occurrence.Route));
         try
         {
-            var fingerprint = ErrorFingerprint.Compute(o.Exception, o.Route);
-            var type = Truncate(o.Exception.GetType().FullName ?? o.Exception.GetType().Name, 200);
-            var summary = ErrorFingerprint.Summarize(o.Exception);
-            var stack = ErrorFingerprint.StackTop(o.Exception);
-            var route = Truncate(o.Route, 200);
-            var method = Truncate(o.Method, 10);
+            var fingerprint = ErrorFingerprint.Compute(occurrence.Exception, occurrence.Route);
+            var type = Truncate(occurrence.Exception.GetType().FullName ?? occurrence.Exception.GetType().Name, 200);
+            var summary = ErrorFingerprint.Summarize(occurrence.Exception);
+            var stack = ErrorFingerprint.StackTop(occurrence.Exception);
+            var route = Truncate(occurrence.Route, 200);
+            var method = Truncate(occurrence.Method, 10);
             var now = DateTime.UtcNow;
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -50,7 +50,7 @@ public sealed class ErrorTracker : IErrorTracker
                     (id, fingerprint, exception_type, summary, route, method, first_seen_at, last_seen_at, count,
                      last_request_id, last_tenant_id, stack_top, created_at, updated_at)
                 VALUES ({Guid.NewGuid()}, {fingerprint}, {type}, {summary}, {route}, {method}, {now}, {now}, 1,
-                        {o.RequestId}, {o.TenantId}, {stack}, {now}, {now})
+                        {occurrence.RequestId}, {occurrence.TenantId}, {stack}, {now}, {now})
                 ON CONFLICT (fingerprint) DO UPDATE SET
                     count = nexo.error_events.count + 1,
                     last_seen_at = EXCLUDED.last_seen_at,

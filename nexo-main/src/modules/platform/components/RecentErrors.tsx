@@ -70,8 +70,8 @@ export function RecentErrors() {
       </div>
       {isLoading && <p className="p-4 text-sm text-muted-foreground">Carregando…</p>}
       {isError && <p className="p-4 text-sm text-destructive">Não foi possível carregar os erros.</p>}
-      {data && data.length === 0 && <p className="p-4 text-sm text-muted-foreground">Nenhum erro inesperado no período.</p>}
-      {data && data.length > 0 && <ul>{data.map((e) => <ErrorRow key={e.id} error={e} />)}</ul>}
+      {data?.length === 0 && <p className="p-4 text-sm text-muted-foreground">Nenhum erro inesperado no período.</p>}
+      {!!data?.length && <ul>{data.map((e) => <ErrorRow key={e.id} error={e} />)}</ul>}
     </section>
   );
 }

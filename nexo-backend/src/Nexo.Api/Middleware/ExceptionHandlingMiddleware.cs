@@ -81,7 +81,7 @@ public class ExceptionHandlingMiddleware
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unhandled exception.");
-            await _errors.TrackAsync(new ErrorOccurrence(ex, RouteOf(ctx), ctx.Request.Method, ctx.TraceIdentifier, TenantOf(ctx)));
+            await _errors.TrackAsync(new ErrorOccurrence(ex, RouteOf(ctx), ctx.Request.Method, ctx.TraceIdentifier, TenantOf(ctx)), CancellationToken.None);
             await WriteErrorAsync(ctx, 500, "Erro inesperado. Tente de novo; se continuar, informe o código ao suporte.");
         }
     }
