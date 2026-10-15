@@ -322,11 +322,9 @@ public class IntegrationFeatureFlags
     public bool ViaCepEnabled { get; init; }
     public bool OpenFoodFactsEnabled { get; init; }
     public bool StorageEnabled { get; init; }
-    public bool PdfEnabled { get; init; }
     public bool WeatherEnabled { get; init; }
     public bool StripeEnabled { get; init; }
-    public bool MercadoPagoEnabled { get; init; }
-    public bool WhatsAppEnabled { get; init; }
+    // PdfEnabled, MercadoPagoEnabled e WhatsAppEnabled: removidas no PR 72 (nada as lia)
     public bool FiscalEnabled { get; init; }
 }
 ```

@@ -47,14 +47,16 @@ public sealed class CompositeCepLookupProvider : ICepLookupProvider
         // 2. Try BrasilAPI first (when switched on)
         CepLookupResult? result = null;
         if (_flags.BrasilApiEnabled)
-        try
         {
-            result = await _brasilApi.LookupAsync(cep, ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "[CompositeCep] BrasilAPI failed for CEP {Cep} — falling through to ViaCEP", cep);
+            try
+            {
+                result = await _brasilApi.LookupAsync(cep, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "[CompositeCep] BrasilAPI failed for CEP {Cep} — falling through to ViaCEP", cep);
+            }
         }
 
         // 3. Fallback to ViaCEP if BrasilAPI returned null or threw

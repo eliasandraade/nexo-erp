@@ -21,8 +21,9 @@ public sealed class IntegrationFeatureFlags : IIntegrationFeatureFlags
     {
         var section = configuration.GetSection("Integrations:Features");
 
-        BrasilApiEnabled     = section.GetValue("BrasilApiEnabled",     false);
-        ViaCepEnabled        = section.GetValue("ViaCepEnabled",        false);
+        // free public lookups: on unless explicitly switched off (a missing key must not silently stop them)
+        BrasilApiEnabled     = section.GetValue("BrasilApiEnabled",     true);
+        ViaCepEnabled        = section.GetValue("ViaCepEnabled",        true);
         OpenFoodFactsEnabled = section.GetValue("OpenFoodFactsEnabled", false);
         StorageEnabled       = section.GetValue("StorageEnabled",       false);
         WeatherEnabled       = section.GetValue("WeatherEnabled",       false);

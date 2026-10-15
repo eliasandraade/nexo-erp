@@ -1156,6 +1156,8 @@ Levantamento: as **6 flags da plataforma** (tela "Recursos", `/api/features`, so
   - **já valiam** (sem mudança): Storage, Stripe, OpenFoodFacts, Weather, Fiscal; e no interpretador, a escolha do analisador;
   - **removidas** (ninguém lia): `PdfEnabled`, `MercadoPagoEnabled`, `WhatsAppEnabled` e `Interpreter:Features:EnableMemoryRebuild`.
 - As telas de IA citavam uma flag `EnablePromptLogging` que não existe; o texto agora diz apenas que o conteúdo do prompt não é guardado.
+- **Correções da revisão independente** (sem bloqueadores): BrasilAPI e ViaCEP passam a ficar **ligadas por padrão** no código (consultas gratuitas: uma chave ausente na configuração não pode desligá-las em silêncio); chaves no bloco do provedor de CEP; plano de integrações atualizado.
+- **Testes:** unitários das flags (padrões), do CEP com um e com os dois provedores desligados (o desligado não é chamado), do CNPJ com a BrasilAPI desligada ("indisponível", sem chamada); RBAC sem a rota removida; modelo do banco sem mudança (nenhuma migração pendente).
 - **Testes:** unitários das flags e do CEP com os provedores ligados; RBAC sem a rota removida; modelo do banco sem mudança (nenhuma migração pendente).
 - **Em produção** (merge `4c93835`): `GET /api/integrations/storage/signed-url` passou de 405 para 401 sem token; `/health/ready` mostra `object-storage: Degraded — reachable, private bucket not configured`, como esperado até o dono criar o bucket privado; `/health` 20/20.
 

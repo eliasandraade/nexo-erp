@@ -36,12 +36,13 @@ public class LookupControllerTests
 
     private static LookupController BuildController(
         ICepLookupProvider? cepProvider = null,
-        ICnpjLookupProvider? cnpjProvider = null)
+        ICnpjLookupProvider? cnpjProvider = null,
+        bool brasilApiOn = true)
     {
         return new LookupController(
             cepProvider  ?? Substitute.For<ICepLookupProvider>(),
             cnpjProvider ?? Substitute.For<ICnpjLookupProvider>(),
-            BrasilApiOn(),
+            BrasilApiOn(brasilApiOn),
             NullLogger<LookupController>.Instance);
     }
 
@@ -182,10 +183,21 @@ public class LookupControllerTests
         var ok = (OkObjectResult)result;
         ok.Value.Should().BeEquivalentTo(new { found = false, data = (object?)null, unavailable = true });
     }
-    private static Nexo.Application.Integrations.Options.IIntegrationFeatureFlags BrasilApiOn()
+    [Fact]
+    public async Task Cnpj_lookup_with_BrasilApi_switched_off_answers_unavailable_without_calling_it()
+    {
+        var provider = Substitute.For<ICnpjLookupProvider>();
+        var result = await BuildController(cnpjProvider: provider, brasilApiOn: false).LookupCnpj("11222333000181", CancellationToken.None);
+
+        var ok = result.Should().BeOfType<Microsoft.AspNetCore.Mvc.OkObjectResult>().Subject;
+        ok.Value!.GetType().GetProperty("unavailable")!.GetValue(ok.Value).Should().Be(true);
+        await provider.DidNotReceive().LookupAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    private static Nexo.Application.Integrations.Options.IIntegrationFeatureFlags BrasilApiOn(bool on = true)
     {
         var flags = Substitute.For<Nexo.Application.Integrations.Options.IIntegrationFeatureFlags>();
-        flags.BrasilApiEnabled.Returns(true);
+        flags.BrasilApiEnabled.Returns(on);
         return flags;
     }
 }

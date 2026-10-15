@@ -7,14 +7,15 @@ namespace Nexo.UnitTests.Integrations;
 public class IntegrationFeatureFlagsTests
 {
     [Fact]
-    public void AllFlags_DefaultToFalse_WhenConfigSectionIsEmpty()
+    public void Paid_or_sensitive_integrations_default_off_and_free_lookups_default_on()
     {
         var configuration = new ConfigurationBuilder().Build();
 
         var flags = new IntegrationFeatureFlags(configuration);
 
-        flags.BrasilApiEnabled.Should().BeFalse();
-        flags.ViaCepEnabled.Should().BeFalse();
+        // CEP/CNPJ lookups are free public APIs: a missing key must not silently switch them off
+        flags.BrasilApiEnabled.Should().BeTrue();
+        flags.ViaCepEnabled.Should().BeTrue();
         flags.OpenFoodFactsEnabled.Should().BeFalse();
         flags.StorageEnabled.Should().BeFalse();
         flags.WeatherEnabled.Should().BeFalse();
@@ -35,7 +36,7 @@ public class IntegrationFeatureFlagsTests
         var flags = new IntegrationFeatureFlags(configuration);
 
         flags.BrasilApiEnabled.Should().BeTrue();
-        flags.ViaCepEnabled.Should().BeFalse();
+        flags.ViaCepEnabled.Should().BeTrue("on by default");
         flags.OpenFoodFactsEnabled.Should().BeFalse();
         flags.StorageEnabled.Should().BeFalse();
         flags.WeatherEnabled.Should().BeFalse();
