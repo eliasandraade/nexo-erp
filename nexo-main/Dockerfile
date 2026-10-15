@@ -9,7 +9,7 @@ WORKDIR /app
 # lists the native binaries of every platform (Rollup's linux-x64-gnu included) and `npm ci` works
 # here and on Windows alike (npm optional-deps bug #4828 hits locks generated on a single OS).
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund --ignore-scripts
 
 # Build the production bundle. `vite build` runs in production mode and reads
 # the committed .env.production (bakes VITE_API_BASE_URL into the bundle).

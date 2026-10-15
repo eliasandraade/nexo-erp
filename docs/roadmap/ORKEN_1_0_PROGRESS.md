@@ -1050,4 +1050,5 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
 - **Build reproduzível:** o Dockerfile do frontend passa a usar `COPY package.json package-lock.json` + `npm ci`. Imagem construída e servida localmente (página e rota SPA 200).
 - **Lint limpo:** os 30 erros eram `any` no arquivo de testes de navegador; viraram um tipo `Json` (o que o `postDataJSON()` do Playwright devolve). Ficam 16 avisos, sem erro.
 - **Playwright no CI** com 1 nova tentativa (só no CI), para um runner lento não reprovar um PR que não mexeu no teste.
+- **Cadeia de dependências:** a instalação (CI e Docker) usa `--ignore-scripts`, então nenhum pacote roda script de instalação na máquina de build (os binários nativos vêm como pacotes opcionais do lockfile); o Playwright roda pelos scripts do projeto (`npm run e2e:install` / `e2e:critical`), sem `npx` baixando pacote na hora. Apontado pelo SonarCloud (S6505/S8543).
 - **Para regerar o lock** depois de mudar dependências: `docker run --rm -v "$PWD:/w" -w /w node:20-slim npm install --package-lock-only` dentro de `nexo-main`.

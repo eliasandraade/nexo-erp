@@ -33,8 +33,10 @@ jobs:
           cache: npm
           cache-dependency-path: nexo-main/package-lock.json
 
+      # --ignore-scripts: no dependency runs install scripts on the runner (native binaries come
+      # as optional platform packages from the lockfile; nothing here needs a postinstall).
       - name: Install (lockfile)
-        run: npm ci --no-audit --no-fund
+        run: npm ci --no-audit --no-fund --ignore-scripts
 
       - name: Typecheck
         run: npm run typecheck
@@ -49,10 +51,10 @@ jobs:
         run: npm run build
 
       - name: Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: npm run e2e:install
 
       - name: Critical end-to-end suite
-        run: npx playwright test
+        run: npm run e2e:critical
 
       - name: Playwright report
         if: failure()
