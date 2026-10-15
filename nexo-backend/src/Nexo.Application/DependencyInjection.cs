@@ -26,6 +26,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<AuthService>();
+        services.AddScoped<LoginAttemptGuard>();
         services.AddScoped<UserService>();
         services.AddScoped<TenantService>();
         services.AddScoped<SettingsService>();

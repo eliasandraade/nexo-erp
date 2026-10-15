@@ -916,3 +916,14 @@ O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnab
   - integração (+4, usuário próprio por teste): 10 erradas pausam até a certa, com auditoria; login certo zera e é auditado; senha do gestor força a troca e a troca limpa a exigência; convite gera link de 72 h, a pessoa cria a senha e entra; convite sem e-mail é recusado;
   - suíte completa: integração 568/568, unitários 481/481;
   - Playwright: troca obrigatória e convite no cadastro.
+- **Correções da revisão independente** (1 bloqueador, should-fix e menores):
+  - **bloqueador:** corrigir o e-mail de um usuário, ou o gestor definir a senha dele, agora invalida o link de convite ou de redefinição pendente; bloquear ou desativar também. Antes, um convite mandado para um endereço digitado errado continuava valendo 72 h, e quem o recebesse podia assumir a conta;
+  - **contador atômico** (`ICacheService.IncrementAsync`, `INCR` no Redis): antes, requisições em paralelo dividiam a mesma vaga do contador e permitiam muito mais que 10 palpites;
+  - **guarda compartilhado** (`LoginAttemptGuard`) também na verificação de gerente, na validação de gerente e na senha atual de "trocar senha". Antes, dava para testar senhas por ali sem limite;
+  - **login da plataforma:** e-mails de operador são conferidos primeiro e têm o próprio bloqueio, inclusive no `/platform/auth/login`. Antes, a conta mais valiosa do sistema não tinha limite por conta, e um usuário de tenant com o mesmo login contava erro a cada login do operador;
+  - nova senha (esqueci, gestor ou troca) **encerra o bloqueio**, como a mensagem do 429 promete;
+  - a troca obrigatória **sobrevive ao recarregar** a página: `/me` e troca de loja também informam a exigência;
+  - **convite:** recusado quando não há provedor de e-mail configurado; um convite de 72 h não segura mais o "esqueci a senha"; botão "Reenviar convite por e-mail" na edição do usuário (`POST /api/users/{id}/resend-invite`);
+  - o formulário não trava por confirmação de senha escondida ao ligar o convite;
+  - testes novos: convite morre ao corrigir o e-mail e ao definir senha; senha nova destrava; convite não segura o esqueci; 20 palpites em paralelo ainda travam. O host de teste usa um provedor de e-mail que aceita tudo e não envia nada.
+- **Fica para depois (anotado):** identificar o IP real atrás do proxy da Railway (`ForwardedHeaders` com proxies conhecidos). Isso deixaria o limite por IP firme e a auditoria com o IP do cliente; a exigência de troca de senha também passaria a ser aplicada na API, não só na tela.

@@ -36,6 +36,13 @@ public class PlatformAuthController : ControllerBase
             .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Email == request.Email.Trim().ToLowerInvariant(), ct);
 
+        var attempts = HttpContext.RequestServices.GetRequiredService<Nexo.Application.Features.Auth.LoginAttemptGuard>();
+        if (user is not null && await attempts.IsLockedAsync(Nexo.Application.Features.Auth.LoginAttemptGuard.ForPlatform(user.Id)))
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Muitas tentativas com senha errada. Tente de novo em 15 minutos." });
+        if (user is not null && !_hasher.Verify(request.Password, user.PasswordHash))
+            await attempts.RegisterFailureAsync(Nexo.Application.Features.Auth.LoginAttemptGuard.ForPlatform(user.Id));
+        else if (user is not null)
+            await attempts.ResetAsync(Nexo.Application.Features.Auth.LoginAttemptGuard.ForPlatform(user.Id));
         if (user is null || !_hasher.Verify(request.Password, user.PasswordHash))
             return Unauthorized(new { error = "Credenciais inválidas." });
 

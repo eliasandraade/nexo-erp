@@ -16,5 +16,7 @@ public interface IUserSessionRevoker
 /// <summary>Invites a just-created user by e-mail: a link (72 h) to choose their own password.</summary>
 public interface IUserInviter
 {
+    /// <summary>False when no e-mail provider is configured — an invite would never arrive.</summary>
+    bool CanInvite { get; }
     Task SendInviteAsync(Guid userId, CancellationToken ct = default);
 }

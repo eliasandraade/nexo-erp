@@ -134,4 +134,66 @@ public class AccountHardeningTests
             phone = (string?)null, notes = (string?)null, sendInvite = true,
         })).IsSuccessStatusCode.Should().BeFalse();
     }
+
+    private async Task<string?> ResetHashAsync(Guid userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return (await scope.ServiceProvider.GetRequiredService<NexoDbContext>().Users.IgnoreQueryFilters().AsNoTracking()
+            .FirstAsync(u => u.Id == userId)).PasswordResetTokenHash;
+    }
+
+    [Fact]
+    public async Task Fixing_the_email_or_setting_a_password_kills_a_pending_invite()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var tag = Guid.NewGuid().ToString("N")[..8];
+        var created = await (await admin.PostAsJsonAsync("/api/users", new
+        {
+            fullName = "Digitado Errado", email = $"errado{tag}@teste.dev", login = $"err{tag}", password = "", role = "vendedor",
+            phone = (string?)null, notes = (string?)null, sendInvite = true,
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var id = created.GetProperty("id").GetGuid();
+        (await ResetHashAsync(id)).Should().NotBeNull();
+
+        (await admin.PutAsJsonAsync($"/api/users/{id}", new
+        {
+            fullName = "Digitado Errado", email = $"certo{tag}@teste.dev", phone = (string?)null, role = "vendedor", notes = (string?)null,
+        })).IsSuccessStatusCode.Should().BeTrue();
+        (await ResetHashAsync(id)).Should().BeNull("the link sent to the wrong address must stop working");
+
+        (await admin.PostAsync($"/api/users/{id}/resend-invite", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await ResetHashAsync(id)).Should().NotBeNull();
+        (await admin.PostAsJsonAsync($"/api/users/{id}/admin-reset-password", new { newPassword = Fresh() })).IsSuccessStatusCode.Should().BeTrue();
+        (await ResetHashAsync(id)).Should().BeNull("a password set by the manager overrides the invite");
+    }
+
+    [Fact]
+    public async Task Resetting_the_password_unlocks_the_account_and_an_invite_doesnt_block_forgot_password()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var user = await NewUserAsync(admin);
+        for (var i = 0; i < 10; i++) await LoginAsync(user.Login, Fresh());
+        (await LoginAsync(user.Login, user.Password)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+
+        var renewed = Fresh();
+        (await admin.PostAsJsonAsync($"/api/users/{user.Id}/admin-reset-password", new { newPassword = renewed })).IsSuccessStatusCode.Should().BeTrue();
+        (await LoginAsync(user.Login, renewed)).StatusCode.Should().Be(HttpStatusCode.OK, "a new password ends the lockout");
+
+        // a pending 72 h invite must not hold back a forgot-password request
+        (await admin.PostAsync($"/api/users/{user.Id}/resend-invite", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var inviteHash = await ResetHashAsync(user.Id);
+        var email = (await admin.GetFromJsonAsync<JsonElement>($"/api/users/{user.Id}")).GetProperty("email").GetString();
+        (await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/forgot-password", new { email })).StatusCode.Should().Be(HttpStatusCode.Accepted);
+        (await ResetHashAsync(user.Id)).Should().NotBe(inviteHash);
+    }
+
+    [Fact]
+    public async Task Parallel_wrong_guesses_still_lock_the_account()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var user = await NewUserAsync(admin);
+        await Task.WhenAll(Enumerable.Range(0, 20).Select(_ => LoginAsync(user.Login, Fresh())));
+        (await LoginAsync(user.Login, user.Password)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests,
+            "the counter is atomic: concurrent guesses can't share one slot");
+    }
 }

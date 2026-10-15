@@ -15,6 +15,7 @@ public class AuthService
     private readonly ICurrentTenant _currentTenant;
 
     private readonly IAuditWriter? _audit;
+    private readonly LoginAttemptGuard? _attempts;
 
     public AuthService(
         IUserRepository users,
@@ -25,7 +26,8 @@ public class AuthService
         ICacheService cache,
         ISessionStore sessions,
         ICurrentTenant currentTenant,
-        IAuditWriter? audit = null)
+        IAuditWriter? audit = null,
+        LoginAttemptGuard? attempts = null)
     {
         _users    = users;
         _tenants  = tenants;
@@ -35,19 +37,16 @@ public class AuthService
         _cache    = cache;
         _sessions = sessions;
         _audit = audit;
+        _attempts = attempts;
         _currentTenant = currentTenant;
     }
+
+    public static readonly TimeSpan LockoutWindow = LoginAttemptGuard.Window;
 
     /// <summary>
     /// Authenticates a user and returns access + refresh tokens wrapped in LoginOutcome.
     /// Returns LoginOutcome.Fail with an error code if credentials are invalid or account is blocked/pending.
     /// </summary>
-    /// <summary>Wrong passwords in a row (any IP) before the account pauses for <see cref="LockoutWindow"/>.</summary>
-    public const int MaxFailedLogins = 10;
-    public static readonly TimeSpan LockoutWindow = TimeSpan.FromMinutes(15);
-
-    private sealed record FailedLogins(int Count);
-
     public async Task<LoginOutcome> LoginAsync(
         LoginRequest request,
         string? ipAddress = null,
@@ -65,31 +64,26 @@ public class AuthService
 
         // Per-account lockout: the IP limiter alone is easy to dodge (rotating addresses). While
         // locked the password is not even checked — a guess can't be confirmed meanwhile.
-        var failKey = $"login:fail:{user.Id}";
-        var fails = await _cache.GetAsync<FailedLogins>(failKey, ct);
-        if (fails is { Count: >= MaxFailedLogins })
+        var account = LoginAttemptGuard.ForUser(user.Id);
+        if (_attempts is not null && await _attempts.IsLockedAsync(account, ct))
             return LoginOutcome.Fail("account_locked");
 
         if (!_hasher.Verify(request.Password, user.PasswordHash))
         {
-            var count = (fails?.Count ?? 0) + 1;
-            await _cache.SetAsync(failKey, new FailedLogins(count), LockoutWindow, ct);
-            var locked = count >= MaxFailedLogins;
-            _audit?.Stage(locked ? AuditActions.UserLoginLocked : AuditActions.UserLoginFailed,
-                locked ? AuditSeverity.Critical : AuditSeverity.Warning, "User", user.Id.ToString(),
-                locked ? $"Login of '{user.Login}' paused for {LockoutWindow.TotalMinutes:0} min after {count} wrong passwords."
-                       : $"Wrong password for '{user.Login}' ({count}/{MaxFailedLogins}).",
-                tenantId: user.TenantId, actorName: "anonymous", actorType: "system",
-                metadata: new { ip = ipAddress });
+            var lockedNow = _attempts is not null && await _attempts.RegisterFailureAsync(account, ct);
+            _audit?.Stage(lockedNow ? AuditActions.UserLoginLocked : AuditActions.UserLoginFailed,
+                lockedNow ? AuditSeverity.Critical : AuditSeverity.Warning, "User", user.Id.ToString(),
+                lockedNow ? $"Login of '{user.Login}' paused for {LockoutWindow.TotalMinutes:0} min after {LoginAttemptGuard.MaxFailures} wrong passwords."
+                          : $"Wrong password for '{user.Login}'.",
+                tenantId: user.TenantId, actorName: "anonymous", actorType: "system");
             if (_audit is not null) await _users.SaveChangesAsync(ct);
-            return LoginOutcome.Fail(locked ? "account_locked" : "invalid_credentials");
+            return LoginOutcome.Fail(lockedNow ? "account_locked" : "invalid_credentials");
         }
 
-        if (fails is not null) await _cache.RemoveAsync(failKey, ct);
+        if (_attempts is not null) await _attempts.ResetAsync(account, ct);
         user.RecordAccess();
         _audit?.Stage(AuditActions.UserLoggedIn, AuditSeverity.Info, "User", user.Id.ToString(),
-            $"User '{user.Login}' signed in.", tenantId: user.TenantId, actorId: user.Id, actorName: user.FullName,
-            metadata: new { ip = ipAddress });
+            $"User '{user.Login}' signed in.", tenantId: user.TenantId, actorId: user.Id, actorName: user.FullName);
         await _users.SaveChangesAsync(ct);
 
         // Load tenant slug + active modules for JWT claims
@@ -285,7 +279,8 @@ public class AuthService
             StoreId:       requestedStoreId.ToString(),
             StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
             CompanyName:   tenant.TradeName ?? tenant.CompanyName,
-            TrialEndsAt:   trialEndsAt);
+            TrialEndsAt:   trialEndsAt,
+            RequirePasswordChange: user.RequirePasswordChange);
 
         return new SwitchStoreResponse(
             tokens.AccessToken,
@@ -335,8 +330,14 @@ public class AuthService
         if (user.TenantId != _currentTenant.Id)
             return new VerifyManagerResponse(false, null, null, null);
 
-        if (!_hasher.Verify(request.Password, user.PasswordHash))
+        var account = LoginAttemptGuard.ForUser(user.Id);
+        if (_attempts is not null && await _attempts.IsLockedAsync(account, ct))
             return new VerifyManagerResponse(false, null, null, null);
+        if (!_hasher.Verify(request.Password, user.PasswordHash))
+        {
+            if (_attempts is not null) await _attempts.RegisterFailureAsync(account, ct);
+            return new VerifyManagerResponse(false, null, null, null);
+        }
 
         if (!user.IsManager())
             return new VerifyManagerResponse(false, null, null, null);

@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { userService } from "../services/userService";
-import { adminResetPassword } from "../api/users.api";
+import { adminResetPassword, resendInvite } from "../api/users.api";
 import type { UserFormInput } from "../types";
 import { UserMainDataSection, UserAccessSection, UserSecuritySection } from "../components/UserFormSections";
 import { UserSummaryCard } from "../components/UserSummaryCard";
@@ -78,9 +78,22 @@ export default function UserFormPage() {
     }
     if (isNew && !form.sendInvite && !form.password) e.password = "Senha é obrigatória";
     if (isNew && !form.sendInvite && form.password && form.password.length < 6) e.password = "Senha deve ter ao menos 6 caracteres";
-    if (form.password && form.password !== form.passwordConfirm) e.passwordConfirm = "Senhas não conferem";
+    if (!(isNew && form.sendInvite) && form.password && form.password !== form.passwordConfirm) e.passwordConfirm = "Senhas não conferem";
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  const [resending, setResending] = useState(false);
+  const handleResendInvite = async () => {
+    setResending(true);
+    try {
+      await resendInvite(id!);
+      toast({ title: "Convite reenviado", description: `Enviamos um novo link para ${form.email.trim()}.` });
+    } catch (err) {
+      toast({ title: "Não foi possível reenviar", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+    } finally {
+      setResending(false);
+    }
   };
 
   const handleSave = async () => {
@@ -162,6 +175,12 @@ export default function UserFormPage() {
             <TabsContent value="seguranca">
               <SectionCard title="Segurança">
                 <UserSecuritySection form={form} onChange={onChange} errors={errors} isEdit={!isNew} />
+                {!isNew && (
+                  <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
+                    <Button type="button" variant="outline" size="sm" disabled={resending} onClick={handleResendInvite}>Reenviar convite por e-mail</Button>
+                    <span className="text-xs text-muted-foreground">Manda um novo link para a pessoa criar a senha (o anterior deixa de valer).</span>
+                  </div>
+                )}
               </SectionCard>
             </TabsContent>
           </Tabs>

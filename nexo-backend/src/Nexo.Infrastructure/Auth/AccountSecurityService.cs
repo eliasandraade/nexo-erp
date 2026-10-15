@@ -74,8 +74,10 @@ public sealed class AccountSecurityService : IUserSessionRevoker, IUserInviter
         var frontendUrl = (_config["App:FrontendUrl"] ?? string.Empty).TrimEnd('/');
         foreach (var (user, company) in accounts.Select(a => (a.User, a.Company)))
         {
-            // a link sent in the last minutes stays the valid one
-            if (user.PasswordResetExpiresAt is { } exp && exp > now.Add(ResetLifetime - ResetCooldown)) continue;
+            // a reset link sent in the last minutes stays the valid one (an invite — longer-lived —
+            // doesn't hold back a reset: asking to reset replaces it)
+            if (user.PasswordResetExpiresAt is { } exp
+                && exp > now.Add(ResetLifetime - ResetCooldown) && exp <= now.Add(ResetLifetime)) continue;
 
             var token = NewToken();
             user.SetPasswordResetToken(Hash(token), now.Add(ResetLifetime));
@@ -125,6 +127,8 @@ public sealed class AccountSecurityService : IUserSessionRevoker, IUserInviter
     /// E-mails a just-created user a link (72 h, one use) to choose their own password — the
     /// manager never knows it. Reuses the reset link (same endpoint and page).
     /// </summary>
+    public bool CanInvite => _email.CanDeliver;
+
     public async Task SendInviteAsync(Guid userId, CancellationToken ct = default)
     {
         var row = await (
@@ -207,6 +211,9 @@ public sealed class AccountSecurityService : IUserSessionRevoker, IUserInviter
             await _cache.RemoveAsync($"refresh:valid:{s.RefreshJti}", ct);
         }
         await _cache.RemoveAsync($"user:stamp:{userId}", ct);
+        // a new password ends any lockout (the 429 tells people to use "Esqueci a senha")
+        await _cache.RemoveAsync($"login:fail:{userId}", ct);
+        await _cache.RemoveAsync($"login:locked:{userId}", ct);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

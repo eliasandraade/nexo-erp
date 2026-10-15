@@ -77,6 +77,19 @@ public sealed class InMemoryCacheService : ICacheService
     public Task<bool> ExistsAsync(string key, CancellationToken ct = default)
         => Task.FromResult(_cache.TryGetValue(key, out _));
 
+    private static readonly object CounterLock = new();
+
+    public Task<long?> IncrementAsync(string key, TimeSpan window, CancellationToken ct = default)
+    {
+        lock (CounterLock)
+        {
+            var next = (_cache.TryGetValue(key, out long current) ? current : 0) + 1;
+            if (next == 1) _cache.Set(key, next, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = window });
+            else _cache.Set(key, next, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = window });   // window approx. in tests
+            return Task.FromResult<long?>(next);
+        }
+    }
+
     public Task SetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default)
     {
         _cache.Set(key, "1", new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl });

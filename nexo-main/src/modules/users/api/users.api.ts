@@ -77,5 +77,9 @@ export interface StoreBriefDto {
   status: string;
 }
 
+/** E-mails a fresh invite link (the previous one stops working). */
+export const resendInvite = (id: string): Promise<void> =>
+  apiClient.post<void>(`/users/${id}/resend-invite`);
+
 export const listAvailableStores = (): Promise<StoreBriefDto[]> =>
   apiClient.get<StoreBriefDto[]>("/stores");

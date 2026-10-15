@@ -39,4 +39,10 @@ public interface ICacheService
     /// The value is just a marker ("1") — only existence matters.
     /// </summary>
     Task SetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default);
+
+    /// <summary>
+    /// Atomically adds 1 and returns the new value; the TTL starts with the first increment (fixed
+    /// window). Null when the cache is unavailable (fail-open — callers decide what that means).
+    /// </summary>
+    Task<long?> IncrementAsync(string key, TimeSpan window, CancellationToken ct = default);
 }

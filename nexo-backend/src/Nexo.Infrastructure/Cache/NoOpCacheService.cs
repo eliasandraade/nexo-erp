@@ -28,6 +28,9 @@ public class NoOpCacheService : ICacheService
     public Task<bool> ExistsAsync(string key, CancellationToken ct = default)
         => Task.FromResult(false);
 
+    public Task<long?> IncrementAsync(string key, TimeSpan window, CancellationToken ct = default)
+        => Task.FromResult<long?>(null);
+
     public Task SetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default)
         => Task.CompletedTask;
 }
