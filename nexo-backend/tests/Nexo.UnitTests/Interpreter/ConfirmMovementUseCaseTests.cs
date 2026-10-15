@@ -22,11 +22,12 @@ public class ConfirmMovementUseCaseTests
     private readonly IUnitOfWork                         _uow      = F.UnitOfWork();
     private readonly ICurrentTenant                      _tenant   = F.CurrentTenant();
     private readonly ICurrentUser                        _user     = F.CurrentUser();
+    private readonly IFinancialRepository                _fin      = Substitute.For<IFinancialRepository>();
 
     private ConfirmMovementUseCase BuildSut() => new(
         _movRepo, _sugRepo, _corRepo, _audRepo,
         _norm, _memory, _uow, _tenant, _user,
-        NullLogger<ConfirmMovementUseCase>.Instance);
+        NullLogger<ConfirmMovementUseCase>.Instance, F.Ledger(_fin));
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -229,6 +230,27 @@ public class ConfirmMovementUseCaseTests
         await sut.ExecuteAsync(BuildCommand(draft.Id, suggestion.Id));
 
         draft.Status.Should().Be(MovementStatus.Confirmed);
+    }
+
+    [Theory]
+    [InlineData(MovementNature.Expense, true)]
+    [InlineData(MovementNature.Transfer, false)]     // between accounts: not income or expense
+    public async Task Execute_PostsTheConfirmedMovementToTheLedger(MovementNature nature, bool posted)
+    {
+        var draft      = F.BuildDraftMovement(amount: 150m);
+        var suggestion = F.BuildSuggestion(draft.Id);
+        _movRepo.GetDraftByIdAsync(draft.Id, Arg.Any<CancellationToken>()).Returns(draft);
+        _sugRepo.GetByIdAsync(suggestion.Id, Arg.Any<CancellationToken>()).Returns(suggestion);
+        _norm.Normalize(Arg.Any<string>(), Arg.Any<Guid>()).Returns("cimento");
+
+        await BuildSut().ExecuteAsync(BuildCommand(draft.Id, suggestion.Id, nature: nature));
+
+        await _fin.Received(posted ? 1 : 0).AddTransactionAsync(
+            Arg.Is<Nexo.Domain.Entities.FinancialTransaction>(t =>
+                t.ReferenceType == "FinancialMovement" && t.ReferenceId == draft.Id && t.Amount == 150m
+                && t.Status == Nexo.Domain.Enums.TransactionStatus.Paid
+                && t.Category == Nexo.Domain.Enums.FinancialCategory.OperatingExpense),
+            Arg.Any<CancellationToken>());
     }
 
     // ── Memory rebuild ────────────────────────────────────────────────────────

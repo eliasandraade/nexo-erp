@@ -31,7 +31,7 @@ public class ReprocessMovementUseCaseTests
         _selector, _interp, _memory, _norm,
         _movRepo, _extRepo, _sugRepo, _attRepo, _repRepo,
         _uow, _tenant, _user,
-        NullLogger<ReprocessMovementUseCase>.Instance);
+        NullLogger<ReprocessMovementUseCase>.Instance, F.Ledger());
 
     // ── Arrange helpers ───────────────────────────────────────────────────────
 

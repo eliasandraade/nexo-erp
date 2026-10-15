@@ -1,3 +1,6 @@
+using Nexo.Application.Features.Financial;
+using Nexo.Domain.Entities;
+using Nexo.Domain.Enums;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Interpreter.Interfaces;
 using Nexo.Domain.Modules.Interpreter;
@@ -14,6 +17,18 @@ internal static class F
     internal static readonly Guid UserId   = Guid.Parse("22222222-0000-0000-0000-000000000002");
     internal static readonly Guid MovId    = Guid.Parse("33333333-0000-0000-0000-000000000003");
     internal static readonly Guid SugId    = Guid.Parse("44444444-0000-0000-0000-000000000004");
+
+    /// <summary>The livro posting with a financeiro that has the default accounts and no prior lançamentos.</summary>
+    internal static VerticalLedgerPostingService Ledger(IFinancialRepository? financial = null)
+    {
+        var fin = financial ?? Substitute.For<IFinancialRepository>();
+        fin.GetDefaultByTypeAsync(Arg.Any<FinancialAccountType>(), Arg.Any<CancellationToken>())
+            .Returns(ci => FinancialAccount.Create(TenantId, "x", "Conta", ci.Arg<FinancialAccountType>()));
+        fin.GetTransactionsByReferenceAsync(Arg.Any<string>(), Arg.Any<Guid>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<FinancialTransaction>());
+        var store = Substitute.For<ICurrentStore>();
+        return new VerticalLedgerPostingService(fin, CurrentTenant(), store, CurrentUser());
+    }
 
     // ── Domain entity builders ────────────────────────────────────────────────
 

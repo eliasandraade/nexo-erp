@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<FinancialService>();
         services.AddScoped<FinancialRecurrenceService>();
         services.AddScoped<CashFlowService>();
+        services.AddScoped<VerticalLedgerPostingService>();
 
         // ── Módulo Restaurante ────────────────────────────────────────────────
         services.AddScoped<AreaService>();

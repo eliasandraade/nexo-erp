@@ -34,6 +34,69 @@ public class EmployeeExpenseTests : IAsyncLifetime
 
     public Task DisposeAsync() => Task.CompletedTask;
 
+    // ── Despesas no livro (PR 53) ─────────────────────────────────────────────
+
+    private async Task<List<FinancialTransaction>> LedgerOfAsync(Guid expenseId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return await db.FinancialTransactions.IgnoreQueryFilters()
+            .Where(t => t.ReferenceId == expenseId).OrderBy(t => t.CreatedAt).ToListAsync();
+    }
+
+    [Fact]
+    public async Task An_expense_is_a_conta_a_pagar_paid_when_it_gets_a_payment_date()
+    {
+        var created = await (await _client.PostAsJsonAsync("/api/restaurante/expenses",
+            new CreateExpenseRequest("Conta de luz PR53", "Energia", 412.50m, new DateOnly(2026, 9, 1), null, false)))
+            .Content.ReadFromJsonAsync<ExpenseDto>();
+
+        var open = (await LedgerOfAsync(created!.Id)).Should().ContainSingle().Subject;
+        open.TransactionType.Should().Be(TransactionType.Payable);
+        open.Category.Should().Be(FinancialCategory.OperatingExpense);
+        open.Status.Should().BeOneOf(TransactionStatus.Pending, TransactionStatus.Overdue);
+        open.Amount.Should().Be(412.50m);
+        open.StoreId.Should().NotBeNull();
+
+        // paying is done on the expense itself — the financeiro refuses it there
+        (await _client.PostAsJsonAsync($"/api/financial/transactions/{open.Id}/pay", new { }))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        (await _client.PutAsJsonAsync($"/api/restaurante/expenses/{created.Id}",
+            new CreateExpenseRequest("Conta de luz PR53", "Energia", 412.50m, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 10), false)))
+            .EnsureSuccessStatusCode();
+        var afterPay = await LedgerOfAsync(created.Id);
+        afterPay.Should().HaveCount(2);
+        afterPay[0].Status.Should().Be(TransactionStatus.Cancelled);                // the open título was replaced…
+        afterPay[1].Status.Should().Be(TransactionStatus.Paid);                     // …by the paid one
+        afterPay[1].PaidAt!.Value.Date.Should().Be(new DateTime(2026, 9, 10));
+
+        // a description-only edit changes nothing in the livro
+        (await _client.PutAsJsonAsync($"/api/restaurante/expenses/{created.Id}",
+            new CreateExpenseRequest("Luz setembro", "Energia", 412.50m, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 10), false)))
+            .EnsureSuccessStatusCode();
+        (await LedgerOfAsync(created.Id)).Should().HaveCount(2);
+
+        // deleting a paid expense reverses it — history stays
+        (await _client.DeleteAsync($"/api/restaurante/expenses/{created.Id}")).EnsureSuccessStatusCode();
+        var reversal = (await LedgerOfAsync(created.Id)).Single(t => t.ReferenceType == "RestExpenseReversal");
+        reversal.ReversesTransactionId.Should().Be(afterPay[1].Id);
+        reversal.TransactionType.Should().Be(TransactionType.Receivable);
+        reversal.Amount.Should().Be(412.50m);
+    }
+
+    [Theory]
+    [InlineData("Impostos", FinancialCategory.Tax)]
+    [InlineData("Outros", FinancialCategory.OtherExpense)]
+    [InlineData("Aluguel", FinancialCategory.OperatingExpense)]
+    public async Task Expense_categories_map_to_ledger_lines(string category, FinancialCategory expected)
+    {
+        var created = await (await _client.PostAsJsonAsync("/api/restaurante/expenses",
+            new CreateExpenseRequest($"PR53 {category}", category, 10m, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 2), false)))
+            .Content.ReadFromJsonAsync<ExpenseDto>();
+        (await LedgerOfAsync(created!.Id)).Single().Category.Should().Be(expected);
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private async Task AuthenticateAsync(HttpClient client)

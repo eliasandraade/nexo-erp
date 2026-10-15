@@ -32,6 +32,12 @@ const ORIGIN_LABEL: Record<string, string> = {
   SvcPayment: "Service",
   SvcPaymentVoid: "Service — estorno",
   SvcCommissionPayout: "Service — comissão",
+  RestExpense: "Despesa do restaurante",
+  RestExpenseReversal: "Despesa do restaurante — estorno",
+  FinancialMovement: "Obra / movimentação",
+  FinancialMovementReversal: "Obra — estorno",
+  Recurrence: "Recorrência",
+  Settlement: "Juros, multa ou desconto",
 };
 
 function currentMonth() {

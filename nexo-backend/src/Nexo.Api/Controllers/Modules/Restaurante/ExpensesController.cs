@@ -1,3 +1,4 @@
+using Nexo.Application.Features.Financial;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,11 +18,13 @@ public class ExpensesController : ControllerBase
 {
     private readonly NexoDbContext _db;
     private readonly ICurrentTenant _tenant;
+    private readonly VerticalLedgerPostingService _ledger;
 
-    public ExpensesController(NexoDbContext db, ICurrentTenant tenant)
+    public ExpensesController(NexoDbContext db, ICurrentTenant tenant, VerticalLedgerPostingService ledger)
     {
         _db     = db;
         _tenant = tenant;
+        _ledger = ledger;
     }
 
     // GET /api/restaurante/expenses?from=yyyy-MM-dd&to=yyyy-MM-dd
@@ -70,6 +73,7 @@ public class ExpensesController : ControllerBase
             req.CompetenceDate, req.PaymentDate, req.IsRecurring);
 
         _db.RestExpenses.Add(expense);
+        await _ledger.SyncRestExpenseAsync(expense, ct);   // conta a pagar in the financeiro, same save
         await _db.SaveChangesAsync(ct);
 
         var dto = new ExpenseDto(expense.Id, expense.Description, expense.Category,
@@ -89,6 +93,7 @@ public class ExpensesController : ControllerBase
 
         expense.Update(req.Description, req.Category, req.Amount,
             req.CompetenceDate, req.PaymentDate, req.IsRecurring);
+        await _ledger.SyncRestExpenseAsync(expense, ct);
         await _db.SaveChangesAsync(ct);
 
         return Ok(new ExpenseDto(expense.Id, expense.Description, expense.Category,
@@ -103,6 +108,7 @@ public class ExpensesController : ControllerBase
         var expense = await _db.RestExpenses.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (expense is null) return NotFound();
 
+        await _ledger.RetireRestExpenseAsync(expense, ct);   // the livro keeps the history: cancelled or reversed
         _db.RestExpenses.Remove(expense);
         await _db.SaveChangesAsync(ct);
         return NoContent();
