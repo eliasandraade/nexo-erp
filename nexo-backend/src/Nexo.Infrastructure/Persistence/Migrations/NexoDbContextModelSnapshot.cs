@@ -2409,6 +2409,15 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("password_hash");
 
+                    b.Property<DateTime?>("PasswordResetExpiresAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("password_reset_expires_at");
+
+                    b.Property<string>("PasswordResetTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("password_reset_token_hash");
+
                     b.Property<string>("Phone")
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
@@ -2457,6 +2466,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnName("verification_token_expiry");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PasswordResetTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_users_password_reset_token_hash")
+                        .HasFilter("password_reset_token_hash IS NOT NULL");
 
                     b.HasIndex("TenantId");
 

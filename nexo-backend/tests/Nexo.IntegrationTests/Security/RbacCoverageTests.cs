@@ -23,6 +23,7 @@ public class RbacCoverageTests
     {
         // Own session / account (GetById and ChangePassword enforce "self or management" in the action)
         "Auth.Me", "Auth.SwitchStore", "Auth.Logout",
+        "Auth.Sessions", "Auth.RevokeAllSessions",   // own sessions only (any role)
         "Users.GetById", "Users.ChangePassword",
         // A Vendedor asks a manager to type their credentials (rate-limited per user)
         "Auth.VerifyManager", "Users.ValidateManager",

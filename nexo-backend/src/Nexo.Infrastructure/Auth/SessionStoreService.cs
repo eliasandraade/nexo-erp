@@ -37,6 +37,17 @@ public class SessionStoreService : ISessionStore
         }
     }
 
+    public async Task RevokeAsync(string refreshJti, CancellationToken ct = default)
+    {
+        var session = await _db.UserSessions
+            .IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.RefreshJti == refreshJti, ct);
+        if (session is null || session.IsRevoked) return;
+        session.Revoke();
+        try { await _db.SaveChangesAsync(ct); }
+        catch { /* best-effort, like the rest of session tracking */ }
+    }
+
     public async Task TouchAsync(string oldRefreshJti, string newRefreshJti, CancellationToken ct = default)
     {
         var session = await _db.UserSessions

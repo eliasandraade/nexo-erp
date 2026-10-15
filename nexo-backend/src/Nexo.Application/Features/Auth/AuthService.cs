@@ -82,7 +82,7 @@ public class AuthService
             var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
             await _cache.SetAsync(
                 $"refresh:valid:{refreshClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId, storeId),
+                new RefreshTokenEntry(user.Id, user.TenantId, storeId, user.SecurityStamp),
                 ttl, ct);
 
             // Track session for platform admin visibility
@@ -199,6 +199,13 @@ public class AuthService
         if (user.TenantId != claims.TenantId || entry.UserId != claims.UserId)
             return null;
 
+        // Sessions ended since this token was issued (entries from before the stamp was recorded pass once)
+        if (entry.SecurityStamp is not null && entry.SecurityStamp != user.SecurityStamp)
+        {
+            await _cache.RemoveAsync(cacheKey, ct);
+            return null;
+        }
+
         var tenant = await _tenants.GetByIdAsync(claims.TenantId, ct);
         if (tenant is null || tenant.Status != Domain.Enums.TenantStatus.Active)
             return null;
@@ -231,7 +238,7 @@ public class AuthService
             var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
             await _cache.SetAsync(
                 $"refresh:valid:{newClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId, storeId),
+                new RefreshTokenEntry(user.Id, user.TenantId, storeId, user.SecurityStamp),
                 ttl, ct);
             await _cache.SetAsync(
                 $"refresh:rotated:{claims.Jti}",
@@ -293,7 +300,7 @@ public class AuthService
             var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
             await _cache.SetAsync(
                 $"refresh:valid:{newClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId, requestedStoreId),
+                new RefreshTokenEntry(user.Id, user.TenantId, requestedStoreId, user.SecurityStamp),
                 ttl, ct);
         }
 
@@ -331,6 +338,7 @@ public class AuthService
         if (claims is null) return;
 
         await _cache.RemoveAsync($"refresh:valid:{claims.Jti}", ct);
+        await _sessions.RevokeAsync(claims.Jti, ct);
     }
 
     /// <summary>
@@ -373,7 +381,12 @@ public class AuthService
 
 /// <summary>Serializable refresh token cache entry.</summary>
 /// <summary>StoreId: the store the token was issued for (null on entries cached before this field existed).</summary>
-public record RefreshTokenEntry(Guid UserId, Guid TenantId, Guid? StoreId = null);
+/// <summary>
+/// What Redis keeps per refresh token. <see cref="SecurityStamp"/>: the user's stamp when it was
+/// issued — a refresh after the stamp changed (password change, "sair de todos") is refused even
+/// if the key itself was never tracked as a session.
+/// </summary>
+public record RefreshTokenEntry(Guid UserId, Guid TenantId, Guid? StoreId = null, string? SecurityStamp = null);
 
 /// <summary>Successor issued for a rotated refresh token, served during the reuse grace.</summary>
 public record RotatedRefreshEntry(string SuccessorJti, RefreshResponse Response);

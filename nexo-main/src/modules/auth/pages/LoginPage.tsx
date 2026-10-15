@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -20,6 +20,12 @@ const LABEL = "auth-label";
 export default function LoginPage() {
   const { login }  = useAuth();
   const navigate   = useNavigate();
+  const [params]   = useSearchParams();
+  const notice = ({
+    "senha-redefinida": "Senha alterada. Entre com a nova senha.",
+    "senha": "Senha alterada. Por segurança, entre de novo.",
+    "sessoes": "Você saiu de todos os dispositivos. Entre de novo.",
+  } as Record<string, string>)[params.get("motivo") ?? ""];
   const queryClient = useQueryClient();
   const formRef    = useRef<HTMLFormElement>(null);
 
@@ -91,6 +97,10 @@ export default function LoginPage() {
         </h1>
       </div>
 
+      {notice && (
+        <output className="mb-6 block rounded-md border border-success/30 bg-success/5 px-3 py-2 text-[13px] text-success">{notice}</output>
+      )}
+
       {/* ── Form ── */}
       <form
         ref={formRef}
@@ -126,7 +136,7 @@ export default function LoginPage() {
             >
               Senha
             </label>
-            <span className="text-xs text-muted-foreground">Esqueceu? Fale com o administrador.</span>
+            <Link to="/esqueci-senha" className="text-xs text-muted-foreground hover:text-foreground hover:underline">Esqueci a senha</Link>
           </div>
           <div className="relative">
             <input

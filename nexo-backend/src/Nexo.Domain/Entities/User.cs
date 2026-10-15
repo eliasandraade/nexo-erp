@@ -35,6 +35,9 @@ public class User : TenantEntity
     // Email verification — stored in PostgreSQL (not Redis) so token survives Redis failures.
     public string? VerificationToken { get; private set; }
     public DateTime? VerificationTokenExpiry { get; private set; }
+    /// <summary>SHA-256 (hex) of the one-time password-reset token — the token itself is never stored.</summary>
+    public string? PasswordResetTokenHash { get; private set; }
+    public DateTime? PasswordResetExpiresAt { get; private set; }
 
     // Navigation
     public Tenant? Tenant { get; private set; }
@@ -121,6 +124,20 @@ public class User : TenantEntity
     {
         VerificationToken       = token;
         VerificationTokenExpiry = expiry;
+        SetUpdatedAt();
+    }
+
+    public void SetPasswordResetToken(string tokenHash, DateTime expiresAt)
+    {
+        PasswordResetTokenHash = tokenHash;
+        PasswordResetExpiresAt = expiresAt;
+        SetUpdatedAt();
+    }
+
+    public void ClearPasswordResetToken()
+    {
+        PasswordResetTokenHash = null;
+        PasswordResetExpiresAt = null;
         SetUpdatedAt();
     }
 
