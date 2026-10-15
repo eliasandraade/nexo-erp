@@ -81,17 +81,83 @@ public class BillingIntegrityTests
              "price":{ "id":"price_1","object":"price","recurring":{ "interval":"month"} } } ]} } } } 
         """;
 
-    private static (StripeWebhookService Service, IModuleAccessService Access, ModuleSubscription Sub) Arrange(string subId)
+    private static (StripeWebhookService Service, IModuleAccessService Access, ModuleSubscription Sub) Arrange(
+        string subId, IModuleSubscriptionRepository? repo = null, ITenantRepository? tenants = null, IStripeSubscriptionFetcher? fetcher = null)
     {
         var sub = ModuleSubscription.CreateFromStripe(Guid.NewGuid(), "build", subId, "price_1", PlanType.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddDays(30));
-        var subs = Substitute.For<IModuleSubscriptionRepository>();
-        subs.GetByStripeSubscriptionIdAsync(subId, Arg.Any<CancellationToken>()).Returns(sub);
+        var subs = repo ?? Substitute.For<IModuleSubscriptionRepository>();
+        if (repo is null) subs.GetByStripeSubscriptionIdAsync(subId, Arg.Any<CancellationToken>()).Returns(sub);
         var processed = Substitute.For<IStripeProcessedEventRepository>();
         var access = Substitute.For<IModuleAccessService>();
         var service = new StripeWebhookService(
             Options.Create(new StripeOptions { WebhookSecret = Secret }), subs, processed,
-            Substitute.For<ITenantRepository>(), access, NullLogger<StripeWebhookService>.Instance);
+            tenants ?? Substitute.For<ITenantRepository>(), access, fetcher ?? Substitute.For<IStripeSubscriptionFetcher>(),
+            Substitute.For<ICacheService>(), NullLogger<StripeWebhookService>.Instance);
         return (service, access, sub);
+    }
+
+    private static string CheckoutEvent(string id, Guid tenantId, string subId) => $$$"""
+        { "id":"{{{id}}}","object":"event","api_version":"2025-03-31.basil","created":1700000000,"livemode":false,
+          "pending_webhooks":1,"request":{ "id":null,"idempotency_key":null } ,"type":"checkout.session.completed",
+          "data":{ "object":{ "id":"cs_1","object":"checkout.session","customer":"cus_1","subscription":"{{{subId}}}",
+            "metadata":{ "tenantId":"{{{tenantId}}}","moduleKey":"build" } } } }
+        """;
+
+    [Fact]
+    public void A_late_payment_failure_does_not_reopen_a_grace_for_an_ended_subscription()
+    {
+        var sub = ModuleSubscription.CreateFromStripe(Guid.NewGuid(), "build", "sub_x", "price_1", PlanType.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddDays(30));
+        sub.Cancel();
+        sub.MarkPastDue();
+        sub.Status.Should().Be(SubscriptionStatus.Canceled);
+        sub.IsActive().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Checkout_over_an_existing_row_follows_the_new_subscription_with_its_real_status()
+    {
+        var tenantId = Guid.NewGuid();
+        var old = ModuleSubscription.CreateFromStripe(tenantId, "build", "sub_old", "price_0", PlanType.Monthly, DateTime.UtcNow.AddDays(-60), DateTime.UtcNow.AddDays(-30));
+        old.Cancel();
+        var repo = Substitute.For<IModuleSubscriptionRepository>();
+        repo.GetByTenantIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(new[] { old });
+        var tenants = Substitute.For<ITenantRepository>();
+        tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(Tenant.Create("Empresa", "00000000000191", "a@b.dev"));
+        var fetcher = Substitute.For<IStripeSubscriptionFetcher>();
+        fetcher.GetAsync("sub_new", Arg.Any<CancellationToken>()).Returns(
+            new StripeSubscriptionSnapshot("sub_new", "active", "price_2", "year", DateTime.UtcNow, DateTime.UtcNow.AddYears(1), false));
+
+        var (service, access, _) = Arrange("sub_new", repo, tenants, fetcher);
+        var body = CheckoutEvent("evt_c1", tenantId, "sub_new");
+        await service.HandleAsync(body, Sign(body), default);
+
+        old.StripeSubscriptionId.Should().Be("sub_new", "later updates/cancellations of the new subscription must reach this row");
+        old.StripePriceId.Should().Be("price_2");
+        old.PlanType.Should().Be(PlanType.Annual);
+        old.Status.Should().Be(SubscriptionStatus.Active);
+        access.Received().InvalidateCache(tenantId, "build");
+    }
+
+    [Fact]
+    public async Task A_new_row_from_checkout_takes_the_real_stripe_status()
+    {
+        var tenantId = Guid.NewGuid();
+        var repo = Substitute.For<IModuleSubscriptionRepository>();
+        repo.GetByTenantIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(Array.Empty<ModuleSubscription>());
+        ModuleSubscription? added = null;
+        await repo.AddAsync(Arg.Do<ModuleSubscription>(x => added = x), Arg.Any<CancellationToken>());
+        var tenants = Substitute.For<ITenantRepository>();
+        tenants.GetByIdAsync(tenantId, Arg.Any<CancellationToken>()).Returns(Tenant.Create("Empresa", "00000000000191", "a@b.dev"));
+        var fetcher = Substitute.For<IStripeSubscriptionFetcher>();
+        fetcher.GetAsync("sub_inc", Arg.Any<CancellationToken>()).Returns(
+            new StripeSubscriptionSnapshot("sub_inc", "incomplete", "price_2", "month", DateTime.UtcNow, DateTime.UtcNow.AddMonths(1), false));
+
+        var (service, _, _) = Arrange("sub_inc", repo, tenants, fetcher);
+        var body = CheckoutEvent("evt_c2", tenantId, "sub_inc");
+        await service.HandleAsync(body, Sign(body), default);
+
+        added.Should().NotBeNull();
+        added!.Status.Should().Be(SubscriptionStatus.Suspended, "first payment still pending: no access yet");
     }
 
     [Fact]

@@ -853,3 +853,11 @@ O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnab
   - webhook com payload assinado como o Stripe faz: status desconhecido suspende e limpa o cache; assinatura inválida não muda nada; exclusão cancela;
   - o teste do portal sem Menu ativo passou a usar um atraso já fora da carência.
 - **Migração validada** num Postgres descartável (up → down → up). Linhas `PastDue` antigas ficam sem data e seguem sem acesso, como antes.
+- **Correções da revisão independente** (sem bloqueadores; 3 should-fix e menores):
+  - um `invoice.payment_failed` atrasado ou reenviado não reabre carência de assinatura já cancelada ou suspensa (o Stripe não ordena eventos);
+  - o checkout recusa (409) qualquer módulo cuja assinatura ainda vive no Stripe, mesmo atrasada ou suspensa, para não deixar a antiga cobrando o cartão em paralelo; também recusa módulo já liberado pelo admin ou vitalício;
+  - a linha nova criada no checkout também assume o status real do Stripe (`incomplete` não dá acesso);
+  - o webhook limpa também o cache Redis da lista de módulos e das informações do tenant, não só o cache em memória;
+  - a impersonação da plataforma usa a mesma regra de acesso;
+  - `IsActive()` sem compilar expressão a cada chamada;
+  - o handler do checkout lê a assinatura por uma interface (`IStripeSubscriptionFetcher`), e por isso ganhou testes: reassinatura segue a nova assinatura com plano e status; linha nova `incomplete` fica sem acesso.

@@ -82,10 +82,15 @@ public class BillingController : ControllerBase
 
         // A second checkout for a module already paid in Stripe would create a second subscription
         // that keeps charging: changes go through the customer portal.
+        // Also when it is late or suspended: that subscription still bills the old card in Stripe.
+        // And a lifetime/admin grant with access must not be turned into a Stripe row by a payment.
         var current = (await _subscriptions.GetByTenantIdAsync(tenant.Id, ct))
-            .FirstOrDefault(s => s.ModuleKey == moduleKey && !string.IsNullOrEmpty(s.StripeSubscriptionId) && s.IsActive());
+            .FirstOrDefault(s => s.ModuleKey == moduleKey
+                && (s.IsLiveInStripe || (string.IsNullOrEmpty(s.StripeSubscriptionId) && s.PlanType != Nexo.Domain.Enums.PlanType.Trial && s.IsActive())));
         if (current is not null)
-            return Conflict(new { error = "Este módulo já tem uma assinatura ativa. Use \"Gerenciar assinatura\" para trocar de plano ou cancelar." });
+            return Conflict(new { error = current.IsLiveInStripe
+                ? "Este módulo já tem uma assinatura. Use \"Gerenciar assinatura\" para pagar uma fatura em aberto, trocar de plano ou cancelar."
+                : "Este módulo já está liberado para a sua empresa." });
 
         try
         {

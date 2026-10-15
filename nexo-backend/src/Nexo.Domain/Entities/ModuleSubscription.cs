@@ -124,7 +124,19 @@ public class ModuleSubscription : BaseEntity
         };
     }
 
-    public bool IsActive() => HasAccessAt(DateTime.UtcNow).Compile()(this);
+    public bool IsActive() => HasAccessAtTime(DateTime.UtcNow);
+
+    /// <summary>Same rule as <see cref="HasAccessAt"/>, in memory.</summary>
+    public bool HasAccessAtTime(DateTime nowUtc)
+        => ((Status == SubscriptionStatus.Active || Status == SubscriptionStatus.Trialing)
+                && (CurrentPeriodEnd == null || CurrentPeriodEnd > nowUtc))
+           || (Status == SubscriptionStatus.PastDue && PastDueSince is { } since && since > nowUtc.AddDays(-PastDueGraceDays));
+
+    /// <summary>
+    /// Still billed by Stripe (or about to be): a second checkout would charge twice — it has to
+    /// go through the portal (pay the open invoice, change plan, cancel).
+    /// </summary>
+    public bool IsLiveInStripe => !string.IsNullOrEmpty(StripeSubscriptionId) && Status != SubscriptionStatus.Canceled;
 
     public void Renew(DateTime newPeriodEnd)
     {
@@ -136,6 +148,9 @@ public class ModuleSubscription : BaseEntity
 
     public void MarkPastDue(DateTime? nowUtc = null)
     {
+        // A late/replayed invoice.payment_failed must not reopen a grace for a subscription that
+        // already ended (Stripe doesn't order events).
+        if (Status is SubscriptionStatus.Canceled or SubscriptionStatus.Suspended) return;
         Status = SubscriptionStatus.PastDue;
         PastDueSince ??= nowUtc ?? DateTime.UtcNow;   // the grace counts from the first failure
         SetUpdatedAt();
