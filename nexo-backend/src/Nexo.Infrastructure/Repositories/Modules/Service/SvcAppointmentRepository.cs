@@ -32,7 +32,16 @@ public class SvcAppointmentRepository : ISvcAppointmentRepository
     {
         const long salt = 0x5C0_0000_0000_0056;   // stable across processes
         var key = BitConverter.ToInt64(professionalId.ToByteArray(), 0) ^ salt;
-        await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({key})", ct);
+        try
+        {
+            // bounded wait (this transaction only): a stalled one can't hang every booking of the professional
+            await _context.Database.ExecuteSqlRawAsync("SET LOCAL lock_timeout = '5s'", ct);
+            await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({key})", ct);
+        }
+        catch (Npgsql.PostgresException ex) when (ex.SqlState == "55P03")   // lock_not_available
+        {
+            throw new Nexo.Domain.Exceptions.ConflictException("A agenda deste profissional está sendo alterada agora. Tente de novo.");
+        }
     }
 
     public async Task<bool> IsBlockedAsync(Guid professionalId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default)

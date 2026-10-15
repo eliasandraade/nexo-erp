@@ -33,7 +33,7 @@ import {
 import { ApiError } from "@/services/api-client";
 import { useCustomers } from "@/modules/customers/hooks/use-customers";
 import {
-  createTimeBlock, deleteTimeBlock, listTimeBlocks,
+  createTimeBlock, deleteTimeBlock, fetchOrders, listTimeBlocks,
   type SvcAppointmentDto, type SvcAppointmentStatus, type SvcTimeBlockDto,
 } from "../api/service.api";
 import { useAppointments, useChangeAppointmentStatus } from "../hooks/useAppointments";
@@ -116,7 +116,7 @@ export default function AgendaPage() {
   const professionalId = professionalFilter === "all" ? undefined : professionalFilter;
 
   const { data, isLoading, isError, refetch } = useAppointments({ from: range.from, to: range.to, professionalId });
-  const { data: blocks } = useQuery({
+  const { data: blocks, isLoading: blocksLoading, isError: blocksError } = useQuery({
     queryKey: [...BLOCKS_KEY, range.from, range.to, professionalId ?? "all"],
     queryFn: () => listTimeBlocks(range.from, range.to, professionalId),
   });
@@ -125,6 +125,7 @@ export default function AgendaPage() {
   const { data: catalog } = useCatalog(false);
   const change = useChangeAppointmentStatus();
   const openOrder = useCreateOrderFromAppointment();
+  const [confirmBlock, setConfirmBlock] = useState<string | null>(null);
   const removeBlock = useMutation({
     mutationFn: deleteTimeBlock,
     onSuccess: () => { toast.success("Bloqueio removido."); void qc.invalidateQueries({ queryKey: BLOCKS_KEY }); },
@@ -142,6 +143,18 @@ export default function AgendaPage() {
     [data]
   );
   const onDay = (day: string, iso: string) => toInput(new Date(iso)) === day;
+  const visibleCount = appointments.filter((a) => days.some((d) => onDay(d, a.startsAt))).length;
+  /** "Dia todo" when the block covers the day; dates when it spans days; else the hours. */
+  const blockSpan = (b: SvcTimeBlockDto, day: string) => {
+    const start = new Date(b.startsAt), end = new Date(b.endsAt);
+    const dayStart = new Date(`${day}T00:00:00`);
+    const nextDay = new Date(dayStart);
+    nextDay.setDate(nextDay.getDate() + 1);
+    if (start <= dayStart && end >= nextDay) return "Dia todo";
+    if (toInput(start) === toInput(new Date(end.getTime() - 1))) return `${hhmm(b.startsAt)}–${hhmm(b.endsAt)}`;
+    const dm = (d: Date) => d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    return `${dm(start)} ${hhmm(b.startsAt)} – ${dm(end)} ${hhmm(b.endsAt)}`;
+  };
   const blocksOn = (day: string) => (blocks ?? []).filter((b) =>
     new Date(b.startsAt) < new Date(`${day}T23:59:59.999`) && new Date(b.endsAt) > new Date(`${day}T00:00:00`));
 
@@ -163,19 +176,29 @@ export default function AgendaPage() {
   const handleOpenOrder = (appt: SvcAppointmentDto) =>
     openOrder.mutate(appt.id, {
       onSuccess: (order) => navigate(`/service/ordens/${order.id}`),
-      onError: (e) => toast.error(e instanceof ApiError ? e.message : "Não foi possível abrir a comanda."),
+      onError: async (e) => {
+        // the appointment already has its comanda: open that one
+        if (e instanceof ApiError && e.status === 409) {
+          const existing = (await fetchOrders({ appointmentId: appt.id }).catch(() => []))[0];
+          if (existing) { navigate(`/service/ordens/${existing.id}`); return; }
+        }
+        toast.error(e instanceof ApiError ? e.message : "Não foi possível abrir a comanda.");
+      },
     });
 
-  const renderBlock = (b: SvcTimeBlockDto) => (
+  const renderBlock = (b: SvcTimeBlockDto, day: string) => (
     <div key={b.id} className="flex items-center gap-4 bg-muted/40 px-5 py-2.5">
-      <div className="w-24 shrink-0 text-[12px] text-muted-foreground">{hhmm(b.startsAt)}–{hhmm(b.endsAt)}</div>
+      <div className="w-24 shrink-0 text-[12px] text-muted-foreground">{blockSpan(b, day)}</div>
       <div className="min-w-0 flex-1 text-[12px]">
         <span className="inline-flex items-center gap-1 font-medium text-foreground"><Ban className="h-3.5 w-3.5" /> Bloqueado</span>
         <span className="text-muted-foreground"> · {b.professionalId ? professionalName(b.professionalId) : "Loja inteira"}{b.reason ? ` · ${b.reason}` : ""}</span>
       </div>
-      <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Remover bloqueio"
-        disabled={removeBlock.isPending} onClick={() => removeBlock.mutate(b.id)}>
-        <Trash2 className="h-4 w-4" />
+      <Button variant={confirmBlock === b.id ? "destructive" : "ghost"} size="sm" className="h-8"
+        aria-label={`${confirmBlock === b.id ? "Confirmar remoção do" : "Remover"} bloqueio de ${b.professionalId ? professionalName(b.professionalId) : "toda a loja"} (${blockSpan(b, day)})`}
+        disabled={removeBlock.isPending}
+        onBlur={() => setConfirmBlock(null)}
+        onClick={() => (confirmBlock === b.id ? removeBlock.mutate(b.id) : setConfirmBlock(b.id))}>
+        {confirmBlock === b.id ? "Remover" : <Trash2 className="h-4 w-4" />}
       </Button>
     </div>
   );
@@ -272,7 +295,7 @@ export default function AgendaPage() {
             </SelectContent>
           </Select>
           <span className="ml-auto text-[12px] text-muted-foreground">
-            {appointments.length} {appointments.length === 1 ? "agendamento" : "agendamentos"}
+            {visibleCount} {visibleCount === 1 ? apptTerm.toLowerCase() : `${apptTerm.toLowerCase()}s`}
           </span>
         </div>
 
@@ -284,11 +307,15 @@ export default function AgendaPage() {
 
         {isError && <ErrorState onRetry={refetch} />}
 
-        {!isLoading && !isError && appointments.length === 0 && (blocks ?? []).length === 0 && (
+        {blocksError && (
+          <p className="px-5 pb-3 text-[12px] text-destructive">Não foi possível carregar os bloqueios da agenda.</p>
+        )}
+
+        {!isLoading && !blocksLoading && !isError && visibleCount === 0 && (blocks ?? []).length === 0 && (
           <EmptyState
             icon={CalendarClock}
-            title={view === "day" ? "Nenhum agendamento neste dia" : "Nenhum agendamento nesta semana"}
-            description="Crie um agendamento ou escolha outra data."
+            title={`Nenhum ${apptTerm.toLowerCase()} ${view === "day" ? "neste dia" : "nesta semana"}`}
+            description="Crie um novo ou escolha outra data."
             action={
               <Button variant="outline" onClick={() => setDialog({ open: true, editing: null })}>
                 <Plus className="mr-2 h-4 w-4" /> Novo {apptTerm.toLowerCase()}
@@ -297,7 +324,7 @@ export default function AgendaPage() {
           />
         )}
 
-        {!isLoading && !isError && (appointments.length > 0 || (blocks ?? []).length > 0) && (
+        {!isLoading && !isError && (visibleCount > 0 || (blocks ?? []).length > 0) && (
           <div className="border-t border-border">
             {days.map((day) => {
               const dayAppts = appointments.filter((a) => onDay(day, a.startsAt));
@@ -311,7 +338,7 @@ export default function AgendaPage() {
                     </p>
                   )}
                   <div className="divide-y divide-border">
-                    {dayBlocks.map(renderBlock)}
+                    {dayBlocks.map((b) => renderBlock(b, day))}
                     {dayAppts.map(renderAppointment)}
                   </div>
                 </div>
@@ -336,7 +363,8 @@ export default function AgendaPage() {
       {blocking && (
         <BlockDialog
           date={date}
-          professionals={professionals ?? []}
+          defaultProfessionalId={professionalId}
+          professionals={(professionals ?? []).filter((p) => p.isActive)}
           onClose={() => setBlocking(false)}
           onDone={() => void qc.invalidateQueries({ queryKey: BLOCKS_KEY })}
         />
@@ -345,13 +373,15 @@ export default function AgendaPage() {
   );
 }
 
-function BlockDialog({ date, professionals, onClose, onDone }: {
+function BlockDialog({ date, defaultProfessionalId, professionals, onClose, onDone }: {
   date: string;
+  defaultProfessionalId?: string;
   professionals: { id: string; name: string }[];
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [who, setWho] = useState("store");
+  // never defaults to the whole store: blocking everyone must be an explicit choice
+  const [who, setWho] = useState<string>(defaultProfessionalId ?? "");
   const [day, setDay] = useState(date);
   const [from, setFrom] = useState("12:00");
   const [to, setTo] = useState("13:00");
@@ -359,8 +389,10 @@ function BlockDialog({ date, professionals, onClose, onDone }: {
   const [reason, setReason] = useState("");
 
   const startsAt = new Date(`${day}T${allDay ? "00:00" : from}:00`);
-  const endsAt = allDay ? new Date(new Date(`${day}T00:00:00`).getTime() + 24 * 3600 * 1000) : new Date(`${day}T${to}:00`);
-  const valid = !!day && endsAt > startsAt;
+  const nextMidnight = new Date(`${day}T00:00:00`);
+  nextMidnight.setDate(nextMidnight.getDate() + 1);   // calendar day, not +24h (DST-safe)
+  const endsAt = allDay ? nextMidnight : new Date(`${day}T${to}:00`);
+  const valid = !!who && !!day && endsAt > startsAt;
 
   const save = useMutation({
     mutationFn: () => createTimeBlock({
@@ -384,7 +416,7 @@ function BlockDialog({ date, professionals, onClose, onDone }: {
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="block-who">Para</Label>
             <Select value={who} onValueChange={setWho}>
-              <SelectTrigger id="block-who" aria-label="Para"><SelectValue /></SelectTrigger>
+              <SelectTrigger id="block-who" aria-label="Para"><SelectValue placeholder="Escolha o profissional ou a loja" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="store">Loja inteira (feriado)</SelectItem>
                 {professionals.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}

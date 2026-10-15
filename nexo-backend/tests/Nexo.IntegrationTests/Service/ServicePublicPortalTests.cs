@@ -165,7 +165,7 @@ public class ServicePublicPortalTests
         var pick = before.Slots.First(s => s.StartsAt > DateTime.UtcNow.AddDays(1));
         (await admin.PostAsJsonAsync("/api/v1/service/time-blocks",
                 new { professionalId = professional, startsAt = pick.StartsAt, endsAt = pick.EndsAt, reason = "Folga" }))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
+            .StatusCode.Should().Be(HttpStatusCode.Created);
 
         var after = await GetAvailabilityAsync(pub, slug, catalog, professional);
         after.Slots.Select(s => s.Raw).Should().NotContain(pick.Raw, "a blocked slot must disappear from availability");

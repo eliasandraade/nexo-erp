@@ -85,7 +85,7 @@ public class ServiceAppointmentsTests
 
         var lunch = await c.PostAsJsonAsync("/api/v1/service/time-blocks",
             new { professionalId = ctx.ProfessionalId, startsAt = day.AddHours(2), endsAt = day.AddHours(3), reason = "Almoço" });
-        lunch.StatusCode.Should().Be(HttpStatusCode.OK, await lunch.Content.ReadAsStringAsync());
+        lunch.StatusCode.Should().Be(HttpStatusCode.Created, await lunch.Content.ReadAsStringAsync());
 
         (await PostAppointment(c, ctx, day.AddHours(2).AddMinutes(30), day.AddHours(3).AddMinutes(30)))
             .StatusCode.Should().Be(HttpStatusCode.Conflict);                  // overlaps the block
@@ -95,7 +95,7 @@ public class ServiceAppointmentsTests
         // holiday for the whole store
         var holiday = await c.PostAsJsonAsync("/api/v1/service/time-blocks",
             new { startsAt = day.AddDays(1), endsAt = day.AddDays(2), reason = "Feriado" });
-        holiday.StatusCode.Should().Be(HttpStatusCode.OK);
+        holiday.StatusCode.Should().Be(HttpStatusCode.Created);
         (await PostAppointment(c, ctx with { ProfessionalId = other }, day.AddDays(1).AddHours(1), day.AddDays(1).AddHours(2)))
             .StatusCode.Should().Be(HttpStatusCode.Conflict);
 
@@ -107,6 +107,43 @@ public class ServiceAppointmentsTests
         var lunchId = (await lunch.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
         (await c.DeleteAsync($"/api/v1/service/time-blocks/{lunchId}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await PostAppointment(c, ctx, day.AddHours(2), day.AddHours(3))).StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task A_booking_made_before_a_block_can_still_be_edited_in_its_slot()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c);
+        var day = Base.AddDays(30);
+        var id = await CreateAppointmentAsync(c, ctx, day.AddHours(1), day.AddHours(2));
+        (await c.PostAsJsonAsync("/api/v1/service/time-blocks",
+            new { startsAt = day, endsAt = day.AddDays(1), reason = "Feriado" })).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var keep = await c.PutAsJsonAsync($"/api/v1/service/appointments/{id}", new
+        {
+            customerId = ctx.CustomerId, professionalId = ctx.ProfessionalId, catalogItemId = ctx.CatalogItemId,
+            startsAt = day.AddHours(1), endsAt = day.AddHours(2), notes = "Confirmar por telefone",
+        });
+        keep.StatusCode.Should().Be(HttpStatusCode.OK, await keep.Content.ReadAsStringAsync());   // same slot: allowed
+        var move = await c.PutAsJsonAsync($"/api/v1/service/appointments/{id}", new
+        {
+            customerId = ctx.CustomerId, professionalId = ctx.ProfessionalId, catalogItemId = ctx.CatalogItemId,
+            startsAt = day.AddHours(3), endsAt = day.AddHours(4),
+        });
+        move.StatusCode.Should().Be(HttpStatusCode.Conflict);                                     // into the block: refused
+    }
+
+    [Fact]
+    public async Task Two_simultaneous_bookings_of_the_same_slot_never_both_succeed()
+    {
+        var c1 = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var c2 = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c1);
+        var day = Base.AddDays(40);
+        var results = await Task.WhenAll(
+            PostAppointment(c1, ctx, day.AddHours(1), day.AddHours(2)),
+            PostAppointment(c2, ctx, day.AddHours(1).AddMinutes(30), day.AddHours(2).AddMinutes(30)));
+        results.Select(r => r.StatusCode).Should().BeEquivalentTo(new[] { HttpStatusCode.Created, HttpStatusCode.Conflict });
     }
 
     [Fact]

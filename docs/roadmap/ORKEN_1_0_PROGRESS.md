@@ -651,4 +651,16 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - integração: bloqueio do profissional e da loja (409, outro profissional livre, remoção libera); bloqueio inválido; portal sem o horário bloqueado e recusando a reserva; conclusão direta;
   - unitários e Vitest das transições atualizados;
   - Playwright: agenda da semana, bloqueio, concluir e abrir comanda.
+- **Correções da revisão independente** (sem bloqueadores; 3 should-fix e menores):
+  - editar um agendamento feito antes de um bloqueio, sem sair do próprio horário, não é mais recusado. Movê-lo para dentro do bloqueio continua sendo 409;
+  - a trava por profissional espera no máximo 5 s (`lock_timeout`), e o estouro vira 409 "tente de novo" em vez de pendurar a requisição;
+  - "Abrir comanda" num agendamento que já tem comanda abre a existente, em vez de mostrar erro;
+  - "Bloquear horário" não assume mais a loja inteira: parte do profissional filtrado ou exige a escolha;
+  - remover um bloqueio pede dois toques;
+  - "dia todo" vai até a meia-noite do calendário (seguro no horário de verão);
+  - bloqueio de dia inteiro ou de vários dias mostra "Dia todo" ou as datas;
+  - o diálogo lista só profissionais ativos;
+  - a contagem bate com a lista e usa o termo do ramo;
+  - a criação do bloqueio responde 201, `professionalId` vazio vale como loja inteira, e as mensagens estão em português;
+  - testes novos: edição dentro do horário com bloqueio posterior, e duas reservas simultâneas (uma 201, uma 409).
 

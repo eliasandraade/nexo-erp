@@ -40,9 +40,10 @@ public class SvcTimeBlockService
 
     public async Task<SvcTimeBlockDto> CreateAsync(CreateSvcTimeBlockRequest r, CancellationToken ct = default)
     {
-        if (r.ProfessionalId is { } pid)
+        var professionalId = r.ProfessionalId is { } p && p != Guid.Empty ? p : (Guid?)null;   // empty = whole store
+        if (professionalId is { } pid)
             _ = await _professionals.GetByIdAsync(pid, ct) ?? throw new NotFoundException("SvcProfessional", pid);
-        var block = SvcTimeBlock.Create(_currentTenant.Id, r.ProfessionalId, Utc(r.StartsAt), Utc(r.EndsAt), r.Reason, _currentUser.UserId);
+        var block = SvcTimeBlock.Create(_currentTenant.Id, professionalId, Utc(r.StartsAt), Utc(r.EndsAt), r.Reason, _currentUser.UserId);
         await _blocks.AddAsync(block, ct);
         await _blocks.SaveChangesAsync(ct);
         return Map(block);

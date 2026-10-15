@@ -22,7 +22,7 @@ public class TimeBlocksController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<SvcTimeBlockDto>> Create([FromBody] CreateSvcTimeBlockRequest request, CancellationToken ct)
-        => Ok(await _service.CreateAsync(request, ct));
+        => StatusCode(StatusCodes.Status201Created, await _service.CreateAsync(request, ct));
 
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
