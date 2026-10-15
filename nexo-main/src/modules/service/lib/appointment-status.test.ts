@@ -9,8 +9,8 @@ import {
 
 describe("appointment-status", () => {
   it("mirrors the backend transition machine", () => {
-    expect(allowedTransitions("Scheduled").sort()).toEqual(["Cancelled", "Confirmed", "NoShow"]);
-    expect(allowedTransitions("Confirmed").sort()).toEqual(["Cancelled", "InProgress", "NoShow"]);
+    expect(allowedTransitions("Scheduled").sort()).toEqual(["Cancelled", "Completed", "Confirmed", "InProgress", "NoShow"]);
+    expect(allowedTransitions("Confirmed").sort()).toEqual(["Cancelled", "Completed", "InProgress", "NoShow"]);
     expect(allowedTransitions("InProgress").sort()).toEqual(["Cancelled", "Completed"]);
   });
 
@@ -21,9 +21,10 @@ describe("appointment-status", () => {
     }
   });
 
-  it("does not allow skipping straight to Completed from Scheduled", () => {
-    expect(allowedTransitions("Scheduled")).not.toContain("Completed");
-    expect(allowedTransitions("Scheduled")).not.toContain("InProgress");
+  it("lets the agenda conclude a scheduled or confirmed appointment directly (PR 56)", () => {
+    expect(allowedTransitions("Scheduled")).toContain("Completed");
+    expect(allowedTransitions("Confirmed")).toContain("Completed");
+    expect(allowedTransitions("Completed")).toEqual([]);
   });
 
   it("flags cancellation/no-show as needing a reason", () => {

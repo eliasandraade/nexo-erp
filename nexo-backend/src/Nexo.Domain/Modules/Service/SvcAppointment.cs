@@ -123,6 +123,10 @@ public class SvcAppointment : StoreEntity
         (SvcAppointmentStatus.Scheduled,  SvcAppointmentStatus.Confirmed)  => true,
         (SvcAppointmentStatus.Scheduled,  SvcAppointmentStatus.Cancelled)  => true,
         (SvcAppointmentStatus.Scheduled,  SvcAppointmentStatus.NoShow)     => true,
+        // the service was done: concluir straight from the agenda (no need to start it first)
+        (SvcAppointmentStatus.Scheduled,  SvcAppointmentStatus.InProgress) => true,
+        (SvcAppointmentStatus.Scheduled,  SvcAppointmentStatus.Completed)  => true,
+        (SvcAppointmentStatus.Confirmed,  SvcAppointmentStatus.Completed)  => true,
         (SvcAppointmentStatus.Confirmed,  SvcAppointmentStatus.InProgress) => true,
         (SvcAppointmentStatus.Confirmed,  SvcAppointmentStatus.Cancelled)  => true,
         (SvcAppointmentStatus.Confirmed,  SvcAppointmentStatus.NoShow)     => true,

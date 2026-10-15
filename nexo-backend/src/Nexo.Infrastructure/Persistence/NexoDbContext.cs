@@ -126,6 +126,7 @@ public class NexoDbContext : DbContext
     public DbSet<SvcSubject>          SvcSubjects      => Set<SvcSubject>();
     public DbSet<SvcRecordEntry>      SvcRecordEntries => Set<SvcRecordEntry>();
     public DbSet<SvcAppointment>      SvcAppointments  => Set<SvcAppointment>();
+    public DbSet<SvcTimeBlock>        SvcTimeBlocks    => Set<SvcTimeBlock>();
     public DbSet<SvcOrder>            SvcOrders        => Set<SvcOrder>();
     public DbSet<SvcOrderItem>        SvcOrderItems    => Set<SvcOrderItem>();
     public DbSet<SvcPackage>             SvcPackages             => Set<SvcPackage>();

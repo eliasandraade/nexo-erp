@@ -28,6 +28,7 @@ public sealed class PublicServicePortalService
     private readonly ISvcAppointmentRepository  _appointments;
     private readonly ICustomerRepository        _customers;
     private readonly ISvcSubjectRepository      _subjects;
+    private readonly IUnitOfWork                _uow;
     private readonly ILogger<PublicServicePortalService> _logger;
 
     public PublicServicePortalService(
@@ -38,8 +39,10 @@ public sealed class PublicServicePortalService
         ISvcAppointmentRepository appointments,
         ICustomerRepository customers,
         ISvcSubjectRepository subjects,
-        ILogger<PublicServicePortalService> logger)
+        ILogger<PublicServicePortalService> logger,
+        IUnitOfWork uow)
     {
+        _uow = uow;
         _stores        = stores;
         _settings      = settings;
         _catalog       = catalog;
@@ -127,7 +130,11 @@ public sealed class PublicServicePortalService
             var horizonUtc = now.AddDays(ctx.Settings.BookingDaysAhead);
             var blocking = await _appointments.GetBlockingForProfessionalPublicAsync(
                 professional.Id, ctx.Store.TenantId, ctx.Store.Id, now, horizonUtc, ct);
-            var busy = blocking.Select(a => new BusyInterval(a.StartsAt, a.EndsAt)).ToList();
+            var blocks = await _appointments.GetBlocksPublicAsync(
+                professional.Id, ctx.Store.TenantId, ctx.Store.Id, now, horizonUtc, ct);
+            var busy = blocking.Select(a => new BusyInterval(a.StartsAt, a.EndsAt))
+                .Concat(blocks.Select(b => new BusyInterval(b.StartsAt, b.EndsAt)))
+                .ToList();
 
             var starts = AvailabilityCalculator.GenerateSlots(
                 hours, tz, now,
@@ -170,7 +177,11 @@ public sealed class PublicServicePortalService
         if (!AvailabilityCalculator.IsWithinWorkingHours(hours, tz, startsAt, endsAt))
             throw new DomainException("The selected time is outside the professional's working hours.");
 
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _appointments.LockProfessionalAsync(professional.Id, ct);   // a concurrent booking waits here
         if (await _appointments.HasOverlapPublicAsync(
+                professional.Id, ctx.Store.TenantId, ctx.Store.Id, startsAt, endsAt, ct)
+            || await _appointments.IsBlockedPublicAsync(
                 professional.Id, ctx.Store.TenantId, ctx.Store.Id, startsAt, endsAt, ct))
             throw new ConflictException("This time was just taken. Please pick another slot.");
 
@@ -203,6 +214,7 @@ public sealed class PublicServicePortalService
         await _appointments.AddAsync(appt, ct);
         // Single commit: EF orders customer → subject → appointment via the configured FKs.
         await _appointments.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         _logger.LogInformation(
             "Public appointment {ApptId} created via portal '{Slug}' (TenantId: {TenantId}, StoreId: {StoreId}, Professional: {ProfId})",

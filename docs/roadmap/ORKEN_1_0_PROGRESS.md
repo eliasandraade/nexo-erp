@@ -19,7 +19,8 @@
 | #52 | Fluxo de caixa | `fbdb126` | `AccountOpeningBalance` (aditiva) | Em produção |
 | #53 | Integração financeira das verticais | `511f9c4` | `VerticalExpensesInLedger` (backfill: despesas do restaurante e movimentações confirmadas) | Em produção |
 | #54 | Menu: pedido → venda | `9d950c5` | `RestOrderDeliveryTerms` (aditiva + termos cotados nas comandas abertas) | Em produção |
-| #55 | Fechamento do Menu | — | — | Em revisão |
+| #55 | Fechamento do Menu | `115458e` | — | Em produção |
+| #56 | Service: agenda (bloqueios, semana, comanda) | — | `ServiceTimeBlocks` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -629,4 +630,25 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
 | Cozinha / KDS | 55% | ~70% | tempos de preparo e alertas |
 | Portal público | 45% | ~70% | integrações de marketplace |
 | **Orken Menu (geral)** | **50%** | **~75%** | integrações iFood, Rappi e AnotaAí |
+
+## PR 56 — Service: agenda
+
+- **Bloqueios de agenda** (`SvcTimeBlock`, tabela `svc_time_blocks`):
+  - por profissional (folga, almoço) ou para a loja inteira (feriado);
+  - `GET/POST /api/v1/service/time-blocks` e `DELETE /api/v1/service/time-blocks/{id}` (gestão, módulo Service);
+  - o agendamento interno num horário bloqueado responde 409;
+  - o portal público tira os horários bloqueados da disponibilidade e recusa agendá-los;
+  - o bloqueio não cancela o que já estava agendado; a agenda mostra os dois para a equipe decidir.
+- **Agendamento duplo por corrida:** trava por profissional (`pg_advisory_xact_lock`) no agendamento interno, no reagendamento e no agendamento público. Duas reservas simultâneas do mesmo profissional fazem fila, e a segunda vê a primeira.
+- **Concluir direto:** agendado ou confirmado pode ir direto para concluído (ou em atendimento), sem três transições. A comissão é reconhecida na conclusão, como antes.
+- **Agenda** (`/service/agenda`):
+  - visão **Dia** ou **Semana** (segunda a domingo, agrupada por dia);
+  - filtro por profissional;
+  - os bloqueios aparecem na agenda, com remoção;
+  - **"Bloquear horário"** (profissional ou loja inteira, horário ou dia todo, motivo);
+  - **"Abrir comanda"** a partir do agendamento (o endpoint existia sem uso) leva direto à comanda.
+- **Testes:**
+  - integração: bloqueio do profissional e da loja (409, outro profissional livre, remoção libera); bloqueio inválido; portal sem o horário bloqueado e recusando a reserva; conclusão direta;
+  - unitários e Vitest das transições atualizados;
+  - Playwright: agenda da semana, bloqueio, concluir e abrir comanda.
 

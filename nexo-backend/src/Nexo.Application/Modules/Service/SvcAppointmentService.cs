@@ -58,6 +58,9 @@ public class SvcAppointmentService
     public async Task<SvcAppointmentDto> CreateAsync(CreateSvcAppointmentRequest r, CancellationToken ct = default)
     {
         var (price, commission) = await ResolveAndValidateRefsAsync(r.CustomerId, r.ProfessionalId, r.CatalogItemId, r.SubjectId, ct);
+
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _repo.LockProfessionalAsync(r.ProfessionalId, ct);   // two bookings of one professional serialise
         await EnsureNoOverlapAsync(r.ProfessionalId, r.StartsAt, r.EndsAt, null, ct);
 
         var appt = SvcAppointment.Create(
@@ -66,6 +69,7 @@ public class SvcAppointmentService
 
         await _repo.AddAsync(appt, ct);
         await _repo.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(appt);
     }
 
@@ -76,11 +80,14 @@ public class SvcAppointmentService
             throw new DomainException($"Cannot edit a {appt.Status} appointment.");
 
         var (price, commission) = await ResolveAndValidateRefsAsync(r.CustomerId, r.ProfessionalId, r.CatalogItemId, r.SubjectId, ct);
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _repo.LockProfessionalAsync(r.ProfessionalId, ct);
         await EnsureNoOverlapAsync(r.ProfessionalId, r.StartsAt, r.EndsAt, id, ct);
 
         appt.Reschedule(r.CustomerId, r.ProfessionalId, r.CatalogItemId, r.SubjectId, r.StartsAt, r.EndsAt, price, r.Notes, commission);
         _repo.Update(appt);
         await _repo.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(appt);
     }
 
@@ -134,6 +141,8 @@ public class SvcAppointmentService
     {
         if (await _repo.HasOverlapAsync(professionalId, startsAt, endsAt, excludeId, ct))
             throw new ConflictException("The professional already has an appointment in this time range.");
+        if (await _repo.IsBlockedAsync(professionalId, startsAt, endsAt, ct))
+            throw new ConflictException("Este horário está bloqueado na agenda do profissional.");
     }
 
     internal static SvcAppointmentDto MapToDto(SvcAppointment a) => new(

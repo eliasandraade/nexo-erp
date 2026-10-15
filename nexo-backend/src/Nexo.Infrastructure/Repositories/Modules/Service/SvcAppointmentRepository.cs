@@ -28,6 +28,33 @@ public class SvcAppointmentRepository : ISvcAppointmentRepository
         return await q.OrderBy(a => a.StartsAt).ToListAsync(ct);
     }
 
+    public async Task LockProfessionalAsync(Guid professionalId, CancellationToken ct = default)
+    {
+        const long salt = 0x5C0_0000_0000_0056;   // stable across processes
+        var key = BitConverter.ToInt64(professionalId.ToByteArray(), 0) ^ salt;
+        await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({key})", ct);
+    }
+
+    public async Task<bool> IsBlockedAsync(Guid professionalId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default)
+        => await _context.SvcTimeBlocks.AnyAsync(b =>
+            (b.ProfessionalId == null || b.ProfessionalId == professionalId) &&
+            b.StartsAt < endsAt && b.EndsAt > startsAt, ct);
+
+    public async Task<IReadOnlyList<SvcTimeBlock>> GetBlocksPublicAsync(
+        Guid professionalId, Guid tenantId, Guid storeId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+        => await _context.SvcTimeBlocks.IgnoreQueryFilters()
+            .Where(b => b.TenantId == tenantId && b.StoreId == storeId &&
+                        (b.ProfessionalId == null || b.ProfessionalId == professionalId) &&
+                        b.StartsAt < toUtc && b.EndsAt > fromUtc)
+            .ToListAsync(ct);
+
+    public async Task<bool> IsBlockedPublicAsync(
+        Guid professionalId, Guid tenantId, Guid storeId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default)
+        => await _context.SvcTimeBlocks.IgnoreQueryFilters().AnyAsync(b =>
+            b.TenantId == tenantId && b.StoreId == storeId &&
+            (b.ProfessionalId == null || b.ProfessionalId == professionalId) &&
+            b.StartsAt < endsAt && b.EndsAt > startsAt, ct);
+
     public async Task<bool> HasOverlapAsync(
         Guid professionalId, DateTime startsAt, DateTime endsAt, Guid? excludeId, CancellationToken ct = default)
         => await _context.SvcAppointments.AnyAsync(a =>

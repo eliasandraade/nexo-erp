@@ -6,6 +6,17 @@ namespace Nexo.Application.Modules.Service.Interfaces;
 public interface ISvcAppointmentRepository
 {
     Task<SvcAppointment?> GetByIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Transaction-scoped lock per professional: two bookings of the same professional serialise.</summary>
+    Task LockProfessionalAsync(Guid professionalId, CancellationToken ct = default);
+    /// <summary>True if a bloqueio (the professional's or the whole store's) covers part of [start, end).</summary>
+    Task<bool> IsBlockedAsync(Guid professionalId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default);
+    /// <summary>Public path: the bloqueios of a professional (and the store's) within a window.</summary>
+    Task<IReadOnlyList<SvcTimeBlock>> GetBlocksPublicAsync(
+        Guid professionalId, Guid tenantId, Guid storeId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
+    /// <summary>Public path: same as <see cref="IsBlockedAsync"/>, scoped explicitly.</summary>
+    Task<bool> IsBlockedPublicAsync(
+        Guid professionalId, Guid tenantId, Guid storeId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default);
     Task<IReadOnlyList<SvcAppointment>> GetAllAsync(
         DateTime? from, DateTime? to, Guid? professionalId, SvcAppointmentStatus? status,
         Guid? customerId, Guid? subjectId, CancellationToken ct = default);

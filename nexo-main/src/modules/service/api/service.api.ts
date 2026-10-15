@@ -642,3 +642,26 @@ export const closeCommissionPayout = (body: CloseCommissionPayoutRequest) =>
   apiClient.post<SvcCommissionPayoutDetailDto>("/v1/service/commissions/payouts", body);
 export const markCommissionPayoutPaid = (id: string, paidAt?: string | null) =>
   apiClient.post<SvcCommissionPayoutDto>(`/v1/service/commissions/payouts/${id}/pay`, paidAt ? { paidAt } : {});
+
+// ── Bloqueios de agenda ──────────────────────────────────────────────────────
+
+export interface SvcTimeBlockDto {
+  id: string;
+  /** null = the whole store (holiday). */
+  professionalId: string | null;
+  startsAt: string;
+  endsAt: string;
+  reason: string | null;
+  createdAt: string;
+}
+
+export const listTimeBlocks = (from: string, to: string, professionalId?: string) => {
+  const params = new URLSearchParams({ from, to });
+  if (professionalId) params.set("professionalId", professionalId);
+  return apiClient.get<SvcTimeBlockDto[]>(`/v1/service/time-blocks?${params.toString()}`);
+};
+
+export const createTimeBlock = (body: { professionalId: string | null; startsAt: string; endsAt: string; reason?: string | null }) =>
+  apiClient.post<SvcTimeBlockDto>("/v1/service/time-blocks", body);
+
+export const deleteTimeBlock = (id: string) => apiClient.delete<void>(`/v1/service/time-blocks/${id}`);
