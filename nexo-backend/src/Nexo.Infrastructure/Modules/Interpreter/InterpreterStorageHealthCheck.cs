@@ -25,8 +25,8 @@ public sealed class InterpreterStorageHealthCheck : IHealthCheck
         }
         catch (Exception ex)
         {
-            return HealthCheckResult.Unhealthy(
-                "Attachment storage is unreachable.", ex);
+            // the registration's failure status (Degraded): attachments down never takes the API out
+            return new HealthCheckResult(context.Registration.FailureStatus, "Attachment storage is unreachable.", ex);
         }
     }
 }

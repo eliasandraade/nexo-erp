@@ -421,6 +421,8 @@ try
     {
         opts.MessageTemplate =
             "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
+        // health probes run every few seconds: keep them out of the log unless they fail
+        opts.GetLevel = Nexo.Api.Health.HealthEndpoints.RequestLogLevel;
     });
 
     if (!app.Environment.IsProduction())
@@ -469,7 +471,7 @@ try
     });
     app.MapHub<RestaurantHub>("/hubs/restaurant");
     app.MapControllers();
-    app.MapHealthChecks("/health");
+    Nexo.Api.Health.HealthEndpoints.MapOrkenHealth(app);
 
     Log.Information("Nexo API starting on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();

@@ -80,8 +80,12 @@ public sealed class CloudflareR2Provider : IStorageProvider
         }
     }
 
+    /// <summary>
+    /// Lists at most one object of the app's bucket — what its token is allowed to do. (Listing all
+    /// buckets needs an account-wide token the app does not have, so it always failed.)
+    /// </summary>
     public async Task PingAsync(CancellationToken ct = default)
     {
-        await _s3.Value.ListBucketsAsync(ct);
+        await _s3.Value.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _opts.R2.BucketName, MaxKeys = 1 }, ct);
     }
 }

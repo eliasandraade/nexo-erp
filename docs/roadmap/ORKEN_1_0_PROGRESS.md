@@ -32,7 +32,8 @@
 | #64b | Auth: verificação em duas etapas (TOTP) (GitHub #65) | `baad911` | `AuthMfaTotp` (aditiva) | Em produção |
 | #65 | Relatórios do núcleo e painel com período (GitHub #66) | `0b260f9` | — | Em produção |
 | #66 | Fiscal: base (emissor, produto, cliente, CPF na nota) (GitHub #67) | `291acb5` | `FiscalFoundation` (aditiva) | Em produção |
-| #67 | CI do frontend e lockfile versionado | — | — | Em revisão |
+| #67 | CI do frontend e lockfile versionado (GitHub #68) | `be47ace` | — | Em produção |
+| #68 | Saúde e resiliência (live, ready, relatório) | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -1052,3 +1053,28 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
 - **Playwright no CI** com 1 nova tentativa (só no CI), para um runner lento não reprovar um PR que não mexeu no teste.
 - **Cadeia de dependências:** a instalação (CI e Docker) usa `--ignore-scripts`, então nenhum pacote roda script de instalação na máquina de build (os binários nativos vêm como pacotes opcionais do lockfile); o Playwright roda pelos scripts do projeto (`npm run e2e:install` / `e2e:critical`), sem `npx` baixando pacote na hora. Apontado pelo SonarCloud (S6505/S8543).
 - **Para regerar o lock** depois de mudar dependências: `docker run --rm -v "$PWD:/w" -w /w node:20-slim npm install --package-lock-only` dentro de `nexo-main`.
+
+- **Em produção** (merge `be47ace`): o log de build da Railway mostra `npm ci --ignore-scripts` a partir do lockfile e o `vite build` concluído; deploy `SUCCESS`; páginas 200. O hash do bundle saiu **idêntico** ao anterior (mesmo código, mesmas versões): o build ficou reproduzível.
+
+## PR 68 — Saúde e resiliência
+
+- **Três endpoints de saúde** (sem login, `Cache-Control: no-store`, resposta em JSON com status, nome de cada verificação, descrição curta fixa e duração — nunca texto de exceção, host ou string de conexão):
+  - `/health/live`: só diz que o processo responde. Não verifica nada, para que uma queda de banco ou de cache não faça a plataforma reiniciar um processo saudável;
+  - `/health/ready`: pode receber tráfego? 503 **só** se o PostgreSQL estiver fora; Redis e storage fora aparecem como `Degraded` (200);
+  - `/health`: relatório completo (inclui o armazenamento de anexos do interpretador), com os mesmos códigos do ready. Continua respondendo 200 enquanto o banco estiver de pé, então os smoke tests de deploy seguem iguais.
+- **Verificações:**
+  - PostgreSQL: `CanConnect` com limite de 3 s;
+  - Redis: `PING` com limite de 1 s; sem Redis configurado (dev, testes) é saudável; fora do ar, degrada (o cache já é fail-open);
+  - storage de objetos (R2): só quando o storage está ligado; o resultado vale por 1 minuto, porque a sonda roda muitas vezes e cada consulta ao R2 é cobrada.
+- **Correção encontrada no caminho:** o "ping" do R2 listava **todos os buckets da conta**, coisa que o token da aplicação não tem permissão de fazer, então falharia sempre. Agora lista no máximo um objeto do bucket da aplicação.
+- **Testes:** integração (live sem verificações; ready com Postgres saudável e sem o armazenamento de anexos; relatório completo sem vazar detalhes) e unitários (Redis não configurado, storage fora degrada e não é consultado de novo por 1 minuto, storage desligado não é consultado).
+- **Mudança de comportamento intencional:** antes, `/health` só olhava o armazenamento de anexos e respondia 200 mesmo com o banco fora; agora responde 503 quando o PostgreSQL cai.
+- **Correções da revisão independente** (sem bloqueadores):
+  - sonda cancelada pelo cliente não guarda mais "storage fora" por 1 minuto;
+  - o limite de 3 s do PostgreSQL cancela a tentativa de conexão (antes ela continuava rodando num contexto já descartado);
+  - nenhuma verificação anexa a exceção ao resultado (vai para o log), e o JSON troca qualquer descrição de verificação que lançou exceção por "check failed";
+  - o Redis é resolvido dentro da verificação (connection string inválida vira `Degraded`, não 500);
+  - o resultado guardado do storage é trocado de forma atômica;
+  - o armazenamento de anexos fora agora degrada de verdade (devolvia `Unhealthy` direto e derrubaria o `/health`);
+  - sondas de saúde bem-sucedidas saem do log de requisições (rodam a cada poucos segundos); falhas continuam como erro.
+- **Para o dono (configuração da Railway, não mudada aqui):** apontar o healthcheck do serviço da API para `/health/ready`.

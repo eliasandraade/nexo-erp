@@ -217,8 +217,16 @@ public static class DependencyInjection
                              ?? Path.Combine(AppContext.BaseDirectory, "wwwroot", "attachments");
         services.AddSingleton<IAttachmentStorage>(new LocalAttachmentStorage(attachmentsDir));
 
-        // Health checks
+        // Health checks (PR 68). "ready" = may this instance take traffic: only PostgreSQL can say
+        // no. Redis and storage degrade the report but never take the API out of rotation.
+        services.AddSingleton<Nexo.Infrastructure.Health.ObjectStorageHealthCheck>();
         services.AddHealthChecks()
+            .AddCheck<Nexo.Infrastructure.Health.DatabaseHealthCheck>(
+                "postgres", HealthStatus.Unhealthy, tags: [Nexo.Infrastructure.Health.HealthTags.Ready])
+            .AddCheck<Nexo.Infrastructure.Health.RedisHealthCheck>(
+                "redis", HealthStatus.Degraded, tags: [Nexo.Infrastructure.Health.HealthTags.Ready])
+            .AddCheck<Nexo.Infrastructure.Health.ObjectStorageHealthCheck>(
+                "object-storage", HealthStatus.Degraded, tags: [Nexo.Infrastructure.Health.HealthTags.Ready])
             .AddCheck<InterpreterStorageHealthCheck>(
                 "interpreter-storage",
                 HealthStatus.Degraded,
