@@ -6,11 +6,10 @@ Branches remotas **já incorporadas ao `master`** apagadas no PR 74. Nenhum comm
 git push origin <sha>:refs/heads/<nome>
 ```
 
-Ficaram: as branches `archive/*` (guardadas de propósito, não incorporadas), as de PR aberto e as não incorporadas.
+Ficaram: as `archive/*` (guardadas de propósito), as não incorporadas, as de PR aberto e duas incorporadas que ainda têm worktree local em uso (`codex/orken-experience`, `feature/delivery-zones-and-coupons`).
 
 | Branch | Último commit | Data |
 |---|---|---|
-| `codex/orken-experience` | `5a25ee7` | 2026-10-10 |
 | `docs/orken-product-status-2026-10` | `f0cdf01` | 2026-10-09 |
 | `feat/auth-hardening` | `35b500f` | 2026-10-15 |
 | `feat/auth-mfa` | `8bdc764` | 2026-10-15 |
@@ -42,7 +41,6 @@ Ficaram: as branches `archive/*` (guardadas de propósito, não incorporadas), a
 | `feat/service-self-cancel` | `19280c6` | 2026-10-15 |
 | `feat/stock-advanced` | `2f42728` | 2026-10-14 |
 | `feat/vertical-ledger` | `5144a63` | 2026-10-15 |
-| `feature/delivery-zones-and-coupons` | `5a63044` | 2026-05-01 |
 | `feature/orken-build-completion` | `627896c` | 2026-06-16 |
 | `feature/orken-service-closure-prA-barbearia` | `51aada0` | 2026-08-20 |
 | `feature/orken-service-closure-prB-financeiro` | `b0407f2` | 2026-08-20 |

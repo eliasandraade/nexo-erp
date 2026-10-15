@@ -1178,7 +1178,11 @@ Levantamento: **nenhum** campo da tela de Configurações tinha efeito — eram 
 - **Backend:** removido o "URL pré-assinada" do armazenamento local de anexos — devolvia um caminho que não é servido nem expira, e ninguém o chamava.
 - **Scripts soltos removidos:** `nexo-backend/test_dashboard.py` e `test_dash_prod.py`. O segundo lia as variáveis secretas da Railway para entrar como admin **em produção** — não deve existir no repositório.
 - **Documentação antiga arquivada** em `docs/archive/` (com índice do que era cada uma e onde está a versão atual): contexto "Nexo ERP" de abril, relatórios de segurança e testes de maio, a auditoria anterior a outubro, o retrato do código de junho e os planos já executados.
-- **Branches:** 72 branches remotas já incorporadas ao `master` foram apagadas; a lista com o SHA de cada uma (para recriar, se preciso) está em `docs/engineering/BRANCH_CLEANUP_2026-10.md`. Ficaram as `archive/*`, as não incorporadas e as de PR aberto (inclusive o GitHub #64, de outra sessão).
+- **Branches:** 70 branches remotas já incorporadas ao `master` foram apagadas; a lista com o SHA de cada uma (para recriar, se preciso) está em `docs/engineering/BRANCH_CLEANUP_2026-10.md`. Ficaram as `archive/*`, as não incorporadas, as de PR aberto (inclusive o GitHub #64, de outra sessão) e duas incorporadas que ainda têm worktree local em uso.
+- **Telas que não diziam a verdade** (apontadas pela auditoria final):
+  - excluir categoria chamava uma rota que nunca existiu (405); agora a categoria sai da lista (desativada) e os produtos continuam com ela;
+  - o painel de IA da plataforma prometia chaves "criptografadas com AES-256", mas elas são só codificadas; a tela agora avisa para não cadastrar chaves de produção;
+  - o "Resultado" por competência do financeiro não desconta o custo das mercadorias vendidas; agora se chama "Resultado (antes do CMV)" e explica que o lucro real é menor.
 - Rotas órfãs: nenhuma — toda rota do roteador tem tela, e as telas sem rota foram as removidas acima.
 - **Em produção** (merge `dc70835`): backend com deploy `SUCCESS` na Railway e frontend com bundle novo; `/configuracoes` 200, `/api/settings` 401 sem token, `/health` 20/20.
 

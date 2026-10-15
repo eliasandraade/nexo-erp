@@ -98,11 +98,11 @@ export default function FinanceiroPage() {
             <MetricBlock label="Entradas" value={formatCurrency(data.totalIn)} icon={ArrowDownLeft} />
             <MetricBlock label="Saídas" value={formatCurrency(data.totalOut)} icon={ArrowUpRight} />
             <MetricBlock
-              label="Resultado"
+              label={regime === "accrual" ? "Resultado (antes do CMV)" : "Resultado"}
               value={formatCurrency(data.result)}
               icon={Scale}
               variant={data.result < 0 ? "danger" : "default"}
-              caption={regime === "accrual" ? "Inclui o que está em aberto; compras de mercadoria vão para o estoque, não para o resultado" : "Só o que foi quitado"}
+              caption={regime === "accrual" ? "Inclui o que está em aberto. Ainda não desconta o custo das mercadorias vendidas (CMV): o lucro real é menor" : "Só o que foi quitado"}
             />
           </div>
 

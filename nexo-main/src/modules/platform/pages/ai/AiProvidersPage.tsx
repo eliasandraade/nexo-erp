@@ -104,7 +104,7 @@ function ApiKeyDialog({
               </button>
             </div>
             <p className="text-[11px] text-muted-foreground">
-              A chave é criptografada (AES-256) antes de ser armazenada. Apenas os últimos 4 caracteres ficam visíveis.
+              Atenção: a chave ainda é guardada sem criptografia (só codificada). Não cadastre chaves de produção até isso mudar. Apenas os últimos 4 caracteres ficam visíveis.
             </p>
           </div>
         </div>
@@ -265,7 +265,7 @@ export default function AiProvidersPage() {
         <ShieldAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
         <div>
           <p className="text-xs font-medium text-amber-800">
-            API Keys são armazenadas com criptografia AES-256.
+            API Keys ainda são guardadas sem criptografia — não cadastre chaves de produção. Nenhum provedor externo está ativo.
           </p>
           <p className="text-xs text-amber-700 mt-0.5">
             Apenas os últimos 4 caracteres são exibidos. Todas as alterações são registradas no audit trail.
