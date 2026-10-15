@@ -30,4 +30,7 @@ public class NoOpCacheService : ICacheService
 
     public Task SetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    public Task<bool> TrySetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default)
+        => Task.FromResult(true);
 }

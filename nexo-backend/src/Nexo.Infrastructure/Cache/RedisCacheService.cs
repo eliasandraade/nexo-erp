@@ -30,6 +30,8 @@ namespace Nexo.Infrastructure.Cache;
 ///   user:blocked:{userId}        → User block flag (no TTL)
 ///   refresh:valid:{jti}          → Valid refresh token data (TTL 7d)
 ///   refresh:blacklist:{jti}      → Revoked refresh token flag (TTL 7d)
+///   refresh:rotating:{jti}       → Single-flight claim on a refresh token's rotation (TTL 10s)
+///   refresh:rotated:{jti}        → Successor pair a rotated token resolves to (TTL 10s)
 /// </summary>
 public class RedisCacheService : ICacheService
 {
@@ -172,6 +174,21 @@ public class RedisCacheService : ICacheService
         catch (Exception ex)
         {
             TripCircuit(ex, "SETFLAG", key);
+        }
+    }
+
+    public async Task<bool> TrySetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default)
+    {
+        if (RedisUnavailable) return true;
+        try
+        {
+            var db = _redis.GetDatabase();
+            return await db.StringSetAsync(key, "1", ttl, When.NotExists).WaitAsync(_callTimeout, ct);
+        }
+        catch (Exception ex)
+        {
+            TripCircuit(ex, "SETNX", key);
+            return true;
         }
     }
 }

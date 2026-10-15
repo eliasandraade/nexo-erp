@@ -53,6 +53,45 @@ public class ConcurrencyTests
             response.StatusCode.Should().Be(HttpStatusCode.OK,
                 "concurrent refresh requests should all succeed");
         });
+
+        // Rotation is single-flight per token: every concurrent caller receives the SAME
+        // successor pair. Before the fix each overlapping request minted its own sibling
+        // refresh token (only one of which the session store tracked), and a request that
+        // landed after the winner's revoke got a 401 — the CI flake.
+        var bodies = await Task.WhenAll(results.Select(r =>
+            r.Content.ReadFromJsonAsync<RefreshResponse>()));
+        bodies.Select(b => b!.RefreshToken).Distinct().Should().ContainSingle(
+            "one refresh token must rotate into exactly one successor");
+
+        var successorRefresh = await RefreshAsync(bodies[0]!.RefreshToken);
+        successorRefresh.StatusCode.Should().Be(HttpStatusCode.OK,
+            "the shared successor must be a valid refresh token");
+    }
+
+    [Fact]
+    public async Task Refresh_LateArrivalWithRotatedToken_GetsSameSuccessor()
+    {
+        // Deterministic form of the race above: a second tab presents the token it read
+        // just before another tab rotated it, and the request reaches the server after the
+        // rotation completed. It must get the same successor, not a 401 (which makes the
+        // SPA clear the shared tokens and log every tab out).
+        var client = _factory.CreateApiClient();
+        var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
+            TestCredentials.AdminLoginPayload());
+        var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
+
+        var first = await RefreshAsync(loginBody!.RefreshToken);
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        var firstBody = await first.Content.ReadFromJsonAsync<RefreshResponse>();
+
+        var late = await RefreshAsync(loginBody.RefreshToken);
+        late.StatusCode.Should().Be(HttpStatusCode.OK,
+            "a refresh that lands right after its token was rotated must not fail");
+        var lateBody = await late.Content.ReadFromJsonAsync<RefreshResponse>();
+
+        lateBody!.RefreshToken.Should().Be(firstBody!.RefreshToken,
+            "the late caller must join the existing rotation, not mint a sibling token");
+        lateBody.AccessToken.Should().Be(firstBody.AccessToken);
     }
 
     [Fact]
@@ -200,7 +239,7 @@ public class ConcurrencyTests
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task RefreshTokenReplay_OldTokenAfterRotation_MayBePrevented()
+    public async Task RefreshTokenReplay_OldTokenAfterSuccessorUsed_IsRejected()
     {
         var client = _factory.CreateApiClient();
 
@@ -219,22 +258,15 @@ public class ConcurrencyTests
         // Refresh 2: Use new token to get another new token
         var refresh2 = await client.PostAsJsonAsync("/api/auth/refresh",
             TestCredentials.RefreshPayload(newRefreshToken1));
-        var body2 = await refresh2.Content.ReadFromJsonAsync<RefreshResponse>();
-        _ = body2; // consumed
+        refresh2.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Try to replay the OLD refresh token (before rotation)
+        // Replay the ORIGINAL token: its successor has been used, so the reuse grace is
+        // over and the token is dead for good.
         var replayResponse = await client.PostAsJsonAsync("/api/auth/refresh",
             TestCredentials.RefreshPayload(originalRefreshToken));
 
-        // Implementation choice:
-        // Option A: Reject (secure - prevents replay): 401
-        // Option B: Allow (simpler - accepts multiple valid refresh tokens): 200
-        if (replayResponse.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            // Good: Token rotation prevents replay
-            replayResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        }
-        // If 200, that's OK too (depends on refresh token strategy)
+        replayResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "a rotated token whose successor was already used must be rejected");
     }
 
     // ────────────────────────────────────────────────────────────────────────────

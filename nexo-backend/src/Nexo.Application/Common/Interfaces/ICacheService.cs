@@ -39,4 +39,13 @@ public interface ICacheService
     /// The value is just a marker ("1") — only existence matters.
     /// </summary>
     Task SetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default);
+
+    /// <summary>
+    /// Atomically sets a flag key with TTL only if it does not exist yet (Redis SET NX).
+    /// Returns true when this caller created the key — i.e. it won the claim.
+    /// Used for single-flight work such as refresh-token rotation. When the cache is
+    /// unavailable it returns true (fail-open): callers must still validate the state
+    /// they are about to change, the claim only coalesces concurrent callers.
+    /// </summary>
+    Task<bool> TrySetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default);
 }

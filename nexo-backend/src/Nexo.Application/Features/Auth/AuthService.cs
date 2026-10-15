@@ -113,9 +113,27 @@ public class AuthService
             session));
     }
 
+    // Reuse grace for a rotated refresh token. Tabs share one stored refresh token, so two
+    // tabs often refresh with the same token at nearly the same time; the one that lands
+    // after the rotation must get the same successor, not a 401 (the SPA clears the shared
+    // tokens on a failed refresh, logging every tab out). The grace never mints anything:
+    // it only hands back the successor already issued, and it ends early as soon as that
+    // successor is used or revoked.
+    private static readonly TimeSpan RefreshReuseGrace = TimeSpan.FromSeconds(10);
+
+    // How long a request waits for a concurrent rotation of the same token to finish.
+    private static readonly TimeSpan RotationWaitTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan RotationPollInterval = TimeSpan.FromMilliseconds(20);
+
     /// <summary>
     /// Rotates a refresh token: validates the old one, issues a new access token.
     /// Returns null if the refresh token is invalid, expired, or already revoked.
+    ///
+    /// Rotation is single-flight per token: one request claims the JTI and rotates it;
+    /// concurrent (or slightly late) requests with the same token receive that same
+    /// successor pair. Previously each overlapping request minted its own sibling token
+    /// (only one tracked by the session store, so the rest survived a session revoke),
+    /// and a request landing after the revoke got a spurious 401.
     /// </summary>
     public async Task<RefreshResponse?> RefreshAsync(
         RefreshTokenRequest request,
@@ -124,6 +142,44 @@ public class AuthService
         var claims = _jwt.ValidateRefreshToken(request.RefreshToken);
         if (claims is null) return null;
 
+        var rotatingKey = $"refresh:rotating:{claims.Jti}";
+        var deadline = DateTime.UtcNow + RotationWaitTimeout;
+        while (true)
+        {
+            var rotated = await _cache.GetAsync<RotatedRefreshEntry>($"refresh:rotated:{claims.Jti}", ct);
+            if (rotated is not null)
+            {
+                // Grace ends once the successor is used (rotated away) or revoked (logout,
+                // platform session revoke): from then on the old token is dead.
+                return await _cache.ExistsAsync($"refresh:valid:{rotated.SuccessorJti}", ct)
+                    ? rotated.Response
+                    : null;
+            }
+
+            if (await _cache.TrySetFlagAsync(rotatingKey, RefreshReuseGrace, ct))
+                break;
+
+            // Another request is rotating this token right now — wait for its result. If it
+            // fails it releases the claim and the next iteration claims it here instead.
+            if (DateTime.UtcNow >= deadline) return null;
+            await Task.Delay(RotationPollInterval, ct);
+        }
+
+        RefreshResponse? result = null;
+        try
+        {
+            result = await RotateAsync(claims, ct);
+            return result;
+        }
+        finally
+        {
+            if (result is null)
+                await _cache.RemoveAsync(rotatingKey, CancellationToken.None);
+        }
+    }
+
+    private async Task<RefreshResponse?> RotateAsync(RefreshTokenClaims claims, CancellationToken ct)
+    {
         // Check token is still in Redis (not revoked)
         var cacheKey = $"refresh:valid:{claims.Jti}";
         var entry = await _cache.GetAsync<RefreshTokenEntry>(cacheKey, ct);
@@ -161,8 +217,14 @@ public class AuthService
 
         var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, storeId, storeIds);
 
-        // Revoke old refresh token, store new one
-        await _cache.RemoveAsync(cacheKey, ct);
+        var response = new RefreshResponse(
+            tokens.AccessToken,
+            tokens.AccessTokenExpiresAt,
+            tokens.RefreshToken,
+            tokens.RefreshTokenExpiresAt);
+
+        // Store the new token and point the old one at it BEFORE revoking the old one, so a
+        // concurrent caller always finds either the old token valid or its successor.
         var newClaims = _jwt.ValidateRefreshToken(tokens.RefreshToken);
         if (newClaims is not null)
         {
@@ -171,16 +233,18 @@ public class AuthService
                 $"refresh:valid:{newClaims.Jti}",
                 new RefreshTokenEntry(user.Id, user.TenantId, storeId),
                 ttl, ct);
+            await _cache.SetAsync(
+                $"refresh:rotated:{claims.Jti}",
+                new RotatedRefreshEntry(newClaims.Jti, response),
+                RefreshReuseGrace, ct);
 
             // Update session JTI so platform can still revoke if needed
             await _sessions.TouchAsync(claims.Jti, newClaims.Jti, ct);
         }
 
-        return new RefreshResponse(
-            tokens.AccessToken,
-            tokens.AccessTokenExpiresAt,
-            tokens.RefreshToken,
-            tokens.RefreshTokenExpiresAt);
+        await _cache.RemoveAsync(cacheKey, ct);
+
+        return response;
     }
 
     /// <summary>
@@ -310,3 +374,6 @@ public class AuthService
 /// <summary>Serializable refresh token cache entry.</summary>
 /// <summary>StoreId: the store the token was issued for (null on entries cached before this field existed).</summary>
 public record RefreshTokenEntry(Guid UserId, Guid TenantId, Guid? StoreId = null);
+
+/// <summary>Successor issued for a rotated refresh token, served during the reuse grace.</summary>
+public record RotatedRefreshEntry(string SuccessorJti, RefreshResponse Response);
