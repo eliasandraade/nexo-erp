@@ -30,9 +30,15 @@ try
     {
         cfg.ReadFrom.Configuration(ctx.Configuration)
            .ReadFrom.Services(services)
-           .Enrich.FromLogContext()
-           .WriteTo.Console(
-               outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}");
+           .Enrich.FromLogContext();
+
+        // Structured logs: one JSON object per line outside development (RequestId, TenantId,
+        // UserId, Route… become searchable fields in the platform's log viewer); readable text in dev.
+        if (ctx.HostingEnvironment.IsDevelopment())
+            cfg.WriteTo.Console(
+                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj} {RequestId}{NewLine}{Exception}");
+        else
+            cfg.WriteTo.Console(new Serilog.Formatting.Compact.RenderedCompactJsonFormatter());
 
         if (!ctx.HostingEnvironment.IsDevelopment())
         {
@@ -46,6 +52,7 @@ try
     // ── Application layers ────────────────────────────────────────────────────
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+    Nexo.Api.Observability.OpenTelemetrySetup.AddOrkenTelemetry(builder.Services, builder.Configuration, builder.Environment);
     // Títulos vencidos: hourly Pending → Overdue. Service customer e-mails: confirmations and
     // reminders every two minutes. Not in Testing (tests call the jobs' passes directly).
     if (!builder.Environment.IsEnvironment("Testing"))
@@ -414,8 +421,8 @@ try
     // rejections) carries the Access-Control-Allow-Origin header.
     app.UseCors("NexoFrontend");
 
+    app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseMiddleware<ExceptionHandlingMiddleware>();
-    app.UseMiddleware<RequestLoggingRedactionMiddleware>();
 
     app.UseSerilogRequestLogging(opts =>
     {
@@ -423,6 +430,14 @@ try
             "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
         // health probes run every few seconds: keep them out of the log unless they fail
         opts.GetLevel = Nexo.Api.Health.HealthEndpoints.RequestLogLevel;
+        // ids only — never names, e-mails or bodies
+        opts.EnrichDiagnosticContext = (diag, http) =>
+        {
+            if (http.GetEndpoint() is Microsoft.AspNetCore.Routing.RouteEndpoint route)
+                diag.Set("Route", route.RoutePattern.RawText);
+            foreach (var (claim, field) in new[] { ("tenantId", "TenantId"), ("storeId", "StoreId"), ("userId", "UserId") })
+                if (http.User.FindFirst(claim)?.Value is { } value) diag.Set(field, value);
+        };
     });
 
     if (!app.Environment.IsProduction())

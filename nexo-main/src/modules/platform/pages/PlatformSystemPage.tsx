@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useApiEndpoints, usePlatformHealth } from "../hooks/usePlatformSystem";
 import { apiClient } from "@/services/api-client";
 import type { ApiEndpoint } from "../types";
+import { RecentErrors } from "../components/RecentErrors";
 
 // ─── Method badge ─────────────────────────────────────────────────────────────
 
@@ -224,6 +225,8 @@ export default function PlatformSystemPage() {
           )}
         </div>
       </div>
+
+      <RecentErrors />
 
       {/* Endpoints explorer */}
       <div className="bg-card border border-border rounded-lg overflow-hidden">

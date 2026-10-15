@@ -765,3 +765,21 @@ test('PDV: CPF na nota é conferido antes de finalizar',async({page})=>{
  await cpf.fill('52998224725');
  await expect(page.getByText('CPF/CNPJ inválido',{exact:false})).toHaveCount(0);
 });
+test('Plataforma: erros inesperados agrupados, com código e pilha',async({page})=>{
+ await prepare(page,{platform:true});
+ const API='http://localhost:5000/api';
+ const asked:string[]=[];
+ await page.route(`${API}/platform/health`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({status:'healthy',timestamp:new Date().toISOString(),checks:[{name:'database',status:'healthy',latencyMs:3}]})}));
+ await page.route(`${API}/platform/errors**`,r=>{asked.push(new URL(r.request().url()).searchParams.get('days')!);return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify([
+  {id:'e1',exceptionType:'System.InvalidOperationException',summary:'InvalidOperationException: Cliente *** sem estoque',route:'api/sales/{id:guid}/confirm',method:'POST',count:7,firstSeenAt:'2026-10-14T10:00:00Z',lastSeenAt:'2026-10-15T09:30:00Z',lastRequestId:'a1b2c3d4e5f60718293a4b5c6d7e8f90',lastTenantId:null,stackTop:'at Nexo.Application.Features.Sales.SaleService.ConfirmAsync()'}])});});
+ await page.goto('/platform/system');
+ await expect(page.getByRole('heading',{name:'Erros inesperados'})).toBeVisible();
+ await expect(page.getByText('InvalidOperationException: Cliente *** sem estoque')).toBeVisible();
+ await expect(page.getByText('7×')).toBeVisible();
+ await page.getByRole('button',{name:/InvalidOperationException/}).click();
+ await expect(page.getByText('a1b2c3d4e5f60718293a4b5c6d7e8f90')).toBeVisible();
+ await expect(page.getByText('SaleService.ConfirmAsync',{exact:false})).toBeVisible();
+ await page.getByRole('button',{name:'30 dias'}).click();
+ await expect.poll(()=>asked).toContain('30');
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

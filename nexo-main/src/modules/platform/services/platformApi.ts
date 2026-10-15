@@ -308,3 +308,22 @@ export async function fetchPlatformHealth(): Promise<PlatformHealth> {
 export async function fetchApiEndpoints(): Promise<ApiEndpoint[]> {
   return apiClient.get<ApiEndpoint[]>("/platform/system/endpoints");
 }
+
+/** An unexpected error (HTTP 500), grouped by kind — personal data is masked by the server. */
+export interface PlatformErrorEvent {
+  id: string;
+  exceptionType: string;
+  summary: string;
+  route: string;
+  method: string;
+  count: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  lastRequestId: string | null;
+  lastTenantId: string | null;
+  stackTop: string;
+}
+
+export async function fetchPlatformErrors(days: number): Promise<PlatformErrorEvent[]> {
+  return apiClient.get<PlatformErrorEvent[]>(`/platform/errors?days=${days}`);
+}

@@ -220,6 +220,10 @@ public static class DependencyInjection
         // Health checks (PR 68). "ready" = may this instance take traffic: only PostgreSQL can say
         // no. Redis and storage degrade the report but never take the API out of rotation.
         services.AddSingleton<Nexo.Infrastructure.Health.ObjectStorageHealthCheck>();
+
+        // Observability (PR 69): own metrics + error tracking in our database
+        services.AddSingleton<Nexo.Infrastructure.Observability.OrkenMetrics>();
+        services.AddSingleton<Nexo.Application.Common.Observability.IErrorTracker, Nexo.Infrastructure.Observability.ErrorTracker>();
         services.AddHealthChecks()
             .AddCheck<Nexo.Infrastructure.Health.DatabaseHealthCheck>(
                 "postgres", HealthStatus.Unhealthy, tags: [Nexo.Infrastructure.Health.HealthTags.Ready])

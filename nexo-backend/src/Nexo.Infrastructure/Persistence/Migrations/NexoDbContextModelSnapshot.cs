@@ -501,6 +501,90 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("customers", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Entities.ErrorEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ExceptionType")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("exception_type");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("fingerprint");
+
+                    b.Property<DateTime>("FirstSeenAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("first_seen_at");
+
+                    b.Property<string>("LastRequestId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("last_request_id");
+
+                    b.Property<DateTime>("LastSeenAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<Guid?>("LastTenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_tenant_id");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("method");
+
+                    b.Property<string>("Route")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("route");
+
+                    b.Property<string>("StackTop")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("stack_top");
+
+                    b.Property<string>("Summary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("summary");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Fingerprint")
+                        .IsUnique()
+                        .HasDatabaseName("ux_error_events_fingerprint");
+
+                    b.HasIndex("LastSeenAt")
+                        .HasDatabaseName("ix_error_events_last_seen_at");
+
+                    b.ToTable("error_events", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Entities.FeatureFlag", b =>
                 {
                     b.Property<Guid>("Id")

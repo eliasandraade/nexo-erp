@@ -33,7 +33,8 @@
 | #65 | Relatórios do núcleo e painel com período (GitHub #66) | `0b260f9` | — | Em produção |
 | #66 | Fiscal: base (emissor, produto, cliente, CPF na nota) (GitHub #67) | `291acb5` | `FiscalFoundation` (aditiva) | Em produção |
 | #67 | CI do frontend e lockfile versionado (GitHub #68) | `be47ace` | — | Em produção |
-| #68 | Saúde e resiliência (live, ready, relatório) | — | — | Em revisão |
+| #68 | Saúde e resiliência (live, ready, relatório) (GitHub #69) | `66ca9db` | — | Em produção |
+| #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) | — | `ObservabilityErrorEvents` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -1078,6 +1079,23 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - o armazenamento de anexos fora agora degrada de verdade (devolvia `Unhealthy` direto e derrubaria o `/health`);
   - sondas de saúde bem-sucedidas saem do log de requisições (rodam a cada poucos segundos); falhas continuam como erro.
 - **Para o dono (configuração da Railway, não mudada aqui):** apontar o healthcheck do serviço da API para `/health/ready`.
+- **Em produção** (merge `66ca9db`): `/health/ready` passou de 404 para 200 e respondeu PostgreSQL, Redis e storage (R2) `Healthy` — a nova sonda do R2 funciona com o token da aplicação; `/health/live` 200; `/health` 20/20.
+
+## PR 69 — Observabilidade
+
+- **ID de requisição de ponta a ponta:** cada requisição tem um `X-Request-Id` (o do chamador, se for sensato: 8–64 letras, números, `-`, `_` ou `.`; senão um novo). Ele vai no cabeçalho da resposta, em toda linha de log da requisição (`RequestId`) e no corpo de todo erro (`requestId`). Em erro 500 a tela mostra "código: …", para o suporte achar as linhas exatas.
+- **Logs estruturados:** fora do ambiente de desenvolvimento, uma linha JSON por evento (Serilog compact). O log de cada requisição leva `Route` (o modelo da rota, nunca o caminho com ids), `TenantId`, `StoreId` e `UserId` — só ids, nunca nome, e-mail ou corpo.
+- **Rastreamento de erros no nosso banco** (`error_events`), sem serviço de terceiro (Sentry etc. seria integração externa e segredo novo):
+  - cada erro 500 vira uma linha por tipo (tipo da exceção + rota + primeiros frames do nosso código), com contagem, primeira e última vez, último código de requisição e último tenant;
+  - a mensagem é mascarada antes de gravar: palavras com `@`, palavras com 6+ dígitos (CPF/telefone formatados), sequências de 4+ dígitos e valores entre aspas; erros de banco guardam só o tipo (a mensagem deles cita valores da linha); a pilha guarda só os frames;
+  - o rastreador grava num escopo próprio, com limite de 2 s, e nunca lança — registrar não pode virar um segundo erro;
+  - a equipe da plataforma vê em **Sistema → Erros inesperados** (24 h, 7 ou 30 dias), com pilha e código; usuários de tenant não têm acesso (`GET /api/platform/errors`).
+- **Métricas e tracing (OpenTelemetry), ligados só quando há destino:** com `OTEL_EXPORTER_OTLP_ENDPOINT` configurado, exporta métricas de HTTP (servidor e cliente), do runtime .NET e o contador próprio `orken.errors.unhandled`, e traces de uma amostra das requisições (`Observability:TraceSampleRatio`, padrão 10%, seguindo a decisão de quem chama; sondas de saúde nunca). Sem a variável, nada é coletado nem enviado. Pacotes OpenTelemetry 1.19 (o exportador 1.9 tinha alerta de segurança moderado).
+- **Removido:** `RequestLoggingRedactionMiddleware`, que lia o corpo das rotas de login sem redigir nada (nenhum log grava corpo). A mensagem de erro 500 passou a ser em português.
+- **Logs persistentes:** o arquivo de log dentro do container some a cada deploy; o que persiste é o `error_events` (no banco) e o histórico de logs da Railway (JSON pesquisável por `RequestId`).
+- **Migração `ObservabilityErrorEvents`** (aditiva: tabela nova), validada num Postgres descartável (sobe → desce → sobe).
+- **Testes:** unitários (mascaramento, erro de banco, mesma impressão digital para o mesmo erro, ID de chamador aceito só quando sensato); integração (cabeçalho em toda resposta, ID do chamador ecoado, ID injetado recusado, `requestId` no corpo do erro igual ao cabeçalho, duas ocorrências viram uma linha com contagem 2 e sem dado pessoal, só a plataforma lista); Playwright da seção de erros.
+- **Para o dono (opcional):** para ver métricas e traces, configurar um destino OTLP (Grafana Cloud, Honeycomb…) por variáveis `OTEL_*` na Railway.
 
 ## PR 65b — Relatórios: os das outras áreas na mesma página
 
