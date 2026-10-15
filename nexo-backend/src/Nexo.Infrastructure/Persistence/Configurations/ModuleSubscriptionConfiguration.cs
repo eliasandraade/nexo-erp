@@ -55,6 +55,7 @@ public class ModuleSubscriptionConfiguration : IEntityTypeConfiguration<ModuleSu
         builder.Property(x => x.CancelAtPeriodEnd)
             .HasColumnName("cancel_at_period_end")
             .HasDefaultValue(false);
+        builder.Property(x => x.PastDueSince).HasColumnName("past_due_since").HasColumnType("timestamptz");
 
         builder.Property(x => x.CanceledAt)
             .HasColumnName("canceled_at")

@@ -225,6 +225,7 @@ public static class IntegrationsDependencyInjection
 
         services.AddScoped<IBillingProvider, StripeProvider>();
         services.AddScoped<IStripeWebhookService, StripeWebhookService>();
+        services.AddScoped<Nexo.Application.Integrations.Billing.IStripeSubscriptionFetcher, StripeSubscriptionFetcher>();
         services.AddScoped<IModuleSubscriptionRepository, ModuleSubscriptionRepository>();
         services.AddScoped<IStripeProcessedEventRepository, StripeProcessedEventRepository>();
 

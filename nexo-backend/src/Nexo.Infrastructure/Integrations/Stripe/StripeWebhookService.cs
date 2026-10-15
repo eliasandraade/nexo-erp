@@ -19,6 +19,9 @@ public sealed class StripeWebhookService : IStripeWebhookService
     private readonly IModuleSubscriptionRepository      _subscriptions;
     private readonly IStripeProcessedEventRepository    _processedEvents;
     private readonly ITenantRepository                  _tenants;
+    private readonly IModuleAccessService               _access;
+    private readonly IStripeSubscriptionFetcher         _fetcher;
+    private readonly ICacheService                      _cache;
     private readonly ILogger<StripeWebhookService>     _logger;
 
     public StripeWebhookService(
@@ -26,8 +29,14 @@ public sealed class StripeWebhookService : IStripeWebhookService
         IModuleSubscriptionRepository subscriptions,
         IStripeProcessedEventRepository processedEvents,
         ITenantRepository tenants,
+        IModuleAccessService access,
+        IStripeSubscriptionFetcher fetcher,
+        ICacheService cache,
         ILogger<StripeWebhookService> logger)
     {
+        _access          = access;
+        _fetcher         = fetcher;
+        _cache           = cache;
         _options         = options.Value;
         _subscriptions   = subscriptions;
         _processedEvents = processedEvents;
@@ -111,27 +120,36 @@ public sealed class StripeWebhookService : IStripeWebhookService
         var stripeSubId = session.SubscriptionId;
         if (string.IsNullOrEmpty(stripeSubId)) return;
 
-        // Fetch subscription to get period dates (v52: period is on SubscriptionItem, not Subscription root)
-        var subService = new SubscriptionService();
-        var stripeSub  = await subService.GetAsync(stripeSubId, cancellationToken: ct);
-        var (periodStart, periodEnd) = GetPeriodFromSubscription(stripeSub);
+        // Read live: the event order doesn't matter, the subscription's current state does.
+        var stripeSub = await _fetcher.GetAsync(stripeSubId, ct);
+        var (periodStart, periodEnd) = (stripeSub.PeriodStart, stripeSub.PeriodEnd);
+        var status   = BillingRules.MapStripeStatus(stripeSub.Status);
 
-        var planType = MapPlanType(stripeSub.Items?.Data?.FirstOrDefault()?.Price?.Recurring?.Interval);
-        var priceId  = stripeSub.Items?.Data?.FirstOrDefault()?.Price?.Id ?? string.Empty;
+        var planType = MapPlanType(stripeSub.Interval);
+        var priceId  = stripeSub.PriceId;
         var existing = await FindExistingAsync(stripeSubId, tenantId, moduleKey, ct);
 
         if (existing != null)
         {
-            existing.SyncFromStripe(SubscriptionStatus.Active, periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
+            if (existing.StripeSubscriptionId != stripeSubId && existing.IsLiveInStripe)
+                _logger.LogError(
+                    "[Billing] Second Stripe subscription for an active module — tenant={TenantId}, module={Module}, old={Old}, new={New}. Cancel the old one in Stripe.",
+                    tenantId, moduleKey, existing.StripeSubscriptionId, stripeSubId);
+            // the row now follows the subscription this checkout created (before: it kept the old
+            // id, so later updates/cancellations of the new one never reached it)
+            existing.AttachStripe(stripeSubId, priceId, planType);
+            existing.SyncFromStripe(status, periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
         }
         else
         {
             var newSub = ModuleSubscription.CreateFromStripe(
                 tenantId, moduleKey, stripeSubId, priceId, planType, periodStart, periodEnd);
+            newSub.SyncFromStripe(status, periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);   // fail closed here too
             await _subscriptions.AddAsync(newSub, ct);
         }
 
         await _subscriptions.SaveChangesAsync(ct);
+        await InvalidateAsync(tenantId, moduleKey, ct);
         _logger.LogInformation("[Billing] Subscription activated — tenant={TenantId}, module={Module}", tenantId, moduleKey);
     }
 
@@ -145,8 +163,9 @@ public sealed class StripeWebhookService : IStripeWebhookService
         }
 
         var (periodStart, periodEnd) = GetPeriodFromSubscription(stripeSub);
-        sub.SyncFromStripe(MapStatus(stripeSub.Status), periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
+        sub.SyncFromStripe(BillingRules.MapStripeStatus(stripeSub.Status), periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
         await _subscriptions.SaveChangesAsync(ct);
+        await InvalidateAsync(sub.TenantId, sub.ModuleKey, ct);
     }
 
     private async Task HandleSubscriptionDeletedAsync(Subscription stripeSub, CancellationToken ct)
@@ -156,6 +175,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
 
         sub.Cancel();
         await _subscriptions.SaveChangesAsync(ct);
+        await InvalidateAsync(sub.TenantId, sub.ModuleKey, ct);
         _logger.LogInformation("[Billing] Subscription canceled — stripeId={StripeId}", stripeSub.Id);
     }
 
@@ -170,21 +190,28 @@ public sealed class StripeWebhookService : IStripeWebhookService
 
         sub.MarkPastDue();
         await _subscriptions.SaveChangesAsync(ct);
+        await InvalidateAsync(sub.TenantId, sub.ModuleKey, ct);
         _logger.LogWarning("[Billing] Payment failed — marked past_due for stripeId={StripeId}", subscriptionId);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// In Stripe.net v52, period dates live on SubscriptionItem, not on the Subscription root.
-    /// Falls back to DateTime.UtcNow if no item is found (defensive).
+    /// Every cache the module gates read: the per-module flag (in-memory), and the tenant's module
+    /// list and info in Redis (RequireModuleAttribute, tenant resolution → ICurrentTenant.ActiveModules).
     /// </summary>
+    private async Task InvalidateAsync(Guid tenantId, string moduleKey, CancellationToken ct)
+    {
+        _access.InvalidateCache(tenantId, moduleKey);
+        await _cache.RemoveAsync($"tenant:{tenantId}:modules", ct);
+        await _cache.RemoveAsync($"tenant:{tenantId}:info", ct);
+    }
+
+    /// <summary>Stripe.net v52: period dates live on the subscription item, not on the subscription.</summary>
     private static (DateTime PeriodStart, DateTime? PeriodEnd) GetPeriodFromSubscription(Subscription stripeSub)
     {
         var item = stripeSub.Items?.Data?.FirstOrDefault();
-        var start = item?.CurrentPeriodStart ?? DateTime.UtcNow;
-        var end   = item?.CurrentPeriodEnd;
-        return (start, end);
+        return (item?.CurrentPeriodStart ?? DateTime.UtcNow, item?.CurrentPeriodEnd);
     }
 
     private async Task<ModuleSubscription?> FindExistingAsync(
@@ -199,17 +226,6 @@ public sealed class StripeWebhookService : IStripeWebhookService
         var allForTenant = await _subscriptions.GetByTenantIdAsync(tenantId, ct);
         return allForTenant.FirstOrDefault(s => s.ModuleKey == moduleKey.ToLowerInvariant());
     }
-
-    private static SubscriptionStatus MapStatus(string stripeStatus)
-        => stripeStatus switch
-        {
-            "active"   => SubscriptionStatus.Active,
-            "trialing" => SubscriptionStatus.Trialing,
-            "past_due" => SubscriptionStatus.PastDue,
-            "canceled" => SubscriptionStatus.Canceled,
-            "unpaid"   => SubscriptionStatus.Suspended,
-            _          => SubscriptionStatus.Active,
-        };
 
     private static PlanType MapPlanType(string? interval)
         => interval switch

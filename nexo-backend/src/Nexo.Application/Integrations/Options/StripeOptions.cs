@@ -8,9 +8,9 @@ public sealed class StripeOptions
     public string WebhookSecret { get; init; } = string.Empty;
 
     /// <summary>
-    /// Maps "moduleKey:billingPeriod" → Stripe Price ID.
-    /// Examples: "restaurante:monthly" → "price_1ABC..."
-    ///           "build:annual"        → "price_1XYZ..."
+    /// Maps "moduleKey_billingPeriod" → Stripe Price ID (the key BillingController builds).
+    /// Examples: "restaurante_monthly" → "price_1ABC..."
+    ///           "build_annual"        → "price_1XYZ..."
     /// Configure per environment; leave empty until prices are created in Stripe Dashboard.
     /// </summary>
     public Dictionary<string, string> PriceIds { get; init; } = new();

@@ -37,10 +37,8 @@ public class TenantRepository : ITenantRepository
         CancellationToken ct = default)
     {
         return await _context.ModuleSubscriptions
-            .Where(s =>
-                s.TenantId == tenantId &&
-                (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Trialing) &&
-                (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd > DateTime.UtcNow))
+            .Where(s => s.TenantId == tenantId)
+            .Where(Nexo.Domain.Entities.ModuleSubscription.HasAccessAt(DateTime.UtcNow))
             .Select(s => s.ModuleKey)
             .ToListAsync(ct);
     }

@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -507,7 +507,8 @@ public class PlatformController : ControllerBase
 
         var activeModules = await _db.ModuleSubscriptions
             .IgnoreQueryFilters()
-            .Where(s => s.TenantId == tenantId && s.Status == SubscriptionStatus.Active)
+            .Where(s => s.TenantId == tenantId)
+            .Where(ModuleSubscription.HasAccessAt(DateTime.UtcNow))   // same rule as a real login
             .Select(s => s.ModuleKey)
             .ToListAsync(ct);
 

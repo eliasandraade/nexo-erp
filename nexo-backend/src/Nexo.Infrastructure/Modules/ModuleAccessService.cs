@@ -31,13 +31,10 @@ public class ModuleAccessService : IModuleAccessService
             return cached;
 
         // Fonte de verdade: banco (ModuleSubscription não é TenantEntity — sem GQF)
+        var key = moduleKey.ToLowerInvariant();
         var isActive = await _context.ModuleSubscriptions
-            .AnyAsync(s =>
-                s.TenantId  == tenantId &&
-                s.ModuleKey == moduleKey.ToLowerInvariant() &&
-                (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Trialing) &&
-                (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd > DateTime.UtcNow),
-                ct);
+            .Where(s => s.TenantId == tenantId && s.ModuleKey == key)
+            .AnyAsync(Nexo.Domain.Entities.ModuleSubscription.HasAccessAt(DateTime.UtcNow), ct);
 
         _cache.Set(cacheKey, isActive, CacheTtl);
         return isActive;

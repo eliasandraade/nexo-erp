@@ -1083,6 +1083,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("notes");
 
+                    b.Property<DateTime?>("PastDueSince")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("past_due_since");
+
                     b.Property<string>("PlanType")
                         .IsRequired()
                         .HasMaxLength(20)
