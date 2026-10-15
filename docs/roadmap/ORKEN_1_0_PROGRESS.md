@@ -35,7 +35,8 @@
 | #67 | CI do frontend e lockfile versionado (GitHub #68) | `be47ace` | — | Em produção |
 | #68 | Saúde e resiliência (live, ready, relatório) (GitHub #69) | `66ca9db` | — | Em produção |
 | #65b | Relatórios: atalhos para os das outras áreas (GitHub #71) | `c5b90bf` | — | Em produção |
-| #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) | — | `ObservabilityErrorEvents` (aditiva) | Em revisão |
+| #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) (GitHub #70) | `f7a106b` | `ObservabilityErrorEvents` (aditiva) | Em produção |
+| #70 | Storage privado (URL assinada, papéis por contexto, chaves do tenant) | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -1106,6 +1107,8 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - `X-Request-Id` exposto ao navegador por CORS; um `traceparent` de fora não força mais a amostragem;
   - seção de erros: grupo de períodos com rótulo, linha ligada aos detalhes (`aria-controls`), "rota não identificada" no lugar de "unmatched".
 - **Para o dono (opcional):** para ver métricas e traces, configurar um destino OTLP (Grafana Cloud, Honeycomb…) por variáveis `OTEL_*` na Railway.
+
+- **Em produção** (merge `f7a106b`): `GET /api/platform/errors` passou de 404 para 401 sem token (a API subiu com a migração); `X-Request-Id` enviado volta no cabeçalho; nos logs da Railway as linhas chegam como JSON interpretado (nível `[INFO]`/`[WARN]`, mensagem, `RequestId` nosso e `RequestPath` como modelo de rota, ex. `/api/sales/{id:guid}`); `/health` 20/20.
 
 ## PR 65b — Relatórios: os das outras áreas na mesma página
 
