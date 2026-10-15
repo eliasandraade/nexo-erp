@@ -4,7 +4,7 @@ export type LedgerRegime = "accrual" | "cash";
 
 export type FinancialCategory =
   | "Revenue" | "RevenueDeduction" | "Purchase" | "OperatingExpense" | "Payroll"
-  | "Commission" | "Tax" | "FinancialExpense" | "OtherIncome" | "OtherExpense";
+  | "Commission" | "Tax" | "FinancialExpense" | "FinancialIncome" | "OtherIncome" | "OtherExpense";
 
 export interface LedgerEntryDto {
   id: string;
@@ -15,7 +15,7 @@ export interface LedgerEntryDto {
   competenceDate: string;
   dueDate: string;
   paidAt: string | null;
-  status: "Pending" | "Overdue" | "Paid" | "Cancelled";
+  status: "Pending" | "Overdue" | "Paid" | "Cancelled" | "Abated";
   storeId: string | null;
   referenceType: string | null;
   referenceId: string | null;
@@ -53,6 +53,7 @@ export const CATEGORY_LABELS: Record<FinancialCategory, string> = {
   Commission: "Comissões",
   Tax: "Impostos e taxas",
   FinancialExpense: "Despesas financeiras",
+  FinancialIncome: "Receitas financeiras",
   OtherIncome: "Outras entradas",
   OtherExpense: "Outras saídas",
 };
@@ -64,3 +65,73 @@ export function getLedger(regime: LedgerRegime, from: Date, to: Date, category?:
   if (category) params.set("category", category);
   return apiClient.get<LedgerDto>(`/financial/ledger?${params.toString()}`);
 }
+
+// ── Títulos (contas a receber / a pagar) ─────────────────────────────────────
+
+export type TitleStatusFilter = "open" | "overdue" | "settled" | "all";
+
+export interface TitleDto {
+  id: string;
+  description: string;
+  customerId: string | null;
+  customerName: string | null;
+  amount: number;
+  dueDate: string;
+  competenceDate: string;
+  paidAt: string | null;
+  status: "Pending" | "Overdue" | "Paid" | "Cancelled" | "Abated";
+  daysOverdue: number;
+  category: FinancialCategory;
+  storeId: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  parentTransactionId: string | null;
+}
+
+export interface AgingDto {
+  notDue: number;
+  overdue1To30: number;
+  overdue31To60: number;
+  overdueOver60: number;
+  totalOpen: number;
+  openCount: number;
+  overdueCount: number;
+}
+
+export interface TitlesDto {
+  items: TitleDto[];
+  aging: AgingDto;
+  truncated: boolean;
+}
+
+export interface SettleRequest {
+  amount: number;
+  paidAt?: string;
+  interest?: number;
+  fine?: number;
+  discount?: number;
+}
+
+export interface CreateInstallmentsRequest {
+  transactionType: "Receivable" | "Payable";
+  totalAmount: number;
+  description: string;
+  firstDueDate: string;
+  installments: number;
+  category?: FinancialCategory;
+  customerId?: string | null;
+}
+
+export const RECEIVABLES_KEY = ["financial-receivables"] as const;
+
+export function getReceivables(status: TitleStatusFilter, customerId?: string) {
+  const params = new URLSearchParams({ status });
+  if (customerId) params.set("customerId", customerId);
+  return apiClient.get<TitlesDto>(`/financial/receivables?${params.toString()}`);
+}
+
+export const settleTransaction = (id: string, body: SettleRequest) =>
+  apiClient.post<unknown>(`/financial/transactions/${id}/settle`, body);
+
+export const createInstallments = (body: CreateInstallmentsRequest) =>
+  apiClient.post<unknown>("/financial/transactions/installments", body);

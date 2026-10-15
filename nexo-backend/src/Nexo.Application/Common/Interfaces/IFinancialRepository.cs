@@ -1,3 +1,4 @@
+using Nexo.Domain.Enums;
 using Nexo.Domain.Entities;
 
 namespace Nexo.Application.Common.Interfaces;
@@ -20,6 +21,14 @@ public interface IFinancialRepository
     /// <summary>Lançamentos created for a document (e.g. ReferenceType "Purchase" + the purchase id).</summary>
     Task<IReadOnlyList<FinancialTransaction>> GetTransactionsByReferenceAsync(string referenceType, Guid referenceId, CancellationToken ct = default);
     Task AddTransactionAsync(FinancialTransaction transaction, CancellationToken ct = default);
+
+    /// <summary>Títulos of one direction by status/due date/customer, soonest due first, at most <paramref name="take"/>.</summary>
+    Task<IReadOnlyList<FinancialTransaction>> GetTitlesAsync(
+        Nexo.Application.Features.Financial.TitlesFilter filter, DateTime todayStartUtc, int take, CancellationToken ct = default);
+    /// <summary>Due date and amount of every open título of one direction (for the aging).</summary>
+    Task<IReadOnlyList<Nexo.Application.Features.Financial.OpenTitleRow>> GetOpenTitleRowsAsync(
+        TransactionType type, Guid? customerId, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, string>> GetCustomerNamesAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
 
     /// <summary>Row lock (FOR UPDATE) on a lançamento, reloading it if tracked — serialises pay × cancel.</summary>
     Task LockTransactionAsync(Guid id, Guid tenantId, CancellationToken ct = default);

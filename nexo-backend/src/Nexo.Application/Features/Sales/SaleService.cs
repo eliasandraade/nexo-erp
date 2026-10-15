@@ -629,7 +629,7 @@ public class SaleService
             _currentTenant.Id, await DefaultAccountIdAsync(accountType, ct), type, category, amount, description,
             dueDate, _currentUser.UserId,
             referenceType: referenceType, referenceId: referenceId ?? sale.Id,
-            storeId: sale.StoreId, competenceDate: DateTime.UtcNow);
+            storeId: sale.StoreId, competenceDate: DateTime.UtcNow, customerId: sale.CustomerId);
 
     private async Task<Guid> DefaultAccountIdAsync(FinancialAccountType accountType, CancellationToken ct)
         => (await _financial.GetDefaultByTypeAsync(accountType, ct)

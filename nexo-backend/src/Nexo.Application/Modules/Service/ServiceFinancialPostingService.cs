@@ -54,7 +54,8 @@ public class ServiceFinancialPostingService
     public Task PostPaymentAsync(SvcPayment payment, string description, CancellationToken ct = default)
         => PostSettledAsync(
             FinancialAccountType.Receivable, TransactionType.Receivable, FinancialCategory.Revenue,
-            payment.Amount, payment.PaidAt, description, PaymentReference, payment.Id, StoreOf(payment.StoreId), ct);
+            payment.Amount, payment.PaidAt, description, PaymentReference, payment.Id, StoreOf(payment.StoreId), ct,
+            payment.CustomerId);
 
     /// <summary>
     /// Counter-entry for a voided payment: a settled outflow of the same amount classified as a
@@ -76,7 +77,8 @@ public class ServiceFinancialPostingService
         // Payment recorded before the financeiro mirror existed: still post the deduction.
         await PostSettledAsync(
             FinancialAccountType.Payable, TransactionType.Payable, FinancialCategory.RevenueDeduction,
-            payment.Amount, when, description, PaymentVoidReference, payment.Id, StoreOf(payment.StoreId), ct);
+            payment.Amount, when, description, PaymentVoidReference, payment.Id, StoreOf(payment.StoreId), ct,
+            payment.CustomerId);
     }
 
     /// <summary>Records a commission payout already handed over.</summary>
@@ -89,7 +91,7 @@ public class ServiceFinancialPostingService
     private async Task PostSettledAsync(
         FinancialAccountType accountType, TransactionType transactionType, FinancialCategory category,
         decimal amount, DateTime when, string description,
-        string referenceType, Guid referenceId, Guid? storeId, CancellationToken ct)
+        string referenceType, Guid referenceId, Guid? storeId, CancellationToken ct, Guid? customerId = null)
     {
         var transaction = FinancialTransaction.Create(
             tenantId:           _currentTenant.Id,
@@ -103,7 +105,8 @@ public class ServiceFinancialPostingService
             referenceType:      referenceType,
             referenceId:        referenceId,
             storeId:            storeId,
-            competenceDate:     when);
+            competenceDate:     when,
+            customerId:         customerId);
 
         transaction.MarkPaid(when);
         await _financial.AddTransactionAsync(transaction, ct);

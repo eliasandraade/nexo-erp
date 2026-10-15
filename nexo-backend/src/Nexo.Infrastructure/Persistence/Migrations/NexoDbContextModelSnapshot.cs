@@ -622,6 +622,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by_user_id");
 
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -639,6 +643,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("PaidAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("paid_at");
+
+                    b.Property<Guid?>("ParentTransactionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parent_transaction_id");
 
                     b.Property<Guid?>("ReferenceId")
                         .HasColumnType("uuid")
@@ -687,6 +695,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "CompetenceDate");
 
+                    b.HasIndex("TenantId", "CustomerId");
+
                     b.HasIndex("TenantId", "DueDate");
 
                     b.HasIndex("TenantId", "FinancialAccountId");
@@ -694,6 +704,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "PaidAt");
 
                     b.HasIndex("TenantId", "Status");
+
+                    b.HasIndex("TenantId", "TransactionType", "Status", "DueDate");
+
+                    b.HasIndex(new[] { "DueDate" }, "ix_financial_transactions_pending_due")
+                        .HasFilter("status = 'Pending'");
 
                     b.ToTable("financial_transactions", "nexo");
                 });

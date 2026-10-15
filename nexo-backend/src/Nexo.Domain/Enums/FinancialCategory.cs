@@ -12,7 +12,8 @@ namespace Nexo.Domain.Enums;
 ///   Payroll           — folha e encargos
 ///   Commission        — comissões e repasses
 ///   Tax               — impostos e taxas públicas
-///   FinancialExpense  — juros, multas, tarifas bancárias e de cartão
+///   FinancialExpense  — juros e multas pagos, descontos concedidos na baixa, tarifas bancárias e de cartão
+///   FinancialIncome   — juros e multas recebidos, descontos obtidos na baixa
 ///   OtherIncome       — outras entradas
 ///   OtherExpense      — outras saídas
 /// </summary>
@@ -26,6 +27,7 @@ public enum FinancialCategory
     Commission,
     Tax,
     FinancialExpense,
+    FinancialIncome,
     OtherIncome,
     OtherExpense,
 }
@@ -35,7 +37,7 @@ public static class FinancialCategoryRules
     /// <summary>Categories a person may choose for a manual lançamento of the given direction.</summary>
     public static bool IsAllowedForManualEntry(this FinancialCategory category, TransactionType type)
         => type == TransactionType.Receivable
-            ? category is FinancialCategory.Revenue or FinancialCategory.OtherIncome
+            ? category is FinancialCategory.Revenue or FinancialCategory.OtherIncome or FinancialCategory.FinancialIncome
             : category is FinancialCategory.OperatingExpense or FinancialCategory.Payroll
                 or FinancialCategory.Commission or FinancialCategory.Tax
                 or FinancialCategory.FinancialExpense or FinancialCategory.OtherExpense

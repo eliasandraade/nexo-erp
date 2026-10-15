@@ -20,6 +20,7 @@ const STATUS_LABEL: Record<LedgerEntryDto["status"], string> = {
   Overdue: "Vencido",
   Paid: "Quitado",
   Cancelled: "Cancelado",
+  Abated: "Abatido (desconto)",
 };
 
 const ORIGIN_LABEL: Record<string, string> = {

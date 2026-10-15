@@ -17,6 +17,9 @@ namespace Nexo.Domain.Entities;
 /// Estados: Pending/Overdue → Paid | Cancelled. Quitado não se cancela nem se edita: corrige-se com
 /// um estorno (<see cref="CreateReversal"/>), e o original continua visível.
 /// </summary>
+/// <summary>Result of a baixa: the open remainder and the abated (desconto) piece, when any.</summary>
+public record SettleOutcome(FinancialTransaction? Remainder, FinancialTransaction? Abated);
+
 public class FinancialTransaction : TenantEntity
 {
     private FinancialTransaction() { }
@@ -37,6 +40,10 @@ public class FinancialTransaction : TenantEntity
     public Guid? ReferenceId { get; private set; }
     /// <summary>Set on a counter-entry: the lançamento it reverses.</summary>
     public Guid? ReversesTransactionId { get; private set; }
+    /// <summary>Set on the remainder of a partial settlement (or on its juros/desconto): the título it came from.</summary>
+    public Guid? ParentTransactionId { get; private set; }
+    /// <summary>Cliente do título (a receber), quando houver.</summary>
+    public Guid? CustomerId { get; private set; }
     public Guid CreatedByUserId { get; private set; }
 
     // Navigation
@@ -56,7 +63,8 @@ public class FinancialTransaction : TenantEntity
         string? referenceType = null,
         Guid? referenceId = null,
         Guid? storeId = null,
-        DateTime? competenceDate = null)
+        DateTime? competenceDate = null,
+        Guid? customerId = null)
     {
         if (string.IsNullOrWhiteSpace(description))
             throw new DomainException("O lançamento precisa de uma descrição.");
@@ -75,8 +83,102 @@ public class FinancialTransaction : TenantEntity
             ReferenceType      = referenceType,
             ReferenceId        = referenceId,
             StoreId            = storeId is { } s && s != Guid.Empty ? s : null,
+            CustomerId         = customerId is { } c && c != Guid.Empty ? c : null,
         };
     }
+
+    /// <summary>
+    /// Baixa de um título em aberto: <paramref name="money"/> really moved, <paramref name="discount"/>
+    /// extinguishes part of it without money. A baixa below the balance splits the título — the open
+    /// remainder keeps due date, competência, category, store and customer. The money part is Paid
+    /// (counts on caixa); the desconto part is Abated (competência only), so receitas recebidas never
+    /// include a discount and undoing the origin reverses exactly the money.
+    /// </summary>
+    public SettleOutcome Settle(decimal money, decimal discount, DateTime paidAt)
+    {
+        if (!IsOpen)
+            throw new DomainException(Status == TransactionStatus.Paid
+                ? "Este lançamento já está quitado."
+                : "Este lançamento não está em aberto.");
+        money    = Math.Round(money, 2, MidpointRounding.AwayFromZero);
+        discount = Math.Round(discount, 2, MidpointRounding.AwayFromZero);
+        if (money < 0 || discount < 0)
+            throw new DomainException("Valores da baixa não podem ser negativos.");
+        var covered = money + discount;
+        if (covered <= 0)
+            throw new DomainException("A baixa precisa cobrir algum valor.");
+        if (covered > Amount)
+            throw new DomainException($"A baixa ({covered:F2}) passa do saldo do título ({Amount:F2}).");
+
+        var remainder = covered < Amount ? Child(Amount - covered) : null;
+        FinancialTransaction? abated = null;
+        if (money > 0)
+        {
+            if (discount > 0)
+            {
+                abated = Child(discount);
+                abated.Abate(paidAt);
+            }
+            Amount = money;
+            MarkPaid(paidAt);
+        }
+        else
+        {
+            Amount = discount;
+            Abate(paidAt);
+        }
+        return new SettleOutcome(remainder, abated);
+    }
+
+    /// <summary>A piece of this título (same facts), keeping the link to the original.</summary>
+    private FinancialTransaction Child(decimal amount) => new(TenantId)
+    {
+        FinancialAccountId  = FinancialAccountId,
+        TransactionType     = TransactionType,
+        Category            = Category,
+        Amount              = amount,
+        Description         = Description,
+        CompetenceDate      = CompetenceDate,
+        DueDate             = DueDate,
+        Status              = Status,             // an overdue remainder stays overdue
+        CreatedByUserId     = CreatedByUserId,
+        ReferenceType       = ReferenceType,
+        ReferenceId         = ReferenceId,
+        StoreId             = StoreId,
+        CustomerId          = CustomerId,
+        ParentTransactionId = ParentTransactionId ?? Id,
+    };
+
+    private void Abate(DateTime when)
+    {
+        Status = TransactionStatus.Abated;
+        PaidAt = when;
+        SetUpdatedAt();
+    }
+
+    /// <summary>
+    /// Juros/multa or desconto of a baixa, as its own lançamento: received interest is financial income,
+    /// a discount granted is a financial expense (mirrored for a payable). Juros moved money (Paid); a
+    /// desconto did not (Abated — competência only, matching the abated part of the título).
+    /// </summary>
+    public FinancialTransaction CreateSettlementAdjustment(
+        Guid financialAccountId, TransactionType direction, decimal amount, string description,
+        DateTime paidAt, Guid createdByUserId, bool moneyMoved)
+    {
+        var adjustment = Create(
+            TenantId, financialAccountId, direction,
+            direction == TransactionType.Receivable ? FinancialCategory.FinancialIncome : FinancialCategory.FinancialExpense,
+            amount, description, paidAt, createdByUserId,
+            referenceType: SettlementReference, referenceId: Id,
+            storeId: StoreId, competenceDate: paidAt, customerId: CustomerId);
+        adjustment.ParentTransactionId = ParentTransactionId ?? Id;
+        if (moneyMoved) adjustment.MarkPaid(paidAt);
+        else adjustment.Abate(paidAt);
+        return adjustment;
+    }
+
+    /// <summary>ReferenceType of the juros/multa/desconto lançamentos of a baixa.</summary>
+    public const string SettlementReference = "Settlement";
 
     /// <summary>
     /// Counter-entry for a settled lançamento: opposite direction, same amount and store, already
@@ -107,7 +209,8 @@ public class FinancialTransaction : TenantEntity
             referenceType,
             referenceId,
             original.StoreId,
-            competenceDate: when);
+            competenceDate: when,
+            customerId: original.CustomerId);
         reversal.ReversesTransactionId = original.Id;
         reversal.MarkPaid(when);
         return reversal;
@@ -143,7 +246,7 @@ public class FinancialTransaction : TenantEntity
         }
     }
 
-    public void Update(decimal amount, string description, DateTime dueDate)
+    public void Update(decimal amount, string description, DateTime dueDate, DateTime? todayStartUtc = null)
     {
         if (!IsOpen)
             throw new DomainException("Só um lançamento em aberto pode ser alterado.");
@@ -152,6 +255,9 @@ public class FinancialTransaction : TenantEntity
         Amount      = ValidAmount(amount);
         Description = description.Trim();
         DueDate     = dueDate;
+        // Renegotiated to a date still ahead: no longer overdue (the job re-flags it if it lapses).
+        if (Status == TransactionStatus.Overdue && dueDate >= (todayStartUtc ?? DateTime.UtcNow.Date))
+            Status = TransactionStatus.Pending;
         SetUpdatedAt();
     }
 
