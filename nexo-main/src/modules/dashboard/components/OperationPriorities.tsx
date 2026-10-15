@@ -6,7 +6,7 @@ export function OperationPriorities() {
   const { data, isLoading } = useDashboardSummary();
   if (isLoading || !data) return null;
   const issues = [
-    ...(data.totalSales >= 5 && data.cancelledCount / data.totalSales > 0.1 ? [{ title: "Cancelamentos acima de 10%", detail: `${data.cancelledCount} vendas canceladas em ${data.totalSales} vendas no período.`, to: "/vendas", action: "Revisar vendas" }] : []),
+    ...(data.totalSales + data.cancelledCount >= 5 && data.cancelledCount / (data.totalSales + data.cancelledCount) > 0.1 ? [{ title: "Cancelamentos acima de 10%", detail: `${data.cancelledCount} de ${data.totalSales + data.cancelledCount} vendas canceladas neste mês.`, to: "/vendas", action: "Revisar vendas" }] : []),
     ...(!data.hasOpenCashSession ? [{ title: "Caixa fechado", detail: "Abra uma sessão antes de finalizar vendas no PDV.", to: "/caixa", action: "Abrir caixa" }] : []),
     ...(data.zeroStockCount > 0 ? [{ title: `${data.zeroStockCount} produtos sem estoque`, detail: "Confira a disponibilidade antes de vender.", to: "/estoque", action: "Ver estoque" }] : []),
     ...(data.lowStockCount > 0 ? [{ title: `${data.lowStockCount} produtos abaixo do mínimo`, detail: "Revise a necessidade de reposição.", to: "/estoque", action: "Revisar estoque" }] : []),

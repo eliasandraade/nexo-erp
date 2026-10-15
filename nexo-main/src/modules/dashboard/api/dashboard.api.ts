@@ -38,6 +38,9 @@ export interface DashboardSummaryDto {
   lowStockCount:     number;
   stockAlerts:       StockAlertDto[];
   hasOpenCashSession: boolean;
+  /** Period of the sales figures (yyyy-MM-dd, Brazil): the 1st of the month to today. */
+  periodFrom:        string;
+  periodTo:          string;
 }
 
 export function getDashboardSummary(): Promise<DashboardSummaryDto> {

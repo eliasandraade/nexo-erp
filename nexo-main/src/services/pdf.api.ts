@@ -11,7 +11,12 @@ import { getAccessToken } from "./api-client";
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
-export async function downloadPdf(path: string, filename: string): Promise<void> {
+export function downloadPdf(path: string, filename: string): Promise<void> {
+  return downloadFile(path, filename, "Falha ao gerar PDF");
+}
+
+/** Fetches an authenticated file (PDF, CSV…) and hands it to the browser as a download. */
+export async function downloadFile(path: string, filename: string, failure: string): Promise<void> {
   const token = getAccessToken();
 
   const headers: Record<string, string> = {};
@@ -20,7 +25,14 @@ export async function downloadPdf(path: string, filename: string): Promise<void>
   const response = await fetch(`${BASE_URL}${path}`, { headers });
 
   if (!response.ok) {
-    throw new Error(`Falha ao gerar PDF: ${response.status}`);
+    let reason = String(response.status);
+    try {
+      const err = await response.json();
+      reason = err?.error ?? reason;
+    } catch {
+      // empty or non-JSON body
+    }
+    throw new Error(`${failure}: ${reason}`);
   }
 
   const blob = await response.blob();

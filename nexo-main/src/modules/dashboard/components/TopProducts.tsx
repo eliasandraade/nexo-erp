@@ -9,7 +9,7 @@ export function TopProducts() {
   return (
     <div className="bg-card rounded-md border border-border p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-foreground">Produtos mais vendidos</h3>
+        <h3 className="text-sm font-semibold text-foreground">Produtos mais vendidos no mês</h3>
       </div>
 
       {isLoading ? (

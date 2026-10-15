@@ -20,14 +20,10 @@ export function SalesChart() {
   const { data: summary, isLoading } = useDashboardSummary();
 
   const chartData = useMemo(() => {
+    // the server sends every one of the last 30 days (Brazil), sold or not
     const rows = summary?.salesByDay ?? [];
 
-    const cutoff = period === "7d"
-      ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-      : null;
-
-    return rows
-      .filter((r) => cutoff === null || r.date >= cutoff)
+    return (period === "7d" ? rows.slice(-7) : rows)
       .map((r) => {
         const d    = new Date(r.date + "T12:00:00");
         const name = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -62,10 +58,10 @@ export function SalesChart() {
 
       {isLoading ? (
         <Skeleton className="h-[260px] w-full" />
-      ) : chartData.length === 0 ? (
+      ) : chartData.every((r) => r.vendas === 0) ? (
         <div className="h-[260px] flex flex-col items-center justify-center gap-2">
-          <p className="text-sm font-medium text-foreground">Nenhuma venda ainda.</p>
-          <p className="text-xs text-muted-foreground">Não há registros no período selecionado.</p>
+          <p className="text-sm font-medium text-foreground">Nenhuma venda nos últimos {period === "7d" ? "7" : "30"} dias.</p>
+          <p className="text-xs text-muted-foreground">As vendas finalizadas no PDV aparecem aqui, dia a dia.</p>
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={260}>

@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Reports;
 using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
@@ -9,59 +8,65 @@ namespace Nexo.Infrastructure.Reports;
 public class ReportsService
 {
     private readonly NexoDbContext _db;
-    private readonly ICurrentTenant _currentTenant;
+    private readonly SalesAnalytics _sales;
 
-    public ReportsService(NexoDbContext db, ICurrentTenant currentTenant)
+    public ReportsService(NexoDbContext db, SalesAnalytics sales)
     {
-        _db            = db;
-        _currentTenant = currentTenant;
+        _db    = db;
+        _sales = sales;
     }
 
-    public async Task<SalesReportDto> GetSalesReportAsync(
-        DateOnly from, DateOnly to, CancellationToken ct = default)
+    public async Task<SalesReportDto> GetSalesReportAsync(SalesWindow window, CancellationToken ct = default)
     {
-        var fromUtc = from.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var toUtc   = to.ToDateTime(TimeOnly.MaxValue, DateTimeKind.Utc);
-
-        var sales = await _db.Sales
-            .Where(s => s.CreatedAt >= fromUtc && s.CreatedAt <= toUtc && s.Status != SaleStatus.Draft)
-            .AsNoTracking()
-            .Select(s => new { s.Total, s.ReturnedAmount, s.Status })
-            .ToListAsync(ct);
-
-        // Realized sales net of devoluções; drafts (abandoned checkouts) are not sales.
-        var active    = sales.Where(s => s.Status is SaleStatus.Confirmed or SaleStatus.Paid or SaleStatus.PartiallyReturned).ToList();
-        var cancelled = sales.Where(s => s.Status == SaleStatus.Cancelled).ToList();
-        var revenue   = active.Sum(s => s.Total - s.ReturnedAmount);
+        // Sequential — DbContext is not thread-safe for concurrent queries
+        var k        = await _sales.KpisAsync(window, ct);
+        var days     = await _sales.ByDayAsync(window, ct);
+        var products = await _sales.TopProductsAsync(window, 10, ct);
+        var sellers  = await _sales.SellersAsync(window, 10, ct);
+        var payments = await _sales.PaymentsAsync(window, ct);
 
         return new SalesReportDto(
-            TotalSales:     sales.Count,
-            CancelledSales: cancelled.Count,
-            TotalRevenue:   Math.Round(revenue, 2),
-            AverageTicket:  active.Count > 0 ? Math.Round(revenue / active.Count, 2) : 0,
-            CancelledValue: Math.Round(cancelled.Sum(s => s.Total), 2),
-            From:           from.ToString("yyyy-MM-dd"),
-            To:             to.ToString("yyyy-MM-dd"));
+            TotalSales:     k.Sales,
+            CancelledSales: k.Cancelled,
+            TotalRevenue:   k.Net,
+            AverageTicket:  k.AverageTicket,
+            CancelledValue: k.CancelledValue,
+            From:           window.From.ToString("yyyy-MM-dd"),
+            To:             window.To.ToString("yyyy-MM-dd"),
+            GrossRevenue:   k.Gross,
+            ReturnedValue:  k.ReturnedValue,
+            ReturnedSales:  k.Returned,
+            DiscountValue:  k.Discounts,
+            Days:           days,
+            TopProducts:    products,
+            Sellers:        sellers,
+            Payments:       payments);
     }
 
+    public Task ExportSalesAsync(SalesWindow window, Stream output, CancellationToken ct = default)
+        => SalesCsv.WriteAsync(output, _sales.ExportRows(window), ct);
+
+    /// <summary>
+    /// Stock health of the current store. Alerts use the quantity available to sell (on hand minus
+    /// reserved) — the same rule as the dashboard; the value is what is on hand, at cost.
+    /// </summary>
     public async Task<InventoryReportDto> GetInventoryReportAsync(CancellationToken ct = default)
     {
         var items = await _db.StockItems
-            .Include(s => s.Product)
             .Where(s => s.Product != null && s.Product.IsActive)
             .AsNoTracking()
             .Select(s => new
             {
-                s.CurrentQuantity,
+                Available = s.CurrentQuantity - s.ReservedQuantity,
                 MinStock  = s.Product!.MinStockQuantity,
                 CostValue = s.CurrentQuantity * s.Product!.CostPrice
             })
             .ToListAsync(ct);
 
-        var zero   = items.Count(i => i.CurrentQuantity == 0);
-        var low    = items.Count(i => i.CurrentQuantity > 0
+        var zero   = items.Count(i => i.Available <= 0);
+        var low    = items.Count(i => i.Available > 0
                                    && i.MinStock.HasValue
-                                   && i.CurrentQuantity < i.MinStock.Value);
+                                   && i.Available < i.MinStock.Value);
         var normal = items.Count - zero - low;
         var total  = items.Sum(i => i.CostValue);
 
@@ -74,10 +79,13 @@ public class ReportsService
             AlertCount:      zero + low);
     }
 
+    /// <summary>
+    /// Customers are shared by every store of the company; who bought (and how much) is this store's
+    /// realized sales. "New this month" follows the Brazil calendar.
+    /// </summary>
     public async Task<CustomerReportDto> GetCustomerReportAsync(CancellationToken ct = default)
     {
-        var now        = DateTime.UtcNow;
-        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var monthStart = SalesWindow.MonthToDate().FromUtc;
 
         var total = await _db.Customers
             .CountAsync(c => c.IsActive, ct);
@@ -85,14 +93,16 @@ public class ReportsService
         var newThisMonth = await _db.Customers
             .CountAsync(c => c.IsActive && c.CreatedAt >= monthStart, ct);
 
-        var withPurchases = await _db.Sales
-            .Where(s => (s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned) && s.CustomerId != null)
+        var realized = _db.Sales.AsNoTracking()
+            .Where(s => (s.Status == SaleStatus.Confirmed || s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned)
+                     && s.CustomerId != null);
+
+        var withPurchases = await realized
             .Select(s => s.CustomerId)
             .Distinct()
             .CountAsync(ct);
 
-        var avgPurchase = await _db.Sales
-            .Where(s => (s.Status == SaleStatus.Paid || s.Status == SaleStatus.PartiallyReturned) && s.CustomerId != null)
+        var avgPurchase = await realized
             .Select(s => (decimal?)(s.Total - s.ReturnedAmount))
             .AverageAsync(ct) ?? 0m;
 

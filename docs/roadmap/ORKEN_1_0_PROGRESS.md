@@ -29,7 +29,8 @@
 | #62 | Billing: cobrança de verdade (preços, planos, meios de pagamento) | — | — | **Aguardando decisão do dono** (preços, vitalício, Pix/boleto, trial, pacote) |
 | #63 | Auth: recuperação de senha e controle de sessões (GitHub #62) | `e64cd63` | `AuthPasswordReset` (aditiva) | Em produção |
 | #64a | Auth: bloqueio por tentativas, auditoria de login, troca obrigatória, convite (GitHub #63) | `e5ec8ca` | — | Em produção |
-| #64b | Auth: verificação em duas etapas (TOTP) | — | `AuthMfaTotp` (aditiva) | Em revisão |
+| #64b | Auth: verificação em duas etapas (TOTP) (GitHub #65) | `baad911` | `AuthMfaTotp` (aditiva) | Em produção |
+| #65 | Relatórios do núcleo e painel com período | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -969,3 +970,18 @@ O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnab
   - **frontend:** o erro traz o `code` do servidor (desafio expirado detectado por código, não pelo texto); chamadas de login e de verificação não tentam renovar token num 401; 429 sem corpo ganha mensagem; o "Voltar" limpa o estado; o erro fica ligado ao campo (`aria-describedby`).
 - **Fica para depois (prioritário):** verificação em duas etapas no login da plataforma (operadores Orken) e na impersonação. A senha de um super-admin continua sendo a chave de acesso a qualquer tenant.
 - **Conflito anotado:** o PR do GitHub #64 (correção do refresh concorrente, aberto por outra sessão) toca `AuthService` e `ICacheService` e precisa de rebase sobre este.
+- **Em produção** (merge `baad911`): `GET /api/auth/mfa` passou de 404 para 401 sem token, o bundle do frontend trocou e `/health` respondeu 20/20. Antes do merge, o GitGuardian apontou um segredo Base32 de exemplo fixo no Playwright: ele passou a ser gerado na hora e o branch foi recompactado (sem o segredo no histórico). O Sonar apontou `HMACSHA1` (S4790): o código usa `IncrementalHash` com SHA-1, que é o que o RFC 6238 e os aplicativos autenticadores exigem; como HMAC, não herda a fraqueza de colisão do SHA-1.
+
+## PR 65 — Relatórios do núcleo e painel com período
+
+- **Uma definição de "vendas do período"** (`SalesAnalytics`), usada pelo painel e pelos relatórios, para que os dois nunca discordem:
+  - a venda pertence ao **dia do Brasil** em que foi finalizada (antes, ao dia em UTC: uma venda às 22h do dia 31 caía no dia 1º);
+  - **vendas** = confirmadas, pagas ou devolvidas em parte; as devolvidas por inteiro e as canceladas ficam à parte;
+  - **faturamento** = vendido − devolvido, com a devolução abatida da venda a que pertence;
+  - **produtos**: o desconto da venda é repartido entre os itens, como na devolução, então a soma dos produtos bate com o faturamento.
+- **Painel (`/dashboard`):** os números de vendas são **do mês até hoje** (antes somavam todo o histórico com a tela dizendo "no período"). A resposta diz o período (`periodFrom`/`periodTo`), o gráfico traz os 30 dias inteiros (dias sem venda com zero) e o cache passa a virar à meia-noite do Brasil. A taxa de cancelamento usa vendas + canceladas como base.
+- **Relatório de vendas (`GET /api/reports/sales?from&to`):** período em dias do Brasil (padrão: mês até hoje; até 366 dias; data inválida → 400 com mensagem, não mais 500). Traz vendas, faturamento, bruto, devolvido, ticket, descontos dados, canceladas, dia a dia, 10 produtos, vendedores e formas de pagamento.
+- **Planilha (`GET /api/reports/sales/export`):** CSV que o Excel em português abre com dois cliques (UTF-8 com BOM, `;`, vírgula decimal, hora do Brasil). Nomes que começam com `=`, `+`, `-` ou `@` ganham apóstrofo, para a planilha não executar fórmula vinda de um cadastro.
+- **Estoque e clientes:** os alertas do relatório usam o disponível (em mão − reservado), como o painel; "novos no mês" segue o calendário do Brasil; "já compraram" conta as vendas confirmadas também (antes, só as pagas).
+- **Tela `/relatorios`** (gerência): Hoje, 7 dias, Este mês, Mês passado ou datas escolhidas (com aviso antes de pedir um período inválido); faturamento por dia, produtos, vendedores, formas de pagamento com participação, estoque de agora e clientes; botão "Exportar planilha".
+- **Testes:** unitários do período (calendário do Brasil, limites, padrão) e da planilha (fórmula, separador); integração: venda às 23h30 cai no dia certo, devolução abatida, cancelada à parte, formas de pagamento, produtos somando o líquido, planilha com as três vendas, períodos inválidos → 400, painel informando o período e os 30 dias; Vitest dos atalhos de período; Playwright da tela (período inválido, download, 390 px).

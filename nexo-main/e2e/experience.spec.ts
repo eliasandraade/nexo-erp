@@ -674,3 +674,36 @@ test('Conta: ativar a verificação em duas etapas no perfil',async({page})=>{
  await expect(page.getByRole('button',{name:/Já guardei/})).toBeVisible();
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Relatórios: vendas do período sem as devoluções, estoque, clientes e planilha',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api';
+ const asked:string[]=[];
+ const report=(from:string,to:string)=>({totalSales:2,cancelledSales:1,totalRevenue:75,averageTicket:37.5,cancelledValue:12,from,to,grossRevenue:120,returnedValue:45,returnedSales:0,discountValue:10,
+  days:[{date:from,sales:2,revenue:75}],topProducts:[{productId:'p1',productName:'Camiseta básica',quantity:1,revenue:45},{productId:'p2',productName:'Boné',quantity:1,revenue:30}],
+  sellers:[{sellerName:'Ana Souza',sales:2,revenue:75}],payments:[{method:'Cash',sales:1,amount:90},{method:'Pix',sales:1,amount:30}]});
+ await page.route(`${API}/reports/sales?**`,r=>{const u=new URL(r.request().url());asked.push(`${u.searchParams.get('from')}..${u.searchParams.get('to')}`);return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(report(u.searchParams.get('from')!,u.searchParams.get('to')!))});});
+ await page.route(`${API}/reports/sales/export?**`,r=>r.fulfill({status:200,contentType:'text/csv',headers:{'Content-Disposition':'attachment; filename=vendas.csv'},body:'Número;Data'}));
+ await page.route(`${API}/reports/inventory`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({totalProducts:40,zeroStockCount:3,lowStockCount:2,normalCount:35,totalStockValue:5230.5,alertCount:5})}));
+ await page.route(`${API}/reports/customers`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({totalCustomers:120,newThisMonth:8,withPurchases:64,averagePurchaseValue:88.9})}));
+ await page.goto('/relatorios');
+ await expect(page.getByRole('heading',{name:'Relatórios',exact:true})).toBeVisible();
+ await expect(page.getByText('R$ 120,00 vendidos − R$ 45,00 devolvidos')).toBeVisible();
+ await expect(page.getByText('fora do faturamento',{exact:false})).toBeVisible();
+ await expect(page.getByRole('cell',{name:'Camiseta básica'})).toBeVisible();
+ await expect(page.getByText('Dinheiro',{exact:true})).toBeVisible();
+ await expect(page.getByText('R$ 5.230,50')).toBeVisible();
+ await expect(page.getByText('Novos neste mês')).toBeVisible();
+ await page.getByRole('tab',{name:'Escolher datas'}).click();
+ await page.getByLabel('De').fill('2026-03-10');
+ await page.getByLabel('Até').fill('2026-03-01');
+ await expect(page.getByText('A data final vem antes da inicial.')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Ver período'})).toBeDisabled();
+ await page.getByLabel('Até').fill('2026-03-31');
+ await page.getByRole('button',{name:'Ver período'}).click();
+ await expect.poll(()=>asked).toContain('2026-03-10..2026-03-31');
+ await expect(page.getByText('Período: 10/03/2026 a 31/03/2026')).toBeVisible();
+ const download=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Exportar planilha'}).click();
+ expect((await download).suggestedFilename()).toBe('vendas_2026-03-10_a_2026-03-31.csv');
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});
