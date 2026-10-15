@@ -17,4 +17,10 @@ public interface IStorageProvider
 
     /// <summary>Verifies storage backend is reachable.</summary>
     Task PingAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// A signed GET URL for the key, valid for <paramref name="ttl"/>. Computed locally (no request
+    /// to the provider). Private keys ("private/…") are signed against the private bucket.
+    /// </summary>
+    string GetSignedUrl(string key, TimeSpan ttl);
 }

@@ -1,3 +1,4 @@
+using Nexo.Infrastructure.Persistence;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -141,6 +142,33 @@ public class BuildFlowTests
         var dup = await _client.PostAsJsonAsync($"/api/v1/build/projects/{id}/daily-logs",
             new { date, notes = "Segundo registro mesma data." });
         dup.IsSuccessStatusCode.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Site_photos_only_take_this_tenants_private_daily_log_keys()
+    {
+        await AuthenticateAsync();
+        var project = await CreateProjectAsync();
+        var id = project.GetProperty("id").GetGuid();
+        var log = await (await _client.PostAsJsonAsync($"/api/v1/build/projects/{id}/daily-logs",
+            new { date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-20)).ToString("yyyy-MM-dd"), notes = "Fotos" }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        var logId = log.GetProperty("id").GetGuid();
+
+        Guid tenantId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            tenantId = (await db.Users.IgnoreQueryFilters().FirstAsync(u => u.Login == TestCredentials.AdminLogin)).TenantId;
+        }
+
+        foreach (var bad in new[] { $"tenants/{tenantId}/build/daily-logs/a.jpg", $"private/tenants/{Guid.NewGuid()}/build/daily-logs/a.jpg", "https://x.example/a.jpg" })
+            (await _client.PostAsJsonAsync($"/api/v1/build/daily-logs/{logId}/photos", new { storageKey = bad, caption = "x" }))
+                .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, bad);
+
+        var ok = await _client.PostAsJsonAsync($"/api/v1/build/daily-logs/{logId}/photos",
+            new { storageKey = $"private/tenants/{tenantId}/build/daily-logs/a.jpg", caption = "Fundação" });
+        ok.IsSuccessStatusCode.Should().BeTrue(await ok.Content.ReadAsStringAsync());
     }
 
     // ── PR 60: closure ────────────────────────────────────────────────────────

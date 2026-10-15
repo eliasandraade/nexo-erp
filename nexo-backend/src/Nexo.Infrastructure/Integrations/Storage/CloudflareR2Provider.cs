@@ -49,7 +49,7 @@ public sealed class CloudflareR2Provider : IStorageProvider
 
         var putRequest = new PutObjectRequest
         {
-            BucketName            = _opts.R2.BucketName,
+            BucketName            = BucketFor(request.ObjectKey),
             Key                   = request.ObjectKey,
             InputStream           = request.Content,
             ContentType           = request.ContentType,
@@ -59,7 +59,10 @@ public sealed class CloudflareR2Provider : IStorageProvider
 
         await _s3.Value.PutObjectAsync(putRequest, ct);
 
-        var publicUrl = $"{_opts.R2.PublicUrl.TrimEnd('/')}/{request.ObjectKey}";
+        // private files never get a public URL — only signed ones, on read
+        var publicUrl = StorageKeys.IsPrivate(request.ObjectKey)
+            ? string.Empty
+            : $"{_opts.R2.PublicUrl.TrimEnd('/')}/{request.ObjectKey}";
 
         _logger.LogInformation("[Storage] Uploaded {Key} → {PublicUrl}", request.ObjectKey, publicUrl);
 
@@ -71,7 +74,7 @@ public sealed class CloudflareR2Provider : IStorageProvider
         _logger.LogInformation("[Storage] Deleting {Key}", key);
         try
         {
-            await _s3.Value.DeleteObjectAsync(_opts.R2.BucketName, key, ct);
+            await _s3.Value.DeleteObjectAsync(BucketFor(key), key, ct);
             _logger.LogInformation("[Storage] Deleted {Key}", key);
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -79,6 +82,21 @@ public sealed class CloudflareR2Provider : IStorageProvider
             _logger.LogWarning("[Storage] Delete: key not found {Key}", key);
         }
     }
+
+    public string GetSignedUrl(string key, TimeSpan ttl)
+        => _s3.Value.GetPreSignedURL(new GetPreSignedUrlRequest
+        {
+            BucketName = BucketFor(key),
+            Key        = key,
+            Verb       = HttpVerb.GET,
+            Expires    = DateTime.UtcNow.Add(ttl),
+            Protocol   = Protocol.HTTPS,
+        });
+
+    private string BucketFor(string key)
+        => StorageKeys.IsPrivate(key) && !string.IsNullOrWhiteSpace(_opts.R2.PrivateBucketName)
+            ? _opts.R2.PrivateBucketName
+            : _opts.R2.BucketName;
 
     /// <summary>
     /// Lists at most one object of the app's bucket — what its token is allowed to do. (Listing all

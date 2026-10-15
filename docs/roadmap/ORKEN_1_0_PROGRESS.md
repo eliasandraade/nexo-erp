@@ -35,7 +35,8 @@
 | #67 | CI do frontend e lockfile versionado (GitHub #68) | `be47ace` | — | Em produção |
 | #68 | Saúde e resiliência (live, ready, relatório) (GitHub #69) | `66ca9db` | — | Em produção |
 | #65b | Relatórios: atalhos para os das outras áreas (GitHub #71) | `c5b90bf` | — | Em produção |
-| #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) | — | `ObservabilityErrorEvents` (aditiva) | Em revisão |
+| #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) (GitHub #70) | `f7a106b` | `ObservabilityErrorEvents` (aditiva) | Em produção |
+| #70 | Storage privado (URL assinada, papéis por contexto, chaves do tenant) | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -1107,6 +1108,8 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - seção de erros: grupo de períodos com rótulo, linha ligada aos detalhes (`aria-controls`), "rota não identificada" no lugar de "unmatched".
 - **Para o dono (opcional):** para ver métricas e traces, configurar um destino OTLP (Grafana Cloud, Honeycomb…) por variáveis `OTEL_*` na Railway.
 
+- **Em produção** (merge `f7a106b`): `GET /api/platform/errors` passou de 404 para 401 sem token (a API subiu com a migração); `X-Request-Id` enviado volta no cabeçalho; nos logs da Railway as linhas chegam como JSON interpretado (nível `[INFO]`/`[WARN]`, mensagem, `RequestId` nosso e `RequestPath` como modelo de rota, ex. `/api/sales/{id:guid}`); `/health` 20/20.
+
 ## PR 65b — Relatórios: os das outras áreas na mesma página
 
 - A missão pediu relatórios de vendas, caixa, financeiro, estoque, produto, cliente, profissionais, Service, restaurante e Build. Os que já existiam ficavam espalhados, cada um na sua tela. A página `/relatorios` ganhou **"Outros relatórios"**, com o caminho para cada um:
@@ -1114,4 +1117,30 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - Service — financeiro (receita, comissões e resultado por profissional), Restaurante e Obras, **só para quem tem o módulo**.
 - Vendas, produtos, vendedores, formas de pagamento, estoque e clientes ficam na própria página (PR 65).
 - Playwright: os atalhos aparecem e levam às telas certas.
+
+## PR 70 — Storage privado
+
+Antes: tudo ia para um bucket com acesso público; prontuário (Service) e fotos de obra ficavam acessíveis para sempre a quem tivesse a URL, e o servidor aceitava gravar qualquer chave (de outro tenant, ou inventada) num registro.
+
+- **Arquivos privados** (contextos `service-record` e `build-daily-log`):
+  - vão para `private/tenants/{tenant}/…` — no **bucket privado** quando `Integrations:Storage:R2:PrivateBucketName` estiver configurado;
+  - nunca recebem URL pública: o upload devolve `{ key, url }` com URL **assinada que expira em 15 minutos**; prontuário e diário de obra devolvem URLs assinadas na leitura (`IPrivateFileUrls`), novas a cada carregamento;
+  - `GET /api/integrations/storage/signed-url?key=…` (gerência) renova a URL de um arquivo privado do próprio tenant.
+- **Arquivos públicos** (logo, capa, imagem de produto — aparecem no portal e no cardápio públicos) continuam com URL pública, como pede a missão.
+- **Isolamento:** prontuário só aceita anexo da pasta privada de prontuário do próprio tenant; foto de obra, só da pasta privada de diário do próprio tenant. Chave de outro tenant, pública, com `..` ou inventada → 422. Excluir e assinar exigem a pasta do tenant.
+- **Quem envia o quê:** imagem de produto — estoque e gerência; logo e capa, prontuário e foto de obra — só gerência (antes o estoquista enviava qualquer um).
+- **Conteúdo verificado:** os primeiros bytes do arquivo precisam bater com o tipo declarado (JPEG, PNG, WebP, PDF); um ZIP chamado de `.jpg` é recusado.
+- **Assinatura local** (SigV4 do SDK da AWS para o R2, sem chamada externa); bucket certo pela chave (`private/` → bucket privado).
+- **Frontend:** o diário de obra envia fotos pelo upload privado; o cliente de storage separa contextos públicos e privados.
+- **Testes:** unitários (layout de chaves, dono da chave, `..`, URL assinada no bucket privado e nunca na URL pública, papéis por contexto, assinatura de arquivo falsa, só gerência apaga privado, só privado do próprio tenant é assinado); integração (prontuário recusa chave pública e de outro tenant; foto de obra recusa chave pública, de outro tenant e URL externa).
+- **Para o dono (Cloudflare + Railway, não mudado aqui):** criar um bucket R2 **sem acesso público** e configurar `Integrations__Storage__R2__PrivateBucketName`. Até lá, os arquivos privados ficam no bucket atual sob `private/` e só são entregues assinados — mas um bucket público serve qualquer chave a quem a souber, então o bucket privado é o que fecha a porta de vez.
+- **Correções da revisão independente de segurança** (sem bloqueadores; isolamento entre tenants confirmado — chave de outro tenant não é assinada, anexada nem apagada):
+  - **prontuário falha fechado:** em produção, sem bucket privado configurado, o upload de prontuário responde 503 ("armazenamento privado ainda não configurado") em vez de gravar dado clínico num bucket público; fotos de obra continuam funcionando (sob `private/`, entregues assinadas);
+  - a saúde (`/health`, verificação `object-storage`) mostra `Degraded — private bucket not configured` enquanto o bucket privado não existir;
+  - só chaves do tenant atual são assinadas (linhas antigas, gravadas antes da validação, não entregam arquivo de outro);
+  - comparações de chave exatas (maiúsculas contam), como no armazenamento;
+  - quem apaga é quem pode enviar para aquela pasta (o estoquista não apaga mais logo e capa);
+  - o frontend codifica a chave por segmento ao apagar (`%2F` não é decodificado no caminho e a exclusão falhava sempre).
+- **Para o dono, na ordem:** (1) criar o bucket R2 privado **sem** domínio público nem r2.dev; (2) dar acesso a ele ao token da aplicação; (3) configurar `Integrations__Storage__R2__PrivateBucketName`; (4) se já houver fotos de obra sob `private/` no bucket atual, copiá-las para o novo antes (senão passam a 404). Fotos e anexos antigos com chave pública (`tenants/…`) continuam acessíveis pela URL pública até uma migração que os mova (cópia + regravação + exclusão da cópia pública — exige aprovação, por excluir dados).
+- **Fica para depois:** anexos do interpretador e imagens de ficha técnica gravados no disco do container (não são servidos, e somem a cada deploy); URLs de logo/capa/produto aceitam qualquer endereço externo.
 - **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.

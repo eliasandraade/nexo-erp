@@ -73,19 +73,31 @@ public class ServiceRecordsTests
             new { customerId, kind = "Pet", displayName = "Rex" });
         var subjectId = (await subjResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
 
+        // records are private: a made-up key, a public one or another tenant's is refused
+        foreach (var bad in new[] { "tenants/x/service/records/abc.jpg", $"private/tenants/{Guid.NewGuid()}/service/records/abc.jpg" })
+        {
+            var refused = await client.PostAsJsonAsync("/api/v1/service/records", new
+            {
+                contextType = "Subject", contextId = subjectId,
+                attachments = new[] { new { storageKey = bad, fileName = "abc.jpg", contentType = "image/jpeg", sizeBytes = 1234L, caption = "antes" } },
+            });
+            refused.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, bad);
+        }
+
+        var key = $"private/tenants/{await AdminTenantIdAsync()}/service/records/abc.jpg";
         var createResp = await client.PostAsJsonAsync("/api/v1/service/records", new
         {
             contextType = "Subject",
             contextId = subjectId,
             attachments = new[]
             {
-                new { storageKey = "tenants/x/service/records/abc.jpg", fileName = "abc.jpg", contentType = "image/jpeg", sizeBytes = 1234L, caption = "antes" },
+                new { storageKey = key, fileName = "abc.jpg", contentType = "image/jpeg", sizeBytes = 1234L, caption = "antes" },
             },
         });
         createResp.StatusCode.Should().Be(HttpStatusCode.Created);
         var dto = await createResp.Content.ReadFromJsonAsync<JsonElement>();
         var att = dto.GetProperty("attachments").EnumerateArray().Single();
-        att.GetProperty("storageKey").GetString().Should().Be("tenants/x/service/records/abc.jpg");
+        att.GetProperty("storageKey").GetString().Should().Be(key);
         att.GetProperty("fileName").GetString().Should().Be("abc.jpg");
         // Storage is not configured in tests → URL resolves to null (honest "unavailable").
         att.GetProperty("url").ValueKind.Should().Be(JsonValueKind.Null);
@@ -144,6 +156,13 @@ public class ServiceRecordsTests
         });
         resp.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+    }
+
+    private async Task<Guid> AdminTenantIdAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return (await db.Users.IgnoreQueryFilters().FirstAsync(u => u.Login == TestCredentials.AdminLogin)).TenantId;
     }
 
     private async Task<(Guid TenantId, Guid StoreId, Guid CustomerId)> SeedForeignTenantAsync()
