@@ -40,6 +40,8 @@ internal sealed class SvcSettingsConfiguration : IEntityTypeConfiguration<SvcSet
         b.Property(x => x.BrandColor).HasColumnName("brand_color").HasMaxLength(7);
         b.Property(x => x.WhatsApp).HasColumnName("whatsapp").HasMaxLength(20);
         b.Property(x => x.Address).HasColumnName("address").HasMaxLength(200);
+        b.Property(x => x.CustomerEmailsEnabled).HasColumnName("customer_emails_enabled").HasDefaultValue(false).IsRequired();
+        b.Property(x => x.ReminderHoursBefore).HasColumnName("reminder_hours_before").HasDefaultValue(24).IsRequired();
 
         b.HasIndex("TenantId", "StoreId")
             .IsUnique()

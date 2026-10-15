@@ -17,11 +17,14 @@ public class SvcSettingsService
 {
     private readonly ISvcSettingsRepository _repo;
     private readonly ICurrentTenant         _currentTenant;
+    private readonly bool                   _emailDelivery;
 
-    public SvcSettingsService(ISvcSettingsRepository repo, ICurrentTenant currentTenant)
+    public SvcSettingsService(ISvcSettingsRepository repo, ICurrentTenant currentTenant, IEmailService? email = null)
     {
         _repo          = repo;
         _currentTenant = currentTenant;
+        // without a provider the e-mails would only reach the log: the screen says so
+        _emailDelivery = email?.CanDeliver ?? true;
     }
 
     public async Task<string?> ResolveEffectivePresetKeyAsync(CancellationToken ct = default)
@@ -108,7 +111,18 @@ public class SvcSettingsService
         return Map(settings);
     }
 
-    private static PublicBookingSettingsDto Map(SvcSettings s) => new(
+    public async Task<PublicBookingSettingsDto> UpdateCustomerEmailsAsync(
+        UpdateCustomerEmailsRequest request, CancellationToken ct = default)
+    {
+        var settings = await _repo.GetForCurrentStoreAsync(ct)
+            ?? throw new DomainException("Choose the service vertical (preset) before setting customer e-mails.");
+        settings.UpdateCustomerEmails(request.CustomerEmailsEnabled, request.ReminderHoursBefore);
+        _repo.Update(settings);
+        await _repo.SaveChangesAsync(ct);
+        return Map(settings);
+    }
+
+    private PublicBookingSettingsDto Map(SvcSettings s) => new(
         IsConfigured:            true,
         PublicBookingEnabled:    s.PublicBookingEnabled,
         BookingDaysAhead:        s.BookingDaysAhead,
@@ -123,5 +137,8 @@ public class SvcSettingsService
         CoverImageUrl:           s.CoverImageUrl,
         BrandColor:              s.BrandColor,
         WhatsApp:                s.WhatsApp,
-        Address:                 s.Address);
+        Address:                 s.Address,
+        CustomerEmailsEnabled:   s.CustomerEmailsEnabled,
+        ReminderHoursBefore:     s.ReminderHoursBefore,
+        EmailDeliveryAvailable:  _emailDelivery);
 }

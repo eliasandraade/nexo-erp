@@ -474,3 +474,20 @@ test('Service: estornar um consumo de pacote pede motivo',async({page})=>{
  await expect.poll(()=>reverseBody).toEqual({reason:'Serviço errado'});
  await expect(page.getByText(/Estornado em/)).toBeVisible();
 });
+test('Service: liga os avisos por e-mail com o lembrete escolhido',async({page})=>{
+ await prepare(page);
+ let body: any=null;
+ await page.route('http://localhost:5000/api/v1/service/settings/customer-emails',route=>{body=route.request().postDataJSON();
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({isConfigured:true,publicBookingEnabled:false,customerEmailsEnabled:true,reminderHoursBefore:body.reminderHoursBefore})});});
+ await page.route('http://localhost:5000/api/v1/service/settings/public-booking',route=>route.fulfill({status:200,contentType:'application/json',
+  body:JSON.stringify({isConfigured:true,publicBookingEnabled:false,bookingDaysAhead:14,minLeadMinutes:120,slotIntervalMinutes:30,showPrices:true,autoConfirmAppointments:false,timeZoneId:'America/Sao_Paulo',customerEmailsEnabled:false,reminderHoursBefore:24})}));
+ await page.goto('/service/portal');
+ const toggle=page.getByRole('switch',{name:/Avisar clientes por e-mail/});
+ await expect(toggle).toHaveAttribute('aria-checked','false');
+ await toggle.click();
+ await page.getByLabel('Lembrete').click();
+ await page.getByRole('option',{name:'2 horas antes',exact:true}).click();
+ await page.getByRole('button',{name:'Salvar avisos'}).click();
+ await expect.poll(()=>body).toEqual({customerEmailsEnabled:true,reminderHoursBefore:2});
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

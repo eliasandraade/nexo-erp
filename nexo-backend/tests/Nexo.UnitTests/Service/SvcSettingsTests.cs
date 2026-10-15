@@ -59,4 +59,17 @@ public class SvcSettingsTests
         act.Should().Throw<DomainException>();
         s.PresetKey.Should().Be("salao-beleza");
     }
+
+    [Fact]
+    public void Customer_emails_start_off_and_the_reminder_lead_is_bounded()
+    {
+        var s = SvcSettings.Create(Tenant, "salao-beleza");
+        s.CustomerEmailsEnabled.Should().BeFalse();
+        s.ReminderHoursBefore.Should().Be(24);
+        s.UpdateCustomerEmails(true, 2);
+        s.CustomerEmailsEnabled.Should().BeTrue();
+        s.ReminderHoursBefore.Should().Be(2);
+        ((Action)(() => s.UpdateCustomerEmails(true, 0))).Should().Throw<DomainException>();
+        ((Action)(() => s.UpdateCustomerEmails(true, 73))).Should().Throw<DomainException>();
+    }
 }

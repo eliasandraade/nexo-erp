@@ -70,6 +70,15 @@ export interface PublicBookingSettingsDto {
   brandColor: string | null;
   whatsApp: string | null;
   address: string | null;
+  // Customer e-mails (PR58) — confirmation of portal bookings + reminder, both with the customer's link.
+  customerEmailsEnabled?: boolean;
+  reminderHoursBefore?: number;
+  /** False when the server has no e-mail provider configured (nothing would be delivered). */
+  emailDeliveryAvailable?: boolean;
+}
+export interface UpdateCustomerEmailsRequest {
+  customerEmailsEnabled: boolean;
+  reminderHoursBefore: number;
 }
 export interface UpdatePublicBookingRequest {
   publicBookingEnabled: boolean;
@@ -95,6 +104,8 @@ export const updatePublicBookingSettings = (body: UpdatePublicBookingRequest) =>
   apiClient.put<PublicBookingSettingsDto>("/v1/service/settings/public-booking", body);
 export const updatePortalBranding = (body: UpdatePortalBrandingRequest) =>
   apiClient.put<PublicBookingSettingsDto>("/v1/service/settings/branding", body);
+export const updateCustomerEmails = (body: UpdateCustomerEmailsRequest) =>
+  apiClient.put<PublicBookingSettingsDto>("/v1/service/settings/customer-emails", body);
 
 // ── Professionals (PR1) ────────────────────────────────────────────────────────
 export interface SvcProfessionalDto {

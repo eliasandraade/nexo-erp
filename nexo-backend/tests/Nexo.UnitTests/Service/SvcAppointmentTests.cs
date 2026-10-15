@@ -65,6 +65,17 @@ public class SvcAppointmentTests
     }
 
     [Fact]
+    public void A_new_time_owes_a_new_reminder()
+    {
+        var a = New();
+        typeof(SvcAppointment).GetProperty(nameof(SvcAppointment.ReminderSentAt))!.SetValue(a, DateTime.UtcNow);
+        a.Reschedule(Cust, Prof, Item, null, Start, End, 50m, "outra nota", null);
+        a.ReminderSentAt.Should().NotBeNull("same time, same person: the reminder sent still holds");
+        a.Reschedule(Cust, Prof, Item, null, Start.AddDays(7), End.AddDays(7), 50m, "n", null);
+        a.ReminderSentAt.Should().BeNull();
+    }
+
+    [Fact]
     public void Customer_cannot_cancel_a_booking_already_in_progress()
     {
         var a = New();

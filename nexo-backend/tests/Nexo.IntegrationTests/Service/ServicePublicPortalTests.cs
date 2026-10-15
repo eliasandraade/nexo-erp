@@ -512,6 +512,159 @@ public class ServicePublicPortalTests
             "typing someone's phone must not reveal the name on file");
     }
 
+    // ── Customer e-mails (PR58) ───────────────────────────────────────────────
+
+    private sealed class CapturingEmail : Nexo.Application.Common.Interfaces.IEmailService
+    {
+        public List<(string To, string Subject, string Html)> Sent { get; } = [];
+        /// <summary>Addresses whose next send fails temporarily (rate limit / provider down).</summary>
+        public HashSet<string> FailOnce { get; } = [];
+        public bool CanDeliver => true;
+        public Task SendVerificationEmailAsync(string toEmail, string toName, string verificationUrl, CancellationToken ct = default)
+            => Task.CompletedTask;
+        public Task<Nexo.Application.Common.Interfaces.EmailSendResult> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
+        {
+            if (FailOnce.Remove(toEmail)) return Task.FromResult(Nexo.Application.Common.Interfaces.EmailSendResult.Failed);
+            Sent.Add((toEmail, subject, html));
+            return Task.FromResult(Nexo.Application.Common.Interfaces.EmailSendResult.Sent);
+        }
+    }
+
+    /// <summary>Runs the job's pass until it has nothing left (the shared database has other bookings).</summary>
+    private async Task<CapturingEmail> RunEmailsJobAsync(DateTime nowUtc, CapturingEmail? email = null)
+    {
+        email ??= new CapturingEmail();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        for (var i = 0; i < 20; i++)
+            if (await Nexo.Infrastructure.Jobs.ServiceCustomerEmailsJob.RunOnceAsync(
+                    db, email, "https://app.test", nowUtc, Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, default) == 0
+                && i > 0)   // at least two passes: a temporary failure is retried on the next one
+                break;
+        return email;
+    }
+
+    private static Task<HttpResponseMessage> SetCustomerEmailsAsync(HttpClient admin, bool enabled, int hours = 24)
+        => admin.PutAsJsonAsync("/api/v1/service/settings/customer-emails",
+            new { customerEmailsEnabled = enabled, reminderHoursBefore = hours });
+
+    [Fact]
+    public async Task Customer_gets_one_confirmation_and_one_reminder_with_the_link()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        (await SetCustomerEmailsAsync(admin, true, 24)).StatusCode.Should().Be(HttpStatusCode.OK);
+        try
+        {
+            var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+            var catalog = await CreateCatalogAsync(admin);
+            var pub = _factory.CreateApiClient();
+            var pick = (await GetAvailabilityAsync(pub, slug, catalog, professional)).Slots.First(s => s.StartsAt > DateTime.UtcNow.AddDays(2));
+            var to = $"cliente{Guid.NewGuid():N}@teste.dev";
+            var created = await (await pub.PostAsJsonAsync($"/api/public/service/{slug}/appointments", new
+            {
+                customerName = "Ana <b>Teste</b>", phone = NextPhone(), email = to,
+                catalogItemId = catalog, professionalId = professional, startsAt = pick.Raw,
+            })).Content.ReadFromJsonAsync<JsonElement>();
+            var token = created.GetProperty("manageToken").GetString()!;
+
+            var first = (await RunEmailsJobAsync(DateTime.UtcNow)).Sent.Where(m => m.To == to).ToList();
+            first.Should().ContainSingle("the portal booking gets its confirmation, the reminder is not due yet");
+            first[0].Subject.Should().StartWith("Agendamento recebido");
+            first[0].Html.Should().Contain($"https://app.test/agendar/{slug}/reserva/{token}");
+            first[0].Html.Should().Contain("Ana &lt;b&gt;Teste&lt;/b&gt;").And.NotContain("<b>Teste</b>");
+            (await RunEmailsJobAsync(DateTime.UtcNow)).Sent.Should().NotContain(m => m.To == to, "a confirmation goes once");
+
+            var reminders = (await RunEmailsJobAsync(pick.StartsAt.AddHours(-23))).Sent.Where(m => m.To == to).ToList();
+            reminders.Should().ContainSingle();
+            reminders[0].Subject.Should().StartWith("Lembrete:");
+            (await RunEmailsJobAsync(pick.StartsAt.AddHours(-22))).Sent.Should().NotContain(m => m.To == to, "a reminder goes once");
+        }
+        finally { await SetCustomerEmailsAsync(admin, false); }
+    }
+
+    [Fact]
+    public async Task No_emails_when_the_store_has_them_off_or_the_booking_was_cancelled()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        (await SetCustomerEmailsAsync(admin, false)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+        var catalog = await CreateCatalogAsync(admin);
+        var pub = _factory.CreateApiClient();
+        var slots = (await GetAvailabilityAsync(pub, slug, catalog, professional)).Slots
+            .Where(s => s.StartsAt > DateTime.UtcNow.AddDays(2)).Take(2).ToList();
+        var off = $"off{Guid.NewGuid():N}@teste.dev";
+        var cancelled = $"cx{Guid.NewGuid():N}@teste.dev";
+        (await pub.PostAsJsonAsync($"/api/public/service/{slug}/appointments", new
+        {
+            customerName = "Sem Aviso", phone = NextPhone(), email = off,
+            catalogItemId = catalog, professionalId = professional, startsAt = slots[0].Raw,
+        })).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await RunEmailsJobAsync(slots[0].StartsAt.AddHours(-1))).Sent.Should().NotContain(m => m.To == off);
+
+        (await SetCustomerEmailsAsync(admin, true)).StatusCode.Should().Be(HttpStatusCode.OK);
+        try
+        {
+            var token = (await (await pub.PostAsJsonAsync($"/api/public/service/{slug}/appointments", new
+            {
+                customerName = "Vai Cancelar", phone = NextPhone(), email = cancelled,
+                catalogItemId = catalog, professionalId = professional, startsAt = slots[1].Raw,
+            })).Content.ReadFromJsonAsync<JsonElement>()).GetProperty("manageToken").GetString()!;
+            (await pub.PostAsync($"/api/public/service/{slug}/appointments/{token}/cancel", null))
+                .StatusCode.Should().Be(HttpStatusCode.OK);
+            (await RunEmailsJobAsync(slots[1].StartsAt.AddHours(-1))).Sent.Should().NotContain(m => m.To == cancelled);
+        }
+        finally { await SetCustomerEmailsAsync(admin, false); }
+    }
+
+    [Fact]
+    public async Task Confirmation_goes_only_to_the_address_typed_now_and_a_temporary_failure_is_retried()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        (await SetCustomerEmailsAsync(admin, true, 24)).StatusCode.Should().Be(HttpStatusCode.OK);
+        try
+        {
+            var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+            var catalog = await CreateCatalogAsync(admin);
+            var pub = _factory.CreateApiClient();
+            var slots = (await GetAvailabilityAsync(pub, slug, catalog, professional)).Slots
+                .Where(s => s.StartsAt > DateTime.UtcNow.AddDays(2)).Take(2).ToList();
+            var phone = NextPhone();
+            var owner = $"dono{Guid.NewGuid():N}@teste.dev";
+            var other = $"outro{Guid.NewGuid():N}@teste.dev";
+            Task<HttpResponseMessage> Book(string slot, string mail) => pub.PostAsJsonAsync($"/api/public/service/{slug}/appointments", new
+            {
+                customerName = "Mesmo Telefone", phone, email = mail, catalogItemId = catalog, professionalId = professional, startsAt = slot,
+            });
+
+            (await Book(slots[0].Raw, owner)).StatusCode.Should().Be(HttpStatusCode.Created);
+            var fake = new CapturingEmail();
+            fake.FailOnce.Add(owner);                              // the provider refuses for a moment
+            (await RunEmailsJobAsync(DateTime.UtcNow, fake)).Sent.Should().ContainSingle(m => m.To == owner,
+                "a temporary failure gives the e-mail back and the next pass sends it");
+
+            // someone else books with the same phone and their own address: nobody gets this confirmation
+            (await Book(slots[1].Raw, other)).StatusCode.Should().Be(HttpStatusCode.Created);
+            var after = (await RunEmailsJobAsync(DateTime.UtcNow)).Sent;
+            after.Should().NotContain(m => m.To == owner, "the address on file is not the one typed now");
+            after.Should().NotContain(m => m.To == other);
+        }
+        finally { await SetCustomerEmailsAsync(admin, false); }
+    }
+
+    [Fact]
+    public async Task Reminder_lead_is_validated()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        await ConfigureStoreAsync(admin, bookingEnabled: true);
+        (await SetCustomerEmailsAsync(admin, true, 0)).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await SetCustomerEmailsAsync(admin, true, 73)).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var ok = await (await SetCustomerEmailsAsync(admin, false, 6)).Content.ReadFromJsonAsync<JsonElement>();
+        ok.GetProperty("reminderHoursBefore").GetInt32().Should().Be(6);
+    }
+
     // ── 17. Branding (PR16) ────────────────────────────────────────────────────
 
     [Fact]

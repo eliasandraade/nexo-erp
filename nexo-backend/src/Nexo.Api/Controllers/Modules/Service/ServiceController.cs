@@ -99,4 +99,14 @@ public class ServiceController : ControllerBase
         await _brandingValidator.ValidateAndThrowAsync(request, ct);
         return Ok(await _settings.UpdatePortalBrandingAsync(request, ct));
     }
+
+    /// <summary>
+    /// Customer e-mails for the active store: confirmation of portal bookings and a reminder before
+    /// each appointment, both carrying the customer's own view/cancel link. Off by default.
+    /// </summary>
+    [HttpPut("settings/customer-emails")]
+    [Authorize(Roles = ServiceRoles.Management)]
+    public async Task<ActionResult<PublicBookingSettingsDto>> UpdateCustomerEmails(
+        [FromBody] UpdateCustomerEmailsRequest request, CancellationToken ct)
+        => Ok(await _settings.UpdateCustomerEmailsAsync(request, ct));
 }

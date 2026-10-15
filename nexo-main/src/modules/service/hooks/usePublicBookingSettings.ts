@@ -3,6 +3,8 @@ import {
   getPublicBookingSettings,
   updatePublicBookingSettings,
   updatePortalBranding,
+  updateCustomerEmails,
+  type UpdateCustomerEmailsRequest,
   type PublicBookingSettingsDto,
   type UpdatePublicBookingRequest,
   type UpdatePortalBrandingRequest,
@@ -30,6 +32,18 @@ export function useUpdatePublicBookingSettings() {
     mutationFn: (body: UpdatePublicBookingRequest) => updatePublicBookingSettings(body),
     onSuccess: (data) => {
       // Seed the cache + invalidate so the sidebar/overview react immediately (Agenda visibility).
+      qc.setQueryData(serviceKeys.publicBooking(), data);
+      qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
+    },
+  });
+}
+
+/** Turns the customer e-mails on/off (separate endpoint, like branding). */
+export function useUpdateCustomerEmails() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateCustomerEmailsRequest) => updateCustomerEmails(body),
+    onSuccess: (data) => {
       qc.setQueryData(serviceKeys.publicBooking(), data);
       qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
     },

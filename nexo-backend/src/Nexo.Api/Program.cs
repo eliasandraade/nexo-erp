@@ -46,9 +46,13 @@ try
     // ── Application layers ────────────────────────────────────────────────────
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
-    // Títulos vencidos: hourly Pending → Overdue. Not in Testing (tests call the job's UPDATE directly).
+    // Títulos vencidos: hourly Pending → Overdue. Service customer e-mails: confirmations and
+    // reminders every two minutes. Not in Testing (tests call the jobs' passes directly).
     if (!builder.Environment.IsEnvironment("Testing"))
+    {
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.OverdueTitlesJob>();
+        builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.ServiceCustomerEmailsJob>();
+    }
 
     // ── JWT Authentication ────────────────────────────────────────────────────
     var jwtSecret = builder.Configuration["Jwt:Secret"]

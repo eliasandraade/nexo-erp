@@ -237,8 +237,9 @@ public static class DependencyInjection
         var resendApiKey = configuration["Resend:ApiKey"];
         if (!string.IsNullOrWhiteSpace(resendApiKey))
         {
-            services.AddHttpClient<ResendEmailService>();
-            services.AddScoped<IEmailService, ResendEmailService>();
+            // short timeout: a slow provider must not hold the e-mails job (or a sign-up) for 100s
+            services.AddHttpClient<ResendEmailService>(c => c.Timeout = TimeSpan.FromSeconds(10));
+            services.AddScoped<IEmailService>(sp => sp.GetRequiredService<ResendEmailService>());
         }
         else
         {
