@@ -485,5 +485,18 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
 - **Testes:**
   - `CashFlowTests`, 4 de integração: projeção no dia do vencimento e saldo corrido fechando no saldo final; vencidos à parte e fora da projeção; buckets de semana e mês; validações;
   - Playwright: tela do fluxo.
+- **Revisão independente (corrigido antes do merge):**
+  - **Recorrências além do mês seguinte ficavam fora da projeção.** Em 90 dias, aluguel e folha de dezembro e janeiro sumiam e o saldo final ficava alto demais. Agora os meses ainda não gerados entram projetados virtualmente, sem gravar nada.
+  - **Contas com datas de saldo inicial diferentes contavam duas vezes.** Os pagamentos não são lançados em Caixa ou Banco, então não dá para saber o que já estava em cada saldo. Agora há **uma data de corte por empresa**: uma conta com outra data é recusada.
+  - **Saldo inicial = saldo no fim do dia.** O que foi pago naquele dia já está dentro, e o realizado conta a partir do dia seguinte. A tela sugere o fim de ontem, para não contar duas vezes as vendas de hoje.
+  - **Período começando no futuro:** o saldo inicial inclui o que vence entre hoje e o início.
+  - **Contas desativadas** continuam contando seu saldo inicial; fechar uma conta não reescreve a história.
+  - **Validações:** sem data futura, sem conta inativa, valor dentro do limite. Saldo inicial agora pode ser limpo (`DELETE`).
+  - **Desempenho:** realizado e previsto são agrupados por dia do Brasil no próprio banco (SQL), sem carregar cada venda na memória.
+  - **Tela:**
+    - "-1.000" é lido como menos mil;
+    - valor vazio não salva;
+    - escolher a conta preenche o saldo atual;
+    - o tooltip mostra saldo negativo com sinal.
 - **Não incluso:** conciliação bancária (importar extrato OFX e casar com os lançamentos). É uma feature própria, fica como lacuna para depois do 1.0, sem número na missão.
 

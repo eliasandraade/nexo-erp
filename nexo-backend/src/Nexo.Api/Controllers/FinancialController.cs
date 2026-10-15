@@ -46,6 +46,10 @@ public class FinancialController : ControllerBase
         Guid id, [FromBody] SetOpeningBalanceRequest request, CancellationToken ct)
         => Ok(await _service.SetOpeningBalanceAsync(id, request, ct));
 
+    [HttpDelete("accounts/{id:guid}/opening-balance")]
+    public async Task<ActionResult<FinancialAccountDto>> ClearOpeningBalance(Guid id, CancellationToken ct)
+        => Ok(await _service.ClearOpeningBalanceAsync(id, ct));
+
     // ── Accounts ─────────────────────────────────────────────────────────────
 
     [HttpGet("accounts")]

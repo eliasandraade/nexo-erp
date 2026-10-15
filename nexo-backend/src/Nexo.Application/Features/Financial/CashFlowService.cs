@@ -62,27 +62,39 @@ public class CashFlowService
         var fromUtc  = BusinessClock.DayStartUtc(from);
         var toUtc    = BusinessClock.DayStartUtc(to.AddDays(1));
         var todayUtc = BusinessClock.TodayStartUtc();
+        var today    = DateOnly.FromDateTime(BusinessClock.ToBrazil(DateTime.UtcNow));
 
-        // Opening balance at `from`: saldo inicial of Caixa/Banco + realized since its date
-        var accounts = (await _financial.GetAllAccountsAsync(includeInactive: false, ct))
+        // Opening balance at `from`: saldo inicial (end of its day, one company cut-off date, inactive
+        // accounts included — closing an account doesn't rewrite history) + realized since then.
+        var accounts = (await _financial.GetAllAccountsAsync(includeInactive: true, ct))
             .Where(a => a.AccountType is FinancialAccountType.Cash or FinancialAccountType.Bank && a.OpeningBalanceDate.HasValue)
             .ToList();
         var configured = accounts.Count > 0;
         decimal opening;
         if (configured)
         {
-            var baseDate = BusinessClock.DayStartUtc(accounts.Min(a => a.OpeningBalanceDate!.Value));
+            var cutoff = BusinessClock.DayStartUtc(accounts.Min(a => a.OpeningBalanceDate!.Value).AddDays(1));
             var baseAmount = accounts.Sum(a => a.OpeningBalance);
-            opening = baseDate <= fromUtc
-                ? baseAmount + await _financial.GetRealizedNetAsync(baseDate, fromUtc, ct)
-                : baseAmount - await _financial.GetRealizedNetAsync(fromUtc, baseDate, ct);
+            opening = cutoff <= fromUtc
+                ? baseAmount + await _financial.GetRealizedNetAsync(cutoff, fromUtc, ct)
+                : baseAmount - await _financial.GetRealizedNetAsync(fromUtc, cutoff, ct);
         }
         else
         {
             opening = await _financial.GetRealizedNetAsync(null, fromUtc, ct);
         }
 
-        var rows = await _financial.GetCashFlowDaysAsync(fromUtc, toUtc, todayUtc, ct);
+        // Recurring títulos not generated yet (beyond next month) are projected without being saved.
+        var recurring = await RecurringProjectionAsync(today, to, ct);
+
+        // A period starting in the future opens with what is due between today and its start.
+        if (from > today)
+            opening += await _financial.GetProjectedNetAsync(todayUtc, fromUtc, ct)
+                       + recurring.Where(r => r.Day < from).Sum(r => r.Type == TransactionType.Receivable ? r.Amount : -r.Amount);
+
+        var rows = (await _financial.GetCashFlowDaysAsync(fromUtc, toUtc, todayUtc, ct))
+            .Concat(recurring.Where(r => r.Day >= from && r.Day >= today))
+            .ToList();
         var (overdueIn, overdueOut) = await _financial.GetOverdueTotalsAsync(todayUtc, ct);
 
         var buckets = new List<CashFlowBucketDto>();
@@ -100,6 +112,19 @@ public class CashFlowService
         }
 
         return new CashFlowDto(from, to, granularity.ToString(), opening, configured, overdueIn, overdueOut, balance, buckets);
+    }
+
+    /// <summary>Months of active recurrences not generated yet, as projected days in [today, to].</summary>
+    private async Task<IReadOnlyList<CashFlowDayRow>> RecurringProjectionAsync(DateOnly today, DateOnly to, CancellationToken ct)
+    {
+        var rows = new List<CashFlowDayRow>();
+        foreach (var r in await _financial.GetRecurrencesAsync(includeInactive: false, ct))
+            foreach (var month in r.PendingMonths(new DateOnly(to.Year, to.Month, 1)))
+            {
+                var day = r.DueDayIn(month);
+                if (day >= today && day <= to) rows.Add(new CashFlowDayRow(day, r.TransactionType, false, r.Amount));
+            }
+        return rows;
     }
 
     /// <summary>Calendar buckets clipped to [from, to]: days, weeks starting on Monday, or months.</summary>

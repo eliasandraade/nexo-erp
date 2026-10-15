@@ -28,7 +28,8 @@ public class CashFlowTests
         var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
         var accounts = (await c.GetFromJsonAsync<List<FinancialAccountDto>>($"{Fin}/accounts"))!;
         var cash = accounts.First(a => a.AccountType == "Cash" && a.IsActive);
-        (await c.PutAsJsonAsync($"{Fin}/accounts/{cash.Id}/opening-balance", new SetOpeningBalanceRequest(2500m, Today)))
+        // saldo no fim de ontem: everything realized from today on comes on top of it
+        (await c.PutAsJsonAsync($"{Fin}/accounts/{cash.Id}/opening-balance", new SetOpeningBalanceRequest(2500m, Today.AddDays(-1))))
             .EnsureSuccessStatusCode();
         var configuredElsewhere = accounts.Where(a => a.Id != cash.Id && a.OpeningBalanceDate is not null).Sum(a => a.OpeningBalance);
 
@@ -39,7 +40,7 @@ public class CashFlowTests
         var flow = await FlowAsync(c, Today, Today.AddDays(15), "day");
         flow.OpeningBalanceConfigured.Should().BeTrue();
         if (configuredElsewhere == 0 && accounts.Where(a => a.Id != cash.Id).All(a => a.OpeningBalanceDate is null))
-            flow.OpeningBalance.Should().Be(2500m);                        // saldo inicial dated today: nothing realized before
+            flow.OpeningBalance.Should().Be(2500m);                        // cut-off = start of today = from
         flow.Buckets.Should().HaveCount(16);
         flow.Buckets.Single(b => b.Start == due).ProjectedIn.Should().BeGreaterThanOrEqualTo(100m);
         flow.Buckets.Single(b => b.Start == Today.AddDays(10)).ProjectedOut.Should().BeGreaterThanOrEqualTo(40m);
@@ -64,6 +65,25 @@ public class CashFlowTests
         var after = await FlowAsync(c, Today, Today.AddDays(7), "day");
         after.OverdueOut.Should().Be(before.OverdueOut + 77m);
         after.Buckets.Sum(b => b.ProjectedOut).Should().Be(before.Buckets.Sum(b => b.ProjectedOut));
+    }
+
+    [Fact]
+    public async Task Recurring_months_not_generated_yet_are_projected_too()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var month = new DateOnly(Today.Year, Today.Month, 1);
+        (await c.PostAsJsonAsync($"{Fin}/recurrences", new CreateRecurrenceRequest(
+            "Payable", "Aluguel projetado PR52", 3333m, 10, month, Category: "OperatingExpense"))).EnsureSuccessStatusCode();
+
+        var far = month.AddMonths(3);                                      // two months beyond what is generated
+        var flow = await FlowAsync(c, Today, far.AddDays(20), "month");
+        flow.Buckets.Single(b => b.Start <= far.AddDays(9) && b.End >= far.AddDays(9))
+            .ProjectedOut.Should().BeGreaterThanOrEqualTo(3333m);
+
+        // a period starting in the future opens with what falls due before it
+        var later = await FlowAsync(c, far, far.AddDays(20), "day");
+        var now = await FlowAsync(c, Today, far.AddDays(-1), "day");
+        later.OpeningBalance.Should().Be(now.ClosingBalance);
     }
 
     [Fact]
@@ -95,6 +115,18 @@ public class CashFlowTests
             .First(a => a.AccountType == "Receivable");
         (await c.PutAsJsonAsync($"{Fin}/accounts/{receivable.Id}/opening-balance", new SetOpeningBalanceRequest(10m, Today)))
             .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var cashOrBank = (await c.GetFromJsonAsync<List<FinancialAccountDto>>($"{Fin}/accounts"))!
+            .Where(a => a.AccountType is "Cash" or "Bank").ToList();
+        (await c.PutAsJsonAsync($"{Fin}/accounts/{cashOrBank[0].Id}/opening-balance", new SetOpeningBalanceRequest(10m, Today.AddDays(2))))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);                     // a future day
+        if (cashOrBank.Count > 1)
+        {
+            (await c.PutAsJsonAsync($"{Fin}/accounts/{cashOrBank[0].Id}/opening-balance", new SetOpeningBalanceRequest(10m, Today.AddDays(-1))))
+                .EnsureSuccessStatusCode();
+            (await c.PutAsJsonAsync($"{Fin}/accounts/{cashOrBank[1].Id}/opening-balance", new SetOpeningBalanceRequest(10m, Today.AddDays(-5))))
+                .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);                 // one cut-off date per company
+        }
     }
 
     private static async Task<CashFlowDto> FlowAsync(HttpClient c, DateOnly from, DateOnly to, string granularity)

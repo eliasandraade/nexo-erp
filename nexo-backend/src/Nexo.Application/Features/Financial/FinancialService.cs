@@ -500,7 +500,28 @@ public class FinancialService
     public async Task<FinancialAccountDto> SetOpeningBalanceAsync(Guid id, SetOpeningBalanceRequest request, CancellationToken ct = default)
     {
         var account = await _financial.GetAccountByIdAsync(id, ct) ?? throw new NotFoundException("FinancialAccount", id);
+        if (!account.IsActive)
+            throw new DomainException("Ative a conta antes de informar o saldo inicial.");
+        if (request.Date > DateOnly.FromDateTime(BusinessClock.ToBrazil(DateTime.UtcNow)))
+            throw new DomainException("O saldo inicial é de um dia que já passou ou de hoje.");
+
+        // One cut-off date for the company: payments aren't booked to Caixa or Banco, so balances taken
+        // on different days would count the money in between twice.
+        var other = (await _financial.GetAllAccountsAsync(includeInactive: true, ct))
+            .FirstOrDefault(a => a.Id != id && a.OpeningBalanceDate is { } d && d != request.Date);
+        if (other is not null)
+            throw new DomainException(
+                $"Use a mesma data de corte das outras contas ({other.OpeningBalanceDate:dd/MM/yyyy}, em {other.Name}).");
+
         account.SetOpeningBalance(request.Amount, request.Date);
+        await _financial.SaveChangesAsync(ct);
+        return MapAccountToDto(account);
+    }
+
+    public async Task<FinancialAccountDto> ClearOpeningBalanceAsync(Guid id, CancellationToken ct = default)
+    {
+        var account = await _financial.GetAccountByIdAsync(id, ct) ?? throw new NotFoundException("FinancialAccount", id);
+        account.ClearOpeningBalance();
         await _financial.SaveChangesAsync(ct);
         return MapAccountToDto(account);
     }

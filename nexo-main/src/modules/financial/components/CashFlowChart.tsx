@@ -20,10 +20,13 @@ export default function CashFlowChart({ buckets }: { buckets: CashFlowBucketDto[
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
         <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
         <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-          tickFormatter={(v: number) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
+          tickFormatter={(v: number) => (Math.abs(v) >= 1000 ? `${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k` : String(v))} />
         <Tooltip
           contentStyle={{ backgroundColor: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-          formatter={(value: number, name: string) => [brl(Math.abs(value)), name === "saidas" ? "Saídas" : name === "entradas" ? "Entradas" : "Saldo"]}
+          formatter={(value: number, name: string) => [
+            brl(name === "saidas" ? Math.abs(value) : value),
+            name === "saidas" ? "Saídas" : name === "entradas" ? "Entradas" : "Saldo",
+          ]}
         />
         <Bar dataKey="entradas" stackId="flow" fill="hsl(var(--success))" isAnimationActive={false} />
         <Bar dataKey="saidas" stackId="flow" fill="hsl(var(--destructive))" isAnimationActive={false} />

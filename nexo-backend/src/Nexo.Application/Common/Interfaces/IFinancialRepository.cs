@@ -40,6 +40,8 @@ public interface IFinancialRepository
     /// </summary>
     Task<IReadOnlyList<Nexo.Application.Features.Financial.CashFlowDayRow>> GetCashFlowDaysAsync(
         DateTime fromUtc, DateTime toUtc, DateTime todayStartUtc, CancellationToken ct = default);
+    /// <summary>Money in − money out of open títulos due in [from, to).</summary>
+    Task<decimal> GetProjectedNetAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
     /// <summary>Open títulos already past due: (to receive, to pay).</summary>
     Task<(decimal In, decimal Out)> GetOverdueTotalsAsync(DateTime todayStartUtc, CancellationToken ct = default);
 

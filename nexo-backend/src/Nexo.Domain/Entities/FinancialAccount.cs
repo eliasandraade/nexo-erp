@@ -15,8 +15,9 @@ public class FinancialAccount : TenantEntity
     public Guid? ParentAccountId { get; private set; }
     public bool IsActive { get; private set; }
     /// <summary>
-    /// Saldo inicial (Caixa / Banco): the money the business had on <see cref="OpeningBalanceDate"/>,
-    /// before the livro started. The cash flow projects from it.
+    /// Saldo inicial (Caixa / Banco): the money the business had at the END of
+    /// <see cref="OpeningBalanceDate"/> — everything paid that day is already inside it. The cash flow
+    /// starts from it and adds what was realized from the next day on. One cut-off date per company.
     /// </summary>
     public decimal OpeningBalance { get; private set; }
     public DateOnly? OpeningBalanceDate { get; private set; }
@@ -58,8 +59,17 @@ public class FinancialAccount : TenantEntity
         var cents = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
         if (cents != amount)
             throw new Nexo.Domain.Exceptions.DomainException("Saldo inicial em centavos.");
+        if (Math.Abs(cents) > 999_999_999_999.99m)
+            throw new Nexo.Domain.Exceptions.DomainException("Saldo inicial fora do limite.");
         OpeningBalance     = cents;          // may be negative (cheque especial)
         OpeningBalanceDate = date;
+        SetUpdatedAt();
+    }
+
+    public void ClearOpeningBalance()
+    {
+        OpeningBalance     = 0;
+        OpeningBalanceDate = null;
         SetUpdatedAt();
     }
 

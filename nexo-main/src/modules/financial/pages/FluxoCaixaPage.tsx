@@ -154,12 +154,21 @@ function OpeningBalanceDialog({ onClose }: { onClose: () => void }) {
   const candidates = (accounts ?? []).filter((a) => a.isActive && (a.accountType === "Cash" || a.accountType === "Bank"));
   const [accountId, setAccountId] = useState<string>("");
   const selected = candidates.find((a) => a.id === (accountId || candidates[0]?.id));
+  // One cut-off date for the company: default to the date already used, else the end of yesterday.
+  const cutoff = candidates.find((a) => a.openingBalanceDate)?.openingBalanceDate ?? addDays(todayInput(), -1);
   const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(todayInput());
+  const [date, setDate] = useState<string>("");
+  const effectiveDate = date || cutoff;
   const value = money(amount);
 
+  const pick = (id: string) => {
+    setAccountId(id);
+    const account = candidates.find((a) => a.id === id);
+    setAmount(account?.openingBalanceDate ? account.openingBalance.toFixed(2).replace(".", ",") : "");
+  };
+
   const save = useMutation({
-    mutationFn: () => setOpeningBalance(selected!.id, value, date),
+    mutationFn: () => setOpeningBalance(selected!.id, value, effectiveDate),
     onSuccess: () => {
       toast.success("Saldo inicial salvo.");
       void qc.invalidateQueries({ queryKey: ACCOUNTS_KEY });
@@ -174,12 +183,14 @@ function OpeningBalanceDialog({ onClose }: { onClose: () => void }) {
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Saldo inicial</DialogTitle>
-          <DialogDescription>Quanto havia na conta nesta data, antes dos lançamentos do sistema.</DialogDescription>
+          <DialogDescription>
+            Quanto havia na conta no fim do dia escolhido, com tudo daquele dia já dentro. Todas as contas usam a mesma data.
+          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="space-y-1.5">
             <Label htmlFor="opening-account">Conta</Label>
-            <Select value={selected?.id ?? ""} onValueChange={setAccountId}>
+            <Select value={selected?.id ?? ""} onValueChange={pick}>
               <SelectTrigger id="opening-account" aria-label="Conta"><SelectValue placeholder="Sem conta de caixa ou banco" /></SelectTrigger>
               <SelectContent>
                 {candidates.map((a) => (
@@ -196,14 +207,15 @@ function OpeningBalanceDialog({ onClose }: { onClose: () => void }) {
               <Input id="opening-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0,00" />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="opening-date">Em</Label>
-              <Input id="opening-date" type="date" value={date} max={todayInput()} onChange={(e) => setDate(e.target.value)} />
+              <Label htmlFor="opening-date">No fim do dia</Label>
+              <Input id="opening-date" type="date" value={effectiveDate} max={todayInput()} onChange={(e) => setDate(e.target.value)} />
             </div>
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={save.isPending}>Cancelar</Button>
-          <Button onClick={() => save.mutate()} disabled={!selected || Number.isNaN(value) || !date || save.isPending}>Salvar</Button>
+          <Button onClick={() => save.mutate()}
+            disabled={!selected || !amount.trim() || Number.isNaN(value) || !effectiveDate || save.isPending}>Salvar</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
