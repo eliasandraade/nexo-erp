@@ -71,19 +71,9 @@ public class DashboardService
         var topProducts = await _sales.TopProductsAsync(month, 5, ct);
         var topSellers  = await _sales.SellersAsync(month, 4, ct);
         var salesByDay  = await _sales.ByDayAsync(SalesWindow.LastDays(30), ct);
-        var (zeroCount, lowCount, alerts) = await GetStockAlertsAsync(ct);
-        // Configurações → Estoque: alerts the company turned off are not raised
+        // Configurações → Estoque: alerts the company turned off are not raised (nor queried)
         var alertRules = await _settings.GetInventoryAsync(ct);
-        if (!alertRules.EnableZeroStockAlerts)
-        {
-            zeroCount = 0;
-            alerts = alerts.Where(a => a.Status != "zero").ToList();
-        }
-        if (!alertRules.EnableLowStockAlerts)
-        {
-            lowCount = 0;
-            alerts = alerts.Where(a => a.Status != "low").ToList();
-        }
+        var (zeroCount, lowCount, alerts) = await GetStockAlertsAsync(alertRules.EnableZeroStockAlerts, alertRules.EnableLowStockAlerts, ct);
         var hasOpenCash = await _db.CashSessions.AnyAsync(c => c.Status == CashSessionStatus.Open, ct);
 
         return new DashboardSummaryDto(
@@ -105,7 +95,7 @@ public class DashboardService
     // ── Stock Alerts ──────────────────────────────────────────────────────────
 
     private async Task<(int zero, int low, IReadOnlyList<StockAlertDto> alerts)>
-        GetStockAlertsAsync(CancellationToken ct)
+        GetStockAlertsAsync(bool zeroOn, bool lowOn, CancellationToken ct)
     {
         // Each query uses its own IQueryable — avoid reusing the same variable across
         // multiple CountAsync/ToListAsync calls (EF expression tree reuse can fail).
@@ -114,19 +104,21 @@ public class DashboardService
 
         // AvailableQuantity is a computed C# property (CurrentQuantity - ReservedQuantity) — not a DB column.
         // Use the raw columns directly so EF Core can translate the expression to SQL.
-        var zero = await _db.StockItems.AsNoTracking()
+        var zero = !zeroOn ? 0 : await _db.StockItems.AsNoTracking()
             .Where(s => s.Product != null && s.Product.IsActive
                      && (s.CurrentQuantity - s.ReservedQuantity) <= 0)
             .CountAsync(ct);
 
-        var low = await _db.StockItems.AsNoTracking()
+        var low = !lowOn ? 0 : await _db.StockItems.AsNoTracking()
             .Where(s => s.Product != null && s.Product.IsActive
                      && (s.CurrentQuantity - s.ReservedQuantity) > 0
                      && s.Product.MinStockQuantity != null
                      && (s.CurrentQuantity - s.ReservedQuantity) < s.Product.MinStockQuantity)
             .CountAsync(ct);
 
-        var zeroRows = await _db.StockItems.AsNoTracking()
+        var zeroRows = !zeroOn
+            ? []
+            : await _db.StockItems.AsNoTracking()
             .Where(s => s.Product != null && s.Product.IsActive
                      && (s.CurrentQuantity - s.ReservedQuantity) <= 0)
             .OrderBy(s => s.Product!.Name)
@@ -135,7 +127,7 @@ public class DashboardService
             .ToListAsync(ct);
 
         var needed = 4 - zeroRows.Count;
-        var lowRows = needed > 0
+        var lowRows = lowOn && needed > 0
             ? await _db.StockItems.AsNoTracking()
                 .Where(s => s.Product != null && s.Product.IsActive
                          && (s.CurrentQuantity - s.ReservedQuantity) > 0

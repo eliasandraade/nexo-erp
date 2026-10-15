@@ -1163,4 +1163,10 @@ Levantamento: **nenhum** campo da tela de Configurações tinha efeito — eram 
 - **Recibo:** o cabeçalho imprimia sempre "Orken". Agora mostra o emissor da loja (nome fantasia ou razão social, CNPJ e endereço do perfil fiscal) e, sem perfil, o nome da empresa; a data sai no horário do Brasil (saía em UTC).
 - **Nada foi apagado do banco:** as colunas JSON das seções removidas ficam como estavam (sem migração destrutiva); só deixam de ser lidas e escritas pela API.
 - **Restaurante não muda:** a regra de desconto vale para a venda fechada no PDV; o fechamento de comanda tem regras próprias.
+- **Correções da revisão independente** (sem bloqueadores):
+  - a regra é conferida **na venda travada**, dentro da confirmação (antes, um item com desconto incluído no mesmo instante escapava);
+  - senha de gerente digitada no PDV tem bloqueio **próprio** (10 erros em 15 minutos por gerente), separado do login — um vendedor não consegue bloquear o login do gerente nem chutar senhas sem limite; recusas vão para o log;
+  - a recusa por falta de autorização volta com `code: "discount_requires_manager"`; o PDV, ao recebê-la, recarrega as regras e abre o pedido de autorização (antes, com as regras desatualizadas no navegador, não havia como pedir);
+  - com o alerta "sem estoque" desligado, a lista do painel não fica mais vazia quando há produtos abaixo do mínimo (a consulta já não busca o que está desligado);
+  - a auditoria da autorização guarda o id da venda, o do gerente, o percentual e o limite; a tela de configurações não perde edições numa atualização em segundo plano.
 - **Testes:** integração (configurações só com o que tem efeito; PDV sem modo de desconto recusado; vendedor acima do limite sem autorização → 422, com senha errada → 422, com gerente → 200 e auditado; dentro do limite passa; com autorização no caixa desligada, vendedor acima do limite → 422 mesmo com senha de gerente; gerente sem limite); Vitest da regra (mesma do servidor); Playwright da tela.

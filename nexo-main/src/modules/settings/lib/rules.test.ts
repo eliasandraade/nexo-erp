@@ -18,6 +18,6 @@ describe("PDV discount rule", () => {
 
   it("refuses settings the server would refuse", () => {
     expect(settingsProblems({ inventory: { enableLowStockAlerts: true, enableZeroStockAlerts: true }, pos: rules })).toEqual([]);
-    expect(settingsProblems({ inventory: { enableLowStockAlerts: true, enableZeroStockAlerts: true }, pos: { ...rules, allowValueDiscount: false, allowPercentDiscount: false } })).toHaveLength(1);
+    expect(settingsProblems({ inventory: { enableLowStockAlerts: true, enableZeroStockAlerts: true }, pos: { ...rules, allowValueDiscount: false, allowPercentDiscount: false } })).toEqual(["Permita ao menos um tipo de desconto (R$ ou %)."]);
   });
 });

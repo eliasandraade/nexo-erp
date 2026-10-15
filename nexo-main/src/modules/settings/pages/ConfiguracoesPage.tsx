@@ -24,9 +24,10 @@ export default function ConfiguracoesPage() {
   const settings = useSettings();
   const [form, setForm] = useState<AppSettings | null>(null);
 
+  // load once: a background refetch must not wipe what is being edited
   useEffect(() => {
-    if (settings.data) setForm(settings.data);
-  }, [settings.data]);
+    if (settings.data && !form) setForm(settings.data);
+  }, [settings.data, form]);
 
   const save = useMutation({
     mutationFn: (value: AppSettings) => saveSettings(value),

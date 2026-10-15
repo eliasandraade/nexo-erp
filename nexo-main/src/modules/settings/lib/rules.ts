@@ -5,7 +5,7 @@ export function settingsProblems(s: AppSettings): string[] {
   const problems: string[] = [];
   if (s.pos.maxDiscountPercent < 0 || s.pos.maxDiscountPercent > 100) problems.push("O desconto máximo vai de 0% a 100%.");
   if (!s.pos.allowValueDiscount && !s.pos.allowPercentDiscount)
-    problems.push("Permita ao menos um tipo de desconto (R$ ou %), ou zere o desconto máximo.");
+    problems.push("Permita ao menos um tipo de desconto (R$ ou %).");
   return problems;
 }
 

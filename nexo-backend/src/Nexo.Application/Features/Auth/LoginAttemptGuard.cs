@@ -52,4 +52,6 @@ public sealed class LoginAttemptGuard
 
     public static string ForUser(Guid userId) => userId.ToString();
     public static string ForPlatform(Guid platformUserId) => $"platform:{platformUserId}";
+    /// <summary>Manager authorizations typed at the PDV: their own count, so a seller cannot lock a manager's login.</summary>
+    public static string ForPosApproval(Guid managerUserId) => $"pos-approval:{managerUserId}";
 }

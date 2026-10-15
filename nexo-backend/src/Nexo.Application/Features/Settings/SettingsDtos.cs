@@ -5,7 +5,7 @@ namespace Nexo.Application.Features.Settings;
 // language/date/currency) were removed from the API and the page; their stored JSON columns are kept
 // untouched — no destructive migration. Company data for notas and receipts lives in Fiscal.
 
-/// <summary>Which stock alerts the dashboard and the reports raise.</summary>
+/// <summary>Which stock alerts the dashboard (Visão geral) raises.</summary>
 public record InventorySettingsDto(
     bool EnableLowStockAlerts,
     bool EnableZeroStockAlerts);

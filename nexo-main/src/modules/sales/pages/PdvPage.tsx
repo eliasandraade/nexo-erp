@@ -16,6 +16,7 @@ import { ManagerApprovalDialog, type ManagerApproval } from "../components/Manag
 import { useSettings } from "@/modules/settings/api/settings.api";
 import { checkDiscount, discountPercent } from "@/modules/settings/lib/rules";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { ApiError } from "@/services/api-client";
 import { PosPaymentPanel } from "../components/PosPaymentPanel";
 import { PosSaleSuccessModal } from "../components/PosSaleSuccessModal";
 import type { CompletedSale, PaymentEntry, ProductSearchResult } from "../types";
@@ -55,7 +56,8 @@ export default function PdvPage() {
   const completeSale = useCompleteSale();
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
   const { session } = useAuth();
-  const posRules = useSettings().data?.pos;
+  const settingsQuery = useSettings();
+  const posRules = settingsQuery.data?.pos;
   // a finalize waiting for a manager's authorization (discount above the limit)
   const [pendingFinalize, setPendingFinalize] = useState<{ payments: PaymentEntry[]; consumerDocument?: string } | null>(null);
 
@@ -119,6 +121,13 @@ export default function PdvPage() {
           );
         },
         onError: (err: Error) => {
+          // the server's rule is the source of truth: if it asks for a manager, ask (and refresh the rules)
+          if (err instanceof ApiError && err.code === "discount_requires_manager") {
+            void settingsQuery.refetch();
+            toast.error(err.message);
+            setPendingFinalize({ payments, consumerDocument });
+            return;
+          }
           toast.error(err.message ?? "Erro ao finalizar venda. Tente novamente.");
         },
       }

@@ -63,22 +63,28 @@ public class PosDiscountRuleTests
         try
         {
             var (seller, session) = await SellerWithDrawerAsync("pdv.desconto");
+            await UserAsync("pdv.gerente", UserRole.Gerente);
             var noApproval = await ConfirmAsync(seller, session, discount: 15m);
             noApproval.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-            (await noApproval.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString().Should().Contain("autorização de um gerente");
+            var refusal = await noApproval.Content.ReadFromJsonAsync<JsonElement>();
+            refusal.GetProperty("code").GetString().Should().Be("discount_requires_manager", "the PDV opens the manager authorization on this code");
+            refusal.GetProperty("error").GetString().Should().Contain("autorização de um gerente");
 
-            var wrong = await ConfirmAsync(seller, session, discount: 15m, approval: new ManagerApprovalRequest(TestCredentials.AdminLogin, "nao-e-a-senha-" + Guid.NewGuid().ToString("N")[..6]));
+            // a dedicated manager: wrong passwords count on the PDV-approval lock, not on any login
+            var wrong = await ConfirmAsync(seller, session, discount: 15m, approval: new ManagerApprovalRequest("pdv.gerente", "nao-e-a-senha-" + Guid.NewGuid().ToString("N")[..6]));
             wrong.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
             (await wrong.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString().Should().Contain("recusada");
 
+            (await AuthClientFactory.LoginAsync(_factory, "pdv.gerente", TestCredentials.SameTenantManagerPassword)).Should()
+                .NotBeNull("a refused PDV authorization does not lock the manager's own login");
             var approved = await ConfirmAsync(seller, session, discount: 15m,
-                approval: new ManagerApprovalRequest(TestCredentials.AdminLogin, TestCredentials.AdminPassword));
+                approval: new ManagerApprovalRequest("pdv.gerente", TestCredentials.SameTenantManagerPassword));
             approved.StatusCode.Should().Be(HttpStatusCode.OK, await approved.Content.ReadAsStringAsync());
             var sale = (await approved.Content.ReadFromJsonAsync<SaleDto>())!;
 
             using var scope = _factory.Services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-            (await db.AuditRecords.IgnoreQueryFilters().AnyAsync(a => a.ActionType == "pos_discount_override" && a.EntityId == sale.Number.ToString()))
+            (await db.AuditRecords.IgnoreQueryFilters().AnyAsync(a => a.ActionType == "pos_discount_override" && a.EntityId == sale.Id.ToString()))
                 .Should().BeTrue("who authorized the discount is recorded");
 
             (await ConfirmAsync(seller, session, discount: 10m)).StatusCode.Should().Be(HttpStatusCode.OK, "within the limit");
@@ -128,22 +134,23 @@ public class PosDiscountRuleTests
             new ConfirmSaleRequest([new PaymentInput("Pix", "Cash", 100m - discount)], DiscountAmount: discount, ManagerApproval: approval));
     }
 
+    private async Task UserAsync(string login, UserRole role)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        if (await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Login == login)) return;
+        var adminUser = await db.Users.IgnoreQueryFilters().FirstAsync(u => u.Login == TestCredentials.AdminLogin);
+        var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
+        db.Users.Add(User.Create(
+            tenantId: adminUser.TenantId, fullName: $"{role} {login}",
+            email: $"{login}@{TestCredentials.TestLocalDomain}", login: login,
+            passwordHash: hasher.Hash(TestCredentials.SameTenantManagerPassword), role: role));
+        await db.SaveChangesAsync();
+    }
+
     private async Task<(HttpClient Client, CashSessionDto Session)> SellerWithDrawerAsync(string login)
     {
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-            if (!await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Login == login))
-            {
-                var adminUser = await db.Users.IgnoreQueryFilters().FirstAsync(u => u.Login == TestCredentials.AdminLogin);
-                var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
-                db.Users.Add(User.Create(
-                    tenantId: adminUser.TenantId, fullName: $"Vendedor {login}",
-                    email: $"{login}@{TestCredentials.TestLocalDomain}", login: login,
-                    passwordHash: hasher.Hash(TestCredentials.SameTenantManagerPassword), role: UserRole.Vendedor));
-                await db.SaveChangesAsync();
-            }
-        }
+        await UserAsync(login, UserRole.Vendedor);
         var client = await AuthClientFactory.LoginAsync(_factory, login, TestCredentials.SameTenantManagerPassword);
         // sellers do not open the drawer: they sell on the one a manager opened
         var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);

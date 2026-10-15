@@ -66,7 +66,7 @@ public class ExceptionHandlingMiddleware
         catch (DomainException ex)
         {
             _logger.LogWarning("Domain rule violation: {Message}", ex.Message);
-            await WriteErrorAsync(ctx, 422, ex.Message);
+            await WriteErrorAsync(ctx, 422, ex.Message, code: ex.Code);
         }
         catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
         {
@@ -96,7 +96,8 @@ public class ExceptionHandlingMiddleware
         HttpContext ctx,
         int statusCode,
         string error,
-        string[]? details = null)
+        string[]? details = null,
+        string? code = null)
     {
         // A streamed download (e.g. the sales spreadsheet) failed midway: the status already went
         // out, so cut the connection — the browser reports a failed download, not a broken file.
@@ -114,6 +115,7 @@ public class ExceptionHandlingMiddleware
             error,
             details = details ?? Array.Empty<string>(),
             requestId = ctx.TraceIdentifier,
+            code,
         };
 
         await ctx.Response.WriteAsync(JsonSerializer.Serialize(body, JsonOpts));

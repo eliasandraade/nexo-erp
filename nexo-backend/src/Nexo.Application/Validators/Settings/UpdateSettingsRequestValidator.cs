@@ -17,7 +17,7 @@ public class UpdateSettingsRequestValidator : AbstractValidator<UpdateSettingsRe
                 .WithMessage("O desconto máximo vai de 0% a 100%.");
             RuleFor(x => x.Pos)
                 .Must(p => p.AllowValueDiscount || p.AllowPercentDiscount)
-                .WithMessage("Permita ao menos um tipo de desconto (R$ ou %), ou zere o desconto máximo.");
+                .WithMessage("Permita ao menos um tipo de desconto (R$ ou %).");
         });
     }
 }
