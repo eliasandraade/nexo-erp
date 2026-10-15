@@ -26,8 +26,12 @@ internal sealed class SaleReceiptDocument : IDocument
             page.Header().Column(col =>
             {
                 col.Item().Text(_req.TenantName).Bold().FontSize(16);
+                if (_req.IssuerDocument is { Length: 14 } cnpj)
+                    col.Item().Text($"CNPJ {FormatDocument(cnpj)}").FontSize(9);
+                if (!string.IsNullOrWhiteSpace(_req.IssuerAddress))
+                    col.Item().Text(_req.IssuerAddress).FontSize(9);
                 col.Item().Text("RECIBO DE VENDA").Bold().FontSize(13);
-                col.Item().Text($"Nº {_req.Sale.Number}   {_req.Sale.ConfirmedAt?.ToLocalTime():dd/MM/yyyy HH:mm}");
+                col.Item().Text($"Nº {_req.Sale.Number}   {(_req.Sale.ConfirmedAt is { } at ? Nexo.Application.Common.BusinessClock.ToBrazil(at).ToString("dd/MM/yyyy HH:mm") : string.Empty)}");
                 if (!string.IsNullOrWhiteSpace(_req.Sale.CustomerName))
                     col.Item().Text($"Cliente: {_req.Sale.CustomerName}");
                 if (_req.Sale.ConsumerDocument is { Length: > 0 } doc)

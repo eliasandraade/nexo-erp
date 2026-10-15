@@ -13,6 +13,8 @@ export interface CompleteSaleArgs {
   cashSessionId: string;
   /** "CPF/CNPJ na nota", digits only; omitted when the customer did not ask. */
   consumerDocument?: string;
+  /** Manager login/password for a discount above the limit; never part of the retry key. */
+  managerApproval?: { login: string; password: string };
 }
 
 /** Maps frontend PaymentMethod ("cash" | "pix" | "card") to backend PaymentInput. */
@@ -47,6 +49,7 @@ export function useCompleteSale() {
       discountAmount,
       cashSessionId,
       consumerDocument,
+      managerApproval,
     }: CompleteSaleArgs): Promise<SaleDto> => {
       const key = JSON.stringify({ items, payments, discountAmount, cashSessionId });
       const confirmBody = {
@@ -54,6 +57,7 @@ export function useCompleteSale() {
         discountAmount,
         taxAmount: 0,
         consumerDocument: consumerDocument || undefined,
+        managerApproval,
       };
 
       if (pending.current?.key === key) {

@@ -144,7 +144,13 @@ public class SaleService
     ///      a prazo → pending receivable
     ///   5. Draft → Confirmed (→ Paid when nothing is a prazo)
     /// </summary>
-    public async Task<SaleDto> ConfirmAsync(Guid saleId, ConfirmSaleRequest request, CancellationToken ct = default)
+    public Task<SaleDto> ConfirmAsync(Guid saleId, ConfirmSaleRequest request, CancellationToken ct = default)
+        => ConfirmAsync(saleId, request, beforeConfirm: null, ct);
+
+    /// <param name="beforeConfirm">A rule checked on the locked sale, before anything is written
+    /// (the PDV discount rule) — throwing rolls the confirmation back.</param>
+    public async Task<SaleDto> ConfirmAsync(Guid saleId, ConfirmSaleRequest request,
+        Func<Sale, CancellationToken, Task>? beforeConfirm, CancellationToken ct = default)
     {
         if (request.Payments is null || request.Payments.Count == 0)
             throw new DomainException("Informe ao menos um pagamento para concluir a venda.");
@@ -168,6 +174,8 @@ public class SaleService
 
             if (!sale.Items.Any())
                 throw new DomainException("Cannot confirm a sale with no items.");
+
+            if (beforeConfirm is not null) await beforeConfirm(sale, ct);
 
             var consumer = FiscalCodes.Document(request.ConsumerDocument);
             if (consumer.Length > 0 && !FiscalCodes.IsCpf(consumer) && !FiscalCodes.IsCnpj(consumer))

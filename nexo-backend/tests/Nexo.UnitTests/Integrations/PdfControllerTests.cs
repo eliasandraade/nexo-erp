@@ -71,7 +71,10 @@ public sealed class PdfControllerTests
         user.UserId.Returns(UserId);
 
         var service    = new SaleService(sales, products, stock, cash, financial, uow, Substitute.For<IAuditWriter>(), Substitute.For<IPriceResolver>(), tenant, user);
-        var controller = new SalesController(service, renderer);
+        var header     = Substitute.For<IReceiptHeaderProvider>();
+        header.GetAsync(Arg.Any<CancellationToken>()).Returns(new ReceiptHeader("Loja Teste", null, null));
+        // the PDV discount policy is not involved in receipts
+        var controller = new SalesController(service, null!, renderer, header);
 
         return new SaleSut(controller, sales, renderer);
     }

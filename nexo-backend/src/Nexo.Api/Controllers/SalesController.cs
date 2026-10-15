@@ -15,10 +15,15 @@ namespace Nexo.Api.Controllers;
 public class SalesController : ControllerBase
 {
     private readonly SaleService _service;
+    private readonly PosDiscountPolicy _posPolicy;
     private readonly IPdfRenderer _pdfRenderer;
+    private readonly IReceiptHeaderProvider _receiptHeader;
 
-    public SalesController(SaleService service, IPdfRenderer pdfRenderer)
+    public SalesController(SaleService service, PosDiscountPolicy posPolicy, IPdfRenderer pdfRenderer,
+        IReceiptHeaderProvider receiptHeader)
     {
+        _receiptHeader = receiptHeader;
+        _posPolicy = posPolicy;
         _service = service;
         _pdfRenderer = pdfRenderer;
     }
@@ -72,7 +77,7 @@ public class SalesController : ControllerBase
         Guid id,
         [FromBody] ConfirmSaleRequest request,
         CancellationToken ct)
-        => Ok(VisibleTo(await _service.ConfirmAsync(id, request, ct)));
+        => Ok(VisibleTo(await _posPolicy.ConfirmAtPosAsync(id, request, ct)));
 
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Roles = AppRoles.Management)]
@@ -102,7 +107,8 @@ public class SalesController : ControllerBase
     public async Task<IActionResult> GetSaleReceipt(Guid id, CancellationToken ct)
     {
         var sale    = await _service.GetByIdAsync(id, ct);
-        var request = new SaleReceiptRequest(sale, "Orken");
+        var header  = await _receiptHeader.GetAsync(ct);
+        var request = new SaleReceiptRequest(sale, header.Name, header.Document, header.Address);
         var result  = _pdfRenderer.RenderSaleReceipt(request);
         return File(result.Bytes, "application/pdf", result.FileName);
     }

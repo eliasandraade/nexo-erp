@@ -15,7 +15,7 @@ namespace Nexo.Infrastructure.Fiscal;
 /// (customer IE) and how far the store is from issuing. No nota is issued and nothing leaves the
 /// system — emission goes through <see cref="IFiscalDocumentProvider"/>, which in the 1.0 is none.
 /// </summary>
-public class FiscalService
+public class FiscalService : Nexo.Application.Integrations.Pdf.IReceiptHeaderProvider
 {
     private const int IssueListLimit = 50;
 
@@ -69,6 +69,20 @@ public class FiscalService
         profile.UpdateNumbering(r.OperationNature, r.NfceSeries, r.NfceNextNumber, r.NfeSeries, r.NfeNextNumber);
         await _db.SaveChangesAsync(ct);
         return Map(profile);
+    }
+
+    /// <summary>
+    /// Who appears at the top of receipts: the store's issuer (trade name, CNPJ, address) when the
+    /// fiscal profile is filled in, the company name otherwise — never a placeholder.
+    /// </summary>
+    public async Task<Nexo.Application.Integrations.Pdf.ReceiptHeader> GetAsync(CancellationToken ct)
+    {
+        var p = await _db.FiscalProfiles.AsNoTracking().FirstOrDefaultAsync(ct);
+        if (p is not null)
+            return new(p.TradeName ?? p.LegalName, p.Cnpj,
+                $"{p.Street}, {p.Number}{(p.Complement is null ? "" : " " + p.Complement)} — {p.District}, {p.CityName}/{p.State}");
+        var name = await _db.Tenants.AsNoTracking().IgnoreQueryFilters().Where(t => t.Id == _db.CurrentTenantIdForFilter).Select(t => t.TradeName ?? t.CompanyName).FirstOrDefaultAsync(ct);
+        return new(string.IsNullOrWhiteSpace(name) ? "Recibo" : name, null, null);
     }
 
     // ── Product ────────────────────────────────────────────────────────────────

@@ -46,7 +46,9 @@ public record ConfirmSaleRequest(
     /// </summary>
     IReadOnlySet<Guid>? SkipStockProductIds = null,
     /// <summary>"CPF/CNPJ na nota" — optional; masks are ignored, check digits are verified.</summary>
-    string? ConsumerDocument = null);
+    string? ConsumerDocument = null,
+    /// <summary>PDV only: a manager's login/password letting a discount above the limit through.</summary>
+    ManagerApprovalRequest? ManagerApproval = null);
 
 public record CancelSaleRequest(string? Reason = null);
 

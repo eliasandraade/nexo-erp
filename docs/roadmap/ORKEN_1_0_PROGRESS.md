@@ -36,7 +36,8 @@
 | #68 | Saúde e resiliência (live, ready, relatório) (GitHub #69) | `66ca9db` | — | Em produção |
 | #65b | Relatórios: atalhos para os das outras áreas (GitHub #71) | `c5b90bf` | — | Em produção |
 | #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) (GitHub #70) | `f7a106b` | `ObservabilityErrorEvents` (aditiva) | Em produção |
-| #70 | Storage privado (URL assinada, papéis por contexto, chaves do tenant) | — | — | Em revisão |
+| #70 | Storage privado (URL assinada, papéis por contexto, chaves do tenant) (GitHub #72) | `4c93835` | — | Em produção |
+| #71 | Configurações reais (sem toggle placebo) | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -1144,3 +1145,28 @@ Antes: tudo ia para um bucket com acesso público; prontuário (Service) e fotos
 - **Para o dono, na ordem:** (1) criar o bucket R2 privado **sem** domínio público nem r2.dev; (2) dar acesso a ele ao token da aplicação; (3) configurar `Integrations__Storage__R2__PrivateBucketName`; (4) se já houver fotos de obra sob `private/` no bucket atual, copiá-las para o novo antes (senão passam a 404). Fotos e anexos antigos com chave pública (`tenants/…`) continuam acessíveis pela URL pública até uma migração que os mova (cópia + regravação + exclusão da cópia pública — exige aprovação, por excluir dados).
 - **Fica para depois:** anexos do interpretador e imagens de ficha técnica gravados no disco do container (não são servidos, e somem a cada deploy); URLs de logo/capa/produto aceitam qualquer endereço externo.
 - **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.
+- **Em produção** (merge `4c93835`): `GET /api/integrations/storage/signed-url` passou de 405 para 401 sem token; `/health/ready` mostra `object-storage: Degraded — reachable, private bucket not configured`, como esperado até o dono criar o bucket privado; `/health` 20/20.
+
+## PR 71 — Configurações reais
+
+Levantamento: **nenhum** campo da tela de Configurações tinha efeito — eram salvos e lidos de volta, e nada mais os usava. Cada um agora funciona ou saiu da tela:
+
+| Campo | Destino |
+|---|---|
+| PDV: desconto máximo sem gerente | **Funciona** — o servidor confere ao finalizar a venda no PDV (itens + venda, sobre o bruto); o PDV avisa antes |
+| PDV: gerente autoriza no caixa | **Funciona** — acima do limite, um gerente da empresa digita login e senha no PDV; o servidor confere e registra na auditoria (`pos_discount_override`, com o nome de quem autorizou). Desligado: acima do limite só com gerente operando o caixa |
+| PDV: desconto em R$ / em % | **Funciona** — o PDV só oferece os modos permitidos; ao menos um precisa ficar ligado |
+| Estoque: alertas de sem estoque / abaixo do mínimo | **Funciona** — a Visão geral só avisa o que estiver ligado |
+| Empresa (nome, fantasia, CNPJ, e-mail, telefone) | **Saiu** — duplicava o cadastro da empresa e o perfil fiscal, e os valores padrão eram de exemplo ("Andrade Corp"); a tela aponta para Fiscal |
+| Loja e operador padrão; dias sem movimentação; comportamento do estoque mínimo ("bloquear" nunca bloqueou); alerta de alta rotatividade; comissões do varejo; idioma, formato de data e moeda; card "Integrações" vazio | **Saíram** — nada os implementava |
+
+- **Recibo:** o cabeçalho imprimia sempre "Orken". Agora mostra o emissor da loja (nome fantasia ou razão social, CNPJ e endereço do perfil fiscal) e, sem perfil, o nome da empresa; a data sai no horário do Brasil (saía em UTC).
+- **Nada foi apagado do banco:** as colunas JSON das seções removidas ficam como estavam (sem migração destrutiva); só deixam de ser lidas e escritas pela API.
+- **Restaurante não muda:** a regra de desconto vale para a venda fechada no PDV; o fechamento de comanda tem regras próprias.
+- **Correções da revisão independente** (sem bloqueadores):
+  - a regra é conferida **na venda travada**, dentro da confirmação (antes, um item com desconto incluído no mesmo instante escapava);
+  - senha de gerente digitada no PDV tem bloqueio **próprio** (10 erros em 15 minutos por gerente), separado do login — um vendedor não consegue bloquear o login do gerente nem chutar senhas sem limite; recusas vão para o log;
+  - a recusa por falta de autorização volta com `code: "discount_requires_manager"`; o PDV, ao recebê-la, recarrega as regras e abre o pedido de autorização (antes, com as regras desatualizadas no navegador, não havia como pedir);
+  - com o alerta "sem estoque" desligado, a lista do painel não fica mais vazia quando há produtos abaixo do mínimo (a consulta já não busca o que está desligado);
+  - a auditoria da autorização guarda o id da venda, o do gerente, o percentual e o limite; a tela de configurações não perde edições numa atualização em segundo plano.
+- **Testes:** integração (configurações só com o que tem efeito; PDV sem modo de desconto recusado; vendedor acima do limite sem autorização → 422, com senha errada → 422, com gerente → 200 e auditado; dentro do limite passa; com autorização no caixa desligada, vendedor acima do limite → 422 mesmo com senha de gerente; gerente sem limite); Vitest da regra (mesma do servidor); Playwright da tela.

@@ -1,30 +1,10 @@
-export interface CompanySettings {
-  name: string;
-  tradeName: string;
-  cnpj: string;
-  email: string;
-  phone: string;
-}
-
-export interface OperationSettings {
-  defaultStore: string;
-  defaultOperator: string;
-}
-
+/** Which stock alerts the dashboard raises. */
 export interface InventorySettings {
-  noMovementAlertDays: number;
-  minStockBehavior: "alert" | "block" | "ignore";
   enableLowStockAlerts: boolean;
   enableZeroStockAlerts: boolean;
-  enableHighRotationAlerts: boolean;
 }
 
-export interface CommissionSettings {
-  defaultCommissionRate: number;
-  enableProductCommission: boolean;
-  policyNotes: string;
-}
-
+/** PDV discount rules — the limit and the manager authorization are enforced by the server too. */
 export interface PosSettings {
   allowValueDiscount: boolean;
   allowPercentDiscount: boolean;
@@ -32,26 +12,7 @@ export interface PosSettings {
   maxDiscountPercent: number;
 }
 
-export interface SystemSettings {
-  language: string;
-  dateFormat: string;
-  currencySymbol: string;
-}
-
 export interface AppSettings {
-  company: CompanySettings;
-  operation: OperationSettings;
   inventory: InventorySettings;
-  commission: CommissionSettings;
   pos: PosSettings;
-  system: SystemSettings;
 }
-
-export const minStockBehaviorLabels: Record<
-  InventorySettings["minStockBehavior"],
-  string
-> = {
-  alert: "Alertar (operação permitida)",
-  block: "Bloquear (operação negada)",
-  ignore: "Ignorar (sem alertas)",
-};

@@ -1,55 +1,29 @@
 namespace Nexo.Application.Features.Settings;
 
-// ── Section DTOs (mirror the frontend AppSettings type exactly) ─────────────
+// Only settings that change something (PR 71). The fields the page used to show without any effect
+// (company data, default store/operator, rotation and no-movement alerts, retail commissions,
+// language/date/currency) were removed from the API and the page; their stored JSON columns are kept
+// untouched — no destructive migration. Company data for notas and receipts lives in Fiscal.
 
-public record CompanySettingsDto(
-    string Name,
-    string TradeName,
-    string Cnpj,
-    string Email,
-    string Phone);
-
-public record OperationSettingsDto(
-    string? DefaultStore,       // nullable: legacy tenants may not have this field in stored JSON
-    string DefaultOperator);
-
+/// <summary>Which stock alerts the dashboard (Visão geral) raises.</summary>
 public record InventorySettingsDto(
-    int NoMovementAlertDays,
-    string MinStockBehavior,         // "alert" | "block" | "ignore"
     bool EnableLowStockAlerts,
-    bool EnableZeroStockAlerts,
-    bool EnableHighRotationAlerts);
+    bool EnableZeroStockAlerts);
 
-public record CommissionSettingsDto(
-    decimal DefaultCommissionRate,
-    bool EnableProductCommission,
-    string PolicyNotes);
-
+/// <summary>
+/// PDV discount rules. The limit and the manager authorization are enforced by the server when the
+/// sale is closed at the PDV; the allowed modes (R$ / %) shape how the PDV offers the discount.
+/// </summary>
 public record PosSettingsDto(
     bool AllowValueDiscount,
     bool AllowPercentDiscount,
     bool RequireManagerAuth,
     decimal MaxDiscountPercent);
 
-public record SystemSettingsDto(
-    string Language,
-    string DateFormat,
-    string CurrencySymbol);
-
-// ── Composite ────────────────────────────────────────────────────────────────
-
 public record SettingsDto(
-    CompanySettingsDto Company,
-    OperationSettingsDto Operation,
     InventorySettingsDto Inventory,
-    CommissionSettingsDto Commission,
-    PosSettingsDto Pos,
-    SystemSettingsDto System);
+    PosSettingsDto Pos);
 
 public record UpdateSettingsRequest(
-    CompanySettingsDto Company,
-    OperationSettingsDto Operation,
     InventorySettingsDto Inventory,
-    CommissionSettingsDto Commission,
-    PosSettingsDto Pos,
-    SystemSettingsDto System);
+    PosSettingsDto Pos);
