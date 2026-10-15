@@ -126,6 +126,8 @@ public class FinanceiroController : ControllerBase
                 o.Id,
                 o.CouvertAmount,
                 o.ServiceFeeAmount,
+                o.DeliveryFeeAmount,
+                o.DiscountAmount,
                 ItemsTotal = o.Items
                     .Where(i => i.Status != RestOrderItemStatus.Cancelled)
                     .Sum(i => (decimal?)i.Total) ?? 0m,
@@ -133,7 +135,8 @@ public class FinanceiroController : ControllerBase
             .ToListAsync(ct);
 
         var ordersCount = orderRows.Count;
-        var revenue     = orderRows.Sum(r => r.ItemsTotal + r.CouvertAmount + r.ServiceFeeAmount);
+        var revenue     = orderRows.Sum(r => r.ItemsTotal + r.CouvertAmount + r.ServiceFeeAmount + r.DeliveryFeeAmount
+                                                - Math.Min(r.DiscountAmount, r.ItemsTotal + r.DeliveryFeeAmount));   // = the sale
 
         // ── Step 2: Personnel cost (all active employees, full month) ──────────
         var personnelCost = await _db.RestEmployees

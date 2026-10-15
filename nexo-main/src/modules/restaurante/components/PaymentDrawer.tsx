@@ -61,8 +61,8 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
   // ── Total calculation ──────────────────────────────────────────────────────
   // Prefer values already stored on the closed order; fall back to estimating
   // from settings while the drawer is open before close() fires.
-  // Taxa de serviço is for salão/balcão; a delivery or takeaway order was quoted without it.
-  const takesServiceFee = order.orderType !== "Delivery" && order.orderType !== "Takeaway";
+  // A delivery/portal order was quoted without taxa de serviço (same rule as the backend).
+  const takesServiceFee = !order.fromDeliveryOrder;
   const serviceFeePercent = settings?.serviceFeeEnabled && takesServiceFee ? (settings.serviceFeePercent ?? 0) : 0;
   const serviceFee = order.serviceFeeAmount > 0
     ? order.serviceFeeAmount

@@ -114,6 +114,11 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
     {
         var channel   = Enum.Parse<DeliveryChannel>(request.Channel, ignoreCase: true);
         var orderType = Enum.Parse<DeliveryOrderType>(request.OrderType, ignoreCase: true);
+        if (request.DeliveryFee < 0)
+            throw new DomainException("A taxa de entrega não pode ser negativa.");
+        foreach (var itemReq in request.Items ?? [])
+            if (itemReq.Quantity <= 0 || itemReq.Quantity != Math.Floor(itemReq.Quantity))
+                throw new DomainException($"Quantidade inválida para '{itemReq.ProductName}': use um número inteiro maior que zero.");
 
         var order = RestDeliveryOrder.Create(
             tenantId:            _currentTenant.Id,
@@ -125,7 +130,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
             customerEmail:       request.CustomerEmail,
             customerId:          request.CustomerId,
             deliveryAddressJson: request.DeliveryAddressJson,
-            deliveryFee:         request.DeliveryFee,
+            deliveryFee:         orderType == DeliveryOrderType.Takeaway ? 0m : request.DeliveryFee,
             estimatedMinutes:    request.EstimatedMinutes,
             notes:               request.Notes,
             externalOrderId:     request.ExternalOrderId,
@@ -141,12 +146,21 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         {
             var name = itemReq.ProductName;
             var price = itemReq.UnitPrice;
+            IReadOnlyList<ProductModifierGroup> groups = [];
             if (itemReq.ProductId is { } productId)
             {
                 var product = await _products.GetByIdAsync(productId, ct)
                     ?? throw new NotFoundException("Product", productId);
+                if (!product.IsActive)
+                    throw new DomainException($"Produto '{product.Name}' está inativo.");
                 name  = product.Name;
                 price = product.SalePrice;
+                // Adicionais: only the product's own, active, within each group's limits
+                groups = await _modifierGroups.GetByProductIdAsync(product.Id, ct);
+                ValidatePortalItemModifiers(product.Id,
+                    (itemReq.Modifiers ?? []).Where(m => m.ModifierId.HasValue)
+                        .Select(m => new CreatePortalOrderItemModifierRequest(m.ModifierId!.Value)).ToList(),
+                    groups);
             }
 
             var item = order.AddItem(
@@ -162,6 +176,8 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
             {
                 var label = modReq.Label;
                 var modPrice = modReq.Price;
+                if (modReq.ModifierId is null && modPrice < 0)
+                    throw new DomainException("Adicional sem cadastro não pode ter preço negativo.");
                 if (modReq.ModifierId is { } modifierId)
                 {
                     var modifier = await _modifierGroups.GetModifierByIdAsync(modifierId, ct)
@@ -393,6 +409,9 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
                 resolvedZone?.Neighborhood,
                 isFirstOrder);
 
+            // A sale needs a value to charge: a coupon may lower the order, never zero it.
+            if (order.ItemsSubtotal + deliveryFee - discountAmount <= 0)
+                throw new DomainException("Este cupom não pode zerar o pedido.");
             order.ApplyCoupon(coupon.Code, discountAmount);
             coupon.IncrementUsedCount();
 

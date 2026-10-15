@@ -498,7 +498,14 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
             var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
             var storeId = await db.RestOrders.IgnoreQueryFilters().Where(o => o.Id == orderId).Select(o => o.StoreId).FirstAsync();
             var settings = await db.FoodServiceSettings.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.StoreId == storeId);
-            if (settings is not null)
+            if (settings is null)
+            {
+                var tenantId = await db.RestOrders.IgnoreQueryFilters().Where(o => o.Id == orderId).Select(o => o.TenantId).FirstAsync();
+                settings = Nexo.Domain.Modules.Restaurante.FoodServiceSettings.CreateDefault(tenantId);
+                db.Entry(settings).Property(nameof(settings.StoreId)).CurrentValue = storeId;
+                db.FoodServiceSettings.Add(settings);
+                await db.SaveChangesAsync();
+            }
             {
                 previous = (settings.StoreType, settings.CouvertEnabled, settings.CouvertPricePerPerson, settings.CouvertAutomatic,
                             settings.ServiceFeeEnabled, settings.ServiceFeePercent, settings.OrderTypesEnabled);
@@ -539,6 +546,40 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
         var sale = await _client.GetFromJsonAsync<Nexo.Application.Features.Sales.SaleDto>($"/api/sales/{order.SaleId}");
         sale!.Total.Should().Be(order.Total);                                  // the sale charges the quote
         sale.Status.Should().Be("Paid");
+    }
+
+    [Fact]
+    public async Task A_coupon_left_bigger_than_the_order_blocks_closing_while_the_comanda_can_still_be_adjusted()
+    {
+        var product = await CreateMenuProductAsync("CUP");
+        (await _client.PostAsJsonAsync("/api/stock/adjust",
+            new Nexo.Application.Features.Stock.AdjustStockRequest(product.Id, 5, "ManualEntry", "PR54"))).EnsureSuccessStatusCode();
+        var delivery = (await (await _client.PostAsJsonAsync("/api/restaurante/delivery-orders", new CreateDeliveryOrderRequest(
+            Channel: "WhatsApp", OrderType: "Takeaway", CustomerName: "Caio", CustomerPhone: "11944443333",
+            DeliveryFee: 9m,                                                   // ignored: takeaway has no delivery fee
+            Items: [new CreateDeliveryOrderItemRequest(product.Id, "x", 1m, 2)]))).Content.ReadFromJsonAsync<DeliveryOrderDto>())!;
+        delivery.DeliveryFee.Should().Be(0m);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            var d = await db.RestDeliveryOrders.IgnoreQueryFilters().FirstAsync(x => x.Id == delivery.Id);
+            d.ApplyCoupon("PR54B", 40m);                                       // 2 × 29,90 = 59,80
+            await db.SaveChangesAsync();
+        }
+        var accepted = (await (await _client.PostAsJsonAsync(
+            $"/api/restaurante/delivery-orders/{delivery.Id}/accept", new { })).Content.ReadFromJsonAsync<DeliveryOrderDto>())!;
+        var orderId = accepted.RestOrderId!.Value;
+
+        // the whole item is cancelled: R$ 40 of coupon over R$ 0 of items
+        var order = await _client.GetFromJsonAsync<OrderDto>($"/api/restaurante/orders/{orderId}");
+        (await _client.DeleteAsync($"/api/restaurante/orders/{orderId}/items/{order!.Items.Single().Id}")).EnsureSuccessStatusCode();
+        (await _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/items",
+            new AddOrderItemRequest(product.Id, 1))).EnsureSuccessStatusCode();   // 29,90 left, coupon 40
+
+        var close = await _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/close", new { });
+        close.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await _client.GetFromJsonAsync<OrderDto>($"/api/restaurante/orders/{orderId}"))!.Status.Should().NotBe("Closed");
     }
 
     // ── 11. Rastreamento em /api/public/orders/{token} ────────────────────────

@@ -89,7 +89,7 @@ export default function OrderPage() {
   const discount       = order.discountAmount ?? 0;
   const displayTotal   = order.total > 0
     ? order.total
-    : order.itemsSubtotal + order.couvertAmount + deliveryFee - discount;
+    : Math.max(0, order.itemsSubtotal + order.couvertAmount + deliveryFee - discount);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">

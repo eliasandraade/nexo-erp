@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261015050340_RestOrderDeliveryTerms")]
+    [Migration("20261015052124_RestOrderDeliveryTerms")]
     partial class RestOrderDeliveryTerms
     {
         /// <inheritdoc />
@@ -4812,6 +4812,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,2)")
                         .HasDefaultValue(0m)
                         .HasColumnName("discount_amount");
+
+                    b.Property<bool>("FromDeliveryOrder")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("from_delivery_order");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(500)

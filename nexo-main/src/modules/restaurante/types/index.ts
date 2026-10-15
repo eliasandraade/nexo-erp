@@ -129,6 +129,8 @@ export interface OrderDto {
   deliveryFeeAmount: number;
   /** Desconto do cupom of the delivery order (0 otherwise). */
   discountAmount: number;
+  /** Came from a delivery/portal order: quoted without taxa de serviço. */
+  fromDeliveryOrder?: boolean;
   notes: string | null;
   openedAt: string;
   closedAt: string | null;

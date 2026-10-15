@@ -188,10 +188,19 @@ export function printReceipt(order: OrderDto): void {
     ? `<div class="row"><span>Taxa de serviço</span><span>${fmtMoney(order.serviceFeeAmount)}</span></div>`
     : "";
 
+  const deliveryFee = order.deliveryFeeAmount ?? 0;
+  const discount = order.discountAmount ?? 0;
+  const deliveryRow = deliveryFee > 0
+    ? `<div class="row"><span>Taxa de entrega</span><span>${fmtMoney(deliveryFee)}</span></div>`
+    : "";
+  const discountRow = discount > 0
+    ? `<div class="row"><span>Desconto (cupom)</span><span>-${fmtMoney(discount)}</span></div>`
+    : "";
+
   // total: prefer stored value, fall back to sum
   const total = order.total > 0
     ? order.total
-    : order.itemsSubtotal + order.couvertAmount + order.serviceFeeAmount;
+    : Math.max(0, order.itemsSubtotal + order.couvertAmount + order.serviceFeeAmount + deliveryFee - discount);
 
   const body = `
     <h1>Orken</h1>
@@ -209,6 +218,8 @@ export function printReceipt(order: OrderDto): void {
     <div class="row"><span>Subtotal</span><span>${fmtMoney(order.itemsSubtotal)}</span></div>
     ${couvertRow}
     ${serviceFeeRow}
+    ${deliveryRow}
+    ${discountRow}
     <div class="sep-solid"></div>
     <div class="row bold" style="font-size:15px">
       <span>TOTAL</span>

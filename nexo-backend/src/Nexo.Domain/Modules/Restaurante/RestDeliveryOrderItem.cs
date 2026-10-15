@@ -20,7 +20,8 @@ public class RestDeliveryOrderItem : TenantEntity
     public decimal Quantity             { get; private set; }
     public string? Notes                { get; private set; }
 
-    public decimal LineTotal => UnitPriceSnapshot * Quantity;
+    /// <summary>Quantity × (price + adicionais) — the same as the comanda charges for the item.</summary>
+    public decimal LineTotal => (UnitPriceSnapshot + _modifiers.Sum(m => m.PriceSnapshot)) * Quantity;
 
     private readonly List<RestDeliveryOrderItemModifier> _modifiers = [];
     public IReadOnlyList<RestDeliveryOrderItemModifier> Modifiers => _modifiers.AsReadOnly();

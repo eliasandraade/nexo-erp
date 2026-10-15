@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -25,6 +25,25 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 type: "numeric(18,2)",
                 nullable: false,
                 defaultValue: 0m);
+
+            migrationBuilder.AddColumn<bool>(
+                name: "from_delivery_order",
+                schema: "nexo",
+                table: "rest_orders",
+                type: "boolean",
+                nullable: false,
+                defaultValue: false);
+
+            // Comandas accepted from a delivery order and not paid yet get the quoted terms now, so
+            // their payment charges the quote. Paid ones stay as they were (their sale is closed).
+            migrationBuilder.Sql(@"
+UPDATE nexo.rest_orders o
+   SET from_delivery_order = true,
+       delivery_fee_amount = d.delivery_fee,
+       discount_amount     = d.discount_amount
+  FROM nexo.rest_delivery_orders d
+ WHERE d.rest_order_id = o.id
+   AND o.status NOT IN ('Paid', 'Cancelled');");
         }
 
         /// <inheritdoc />
@@ -37,6 +56,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropColumn(
                 name: "discount_amount",
+                schema: "nexo",
+                table: "rest_orders");
+
+            migrationBuilder.DropColumn(
+                name: "from_delivery_order",
                 schema: "nexo",
                 table: "rest_orders");
         }

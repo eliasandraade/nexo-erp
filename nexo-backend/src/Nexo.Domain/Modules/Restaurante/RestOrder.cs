@@ -22,6 +22,8 @@ public class RestOrder : StoreEntity
     public decimal         DeliveryFeeAmount { get; private set; }
     /// <summary>Desconto (cupom) of the delivery order this comanda came from (0 otherwise).</summary>
     public decimal         DiscountAmount    { get; private set; }
+    /// <summary>True when the comanda was created by accepting a delivery/portal order (quoted terms).</summary>
+    public bool            FromDeliveryOrder { get; private set; }
     public string?         Notes            { get; private set; }
 
     public DateTime  OpenedAt    { get; private set; }
@@ -35,8 +37,13 @@ public class RestOrder : StoreEntity
 
     // ── Computed ──────────────────────────────────────────────────────────────
     public decimal ItemsSubtotal => _items.Where(i => i.IsActive).Sum(i => i.Total);
+    /// <summary>
+    /// The coupon never goes beyond what it can discount (items + entrega): cancelling items after the
+    /// order was accepted can leave the frozen coupon larger than what is left.
+    /// </summary>
+    public decimal EffectiveDiscount => Math.Min(DiscountAmount, ItemsSubtotal + DeliveryFeeAmount);
     /// <summary>What the customer pays: items + couvert + serviço + entrega − desconto.</summary>
-    public decimal Total         => Math.Max(0, ItemsSubtotal + CouvertAmount + ServiceFeeAmount + DeliveryFeeAmount - DiscountAmount);
+    public decimal Total         => ItemsSubtotal + CouvertAmount + ServiceFeeAmount + DeliveryFeeAmount - EffectiveDiscount;
     /// <summary>Everything charged on top of the items (couvert, serviço, entrega).</summary>
     public decimal SurchargesAmount => CouvertAmount + ServiceFeeAmount + DeliveryFeeAmount;
 
@@ -121,6 +128,7 @@ public class RestOrder : StoreEntity
             throw new DomainException("Taxa de entrega e desconto não podem ser negativos.");
         DeliveryFeeAmount = Math.Round(deliveryFee, 2, MidpointRounding.AwayFromZero);
         DiscountAmount    = Math.Round(discount, 2, MidpointRounding.AwayFromZero);
+        FromDeliveryOrder = true;
         SetUpdatedAt();
     }
 

@@ -563,11 +563,24 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - A comanda carrega `delivery_fee_amount` e `discount_amount` do pedido aceito.
   - O total é itens + couvert + serviço + entrega − desconto.
   - A venda é confirmada com a entrega nos acréscimos e o cupom no desconto, então **cobra exatamente o que foi cotado**. O livro registra essa receita.
-  - Taxa de serviço só em salão e balcão; delivery e retirada não pagam.
+  - Taxa de serviço: a comanda que veio de um pedido de delivery ou portal (cotado sem ela) não paga; salão, balcão e retirada aberta no balcão continuam pagando.
   - No endpoint genérico, **produto do catálogo usa o preço e o nome do catálogo** (e o adicional usa o do cadastro). Item sem produto (externo, não mapeado) mantém o preço declarado, mas nunca chega à comanda.
-- **Telas:** a conta da comanda e o fechamento mostram taxa de entrega e desconto do cupom.
+- **Telas:**
+  - a conta da comanda, o fechamento e a impressão mostram taxa de entrega e desconto do cupom;
+  - o card do delivery abre a comanda para receber (antes não havia como fechar e pagar um pedido sem mesa).
 - **Decisão registrada:** preço próprio por marketplace (iFood com preço diferente do salão) fica para listas de preço por canal, uma regra comercial a decidir. Hoje vale o preço do catálogo.
 - **Testes:** integração em `DeliveryPortalFlowTests`. Com taxa de serviço de 10% ligada no salão:
   - o pedido por WhatsApp com preço adulterado sai com o preço do catálogo;
   - com entrega de R$ 7,50 e cupom de R$ 5, a venda fecha em R$ 32,40, igual ao cotado, sem taxa de serviço.
+- **Revisão independente (corrigido antes do merge):**
+  - **Comanda presa.** Um cupom que cobria o pedido inteiro, ou um item cancelado depois do aceite, deixava uma comanda que não se pagava nem se cancelava.
+    - Agora o desconto efetivo tem teto (itens + entrega).
+    - O portal recusa um cupom que zeraria o pedido.
+    - O fechamento recusa uma comanda sem valor a cobrar enquanto ela ainda pode ser ajustada.
+  - **Relatórios do restaurante:** resumo e relatórios somam a entrega e abatem o desconto, iguais à venda e ao livro.
+  - **Adicionais com preço** passam a contar no total do pedido de delivery, que estava subcotado em relação à comanda; o cupom percentual usa esse total.
+  - **Endpoint genérico de delivery:** produto ativo, quantidade inteira positiva, adicionais do próprio produto (ativos e dentro dos limites do grupo), adicional livre sem preço negativo, retirada sem taxa de entrega.
+  - **Fechamento:** a resposta devolve o total certo.
+  - **Migration:** comandas aceitas de delivery e ainda não pagas recebem os termos cotados; as pagas ficam como estavam.
+  - +1 teste (cupom maior que o pedido depois de cancelar item; retirada sem taxa). O teste da taxa de serviço passa a criar as configurações quando faltam.
 

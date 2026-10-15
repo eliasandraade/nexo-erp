@@ -287,6 +287,10 @@ public class OrderService
 
         if (!order.ActiveItems.Any())
             throw new DomainException("Cannot close an order with no active items.");
+        // The coupon of a delivery order covers everything left: a sale needs a value to charge.
+        // Refused while the comanda can still be adjusted (add items or cancel it).
+        if (order.ItemsSubtotal + order.DeliveryFeeAmount - order.EffectiveDiscount <= 0)
+            throw new DomainException("O desconto cobre todo o pedido: ajuste os itens ou cancele a comanda.");
 
         // Cria Sale em Draft no CORE
         var saleDto = await _saleService.CreateAsync(new CreateSaleRequest(
@@ -314,7 +318,7 @@ public class OrderService
         return new CloseOrderResponse(
             OrderId: order.Id,
             SaleId:  saleDto.Id,
-            Total:   order.Subtotal,
+            Total:   order.Total,
             Message: "Order closed. Proceed to /pay to confirm payment.");
     }
 
@@ -369,10 +373,10 @@ public class OrderService
         // Discount        = coupon of the delivery order (0 otherwise)
         // GrandTotal      = ItemsSubtotal + SurchargesAmount − Discount  (= what the customer was quoted)
         // ─────────────────────────────────────────────────────────────────────────────
-        // Taxa de serviço is for table/counter service: a delivery or takeaway order was quoted without it.
+        // A delivery/portal order was quoted without taxa de serviço: it never applies to it.
         decimal serviceFeeAmount = 0;
         if (settings is { ServiceFeeEnabled: true } && settings.ServiceFeePercent.HasValue
-            && order.OrderType is not (RestOrderType.Delivery or RestOrderType.Takeaway))
+            && !order.FromDeliveryOrder)
             serviceFeeAmount = Math.Round(order.ItemsSubtotal * (settings.ServiceFeePercent.Value / 100m), 2);
 
         order.SetServiceFee(serviceFeeAmount);
@@ -408,7 +412,7 @@ public class OrderService
             await _saleService.ConfirmAsync(order.SaleId.Value,
                 new ConfirmSaleRequest(
                     payments,
-                    DiscountAmount: order.DiscountAmount,
+                    DiscountAmount: order.EffectiveDiscount,
                     SurchargesAmount: surchargesAmount > 0 ? surchargesAmount : 0,
                     SkipStockProductIds: recipeProductIds.Count > 0 ? recipeProductIds : null),
                 innerCt);
@@ -509,7 +513,8 @@ public class OrderService
         CancelledAt:      o.CancelledAt,
         Items:            o.Items.Select(MapItem).ToList(),
         DeliveryFeeAmount: o.DeliveryFeeAmount,
-        DiscountAmount:   o.DiscountAmount);
+        DiscountAmount:   o.EffectiveDiscount,
+        FromDeliveryOrder: o.FromDeliveryOrder);
 
     private static OrderItemDto MapItem(RestOrderItem i) => new(
         Id:              i.Id,
