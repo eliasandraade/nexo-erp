@@ -82,4 +82,18 @@ public sealed class InMemoryCacheService : ICacheService
         _cache.Set(key, "1", new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl });
         return Task.CompletedTask;
     }
+
+    public Task<bool> TrySetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default)
+    {
+        // Check-and-set must be atomic like Redis SET NX. Instances are scoped but share the
+        // singleton IMemoryCache, so the lock is static.
+        lock (SetNxLock)
+        {
+            if (_cache.TryGetValue(key, out _)) return Task.FromResult(false);
+            _cache.Set(key, "1", new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl });
+            return Task.FromResult(true);
+        }
+    }
+
+    private static readonly object SetNxLock = new();
 }

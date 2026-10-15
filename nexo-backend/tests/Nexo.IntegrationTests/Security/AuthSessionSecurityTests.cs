@@ -18,8 +18,13 @@ namespace Nexo.IntegrationTests.Security;
 ///
 /// Refresh token security model:
 ///   - Each token has a unique JTI stored in Redis under "refresh:valid:{jti}".
-///   - On rotate: old JTI deleted, new JTI inserted atomically.
-///   - An old token presented after rotation is not in Redis → rejected (401).
+///   - On rotate: a single-flight claim ("refresh:rotating:{jti}") picks one rotator; the
+///     new JTI is inserted, the old JTI is mapped to it ("refresh:rotated:{jti}", 10s) and
+///     then deleted.
+///   - An old token presented during that short reuse grace gets the SAME successor back
+///     (never a new token family) — this keeps concurrent / multi-tab refresh working.
+///   - Once the successor is used or revoked, or the grace expires, the old token is
+///     rejected (401).
 ///
 /// Switch-store security gap (documented):
 ///   - SwitchStore controller extracts the ACCESS token from Authorization header and
@@ -69,12 +74,54 @@ public class AuthSessionSecurityTests
         firstRefreshBody.RefreshToken.Should().NotBe(originalRefreshToken,
             "rotation must issue a new refresh token, not return the same one");
 
-        // Step 3: replay the original (now revoked) token → must be rejected
+        // Step 3: replaying the original token inside the reuse grace (successor not yet
+        // used) must NOT mint a new token family — it can only return the same successor.
+        var graceReplay = await client.PostAsJsonAsync("/api/auth/refresh",
+            TestCredentials.RefreshPayload(originalRefreshToken));
+        graceReplay.StatusCode.Should().Be(HttpStatusCode.OK);
+        var graceBody = await graceReplay.Content.ReadFromJsonAsync<RefreshResponse>();
+        graceBody!.RefreshToken.Should().Be(firstRefreshBody.RefreshToken,
+            "a rotated token can never yield a second, independent successor");
+
+        // Step 4: the client moves on and uses the successor → the original is dead.
+        var successorRefresh = await client.PostAsJsonAsync("/api/auth/refresh",
+            TestCredentials.RefreshPayload(firstRefreshBody.RefreshToken));
+        successorRefresh.StatusCode.Should().Be(HttpStatusCode.OK);
+
         var replayResponse = await client.PostAsJsonAsync("/api/auth/refresh",
             TestCredentials.RefreshPayload(originalRefreshToken));
 
         replayResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
             "a used refresh token must be rejected — replay protection must be active");
+    }
+
+    // Revoking the successor (logout / platform session revoke) also ends the reuse
+    // grace of the token it replaced — the old token must not resurrect the session.
+
+    [Fact]
+    public async Task RefreshToken_AfterSuccessorRevoked_OldTokenIsRejected()
+    {
+        var client = _factory.CreateApiClient();
+
+        var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
+            TestCredentials.AdminLoginPayload());
+        var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
+
+        var refresh = await client.PostAsJsonAsync("/api/auth/refresh",
+            TestCredentials.RefreshPayload(loginBody!.RefreshToken));
+        refresh.StatusCode.Should().Be(HttpStatusCode.OK);
+        var refreshBody = await refresh.Content.ReadFromJsonAsync<RefreshResponse>();
+
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", refreshBody!.AccessToken);
+        var logout = await client.PostAsJsonAsync("/api/auth/logout",
+            new { refreshToken = refreshBody.RefreshToken });
+        logout.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var replay = await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/refresh",
+            TestCredentials.RefreshPayload(loginBody.RefreshToken));
+        replay.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "logging out the successor must also kill the token it replaced");
     }
 
     // ── Test 2 ────────────────────────────────────────────────────────────────
