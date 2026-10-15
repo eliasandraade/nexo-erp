@@ -27,6 +27,10 @@ public class SvcCustomerPackageRepository : ISvcCustomerPackageRepository
         return await q.OrderByDescending(x => x.CreatedAt).ToListAsync(ct);
     }
 
+    public async Task LockAsync(Guid id, Guid tenantId, CancellationToken ct = default)
+        => await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.svc_customer_packages WHERE id = {id} AND tenant_id = {tenantId} FOR UPDATE", ct);
+
     public async Task AddAsync(SvcCustomerPackage entity, CancellationToken ct = default)
         => await _context.SvcCustomerPackages.AddAsync(entity, ct);
 

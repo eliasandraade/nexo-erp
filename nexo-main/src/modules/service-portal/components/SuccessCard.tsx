@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { CalendarPlus, Check, CheckCircle2, Clock, Copy, RotateCcw } from "lucide-react";
 import type { PublicAppointmentCreated } from "../api/booking.api";
 import { formatSlotLabel } from "../lib/booking-format";
@@ -8,10 +9,13 @@ import { Btn, Surface, Reveal, Muted } from "./PortalPrimitives";
 interface SuccessCardProps {
   created:   PublicAppointmentCreated;
   storeName: string;
+  /** The customer's own page for this booking (view / cancel), when the store issued one. */
+  manageUrl?: string | null;
   onRestart: () => void;
 }
 
-export function SuccessCard({ created, storeName, onRestart }: SuccessCardProps) {
+export function SuccessCard({ created, storeName, manageUrl, onRestart }: SuccessCardProps) {
+  const manageHref = manageUrl ? `${window.location.origin}${manageUrl}` : null;
   const [copied, setCopied] = useState(false);
   const confirmed = created.status === "Confirmed";
   const when = formatSlotLabel(created.startsAt);
@@ -22,7 +26,8 @@ export function SuccessCard({ created, storeName, onRestart }: SuccessCardProps)
       startUtc: created.startsAt,
       endUtc: created.endsAt,
       title: `${created.serviceName} — ${storeName}`,
-      description: `Profissional: ${created.professionalName}\nEm nome de: ${created.customerName}`,
+      description: `Profissional: ${created.professionalName}\nEm nome de: ${created.customerName}` +
+        (manageHref ? `\nVer ou cancelar: ${manageHref}` : ""),
     });
     downloadIcs(`agendamento-${storeName.toLowerCase().replace(/\s+/g, "-")}`, ics);
   }
@@ -33,7 +38,8 @@ export function SuccessCard({ created, storeName, onRestart }: SuccessCardProps)
       `${created.serviceName}\n` +
       `Profissional: ${created.professionalName}\n` +
       `${when}\n` +
-      `Em nome de: ${created.customerName}`;
+      `Em nome de: ${created.customerName}` +
+      (manageHref ? `\nVer ou cancelar: ${manageHref}` : "");
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -73,6 +79,16 @@ export function SuccessCard({ created, storeName, onRestart }: SuccessCardProps)
             {copied ? <><Check className="h-4 w-4" /> Copiado</> : <><Copy className="h-4 w-4" /> Copiar</>}
           </Btn>
         </div>
+
+        {manageUrl && (
+          <p className="mt-4 text-[13px]" style={{ color: "var(--p-muted)" }}>
+            Precisa desmarcar?{" "}
+            <Link to={manageUrl} className="font-semibold underline underline-offset-2" style={{ color: "var(--p-accent)" }}>
+              Ver ou cancelar este agendamento
+            </Link>
+            . Guarde este link — ele também vai no calendário e no texto copiado.
+          </p>
+        )}
 
         <button onClick={onRestart}
           className="mt-5 inline-flex items-center gap-1.5 text-[13px] font-medium transition-opacity hover:opacity-70"

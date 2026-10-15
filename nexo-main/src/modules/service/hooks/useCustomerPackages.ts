@@ -3,6 +3,7 @@ import {
   assignCustomerPackage,
   cancelCustomerPackage,
   consumeCustomerPackage,
+  reverseCustomerPackageUsage,
   fetchCustomerPackage,
   fetchCustomerPackages,
   type AssignCustomerPackageRequest,
@@ -52,6 +53,10 @@ export const useAssignCustomerPackage = () =>
 
 export const useCancelCustomerPackage = () =>
   useCustomerPackageMutation((id: string) => cancelCustomerPackage(id));
+
+export const useReverseCustomerPackageUsage = () =>
+  useCustomerPackageMutation(({ id, usageId, reason }: { id: string; usageId: string; reason: string }) =>
+    reverseCustomerPackageUsage(id, usageId, reason));
 
 export const useConsumeCustomerPackage = () =>
   useCustomerPackageMutation(({ id, body }: { id: string; body: ConsumePackageRequest }) =>

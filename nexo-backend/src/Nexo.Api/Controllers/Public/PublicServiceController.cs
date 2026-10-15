@@ -71,6 +71,18 @@ public class PublicServiceController : ControllerBase
     {
         await _createValidator.ValidateAndThrowAsync(request, ct);
         var dto = await _portal.CreateAppointmentAsync(slug, request, ct);
-        return Created($"/api/public/service/{slug}/appointments/{dto.AppointmentId}", dto);
+        return Created($"/api/public/service/{slug}/appointments/{dto.ManageToken}", dto);
     }
+
+    /// <summary>The customer's own link: the booking (no personal data) and whether it can still be cancelled.</summary>
+    [HttpGet("api/public/service/{slug}/appointments/{token}")]
+    [EnableRateLimiting("public-booking")]
+    public async Task<ActionResult<PublicAppointmentViewDto>> GetAppointment(string slug, string token, CancellationToken ct)
+        => Ok(await _portal.GetByTokenAsync(slug, token, ct));
+
+    /// <summary>The customer cancels their own booking, up to the store's minimum lead.</summary>
+    [HttpPost("api/public/service/{slug}/appointments/{token}/cancel")]
+    [EnableRateLimiting("public-booking")]
+    public async Task<ActionResult<PublicAppointmentViewDto>> CancelAppointment(string slug, string token, CancellationToken ct)
+        => Ok(await _portal.CancelByTokenAsync(slug, token, ct));
 }

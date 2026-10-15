@@ -664,6 +664,108 @@ public class ServiceCommissionTests
         (await EntriesAsync(c, prof)).Should().ContainSingle();
     }
 
+    // ── Package consumption reversal ─────────────────────────────────────────
+    [Fact]
+    public async Task Reversing_a_consumption_gives_the_units_back_and_reverses_its_commission()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 10m);
+        var catalog = await CatalogAsync(c, 50m, 20m);
+        var cp = await CustomerPackageAsync(c, await CustomerAsync(c), price: 100m, (catalog, 1m));
+        var consumed = await ConsumeAsync(c, cp, catalog, 1m, prof);
+        consumed.GetProperty("status").GetString().Should().Be("Consumed");
+        var usageId = consumed.GetProperty("usages").EnumerateArray().Single().GetProperty("id").GetGuid();
+        (await EntriesAsync(c, prof)).Count(IsActiveEarning).Should().Be(1);
+
+        var r = await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/usages/{usageId}/reverse", new { reason = "Serviço errado" });
+        r.StatusCode.Should().Be(HttpStatusCode.OK);
+        var after = await r.Content.ReadFromJsonAsync<JsonElement>();
+        after.GetProperty("status").GetString().Should().Be("Active", "the unit came back");
+        after.GetProperty("items").EnumerateArray().Single().GetProperty("remainingQuantity").GetDecimal().Should().Be(1m);
+        var usage = after.GetProperty("usages").EnumerateArray().Single();
+        usage.GetProperty("reversedAt").ValueKind.Should().NotBe(JsonValueKind.Null, "the usage stays as history");
+        usage.GetProperty("reversalReason").GetString().Should().Be("Serviço errado");
+        (await EntriesAsync(c, prof)).Count(IsActiveEarning).Should().Be(0);
+
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/usages/{usageId}/reverse", new { reason = "de novo" }))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict, "a consumption is reversed once");
+    }
+
+    [Fact]
+    public async Task Reversing_a_consumption_already_paid_out_discounts_it_from_the_next_payout()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 10m);
+        var catalog = await CatalogAsync(c, 50m, 20m);
+        var cp = await CustomerPackageAsync(c, await CustomerAsync(c), price: 200m, (catalog, 4m));
+        var usageId = (await ConsumeAsync(c, cp, catalog, 1m, prof))
+            .GetProperty("usages").EnumerateArray().Single().GetProperty("id").GetGuid();    // +10
+        var payoutId = await ClosedPayoutIdAsync(c, prof);
+        (await c.PostAsJsonAsync($"{Base}/commissions/payouts/{payoutId}/pay", new { })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/usages/{usageId}/reverse", new { reason = "Não realizado" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var reversal = (await EntriesAsync(c, prof, "open")).Single();
+        reversal.GetProperty("kind").GetString().Should().Be("Reversal");
+        reversal.GetProperty("commissionAmount").GetDecimal().Should().Be(-10m);
+    }
+
+    [Fact]
+    public async Task A_reversed_consumption_frees_the_appointment_to_be_paid_again()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 40m);
+        var customer = await CustomerAsync(c);
+        var catalog = await CatalogAsync(c, 60m, null);
+        var cp = await CustomerPackageAsync(c, customer, price: 160m, (catalog, 4m));
+        var appt = await AppointmentAsync(c, customer, prof, catalog);
+
+        var first = await (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/consume",
+            new { catalogItemId = catalog, quantity = 1m, appointmentId = appt })).Content.ReadFromJsonAsync<JsonElement>();
+        var usageId = first.GetProperty("usages").EnumerateArray().Single().GetProperty("id").GetGuid();
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/usages/{usageId}/reverse", new { reason = "Pacote errado" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/consume",
+            new { catalogItemId = catalog, quantity = 1m, appointmentId = appt })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await EntriesAsync(c, prof)).Count(IsActiveEarning).Should().Be(1, "only the new consumption earns");
+    }
+
+    [Fact]
+    public async Task Reversal_needs_a_reason_and_a_usage_of_the_same_package()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var customer = await CustomerAsync(c);
+        var catalog = await CatalogAsync(c, 50m, null);
+        var cp = await CustomerPackageAsync(c, customer, price: 100m, (catalog, 2m));
+        var other = await CustomerPackageAsync(c, customer, price: 100m, (catalog, 2m));
+        var usageId = (await ConsumeAsync(c, cp, catalog, 1m, null))
+            .GetProperty("usages").EnumerateArray().Single().GetProperty("id").GetGuid();
+
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/usages/{usageId}/reverse", new { reason = " " }))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{other}/usages/{usageId}/reverse", new { reason = "x" }))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Concurrent_consumptions_of_the_last_unit_consume_it_once()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var catalog = await CatalogAsync(c, 50m, null);
+        var cp = await CustomerPackageAsync(c, await CustomerAsync(c), price: 50m, (catalog, 1m));
+        var c2 = await AuthClientFactory.LoginAsAdminAsync(_factory);
+
+        var results = await Task.WhenAll(
+            c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/consume", new { catalogItemId = catalog, quantity = 1m }),
+            c2.PostAsJsonAsync($"{Base}/customer-packages/{cp}/consume", new { catalogItemId = catalog, quantity = 1m }));
+
+        results.Select(r => r.StatusCode).Should().BeEquivalentTo(new[] { HttpStatusCode.OK, HttpStatusCode.UnprocessableEntity });
+        var pkg = await c.GetFromJsonAsync<JsonElement>($"{Base}/customer-packages/{cp}");
+        pkg.GetProperty("usages").EnumerateArray().Should().ContainSingle();
+    }
+
     [Fact]
     public async Task Package_consumption_linked_to_an_unrelated_appointment_is_rejected()
     {

@@ -227,7 +227,59 @@ public sealed class PublicServicePortalService
             EndsAt:           appt.EndsAt,
             ServiceName:      catalog.Name,
             ProfessionalName: professional.Name,
-            CustomerName:     customer.Name);
+            CustomerName:     request.CustomerName.Trim(),
+            ManageToken:      appt.PublicToken);
+    }
+
+    // ── Customer's own link ─────────────────────────────────────────────────────
+
+    public async Task<PublicAppointmentViewDto> GetByTokenAsync(string slug, string token, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, ct);
+        var appt = await LoadByTokenAsync(ctx, token, ct);
+        return await ViewAsync(ctx, appt, ct);
+    }
+
+    /// <summary>
+    /// The customer cancels their own booking. Allowed while it has not started and up to the same
+    /// lead a booking needs (MinLeadMinutes); later than that, they talk to the store. Works even if
+    /// online booking was switched off since — it only frees a slot.
+    /// </summary>
+    public async Task<PublicAppointmentViewDto> CancelByTokenAsync(string slug, string token, CancellationToken ct = default)
+    {
+        var ctx = await ResolveAsync(slug, ct);
+        var appt = await LoadByTokenAsync(ctx, token, ct);
+        appt.CancelByCustomer(DateTime.UtcNow, ctx.Settings.MinLeadMinutes);
+        await _appointments.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Public appointment {ApptId} cancelled by the customer via portal '{Slug}' (TenantId: {TenantId}, StoreId: {StoreId})",
+            appt.Id, slug, ctx.Store.TenantId, ctx.Store.Id);
+        return await ViewAsync(ctx, appt, ct);
+    }
+
+    private async Task<SvcAppointment> LoadByTokenAsync(PortalContext ctx, string token, CancellationToken ct)
+    {
+        var key = (token ?? string.Empty).Trim().ToLowerInvariant();
+        if (key.Length != 32 || !key.All(Uri.IsHexDigit))
+            throw new NotFoundException("Appointment", token ?? string.Empty);
+        return await _appointments.GetByPublicTokenAsync(key, ctx.Store.TenantId, ctx.Store.Id, ct)
+            ?? throw new NotFoundException("Appointment", key);
+    }
+
+    private async Task<PublicAppointmentViewDto> ViewAsync(PortalContext ctx, SvcAppointment appt, CancellationToken ct)
+    {
+        var catalog = await _catalog.GetByIdPublicAsync(appt.CatalogItemId, ctx.Store.TenantId, ctx.Store.Id, ct);
+        var professional = await _professionals.GetByIdPublicAsync(appt.ProfessionalId, ctx.Store.TenantId, ctx.Store.Id, ct);
+        return new PublicAppointmentViewDto(
+            Status:           appt.Status.ToString(),
+            StartsAt:         appt.StartsAt,
+            EndsAt:           appt.EndsAt,
+            ServiceName:      catalog?.Name ?? "Serviço",
+            ProfessionalName: professional?.Name ?? "Profissional",
+            StoreName:        ctx.Settings.DisplayName ?? ctx.Store.Name,
+            CanCancel:        appt.CustomerCanCancel(DateTime.UtcNow, ctx.Settings.MinLeadMinutes),
+            CancelDeadline:   appt.CustomerCancelDeadline(ctx.Settings.MinLeadMinutes));
     }
 
     // ── Resolution helpers ──────────────────────────────────────────────────────

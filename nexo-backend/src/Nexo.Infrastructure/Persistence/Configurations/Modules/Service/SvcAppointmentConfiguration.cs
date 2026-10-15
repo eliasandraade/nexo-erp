@@ -39,5 +39,8 @@ public class SvcAppointmentConfiguration : IEntityTypeConfiguration<SvcAppointme
         builder.HasIndex("TenantId", "StoreId", "ProfessionalId", "StartsAt")
             .HasDatabaseName("ix_svc_appointments_professional_starts");
         builder.HasIndex(x => x.CustomerId).HasDatabaseName("ix_svc_appointments_customer_id");
+        builder.Property(x => x.PublicToken).HasColumnName("public_token").HasMaxLength(64);
+        builder.HasIndex(x => x.PublicToken).IsUnique().HasFilter("public_token IS NOT NULL")
+            .HasDatabaseName("ux_svc_appointments_public_token");
     }
 }

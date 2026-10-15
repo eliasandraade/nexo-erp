@@ -20,7 +20,8 @@
 | #53 | Integração financeira das verticais | `511f9c4` | `VerticalExpensesInLedger` (backfill: despesas do restaurante e movimentações confirmadas) | Em produção |
 | #54 | Menu: pedido → venda | `9d950c5` | `RestOrderDeliveryTerms` (aditiva + termos cotados nas comandas abertas) | Em produção |
 | #55 | Fechamento do Menu | `115458e` | — | Em produção |
-| #56 | Service: agenda (bloqueios, semana, comanda) | — | `ServiceTimeBlocks` (aditiva) | Em revisão |
+| #56 | Service: agenda (bloqueios, semana, comanda) | `7edac28` | `ServiceTimeBlocks` (aditiva) | Em produção |
+| #57 | Service: cancelamento pelo cliente e estorno de pacote | — | `ServiceSelfCancelAndUsageReversal` (aditiva + índice único refeito com filtro mais estreito) | Em revisão |
 
 
 ## Marcos por fase
@@ -664,3 +665,27 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - a criação do bloqueio responde 201, `professionalId` vazio vale como loja inteira, e as mensagens estão em português;
   - testes novos: edição dentro do horário com bloqueio posterior, e duas reservas simultâneas (uma 201, uma 409).
 
+## PR 57 — Service: cancelamento pelo cliente e estorno de pacote
+
+- **Link do cliente** (`/agendar/{slug}/reserva/{token}`):
+  - todo agendamento novo ganha uma chave própria (`PublicToken`, 128 bits aleatórios, índice único);
+  - a confirmação do portal mostra "Ver ou cancelar este agendamento", e o link também vai no calendário (.ics) e no texto copiado;
+  - a página mostra serviço, profissional, horário e situação — nenhum dado pessoal, porque o link pode ser repassado;
+  - agendamentos anteriores ao link ficam sem chave e só a equipe os gerencia.
+- **Cancelamento pelo cliente:**
+  - `GET /api/public/service/{slug}/appointments/{token}` e `POST .../{token}/cancel`, com o mesmo limite de taxa da reserva;
+  - pode cancelar o que ainda não começou (agendado ou confirmado), com a mesma antecedência mínima exigida para reservar (`MinLeadMinutes`). Depois disso, a página orienta a falar com o estabelecimento;
+  - motivo registrado: "Cancelado pelo cliente."; o horário volta a ficar livre no portal;
+  - cancelar continua funcionando mesmo se a reserva online for desligada depois — só libera horário.
+- **Correção de privacidade:** a confirmação da reserva devolvia o nome do cliente já cadastrado para aquele telefone — quem digitasse o número de outra pessoa descobria o nome dela. Agora devolve o nome digitado.
+- **Estorno de consumo de pacote** (`POST /api/v1/service/customer-packages/{id}/usages/{usageId}/reverse`, com motivo obrigatório):
+  - o saldo volta ao pacote, e um pacote que estava "Consumido" volta a "Ativo";
+  - a comissão do consumo é estornada no mesmo padrão do estorno por pagamento anulado: some se ainda estava em aberto, ou vira lançamento negativo no próximo fechamento se já foi paga;
+  - o consumo fica no histórico marcado como estornado (data, motivo, quem fez), e o agendamento que ele pagava pode ser pago de novo;
+  - um consumo só é estornado uma vez (409), e não há estorno em pacote cancelado.
+- **Consumo simultâneo:** consumir trava a linha do pacote (`FOR UPDATE`). Antes, dois consumos ao mesmo tempo podiam passar pela checagem de saldo.
+- **Testes:**
+  - integração: cancelamento pelo link libera o horário; não cancela dentro da antecedência; link desconhecido ou malformado dá 404; nome digitado ecoado; estorno devolve saldo e comissão; estorno após repasse pago desconta no próximo; estorno libera o agendamento; motivo obrigatório e consumo de outro pacote; consumo simultâneo da última unidade;
+  - unitários: chave do link, prazo de cancelamento, estorno de saldo e de consumo;
+  - Playwright: cliente vê e cancela pelo link; estorno exige motivo.
+- **Migração validada** num Postgres descartável (up → down → up).

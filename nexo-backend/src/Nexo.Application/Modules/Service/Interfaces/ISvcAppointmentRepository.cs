@@ -15,6 +15,8 @@ public interface ISvcAppointmentRepository
     Task<IReadOnlyList<SvcTimeBlock>> GetBlocksPublicAsync(
         Guid professionalId, Guid tenantId, Guid storeId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
     /// <summary>Public path: same as <see cref="IsBlockedAsync"/>, scoped explicitly.</summary>
+    /// <summary>The booking behind a customer's own link, inside the slug's store (tracked).</summary>
+    Task<SvcAppointment?> GetByPublicTokenAsync(string token, Guid tenantId, Guid storeId, CancellationToken ct = default);
     Task<bool> IsBlockedPublicAsync(
         Guid professionalId, Guid tenantId, Guid storeId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default);
     Task<IReadOnlyList<SvcAppointment>> GetAllAsync(

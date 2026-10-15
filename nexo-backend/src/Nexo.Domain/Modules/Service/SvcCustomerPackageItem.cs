@@ -28,6 +28,16 @@ public class SvcCustomerPackageItem : StoreEntity
         };
     }
 
+    /// <summary>Gives back units of a reversed consumption.</summary>
+    public void Restore(decimal quantity)
+    {
+        if (quantity <= 0m) throw new DomainException("Quantity must be positive.");
+        if (RemainingQuantity + quantity > TotalQuantity)
+            throw new DomainException("O estorno passaria do total do pacote.");
+        RemainingQuantity += quantity;
+        SetUpdatedAt();
+    }
+
     public void Consume(decimal quantity)
     {
         if (quantity <= 0m)                throw new DomainException("Quantity must be positive.");

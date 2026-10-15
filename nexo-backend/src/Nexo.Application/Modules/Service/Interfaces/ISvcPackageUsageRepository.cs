@@ -6,7 +6,9 @@ namespace Nexo.Application.Modules.Service.Interfaces;
 public interface ISvcPackageUsageRepository
 {
     Task<IReadOnlyList<SvcPackageUsage>> GetByCustomerPackageAsync(Guid customerPackageId, CancellationToken ct = default);
-    /// <summary>True when a consumption already paid for this appointment.</summary>
+    Task<SvcPackageUsage?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    void Update(SvcPackageUsage entity);
+    /// <summary>True when a consumption (not reversed) already paid for this appointment.</summary>
     Task<bool> ExistsForAppointmentAsync(Guid appointmentId, CancellationToken ct = default);
     Task AddAsync(SvcPackageUsage entity, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);

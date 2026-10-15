@@ -171,6 +171,26 @@ public class SvcCommissionService
         }
     }
 
+    // ── Reversal: package usage ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Reverses the commission a package consumption earned, when the consumption is undone. Same
+    /// discipline as the order reversal: the earning is row-locked and re-read, marked reversed once,
+    /// and gets a negative entry only when a payout already closed it.
+    /// </summary>
+    public async Task ReversePackageUsageAsync(Guid usageId, DateTime reversedAt, string description, CancellationToken ct = default)
+    {
+        var earnings = await _commissions.LockActiveEarningsAsync(
+            SvcCommissionSource.PackageUsage, [usageId], _currentTenant.Id, ct);
+        foreach (var earning in earnings)
+        {
+            if (!await _commissions.TryMarkReversedAsync(earning.Id, reversedAt, ct)) continue;
+            if (earning.PayoutId is null) continue;
+            var reversal = SvcCommissionEntry.CreateReversalOf(earning, reversedAt, Truncate($"Estorno · {description}", 500));
+            await _commissions.TryAddReversalAsync(reversal, ct);
+        }
+    }
+
     // ── Recognition: appointment ─────────────────────────────────────────────
 
     /// <summary>

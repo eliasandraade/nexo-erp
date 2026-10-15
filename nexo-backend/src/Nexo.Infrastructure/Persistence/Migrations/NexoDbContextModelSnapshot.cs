@@ -5303,6 +5303,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("professional_id");
 
+                    b.Property<string>("PublicToken")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("public_token");
+
                     b.Property<DateTime>("StartsAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("starts_at");
@@ -5337,6 +5342,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_svc_appointments_customer_id");
 
                     b.HasIndex("ProfessionalId");
+
+                    b.HasIndex("PublicToken")
+                        .IsUnique()
+                        .HasDatabaseName("ux_svc_appointments_public_token")
+                        .HasFilter("public_token IS NOT NULL");
 
                     b.HasIndex("StoreId")
                         .HasDatabaseName("ix_svc_appointments_store_id");
@@ -6101,6 +6111,19 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,3)")
                         .HasColumnName("quantity");
 
+                    b.Property<string>("ReversalReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reversal_reason");
+
+                    b.Property<DateTime?>("ReversedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("reversed_at");
+
+                    b.Property<Guid?>("ReversedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reversed_by_user_id");
+
                     b.Property<Guid>("StoreId")
                         .HasColumnType("uuid")
                         .HasColumnName("store_id");
@@ -6118,7 +6141,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("AppointmentId")
                         .IsUnique()
                         .HasDatabaseName("ux_svc_package_usages_appointment_id")
-                        .HasFilter("appointment_id IS NOT NULL");
+                        .HasFilter("appointment_id IS NOT NULL AND reversed_at IS NULL");
 
                     b.HasIndex("CatalogItemId");
 

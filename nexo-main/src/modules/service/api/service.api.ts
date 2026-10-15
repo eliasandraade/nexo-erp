@@ -452,6 +452,9 @@ export interface SvcPackageUsageDto {
   baseAmountSnapshot: number | null;
   commissionPercentSnapshot: number | null;
   createdAt: string;
+  /** Set when the consumption was undone (units back, commission reversed). */
+  reversedAt?: string | null;
+  reversalReason?: string | null;
 }
 export interface SvcCustomerPackageDto {
   id: string;
@@ -502,6 +505,8 @@ export const cancelCustomerPackage = (id: string) =>
   apiClient.post<SvcCustomerPackageDto>(`/v1/service/customer-packages/${id}/cancel`);
 export const consumeCustomerPackage = (id: string, body: ConsumePackageRequest) =>
   apiClient.post<SvcCustomerPackageDto>(`/v1/service/customer-packages/${id}/consume`, body);
+export const reverseCustomerPackageUsage = (id: string, usageId: string, reason: string) =>
+  apiClient.post<SvcCustomerPackageDto>(`/v1/service/customer-packages/${id}/usages/${usageId}/reverse`, { reason });
 export const fetchCustomerPackageUsages = (id: string) =>
   apiClient.get<SvcPackageUsageDto[]>(`/v1/service/customer-packages/${id}/usages`);
 

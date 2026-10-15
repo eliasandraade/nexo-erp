@@ -81,7 +81,10 @@ public sealed record CreatePublicAppointmentRequest(
     PublicAppointmentSubjectRequest? Subject = null,
     string?                         Notes   = null);
 
-/// <summary>Booking confirmation. Echoes the human-readable details; exposes only the appointment's own id.</summary>
+/// <summary>
+/// Booking confirmation. Echoes what the visitor typed (never the stored customer's name — that would
+/// tell anyone typing a phone whose number it is) and the key of the customer's own manage link.
+/// </summary>
 public sealed record PublicAppointmentCreatedDto(
     Guid     AppointmentId,
     string   Status,
@@ -89,4 +92,16 @@ public sealed record PublicAppointmentCreatedDto(
     DateTime EndsAt,
     string   ServiceName,
     string   ProfessionalName,
-    string   CustomerName);
+    string   CustomerName,
+    string?  ManageToken = null);
+
+/// <summary>The booking behind a customer's manage link. No personal data: the link may be forwarded.</summary>
+public sealed record PublicAppointmentViewDto(
+    string   Status,
+    DateTime StartsAt,
+    DateTime EndsAt,
+    string   ServiceName,
+    string   ProfessionalName,
+    string   StoreName,
+    bool     CanCancel,
+    DateTime CancelDeadline);

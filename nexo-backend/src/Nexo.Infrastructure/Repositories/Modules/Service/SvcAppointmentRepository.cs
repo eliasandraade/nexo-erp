@@ -57,6 +57,11 @@ public class SvcAppointmentRepository : ISvcAppointmentRepository
                         b.StartsAt < toUtc && b.EndsAt > fromUtc)
             .ToListAsync(ct);
 
+    public async Task<SvcAppointment?> GetByPublicTokenAsync(
+        string token, Guid tenantId, Guid storeId, CancellationToken ct = default)
+        => await _context.SvcAppointments.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.PublicToken == token && a.TenantId == tenantId && a.StoreId == storeId, ct);
+
     public async Task<bool> IsBlockedPublicAsync(
         Guid professionalId, Guid tenantId, Guid storeId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default)
         => await _context.SvcTimeBlocks.IgnoreQueryFilters().AnyAsync(b =>

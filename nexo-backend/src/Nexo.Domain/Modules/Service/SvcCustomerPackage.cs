@@ -60,5 +60,12 @@ public class SvcCustomerPackage : StoreEntity
         Status = SvcCustomerPackageStatus.Consumed; SetUpdatedAt();
     }
 
+    /// <summary>A reversal gave units back: a package used up is active again.</summary>
+    public void ReopenAfterReversal()
+    {
+        if (Status != SvcCustomerPackageStatus.Consumed) return;
+        Status = SvcCustomerPackageStatus.Active; SetUpdatedAt();
+    }
+
     public bool IsExpiredAt(DateTime nowUtc) => ExpiresAt is { } e && e < nowUtc;
 }

@@ -434,3 +434,43 @@ test('Service: agenda da semana com bloqueio, abrir comanda e concluir direto',a
  await expect(page).toHaveURL(/\/service\/ordens\/o9$/);
 });
 
+test('Portal público: cliente vê e cancela o próprio agendamento pelo link',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ const tok='0123456789abcdef0123456789abcdef'; let cancelled=false;
+ const view=(status:string,canCancel:boolean)=>({status,startsAt:new Date(Date.now()+2*864e5).toISOString(),endsAt:new Date(Date.now()+2*864e5+36e5).toISOString(),
+  serviceName:'Corte',professionalName:'Rafa',storeName:'Barbearia QA',canCancel,cancelDeadline:new Date(Date.now()+2*864e5-72e5).toISOString()});
+ await page.route('**/api/public/service/qa**',route=>{const r=route.request();const path=new URL(r.url()).pathname;
+  if(path.endsWith(`/appointments/${tok}/cancel`)){cancelled=true;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(view('Cancelled',false))});}
+  if(path.endsWith(`/appointments/${tok}`))return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(view('Scheduled',true))});
+  if(path.includes('/appointments/'))return route.fulfill({status:404,contentType:'application/json',body:'{"error":"not found"}'});
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({storeName:'Barbearia QA',presetKey:'barbearia',labels:preset.labels,capabilities:preset.capabilities,isBookingEnabled:true,showPrices:true,requiresProfessionalSelection:true})});});
+ await page.goto(`/agendar/qa/reserva/${tok}`);
+ await expect(page.getByText('Corte')).toBeVisible();await expect(page.getByText(/aguardando confirmação/)).toBeVisible();await noOverflow(page);
+ await page.getByRole('button',{name:'Cancelar agendamento'}).click();
+ expect(cancelled).toBe(false);                                            // first tap only asks
+ await page.getByRole('button',{name:'Sim, cancelar'}).click();
+ await expect.poll(()=>cancelled).toBe(true);
+ await expect(page.getByText('Cancelado',{exact:true})).toBeVisible();
+ await expect(page.getByRole('link',{name:'Agendar outro horário'})).toBeVisible();
+ await page.goto('/agendar/qa/reserva/ffffffffffffffffffffffffffffffff');
+ await expect(page.getByText('Agendamento não encontrado')).toBeVisible();
+});
+test('Service: estornar um consumo de pacote pede motivo',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api'; let reverseBody: any=null;
+ const cp=(reversed:boolean)=>({id:'cp1',storeId:'s',code:'PKG-1',packageId:'p1',customerId:'c1',subjectId:null,status:reversed?'Active':'Consumed',startsAt:new Date().toISOString(),expiresAt:null,priceSnapshot:100,notes:null,
+  items:[{id:'i1',customerPackageId:'cp1',catalogItemId:'s1',nameSnapshot:'Corte',totalQuantity:1,remainingQuantity:reversed?1:0,createdAt:new Date().toISOString(),updatedAt:null}],
+  usages:[{id:'u1',customerPackageId:'cp1',customerPackageItemId:'i1',catalogItemId:'s1',orderId:null,orderItemId:null,quantity:1,notes:null,professionalId:null,appointmentId:null,baseAmountSnapshot:100,commissionPercentSnapshot:null,createdAt:new Date().toISOString(),reversedAt:reversed?new Date().toISOString():null,reversalReason:reversed?'Serviço errado':null}],
+  createdAt:new Date().toISOString(),updatedAt:null});
+ await page.route(`${API}/v1/service/customer-packages/cp1/usages/u1/reverse`,route=>{reverseBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(cp(true))});});
+ await page.route(`${API}/v1/service/customer-packages/cp1`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(cp(reverseBody!==null))}));
+ await page.route(`${API}/v1/service/payments/customer-package/cp1/summary`,route=>route.fulfill({status:200,contentType:'application/json',
+  body:JSON.stringify({targetId:'cp1',targetType:'CustomerPackage',totalAmount:100,paidAmount:100,voidedAmount:0,remainingAmount:0,isFullyPaid:true})}));
+ await page.goto('/service/customer-packages/cp1');
+ await page.getByRole('button',{name:'Estornar'}).click();
+ await expect(page.getByRole('button',{name:'Confirmar estorno'})).toBeDisabled();
+ await page.getByLabel('Motivo do estorno').fill('Serviço errado');
+ await page.getByRole('button',{name:'Confirmar estorno'}).click();
+ await expect.poll(()=>reverseBody).toEqual({reason:'Serviço errado'});
+ await expect(page.getByText(/Estornado em/)).toBeVisible();
+});

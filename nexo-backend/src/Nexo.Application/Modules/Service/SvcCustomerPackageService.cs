@@ -33,18 +33,21 @@ public class SvcCustomerPackageService
     private readonly ISvcAppointmentRepository         _appointments;
     private readonly SvcCommissionService              _commissions;
     private readonly IUnitOfWork                       _uow;
+    private readonly ICurrentUser                      _currentUser;
 
     public SvcCustomerPackageService(
         ISvcCustomerPackageRepository customerPackages, ISvcCustomerPackageItemRepository customerPackageItems,
         ISvcPackageUsageRepository usages, ISvcPackageRepository packages, ICustomerRepository customers,
         ISvcSubjectRepository subjects, ISvcOrderRepository orders, ISvcOrderItemRepository orderItems,
         ICurrentTenant currentTenant, ISvcProfessionalRepository professionals, ISvcCatalogItemRepository catalog,
-        ISvcAppointmentRepository appointments, SvcCommissionService commissions, IUnitOfWork uow)
+        ISvcAppointmentRepository appointments, SvcCommissionService commissions, IUnitOfWork uow,
+        ICurrentUser currentUser)
     {
         _customerPackages = customerPackages; _customerPackageItems = customerPackageItems; _usages = usages;
         _packages = packages; _customers = customers; _subjects = subjects; _orders = orders;
         _orderItems = orderItems; _currentTenant = currentTenant; _professionals = professionals;
         _catalog = catalog; _appointments = appointments; _commissions = commissions; _uow = uow;
+        _currentUser = currentUser;
     }
 
     public async Task<IReadOnlyList<SvcCustomerPackageDto>> GetAllAsync(
@@ -110,6 +113,8 @@ public class SvcCustomerPackageService
     public async Task<SvcCustomerPackageDto> ConsumeAsync(Guid id, ConsumeSvcPackageRequest r, CancellationToken ct = default)
     {
         await using var tx = await _uow.BeginTransactionAsync(ct);
+        // Two consumptions of the same balance at once would both pass the balance check.
+        await _customerPackages.LockAsync(id, _currentTenant.Id, ct);
         var cp = await _customerPackages.GetByIdWithItemsAsync(id, ct) ?? throw new NotFoundException("SvcCustomerPackage", id);
         if (cp.Status != SvcCustomerPackageStatus.Active) throw new DomainException($"Cannot consume from a {cp.Status} package.");
         if (cp.IsExpiredAt(DateTime.UtcNow))              throw new DomainException("Package has expired.");
@@ -153,6 +158,39 @@ public class SvcCustomerPackageService
 
         await _customerPackages.SaveChangesAsync(ct);
         await _commissions.RecognizePackageUsageAsync(usage, cp.CustomerId, $"{cp.Code} · {balance.NameSnapshot}", ct);
+        await tx.CommitAsync(ct);
+        return MapToDto(cp, cp.Items, await _usages.GetByCustomerPackageAsync(id, ct));
+    }
+
+    /// <summary>
+    /// Undoes a consumption: the units go back to the balance (a used-up package is active again),
+    /// the commission it earned is reversed, and the usage stays in the history marked as reversed.
+    /// The appointment it paid for can then be paid again.
+    /// </summary>
+    public async Task<SvcCustomerPackageDto> ReverseUsageAsync(
+        Guid id, Guid usageId, ReverseSvcPackageUsageRequest r, CancellationToken ct = default)
+    {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _customerPackages.LockAsync(id, _currentTenant.Id, ct);
+        var cp = await _customerPackages.GetByIdWithItemsAsync(id, ct) ?? throw new NotFoundException("SvcCustomerPackage", id);
+        var usage = await _usages.GetByIdAsync(usageId, ct);
+        if (usage is null || usage.CustomerPackageId != cp.Id) throw new NotFoundException("SvcPackageUsage", usageId);
+        if (cp.Status == SvcCustomerPackageStatus.Cancelled)
+            throw new DomainException("O pacote está cancelado; não há saldo para devolver.");
+
+        var balance = cp.Items.FirstOrDefault(i => i.Id == usage.CustomerPackageItemId)
+            ?? throw new NotFoundException("SvcCustomerPackageItem", usage.CustomerPackageItemId);
+
+        var now = DateTime.UtcNow;
+        usage.Reverse(r.Reason, _currentUser.UserId, now);   // 409 when already reversed
+        _usages.Update(usage);
+        balance.Restore(usage.Quantity);
+        _customerPackageItems.Update(balance);
+        cp.ReopenAfterReversal();
+        _customerPackages.Update(cp);
+
+        await _customerPackages.SaveChangesAsync(ct);
+        await _commissions.ReversePackageUsageAsync(usage.Id, now, $"{cp.Code} · {balance.NameSnapshot}", ct);
         await tx.CommitAsync(ct);
         return MapToDto(cp, cp.Items, await _usages.GetByCustomerPackageAsync(id, ct));
     }
@@ -241,5 +279,6 @@ public class SvcCustomerPackageService
         Id: u.Id, CustomerPackageId: u.CustomerPackageId, CustomerPackageItemId: u.CustomerPackageItemId,
         CatalogItemId: u.CatalogItemId, OrderId: u.OrderId, OrderItemId: u.OrderItemId, Quantity: u.Quantity,
         Notes: u.Notes, ProfessionalId: u.ProfessionalId, AppointmentId: u.AppointmentId, BaseAmountSnapshot: u.BaseAmountSnapshot,
-        CommissionPercentSnapshot: u.CommissionPercentSnapshot, CreatedAt: u.CreatedAt);
+        CommissionPercentSnapshot: u.CommissionPercentSnapshot, CreatedAt: u.CreatedAt,
+        ReversedAt: u.ReversedAt, ReversalReason: u.ReversalReason);
 }
