@@ -44,7 +44,9 @@ public record ConfirmSaleRequest(
     /// Used by the restaurant flow where stock is managed at ingredient level
     /// via recipe cards rather than at the finished-product level.
     /// </summary>
-    IReadOnlySet<Guid>? SkipStockProductIds = null);
+    IReadOnlySet<Guid>? SkipStockProductIds = null,
+    /// <summary>"CPF/CNPJ na nota" — optional; masks are ignored, check digits are verified.</summary>
+    string? ConsumerDocument = null);
 
 public record CancelSaleRequest(string? Reason = null);
 
@@ -133,4 +135,5 @@ public record SaleDto(
     DateTime UpdatedAt,
     decimal ReturnedAmount = 0,
     string? CancellationReason = null,
-    decimal SurchargesAmount = 0);
+    decimal SurchargesAmount = 0,
+    string? ConsumerDocument = null);

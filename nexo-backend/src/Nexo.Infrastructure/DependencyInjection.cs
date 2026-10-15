@@ -260,6 +260,8 @@ public static class DependencyInjection
         // ── Reports ───────────────────────────────────────────────────────────
         services.AddScoped<Nexo.Infrastructure.Reports.ReportsService>();
         services.AddScoped<Nexo.Infrastructure.Reports.SalesAnalytics>();
+        services.AddScoped<Nexo.Infrastructure.Fiscal.FiscalService>();
+        services.AddSingleton<Nexo.Application.Features.Fiscal.IFiscalDocumentProvider, Nexo.Application.Features.Fiscal.NotConfiguredFiscalProvider>();
 
         // ── Dashboard ─────────────────────────────────────────────────────────
         services.AddScoped<Nexo.Infrastructure.Dashboard.DashboardService>();

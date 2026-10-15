@@ -91,6 +91,8 @@ export interface ConfirmSaleRequest {
   payments: PaymentInput[];
   discountAmount?: number;
   taxAmount?: number;
+  /** "CPF/CNPJ na nota", digits only. */
+  consumerDocument?: string;
 }
 
 // ── Paginated list DTO ────────────────────────────────────────────────────────

@@ -169,6 +169,11 @@ public class SaleService
             if (!sale.Items.Any())
                 throw new DomainException("Cannot confirm a sale with no items.");
 
+            var consumer = FiscalCodes.Document(request.ConsumerDocument);
+            if (consumer.Length > 0 && !FiscalCodes.IsCpf(consumer) && !FiscalCodes.IsCnpj(consumer))
+                throw new DomainException("CPF/CNPJ na nota inválido. Confira os números.");
+            sale.SetConsumerDocument(consumer);
+
             // Recalculate totals with final discount/tax, then plan the payments against it
             sale.RecalculateTotals(sale.Items, request.DiscountAmount, request.TaxAmount, request.SurchargesAmount);
             var plan = SalePaymentPlan.Build(request.Payments, sale.Total);
@@ -644,6 +649,9 @@ public class SaleService
     private static bool IsReplayOf(Sale sale, ConfirmSaleRequest request)
     {
         if (sale.Status is not (SaleStatus.Confirmed or SaleStatus.Paid)) return false;
+        // a retry that now asks for a CPF on the nota is not the same checkout
+        var consumer = FiscalCodes.Document(request.ConsumerDocument);
+        if ((sale.ConsumerDocument ?? string.Empty) != consumer) return false;
         var recorded = sale.Payments
             .Select(p => $"{p.Method}|{p.Type}|{p.Amount + p.ChangeAmount:F2}")
             .OrderBy(x => x, StringComparer.Ordinal).ToList();
@@ -718,5 +726,6 @@ public class SaleService
         s.UpdatedAt,
         s.ReturnedAmount,
         s.CancellationReason,
-        s.SurchargesAmount);
+        s.SurchargesAmount,
+        s.ConsumerDocument);
 }

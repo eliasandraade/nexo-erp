@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { ChefHat, Package, FileDown, Loader2 } from "lucide-react";
+import { ChefHat, Package, FileDown, Loader2, Landmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -15,6 +15,7 @@ import { useProduct, useCategories, useCreateProduct, useUpdateProduct, useSetPr
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { toast } from "sonner";
 import { downloadPdf } from "@/services/pdf.api";
+import { ProductFiscalDialog } from "@/modules/fiscal/components/ProductFiscalDialog";
 
 function validate(data: Partial<Product>): string[] {
   const errors: string[] = [];
@@ -57,6 +58,8 @@ export default function ProductFormPage() {
   }, [isNew, location.search]);
 
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [fiscalOpen, setFiscalOpen] = useState(false);
+  const canEditFiscal = session?.role === "diretoria" || session?.role === "gerente";
 
   const handleDownloadSheet = async () => {
     if (!id) return;
@@ -131,6 +134,11 @@ export default function ProductFormPage() {
         description="Cadastre e configure as informações do produto."
         actions={
           <div className="flex items-center gap-2">
+            {!isNew && canEditFiscal && (
+              <Button variant="outline" size="sm" onClick={() => setFiscalOpen(true)}>
+                <Landmark className="mr-2 h-4 w-4" /> Dados fiscais
+              </Button>
+            )}
             {!isNew && (
               <Button
                 variant="outline"
@@ -205,6 +213,9 @@ export default function ProductFormPage() {
           </div>
         )}
       </SectionCard>
+      {!isNew && canEditFiscal && id && (
+        <ProductFiscalDialog productId={id} open={fiscalOpen} onOpenChange={setFiscalOpen} />
+      )}
     </div>
   );
 }

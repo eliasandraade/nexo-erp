@@ -63,6 +63,11 @@ public class CustomerConfiguration : IEntityTypeConfiguration<Customer>
             .HasColumnName("credit_limit")
             .HasColumnType("numeric(18,2)");
 
+        // Fiscal data (PR 66)
+        builder.Property(x => x.StateRegistration).HasColumnName("state_registration").HasMaxLength(14);
+        builder.Property(x => x.TaxpayerIndicator).HasColumnName("taxpayer_indicator").HasConversion<string>().HasMaxLength(20);
+        builder.Property(x => x.CityIbgeCode).HasColumnName("city_ibge_code").HasMaxLength(7);
+
         builder.Property(x => x.Notes)
             .HasColumnName("notes")
             .HasMaxLength(1000);

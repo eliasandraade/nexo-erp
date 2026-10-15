@@ -7,12 +7,13 @@ import { cn } from "@/lib/utils";
 import type { PaymentMethod, PaymentEntry } from "../types";
 import { paymentMethodLabels } from "../types";
 import { formatCurrency } from "@/lib/formatters";
+import { formatDocument, isCnpj, isCpf, normalizeDocument } from "@/lib/fiscal-codes";
 
 interface PosPaymentPanelProps {
   total: number;
   hasOpenSession: boolean;
   cartEmpty: boolean;
-  onFinalize: (payments: PaymentEntry[]) => void;
+  onFinalize: (payments: PaymentEntry[], consumerDocument?: string) => void;
   isLoading?: boolean;
 }
 
@@ -31,6 +32,21 @@ export function PosPaymentPanel({
 }: PosPaymentPanelProps) {
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [amountInput, setAmountInput] = useState("");
+  const [consumerDoc, setConsumerDoc] = useState("");
+  const [docTouched, setDocTouched] = useState(false);
+
+  // a new sale starts without the previous customer's CPF
+  useEffect(() => {
+    if (cartEmpty) {
+      setConsumerDoc("");
+      setDocTouched(false);
+    }
+  }, [cartEmpty]);
+
+  const documentDigits = normalizeDocument(consumerDoc);
+  const documentInvalid = documentDigits.length > 0 && !isCpf(documentDigits) && !isCnpj(documentDigits);
+  // say it once the number looks complete (or the field was left), not from the first digit
+  const showDocumentError = documentInvalid && (docTouched || documentDigits.length >= 11);
 
   // Auto-fill amount when total or method changes
   useEffect(() => {
@@ -45,12 +61,12 @@ export function PosPaymentPanel({
   const isSufficient = parsedAmount >= total - 0.001;
 
   const canFinalize =
-    hasOpenSession && !cartEmpty && total > 0 && isSufficient && !isLoading;
+    hasOpenSession && !cartEmpty && total > 0 && isSufficient && !documentInvalid && !isLoading;
 
   function handleFinalize() {
     if (!canFinalize) return;
     const payments: PaymentEntry[] = [{ method, amount: Math.round(parsedAmount * 100) / 100 }];
-    onFinalize(payments);
+    onFinalize(payments, documentDigits || undefined);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -99,6 +115,27 @@ export function PosPaymentPanel({
           className="text-lg font-semibold h-10"
           placeholder="0,00"
         />
+      </div>
+
+      {/* CPF/CNPJ na nota (optional) */}
+      <div className="space-y-1.5">
+        <Label htmlFor="pay-document" className="text-xs">CPF/CNPJ na nota (opcional)</Label>
+        <Input
+          id="pay-document"
+          value={consumerDoc}
+          onChange={(e) => setConsumerDoc(formatDocument(e.target.value))}
+          onBlur={() => setDocTouched(true)}
+          onKeyDown={handleKeyDown}
+          autoComplete="off"
+          placeholder="000.000.000-00"
+          aria-invalid={showDocumentError}
+          aria-describedby={showDocumentError ? "pay-document-error" : undefined}
+        />
+        {showDocumentError && (
+          <p id="pay-document-error" className="text-xs text-red-500">
+            {documentDigits.length < 11 ? "Digite o CPF completo." : "CPF/CNPJ inválido. Confira os números."}
+          </p>
+        )}
       </div>
 
       {/* Change (only for cash) */}

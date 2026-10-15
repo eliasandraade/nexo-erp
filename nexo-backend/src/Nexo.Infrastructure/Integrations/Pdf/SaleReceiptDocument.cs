@@ -30,6 +30,8 @@ internal sealed class SaleReceiptDocument : IDocument
                 col.Item().Text($"Nº {_req.Sale.Number}   {_req.Sale.ConfirmedAt?.ToLocalTime():dd/MM/yyyy HH:mm}");
                 if (!string.IsNullOrWhiteSpace(_req.Sale.CustomerName))
                     col.Item().Text($"Cliente: {_req.Sale.CustomerName}");
+                if (_req.Sale.ConsumerDocument is { Length: > 0 } doc)
+                    col.Item().Text($"{(doc.Length == 11 ? "CPF" : "CNPJ")} do consumidor: {FormatDocument(doc)}");
                 col.Item().Text($"Vendedor: {_req.Sale.SoldByName}");
                 col.Item().PaddingTop(4).LineHorizontal(1);
             });
@@ -95,4 +97,8 @@ internal sealed class SaleReceiptDocument : IDocument
             page.Footer().AlignCenter().Text("Gerado pelo Orken").FontSize(8).FontColor(Colors.Grey.Medium);
         });
     }
+
+    private static string FormatDocument(string d) => d.Length == 11
+        ? $"{d[..3]}.{d[3..6]}.{d[6..9]}-{d[9..]}"
+        : $"{d[..2]}.{d[2..5]}.{d[5..8]}/{d[8..12]}-{d[12..]}";
 }

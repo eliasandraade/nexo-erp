@@ -41,6 +41,8 @@ public class Sale : StoreEntity
     public string? CancellationReason { get; private set; }
     /// <summary>Sum refunded by devoluções (SaleReturn) so far.</summary>
     public decimal ReturnedAmount { get; private set; }
+    /// <summary>"CPF/CNPJ na nota": digits only, validated by the service; null when not asked for.</summary>
+    public string? ConsumerDocument { get; private set; }
 
     // Navigation
     public Customer? Customer { get; private set; }
@@ -95,6 +97,14 @@ public class Sale : StoreEntity
     private static decimal Cents(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
     // ── State transitions ─────────────────────────────────────────────────────
+
+    /// <summary>The consumer's CPF/CNPJ for the nota, set while the sale is still being closed.</summary>
+    public void SetConsumerDocument(string? digits)
+    {
+        if (Status != SaleStatus.Draft)
+            throw new DomainException("O CPF/CNPJ na nota só pode ser informado antes de finalizar a venda.");
+        ConsumerDocument = string.IsNullOrEmpty(digits) ? null : digits;
+    }
 
     /// <summary>
     /// Draft → Confirmed.

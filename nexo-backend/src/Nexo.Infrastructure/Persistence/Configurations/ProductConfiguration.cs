@@ -30,6 +30,14 @@ public class ProductConfiguration : IEntityTypeConfiguration<Product>
             .HasColumnName("barcode")
             .HasMaxLength(50);
 
+        // Fiscal data (PR 66)
+        builder.Property(x => x.Ncm).HasColumnName("ncm").HasMaxLength(8);
+        builder.Property(x => x.Cest).HasColumnName("cest").HasMaxLength(7);
+        builder.Property(x => x.FiscalOrigin).HasColumnName("fiscal_origin");
+        builder.Property(x => x.Cfop).HasColumnName("cfop").HasMaxLength(4);
+        builder.Property(x => x.TaxSituation).HasColumnName("tax_situation").HasMaxLength(3);
+        builder.Property(x => x.TaxUnit).HasColumnName("tax_unit").HasMaxLength(6);
+
         builder.Property(x => x.Name)
             .HasColumnName("name")
             .HasMaxLength(200)
