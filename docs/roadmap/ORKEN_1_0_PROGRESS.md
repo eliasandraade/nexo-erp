@@ -601,6 +601,23 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
 - **Testes:**
   - integração: portal sem módulo ativo mostra o cardápio e recusa o pedido; grupo removido sai do produto;
   - Playwright: tela de adicionais.
+- **Revisão independente (corrigido antes do merge):**
+  - **Cancelar item:**
+    - atualiza a comanda aberta pela mesa (antes a tela ficava desatualizada);
+    - avisa a cozinha em tempo real (antes o prato cancelado continuava na tela e era preparado);
+    - recalcula o status da comanda (o último prato pendente cancelado deixa a comanda pronta) e sincroniza o rastreio do delivery;
+    - item entregue ou já cancelado é recusado com o motivo.
+  - **Comanda de delivery mantém a cotação:** os itens não são cancelados pela comanda; muda-se pelo painel de entregas (recusar ou cancelar o pedido). Recotar com o cliente fica para depois.
+  - **Adicionais:**
+    - grupo obrigatório sem opções não trava o produto (salão e portal);
+    - mínimo ≤ máximo validado no domínio, com erro 422 em vez de 500;
+    - remover grupo desativa as opções e pede confirmação;
+    - adicional de outro produto ou de grupo removido é recusado no salão;
+    - item com valor negativo é recusado;
+    - "1.000" lido como mil;
+    - rótulos com o nome do grupo.
+  - **SignalR:** uma reentrada que falha depois de a tela fechar não deixa polling órfão.
+  - **RBAC:** linha nova na matriz para remover grupo.
 - **Fica para depois:** integrações iFood, Rappi e AnotaAí (dependem de contrato e API dos parceiros); editar opção já criada (hoje remove e cria de novo).
 
 ## Marco — Orken Menu (PRs 54–55)

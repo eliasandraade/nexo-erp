@@ -33,9 +33,11 @@ public class ProductModifierGroup : TenantEntity
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Modifier group name is required.");
         if (minSelections < 0)
-            throw new DomainException("MinSelections must be at least 0.");
+            throw new DomainException("O mínimo de escolhas não pode ser negativo.");
         if (maxSelections < 1)
-            throw new DomainException("MaxSelections must be at least 1.");
+            throw new DomainException("O máximo de escolhas precisa ser ao menos 1.");
+        if (minSelections > maxSelections)
+            throw new DomainException("O mínimo de escolhas não pode passar do máximo.");
 
         return new ProductModifierGroup(tenantId)
         {
@@ -54,9 +56,11 @@ public class ProductModifierGroup : TenantEntity
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Modifier group name is required.");
         if (minSelections < 0)
-            throw new DomainException("MinSelections must be at least 0.");
+            throw new DomainException("O mínimo de escolhas não pode ser negativo.");
         if (maxSelections < 1)
-            throw new DomainException("MaxSelections must be at least 1.");
+            throw new DomainException("O máximo de escolhas precisa ser ao menos 1.");
+        if (minSelections > maxSelections)
+            throw new DomainException("O mínimo de escolhas não pode passar do máximo.");
         Name          = name.Trim();
         IsRequired    = isRequired;
         MinSelections = minSelections;
@@ -72,5 +76,11 @@ public class ProductModifierGroup : TenantEntity
     }
 
     public void Activate()   { IsActive = true;  SetUpdatedAt(); }
-    public void Deactivate() { IsActive = false; SetUpdatedAt(); }
+    /// <summary>Removes the group from the product, with its options (old orders keep their snapshots).</summary>
+    public void Deactivate()
+    {
+        IsActive = false;
+        foreach (var m in Modifiers) m.Deactivate();
+        SetUpdatedAt();
+    }
 }

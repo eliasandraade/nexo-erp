@@ -549,7 +549,7 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task A_coupon_left_bigger_than_the_order_blocks_closing_while_the_comanda_can_still_be_adjusted()
+    public async Task A_delivery_comanda_keeps_the_quote_its_items_are_changed_in_the_delivery_hub()
     {
         var product = await CreateMenuProductAsync("CUP");
         (await _client.PostAsJsonAsync("/api/stock/adjust",
@@ -560,26 +560,45 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
             Items: [new CreateDeliveryOrderItemRequest(product.Id, "x", 1m, 2)]))).Content.ReadFromJsonAsync<DeliveryOrderDto>())!;
         delivery.DeliveryFee.Should().Be(0m);
 
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-            var d = await db.RestDeliveryOrders.IgnoreQueryFilters().FirstAsync(x => x.Id == delivery.Id);
-            d.ApplyCoupon("PR54B", 40m);                                       // 2 × 29,90 = 59,80
-            await db.SaveChangesAsync();
-        }
         var accepted = (await (await _client.PostAsJsonAsync(
             $"/api/restaurante/delivery-orders/{delivery.Id}/accept", new { })).Content.ReadFromJsonAsync<DeliveryOrderDto>())!;
         var orderId = accepted.RestOrderId!.Value;
-
-        // the whole item is cancelled: R$ 40 of coupon over R$ 0 of items
         var order = await _client.GetFromJsonAsync<OrderDto>($"/api/restaurante/orders/{orderId}");
-        (await _client.DeleteAsync($"/api/restaurante/orders/{orderId}/items/{order!.Items.Single().Id}")).EnsureSuccessStatusCode();
-        (await _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/items",
-            new AddOrderItemRequest(product.Id, 1))).EnsureSuccessStatusCode();   // 29,90 left, coupon 40
+        order!.FromDeliveryOrder.Should().BeTrue();
 
-        var close = await _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/close", new { });
-        close.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-        (await _client.GetFromJsonAsync<OrderDto>($"/api/restaurante/orders/{orderId}"))!.Status.Should().NotBe("Closed");
+        // the customer was quoted these items: the comanda doesn't change them
+        (await _client.DeleteAsync($"/api/restaurante/orders/{orderId}/items/{order.Items.Single().Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/close", new { })).EnsureSuccessStatusCode();
+    }
+
+    [Fact]
+    public async Task Cancelling_a_salao_item_is_seen_by_the_kitchen_status_and_the_total()
+    {
+        var product = await CreateMenuProductAsync("CAN");
+        (await _client.PostAsJsonAsync("/api/stock/adjust",
+            new Nexo.Application.Features.Stock.AdjustStockRequest(product.Id, 5, "ManualEntry", "PR55"))).EnsureSuccessStatusCode();
+        var open = await _client.PostAsJsonAsync("/api/restaurante/orders",
+            new { orderType = "Counter" });
+        open.StatusCode.Should().BeOneOf(HttpStatusCode.Created, HttpStatusCode.OK);
+        var order = (await open.Content.ReadFromJsonAsync<OrderDto>())!;
+        order = (await (await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/items",
+            new AddOrderItemRequest(product.Id, 1))).Content.ReadFromJsonAsync<OrderDto>())!;
+        order = (await (await _client.PostAsJsonAsync($"/api/restaurante/orders/{order.Id}/items",
+            new AddOrderItemRequest(product.Id, 1))).Content.ReadFromJsonAsync<OrderDto>())!;
+
+        // one dish ready, the other cancelled → the comanda is ready
+        (await _client.PatchAsJsonAsync($"/api/restaurante/orders/{order.Id}/items/{order.Items[0].Id}/status", new { status = "Preparing" })).EnsureSuccessStatusCode();
+        (await _client.PatchAsJsonAsync($"/api/restaurante/orders/{order.Id}/items/{order.Items[0].Id}/status", new { status = "Ready" })).EnsureSuccessStatusCode();
+        var cancel = await _client.DeleteAsync($"/api/restaurante/orders/{order.Id}/items/{order.Items[1].Id}");
+        cancel.StatusCode.Should().Be(HttpStatusCode.OK, await cancel.Content.ReadAsStringAsync());
+        var after = (await cancel.Content.ReadFromJsonAsync<OrderDto>())!;
+        after.Status.Should().Be("Ready");
+        after.ItemsSubtotal.Should().Be(29.90m);
+
+        // twice, or a delivered dish: refused with a clear reason
+        (await _client.DeleteAsync($"/api/restaurante/orders/{order.Id}/items/{order.Items[1].Id}"))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
     }
 
     [Fact]

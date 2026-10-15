@@ -24,6 +24,7 @@ function useInvalidateOnSuccess(storeId: string) {
   return () => {
     qc.invalidateQueries({ queryKey: TABLES_KEY(storeId) });
     qc.invalidateQueries({ queryKey: ORDERS_KEY(storeId) });
+    qc.invalidateQueries({ queryKey: ["orders", "active", storeId] });   // comanda opened from a table
     qc.invalidateQueries({ queryKey: ["kitchen-items", storeId] });
   };
 }

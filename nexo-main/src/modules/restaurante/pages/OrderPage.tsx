@@ -146,7 +146,9 @@ export default function OrderPage() {
               key={item.id}
               item={item}
               cancelling={cancelItemMut.isPending}
-              onCancel={isModifiable ? () => cancelItemMut.mutate({ orderId: order.id, itemId: item.id }) : undefined}
+              onCancel={isModifiable && !order.fromDeliveryOrder
+                ? () => cancelItemMut.mutate({ orderId: order.id, itemId: item.id })
+                : undefined}
             />
           ))
         )}

@@ -733,7 +733,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         {
             if (!modifierLookup.TryGetValue(req.ModifierId, out var entry))
                 throw new DomainException(
-                    $"Modificador {req.ModifierId} não pertence ao produto {productId} ou não existe.");
+                    "Um dos adicionais escolhidos não está mais disponível. Atualize o cardápio e tente de novo.");
 
             if (!entry.m.IsActive)
                 throw new DomainException(
@@ -744,7 +744,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
             .GroupBy(r => modifierLookup[r.ModifierId].g.Id)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        foreach (var group in groups)
+        foreach (var group in groups.Where(g => g.Modifiers.Any(m => m.IsActive)))   // a group with no option can't be required
         {
             var count = countByGroup.GetValueOrDefault(group.Id, 0);
             var min   = group.IsRequired ? Math.Max(1, (int)group.MinSelections) : (int)group.MinSelections;

@@ -88,7 +88,7 @@ public class ModifierGroupService
     private static short ToShort(int value, string fieldName)
     {
         if (value is < 0 or > 32767)
-            throw new ArgumentOutOfRangeException(fieldName, value, $"{fieldName} must be between 0 and 32767.");
+            throw new DomainException($"{fieldName}: use um número entre 0 e 32767.");
         return (short)value;
     }
 

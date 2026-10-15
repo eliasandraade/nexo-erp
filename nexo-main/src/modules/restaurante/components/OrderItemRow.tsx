@@ -25,7 +25,7 @@ export function OrderItemRow({ item, onCancel, cancelling }: {
   cancelling?: boolean;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const canCancel = !!onCancel && item.status !== "Cancelled";
+  const canCancel = !!onCancel && item.status !== "Cancelled" && item.status !== "Delivered";
   return (
     <div className="flex items-start gap-3 py-3 border-b border-border last:border-0">
       <div className="flex-1 min-w-0">
@@ -55,6 +55,7 @@ export function OrderItemRow({ item, onCancel, cancelling }: {
             disabled={cancelling}
             onClick={() => (confirming ? onCancel!() : setConfirming(true))}
             onBlur={() => setConfirming(false)}
+            aria-label={confirming ? `Confirmar cancelamento de ${item.productName}` : `Cancelar ${item.productName}`}
             className={cn("block ml-auto mt-1 text-[11px] underline-offset-2 hover:underline disabled:opacity-50",
               confirming ? "font-semibold text-destructive" : "text-muted-foreground")}
           >

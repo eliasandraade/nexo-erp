@@ -24,7 +24,11 @@ import type { ModifierGroupDto } from "../types";
 function price(value: string): number {
   const v = value.trim();
   if (!v) return 0;
-  const n = Number(v.includes(",") ? v.replace(/\./g, "").replace(",", ".") : v);
+  const sign = v.startsWith("-") ? "-" : "";
+  const body = sign ? v.slice(1) : v;
+  // pt-BR: "1.000" (dot groups of 3) is one thousand, "1,50" uses a comma, "1.50" is decimal
+  const thousands = /^\d{1,3}(\.\d{3})+$/.test(body);
+  const n = Number(sign + (body.includes(",") || thousands ? body.replace(/\./g, "").replace(",", ".") : body));
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
 }
 
@@ -105,6 +109,7 @@ function GroupCard({ group }: { group: ModifierGroupDto }) {
     onError,
   });
   const drop = useMutation({ mutationFn: () => removeModifierGroup(group.id), onSuccess: refresh, onError });
+  const [confirmDrop, setConfirmDrop] = useState(false);
 
   const limitsValid = /^\d+$/.test(min) && /^\d+$/.test(max) && Number(max) >= 1 && Number(min) <= Number(max);
   const changed = required !== group.isRequired || min !== String(group.minSelections) || max !== String(group.maxSelections);
@@ -112,7 +117,14 @@ function GroupCard({ group }: { group: ModifierGroupDto }) {
   return (
     <SectionCard
       title={group.name}
-      actions={<Button size="sm" variant="ghost" disabled={drop.isPending} onClick={() => drop.mutate()}>Remover grupo</Button>}
+      actions={
+        <Button size="sm" variant={confirmDrop ? "destructive" : "ghost"} disabled={drop.isPending}
+          aria-label={confirmDrop ? `Confirmar remoção do grupo ${group.name}` : `Remover grupo ${group.name}`}
+          onBlur={() => setConfirmDrop(false)}
+          onClick={() => (confirmDrop ? drop.mutate() : setConfirmDrop(true))}>
+          {confirmDrop ? "Confirmar remoção" : "Remover grupo"}
+        </Button>
+      }
     >
       <div className="mb-4 flex flex-wrap items-end gap-4">
         <div className="flex items-center gap-2">
@@ -155,7 +167,8 @@ function GroupCard({ group }: { group: ModifierGroupDto }) {
           <Label htmlFor={`price-${group.id}`}>Preço</Label>
           <Input id={`price-${group.id}`} inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} placeholder="0,00" />
         </div>
-        <Button disabled={!name.trim() || Number.isNaN(price(value)) || add.isPending} onClick={() => add.mutate()}>
+        <Button aria-label={`Adicionar opção em ${group.name}`}
+          disabled={!name.trim() || Number.isNaN(price(value)) || add.isPending} onClick={() => add.mutate()}>
           <Plus className="mr-1 h-4 w-4" /> Adicionar
         </Button>
       </div>
@@ -168,6 +181,7 @@ function NewGroupForm({ productId }: { productId: string }) {
   const refresh = useRefresh(productId);
   const [name, setName] = useState("");
   const [required, setRequired] = useState(false);
+  // A required group starts without options: it only becomes binding once it has one (backend rule)
   const create = useMutation({
     mutationFn: () => createModifierGroup(productId, {
       name: name.trim(), isRequired: required, minSelections: required ? 1 : 0, maxSelections: 1, sortOrder: 0,

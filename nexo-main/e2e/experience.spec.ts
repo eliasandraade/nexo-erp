@@ -376,7 +376,9 @@ test('Adicionais: grupo do produto, opção com preço e remoção',async({page}
  await page.getByRole('button',{name:'Criar grupo'}).click();
  await expect.poll(()=>groupBody).not.toBeNull();
  expect(groupBody).toMatchObject({productId:'p1',name:'Acompanhamento',isRequired:false,minSelections:0,maxSelections:1});
- await page.getByRole('button',{name:'Remover grupo'}).click();
+ await page.getByRole('button',{name:'Remover grupo Ponto da carne'}).click();
+ expect(removedGroup).toBe(false);                                         // first tap only arms it
+ await page.getByRole('button',{name:'Confirmar remoção do grupo Ponto da carne'}).click();
  await expect.poll(()=>removedGroup).toBe(true);
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });

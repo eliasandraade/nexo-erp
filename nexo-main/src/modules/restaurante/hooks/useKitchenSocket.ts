@@ -139,6 +139,7 @@ export function useKitchenSocket(
       try {
         await connection.invoke("JoinStore", storeId);
       } catch (err) {
+        if (cancelled) return;   // the component is gone: don't leave a poller behind
         console.warn("[SignalR] Rejoin after reconnect failed — falling back to polling:", err);
         startPolling();
         return;
