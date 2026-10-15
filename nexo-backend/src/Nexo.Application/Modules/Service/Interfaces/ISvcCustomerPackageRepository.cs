@@ -7,6 +7,8 @@ public interface ISvcCustomerPackageRepository
 {
     Task<SvcCustomerPackage?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<SvcCustomerPackage?> GetByIdWithItemsAsync(Guid id, CancellationToken ct = default);
+    /// <summary>Row lock (FOR UPDATE) — consumptions and reversals of one package run one at a time.</summary>
+    Task LockAsync(Guid id, Guid tenantId, CancellationToken ct = default);
     Task<IReadOnlyList<SvcCustomerPackage>> GetAllAsync(
         Guid? customerId, Guid? subjectId, SvcCustomerPackageStatus? status, Guid? packageId, CancellationToken ct = default);
     Task AddAsync(SvcCustomerPackage entity, CancellationToken ct = default);

@@ -135,6 +135,22 @@ export interface PublicAppointmentCreated {
   serviceName:      string;
   professionalName: string;
   customerName:     string;
+  /** Key of the customer's own link to view or cancel the booking. */
+  manageToken?:     string | null;
+}
+
+/** The booking behind the customer's link. No personal data — the link may be forwarded. */
+export interface PublicAppointmentView {
+  status:           string;
+  startsAt:         string;
+  endsAt:           string;
+  serviceName:      string;
+  professionalName: string;
+  storeName:        string;
+  canCancel:        boolean;
+  cancelDeadline:   string;
+  /** Only the store can cancel it now (it already has a comanda or was paid with a package). */
+  handledByStore?:  boolean;
 }
 
 // ── Endpoints ───────────────────────────────────────────────────────────────────
@@ -156,3 +172,12 @@ export const getAvailability = (slug: string, catalogItemId: string, professiona
 
 export const createAppointment = (slug: string, req: CreatePublicAppointmentRequest) =>
   post<PublicAppointmentCreated>(`${BASE}/public/service/${slug}/appointments`, req);
+
+export const getAppointmentByToken = (slug: string, token: string) =>
+  get<PublicAppointmentView>(`${BASE}/public/service/${slug}/appointments/${encodeURIComponent(token)}`);
+
+export const cancelAppointmentByToken = (slug: string, token: string) =>
+  post<PublicAppointmentView>(`${BASE}/public/service/${slug}/appointments/${encodeURIComponent(token)}/cancel`, {});
+
+/** Path of the customer's own page for a booking. */
+export const manageBookingPath = (slug: string, token: string) => `/agendar/${slug}/reserva/${token}`;

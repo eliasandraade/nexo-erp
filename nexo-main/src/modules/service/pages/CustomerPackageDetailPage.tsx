@@ -7,6 +7,7 @@ import { SectionCard } from "@/components/shared/SectionCard";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
@@ -17,7 +18,7 @@ import {
 import { formatDate, formatDateTime } from "@/lib/formatters";
 import { ApiError } from "@/services/api-client";
 import { useCustomers } from "@/modules/customers/hooks/use-customers";
-import { useCustomerPackage, useCancelCustomerPackage } from "../hooks/useCustomerPackages";
+import { useCustomerPackage, useCancelCustomerPackage, useReverseCustomerPackageUsage } from "../hooks/useCustomerPackages";
 import { usePackages } from "../hooks/usePackages";
 import {
   CUSTOMER_PACKAGE_STATUS_LABELS,
@@ -35,6 +36,8 @@ export default function CustomerPackageDetailPage() {
   const { data: customers } = useCustomers(false);
   const { data: packages } = usePackages(undefined);
   const cancel = useCancelCustomerPackage();
+  const reverse = useReverseCustomerPackageUsage();
+  const [reversing, setReversing] = useState<{ usageId: string; reason: string } | null>(null);
 
   const [consumeOpen, setConsumeOpen] = useState(false);
 
@@ -115,15 +118,60 @@ export default function CustomerPackageDetailPage() {
         ) : (
           <div className="space-y-1.5">
             {[...cp.usages].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map((u) => (
-              <div key={u.id} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <div>
-                  <p className="text-[13px] text-foreground">{itemNameFor(u.catalogItemId)}</p>
-                  {u.notes && <p className="text-[11.5px] text-muted-foreground">{u.notes}</p>}
+              <div key={u.id} className="rounded-md border border-border px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className={`text-[13px] text-foreground ${u.reversedAt ? "line-through opacity-60" : ""}`}>{itemNameFor(u.catalogItemId)}</p>
+                    {u.notes && <p className="text-[11.5px] text-muted-foreground">{u.notes}</p>}
+                    {u.reversedAt && (
+                      <p className="text-[11.5px] text-muted-foreground">
+                        Estornado em {formatDateTime(u.reversedAt)}{u.reversalReason ? ` · ${u.reversalReason}` : ""}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <div className="text-right">
+                      <p className={`text-[13px] font-medium text-foreground ${u.reversedAt ? "line-through opacity-60" : ""}`}>−{u.quantity}</p>
+                      <p className="text-[11px] text-muted-foreground">{formatDateTime(u.createdAt)}</p>
+                    </div>
+                    {!u.reversedAt && cp.status !== "Cancelled" && reversing?.usageId !== u.id && (
+                      <Button variant="ghost" size="sm" className="h-8" onClick={() => setReversing({ usageId: u.id, reason: "" })}>
+                        Estornar
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-[13px] font-medium text-foreground">−{u.quantity}</p>
-                  <p className="text-[11px] text-muted-foreground">{formatDateTime(u.createdAt)}</p>
-                </div>
+                {reversing?.usageId === u.id && (
+                  <form
+                    className="mt-2 flex flex-wrap items-center gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      reverse.mutate({ id: cp.id, usageId: u.id, reason: reversing.reason.trim() }, {
+                        onSuccess: () => { toast.success("Consumo estornado. O saldo voltou ao pacote."); setReversing(null); },
+                        onError: (err) => toast.error(err instanceof ApiError ? err.message : "Não foi possível estornar."),
+                      });
+                    }}
+                  >
+                    <Input
+                      autoFocus
+                      aria-label="Motivo do estorno"
+                      placeholder="Motivo (ex.: serviço errado, não realizado)"
+                      maxLength={500}
+                      value={reversing.reason}
+                      onChange={(e) => setReversing({ usageId: u.id, reason: e.target.value })}
+                      className="h-8 min-w-0 flex-1 text-[12.5px]"
+                    />
+                    <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setReversing(null)} disabled={reverse.isPending}>
+                      Manter
+                    </Button>
+                    <Button type="submit" variant="destructive" size="sm" className="h-8" disabled={!reversing.reason.trim() || reverse.isPending}>
+                      Confirmar estorno
+                    </Button>
+                    <p className="w-full text-[11px] text-muted-foreground">
+                      O saldo volta ao pacote e a comissão deste consumo é estornada. O registro fica no histórico.
+                    </p>
+                  </form>
+                )}
               </div>
             ))}
           </div>

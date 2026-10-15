@@ -62,11 +62,11 @@ public class SvcCommissionRepository : ISvcCommissionRepository
     }
 
     public async Task<bool> AppointmentCoveredByPackageAsync(Guid appointmentId, CancellationToken ct = default)
-        => await _context.SvcPackageUsages.AnyAsync(u => u.AppointmentId == appointmentId, ct);
+        => await _context.SvcPackageUsages.AnyAsync(u => u.AppointmentId == appointmentId && u.ReversedAt == null, ct);
 
     public async Task<IReadOnlySet<Guid>> GetOrderItemIdsCoveredByPackageAsync(Guid orderId, CancellationToken ct = default)
         => (await _context.SvcPackageUsages
-                .Where(u => u.OrderId == orderId && u.OrderItemId != null)
+                .Where(u => u.OrderId == orderId && u.OrderItemId != null && u.ReversedAt == null)
                 .Select(u => u.OrderItemId!.Value)
                 .ToListAsync(ct))
             .ToHashSet();
@@ -120,7 +120,7 @@ public class SvcCommissionRepository : ISvcCommissionRepository
     public async Task<IReadOnlyList<Guid>> GetCatalogItemsPaidByPackageForAppointmentAsync(
         Guid appointmentId, CancellationToken ct = default)
         => await _context.SvcPackageUsages
-            .Where(u => u.AppointmentId == appointmentId)
+            .Where(u => u.AppointmentId == appointmentId && u.ReversedAt == null)
             .Select(u => u.CatalogItemId)
             .ToListAsync(ct);
 

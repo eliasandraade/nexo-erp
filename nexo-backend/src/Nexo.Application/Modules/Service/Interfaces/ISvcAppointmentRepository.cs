@@ -14,6 +14,17 @@ public interface ISvcAppointmentRepository
     /// <summary>Public path: the bloqueios of a professional (and the store's) within a window.</summary>
     Task<IReadOnlyList<SvcTimeBlock>> GetBlocksPublicAsync(
         Guid professionalId, Guid tenantId, Guid storeId, DateTime fromUtc, DateTime toUtc, CancellationToken ct = default);
+    /// <summary>The booking behind a customer's own link, inside the slug's store (tracked).</summary>
+    Task<SvcAppointment?> GetByPublicTokenAsync(string token, Guid tenantId, Guid storeId, CancellationToken ct = default);
+    /// <summary>Row lock (FOR UPDATE) on the booking behind a customer's link, before loading it.</summary>
+    Task LockByPublicTokenAsync(string token, Guid tenantId, Guid storeId, CancellationToken ct = default);
+    /// <summary>
+    /// Row lock (FOR UPDATE) on one booking, before loading it: a status change and the customer's
+    /// cancellation never overwrite each other (each saves the whole row).
+    /// </summary>
+    Task LockRowAsync(Guid id, Guid tenantId, CancellationToken ct = default);
+    /// <summary>Public path: the booking already has a comanda (not cancelled) or a package paid for it.</summary>
+    Task<bool> HasChargesPublicAsync(Guid appointmentId, Guid tenantId, CancellationToken ct = default);
     /// <summary>Public path: same as <see cref="IsBlockedAsync"/>, scoped explicitly.</summary>
     Task<bool> IsBlockedPublicAsync(
         Guid professionalId, Guid tenantId, Guid storeId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default);

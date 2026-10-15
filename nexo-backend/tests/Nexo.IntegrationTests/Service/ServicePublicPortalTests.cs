@@ -397,6 +397,121 @@ public class ServicePublicPortalTests
                 "commissionPercent", "defaultCommissionPercent", "costPrice", "createdBy");
     }
 
+    // ── Customer's own link: view and cancel ──────────────────────────────────
+
+    [Fact]
+    public async Task Customer_cancels_by_the_link_and_the_slot_opens_again()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+        var catalog = await CreateCatalogAsync(admin);
+        var pub = _factory.CreateApiClient();
+        var slot = await PickSlotAsync(pub, slug, catalog, professional);
+
+        var created = await (await BookAsync(pub, slug, catalog, professional, slot)).Content.ReadFromJsonAsync<JsonElement>();
+        var token = created.GetProperty("manageToken").GetString()!;
+        token.Should().MatchRegex("^[0-9a-f]{32}$");
+
+        var viewJson = await pub.GetStringAsync($"/api/public/service/{slug}/appointments/{token}");
+        viewJson.Should().NotContainAny("customer", "phone", "tenantId", "storeId", "appointmentId");
+        var view = JsonDocument.Parse(viewJson).RootElement;
+        view.GetProperty("status").GetString().Should().Be("Scheduled");
+        view.GetProperty("canCancel").GetBoolean().Should().BeTrue();
+
+        var r = await pub.PostAsync($"/api/public/service/{slug}/appointments/{token}/cancel", null);
+        r.StatusCode.Should().Be(HttpStatusCode.OK);
+        var cancelled = await r.Content.ReadFromJsonAsync<JsonElement>();
+        cancelled.GetProperty("status").GetString().Should().Be("Cancelled");
+        cancelled.GetProperty("canCancel").GetBoolean().Should().BeFalse();
+
+        (await GetAvailabilityAsync(pub, slug, catalog, professional)).Slots.Select(s => s.Raw)
+            .Should().Contain(slot, "a cancelled booking frees its slot");
+        (await pub.PostAsync($"/api/public/service/{slug}/appointments/{token}/cancel", null))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task Customer_cannot_cancel_by_the_link_inside_the_minimum_lead()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+        var catalog = await CreateCatalogAsync(admin);
+        var pub = _factory.CreateApiClient();
+        var slot = await PickSlotAsync(pub, slug, catalog, professional);
+        var token = (await (await BookAsync(pub, slug, catalog, professional, slot)).Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("manageToken").GetString()!;
+
+        // the store now asks 30 days of notice: the booking (a day or so away) is inside it
+        (await admin.PutAsJsonAsync("/api/v1/service/settings/public-booking", new
+        {
+            publicBookingEnabled = true, bookingDaysAhead = 14, minLeadMinutes = 43200,
+            slotIntervalMinutes = 60, showPrices = true, autoConfirmAppointments = false, timeZoneId = "UTC",
+        })).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{slug}/appointments/{token}"))
+            .GetProperty("canCancel").GetBoolean().Should().BeFalse();
+        (await pub.PostAsync($"/api/public/service/{slug}/appointments/{token}/cancel", null))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task Customer_cannot_cancel_by_the_link_a_booking_that_already_has_a_comanda()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+        var catalog = await CreateCatalogAsync(admin);
+        var pub = _factory.CreateApiClient();
+        var slot = await PickSlotAsync(pub, slug, catalog, professional);
+        var created = await (await BookAsync(pub, slug, catalog, professional, slot)).Content.ReadFromJsonAsync<JsonElement>();
+        var token = created.GetProperty("manageToken").GetString()!;
+        var apptId = created.GetProperty("appointmentId").GetGuid();
+
+        (await admin.PostAsync($"/api/v1/service/orders/from-appointment/{apptId}", null)).IsSuccessStatusCode.Should().BeTrue();
+
+        var view = await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{slug}/appointments/{token}");
+        view.GetProperty("canCancel").GetBoolean().Should().BeFalse();
+        view.GetProperty("handledByStore").GetBoolean().Should().BeTrue();
+        (await pub.PostAsync($"/api/public/service/{slug}/appointments/{token}/cancel", null))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task Unknown_or_malformed_link_returns_404()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        var pub = _factory.CreateApiClient();
+
+        (await pub.GetAsync($"/api/public/service/{slug}/appointments/{Guid.NewGuid():N}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await pub.GetAsync($"/api/public/service/{slug}/appointments/not-a-token")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await pub.PostAsync($"/api/public/service/{slug}/appointments/{Guid.NewGuid():N}/cancel", null))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Booking_echoes_the_typed_name_not_the_stored_customer()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+        var catalog = await CreateCatalogAsync(admin);
+        var phone = NextPhone();
+        var pub = _factory.CreateApiClient();
+        var slots = (await GetAvailabilityAsync(pub, slug, catalog, professional)).Slots
+            .Where(s => s.StartsAt > DateTime.UtcNow.AddDays(1)).Take(2).ToList();
+
+        (await BookAsync(pub, slug, catalog, professional, slots[0].Raw, phone: phone, name: "Ana Verdadeira"))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        var second = await (await BookAsync(pub, slug, catalog, professional, slots[1].Raw, phone: phone, name: "Outra Pessoa"))
+            .Content.ReadFromJsonAsync<JsonElement>();
+
+        second.GetProperty("customerName").GetString().Should().Be("Outra Pessoa",
+            "typing someone's phone must not reveal the name on file");
+    }
+
     // ── 17. Branding (PR16) ────────────────────────────────────────────────────
 
     [Fact]

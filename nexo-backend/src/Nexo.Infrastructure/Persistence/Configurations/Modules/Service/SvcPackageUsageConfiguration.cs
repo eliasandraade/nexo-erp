@@ -23,6 +23,9 @@ public class SvcPackageUsageConfiguration : IEntityTypeConfiguration<SvcPackageU
             .HasColumnName("base_amount_snapshot").HasColumnType("numeric(18,2)");
         builder.Property(x => x.CommissionPercentSnapshot)
             .HasColumnName("commission_percent_snapshot").HasColumnType("numeric(5,2)");
+        builder.Property(x => x.ReversedAt).HasColumnName("reversed_at").HasColumnType("timestamptz");
+        builder.Property(x => x.ReversalReason).HasColumnName("reversal_reason").HasMaxLength(500);
+        builder.Property(x => x.ReversedByUserId).HasColumnName("reversed_by_user_id");
 
         builder.HasOne<SvcCustomerPackage>().WithMany().HasForeignKey(x => x.CustomerPackageId)
             .HasConstraintName("fk_svc_package_usages_cp").OnDelete(DeleteBehavior.Restrict);
@@ -44,8 +47,8 @@ public class SvcPackageUsageConfiguration : IEntityTypeConfiguration<SvcPackageU
         // Commission recognition looks usages up by order (an order item covered by a package is
         // commissioned through the usage, not again through the order).
         builder.HasIndex(x => x.OrderId).HasDatabaseName("ix_svc_package_usages_order_id");
-        // An appointment is paid by at most one package consumption.
-        builder.HasIndex(x => x.AppointmentId).IsUnique().HasFilter("appointment_id IS NOT NULL")
+        // An appointment is paid by at most one (not reversed) package consumption.
+        builder.HasIndex(x => x.AppointmentId).IsUnique().HasFilter("appointment_id IS NOT NULL AND reversed_at IS NULL")
             .HasDatabaseName("ux_svc_package_usages_appointment_id");
     }
 }

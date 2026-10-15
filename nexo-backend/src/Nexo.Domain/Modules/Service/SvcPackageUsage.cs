@@ -35,6 +35,25 @@ public class SvcPackageUsage : StoreEntity
     public decimal? BaseAmountSnapshot   { get; private set; }
     /// <summary>Commission rate in force at consumption. Null means this usage earns none.</summary>
     public decimal? CommissionPercentSnapshot { get; private set; }
+    /// <summary>
+    /// Set when the consumption was undone (wrong service, wrong customer, service not done): the
+    /// units went back to the balance and its commission was reversed. The row stays as history.
+    /// </summary>
+    public DateTime? ReversedAt          { get; private set; }
+    public string?   ReversalReason      { get; private set; }
+    public Guid?     ReversedByUserId    { get; private set; }
+
+    public bool IsReversed => ReversedAt is not null;
+
+    public void Reverse(string reason, Guid? userId, DateTime reversedAt)
+    {
+        if (IsReversed) throw new ConflictException("Este consumo já foi estornado.");
+        if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe o motivo do estorno.");
+        ReversedAt = reversedAt;
+        ReversalReason = reason.Trim().Length > 500 ? reason.Trim()[..500] : reason.Trim();
+        ReversedByUserId = userId;
+        SetUpdatedAt();
+    }
 
     public static SvcPackageUsage Create(
         Guid tenantId, Guid customerPackageId, Guid customerPackageItemId, Guid catalogItemId,

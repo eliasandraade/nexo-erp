@@ -57,6 +57,25 @@ public class SvcAppointmentRepository : ISvcAppointmentRepository
                         b.StartsAt < toUtc && b.EndsAt > fromUtc)
             .ToListAsync(ct);
 
+    public async Task<SvcAppointment?> GetByPublicTokenAsync(
+        string token, Guid tenantId, Guid storeId, CancellationToken ct = default)
+        => await _context.SvcAppointments.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(a => a.PublicToken == token && a.TenantId == tenantId && a.StoreId == storeId, ct);
+
+    public async Task LockByPublicTokenAsync(string token, Guid tenantId, Guid storeId, CancellationToken ct = default)
+        => await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.svc_appointments WHERE public_token = {token} AND tenant_id = {tenantId} AND store_id = {storeId} FOR UPDATE", ct);
+
+    public async Task LockRowAsync(Guid id, Guid tenantId, CancellationToken ct = default)
+        => await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.svc_appointments WHERE id = {id} AND tenant_id = {tenantId} FOR UPDATE", ct);
+
+    public async Task<bool> HasChargesPublicAsync(Guid appointmentId, Guid tenantId, CancellationToken ct = default)
+        => await _context.SvcOrders.IgnoreQueryFilters().AnyAsync(o =>
+               o.TenantId == tenantId && o.AppointmentId == appointmentId && o.Status != SvcOrderStatus.Cancelled, ct)
+           || await _context.SvcPackageUsages.IgnoreQueryFilters().AnyAsync(u =>
+               u.TenantId == tenantId && u.AppointmentId == appointmentId && u.ReversedAt == null, ct);
+
     public async Task<bool> IsBlockedPublicAsync(
         Guid professionalId, Guid tenantId, Guid storeId, DateTime startsAt, DateTime endsAt, CancellationToken ct = default)
         => await _context.SvcTimeBlocks.IgnoreQueryFilters().AnyAsync(b =>

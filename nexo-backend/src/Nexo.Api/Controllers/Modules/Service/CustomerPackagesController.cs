@@ -59,6 +59,12 @@ public class CustomerPackagesController : ControllerBase
         return Ok(await _service.ConsumeAsync(id, request, ct));
     }
 
+    /// <summary>Undoes a consumption: balance back, commission reversed, usage kept as history.</summary>
+    [HttpPost("{id:guid}/usages/{usageId:guid}/reverse")]
+    public async Task<ActionResult<SvcCustomerPackageDto>> ReverseUsage(
+        Guid id, Guid usageId, [FromBody] ReverseSvcPackageUsageRequest request, CancellationToken ct)
+        => Ok(await _service.ReverseUsageAsync(id, usageId, request, ct));
+
     [HttpGet("{id:guid}/usages")]
     public async Task<ActionResult<IReadOnlyList<SvcPackageUsageDto>>> GetUsages(Guid id, CancellationToken ct)
         => Ok(await _service.GetUsagesAsync(id, ct));

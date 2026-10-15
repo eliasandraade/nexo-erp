@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Nexo.Domain.Common;
 using Nexo.Domain.Exceptions;
 
@@ -32,6 +33,13 @@ public class SvcAppointment : StoreEntity
     /// later rate change never rewrites what was already agreed — same discipline as PriceSnapshot.
     /// </summary>
     public decimal?             CommissionPercentSnapshot { get; private set; }
+    /// <summary>
+    /// Unguessable key (128 bits) of the customer's own link to view or cancel this booking, with no
+    /// login. Null on bookings made before the link existed — those are managed by the team only.
+    /// </summary>
+    public string?              PublicToken        { get; private set; }
+
+    public const string CustomerCancellationReason = "Cancelado pelo cliente.";
 
     public bool IsTerminal => Status is SvcAppointmentStatus.Completed
                                      or SvcAppointmentStatus.Cancelled
@@ -55,6 +63,7 @@ public class SvcAppointment : StoreEntity
             PriceSnapshot  = priceSnapshot,
             Notes          = notes?.Trim(),
             Status         = SvcAppointmentStatus.Scheduled,
+            PublicToken    = NewPublicToken(),
         };
     }
 
@@ -84,6 +93,8 @@ public class SvcAppointment : StoreEntity
             throw new DomainException($"Cannot edit a {Status} appointment.");
         EnsureValid(customerId, professionalId, catalogItemId, startsAt, endsAt, priceSnapshot);
 
+        // the old link belongs to the previous customer: it must stop working
+        if (customerId != CustomerId && PublicToken is not null) PublicToken = NewPublicToken();
         CustomerId     = customerId;
         ProfessionalId = professionalId;
         CatalogItemId  = catalogItemId;
@@ -106,6 +117,25 @@ public class SvcAppointment : StoreEntity
             CancellationReason = reason?.Trim();
         SetUpdatedAt();
     }
+
+    /// <summary>Last moment the customer can still cancel by themselves (same lead the booking needs).</summary>
+    public DateTime CustomerCancelDeadline(int minLeadMinutes) => StartsAt.AddMinutes(-minLeadMinutes);
+
+    public bool CustomerCanCancel(DateTime nowUtc, int minLeadMinutes)
+        => Status is SvcAppointmentStatus.Scheduled or SvcAppointmentStatus.Confirmed
+           && nowUtc <= CustomerCancelDeadline(minLeadMinutes);
+
+    /// <summary>The customer cancels from their link: only a booking not started yet, and in time.</summary>
+    public void CancelByCustomer(DateTime nowUtc, int minLeadMinutes)
+    {
+        if (Status is not (SvcAppointmentStatus.Scheduled or SvcAppointmentStatus.Confirmed))
+            throw new DomainException("Este agendamento não pode mais ser cancelado.");
+        if (nowUtc > CustomerCancelDeadline(minLeadMinutes))
+            throw new DomainException("O prazo para cancelar pelo link já passou. Fale com o estabelecimento.");
+        ChangeStatus(SvcAppointmentStatus.Cancelled, CustomerCancellationReason);
+    }
+
+    private static string NewPublicToken() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
 
     private static void EnsureValid(
         Guid customerId, Guid professionalId, Guid catalogItemId,

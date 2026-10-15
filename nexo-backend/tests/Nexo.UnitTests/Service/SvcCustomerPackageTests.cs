@@ -74,4 +74,38 @@ public class SvcCustomerPackageTests
         ((Action)(() => SvcPackageUsage.Create(T, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 0m, null, null, null)))
             .Should().Throw<DomainException>();
     }
+
+    [Fact]
+    public void Reversal_restores_units_up_to_the_total_and_reopens_a_used_up_package()
+    {
+        var cp = New();
+        var b = SvcCustomerPackageItem.Create(T, cp.Id, Guid.NewGuid(), "Banho", 2m);
+        b.Consume(2m);
+        cp.MarkConsumed();
+
+        b.Restore(1m);
+        cp.ReopenAfterReversal(DateTime.UtcNow);
+        b.RemainingQuantity.Should().Be(1m);
+        cp.Status.Should().Be(SvcCustomerPackageStatus.Active);
+        ((Action)(() => b.Restore(2m))).Should().Throw<DomainException>();   // would exceed the total
+    }
+
+    [Fact]
+    public void Reversal_on_a_package_whose_time_ran_out_leaves_it_expired()
+    {
+        var cp = New(expires: Start.AddDays(30));
+        cp.MarkConsumed();
+        cp.ReopenAfterReversal(Start.AddDays(31));
+        cp.Status.Should().Be(SvcCustomerPackageStatus.Expired);
+    }
+
+    [Fact]
+    public void Usage_is_reversed_once_and_needs_a_reason()
+    {
+        var u = SvcPackageUsage.Create(T, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), 1m, null, null, null);
+        ((Action)(() => u.Reverse(" ", Guid.NewGuid(), DateTime.UtcNow))).Should().Throw<DomainException>();
+        u.Reverse("Serviço errado", Guid.NewGuid(), DateTime.UtcNow);
+        u.IsReversed.Should().BeTrue();
+        ((Action)(() => u.Reverse("de novo", Guid.NewGuid(), DateTime.UtcNow))).Should().Throw<ConflictException>();
+    }
 }

@@ -12,6 +12,7 @@ import {
   type PublicAppointmentCreated,
   type CreatePublicAppointmentRequest,
 } from "../api/booking.api";
+import { manageBookingPath } from "../api/booking.api";
 import { getPortalTheme } from "../lib/portal-theme";
 import { PortalThemeRoot } from "../components/PortalThemeRoot";
 import { PortalHero } from "../components/PortalHero";
@@ -76,7 +77,8 @@ export default function BookingPage() {
   if (created) {
     return (
       <PortalThemeRoot theme={theme} brandColor={portal.brandColor}>
-        <SuccessCard created={created} storeName={portal.displayName || portal.storeName} onRestart={resetAll} />
+        <SuccessCard created={created} storeName={portal.displayName || portal.storeName}
+          manageUrl={created.manageToken ? manageBookingPath(slug, created.manageToken) : null} onRestart={resetAll} />
       </PortalThemeRoot>
     );
   }

@@ -25,7 +25,11 @@ public sealed record SvcPackageUsageDto(
     Guid?    AppointmentId,
     decimal? BaseAmountSnapshot,
     decimal? CommissionPercentSnapshot,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    DateTime? ReversedAt = null,
+    string?   ReversalReason = null);
+
+public sealed record ReverseSvcPackageUsageRequest(string Reason);
 
 public sealed record SvcCustomerPackageDto(
     Guid                                  Id,

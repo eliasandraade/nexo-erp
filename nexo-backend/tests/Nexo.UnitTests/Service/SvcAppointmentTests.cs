@@ -33,6 +33,47 @@ public class SvcAppointmentTests
     }
 
     [Fact]
+    public void Each_booking_gets_its_own_unguessable_link_key()
+    {
+        var a = New(); var b = New();
+        a.PublicToken.Should().MatchRegex("^[0-9a-f]{32}$");
+        a.PublicToken.Should().NotBe(b.PublicToken);
+    }
+
+    [Fact]
+    public void Customer_cancels_up_to_the_minimum_lead_and_not_after()
+    {
+        var a = New();
+        a.CustomerCanCancel(Start.AddMinutes(-120), 120).Should().BeTrue();
+        a.CustomerCanCancel(Start.AddMinutes(-119), 120).Should().BeFalse();
+        a.Invoking(x => x.CancelByCustomer(Start.AddMinutes(-60), 120)).Should().Throw<DomainException>();
+
+        a.CancelByCustomer(Start.AddHours(-3), 120);
+        a.Status.Should().Be(SvcAppointmentStatus.Cancelled);
+        a.CancellationReason.Should().Be(SvcAppointment.CustomerCancellationReason);
+    }
+
+    [Fact]
+    public void Moving_the_booking_to_another_customer_retires_the_old_link()
+    {
+        var a = New();
+        var old = a.PublicToken;
+        a.Reschedule(Cust, Prof, Item, null, Start, End, 50m, "n", null);
+        a.PublicToken.Should().Be(old, "same customer keeps the link");
+        a.Reschedule(Guid.NewGuid(), Prof, Item, null, Start, End, 50m, "n", null);
+        a.PublicToken.Should().NotBe(old);
+    }
+
+    [Fact]
+    public void Customer_cannot_cancel_a_booking_already_in_progress()
+    {
+        var a = New();
+        a.ChangeStatus(SvcAppointmentStatus.InProgress, null);
+        a.CustomerCanCancel(Start.AddDays(-1), 0).Should().BeFalse();
+        a.Invoking(x => x.CancelByCustomer(Start.AddDays(-1), 0)).Should().Throw<DomainException>();
+    }
+
+    [Fact]
     public void Create_with_starts_after_ends_throws()
     {
         var act = () => SvcAppointment.Create(T, Cust, Prof, Item, null, End, Start, 50m);

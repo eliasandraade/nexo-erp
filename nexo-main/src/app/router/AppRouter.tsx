@@ -32,6 +32,7 @@ const LandingPage        = lazy(() => import("@/modules/landing/pages/LandingPag
 const PortalMenuPage     = lazy(() => import("@/modules/portal/pages/PortalMenuPage"));
 const PortalTrackingPage = lazy(() => import("@/modules/portal/pages/PortalTrackingPage"));
 const ServiceBookingPage = lazy(() => import("@/modules/service-portal/pages/BookingPage"));
+const ServiceManageBookingPage = lazy(() => import("@/modules/service-portal/pages/ManageBookingPage"));
 
 const ImpersonatePage       = lazy(() => import("@/pages/ImpersonatePage"));
 const PerfilPage            = lazy(() => import("@/modules/profile/pages/PerfilPage"));
@@ -154,6 +155,7 @@ export function AppRouter() {
             {/* Public: Orken Service booking portal — distinct prefix (restaurant owns root /:slug;
                 React Router ranks the static "agendar" segment above the dynamic :slug). */}
             <Route path="/agendar/:slug"   element={<ServiceBookingPage />} />
+            <Route path="/agendar/:slug/reserva/:token" element={<ServiceManageBookingPage />} />
 
             {/* Public: restaurant portal — slug at root */}
             <Route path="/:slug"           element={<PortalMenuPage />} />
