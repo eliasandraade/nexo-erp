@@ -494,7 +494,16 @@ public class FinancialService
     }
 
     private static FinancialAccountDto MapAccountToDto(FinancialAccount a) => new(
-        a.Id, a.Code, a.Name, a.AccountType.ToString(), a.ParentAccountId, a.IsActive, a.CreatedAt, a.UpdatedAt);
+        a.Id, a.Code, a.Name, a.AccountType.ToString(), a.ParentAccountId, a.IsActive, a.CreatedAt, a.UpdatedAt,
+        a.OpeningBalance, a.OpeningBalanceDate);
+
+    public async Task<FinancialAccountDto> SetOpeningBalanceAsync(Guid id, SetOpeningBalanceRequest request, CancellationToken ct = default)
+    {
+        var account = await _financial.GetAccountByIdAsync(id, ct) ?? throw new NotFoundException("FinancialAccount", id);
+        account.SetOpeningBalance(request.Amount, request.Date);
+        await _financial.SaveChangesAsync(ct);
+        return MapAccountToDto(account);
+    }
 
     private static FinancialTransactionDto MapTransactionToDto(FinancialTransaction t) => new(
         t.Id,

@@ -15,12 +15,36 @@ public class FinancialController : ControllerBase
 {
     private readonly FinancialService _service;
     private readonly FinancialRecurrenceService _recurrences;
+    private readonly CashFlowService _cashFlow;
 
-    public FinancialController(FinancialService service, FinancialRecurrenceService recurrences)
+    public FinancialController(FinancialService service, FinancialRecurrenceService recurrences, CashFlowService cashFlow)
     {
         _service     = service;
         _recurrences = recurrences;
+        _cashFlow    = cashFlow;
     }
+
+    /// <summary>
+    /// Fluxo de caixa: realized and projected money per day/week/month of [from, to] (Brazil days,
+    /// inclusive), with the running balance. Default: today and the next 30 days, by day.
+    /// </summary>
+    [HttpGet("cash-flow")]
+    public async Task<ActionResult<CashFlowDto>> GetCashFlow(
+        [FromQuery] DateOnly? from = null, [FromQuery] DateOnly? to = null, [FromQuery] string granularity = "day",
+        CancellationToken ct = default)
+    {
+        if (!Enum.TryParse<CashFlowGranularity>(granularity, ignoreCase: true, out var g) || !Enum.IsDefined(g))
+            return UnprocessableEntity(new { error = "Agrupamento inválido: use day, week ou month." });
+        var today = DateOnly.FromDateTime(BusinessClock.ToBrazil(DateTime.UtcNow));
+        var start = from ?? today;
+        return Ok(await _cashFlow.GetAsync(start, to ?? start.AddDays(30), g, ct));
+    }
+
+    /// <summary>Saldo inicial of a Caixa/Banco account (the money before the livro started).</summary>
+    [HttpPut("accounts/{id:guid}/opening-balance")]
+    public async Task<ActionResult<FinancialAccountDto>> SetOpeningBalance(
+        Guid id, [FromBody] SetOpeningBalanceRequest request, CancellationToken ct)
+        => Ok(await _service.SetOpeningBalanceAsync(id, request, ct));
 
     // ── Accounts ─────────────────────────────────────────────────────────────
 

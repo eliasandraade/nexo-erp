@@ -569,6 +569,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(150)")
                         .HasColumnName("name");
 
+                    b.Property<decimal>("OpeningBalance")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("numeric(18,2)")
+                        .HasDefaultValue(0m)
+                        .HasColumnName("opening_balance");
+
+                    b.Property<DateOnly?>("OpeningBalanceDate")
+                        .HasColumnType("date")
+                        .HasColumnName("opening_balance_date");
+
                     b.Property<Guid?>("ParentAccountId")
                         .HasColumnType("uuid")
                         .HasColumnName("parent_account_id");

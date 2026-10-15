@@ -329,3 +329,25 @@ test('Contas a pagar: fornecedor no título, pagamento com desconto e recorrênc
  expect(recurrenceBody.startMonth).toMatch(/^\d{4}-\d{2}-01$/);
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Fluxo de caixa: saldo projetado por dia, vencidos à parte e saldo inicial',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api';
+ let openingBody: any=null;
+ const buckets=[{start:'2026-10-15',end:'2026-10-15',realizedIn:300,realizedOut:50,projectedIn:0,projectedOut:0,balance:1250},
+  {start:'2026-10-16',end:'2026-10-16',realizedIn:0,realizedOut:0,projectedIn:0,projectedOut:1800,balance:-550}];
+ await page.route(`${API}/financial/cash-flow**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({from:'2026-10-15',to:'2026-10-16',granularity:'Day',openingBalance:1000,openingBalanceConfigured:false,overdueIn:120,overdueOut:0,closingBalance:-550,buckets})}));
+ await page.route(`${API}/financial/accounts`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'a1',code:'1.1.1',name:'Caixa',accountType:'Cash',isActive:true,openingBalance:0,openingBalanceDate:null},{id:'a2',code:'1.1.2',name:'Contas a Receber',accountType:'Receivable',isActive:true,openingBalance:0,openingBalanceDate:null}])}));
+ await page.route(`${API}/financial/accounts/a1/opening-balance`,route=>{openingBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:'{}'});});
+ await page.goto('/financeiro/fluxo');
+ await expect(page.getByRole('heading',{name:'Fluxo de caixa',exact:true})).toBeVisible();
+ await expect(page.getByText('Sem saldo inicial',{exact:false})).toBeVisible();
+ await expect(page.getByText('Vencidos e não pagos',{exact:false})).toBeVisible();
+ await expect(page.getByRole('cell',{name:'-R$ 550,00'}).or(page.getByRole('cell',{name:'−R$ 550,00'})).or(page.getByRole('cell',{name:'R$ -550,00'}))).toBeVisible();
+ await page.getByRole('button',{name:'Saldo inicial'}).click();
+ await page.getByLabel('Valor').fill('2.500,00');
+ await page.getByRole('button',{name:'Salvar'}).click();
+ await expect.poll(()=>openingBody).not.toBeNull();
+ expect(openingBody).toMatchObject({amount:2500});
+ expect(openingBody.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

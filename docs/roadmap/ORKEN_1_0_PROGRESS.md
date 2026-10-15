@@ -15,7 +15,8 @@
 | #48 | Listas de preço | `024b1cd` | `PriceListValidityAndPriority` (aditiva + índice único parcial) | Em produção |
 | #49 | Modelo financeiro unificado (livro) | `d6634a5` | `UnifiedFinancialLedger` (aditiva + classificação e backfill do histórico à vista) | Em produção |
 | #50 | Contas a receber | `645fb56` | `LedgerCustomerAndSettlement` (aditiva + cliente do título + reexecução idempotente do backfill) | Em produção |
-| #51 | Contas a pagar e recorrências | — | `PayablesSupplierAndRecurrences` (aditiva + fornecedor das compras) | Em revisão |
+| #51 | Contas a pagar e recorrências | `0bc1844` | `PayablesSupplierAndRecurrences` (aditiva + fornecedor das compras) | Em produção |
+| #52 | Fluxo de caixa | — | `AccountOpeningBalance` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -461,4 +462,28 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
     - mostra "desde MM/aaaa";
     - criar atualiza o livro.
 - **Fica para depois:** editar recorrência pela tela (o endpoint existe) e reaplicar uma mudança de valor nos títulos já gerados e ainda em aberto.
+
+## PR 52 — Fluxo de caixa
+
+- **`GET /api/financial/cash-flow?from&to&granularity=day|week|month`** (dias do Brasil, `to` inclusivo, até 366 dias):
+  - **realizado:** entradas e saídas quitadas, pela data do pagamento;
+  - **previsto:** títulos em aberto, pelo vencimento, de hoje em diante;
+  - **saldo corrido** período a período e saldo final;
+  - semanas de segunda a domingo, meses do calendário, períodos recortados no intervalo.
+- **Vencidos e não pagos ficam à parte** (`overdueIn` / `overdueOut`). Podem ou não acontecer, então não entram no saldo projetado.
+- **Saldo inicial** (`PUT /api/financial/accounts/{id}/opening-balance`), só em contas de caixa e banco:
+  - o valor que havia na data, antes dos lançamentos do sistema (pode ser negativo);
+  - o saldo do fluxo parte da soma dos saldos iniciais mais tudo que foi realizado desde a data mais antiga;
+  - sem saldo inicial, parte de zero no primeiro lançamento, e a tela avisa.
+- **Recorrências:** são geradas antes do cálculo, e uma falha não impede a leitura.
+- **Tela `/financeiro/fluxo`:**
+  - próximos 30 dias, mês atual ou próximos 90 dias (por semana);
+  - saldo no início e no fim, entradas, saídas e vencidos à parte;
+  - gráfico de barras e linha de saldo, carregado sob demanda;
+  - tabela por período;
+  - diálogo de saldo inicial.
+- **Testes:**
+  - `CashFlowTests`, 4 de integração: projeção no dia do vencimento e saldo corrido fechando no saldo final; vencidos à parte e fora da projeção; buckets de semana e mês; validações;
+  - Playwright: tela do fluxo.
+- **Não incluso:** conciliação bancária (importar extrato OFX e casar com os lançamentos). É uma feature própria, fica como lacuna para depois do 1.0, sem número na missão.
 

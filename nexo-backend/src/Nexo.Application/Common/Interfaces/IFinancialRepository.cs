@@ -31,6 +31,18 @@ public interface IFinancialRepository
     Task<IReadOnlyDictionary<Guid, string>> GetCustomerNamesAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
     Task<IReadOnlyDictionary<Guid, string>> GetSupplierNamesAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
 
+    // Fluxo de caixa
+    /// <summary>Money in − money out of settled lançamentos paid in [from, to) (from null = since the start).</summary>
+    Task<decimal> GetRealizedNetAsync(DateTime? fromUtc, DateTime toUtc, CancellationToken ct = default);
+    /// <summary>
+    /// Per Brazil day and direction: realized (paid in [from, to)) and projected (open, due in
+    /// [max(from, today), to)).
+    /// </summary>
+    Task<IReadOnlyList<Nexo.Application.Features.Financial.CashFlowDayRow>> GetCashFlowDaysAsync(
+        DateTime fromUtc, DateTime toUtc, DateTime todayStartUtc, CancellationToken ct = default);
+    /// <summary>Open títulos already past due: (to receive, to pay).</summary>
+    Task<(decimal In, decimal Out)> GetOverdueTotalsAsync(DateTime todayStartUtc, CancellationToken ct = default);
+
     // Recorrências
     Task<IReadOnlyList<FinancialRecurrence>> GetRecurrencesAsync(bool includeInactive, CancellationToken ct = default);
     Task<FinancialRecurrence?> GetRecurrenceByIdAsync(Guid id, CancellationToken ct = default);

@@ -187,3 +187,51 @@ export const deactivateRecurrence = (id: string) => apiClient.post<RecurrenceDto
 export const PAYABLE_CATEGORIES: FinancialCategory[] = [
   "OperatingExpense", "Payroll", "Commission", "Tax", "FinancialExpense", "Purchase", "OtherExpense",
 ];
+
+// ── Fluxo de caixa ───────────────────────────────────────────────────────────
+
+export type CashFlowGranularity = "day" | "week" | "month";
+
+export interface CashFlowBucketDto {
+  start: string;              // yyyy-MM-dd
+  end: string;                // inclusive
+  realizedIn: number;
+  realizedOut: number;
+  projectedIn: number;
+  projectedOut: number;
+  balance: number;
+}
+
+export interface CashFlowDto {
+  from: string;
+  to: string;
+  granularity: "Day" | "Week" | "Month";
+  openingBalance: number;
+  openingBalanceConfigured: boolean;
+  overdueIn: number;
+  overdueOut: number;
+  closingBalance: number;
+  buckets: CashFlowBucketDto[];
+}
+
+export interface FinancialAccountDto {
+  id: string;
+  code: string;
+  name: string;
+  accountType: "Cash" | "Bank" | "Receivable" | "Payable";
+  isActive: boolean;
+  openingBalance: number;
+  openingBalanceDate: string | null;
+}
+
+export const CASH_FLOW_KEY = ["financial-cash-flow"] as const;
+export const ACCOUNTS_KEY = ["financial-accounts"] as const;
+
+export function getCashFlow(from: string, to: string, granularity: CashFlowGranularity) {
+  const params = new URLSearchParams({ from, to, granularity });
+  return apiClient.get<CashFlowDto>(`/financial/cash-flow?${params.toString()}`);
+}
+
+export const listAccounts = () => apiClient.get<FinancialAccountDto[]>("/financial/accounts");
+export const setOpeningBalance = (id: string, amount: number, date: string) =>
+  apiClient.put<FinancialAccountDto>(`/financial/accounts/${id}/opening-balance`, { amount, date });
