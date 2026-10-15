@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
@@ -12,6 +12,10 @@ import { PosProductSearch } from "../components/PosProductSearch";
 import { PosCartTable } from "../components/PosCartTable";
 import { PosTotals } from "../components/PosTotals";
 import { PosDiscountInput } from "../components/PosDiscountInput";
+import { ManagerApprovalDialog, type ManagerApproval } from "../components/ManagerApprovalDialog";
+import { useSettings } from "@/modules/settings/api/settings.api";
+import { checkDiscount, discountPercent } from "@/modules/settings/lib/rules";
+import { useAuth } from "@/modules/auth/context/AuthContext";
 import { PosPaymentPanel } from "../components/PosPaymentPanel";
 import { PosSaleSuccessModal } from "../components/PosSaleSuccessModal";
 import type { CompletedSale, PaymentEntry, ProductSearchResult } from "../types";
@@ -50,6 +54,17 @@ export default function PdvPage() {
   const cart        = usePosCart();
   const completeSale = useCompleteSale();
   const [completedSale, setCompletedSale] = useState<CompletedSale | null>(null);
+  const { session } = useAuth();
+  const posRules = useSettings().data?.pos;
+  // a finalize waiting for a manager's authorization (discount above the limit)
+  const [pendingFinalize, setPendingFinalize] = useState<{ payments: PaymentEntry[]; consumerDocument?: string } | null>(null);
+
+  // a mode the company does not allow is never left selected
+  useEffect(() => {
+    if (!posRules) return;
+    if (cart.discountMode === "amount" && !posRules.allowValueDiscount && posRules.allowPercentDiscount) cart.setDiscountMode("percentage");
+    if (cart.discountMode === "percentage" && !posRules.allowPercentDiscount && posRules.allowValueDiscount) cart.setDiscountMode("amount");
+  }, [posRules, cart]);
 
   // Real cash session from the backend (same query as CaixaPage)
   const { data: cashSession, isLoading: cashLoading, isError: cashError, refetch: retryCash } = useOpenSession();
@@ -67,8 +82,21 @@ export default function PdvPage() {
     }
   }
 
-  function handleFinalize(payments: PaymentEntry[], consumerDocument?: string) {
+  function handleFinalize(payments: PaymentEntry[], consumerDocument?: string, managerApproval?: ManagerApproval) {
     if (!cashSession?.id) return;
+
+    // the discount rule (the server checks it again when closing)
+    if (posRules && !managerApproval) {
+      const check = checkDiscount(posRules, session?.role, cart.subtotal, cart.discountTotal);
+      if (check === "over-limit") {
+        toast.error(`Desconto acima de ${posRules.maxDiscountPercent}%: só com um gerente no caixa.`);
+        return;
+      }
+      if (check === "needs-manager") {
+        setPendingFinalize({ payments, consumerDocument });
+        return;
+      }
+    }
 
     // Snapshot cart before clearing so the success modal can display it
     const snapshotItems       = [...cart.items];
@@ -82,6 +110,7 @@ export default function PdvPage() {
         discountAmount: snapshotDiscountTotal,
         cashSessionId:  cashSession.id,
         consumerDocument,
+        managerApproval,
       },
       {
         onSuccess: (dto) => {
@@ -178,6 +207,9 @@ export default function PdvPage() {
             onModeChange={cart.setDiscountMode}
             onChange={cart.setDiscountValue}
             subtotal={cart.subtotal}
+            allowValue={posRules?.allowValueDiscount ?? true}
+            allowPercent={posRules?.allowPercentDiscount ?? true}
+            maxPercent={posRules?.maxDiscountPercent}
           />
         </div>
 
@@ -193,6 +225,17 @@ export default function PdvPage() {
       </div>
 
       <PosSaleSuccessModal sale={completedSale} onNewSale={handleNewSale} />
+      <ManagerApprovalDialog
+        open={pendingFinalize !== null}
+        percent={discountPercent(cart.subtotal, cart.discountTotal)}
+        limit={posRules?.maxDiscountPercent ?? 0}
+        onCancel={() => setPendingFinalize(null)}
+        onApprove={(approval) => {
+          const pending = pendingFinalize;
+          setPendingFinalize(null);
+          if (pending) handleFinalize(pending.payments, pending.consumerDocument, approval);
+        }}
+      />
     </div>
   );
 }

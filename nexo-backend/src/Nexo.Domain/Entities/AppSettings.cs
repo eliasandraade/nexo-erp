@@ -62,4 +62,12 @@ public class AppSettings : TenantEntity
         SystemSettingsJson = systemJson;
         SetUpdatedAt();
     }
+
+    /// <summary>Saves the sections that have an effect (stock alerts, PDV rules); the others stay as stored.</summary>
+    public void UpdateEffective(string inventoryJson, string posJson)
+    {
+        InventorySettingsJson = inventoryJson;
+        PosSettingsJson = posJson;
+        SetUpdatedAt();
+    }
 }

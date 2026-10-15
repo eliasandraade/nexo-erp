@@ -273,6 +273,7 @@ public static class DependencyInjection
         services.AddScoped<Nexo.Infrastructure.Reports.ReportsService>();
         services.AddScoped<Nexo.Infrastructure.Reports.SalesAnalytics>();
         services.AddScoped<Nexo.Infrastructure.Fiscal.FiscalService>();
+        services.AddScoped<Nexo.Application.Integrations.Pdf.IReceiptHeaderProvider>(sp => sp.GetRequiredService<Nexo.Infrastructure.Fiscal.FiscalService>());
         services.AddSingleton<Nexo.Application.Features.Fiscal.IFiscalDocumentProvider, Nexo.Application.Features.Fiscal.NotConfiguredFiscalProvider>();
 
         // ── Dashboard ─────────────────────────────────────────────────────────

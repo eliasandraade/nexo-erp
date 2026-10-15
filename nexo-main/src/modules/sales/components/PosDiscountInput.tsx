@@ -10,6 +10,11 @@ interface PosDiscountInputProps {
   onModeChange: (mode: DiscountMode) => void;
   onChange: (value: number) => void;
   subtotal: number;
+  /** Modes the company allows (Configurações → PDV). */
+  allowValue?: boolean;
+  allowPercent?: boolean;
+  /** Limit without a manager, in % — shown as a hint. */
+  maxPercent?: number;
 }
 
 export function PosDiscountInput({
@@ -18,6 +23,9 @@ export function PosDiscountInput({
   onModeChange,
   onChange,
   subtotal,
+  allowValue = true,
+  allowPercent = true,
+  maxPercent,
 }: PosDiscountInputProps) {
   function handleChange(raw: string) {
     const parsed = parseFloat(raw.replace(",", "."));
@@ -40,9 +48,9 @@ export function PosDiscountInput({
           Desconto
         </Label>
 
-        {/* Segmented mode toggle: R$ | % */}
+        {/* Segmented mode toggle: R$ | % — only the modes the company allows */}
         <div className="flex rounded-md border border-border overflow-hidden text-xs">
-          <button
+          {allowValue && <button
             type="button"
             onClick={() => onModeChange("amount")}
             className={cn(
@@ -53,8 +61,8 @@ export function PosDiscountInput({
             )}
           >
             R$
-          </button>
-          <button
+          </button>}
+          {allowPercent && <button
             type="button"
             onClick={() => onModeChange("percentage")}
             className={cn(
@@ -65,7 +73,7 @@ export function PosDiscountInput({
             )}
           >
             %
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -77,6 +85,9 @@ export function PosDiscountInput({
         inputMode="decimal"
         className="h-8 text-sm"
       />
+      {maxPercent !== undefined && maxPercent < 100 && (
+        <p className="text-xs text-muted-foreground">Até {maxPercent.toLocaleString("pt-BR")}% sem gerente.</p>
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ public class DashboardService
     private readonly ICurrentStore _currentStore;
     private readonly ICacheService _cache;
     private readonly SalesAnalytics _sales;
+    private readonly Nexo.Application.Features.Settings.SettingsService _settings;
 
     // The summary is built from ~11 sequential DB round-trips. A short Redis TTL
     // collapses that to a single cache GET on warm cache — for the same store,
@@ -33,13 +34,15 @@ public class DashboardService
         ICurrentTenant currentTenant,
         ICurrentStore currentStore,
         ICacheService cache,
-        SalesAnalytics sales)
+        SalesAnalytics sales,
+        Nexo.Application.Features.Settings.SettingsService settings)
     {
         _db            = db;
         _currentTenant = currentTenant;
         _currentStore  = currentStore;
         _cache         = cache;
         _sales         = sales;
+        _settings      = settings;
     }
 
     public async Task<DashboardSummaryDto> GetSummaryAsync(CancellationToken ct = default)
@@ -69,6 +72,18 @@ public class DashboardService
         var topSellers  = await _sales.SellersAsync(month, 4, ct);
         var salesByDay  = await _sales.ByDayAsync(SalesWindow.LastDays(30), ct);
         var (zeroCount, lowCount, alerts) = await GetStockAlertsAsync(ct);
+        // Configurações → Estoque: alerts the company turned off are not raised
+        var alertRules = await _settings.GetInventoryAsync(ct);
+        if (!alertRules.EnableZeroStockAlerts)
+        {
+            zeroCount = 0;
+            alerts = alerts.Where(a => a.Status != "zero").ToList();
+        }
+        if (!alertRules.EnableLowStockAlerts)
+        {
+            lowCount = 0;
+            alerts = alerts.Where(a => a.Status != "low").ToList();
+        }
         var hasOpenCash = await _db.CashSessions.AnyAsync(c => c.Status == CashSessionStatus.Open, ct);
 
         return new DashboardSummaryDto(

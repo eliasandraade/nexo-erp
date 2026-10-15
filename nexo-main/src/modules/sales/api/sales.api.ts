@@ -93,6 +93,8 @@ export interface ConfirmSaleRequest {
   taxAmount?: number;
   /** "CPF/CNPJ na nota", digits only. */
   consumerDocument?: string;
+  /** A manager's login/password letting a discount above the limit through (PDV). */
+  managerApproval?: { login: string; password: string };
 }
 
 // ── Paginated list DTO ────────────────────────────────────────────────────────

@@ -783,3 +783,24 @@ test('Plataforma: erros inesperados agrupados, com código e pilha',async({page}
  await expect.poll(()=>asked).toContain('30');
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Configurações: só regras com efeito — descontos do PDV e alertas de estoque',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api';
+ let saved:Json=null;
+ const current={inventory:{enableLowStockAlerts:true,enableZeroStockAlerts:true},pos:{allowValueDiscount:true,allowPercentDiscount:true,requireManagerAuth:true,maxDiscountPercent:20}};
+ await page.route(`${API}/settings`,r=>{if(r.request().method()==='PUT'){saved=r.request().postDataJSON();return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(saved)});}return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(current)});});
+ await page.goto('/configuracoes');
+ await expect(page.getByRole('heading',{name:'Configurações',exact:true})).toBeVisible();
+ for(const gone of ['Idioma','Formato de data','Comissões','Operador padrão']) await expect(page.getByText(gone,{exact:false})).toHaveCount(0);
+ await expect(page.getByRole('link',{name:'Fiscal'}).last()).toHaveAttribute('href','/fiscal');
+ await page.getByRole('switch').nth(0).click();
+ await page.getByRole('switch').nth(1).click();
+ await expect(page.getByText('Permita ao menos um tipo de desconto',{exact:false})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Salvar'})).toBeDisabled();
+ await page.getByRole('switch').nth(1).click();
+ await page.getByRole('switch').nth(4).click();
+ await page.getByRole('button',{name:'Salvar'}).click();
+ await expect.poll(()=>saved).not.toBeNull();
+ expect(saved).toEqual({inventory:{enableLowStockAlerts:false,enableZeroStockAlerts:true},pos:{allowValueDiscount:false,allowPercentDiscount:true,requireManagerAuth:true,maxDiscountPercent:20}});
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});
