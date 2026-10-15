@@ -23,6 +23,7 @@ namespace Nexo.Api.Controllers.Modules.Build;
 [Route("api/v1/build/projects")]
 [Authorize(Roles = AppRoles.Management)]
 [RequireModule("build")]
+[Nexo.Api.Filters.ValidateBody]
 public class BuildProjectsController : ControllerBase
 {
     private readonly BuildProjectService         _projects;

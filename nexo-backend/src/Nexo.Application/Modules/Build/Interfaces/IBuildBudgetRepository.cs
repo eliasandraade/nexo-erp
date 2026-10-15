@@ -16,6 +16,8 @@ public interface IBuildBudgetRepository
         int                 pageSize  = 20,
         CancellationToken   ct        = default);
 
+    Task<int> CountAsync(Guid? projectId = null, BuildBudgetStatus? status = null, CancellationToken ct = default);
+
     Task AddAsync(BuildBudget budget, CancellationToken ct = default);
     void Update(BuildBudget budget);
     Task SaveChangesAsync(CancellationToken ct = default);

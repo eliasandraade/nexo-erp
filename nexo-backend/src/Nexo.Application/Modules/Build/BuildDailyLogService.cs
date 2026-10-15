@@ -53,6 +53,8 @@ public class BuildDailyLogService
         _ = await _projects.GetByIdAsync(projectId, ct)
             ?? throw new NotFoundException("BuildProject", projectId);
 
+        (page, pageSize) = BuildPaging.Clamp(page, pageSize);
+        var total = await _logs.CountByProjectAsync(projectId, from, to, ct);
         var list = await _logs.GetByProjectAsync(projectId, from, to, page, pageSize, ct);
 
         var dtos = new List<BuildDailyLogDto>();
@@ -62,7 +64,7 @@ public class BuildDailyLogService
             dtos.Add(MapToDto(log, logPhotos, _urls));
         }
 
-        return new BuildPagedResult<BuildDailyLogDto>(dtos, dtos.Count, page, pageSize);
+        return new BuildPagedResult<BuildDailyLogDto>(dtos, total, page, pageSize);
     }
 
     public async Task<BuildDailyLogDto> GetByIdAsync(Guid logId, CancellationToken ct = default)

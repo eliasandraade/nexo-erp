@@ -23,7 +23,8 @@
 | #56 | Service: agenda (bloqueios, semana, comanda) | `7edac28` | `ServiceTimeBlocks` (aditiva) | Em produção |
 | #57 | Service: cancelamento pelo cliente e estorno de pacote | `cf00b11` | `ServiceSelfCancelAndUsageReversal` (aditiva + índice único refeito com filtro mais estreito) | Em produção |
 | #58 | Service: avisos por e-mail (confirmação e lembrete) | `86ed34c` | `ServiceCustomerEmails` (aditiva) | Em produção |
-| #59 | Service: financeiro, profissional por item, plurais | — | `ServiceFinanceIndexes` (só índices) | Em revisão |
+| #59 | Service: financeiro, profissional por item, plurais | `0e6de63` | `ServiceFinanceIndexes` (só índices) | Em produção |
+| #60 | Build: fechamento (contadores, paginação, validação, estorno de despesa, etapas) | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -47,6 +48,32 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
 | Compras | 25% | ~75% | recebimento parcial, cotação |
 | Listas de preço | 20% | ~75% | grupos de clientes, preço por quantidade |
 | Produtos | 65% | ~70% | `DELETE /categories/{id}` |
+
+**Fase 3 — Financeiro (PRs 49–53)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Financeiro (núcleo) | 20% | ~75% | conciliação bancária; DRE e relatórios gerenciais (PR 65); centro de custo |
+| Contas a receber / a pagar | — | ~80% | boleto e cobrança automática (integração paga, decisão comercial) |
+| Fluxo de caixa | — | ~75% | saldo por conta bancária conciliado |
+| Verticais no livro | 0% | ~80% | comissões do Service como conta a pagar automática por repasse (já existe o lançamento do repasse) |
+
+**Menu (PRs 54–55)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Orken Menu | 50% | ~75% | NFC-e (PR 66), impressão de cozinha, integrações de delivery (pagas) |
+
+**Service (PRs 56–59)**
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Agenda | — | ~85% | papel "profissional" com agenda própria; recorrência de agendamento |
+| Portal público | — | ~85% | pagamento online no agendamento (integração paga) |
+| Pacotes e comissões | — | ~85% | relatório de repasse por período em PDF |
+| Avisos ao cliente | 0% | ~70% | WhatsApp/SMS (integração paga); aviso à loja quando o cliente cancela |
+| Financeiro do Service | 0% | ~75% | exportação; comparação entre períodos |
+| **Orken Service (total)** | 65% | ~85% | — |
 
 ---
 
@@ -769,3 +796,34 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - período validado na tela (até 366 dias, anos plausíveis) e no servidor (sem 500 em datas extremas); um 422 mostra a mensagem;
   - comanda no celular: tabela com rolagem própria e linha de "adicionar" que quebra; os textos usam o termo do ramo e evitam concordância de gênero;
   - mensagens em português para "profissional inativo" e "item já comissionado".
+
+## PR 60 — Build: fechamento
+
+- **Cards de obra com números reais:** a listagem não carregava etapas nem diário, então mostrava "Sem etapas cadastradas" e nunca a contagem do diário. Agora conta etapas, concluídas e registros numa consulta agregada, inclusive nas respostas de criar, editar e mudar status.
+- **Paginação:**
+  - o total devolvido era o tamanho da página, não o real; diário e orçamentos ganharam contagem;
+  - `pageSize` limitado a 100;
+  - o diário e as despesas da obra ganharam "carregar anteriores" (antes só os 30 primeiros apareciam), e o contador mostra o total.
+- **Validação:** os validadores do Build nunca rodavam. Agora um filtro nos controllers do Build os executa, com mensagens em português, e há validadores novos para editar e reordenar etapas.
+- **Etapas:**
+  - nova rota `PUT /api/v1/build/stages/{id}` (o serviço existia sem rota) e tela para editar nome, descrição e datas previstas;
+  - subir e descer etapa;
+  - o reorder quebrava com 500, porque o frontend mandava `items` e o backend esperava `entries`. Agora usa `entries`, e um corpo errado dá 400;
+  - criar etapa mandava as datas com nomes errados (`plannedStartDate`), que se perdiam.
+- **Estornar despesa da obra:**
+  - botão em dois toques na aba Financeiro, usando o `void` do Interpreter;
+  - a despesa sai do realizado da obra, e o livro financeiro mantém o lançamento e ganha o contra-lançamento (PR 53);
+  - teste de integração do caminho completo: analisar → confirmar → estornar → realizado zera → livro com estorno → segundo estorno recusado.
+- **Correções de tela:**
+  - **desvio com sinal invertido:** a API devolve aprovado − realizado, e a tela pintava de vermelho quando sobrava dinheiro. Agora "acima" ou "abaixo do aprovado" com a cor certa;
+  - cancelar a obra só sai da página depois que o cancelamento deu certo;
+  - a data padrão do diário usa o dia local (após as 21 h, o UTC já é amanhã);
+  - mexer em etapas atualiza a aba Geral, os cards e o painel; despesas confirmadas ou estornadas atualizam o painel;
+  - os tipos do frontend foram alinhados ao backend (`recentLogs`, `photoCount`).
+- **Testes:**
+  - integração (+5): contadores reais; paginação com total real e limite; validação com mensagem; edição de etapa; estorno de despesa ponta a ponta;
+  - Playwright: reordenar e editar etapa, desvio, estorno em dois toques e 390 px sem rolagem lateral.
+- **Fica para depois:**
+  - custo por etapa: a despesa (`FinancialMovement`) não tem vínculo com etapa e precisa de modelagem;
+  - PDF do orçamento e relatórios do Build;
+  - "converter orçamento em obra" (o endpoint existe; falta definir o fluxo na tela).

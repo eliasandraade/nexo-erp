@@ -18,6 +18,8 @@ public interface IBuildDailyLogRepository
         CancellationToken ct       = default);
 
     /// <summary>Returns true if a log already exists for the project on that date.</summary>
+    Task<int> CountByProjectAsync(Guid projectId, DateOnly? from, DateOnly? to, CancellationToken ct = default);
+
     Task<bool> ExistsForDateAsync(Guid projectId, DateOnly date, CancellationToken ct = default);
 
     Task AddAsync(BuildDailyLog log, CancellationToken ct = default);

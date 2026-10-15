@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Nexo.Application.Modules.Build;
 using Nexo.Application.Modules.Build.Interfaces;
 using Nexo.Domain.Modules.Build;
 using Nexo.Infrastructure.Persistence;
@@ -41,6 +42,27 @@ public class BuildProjectRepository : IBuildProjectRepository
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, BuildProjectCounts>> GetCountsAsync(
+        IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default)
+    {
+        if (projectIds.Count == 0) return new Dictionary<Guid, BuildProjectCounts>();
+        var ids = projectIds.ToList();
+        var stages = await _context.BldStages.AsNoTracking()
+            .Where(s => ids.Contains(s.ProjectId))
+            .GroupBy(s => s.ProjectId)
+            .Select(g => new { g.Key, Total = g.Count(), Done = g.Count(s => s.Status == BuildStageStatus.Completed) })
+            .ToListAsync(ct);
+        var logs = await _context.BldDailyLogs.AsNoTracking()
+            .Where(l => ids.Contains(l.ProjectId))
+            .GroupBy(l => l.ProjectId)
+            .Select(g => new { g.Key, Total = g.Count() })
+            .ToListAsync(ct);
+        return ids.ToDictionary(id => id, id => new BuildProjectCounts(
+            stages.FirstOrDefault(s => s.Key == id)?.Total ?? 0,
+            stages.FirstOrDefault(s => s.Key == id)?.Done ?? 0,
+            logs.FirstOrDefault(l => l.Key == id)?.Total ?? 0));
     }
 
     public async Task<int> CountAsync(BuildProjectStatus? status = null, CancellationToken ct = default)

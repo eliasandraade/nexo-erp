@@ -1,6 +1,6 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  analyzeMovement, confirmMovement, fetchProjectMovements,
+  analyzeMovement, confirmMovement, fetchProjectMovements, voidMovement,
   type AnalyzeMovementRequest, type ConfirmMovementRequest,
 } from "../api/interpreter.api";
 import { BUILD_KEYS } from "./use-build";
@@ -14,10 +14,13 @@ export const MOVEMENT_KEYS = {
 
 // ── Queries ───────────────────────────────────────────────────────────────────
 
+/** Confirmed expenses of the project, page by page; `fetchNextPage` loads older ones. */
 export function useProjectMovements(projectId: string, enabled = true) {
-  return useQuery({
-    queryKey: MOVEMENT_KEYS.projectMovements(projectId),
-    queryFn:  () => fetchProjectMovements(projectId),
+  return useInfiniteQuery({
+    queryKey: [...MOVEMENT_KEYS.projectMovements(projectId), "pages"],
+    queryFn:  ({ pageParam }) => fetchProjectMovements(projectId, { page: pageParam, pageSize: 30 }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page * last.pageSize < last.totalCount ? last.page + 1 : undefined),
     enabled:  !!projectId && enabled,
     staleTime: 30_000,
   });
@@ -44,6 +47,20 @@ export function useConfirmMovement(projectId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: BUILD_KEYS.projectFinancial(projectId) });
       qc.invalidateQueries({ queryKey: MOVEMENT_KEYS.projectMovements(projectId) });
+      qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
+    },
+  });
+}
+
+/** Reverses a wrong expense: out of the project's realized cost, counter-entry in the ledger. */
+export function useVoidMovement(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => voidMovement(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectFinancial(projectId) });
+      qc.invalidateQueries({ queryKey: MOVEMENT_KEYS.projectMovements(projectId) });
+      qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
     },
   });
 }

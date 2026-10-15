@@ -21,6 +21,7 @@ namespace Nexo.Api.Controllers.Modules.Build;
 [Route("api/v1/build")]
 [Authorize(Roles = AppRoles.Management)]
 [RequireModule("build")]
+[Nexo.Api.Filters.ValidateBody]
 public class BuildStagesController : ControllerBase
 {
     private readonly BuildStageService _stages;
@@ -60,6 +61,14 @@ public class BuildStagesController : ControllerBase
     /// 100% auto-completa a etapa.
     /// Campo status é opcional — permite override explícito do status.
     /// </summary>
+    /// <summary>Edita nome, descrição, ordem e datas previstas da etapa.</summary>
+    [HttpPut("stages/{id:guid}")]
+    public async Task<ActionResult<BuildStageDto>> Update(
+        Guid id,
+        [FromBody] UpdateBuildStageRequest request,
+        CancellationToken ct)
+        => Ok(await _stages.UpdateAsync(id, request, ct));
+
     [HttpPut("stages/{id:guid}/progress")]
     public async Task<ActionResult<BuildStageDto>> UpdateProgress(
         Guid id,

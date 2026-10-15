@@ -531,3 +531,35 @@ test('Service: profissional por item da comanda',async({page})=>{
  await expect.poll(()=>addBody).toEqual({catalogItemId:'s1',quantity:1,professionalId:'p2'});
  await page.setViewportSize({width:375,height:900});await noOverflow(page);
 });
+test('Build: etapas reordenadas e editadas, desvio com sinal certo e estorno de despesa',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api'; let reorderBody: any=null, stageBody: any=null, voided: string|null=null;
+ const now=new Date().toISOString();
+ const stage=(id:string,name:string,order:number)=>({id,projectId:'b1',name,description:null,order,status:'Pending',progressPercent:0,plannedStartDate:null,plannedEndDate:null,actualStartDate:null,actualEndDate:null,createdAt:now,updatedAt:now});
+ const stages=[stage('s1','Fundação',0),stage('s2','Alvenaria',1)];
+ const project={id:'b1',name:'Casa QA',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:null,expectedEndDate:null,actualEndDate:null,budgetEstimated:1000,budgetApproved:1000,stages,recentLogs:[],createdAt:now,updatedAt:now,stageCount:2,completedStageCount:0,logCount:0};
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(project)}));
+ await page.route(`${API}/v1/build/projects/b1/stages/reorder`,r=>{reorderBody=r.request().postDataJSON();return r.fulfill({status:204,body:''});});
+ await page.route(`${API}/v1/build/projects/b1/stages`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(stages)}));
+ await page.route(`${API}/v1/build/stages/s1`,r=>{stageBody=r.request().postDataJSON();return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(stages[0])});});
+ await page.route(`${API}/v1/build/projects/b1/financial-summary`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({projectId:'b1',estimatedBudget:1000,approvedBudget:1000,totalRealizedExpenses:1200,movementCount:1,lastMovementDate:null,varianceAmount:-200,variancePercent:-20})}));
+ await page.route(/\/v1\/movements\/m1\/void/,r=>{voided='m1';return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'m1',status:'Voided',voidedAt:now})});});
+ await page.route(/\/v1\/movements\?/,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[{id:'m1',direction:'Out',nature:'Expense',amount:1200,date:'2026-10-10',description:'Cimento',contextType:'Obra',contextId:'b1',supplierId:null,status:'Confirmed',createdAt:now}],totalCount:1,page:1,pageSize:30})}));
+ await page.route(`${API}/v1/build/projects/b1/daily-logs**`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],total:0,page:1,pageSize:30})}));
+ await page.goto('/build/projetos/b1');
+ await page.getByRole('button',{name:'Etapas'}).click();
+ await page.getByRole('button',{name:'Descer Fundação'}).click();
+ await expect.poll(()=>reorderBody).toEqual({entries:[{stageId:'s2',order:0},{stageId:'s1',order:1}]});
+ await page.getByRole('button',{name:'Editar Fundação'}).click();
+ await page.getByLabel('Início previsto').fill('2026-11-01');
+ await page.getByLabel('Fim previsto').fill('2026-11-20');
+ await page.getByRole('button',{name:'Salvar etapa'}).click();
+ await expect.poll(()=>stageBody).toMatchObject({name:'Fundação',plannedStart:'2026-11-01',plannedEnd:'2026-11-20'});
+ await page.getByRole('button',{name:'Financeiro'}).click();
+ await expect(page.getByText('acima do aprovado')).toBeVisible();
+ await page.getByRole('button',{name:'Estornar Cimento'}).click();
+ expect(voided).toBeNull();                                                // first tap only asks
+ await page.getByRole('button',{name:'Confirmar estorno de Cimento'}).click();
+ await expect.poll(()=>voided).toBe('m1');
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

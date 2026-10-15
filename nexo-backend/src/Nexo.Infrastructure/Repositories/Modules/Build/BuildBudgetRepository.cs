@@ -43,6 +43,14 @@ public class BuildBudgetRepository : IBuildBudgetRepository
             .ToListAsync(ct);
     }
 
+    public async Task<int> CountAsync(Guid? projectId = null, BuildBudgetStatus? status = null, CancellationToken ct = default)
+    {
+        var query = _context.BldBudgets.AsQueryable();
+        if (projectId.HasValue) query = query.Where(x => x.ProjectId == projectId.Value);
+        if (status.HasValue)    query = query.Where(x => x.Status == status.Value);
+        return await query.CountAsync(ct);
+    }
+
     public async Task AddAsync(BuildBudget budget, CancellationToken ct = default)
         => await _context.BldBudgets.AddAsync(budget, ct);
 

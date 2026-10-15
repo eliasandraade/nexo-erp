@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchProjects, fetchProject, fetchProjectDetails, fetchProjectFinancialSummary,
   fetchBuildDashboard,
@@ -18,6 +18,7 @@ import {
   type UpdateBuildBudgetItemRequest, type SetBudgetMarginRequest,
   type ConvertBudgetToProjectRequest,
   type CreateDailyLogRequest, type UpdateDailyLogRequest, type AddDailyLogPhotoRequest,
+  updateStage, type UpdateBuildStageRequest,
 } from "../api/build.api";
 
 // ── Query keys ────────────────────────────────────────────────────────────────
@@ -144,14 +145,28 @@ export function useCreateStage(projectId: string) {
   });
 }
 
+/** Stages feed the Geral tab's progress and the project cards: refresh them all. */
+function invalidateStages(qc: ReturnType<typeof useQueryClient>, projectId: string) {
+  qc.invalidateQueries({ queryKey: BUILD_KEYS.stages(projectId) });
+  qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(projectId) });
+  qc.invalidateQueries({ queryKey: ["build", "projects"] });
+  qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
+}
+
 export function useUpdateStageProgress(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, req }: { id: string; req: UpdateBuildStageProgressRequest }) =>
       updateStageProgress(id, req),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.stages(projectId) });
-    },
+    onSuccess: () => invalidateStages(qc, projectId),
+  });
+}
+
+export function useUpdateStage(projectId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, req }: { id: string; req: UpdateBuildStageRequest }) => updateStage(id, req),
+    onSuccess: () => invalidateStages(qc, projectId),
   });
 }
 
@@ -159,9 +174,7 @@ export function useReorderStages(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (req: ReorderBuildStagesRequest) => reorderStages(projectId, req),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.stages(projectId) });
-    },
+    onSuccess: () => invalidateStages(qc, projectId),
   });
 }
 
@@ -169,9 +182,7 @@ export function useDeleteStage(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteStage(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.stages(projectId) });
-    },
+    onSuccess: () => invalidateStages(qc, projectId),
   });
 }
 
@@ -305,10 +316,13 @@ export function useRemoveBudgetItem(budgetId: string) {
 
 // ── Daily logs ────────────────────────────────────────────────────────────────
 
+/** Daily logs page by page (newest first); `fetchNextPage` loads older ones. */
 export function useDailyLogs(projectId: string, pageSize = 30) {
-  return useQuery({
-    queryKey: BUILD_KEYS.dailyLogs(projectId),
-    queryFn:  () => fetchDailyLogs(projectId, { pageSize }),
+  return useInfiniteQuery({
+    queryKey: [...BUILD_KEYS.dailyLogs(projectId), "pages", pageSize],
+    queryFn:  ({ pageParam }) => fetchDailyLogs(projectId, { page: pageParam, pageSize }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page * last.pageSize < last.total ? last.page + 1 : undefined),
     enabled:  !!projectId,
     staleTime: 30_000,
   });

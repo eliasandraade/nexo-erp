@@ -20,6 +20,7 @@ namespace Nexo.Api.Controllers.Modules.Build;
 [Route("api/v1/build")]
 [Authorize(Roles = AppRoles.Management)]
 [RequireModule("build")]
+[Nexo.Api.Filters.ValidateBody]
 public class BuildDailyLogsController : ControllerBase
 {
     private readonly BuildDailyLogService _logs;
