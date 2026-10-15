@@ -217,7 +217,7 @@ public class AuthController : ControllerBase
             ActiveModules: [],
             StoreId:       null,
             StoreIds:      [],
-            CompanyName:   "NexoERP Platform",
+            CompanyName:   "Orken Platform",
             Type:          "platform");
         return Ok(new LoginResponse(platformResult.AccessToken, string.Empty, platformResult.ExpiresAt, platformSession));
     }
@@ -291,7 +291,7 @@ public class AuthController : ControllerBase
             return Ok(new SessionDto(
                 UserId: pu.Id.ToString(), TenantId: "", Name: pu.Email, Role: pu.Role,
                 Login: pu.Email, Email: pu.Email, ActiveModules: new List<string>(),
-                StoreId: null, StoreIds: new List<string>(), CompanyName: "NexoERP", Type: "platform"));
+                StoreId: null, StoreIds: new List<string>(), CompanyName: "Orken", Type: "platform"));
         }
 
         var user = await _users.GetByIdAsync(_currentUser.UserId, ct);

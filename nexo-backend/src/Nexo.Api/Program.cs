@@ -331,7 +331,7 @@ try
     {
         opts.SwaggerDoc("v1", new OpenApiInfo
         {
-            Title       = "Nexo API",
+            Title       = "Orken API",
             Version     = "v1",
             Description = "Backend for Nexo ERP — Gestão inteligente para empresas reais.",
         });
@@ -433,7 +433,7 @@ try
         app.UseSwagger();
         app.UseSwaggerUI(opts =>
         {
-            opts.SwaggerEndpoint("/swagger/v1/swagger.json", "Nexo API v1");
+            opts.SwaggerEndpoint("/swagger/v1/swagger.json", "Orken API v1");
             opts.RoutePrefix = "swagger";
         });
     }
