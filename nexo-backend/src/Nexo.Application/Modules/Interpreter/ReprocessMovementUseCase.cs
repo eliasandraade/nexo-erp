@@ -165,7 +165,7 @@ public class ReprocessMovementUseCase
             await _extractionRepo.AddAsync(newExtraction, innerCt);
             await _suggestionRepo.AddAsync(newSuggestion, innerCt);
             await _reprocessLogRepo.AddAsync(reprocessLog, innerCt);
-            if (wasConfirmed) await _ledger.RetireMovementAsync(movement, innerCt);
+            if (wasConfirmed) await _ledger.RetireMovementAsync(movement, correction: true, innerCt);
             await _movementRepo.SaveChangesAsync(innerCt);
         }, ct);
 

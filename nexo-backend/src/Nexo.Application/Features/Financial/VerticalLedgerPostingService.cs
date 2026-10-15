@@ -11,15 +11,16 @@ namespace Nexo.Application.Features.Financial;
 /// <summary>
 /// Brings the verticals' own money records into the livro, so contas a pagar, fluxo de caixa and the
 /// ledger see everything:
-///   - despesas do restaurante (<see cref="RestExpense"/>): one título per expense, open until the
-///     expense has a payment date, then paid on it;
+///   - despesas do restaurante (<see cref="RestExpense"/>): the restaurant counts an expense as spent
+///     in its competence month — paid on its payment date, or on the competence date when none is set;
 ///   - movimentações confirmadas do Build/Interpreter (<see cref="FinancialMovement"/>): already
-///     happened, so posted settled on their date (transfers between accounts are not income or expense
-///     and stay out).
+///     happened, so posted settled on their date (transfers and internal moves are not income or
+///     expense and stay out).
 ///
 /// The record of origin stays the source of truth: its lançamento is corrected only there (edit, delete,
-/// void, reprocess) — an open mirror is cancelled, a settled one is reversed, and a new one is posted
-/// when the facts changed. It never calls SaveChanges: the caller's unit of work saves both together.
+/// void, reprocess). A correction keeps the original dates (the month it belonged to stays right); a
+/// void or delete happens now. Must run inside the caller's transaction: it takes a lock per record so
+/// two requests never post twice. It never calls SaveChanges — the caller saves both together.
 /// </summary>
 public class VerticalLedgerPostingService
 {
@@ -48,22 +49,20 @@ public class VerticalLedgerPostingService
 
     // ── Despesas do restaurante ──────────────────────────────────────────────
 
-    /// <summary>Creates, keeps or replaces the expense's lançamento so it matches the expense.</summary>
+    /// <summary>Creates, keeps, updates or replaces the expense's lançamento so it matches the expense.</summary>
     public async Task SyncRestExpenseAsync(RestExpense expense, CancellationToken ct = default)
     {
-        var active = await ActiveMirrorAsync(RestExpenseReference, RestExpenseReversalReference, expense.Id, ct);
+        await _financial.LockReferenceAsync(expense.Id, ct);
+        var mirrors = await ActiveMirrorsAsync(RestExpenseReference, RestExpenseReversalReference, expense.Id, ct);
         var desired = Desired(expense);
 
-        if (active is not null && desired is not null && Matches(active, desired))
-        {
-            if (active.IsOpen && active.Description != desired.Description)
-                active.Update(active.Amount, desired.Description, active.DueDate);
-            return;
-        }
+        // Keep the newest mirror when it already says the same thing (a description-only edit changes nothing)
+        var keep = mirrors.FirstOrDefault();
+        if (keep is null || desired is null || !Matches(keep, desired)) keep = null;
 
-        if (active is not null)
-            await RetireAsync(active, RestExpenseReversalReference, expense.Id, $"Estorno — {active.Description}", ct);
-        if (desired is null) return;   // R$ 0: nothing to owe
+        foreach (var stale in mirrors.Where(m => m != keep))
+            await RetireAsync(stale, RestExpenseReversalReference, expense.Id, correction: true, ct);
+        if (keep is not null || desired is null) return;   // kept, or R$ 0: nothing to owe
 
         var tx = FinancialTransaction.Create(
             _currentTenant.Id, await PayableAccountAsync(ct), TransactionType.Payable, desired.Category, desired.Amount,
@@ -74,23 +73,27 @@ public class VerticalLedgerPostingService
         await _financial.AddTransactionAsync(tx, ct);
     }
 
-    /// <summary>The expense is being deleted: its lançamento is cancelled (open) or reversed (paid).</summary>
+    /// <summary>The expense is being deleted: its lançamento is cancelled (open) or reversed now (paid).</summary>
     public async Task RetireRestExpenseAsync(RestExpense expense, CancellationToken ct = default)
     {
-        var active = await ActiveMirrorAsync(RestExpenseReference, RestExpenseReversalReference, expense.Id, ct);
-        if (active is not null)
-            await RetireAsync(active, RestExpenseReversalReference, expense.Id, $"Estorno — {active.Description}", ct);
+        await _financial.LockReferenceAsync(expense.Id, ct);
+        foreach (var m in await ActiveMirrorsAsync(RestExpenseReference, RestExpenseReversalReference, expense.Id, ct))
+            await RetireAsync(m, RestExpenseReversalReference, expense.Id, correction: false, ct);
     }
 
     // ── Movimentações (Build / Interpreter) ─────────────────────────────────
 
-    /// <summary>Posts a confirmed movement as a settled lançamento on its date (transfers stay out).</summary>
+    /// <summary>Posts a confirmed movement as a settled lançamento on its date (transfers and internal stay out).</summary>
     public async Task PostMovementAsync(FinancialMovement movement, CancellationToken ct = default)
     {
-        if (movement.Status != MovementStatus.Confirmed || movement.Nature == MovementNature.Transfer || movement.Amount <= 0)
+        if (movement.Status != MovementStatus.Confirmed
+            || movement.Nature == MovementNature.Transfer
+            || movement.Direction == MovementDirection.Internal
+            || Cents(movement.Amount) <= 0)
             return;
-        if (await ActiveMirrorAsync(MovementReference, MovementReversalReference, movement.Id, ct) is not null)
-            return;   // already posted
+        await _financial.LockReferenceAsync(movement.Id, ct);
+        if ((await ActiveMirrorsAsync(MovementReference, MovementReversalReference, movement.Id, ct)).Count > 0)
+            return;   // already posted (a concurrent confirm got here first)
 
         var isIn = movement.Direction == MovementDirection.In;
         var category = isIn
@@ -110,12 +113,15 @@ public class VerticalLedgerPostingService
         await _financial.AddTransactionAsync(tx, ct);
     }
 
-    /// <summary>The movement was voided or sent back to draft: its lançamento is reversed.</summary>
-    public async Task RetireMovementAsync(FinancialMovement movement, CancellationToken ct = default)
+    /// <summary>
+    /// The movement left the livro: voided (reversed now) or sent back to draft for reprocessing
+    /// (<paramref name="correction"/>: reversed on its own dates, the re-confirmation posts again).
+    /// </summary>
+    public async Task RetireMovementAsync(FinancialMovement movement, bool correction, CancellationToken ct = default)
     {
-        var active = await ActiveMirrorAsync(MovementReference, MovementReversalReference, movement.Id, ct);
-        if (active is not null)
-            await RetireAsync(active, MovementReversalReference, movement.Id, $"Estorno — {active.Description}", ct);
+        await _financial.LockReferenceAsync(movement.Id, ct);
+        foreach (var m in await ActiveMirrorsAsync(MovementReference, MovementReversalReference, movement.Id, ct))
+            await RetireAsync(m, MovementReversalReference, movement.Id, correction, ct);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -125,13 +131,15 @@ public class VerticalLedgerPostingService
 
     private static DesiredMirror? Desired(RestExpense e)
     {
-        if (e.Amount <= 0) return null;
-        var due = BusinessClock.NoonUtc(e.PaymentDate ?? e.CompetenceDate);
+        var amount = Cents(e.Amount);
+        if (amount <= 0) return null;
+        // The restaurant counts an expense as spent in its month: paid on the payment date, or on the
+        // competence date when the screen didn't set one.
+        var paidAt = BusinessClock.NoonUtc(e.PaymentDate ?? e.CompetenceDate);
         return new DesiredMirror(
-            CategoryOf(e.Category), Math.Round(e.Amount, 2, MidpointRounding.AwayFromZero),
+            CategoryOf(e.Category), amount,
             Truncate($"{e.Category} — {e.Description}", 500),
-            BusinessClock.NoonUtc(e.CompetenceDate), due,
-            e.PaymentDate is { } paid ? BusinessClock.NoonUtc(paid) : null);
+            BusinessClock.NoonUtc(e.CompetenceDate), paidAt, paidAt);
     }
 
     private static bool Matches(FinancialTransaction t, DesiredMirror d)
@@ -150,8 +158,8 @@ public class VerticalLedgerPostingService
         return FinancialCategory.OperatingExpense;
     }
 
-    /// <summary>The newest lançamento of the record that is neither cancelled nor reversed.</summary>
-    private async Task<FinancialTransaction?> ActiveMirrorAsync(
+    /// <summary>Every lançamento of the record that is neither cancelled nor reversed, newest first.</summary>
+    private async Task<IReadOnlyList<FinancialTransaction>> ActiveMirrorsAsync(
         string referenceType, string reversalReference, Guid referenceId, CancellationToken ct)
     {
         var reversed = (await _financial.GetTransactionsByReferenceAsync(reversalReference, referenceId, ct))
@@ -159,11 +167,12 @@ public class VerticalLedgerPostingService
         return (await _financial.GetTransactionsByReferenceAsync(referenceType, referenceId, ct))
             .Where(t => t.Status != TransactionStatus.Cancelled && !reversed.Contains(t.Id))
             .OrderByDescending(t => t.CreatedAt)
-            .FirstOrDefault();
+            .ToList();
     }
 
+    /// <summary>Open → cancelled. Paid → reversed: on its own dates for a correction, today otherwise.</summary>
     private async Task RetireAsync(
-        FinancialTransaction mirror, string reversalReference, Guid referenceId, string description, CancellationToken ct)
+        FinancialTransaction mirror, string reversalReference, Guid referenceId, bool correction, CancellationToken ct)
     {
         if (mirror.IsOpen)
         {
@@ -172,8 +181,10 @@ public class VerticalLedgerPostingService
         }
         if (mirror.Status != TransactionStatus.Paid) return;
         var opposite = mirror.TransactionType == TransactionType.Receivable ? await PayableAccountAsync(ct) : await ReceivableAccountAsync(ct);
+        var when = correction ? mirror.PaidAt ?? DateTime.UtcNow : DateTime.UtcNow;
         await _financial.AddTransactionAsync(FinancialTransaction.CreateReversal(
-            mirror, opposite, Truncate(description, 500), DateTime.UtcNow, _currentUser.UserId, reversalReference, referenceId), ct);
+            mirror, opposite, Truncate($"Estorno — {mirror.Description}", 500), when, _currentUser.UserId,
+            reversalReference, referenceId, competenceDate: correction ? mirror.CompetenceDate : null), ct);
     }
 
     private async Task<Guid> PayableAccountAsync(CancellationToken ct)
@@ -187,6 +198,8 @@ public class VerticalLedgerPostingService
     /// <summary>A record not saved yet has no StoreId — it is being created in the request's store.</summary>
     private Guid? StoreOf(Guid storeId)
         => storeId != Guid.Empty ? storeId : _currentStore.IsResolved ? _currentStore.Id : null;
+
+    private static decimal Cents(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
 }

@@ -62,7 +62,7 @@ public class VoidMovementUseCase
         {
             _movementRepo.Update(movement);
             await _auditLogRepo.AddAsync(auditLog, innerCt);
-            if (wasConfirmed) await _ledger.RetireMovementAsync(movement, innerCt);   // reversed in the livro
+            if (wasConfirmed) await _ledger.RetireMovementAsync(movement, correction: false, innerCt);   // reversed in the livro
             await _movementRepo.SaveChangesAsync(innerCt);
         }, ct);
 

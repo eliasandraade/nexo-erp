@@ -72,9 +72,13 @@ public class ExpensesController : ControllerBase
             _tenant.Id, req.Description, req.Category, req.Amount,
             req.CompetenceDate, req.PaymentDate, req.IsRecurring);
 
-        _db.RestExpenses.Add(expense);
-        await _ledger.SyncRestExpenseAsync(expense, ct);   // conta a pagar in the financeiro, same save
-        await _db.SaveChangesAsync(ct);
+        await using (var tx = await _db.Database.BeginTransactionAsync(ct))
+        {
+            _db.RestExpenses.Add(expense);
+            await _ledger.SyncRestExpenseAsync(expense, ct);   // the livro sees it, same save
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
 
         var dto = new ExpenseDto(expense.Id, expense.Description, expense.Category,
             expense.Amount, expense.CompetenceDate, expense.PaymentDate,
@@ -93,8 +97,12 @@ public class ExpensesController : ControllerBase
 
         expense.Update(req.Description, req.Category, req.Amount,
             req.CompetenceDate, req.PaymentDate, req.IsRecurring);
-        await _ledger.SyncRestExpenseAsync(expense, ct);
-        await _db.SaveChangesAsync(ct);
+        await using (var tx = await _db.Database.BeginTransactionAsync(ct))
+        {
+            await _ledger.SyncRestExpenseAsync(expense, ct);
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
 
         return Ok(new ExpenseDto(expense.Id, expense.Description, expense.Category,
             expense.Amount, expense.CompetenceDate, expense.PaymentDate,
@@ -108,9 +116,13 @@ public class ExpensesController : ControllerBase
         var expense = await _db.RestExpenses.FirstOrDefaultAsync(x => x.Id == id, ct);
         if (expense is null) return NotFound();
 
-        await _ledger.RetireRestExpenseAsync(expense, ct);   // the livro keeps the history: cancelled or reversed
-        _db.RestExpenses.Remove(expense);
-        await _db.SaveChangesAsync(ct);
+        await using (var tx = await _db.Database.BeginTransactionAsync(ct))
+        {
+            await _ledger.RetireRestExpenseAsync(expense, ct);   // the livro keeps the history: reversed
+            _db.RestExpenses.Remove(expense);
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
         return NoContent();
     }
 

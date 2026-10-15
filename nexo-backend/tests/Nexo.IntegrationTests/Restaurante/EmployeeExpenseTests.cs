@@ -45,44 +45,49 @@ public class EmployeeExpenseTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task An_expense_is_a_conta_a_pagar_paid_when_it_gets_a_payment_date()
+    public async Task An_expense_is_paid_in_its_month_and_corrections_keep_the_original_dates()
     {
+        // the restaurant screen sends no payment date: spent in its competence month
         var created = await (await _client.PostAsJsonAsync("/api/restaurante/expenses",
             new CreateExpenseRequest("Conta de luz PR53", "Energia", 412.50m, new DateOnly(2026, 9, 1), null, false)))
             .Content.ReadFromJsonAsync<ExpenseDto>();
 
-        var open = (await LedgerOfAsync(created!.Id)).Should().ContainSingle().Subject;
-        open.TransactionType.Should().Be(TransactionType.Payable);
-        open.Category.Should().Be(FinancialCategory.OperatingExpense);
-        open.Status.Should().BeOneOf(TransactionStatus.Pending, TransactionStatus.Overdue);
-        open.Amount.Should().Be(412.50m);
-        open.StoreId.Should().NotBeNull();
-
-        // paying is done on the expense itself — the financeiro refuses it there
-        (await _client.PostAsJsonAsync($"/api/financial/transactions/{open.Id}/pay", new { }))
-            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
-
-        (await _client.PutAsJsonAsync($"/api/restaurante/expenses/{created.Id}",
-            new CreateExpenseRequest("Conta de luz PR53", "Energia", 412.50m, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 10), false)))
-            .EnsureSuccessStatusCode();
-        var afterPay = await LedgerOfAsync(created.Id);
-        afterPay.Should().HaveCount(2);
-        afterPay[0].Status.Should().Be(TransactionStatus.Cancelled);                // the open título was replaced…
-        afterPay[1].Status.Should().Be(TransactionStatus.Paid);                     // …by the paid one
-        afterPay[1].PaidAt!.Value.Date.Should().Be(new DateTime(2026, 9, 10));
+        var first = (await LedgerOfAsync(created!.Id)).Should().ContainSingle().Subject;
+        first.TransactionType.Should().Be(TransactionType.Payable);
+        first.Category.Should().Be(FinancialCategory.OperatingExpense);
+        first.Status.Should().Be(TransactionStatus.Paid);
+        first.PaidAt!.Value.Date.Should().Be(new DateTime(2026, 9, 1));
+        first.Amount.Should().Be(412.50m);
+        first.StoreId.Should().NotBeNull();
 
         // a description-only edit changes nothing in the livro
         (await _client.PutAsJsonAsync($"/api/restaurante/expenses/{created.Id}",
-            new CreateExpenseRequest("Luz setembro", "Energia", 412.50m, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 10), false)))
+            new CreateExpenseRequest("Luz setembro", "Energia", 412.50m, new DateOnly(2026, 9, 1), null, false)))
             .EnsureSuccessStatusCode();
-        (await LedgerOfAsync(created.Id)).Should().HaveCount(2);
+        (await LedgerOfAsync(created.Id)).Should().HaveCount(1);
 
-        // deleting a paid expense reverses it — history stays
+        // fixing the amount reverses the old one ON ITS OWN DATES and posts the right one: September stays right
+        (await _client.PutAsJsonAsync($"/api/restaurante/expenses/{created.Id}",
+            new CreateExpenseRequest("Luz setembro", "Energia", 421.50m, new DateOnly(2026, 9, 1), new DateOnly(2026, 9, 10), false)))
+            .EnsureSuccessStatusCode();
+        var fixedUp = await LedgerOfAsync(created.Id);
+        var correction = fixedUp.Single(t => t.ReferenceType == "RestExpenseReversal");
+        correction.ReversesTransactionId.Should().Be(first.Id);
+        correction.PaidAt.Should().Be(first.PaidAt);
+        correction.CompetenceDate.Should().Be(first.CompetenceDate);
+        var current = fixedUp.Single(t => t.ReferenceType == "RestExpense" && t.Id != first.Id);
+        current.Amount.Should().Be(421.50m);
+        current.PaidAt!.Value.Date.Should().Be(new DateTime(2026, 9, 10));
+
+        // paying or cancelling from the financeiro is refused: the expense is the source
+        (await _client.PostAsJsonAsync($"/api/financial/transactions/{current.Id}/cancel", new { }))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        // deleting reverses it today — history stays
         (await _client.DeleteAsync($"/api/restaurante/expenses/{created.Id}")).EnsureSuccessStatusCode();
-        var reversal = (await LedgerOfAsync(created.Id)).Single(t => t.ReferenceType == "RestExpenseReversal");
-        reversal.ReversesTransactionId.Should().Be(afterPay[1].Id);
-        reversal.TransactionType.Should().Be(TransactionType.Receivable);
-        reversal.Amount.Should().Be(412.50m);
+        var deleted = (await LedgerOfAsync(created.Id)).Single(t => t.ReversesTransactionId == current.Id);
+        deleted.TransactionType.Should().Be(TransactionType.Receivable);
+        deleted.PaidAt!.Value.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(5));
     }
 
     [Theory]

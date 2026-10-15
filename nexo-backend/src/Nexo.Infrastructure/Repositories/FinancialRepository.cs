@@ -233,6 +233,13 @@ public class FinancialRepository : IFinancialRepository
         return due;
     }
 
+    public async Task LockReferenceAsync(Guid referenceId, CancellationToken ct = default)
+    {
+        const long salt = 0x1C0_0000_0000_0053;   // stable across processes
+        var key = BitConverter.ToInt64(referenceId.ToByteArray(), 0) ^ salt;
+        await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({key})", ct);
+    }
+
     public async Task LockTransactionAsync(Guid id, Guid tenantId, CancellationToken ct = default)
     {
         await _context.Database.ExecuteSqlInterpolatedAsync(
