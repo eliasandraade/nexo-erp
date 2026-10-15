@@ -31,7 +31,13 @@ public sealed record PublicBookingSettingsDto(
     string? CoverImageUrl,
     string? BrandColor,
     string? WhatsApp,
-    string? Address);
+    string? Address,
+    // ── Customer e-mails (PR58) ──
+    bool    CustomerEmailsEnabled = false,
+    int     ReminderHoursBefore = 24);
+
+/// <summary>Turns the customer e-mails (confirmation + reminder) on or off — separate from booking and branding.</summary>
+public sealed record UpdateCustomerEmailsRequest(bool CustomerEmailsEnabled, int ReminderHoursBefore);
 
 /// <summary>Updates the public booking configuration for the active store (branding is separate).</summary>
 public sealed record UpdatePublicBookingRequest(

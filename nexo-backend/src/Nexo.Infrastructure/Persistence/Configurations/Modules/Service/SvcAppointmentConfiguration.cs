@@ -40,6 +40,11 @@ public class SvcAppointmentConfiguration : IEntityTypeConfiguration<SvcAppointme
             .HasDatabaseName("ix_svc_appointments_professional_starts");
         builder.HasIndex(x => x.CustomerId).HasDatabaseName("ix_svc_appointments_customer_id");
         builder.Property(x => x.PublicToken).HasColumnName("public_token").HasMaxLength(64);
+        builder.Property(x => x.ConfirmationEmailPending).HasColumnName("confirmation_email_pending").HasDefaultValue(false).IsRequired();
+        builder.Property(x => x.ReminderSentAt).HasColumnName("reminder_sent_at").HasColumnType("timestamptz");
+        // the reminders job scans the upcoming bookings that still owe a reminder
+        builder.HasIndex(x => x.StartsAt).HasFilter("reminder_sent_at IS NULL AND public_token IS NOT NULL")
+            .HasDatabaseName("ix_svc_appointments_reminder_due");
         builder.HasIndex(x => x.PublicToken).IsUnique().HasFilter("public_token IS NOT NULL")
             .HasDatabaseName("ux_svc_appointments_public_token");
     }

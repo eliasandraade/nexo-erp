@@ -21,7 +21,8 @@
 | #54 | Menu: pedido → venda | `9d950c5` | `RestOrderDeliveryTerms` (aditiva + termos cotados nas comandas abertas) | Em produção |
 | #55 | Fechamento do Menu | `115458e` | — | Em produção |
 | #56 | Service: agenda (bloqueios, semana, comanda) | `7edac28` | `ServiceTimeBlocks` (aditiva) | Em produção |
-| #57 | Service: cancelamento pelo cliente e estorno de pacote | — | `ServiceSelfCancelAndUsageReversal` (aditiva + índice único refeito com filtro mais estreito) | Em revisão |
+| #57 | Service: cancelamento pelo cliente e estorno de pacote | `cf00b11` | `ServiceSelfCancelAndUsageReversal` (aditiva + índice único refeito com filtro mais estreito) | Em produção |
+| #58 | Service: avisos por e-mail (confirmação e lembrete) | — | `ServiceCustomerEmails` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -699,3 +700,28 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - cancelar o pacote também trava a linha;
   - a página do cliente distingue "não encontrado" de falha de rede (com "Tentar de novo"), não recarrega ao focar a janela, relê após um cancelamento recusado, e tem acessibilidade no carregamento e no foco da confirmação;
   - testes novos: comissão do item da comanda após o estorno; link recusa cancelar com comanda aberta; link novo ao trocar de cliente; estorno em pacote vencido.
+
+## PR 58 — Service: avisos por e-mail
+
+- **Opt-in por loja** (`PUT /api/v1/service/settings/customer-emails`, seção "Avisos por e-mail" em `/service/portal`):
+  - desligado por padrão;
+  - lembrete de 1 a 72 horas antes (a tela oferece 2, 6, 12, 24 e 48);
+  - endpoint separado, como a identidade visual, para que salvar a reserva nunca apague a escolha.
+- **O que sai,** pelo Resend que já envia a verificação de conta:
+  - **confirmação** da reserva feita pelo portal ("Recebemos seu agendamento" ou "Seu horário está confirmado");
+  - **lembrete** antes do horário, também para agendamentos feitos pela equipe;
+  - os dois levam o link do cliente para ver ou cancelar (PR 57);
+  - só vão para clientes com e-mail e para agendamentos ainda abertos (agendado ou confirmado) e futuros. Cancelado não recebe nada;
+  - todo texto vindo de cadastro é escapado no HTML.
+- **Entrega** (`ServiceCustomerEmailsJob`, a cada 2 minutos, para todos os tenants):
+  - a reserva nunca espera o provedor: o portal só marca a confirmação como pendente;
+  - cada e-mail é reivindicado com um `UPDATE` condicional antes do envio, então nunca sai duas vezes, mesmo com várias instâncias;
+  - falha do provedor fica no log e não é repetida para o cliente;
+  - reserva feita já dentro da janela do lembrete recebe só a confirmação;
+  - agendamentos sem o link (anteriores ao PR 57) não recebem e-mail.
+- **Volume:** depende do plano do Resend da conta. Por isso o recurso nasce desligado e cada loja liga.
+- **Testes:**
+  - integração (chamando a passada do job com um e-mail falso): uma confirmação e um lembrete, cada um uma vez, com o link e o nome escapado; nada com a loja desligada nem para cancelado; validação da antecedência;
+  - unitário: padrões e limites;
+  - Playwright: ligar os avisos e escolher o lembrete.
+- **Migração validada** num Postgres descartável (up → down → up).

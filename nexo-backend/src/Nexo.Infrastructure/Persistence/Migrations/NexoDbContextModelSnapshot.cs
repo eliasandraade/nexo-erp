@@ -5278,6 +5278,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(5,2)")
                         .HasColumnName("commission_percent_snapshot");
 
+                    b.Property<bool>("ConfirmationEmailPending")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("confirmation_email_pending");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
@@ -5307,6 +5313,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("public_token");
+
+                    b.Property<DateTime?>("ReminderSentAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("reminder_sent_at");
 
                     b.Property<DateTime>("StartsAt")
                         .HasColumnType("timestamptz")
@@ -5347,6 +5357,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ux_svc_appointments_public_token")
                         .HasFilter("public_token IS NOT NULL");
+
+                    b.HasIndex("StartsAt")
+                        .HasDatabaseName("ix_svc_appointments_reminder_due")
+                        .HasFilter("reminder_sent_at IS NULL AND public_token IS NOT NULL");
 
                     b.HasIndex("StoreId")
                         .HasDatabaseName("ix_svc_appointments_store_id");
@@ -6440,6 +6454,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
 
+                    b.Property<bool>("CustomerEmailsEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("customer_emails_enabled");
+
                     b.Property<string>("Description")
                         .HasMaxLength(280)
                         .HasColumnType("character varying(280)")
@@ -6472,6 +6492,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasDefaultValue(false)
                         .HasColumnName("public_booking_enabled");
+
+                    b.Property<int>("ReminderHoursBefore")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(24)
+                        .HasColumnName("reminder_hours_before");
 
                     b.Property<bool>("ShowPrices")
                         .ValueGeneratedOnAdd()

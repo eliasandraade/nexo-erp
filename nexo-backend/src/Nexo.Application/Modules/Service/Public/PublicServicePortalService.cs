@@ -210,6 +210,9 @@ public sealed class PublicServicePortalService
 
         if (ctx.Settings.AutoConfirmAppointments)
             appt.ChangeStatus(SvcAppointmentStatus.Confirmed, null);
+        // sent by the reminders job, so the booking never waits on the e-mail provider
+        if (ctx.Settings.CustomerEmailsEnabled && !string.IsNullOrWhiteSpace(customer.Email))
+            appt.RequestConfirmationEmail();
 
         await _appointments.AddAsync(appt, ct);
         // Single commit: EF orders customer → subject → appointment via the configured FKs.

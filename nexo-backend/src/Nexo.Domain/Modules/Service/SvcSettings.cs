@@ -61,6 +61,26 @@ public class SvcSettings : StoreEntity
     /// <summary>Free-text public address line.</summary>
     public string? Address { get; private set; }
 
+    // ── Customer e-mails (PR58) ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Opt-in: e-mail the customer a confirmation (portal bookings) and a reminder before the
+    /// appointment, both with their own link to view or cancel. Off by default.
+    /// </summary>
+    public bool CustomerEmailsEnabled { get; private set; }
+
+    /// <summary>How many hours before the start the reminder goes out (1–72). Default 24.</summary>
+    public int ReminderHoursBefore { get; private set; } = 24;
+
+    public void UpdateCustomerEmails(bool enabled, int reminderHoursBefore)
+    {
+        if (reminderHoursBefore is < 1 or > 72)
+            throw new DomainException("O lembrete precisa sair entre 1 e 72 horas antes.");
+        CustomerEmailsEnabled = enabled;
+        ReminderHoursBefore   = reminderHoursBefore;
+        SetUpdatedAt();
+    }
+
     /// <summary>App-path factory: StoreId is auto-injected on INSERT by the interceptor.</summary>
     public static SvcSettings Create(Guid tenantId, string presetKey)
     {

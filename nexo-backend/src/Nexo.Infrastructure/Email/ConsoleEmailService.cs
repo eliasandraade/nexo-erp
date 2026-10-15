@@ -19,4 +19,10 @@ public class ConsoleEmailService : IEmailService
             toEmail, toName, verificationUrl);
         return Task.CompletedTask;
     }
+
+    public Task<bool> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
+    {
+        _logger.LogInformation("=== EMAIL ===\nTo: {Email}\nSubject: {Subject}\n=============", toEmail, subject);
+        return Task.FromResult(true);
+    }
 }

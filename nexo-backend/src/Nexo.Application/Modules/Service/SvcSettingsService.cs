@@ -108,6 +108,17 @@ public class SvcSettingsService
         return Map(settings);
     }
 
+    public async Task<PublicBookingSettingsDto> UpdateCustomerEmailsAsync(
+        UpdateCustomerEmailsRequest request, CancellationToken ct = default)
+    {
+        var settings = await _repo.GetForCurrentStoreAsync(ct)
+            ?? throw new DomainException("Choose the service vertical (preset) before setting customer e-mails.");
+        settings.UpdateCustomerEmails(request.CustomerEmailsEnabled, request.ReminderHoursBefore);
+        _repo.Update(settings);
+        await _repo.SaveChangesAsync(ct);
+        return Map(settings);
+    }
+
     private static PublicBookingSettingsDto Map(SvcSettings s) => new(
         IsConfigured:            true,
         PublicBookingEnabled:    s.PublicBookingEnabled,
@@ -123,5 +134,7 @@ public class SvcSettingsService
         CoverImageUrl:           s.CoverImageUrl,
         BrandColor:              s.BrandColor,
         WhatsApp:                s.WhatsApp,
-        Address:                 s.Address);
+        Address:                 s.Address,
+        CustomerEmailsEnabled:   s.CustomerEmailsEnabled,
+        ReminderHoursBefore:     s.ReminderHoursBefore);
 }

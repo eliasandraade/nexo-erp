@@ -74,6 +74,23 @@ public class ResendEmailService : IEmailService
         }
     }
 
+    public async Task<bool> SendAsync(string toEmail, string subject, string html, CancellationToken ct = default)
+    {
+        var payload = new { from = FromAddress, to = new[] { toEmail }, subject, html };
+        using var request = new HttpRequestMessage(HttpMethod.Post, ResendApiUrl)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+
+        using var response = await _http.SendAsync(request, ct);
+        if (response.IsSuccessStatusCode) return true;
+
+        var error = await response.Content.ReadAsStringAsync(ct);
+        _logger.LogError("Resend API error {Status} sending \"{Subject}\": {Error}", (int)response.StatusCode, subject, error);
+        return false;
+    }
+
     private static string BuildVerificationHtml(string name, string verificationUrl)
     {
         return $"""

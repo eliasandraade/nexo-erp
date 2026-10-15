@@ -39,7 +39,14 @@ public class SvcAppointment : StoreEntity
     /// </summary>
     public string?              PublicToken        { get; private set; }
 
+    /// <summary>A portal booking waits for its confirmation e-mail (sent by the reminders job).</summary>
+    public bool                 ConfirmationEmailPending { get; private set; }
+    /// <summary>When the reminder e-mail was claimed for sending — at most one per booking.</summary>
+    public DateTime?            ReminderSentAt     { get; private set; }
+
     public const string CustomerCancellationReason = "Cancelado pelo cliente.";
+
+    public void RequestConfirmationEmail() => ConfirmationEmailPending = true;
 
     public bool IsTerminal => Status is SvcAppointmentStatus.Completed
                                      or SvcAppointmentStatus.Cancelled

@@ -24,6 +24,7 @@ import { ProfessionalHoursDialog } from "../components/ProfessionalHoursDialog";
 import { PortalSlugSection, publicBookingUrl } from "../components/PortalSlugSection";
 import { PortalBookingSettingsForm } from "../components/PortalBookingSettingsForm";
 import { PortalBrandingForm } from "../components/PortalBrandingForm";
+import { PortalCustomerEmailsForm } from "../components/PortalCustomerEmailsForm";
 
 export default function ServicePortalPage() {
   const { session } = useAuth();
@@ -95,6 +96,13 @@ export default function ServicePortalPage() {
         {settingsQ.data
           ? <PortalBookingSettingsForm settings={settingsQ.data} />
           : <p className="text-sm text-muted-foreground">Não foi possível carregar as configurações.</p>}
+      </Section>
+
+      {/* Avisos aos clientes */}
+      <Section title="Avisos por e-mail" description="Confirmação e lembrete para o cliente, com o link para ver ou cancelar.">
+        {settingsQ.data?.isConfigured
+          ? <PortalCustomerEmailsForm settings={settingsQ.data} />
+          : <p className="text-sm text-muted-foreground">Escolha o ramo (onboarding) para configurar os avisos.</p>}
       </Section>
 
       {/* 5. Horários dos profissionais */}
