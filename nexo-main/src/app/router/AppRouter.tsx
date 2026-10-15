@@ -53,6 +53,7 @@ const CompraDetailPage      = lazy(() => import("@/modules/purchases/pages/Compr
 const ListasDePrecoPage     = lazy(() => import("@/modules/pricelists/pages/ListasDePrecoPage"));
 const LivroFinanceiroPage   = lazy(() => import("@/modules/financial/pages/FinanceiroPage"));
 const ContasReceberPage     = lazy(() => import("@/modules/financial/pages/ContasReceberPage"));
+const ContasPagarPage       = lazy(() => import("@/modules/financial/pages/ContasPagarPage"));
 const ClientesPage          = lazy(() => import("@/modules/customers/pages/ClientesPage"));
 const CustomerFormPage      = lazy(() => import("@/modules/customers/pages/CustomerFormPage"));
 const FornecedoresPage      = lazy(() => import("@/modules/suppliers/pages/FornecedoresPage"));
@@ -267,6 +268,7 @@ export function AppRouter() {
                   <Route path="/caixa"         element={<CaixaPage />} />
                   <Route path="/financeiro"    element={<LivroFinanceiroPage />} />
                   <Route path="/financeiro/receber" element={<ContasReceberPage />} />
+                  <Route path="/financeiro/pagar"   element={<ContasPagarPage />} />
                   <Route path="/listas-de-preco" element={<ListasDePrecoPage />} />
                   <Route path="/configuracoes" element={<ConfiguracoesPage />} />
                   <Route path="/assinatura"   element={<AssinaturaPage />} />

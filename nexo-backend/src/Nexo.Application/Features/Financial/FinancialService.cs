@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Service;
@@ -13,20 +14,27 @@ public class FinancialService
     private readonly IFinancialRepository _financial;
     private readonly IStoreRepository _stores;
     private readonly ICustomerRepository _customers;
+    private readonly ISupplierRepository _suppliers;
+    private readonly FinancialRecurrenceService _recurrences;
     private readonly IUnitOfWork _uow;
     private readonly ICurrentTenant _currentTenant;
     private readonly ICurrentUser _currentUser;
+    private readonly ILogger<FinancialService> _logger;
 
     /// <summary>Most entries a ledger response carries; totals always cover the whole period.</summary>
     public const int LedgerEntryLimit = 1000;
 
     public FinancialService(
-        IFinancialRepository financial, IStoreRepository stores, ICustomerRepository customers, IUnitOfWork uow,
-        ICurrentTenant currentTenant, ICurrentUser currentUser)
+        IFinancialRepository financial, IStoreRepository stores, ICustomerRepository customers,
+        ISupplierRepository suppliers, FinancialRecurrenceService recurrences, IUnitOfWork uow,
+        ICurrentTenant currentTenant, ICurrentUser currentUser, ILogger<FinancialService> logger)
     {
+        _logger        = logger;
         _financial     = financial;
         _stores        = stores;
         _customers     = customers;
+        _suppliers     = suppliers;
+        _recurrences   = recurrences;
         _uow           = uow;
         _currentTenant = currentTenant;
         _currentUser   = currentUser;
@@ -143,7 +151,7 @@ public class FinancialService
         _ = await _financial.GetAccountByIdAsync(request.FinancialAccountId, ct)
             ?? throw new NotFoundException("FinancialAccount", request.FinancialAccountId);
 
-        if (IsSystemOwned(request.ReferenceType))
+        if (IsSystemOwned(request.ReferenceType) || request.ReferenceType == FinancialRecurrenceService.RecurrenceReference)
             throw new DomainException("Esta referência é reservada aos lançamentos gerados pelos módulos (vendas, compras, Service).");
 
         if (!Enum.TryParse<TransactionType>(request.TransactionType, ignoreCase: true, out var transactionType)
@@ -161,6 +169,8 @@ public class FinancialService
             _ = await _stores.GetByIdAsync(storeId, ct) ?? throw new NotFoundException("Store", storeId);
         if (request.CustomerId is { } customerId)
             _ = await _customers.GetByIdAsync(customerId, ct) ?? throw new NotFoundException("Customer", customerId);
+        if (request.SupplierId is { } supplierId)
+            _ = await _suppliers.GetByIdAsync(supplierId, ct) ?? throw new NotFoundException("Supplier", supplierId);
 
         var tx = FinancialTransaction.Create(
             _currentTenant.Id,
@@ -175,7 +185,8 @@ public class FinancialService
             request.ReferenceId,
             request.StoreId,
             Utc(request.CompetenceDate ?? request.DueDate),
-            request.CustomerId);
+            request.CustomerId,
+            request.SupplierId);
 
         await _financial.AddTransactionAsync(tx, ct);
         await _financial.SaveChangesAsync(ct);
@@ -294,13 +305,16 @@ public class FinancialService
 
     public async Task<TitlesDto> GetTitlesAsync(TitlesFilter filter, CancellationToken ct = default)
     {
+        await EnsureRecurrencesAsync(ct);   // recurring títulos of this and next month exist
         var today = BusinessClock.TodayStartUtc();
         var titles = await _financial.GetTitlesAsync(filter, today, TitleListLimit + 1, ct);
         var page = titles.Take(TitleListLimit).ToList();
         var names = await _financial.GetCustomerNamesAsync(
             page.Where(t => t.CustomerId.HasValue).Select(t => t.CustomerId!.Value), ct);
+        var supplierNames = await _financial.GetSupplierNamesAsync(
+            page.Where(t => t.SupplierId.HasValue).Select(t => t.SupplierId!.Value), ct);
 
-        var open = await _financial.GetOpenTitleRowsAsync(filter.Type, filter.CustomerId, ct);
+        var open = await _financial.GetOpenTitleRowsAsync(filter.Type, filter.CustomerId, filter.SupplierId, ct);
         decimal Bucket(int min, int max) => open
             .Where(r => r.DueDate < today && BusinessClock.DaysOverdue(r.DueDate) is var d && d >= min && d <= max)
             .Sum(r => r.Amount);
@@ -313,19 +327,32 @@ public class FinancialService
             OpenCount:     open.Count,
             OverdueCount:  open.Count(r => r.DueDate < today));
 
-        return new TitlesDto(page.Select(t => MapTitle(t, names, today)).ToList(), aging, titles.Count > TitleListLimit);
+        return new TitlesDto(page.Select(t => MapTitle(t, names, supplierNames, today)).ToList(), aging, titles.Count > TitleListLimit);
     }
 
-    private static TitleDto MapTitle(FinancialTransaction t, IReadOnlyDictionary<Guid, string> names, DateTime today)
+    private static TitleDto MapTitle(
+        FinancialTransaction t, IReadOnlyDictionary<Guid, string> names, IReadOnlyDictionary<Guid, string> supplierNames, DateTime today)
     {
         var late = t.IsOpen && t.DueDate < today;
         return new TitleDto(
             t.Id, t.Description, t.CustomerId,
             t.CustomerId is { } c && names.TryGetValue(c, out var n) ? n : null,
+            t.SupplierId,
+            t.SupplierId is { } s && supplierNames.TryGetValue(s, out var sn) ? sn : null,
             t.Amount, t.DueDate, t.CompetenceDate, t.PaidAt,
             late ? TransactionStatus.Overdue.ToString() : t.Status.ToString(),
             late ? BusinessClock.DaysOverdue(t.DueDate) : 0,
             t.Category.ToString(), t.StoreId, t.ReferenceType, t.ReferenceId, t.ParentTransactionId);
+    }
+
+    /// <summary>Generation never blocks a read: a failure is logged and the read shows what exists.</summary>
+    private async Task EnsureRecurrencesAsync(CancellationToken ct)
+    {
+        try { await _recurrences.EnsureGeneratedAsync(ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Recurring títulos could not be generated for tenant {TenantId}", _currentTenant.Id);
+        }
     }
 
     // ── Parcelamento ─────────────────────────────────────────────────────────
@@ -354,6 +381,8 @@ public class FinancialService
             throw new DomainException("Esta categoria não combina com o tipo do lançamento.");
         if (request.CustomerId is { } customerId)
             _ = await _customers.GetByIdAsync(customerId, ct) ?? throw new NotFoundException("Customer", customerId);
+        if (request.SupplierId is { } supplierId)
+            _ = await _suppliers.GetByIdAsync(supplierId, ct) ?? throw new NotFoundException("Supplier", supplierId);
         if (request.StoreId is { } storeId)
             _ = await _stores.GetByIdAsync(storeId, ct) ?? throw new NotFoundException("Store", storeId);
 
@@ -383,7 +412,7 @@ public class FinancialService
             var tx = FinancialTransaction.Create(
                 _currentTenant.Id, accountId, type, category, amount, description, due, _currentUser.UserId,
                 storeId: request.StoreId, competenceDate: request.CompetenceDate is { } c ? Utc(c) : due,
-                customerId: request.CustomerId);
+                customerId: request.CustomerId, supplierId: request.SupplierId);
             await _financial.AddTransactionAsync(tx, ct);
             created.Add(tx);
         }
@@ -405,6 +434,7 @@ public class FinancialService
         if (filter.To <= filter.From)
             throw new DomainException("O fim do período precisa ser depois do início.");
 
+        await EnsureRecurrencesAsync(ct);
         var totals  = await _financial.GetLedgerTotalsAsync(filter, ct);
         var entries = await _financial.GetLedgerEntriesAsync(filter, LedgerEntryLimit + 1, ct);
 
@@ -486,5 +516,6 @@ public class FinancialService
         t.StoreId,
         t.ReversesTransactionId,
         t.CustomerId,
-        t.ParentTransactionId);
+        t.ParentTransactionId,
+        t.SupplierId);
 }

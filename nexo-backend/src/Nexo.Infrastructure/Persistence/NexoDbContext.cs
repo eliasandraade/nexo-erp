@@ -83,6 +83,7 @@ public class NexoDbContext : DbContext
     public DbSet<CashMovement> CashMovements => Set<CashMovement>();
     public DbSet<FinancialAccount> FinancialAccounts => Set<FinancialAccount>();
     public DbSet<FinancialTransaction> FinancialTransactions => Set<FinancialTransaction>();
+    public DbSet<FinancialRecurrence> FinancialRecurrences => Set<FinancialRecurrence>();
 
     // ── Módulo Restaurante ────────────────────────────────────────────────────
     public DbSet<RestArea>              RestAreas            => Set<RestArea>();

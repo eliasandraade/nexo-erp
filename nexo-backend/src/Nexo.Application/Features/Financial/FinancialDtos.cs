@@ -24,7 +24,8 @@ public record CreateTransactionRequest(
     string? Category = null,            // FinancialCategory; default: OtherIncome / OperatingExpense
     DateTime? CompetenceDate = null,    // default: DueDate
     Guid? StoreId = null,
-    Guid? CustomerId = null);
+    Guid? CustomerId = null,
+    Guid? SupplierId = null);
 
 public record UpdateTransactionRequest(
     decimal Amount,
@@ -65,4 +66,5 @@ public record FinancialTransactionDto(
     Guid? StoreId,
     Guid? ReversesTransactionId,
     Guid? CustomerId,
-    Guid? ParentTransactionId);
+    Guid? ParentTransactionId,
+    Guid? SupplierId);

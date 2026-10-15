@@ -30,13 +30,16 @@ public record TitlesFilter(
     TitleStatusFilter Status,
     DateTime? DueFrom = null,
     DateTime? DueTo = null,
-    Guid? CustomerId = null);
+    Guid? CustomerId = null,
+    Guid? SupplierId = null);
 
 public record TitleDto(
     Guid Id,
     string Description,
     Guid? CustomerId,
     string? CustomerName,
+    Guid? SupplierId,
+    string? SupplierName,
     decimal Amount,
     DateTime DueDate,
     DateTime CompetenceDate,
@@ -73,7 +76,40 @@ public record CreateInstallmentsRequest(
     Guid? CustomerId = null,
     Guid? StoreId = null,
     DateTime? CompetenceDate = null,    // default: each installment's due date
+    Guid? SupplierId = null,
     Guid? FinancialAccountId = null);   // default: the active Contas a Receber / a Pagar
 
 /// <summary>Row used to compute the aging of open títulos.</summary>
 public record OpenTitleRow(DateTime DueDate, decimal Amount);
+
+// ── Recorrências ─────────────────────────────────────────────────────────────
+
+public record CreateRecurrenceRequest(
+    string TransactionType,         // "Payable" | "Receivable"
+    string Description,
+    decimal Amount,
+    int DayOfMonth,                 // 1..31 (month's last day when shorter)
+    DateOnly? StartMonth,           // required; from 12 months back to 24 ahead
+    DateOnly? EndMonth = null,
+    string? Category = null,
+    Guid? SupplierId = null,
+    Guid? CustomerId = null,
+    Guid? StoreId = null);
+
+public record UpdateRecurrenceRequest(string Description, decimal Amount, int DayOfMonth, DateOnly? EndMonth = null);
+
+public record RecurrenceDto(
+    Guid Id,
+    string TransactionType,
+    string Category,
+    string Description,
+    decimal Amount,
+    int DayOfMonth,
+    DateOnly StartMonth,
+    DateOnly? EndMonth,
+    DateOnly? GeneratedThrough,
+    bool IsActive,
+    Guid? SupplierId,
+    string? SupplierName,
+    Guid? CustomerId,
+    Guid? StoreId);

@@ -84,6 +84,7 @@ export const appRoutes: AppRoute[] = [
   { path: "/caixa",         label: "Caixa",          icon: Wallet,            group: "core",        roles: MGMT },
   { path: "/financeiro",    label: "Financeiro",     icon: Landmark,          group: "core",        roles: MGMT },
   { path: "/financeiro/receber", label: "Contas a receber", icon: HandCoins,  group: "core",        roles: MGMT },
+  { path: "/financeiro/pagar",   label: "Contas a pagar",   icon: Receipt,    group: "core",        roles: MGMT },
 
   // ── Estoque — management + estoquista ────────────────────────────────────
   { path: "/produtos",      label: "Produtos",       icon: Package,           group: "inventario",  roles: [...MGMT, "estoquista"] },

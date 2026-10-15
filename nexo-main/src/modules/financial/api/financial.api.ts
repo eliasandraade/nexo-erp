@@ -75,6 +75,8 @@ export interface TitleDto {
   description: string;
   customerId: string | null;
   customerName: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
   amount: number;
   dueDate: string;
   competenceDate: string;
@@ -120,6 +122,7 @@ export interface CreateInstallmentsRequest {
   installments: number;
   category?: FinancialCategory;
   customerId?: string | null;
+  supplierId?: string | null;
 }
 
 export const RECEIVABLES_KEY = ["financial-receivables"] as const;
@@ -135,3 +138,52 @@ export const settleTransaction = (id: string, body: SettleRequest) =>
 
 export const createInstallments = (body: CreateInstallmentsRequest) =>
   apiClient.post<unknown>("/financial/transactions/installments", body);
+
+export const PAYABLES_KEY = ["financial-payables"] as const;
+
+export function getPayables(status: TitleStatusFilter, supplierId?: string) {
+  const params = new URLSearchParams({ status });
+  if (supplierId) params.set("supplierId", supplierId);
+  return apiClient.get<TitlesDto>(`/financial/payables?${params.toString()}`);
+}
+
+// ── Recorrências ─────────────────────────────────────────────────────────────
+
+export interface RecurrenceDto {
+  id: string;
+  transactionType: "Payable" | "Receivable";
+  category: FinancialCategory;
+  description: string;
+  amount: number;
+  dayOfMonth: number;
+  startMonth: string;          // yyyy-MM-dd (1st of the month)
+  endMonth: string | null;
+  generatedThrough: string | null;
+  isActive: boolean;
+  supplierId: string | null;
+  supplierName: string | null;
+  customerId: string | null;
+  storeId: string | null;
+}
+
+export interface CreateRecurrenceRequest {
+  transactionType: "Payable" | "Receivable";
+  description: string;
+  amount: number;
+  dayOfMonth: number;
+  startMonth: string;
+  endMonth?: string | null;
+  category?: FinancialCategory;
+  supplierId?: string | null;
+}
+
+export const RECURRENCES_KEY = ["financial-recurrences"] as const;
+
+export const listRecurrences = () => apiClient.get<RecurrenceDto[]>("/financial/recurrences");
+export const createRecurrence = (body: CreateRecurrenceRequest) => apiClient.post<RecurrenceDto>("/financial/recurrences", body);
+export const deactivateRecurrence = (id: string) => apiClient.post<RecurrenceDto>(`/financial/recurrences/${id}/deactivate`, {});
+
+/** Categories a person can pick for a conta a pagar. */
+export const PAYABLE_CATEGORIES: FinancialCategory[] = [
+  "OperatingExpense", "Payroll", "Commission", "Tax", "FinancialExpense", "Purchase", "OtherExpense",
+];

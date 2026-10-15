@@ -52,6 +52,8 @@ public class PurchaseFlowTests
         payable.TransactionType.Should().Be(TransactionType.Payable);
         payable.Status.Should().Be(TransactionStatus.Pending);
         payable.Amount.Should().Be(33.33m);
+        payable.SupplierId.Should().Be(supplier);                                         // PR 51: fornecedor no título
+        payable.Category.Should().Be(FinancialCategory.Purchase);
         payable.DueDate.Date.Should().Be(received.ReceivedAt!.Value.AddDays(28).Date);   // supplier terms
 
         (await c.PostAsJsonAsync($"{Base}/{purchase.Id}/confirm", new ReceivePurchaseRequest()))

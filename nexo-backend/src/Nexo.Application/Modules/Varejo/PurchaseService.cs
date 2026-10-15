@@ -215,7 +215,8 @@ public class PurchaseService
                     dueDate,
                     _currentUser.UserId,
                     referenceType: PurchaseReference, referenceId: purchase.Id,
-                    storeId: purchase.StoreId, competenceDate: purchase.ReceivedAt ?? DateTime.UtcNow);
+                    storeId: purchase.StoreId, competenceDate: purchase.ReceivedAt ?? DateTime.UtcNow,
+                    supplierId: purchase.SupplierId);
                 if (request.PaidNow) payable.MarkPaid(DateTime.UtcNow);
                 await _financial.AddTransactionAsync(payable, ct);
             }
@@ -307,7 +308,7 @@ public class PurchaseService
                             payable.Amount, $"Estorno — {payable.Description} (a receber do fornecedor)", DateTime.UtcNow,
                             _currentUser.UserId,
                             referenceType: PurchaseCancellationReference, referenceId: purchase.Id,
-                            storeId: payable.StoreId, competenceDate: DateTime.UtcNow);
+                            storeId: payable.StoreId, competenceDate: DateTime.UtcNow, supplierId: payable.SupplierId);
                         await _financial.AddTransactionAsync(refund, ct);
                     }
                 }

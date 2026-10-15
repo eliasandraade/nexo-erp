@@ -593,6 +593,95 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("financial_accounts", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Entities.FinancialRecurrence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by_user_id");
+
+                    b.Property<Guid?>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<int>("DayOfMonth")
+                        .HasColumnType("integer")
+                        .HasColumnName("day_of_month");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly?>("EndMonth")
+                        .HasColumnType("date")
+                        .HasColumnName("end_month");
+
+                    b.Property<DateOnly?>("GeneratedThrough")
+                        .HasColumnType("date")
+                        .HasColumnName("generated_through");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<DateOnly>("StartMonth")
+                        .HasColumnType("date")
+                        .HasColumnName("start_month");
+
+                    b.Property<Guid?>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("TransactionType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("transaction_type");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "IsActive");
+
+                    b.ToTable("financial_recurrences", "nexo", t =>
+                        {
+                            t.HasCheckConstraint("ck_financial_recurrences_amount", "amount > 0");
+
+                            t.HasCheckConstraint("ck_financial_recurrences_day", "day_of_month BETWEEN 1 AND 31");
+                        });
+                });
+
             modelBuilder.Entity("Nexo.Domain.Entities.FinancialTransaction", b =>
                 {
                     b.Property<Guid>("Id")
@@ -671,6 +760,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("store_id");
 
+                    b.Property<Guid?>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
@@ -704,6 +797,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "PaidAt");
 
                     b.HasIndex("TenantId", "Status");
+
+                    b.HasIndex("TenantId", "SupplierId");
 
                     b.HasIndex("TenantId", "TransactionType", "Status", "DueDate");
 
@@ -6853,6 +6948,15 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Parent");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.FinancialRecurrence", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Nexo.Domain.Entities.FinancialTransaction", b =>

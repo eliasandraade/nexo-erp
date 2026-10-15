@@ -14,7 +14,8 @@
 | #47 | Compras completas | `da3ba8b` | `PurchasesPerStoreOrderedAndCancellation` (store_id com backfill, índice por loja) | Em produção |
 | #48 | Listas de preço | `024b1cd` | `PriceListValidityAndPriority` (aditiva + índice único parcial) | Em produção |
 | #49 | Modelo financeiro unificado (livro) | `d6634a5` | `UnifiedFinancialLedger` (aditiva + classificação e backfill do histórico à vista) | Em produção |
-| #50 | Contas a receber | — | `LedgerCustomerAndSettlement` (aditiva + cliente do título + reexecução idempotente do backfill) | Em revisão |
+| #50 | Contas a receber | `645fb56` | `LedgerCustomerAndSettlement` (aditiva + cliente do título + reexecução idempotente do backfill) | Em produção |
+| #51 | Contas a pagar e recorrências | — | `PayablesSupplierAndRecurrences` (aditiva + fornecedor das compras) | Em revisão |
 
 
 ## Marcos por fase
@@ -416,4 +417,48 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
   - **Cancelamento:** trava os lançamentos da origem duas vezes, para pegar o restante criado por uma baixa concorrente.
 - **Fica para depois:** estornar uma baixa feita por engano, reabrindo o título.
 - **Decisão pendente (regra comercial e contábil, não implementada):** baixar um título como **perda** (calote) e cobrar juros ou multa **automaticamente** por percentual. Hoje juros e multa são informados na baixa.
+
+## PR 51 — Contas a pagar e recorrências
+
+- **Fornecedor no título** (`supplier_id`):
+  - vem da compra (título a pagar e o "a receber do fornecedor" do cancelamento);
+  - pode ser informado no lançamento manual e no parcelamento;
+  - a migration preenche o fornecedor dos títulos de compra existentes.
+- **`GET /api/financial/payables`:** filtro por fornecedor, nome do fornecedor e aging.
+  - A baixa de um título a pagar espelha a de receber: juros e multa pagos são **despesa financeira**; desconto obtido é **receita financeira**, abatida (só em competência).
+- **Despesas recorrentes** (`FinancialRecurrence`, tabela `financial_recurrences`):
+  - descrição, valor, categoria, dia do vencimento (o último dia quando o mês é mais curto), início, fim opcional e fornecedor;
+  - geram **um título por mês até o fim do mês seguinte**;
+  - cada título gerado é comum: paga-se, renegocia-se ou cancela-se sozinho;
+  - encerrar a recorrência só para os próximos meses.
+  - **Geração sem job que grave atravessando tenants:** acontece ao criar ou alterar a recorrência e antes de toda leitura do financeiro do tenant (contas a pagar e a receber, livro). Roda dentro da requisição do próprio tenant, sob trava das recorrências, de forma idempotente (`generated_through`). Quando não há nada pendente, o caminho é rápido: sem transação e sem trava.
+  - Endpoints: `GET/POST /api/financial/recurrences`, `PUT /api/financial/recurrences/{id}` e `POST /api/financial/recurrences/{id}/deactivate`.
+- **Tela `/financeiro/pagar`:**
+  - mesma visão de títulos de contas a receber (agora um componente só, `TitlesView`, parametrizado pela direção);
+  - categoria de despesa no lançamento;
+  - seção **Despesas recorrentes**: criar e encerrar.
+- **Testes:**
+  - +4 unitários de recorrência (meses pendentes sem repetir, fim e encerramento, dia 31 em mês curto, validação);
+  - `PayablesTests`, 3 de integração: fornecedor e baixa com juros e desconto; recorrência gera 3 meses uma vez só, título gerado cancelável, encerramento; recorrências inválidas;
+  - `PurchaseFlowTests` confere o fornecedor e a categoria do título da compra;
+  - Playwright: tela de contas a pagar.
+- **Revisão independente (corrigido antes do merge):**
+  - **Recorrência sem limite de início.** Um início omitido (0001-01) ou errado gerava milhares de títulos vencidos. Agora o início é obrigatório, vai de 12 meses atrás a 24 meses à frente, e cada geração cria no máximo 24 meses.
+  - **Recorrência com problema derrubava as leituras.**
+    - Uma descrição longa demais estourava a coluna ao gerar o título, e um tenant sem conta padrão também falhava. Depois disso, toda leitura do financeiro do tenant quebrava, e a recorrência ficava salva.
+    - Agora a descrição vai até 480 caracteres e a conta padrão é validada antes.
+    - Criar ou alterar uma recorrência e gerar seus títulos formam uma transação só.
+    - Uma falha de geração nunca bloqueia leitura: ela vai para o log e a leitura mostra o que existe.
+  - **Aging:** passa a respeitar o filtro de fornecedor.
+  - **Nome do fornecedor:** um nome fantasia vazio mostra a razão social.
+  - **Recorrência encerrada:** não se altera.
+  - **Fim da recorrência:** não pode ficar antes dos meses já gerados.
+  - **Recorrência a pagar só aceita fornecedor** (e a de receber, só cliente).
+  - **Migration:** também preenche o fornecedor dos ajustes de juros e desconto dos títulos de compra.
+  - **Tela:**
+    - encerrar pede confirmação;
+    - o mês de início é validado (navegadores sem seletor de mês);
+    - mostra "desde MM/aaaa";
+    - criar atualiza o livro.
+- **Fica para depois:** editar recorrência pela tela (o endpoint existe) e reaplicar uma mudança de valor nos títulos já gerados e ainda em aberto.
 

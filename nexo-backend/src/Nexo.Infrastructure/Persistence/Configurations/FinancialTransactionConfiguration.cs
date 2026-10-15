@@ -50,6 +50,9 @@ public class FinancialTransactionConfiguration : IEntityTypeConfiguration<Financ
         builder.Property(x => x.CustomerId)
             .HasColumnName("customer_id");
 
+        builder.Property(x => x.SupplierId)
+            .HasColumnName("supplier_id");
+
         builder.Property(x => x.Amount)
             .HasColumnName("amount")
             .HasColumnType("numeric(18,2)")
@@ -107,6 +110,7 @@ public class FinancialTransactionConfiguration : IEntityTypeConfiguration<Financ
         // Contas a receber / a pagar: open títulos by direction and due date; a customer's títulos
         builder.HasIndex(x => new { x.TenantId, x.TransactionType, x.Status, x.DueDate });
         builder.HasIndex(x => new { x.TenantId, x.CustomerId });
+        builder.HasIndex(x => new { x.TenantId, x.SupplierId });
         // OverdueTitlesJob: pending títulos by due date, across tenants
         builder.HasIndex(x => x.DueDate, "ix_financial_transactions_pending_due")
             .HasFilter("status = 'Pending'");

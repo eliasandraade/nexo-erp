@@ -14,8 +14,13 @@ namespace Nexo.Api.Controllers;
 public class FinancialController : ControllerBase
 {
     private readonly FinancialService _service;
+    private readonly FinancialRecurrenceService _recurrences;
 
-    public FinancialController(FinancialService service) => _service = service;
+    public FinancialController(FinancialService service, FinancialRecurrenceService recurrences)
+    {
+        _service     = service;
+        _recurrences = recurrences;
+    }
 
     // ── Accounts ─────────────────────────────────────────────────────────────
 
@@ -100,11 +105,12 @@ public class FinancialController : ControllerBase
     [HttpGet("payables")]
     public Task<ActionResult<TitlesDto>> GetPayables(
         [FromQuery] string status = "open", [FromQuery] DateOnly? dueFrom = null, [FromQuery] DateOnly? dueTo = null,
-        CancellationToken ct = default)
-        => TitlesAsync(TransactionType.Payable, status, dueFrom, dueTo, null, ct);
+        [FromQuery] Guid? supplierId = null, CancellationToken ct = default)
+        => TitlesAsync(TransactionType.Payable, status, dueFrom, dueTo, null, ct, supplierId);
 
     private async Task<ActionResult<TitlesDto>> TitlesAsync(
-        TransactionType type, string status, DateOnly? dueFrom, DateOnly? dueTo, Guid? customerId, CancellationToken ct)
+        TransactionType type, string status, DateOnly? dueFrom, DateOnly? dueTo, Guid? customerId, CancellationToken ct,
+        Guid? supplierId = null)
     {
         if (!Enum.TryParse<TitleStatusFilter>(status, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
             return UnprocessableEntity(new { error = "Situação inválida: use open, overdue, settled ou all." });
@@ -112,7 +118,7 @@ public class FinancialController : ControllerBase
             type, parsed,
             dueFrom is { } f ? BusinessClock.DayStartUtc(f) : null,
             dueTo is { } t ? BusinessClock.DayStartUtc(t.AddDays(1)) : null,   // dueTo is inclusive (Brazil day)
-            customerId), ct));
+            customerId, supplierId), ct));
     }
 
     /// <summary>Baixa total ou parcial, com juros, multa e desconto.</summary>
@@ -126,6 +132,25 @@ public class FinancialController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<FinancialTransactionDto>>> CreateInstallments(
         [FromBody] CreateInstallmentsRequest request, CancellationToken ct)
         => Ok(await _service.CreateInstallmentsAsync(request, ct));
+
+    // ── Recorrências ─────────────────────────────────────────────────────────
+
+    [HttpGet("recurrences")]
+    public async Task<ActionResult<IReadOnlyList<RecurrenceDto>>> GetRecurrences(
+        [FromQuery] bool includeInactive = false, CancellationToken ct = default)
+        => Ok(await _recurrences.GetAllAsync(includeInactive, ct));
+
+    [HttpPost("recurrences")]
+    public async Task<ActionResult<RecurrenceDto>> CreateRecurrence([FromBody] CreateRecurrenceRequest request, CancellationToken ct)
+        => Ok(await _recurrences.CreateAsync(request, ct));
+
+    [HttpPut("recurrences/{id:guid}")]
+    public async Task<ActionResult<RecurrenceDto>> UpdateRecurrence(Guid id, [FromBody] UpdateRecurrenceRequest request, CancellationToken ct)
+        => Ok(await _recurrences.UpdateAsync(id, request, ct));
+
+    [HttpPost("recurrences/{id:guid}/deactivate")]
+    public async Task<ActionResult<RecurrenceDto>> DeactivateRecurrence(Guid id, CancellationToken ct)
+        => Ok(await _recurrences.DeactivateAsync(id, ct));
 
     [HttpGet("transactions/pending")]
     public async Task<ActionResult<IReadOnlyList<FinancialTransactionDto>>> GetPending(CancellationToken ct)

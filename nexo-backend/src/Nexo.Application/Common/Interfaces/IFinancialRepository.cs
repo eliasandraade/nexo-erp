@@ -27,8 +27,19 @@ public interface IFinancialRepository
         Nexo.Application.Features.Financial.TitlesFilter filter, DateTime todayStartUtc, int take, CancellationToken ct = default);
     /// <summary>Due date and amount of every open título of one direction (for the aging).</summary>
     Task<IReadOnlyList<Nexo.Application.Features.Financial.OpenTitleRow>> GetOpenTitleRowsAsync(
-        TransactionType type, Guid? customerId, CancellationToken ct = default);
+        TransactionType type, Guid? customerId, Guid? supplierId, CancellationToken ct = default);
     Task<IReadOnlyDictionary<Guid, string>> GetCustomerNamesAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
+    Task<IReadOnlyDictionary<Guid, string>> GetSupplierNamesAsync(IEnumerable<Guid> ids, CancellationToken ct = default);
+
+    // Recorrências
+    Task<IReadOnlyList<FinancialRecurrence>> GetRecurrencesAsync(bool includeInactive, CancellationToken ct = default);
+    Task<FinancialRecurrence?> GetRecurrenceByIdAsync(Guid id, CancellationToken ct = default);
+    Task AddRecurrenceAsync(FinancialRecurrence recurrence, CancellationToken ct = default);
+    /// <summary>
+    /// Active recurrences with months still to generate, row-locked (FOR UPDATE) and reloaded: two
+    /// requests generating at once serialise, and the second finds nothing left to do.
+    /// </summary>
+    Task<IReadOnlyList<FinancialRecurrence>> LockRecurrencesDueAsync(DateOnly horizonMonth, Guid tenantId, CancellationToken ct = default);
 
     /// <summary>Row lock (FOR UPDATE) on a lançamento, reloading it if tracked — serialises pay × cancel.</summary>
     Task LockTransactionAsync(Guid id, Guid tenantId, CancellationToken ct = default);
