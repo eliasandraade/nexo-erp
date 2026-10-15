@@ -17,6 +17,7 @@ import { formatCurrency } from "@/lib/formatters";
 import {
   REPORTS_KEY, exportSales, getCustomerReport, getInventoryReport, getSalesReport, type SalesReportDto,
 } from "../api/reports.api";
+import { OtherReports } from "../components/OtherReports";
 import { fmtDay, fmtPeriod, methodLabel, periodProblem, presetPeriod, type Period, type PeriodPreset } from "../lib/period";
 
 const SalesByDayChart = lazy(() => import("../components/SalesByDayChart"));
@@ -148,6 +149,8 @@ export default function RelatoriosPage() {
           )}
         </QueryBlock>
       </SectionCard>
+
+      <OtherReports />
     </div>
   );
 }

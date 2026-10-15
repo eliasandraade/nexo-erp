@@ -1078,3 +1078,11 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - o armazenamento de anexos fora agora degrada de verdade (devolvia `Unhealthy` direto e derrubaria o `/health`);
   - sondas de saúde bem-sucedidas saem do log de requisições (rodam a cada poucos segundos); falhas continuam como erro.
 - **Para o dono (configuração da Railway, não mudada aqui):** apontar o healthcheck do serviço da API para `/health/ready`.
+
+## PR 65b — Relatórios: os das outras áreas na mesma página
+
+- A missão pediu relatórios de vendas, caixa, financeiro, estoque, produto, cliente, profissionais, Service, restaurante e Build. Os que já existiam ficavam espalhados, cada um na sua tela. A página `/relatorios` ganhou **"Outros relatórios"**, com o caminho para cada um:
+  - Financeiro (competência ou caixa), Fluxo de caixa, Caixa (sessões e fechamento), Estoque e Clientes;
+  - Service — financeiro (receita, comissões e resultado por profissional), Restaurante e Obras, **só para quem tem o módulo**.
+- Vendas, produtos, vendedores, formas de pagamento, estoque e clientes ficam na própria página (PR 65).
+- Playwright: os atalhos aparecem e levam às telas certas.
