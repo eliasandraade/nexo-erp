@@ -17,11 +17,8 @@ public class IntegrationFeatureFlagsTests
         flags.ViaCepEnabled.Should().BeFalse();
         flags.OpenFoodFactsEnabled.Should().BeFalse();
         flags.StorageEnabled.Should().BeFalse();
-        flags.PdfEnabled.Should().BeFalse();
         flags.WeatherEnabled.Should().BeFalse();
         flags.StripeEnabled.Should().BeFalse();
-        flags.MercadoPagoEnabled.Should().BeFalse();
-        flags.WhatsAppEnabled.Should().BeFalse();
         flags.FiscalEnabled.Should().BeFalse();
     }
 
@@ -41,11 +38,8 @@ public class IntegrationFeatureFlagsTests
         flags.ViaCepEnabled.Should().BeFalse();
         flags.OpenFoodFactsEnabled.Should().BeFalse();
         flags.StorageEnabled.Should().BeFalse();
-        flags.PdfEnabled.Should().BeFalse();
         flags.WeatherEnabled.Should().BeFalse();
         flags.StripeEnabled.Should().BeFalse();
-        flags.MercadoPagoEnabled.Should().BeFalse();
-        flags.WhatsAppEnabled.Should().BeFalse();
         flags.FiscalEnabled.Should().BeFalse();
     }
 
@@ -59,11 +53,8 @@ public class IntegrationFeatureFlagsTests
                 ["Integrations:Features:ViaCepEnabled"]        = "true",
                 ["Integrations:Features:OpenFoodFactsEnabled"] = "true",
                 ["Integrations:Features:StorageEnabled"]       = "true",
-                ["Integrations:Features:PdfEnabled"]           = "true",
                 ["Integrations:Features:WeatherEnabled"]       = "true",
                 ["Integrations:Features:StripeEnabled"]        = "true",
-                ["Integrations:Features:MercadoPagoEnabled"]   = "true",
-                ["Integrations:Features:WhatsAppEnabled"]      = "true",
                 ["Integrations:Features:FiscalEnabled"]        = "true"
             })
             .Build();
@@ -74,11 +65,8 @@ public class IntegrationFeatureFlagsTests
         flags.ViaCepEnabled.Should().BeTrue();
         flags.OpenFoodFactsEnabled.Should().BeTrue();
         flags.StorageEnabled.Should().BeTrue();
-        flags.PdfEnabled.Should().BeTrue();
         flags.WeatherEnabled.Should().BeTrue();
         flags.StripeEnabled.Should().BeTrue();
-        flags.MercadoPagoEnabled.Should().BeTrue();
-        flags.WhatsAppEnabled.Should().BeTrue();
         flags.FiscalEnabled.Should().BeTrue();
     }
 

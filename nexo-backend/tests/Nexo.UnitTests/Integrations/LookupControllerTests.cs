@@ -41,6 +41,7 @@ public class LookupControllerTests
         return new LookupController(
             cepProvider  ?? Substitute.For<ICepLookupProvider>(),
             cnpjProvider ?? Substitute.For<ICnpjLookupProvider>(),
+            BrasilApiOn(),
             NullLogger<LookupController>.Instance);
     }
 
@@ -180,5 +181,11 @@ public class LookupControllerTests
         result.Should().BeOfType<OkObjectResult>();
         var ok = (OkObjectResult)result;
         ok.Value.Should().BeEquivalentTo(new { found = false, data = (object?)null, unavailable = true });
+    }
+    private static Nexo.Application.Integrations.Options.IIntegrationFeatureFlags BrasilApiOn()
+    {
+        var flags = Substitute.For<Nexo.Application.Integrations.Options.IIntegrationFeatureFlags>();
+        flags.BrasilApiEnabled.Returns(true);
+        return flags;
     }
 }

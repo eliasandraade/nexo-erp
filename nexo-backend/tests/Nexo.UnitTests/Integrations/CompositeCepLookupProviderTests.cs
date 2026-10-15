@@ -68,7 +68,15 @@ public class CompositeCepLookupProviderTests
         BrasilApiCepProvider brasilApi,
         ViaCepProvider       viaCep,
         ICacheService        cache)
-        => new(brasilApi, viaCep, cache, NullLogger<CompositeCepLookupProvider>.Instance);
+        => new(brasilApi, viaCep, cache, BothProvidersOn(), NullLogger<CompositeCepLookupProvider>.Instance);
+
+    private static Nexo.Application.Integrations.Options.IIntegrationFeatureFlags BothProvidersOn()
+    {
+        var flags = NSubstitute.Substitute.For<Nexo.Application.Integrations.Options.IIntegrationFeatureFlags>();
+        NSubstitute.SubstituteExtensions.Returns(flags.BrasilApiEnabled, true);
+        NSubstitute.SubstituteExtensions.Returns(flags.ViaCepEnabled, true);
+        return flags;
+    }
 
     // ── JSON stubs ────────────────────────────────────────────────────────────
 

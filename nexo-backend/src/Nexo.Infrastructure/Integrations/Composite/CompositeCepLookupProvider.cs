@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.DTOs;
+using Nexo.Application.Integrations.Options;
 using Nexo.Infrastructure.Integrations.BrasilApi;
 using Nexo.Infrastructure.Integrations.ViaCep;
 
@@ -14,17 +15,20 @@ public sealed class CompositeCepLookupProvider : ICepLookupProvider
     private readonly BrasilApiCepProvider _brasilApi;
     private readonly ViaCepProvider       _viaCep;
     private readonly ICacheService        _cache;
+    private readonly IIntegrationFeatureFlags _flags;
     private readonly ILogger<CompositeCepLookupProvider> _logger;
 
     public CompositeCepLookupProvider(
         BrasilApiCepProvider brasilApi,
         ViaCepProvider       viaCep,
         ICacheService        cache,
+        IIntegrationFeatureFlags flags,
         ILogger<CompositeCepLookupProvider> logger)
     {
         _brasilApi = brasilApi;
         _viaCep    = viaCep;
         _cache     = cache;
+        _flags     = flags;
         _logger    = logger;
     }
 
@@ -40,8 +44,9 @@ public sealed class CompositeCepLookupProvider : ICepLookupProvider
             return cached;
         }
 
-        // 2. Try BrasilAPI first
+        // 2. Try BrasilAPI first (when switched on)
         CepLookupResult? result = null;
+        if (_flags.BrasilApiEnabled)
         try
         {
             result = await _brasilApi.LookupAsync(cep, ct);
@@ -53,7 +58,7 @@ public sealed class CompositeCepLookupProvider : ICepLookupProvider
         }
 
         // 3. Fallback to ViaCEP if BrasilAPI returned null or threw
-        if (result is null)
+        if (result is null && _flags.ViaCepEnabled)
         {
             try
             {

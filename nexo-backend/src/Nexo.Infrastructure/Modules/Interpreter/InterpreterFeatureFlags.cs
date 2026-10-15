@@ -8,7 +8,6 @@ public sealed class InterpreterFeatureFlags : IInterpreterFeatureFlags
     public bool EnableClaudeAnalyzer    { get; }
     public bool EnableOpenAIAnalyzer    { get; }
     public bool EnableRuleBasedAnalyzer { get; }
-    public bool EnableMemoryRebuild     { get; }
 
     public InterpreterFeatureFlags(IConfiguration configuration)
     {
@@ -16,6 +15,5 @@ public sealed class InterpreterFeatureFlags : IInterpreterFeatureFlags
         EnableClaudeAnalyzer    = section.GetValue("EnableClaudeAnalyzer",    false);
         EnableOpenAIAnalyzer    = section.GetValue("EnableOpenAIAnalyzer",    false);
         EnableRuleBasedAnalyzer = section.GetValue("EnableRuleBasedAnalyzer", true);
-        EnableMemoryRebuild     = section.GetValue("EnableMemoryRebuild",     true);
     }
 }

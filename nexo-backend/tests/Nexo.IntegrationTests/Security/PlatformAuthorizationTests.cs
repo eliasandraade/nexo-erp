@@ -23,7 +23,6 @@ public class PlatformAuthorizationTests
     public static IEnumerable<object[]> PlatformEndpoints() => new[]
     {
         new object[] { "/api/platform/stats" },                 // PlatformController
-        new object[] { "/api/platform/flags" },                 // PlatformFlagsController
         new object[] { "/api/platform/interpreter/dashboard" }, // InterpreterAdminController
     };
 

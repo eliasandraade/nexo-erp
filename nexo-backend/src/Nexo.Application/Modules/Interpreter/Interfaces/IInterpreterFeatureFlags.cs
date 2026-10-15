@@ -9,5 +9,4 @@ public interface IInterpreterFeatureFlags
     bool EnableClaudeAnalyzer   { get; }
     bool EnableOpenAIAnalyzer   { get; }
     bool EnableRuleBasedAnalyzer { get; }
-    bool EnableMemoryRebuild    { get; }
 }

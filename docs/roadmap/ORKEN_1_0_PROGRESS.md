@@ -1145,6 +1145,18 @@ Antes: tudo ia para um bucket com acesso público; prontuário (Service) e fotos
 - **Para o dono, na ordem:** (1) criar o bucket R2 privado **sem** domínio público nem r2.dev; (2) dar acesso a ele ao token da aplicação; (3) configurar `Integrations__Storage__R2__PrivateBucketName`; (4) se já houver fotos de obra sob `private/` no bucket atual, copiá-las para o novo antes (senão passam a 404). Fotos e anexos antigos com chave pública (`tenants/…`) continuam acessíveis pela URL pública até uma migração que os mova (cópia + regravação + exclusão da cópia pública — exige aprovação, por excluir dados).
 - **Fica para depois:** anexos do interpretador e imagens de ficha técnica gravados no disco do container (não são servidos, e somem a cada deploy); URLs de logo/capa/produto aceitam qualquer endereço externo.
 - **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.
+
+## PR 72 — Feature flags reais
+
+Levantamento: as **6 flags da plataforma** (tela "Recursos", `/api/features`, sobreposição por empresa) não eram lidas por nenhum código — o hook do frontend nunca era importado e o backend nunca consultava as tabelas. Além disso, 6 chaves de configuração também não tinham leitor.
+
+- **Removido (infraestrutura morta):** tela "Recursos" da plataforma, `PlatformFlagsController` (criar, alternar, sobrepor por empresa), `FeaturesController` (`/api/features`), o hook `useFeatureFlags` e as chamadas de API. As tabelas `feature_flags` e `tenant_feature_overrides` **ficam** (apagá-las seria migração destrutiva); as entidades estão marcadas como sem uso.
+- **Flags de configuração** (`Integrations:Features:*`, por implantação — appsettings ou variável de ambiente; quem muda é quem opera o servidor; sem escopo por empresa nem rollout, porque nada aqui pede isso):
+  - **passam a valer:** `BrasilApiEnabled` e `ViaCepEnabled` viram interruptores reais — cada provedor de CEP só é consultado se estiver ligado, e a consulta de CNPJ responde "indisponível" (o cadastro manual continua) com a BrasilAPI desligada;
+  - **já valiam** (sem mudança): Storage, Stripe, OpenFoodFacts, Weather, Fiscal; e no interpretador, a escolha do analisador;
+  - **removidas** (ninguém lia): `PdfEnabled`, `MercadoPagoEnabled`, `WhatsAppEnabled` e `Interpreter:Features:EnableMemoryRebuild`.
+- As telas de IA citavam uma flag `EnablePromptLogging` que não existe; o texto agora diz apenas que o conteúdo do prompt não é guardado.
+- **Testes:** unitários das flags e do CEP com os provedores ligados; RBAC sem a rota removida; modelo do banco sem mudança (nenhuma migração pendente).
 - **Em produção** (merge `4c93835`): `GET /api/integrations/storage/signed-url` passou de 405 para 401 sem token; `/health/ready` mostra `object-storage: Degraded — reachable, private bucket not configured`, como esperado até o dono criar o bucket privado; `/health` 20/20.
 
 ## PR 71 — Configurações reais

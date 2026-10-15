@@ -3,10 +3,8 @@ using Nexo.Domain.Common;
 namespace Nexo.Domain.Entities;
 
 /// <summary>
-/// Catalog of available feature flags. Defines the global default.
-/// Override per tenant via TenantFeatureOverride.
-///
-/// Resolution: TenantFeatureOverride.IsEnabled ?? FeatureFlag.DefaultEnabled
+/// UNUSED since PR 72: no code read any flag (the admin page and /api/features were removed). The
+/// table is kept because dropping it is a destructive migration; remove in an approved cleanup.
 /// </summary>
 public class FeatureFlag : BaseEntity
 {

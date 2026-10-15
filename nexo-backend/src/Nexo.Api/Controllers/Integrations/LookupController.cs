@@ -13,15 +13,18 @@ public class LookupController : ControllerBase
 {
     private readonly ICepLookupProvider _cepProvider;
     private readonly ICnpjLookupProvider _cnpjProvider;
+    private readonly Nexo.Application.Integrations.Options.IIntegrationFeatureFlags _flags;
     private readonly ILogger<LookupController> _logger;
 
     public LookupController(
         ICepLookupProvider cepProvider,
         ICnpjLookupProvider cnpjProvider,
+        Nexo.Application.Integrations.Options.IIntegrationFeatureFlags flags,
         ILogger<LookupController> logger)
     {
         _cepProvider = cepProvider;
         _cnpjProvider = cnpjProvider;
+        _flags = flags;
         _logger = logger;
     }
 
@@ -104,6 +107,10 @@ public class LookupController : ControllerBase
         {
             return BadRequest(new { error = "CNPJ deve conter 14 dígitos." });
         }
+
+        // BrasilAPI switched off (Integrations:Features:BrasilApiEnabled): typing by hand still works
+        if (!_flags.BrasilApiEnabled)
+            return Ok(new { found = false, data = (object?)null, unavailable = true });
 
         try
         {

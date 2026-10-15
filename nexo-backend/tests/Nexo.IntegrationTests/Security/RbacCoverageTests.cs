@@ -29,7 +29,7 @@ public class RbacCoverageTests
         // A Vendedor asks a manager to type their credentials (rate-limited per user)
         "Auth.VerifyManager", "Users.ValidateManager",
         // Shell data every role renders: stores, own tenant, feature flags, settings, billing banner
-        "Store.GetMyStores", "Tenants.GetById", "Tenants.GetBySlug", "Features.GetFeatures",
+        "Store.GetMyStores", "Tenants.GetById", "Tenants.GetBySlug",
         "Settings.Get", "Billing.GetSubscriptions",
         // Catalog reads used by PDV / salão / cozinha
         "Products.GetAll", "Products.GetPaged", "Products.GetById",

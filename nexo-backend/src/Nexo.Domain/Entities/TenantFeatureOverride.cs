@@ -2,13 +2,7 @@ using Nexo.Domain.Common;
 
 namespace Nexo.Domain.Entities;
 
-/// <summary>
-/// Tenant-specific override for a feature flag.
-/// When this row exists, IsEnabled takes precedence over FeatureFlag.DefaultEnabled.
-/// When this row is deleted, the tenant reverts to the global default.
-///
-/// UNIQUE constraint: (TenantId, FlagKey)
-/// </summary>
+/// <summary>UNUSED since PR 72 — see <see cref="FeatureFlag"/>. Table kept (no destructive migration).</summary>
 public class TenantFeatureOverride : BaseEntity
 {
     private TenantFeatureOverride() { }
