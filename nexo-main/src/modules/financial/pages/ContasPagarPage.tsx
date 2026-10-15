@@ -16,8 +16,12 @@ import { formatCurrency } from "@/lib/formatters";
 import { useSuppliers } from "@/modules/suppliers/hooks/use-suppliers";
 import { TitlesView } from "../components/TitlesView";
 import {
-  CATEGORY_LABELS, createRecurrence, deactivateRecurrence, listRecurrences, PAYABLE_CATEGORIES, PAYABLES_KEY,
-  RECURRENCES_KEY, type FinancialCategory,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  CATEGORY_LABELS, createRecurrence, deactivateRecurrence, LEDGER_KEY, listRecurrences, PAYABLE_CATEGORIES, PAYABLES_KEY,
+  RECURRENCES_KEY, type FinancialCategory, type RecurrenceDto,
 } from "../api/financial.api";
 import { money, monthInput } from "../lib/inputs";
 
@@ -37,11 +41,16 @@ export default function ContasPagarPage() {
 function RecurrencesSection() {
   const qc = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const [ending, setEnding] = useState<RecurrenceDto | null>(null);
   const { data } = useQuery({ queryKey: RECURRENCES_KEY, queryFn: listRecurrences });
 
   const stop = useMutation({
     mutationFn: deactivateRecurrence,
-    onSuccess: () => { toast.success("Recorrência encerrada. Os títulos já gerados continuam na lista."); void qc.invalidateQueries({ queryKey: RECURRENCES_KEY }); },
+    onSuccess: () => {
+      toast.success("Recorrência encerrada. Os títulos já gerados continuam na lista.");
+      setEnding(null);
+      void qc.invalidateQueries({ queryKey: RECURRENCES_KEY });
+    },
     onError: (e: Error) => toast.error(e.message || "Não foi possível encerrar."),
   });
 
@@ -68,25 +77,44 @@ function RecurrencesSection() {
               <TableRow key={r.id}>
                 <TableCell>
                   <div className="font-medium">{r.description}</div>
-                  <div className="text-xs text-muted-foreground">{CATEGORY_LABELS[r.category] ?? r.category}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {CATEGORY_LABELS[r.category] ?? r.category} · desde {r.startMonth.slice(5, 7)}/{r.startMonth.slice(0, 4)}
+                  </div>
                 </TableCell>
                 <TableCell className="text-sm">{r.supplierName ?? "—"}</TableCell>
                 <TableCell className="text-sm">{r.dayOfMonth}</TableCell>
                 <TableCell className="text-right font-medium tabular-nums">{formatCurrency(r.amount)}</TableCell>
                 <TableCell className="text-right">
-                  <Button size="sm" variant="ghost" disabled={stop.isPending} onClick={() => stop.mutate(r.id)}>Encerrar</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEnding(r)}>Encerrar</Button>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+      <AlertDialog open={!!ending} onOpenChange={(v) => { if (!v && !stop.isPending) setEnding(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Encerrar “{ending?.description}”?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Os próximos meses deixam de ser gerados. Os títulos já lançados continuam na lista para pagar ou cancelar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={stop.isPending}>Voltar</AlertDialogCancel>
+            <AlertDialogAction disabled={stop.isPending} onClick={(e) => { e.preventDefault(); if (ending) stop.mutate(ending.id); }}>
+              Encerrar recorrência
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {creating && (
         <NewRecurrenceDialog
           onClose={() => setCreating(false)}
           onDone={() => {
             void qc.invalidateQueries({ queryKey: RECURRENCES_KEY });
             void qc.invalidateQueries({ queryKey: PAYABLES_KEY });
+            void qc.invalidateQueries({ queryKey: LEDGER_KEY });
           }}
         />
       )}
@@ -104,8 +132,10 @@ function NewRecurrenceDialog({ onClose, onDone }: { onClose: () => void; onDone:
   const [category, setCategory] = useState<FinancialCategory>("OperatingExpense");
 
   const value = money(amount);
-  const dayN = Number.parseInt(day, 10);
-  const valid = description.trim() && value > 0 && dayN >= 1 && dayN <= 31 && start;
+  const dayN = /^\d{1,2}$/.test(day.trim()) ? Number(day.trim()) : NaN;
+  // type="month" is a plain text box on some desktop browsers: accept only yyyy-MM inside the allowed window
+  const startValid = /^\d{4}-\d{2}$/.test(start) && start >= monthInput(-12) && start <= monthInput(24);
+  const valid = description.trim() && value > 0 && dayN >= 1 && dayN <= 31 && startValid;
 
   const create = useMutation({
     mutationFn: () => createRecurrence({
@@ -131,7 +161,7 @@ function NewRecurrenceDialog({ onClose, onDone }: { onClose: () => void; onDone:
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="rec-description">Descrição da recorrência</Label>
-            <Input id="rec-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Aluguel da loja" />
+            <Input id="rec-description" value={description} maxLength={480} onChange={(e) => setDescription(e.target.value)} placeholder="Ex.: Aluguel da loja" />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="rec-supplier">Fornecedor da recorrência</Label>
@@ -162,7 +192,8 @@ function NewRecurrenceDialog({ onClose, onDone }: { onClose: () => void; onDone:
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="rec-start">A partir de</Label>
-            <Input id="rec-start" type="month" value={start} onChange={(e) => setStart(e.target.value)} />
+            <Input id="rec-start" type="month" value={start} min={monthInput(-12)} max={monthInput(24)}
+              placeholder="aaaa-mm" onChange={(e) => setStart(e.target.value)} />
           </div>
         </div>
         <DialogFooter>

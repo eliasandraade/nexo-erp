@@ -96,6 +96,11 @@ public class PayablesTests
                      new CreateRecurrenceRequest("Payable", "x", 100m, 10, month, EndMonth: month.AddMonths(-1)),
                      new CreateRecurrenceRequest("Payable", "x", 100m, 10, month, Category: "Revenue"),
                      new CreateRecurrenceRequest("Lunar", "x", 100m, 10, month),
+                     new CreateRecurrenceRequest("Payable", "x", 100m, 10, null),                  // start is required
+                     new CreateRecurrenceRequest("Payable", "x", 100m, 10, month.AddMonths(-13)),  // years of títulos by mistake
+                     new CreateRecurrenceRequest("Payable", "x", 100m, 10, month.AddMonths(25)),
+                     new CreateRecurrenceRequest("Payable", new string('x', 481), 100m, 10, month),
+                     new CreateRecurrenceRequest("Payable", "x", 100m, 10, month, CustomerId: Guid.NewGuid()),
                  })
             (await c.PostAsJsonAsync($"{Fin}/recurrences", bad)).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         (await c.PostAsJsonAsync($"{Fin}/recurrences",

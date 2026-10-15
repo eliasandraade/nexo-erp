@@ -53,20 +53,31 @@ public class FinancialRecurrence : TenantEntity
 
     public void Update(string description, decimal amount, int dayOfMonth, DateOnly? endMonth)
     {
+        if (!IsActive)
+            throw new DomainException("Recorrência encerrada não se altera: crie uma nova.");
+        if (endMonth is { } end && GeneratedThrough is { } through && FirstOf(end) < through)
+            throw new DomainException(
+                $"Os títulos até {through:MM/yyyy} já foram gerados: escolha um fim a partir desse mês ou cancele os títulos que sobrarem.");
         Apply(description, amount, dayOfMonth, endMonth);
         SetUpdatedAt();
     }
 
     public void Deactivate() { IsActive = false; SetUpdatedAt(); }
 
-    /// <summary>Months still to generate through <paramref name="horizonMonth"/> (inclusive).</summary>
+    /// <summary>Longest description: the generated títulos append " — MM/yyyy" and hold 500 characters.</summary>
+    public const int MaxDescriptionLength = 480;
+
+    /// <summary>Most months one generation may create (a safety net; the start is validated too).</summary>
+    public const int MaxMonthsPerGeneration = 24;
+
+    /// <summary>Months still to generate through <paramref name="horizonMonth"/> (inclusive), at most 24.</summary>
     public IReadOnlyList<DateOnly> PendingMonths(DateOnly horizonMonth)
     {
         if (!IsActive) return [];
         var last = FirstOf(horizonMonth);
         if (EndMonth is { } end && end < last) last = end;
         var months = new List<DateOnly>();
-        for (var m = GeneratedThrough?.AddMonths(1) ?? StartMonth; m <= last; m = m.AddMonths(1))
+        for (var m = GeneratedThrough?.AddMonths(1) ?? StartMonth; m <= last && months.Count < MaxMonthsPerGeneration; m = m.AddMonths(1))
             months.Add(m);
         return months;
     }
@@ -85,6 +96,8 @@ public class FinancialRecurrence : TenantEntity
     {
         if (string.IsNullOrWhiteSpace(description))
             throw new DomainException("A recorrência precisa de uma descrição.");
+        if (description.Trim().Length > MaxDescriptionLength)
+            throw new DomainException($"Descrição da recorrência com até {MaxDescriptionLength} caracteres.");
         var cents = Math.Round(amount, 2, MidpointRounding.AwayFromZero);
         if (cents <= 0 || cents != amount)
             throw new DomainException("O valor precisa ser maior que zero e em centavos.");

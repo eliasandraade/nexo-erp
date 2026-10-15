@@ -60,7 +60,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 UPDATE nexo.financial_transactions ft SET supplier_id = p.supplier_id
   FROM nexo.ret_purchases p
  WHERE ft.supplier_id IS NULL
-   AND ft.reference_type IN ('Purchase', 'PurchaseCancellation') AND ft.reference_id = p.id;");
+   AND ft.reference_type IN ('Purchase', 'PurchaseCancellation') AND ft.reference_id = p.id;
+-- juros/desconto lines of those títulos (PR 50) follow their título
+UPDATE nexo.financial_transactions adj SET supplier_id = t.supplier_id
+  FROM nexo.financial_transactions t
+ WHERE adj.supplier_id IS NULL AND adj.reference_type = 'Settlement'
+   AND adj.reference_id = t.id AND t.supplier_id IS NOT NULL;");
 
             migrationBuilder.CreateIndex(
                 name: "IX_financial_transactions_tenant_id_supplier_id",

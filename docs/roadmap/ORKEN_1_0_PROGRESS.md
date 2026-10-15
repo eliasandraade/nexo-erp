@@ -442,4 +442,23 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
   - `PayablesTests`, 3 de integração: fornecedor e baixa com juros e desconto; recorrência gera 3 meses uma vez só, título gerado cancelável, encerramento; recorrências inválidas;
   - `PurchaseFlowTests` confere o fornecedor e a categoria do título da compra;
   - Playwright: tela de contas a pagar.
+- **Revisão independente (corrigido antes do merge):**
+  - **Recorrência sem limite de início.** Um início omitido (0001-01) ou errado gerava milhares de títulos vencidos. Agora o início é obrigatório, vai de 12 meses atrás a 24 meses à frente, e cada geração cria no máximo 24 meses.
+  - **Recorrência com problema derrubava as leituras.**
+    - Uma descrição longa demais estourava a coluna ao gerar o título, e um tenant sem conta padrão também falhava. Depois disso, toda leitura do financeiro do tenant quebrava, e a recorrência ficava salva.
+    - Agora a descrição vai até 480 caracteres e a conta padrão é validada antes.
+    - Criar ou alterar uma recorrência e gerar seus títulos formam uma transação só.
+    - Uma falha de geração nunca bloqueia leitura: ela vai para o log e a leitura mostra o que existe.
+  - **Aging:** passa a respeitar o filtro de fornecedor.
+  - **Nome do fornecedor:** um nome fantasia vazio mostra a razão social.
+  - **Recorrência encerrada:** não se altera.
+  - **Fim da recorrência:** não pode ficar antes dos meses já gerados.
+  - **Recorrência a pagar só aceita fornecedor** (e a de receber, só cliente).
+  - **Migration:** também preenche o fornecedor dos ajustes de juros e desconto dos títulos de compra.
+  - **Tela:**
+    - encerrar pede confirmação;
+    - o mês de início é validado (navegadores sem seletor de mês);
+    - mostra "desde MM/aaaa";
+    - criar atualiza o livro.
+- **Fica para depois:** editar recorrência pela tela (o endpoint existe) e reaplicar uma mudança de valor nos títulos já gerados e ainda em aberto.
 

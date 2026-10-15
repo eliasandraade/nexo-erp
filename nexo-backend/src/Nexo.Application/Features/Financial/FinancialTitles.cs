@@ -89,7 +89,7 @@ public record CreateRecurrenceRequest(
     string Description,
     decimal Amount,
     int DayOfMonth,                 // 1..31 (month's last day when shorter)
-    DateOnly StartMonth,
+    DateOnly? StartMonth,           // required; from 12 months back to 24 ahead
     DateOnly? EndMonth = null,
     string? Category = null,
     Guid? SupplierId = null,

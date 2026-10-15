@@ -125,11 +125,12 @@ public class FinancialRepository : IFinancialRepository
     }
 
     public async Task<IReadOnlyList<OpenTitleRow>> GetOpenTitleRowsAsync(
-        TransactionType type, Guid? customerId, CancellationToken ct = default)
+        TransactionType type, Guid? customerId, Guid? supplierId, CancellationToken ct = default)
     {
         var query = _context.FinancialTransactions.Where(x => x.TransactionType == type
             && (x.Status == TransactionStatus.Pending || x.Status == TransactionStatus.Overdue));
         if (customerId is { } id) query = query.Where(x => x.CustomerId == id);
+        if (supplierId is { } sid) query = query.Where(x => x.SupplierId == sid);
         var rows = await query.Select(x => new { x.DueDate, x.Amount }).ToListAsync(ct);
         return rows.Select(r => new OpenTitleRow(r.DueDate, r.Amount)).ToList();
     }
@@ -147,7 +148,7 @@ public class FinancialRepository : IFinancialRepository
         if (list.Count == 0) return new Dictionary<Guid, string>();
         var rows = await _context.Suppliers.Where(s => list.Contains(s.Id))
             .Select(s => new { s.Id, s.Name, s.TradeName }).ToListAsync(ct);
-        return rows.ToDictionary(r => r.Id, r => r.TradeName ?? r.Name);
+        return rows.ToDictionary(r => r.Id, r => string.IsNullOrWhiteSpace(r.TradeName) ? r.Name : r.TradeName);
     }
 
     public async Task<IReadOnlyList<FinancialRecurrence>> GetRecurrencesAsync(bool includeInactive, CancellationToken ct = default)

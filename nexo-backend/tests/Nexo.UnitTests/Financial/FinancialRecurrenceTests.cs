@@ -42,6 +42,21 @@ public class FinancialRecurrenceTests
         r.DueDayIn(new DateOnly(2026, 5, 1)).Should().Be(new DateOnly(2026, 5, 31));
     }
 
+    [Fact]
+    public void One_generation_creates_at_most_24_months()
+        => Rent(start: new DateOnly(2020, 1, 1)).PendingMonths(new DateOnly(2026, 1, 1)).Should().HaveCount(24);
+
+    [Fact]
+    public void An_ended_recurrence_is_not_edited_and_the_end_cannot_precede_what_was_generated()
+    {
+        var r = Rent();
+        r.MarkGenerated(new DateOnly(2026, 3, 1));
+        FluentActions.Invoking(() => r.Update("Aluguel", 1800m, 31, new DateOnly(2026, 2, 1))).Should().Throw<DomainException>();
+        r.Update("Aluguel", 1900m, 31, new DateOnly(2026, 3, 1));   // ending on the last generated month is fine
+        r.Deactivate();
+        FluentActions.Invoking(() => r.Update("Aluguel", 2000m, 31, null)).Should().Throw<DomainException>();
+    }
+
     [Theory]
     [InlineData(0, 100)]
     [InlineData(32, 100)]

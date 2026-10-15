@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Service;
@@ -18,6 +19,7 @@ public class FinancialService
     private readonly IUnitOfWork _uow;
     private readonly ICurrentTenant _currentTenant;
     private readonly ICurrentUser _currentUser;
+    private readonly ILogger<FinancialService> _logger;
 
     /// <summary>Most entries a ledger response carries; totals always cover the whole period.</summary>
     public const int LedgerEntryLimit = 1000;
@@ -25,8 +27,9 @@ public class FinancialService
     public FinancialService(
         IFinancialRepository financial, IStoreRepository stores, ICustomerRepository customers,
         ISupplierRepository suppliers, FinancialRecurrenceService recurrences, IUnitOfWork uow,
-        ICurrentTenant currentTenant, ICurrentUser currentUser)
+        ICurrentTenant currentTenant, ICurrentUser currentUser, ILogger<FinancialService> logger)
     {
+        _logger        = logger;
         _financial     = financial;
         _stores        = stores;
         _customers     = customers;
@@ -302,7 +305,7 @@ public class FinancialService
 
     public async Task<TitlesDto> GetTitlesAsync(TitlesFilter filter, CancellationToken ct = default)
     {
-        await _recurrences.EnsureGeneratedAsync(ct);   // recurring títulos of this and next month exist
+        await EnsureRecurrencesAsync(ct);   // recurring títulos of this and next month exist
         var today = BusinessClock.TodayStartUtc();
         var titles = await _financial.GetTitlesAsync(filter, today, TitleListLimit + 1, ct);
         var page = titles.Take(TitleListLimit).ToList();
@@ -311,7 +314,7 @@ public class FinancialService
         var supplierNames = await _financial.GetSupplierNamesAsync(
             page.Where(t => t.SupplierId.HasValue).Select(t => t.SupplierId!.Value), ct);
 
-        var open = await _financial.GetOpenTitleRowsAsync(filter.Type, filter.CustomerId, ct);
+        var open = await _financial.GetOpenTitleRowsAsync(filter.Type, filter.CustomerId, filter.SupplierId, ct);
         decimal Bucket(int min, int max) => open
             .Where(r => r.DueDate < today && BusinessClock.DaysOverdue(r.DueDate) is var d && d >= min && d <= max)
             .Sum(r => r.Amount);
@@ -340,6 +343,16 @@ public class FinancialService
             late ? TransactionStatus.Overdue.ToString() : t.Status.ToString(),
             late ? BusinessClock.DaysOverdue(t.DueDate) : 0,
             t.Category.ToString(), t.StoreId, t.ReferenceType, t.ReferenceId, t.ParentTransactionId);
+    }
+
+    /// <summary>Generation never blocks a read: a failure is logged and the read shows what exists.</summary>
+    private async Task EnsureRecurrencesAsync(CancellationToken ct)
+    {
+        try { await _recurrences.EnsureGeneratedAsync(ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Recurring títulos could not be generated for tenant {TenantId}", _currentTenant.Id);
+        }
     }
 
     // ── Parcelamento ─────────────────────────────────────────────────────────
@@ -421,7 +434,7 @@ public class FinancialService
         if (filter.To <= filter.From)
             throw new DomainException("O fim do período precisa ser depois do início.");
 
-        await _recurrences.EnsureGeneratedAsync(ct);
+        await EnsureRecurrencesAsync(ct);
         var totals  = await _financial.GetLedgerTotalsAsync(filter, ct);
         var entries = await _financial.GetLedgerEntriesAsync(filter, LedgerEntryLimit + 1, ct);
 

@@ -55,21 +55,35 @@ public class FinancialRecurrenceService
             throw new DomainException("Categoria inválida.");
         if (!category.IsAllowedForManualEntry(type))
             throw new DomainException("Esta categoria não combina com o tipo do lançamento.");
+        // The window keeps one request from creating years of títulos by mistake (or from a missing date).
+        if (request.StartMonth is not { } startMonth)
+            throw new DomainException("Informe o mês de início da recorrência.");
+        var current = CurrentMonth();
+        if (startMonth < current.AddMonths(-12) || startMonth > current.AddMonths(24))
+            throw new DomainException("O início da recorrência vai de 12 meses atrás a 24 meses à frente.");
+        if (type == TransactionType.Payable && request.CustomerId is not null)
+            throw new DomainException("Uma conta a pagar recorrente tem fornecedor, não cliente.");
+        if (type == TransactionType.Receivable && request.SupplierId is not null)
+            throw new DomainException("Um recebimento recorrente tem cliente, não fornecedor.");
         if (request.SupplierId is { } supplierId)
             _ = await _suppliers.GetByIdAsync(supplierId, ct) ?? throw new NotFoundException("Supplier", supplierId);
         if (request.CustomerId is { } customerId)
             _ = await _customers.GetByIdAsync(customerId, ct) ?? throw new NotFoundException("Customer", customerId);
+        _ = await DefaultAccountIdAsync(type, ct);   // generation needs it: fail now, not on every read
         if (request.StoreId is { } storeId)
             _ = await _stores.GetByIdAsync(storeId, ct) ?? throw new NotFoundException("Store", storeId);
 
         var recurrence = FinancialRecurrence.Create(
             _currentTenant.Id, type, category, request.Description, request.Amount, request.DayOfMonth,
-            request.StartMonth, request.EndMonth, _currentUser.UserId,
+            startMonth, request.EndMonth, _currentUser.UserId,
             request.SupplierId, request.CustomerId, request.StoreId);
+
+        // One unit: the recurrence and its first títulos are saved together or not at all.
+        await using var scope = await _uow.BeginTransactionAsync(ct);
         await _financial.AddRecurrenceAsync(recurrence, ct);
         await _financial.SaveChangesAsync(ct);
-
         await EnsureGeneratedAsync(ct);
+        await scope.CommitAsync(ct);
         return Map(recurrence, await NamesAsync(recurrence, ct));
     }
 
@@ -78,8 +92,11 @@ public class FinancialRecurrenceService
     {
         var recurrence = await _financial.GetRecurrenceByIdAsync(id, ct) ?? throw new NotFoundException("FinancialRecurrence", id);
         recurrence.Update(request.Description, request.Amount, request.DayOfMonth, request.EndMonth);
+
+        await using var scope = await _uow.BeginTransactionAsync(ct);
         await _financial.SaveChangesAsync(ct);
         await EnsureGeneratedAsync(ct);
+        await scope.CommitAsync(ct);
         return Map(recurrence, await NamesAsync(recurrence, ct));
     }
 
@@ -98,8 +115,7 @@ public class FinancialRecurrenceService
     /// </summary>
     public async Task EnsureGeneratedAsync(CancellationToken ct = default)
     {
-        var today = DateOnly.FromDateTime(BusinessClock.TodayStartUtc().AddHours(12));   // a Brazil calendar day
-        var horizon = new DateOnly(today.Year, today.Month, 1).AddMonths(1);
+        var horizon = CurrentMonth().AddMonths(1);
 
         // Fast path: nothing pending → no transaction, no lock (the common case on every read).
         var active = await _financial.GetRecurrencesAsync(includeInactive: false, ct);
@@ -112,9 +128,7 @@ public class FinancialRecurrenceService
         {
             var months = recurrence.PendingMonths(horizon);
             if (months.Count == 0) continue;
-            var accountId = (await _financial.GetDefaultByTypeAsync(
-                    recurrence.TransactionType == TransactionType.Receivable ? FinancialAccountType.Receivable : FinancialAccountType.Payable, ct)
-                ?? throw new DomainException("Nenhuma conta padrão ativa para a recorrência.")).Id;
+            var accountId = await DefaultAccountIdAsync(recurrence.TransactionType, ct);
             foreach (var month in months)
             {
                 var due1 = BusinessClock.NoonUtc(recurrence.DueDayIn(month));
@@ -131,6 +145,18 @@ public class FinancialRecurrenceService
         if (generated) await _financial.SaveChangesAsync(ct);
         await scope.CommitAsync(ct);
     }
+
+    /// <summary>First day of the current month on the Brazil calendar.</summary>
+    private static DateOnly CurrentMonth()
+    {
+        var today = DateOnly.FromDateTime(BusinessClock.TodayStartUtc().AddHours(12));
+        return new DateOnly(today.Year, today.Month, 1);
+    }
+
+    private async Task<Guid> DefaultAccountIdAsync(TransactionType type, CancellationToken ct)
+        => (await _financial.GetDefaultByTypeAsync(
+                type == TransactionType.Receivable ? FinancialAccountType.Receivable : FinancialAccountType.Payable, ct)
+            ?? throw new DomainException("Nenhuma conta padrão ativa para a recorrência (Contas a Receber / a Pagar).")).Id;
 
     private async Task<IReadOnlyDictionary<Guid, string>> NamesAsync(FinancialRecurrence r, CancellationToken ct)
         => r.SupplierId is { } id ? await _financial.GetSupplierNamesAsync([id], ct) : new Dictionary<Guid, string>();
