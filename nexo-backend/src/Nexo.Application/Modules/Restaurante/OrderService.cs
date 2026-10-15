@@ -296,8 +296,9 @@ public class OrderService
         await _orders.SaveChangesAsync(ct);
 
         // The kitchen must see it now (realtime screens don't poll), and the delivery tracking too
-        _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, RestOrderItemStatus.Cancelled.ToString());
-        _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString());
+        // fire-and-forget on purpose: the push must not die with the request
+        _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, RestOrderItemStatus.Cancelled.ToString(), CancellationToken.None);
+        _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString(), CancellationToken.None);
         try { await _deliverySync.SyncFromRestOrderAsync(order.Id, order.Status, ct); }
         catch (Exception ex) { _logger.LogError(ex, "DeliveryOrder sync failed for RestOrder {Id} → {Status}", order.Id, order.Status); }
         return Map(order);
