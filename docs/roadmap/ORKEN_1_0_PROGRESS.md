@@ -827,3 +827,12 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - custo por etapa: a despesa (`FinancialMovement`) não tem vínculo com etapa e precisa de modelagem;
   - PDF do orçamento e relatórios do Build;
   - "converter orçamento em obra" (o endpoint existe; falta definir o fluxo na tela).
+- **Correções da revisão independente** (sem bloqueadores; 3 should-fix e menores):
+  - o desvio de obra sem orçamento aprovado aparecia como estouro: agora mostra "—, sem orçamento aprovado";
+  - reordenar fica bloqueado até a lista recarregar, para que um segundo clique rápido não aja sobre a ordem antiga;
+  - criar etapa ou diário também atualiza os cards e o painel;
+  - o clima de "hoje" usa o dia local;
+  - a confirmação do estorno se desarma sozinha em 4 s (no toque não existe blur); mensagem do estorno repetido em português;
+  - editar ou reordenar etapas de obra cancelada ou concluída é recusado, com a mesma regra da exclusão;
+  - validadores também para editar item de orçamento, margem e diário;
+  - botões das etapas com área de toque maior, quebrando linha no celular.

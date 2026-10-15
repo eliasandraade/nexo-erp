@@ -17,7 +17,7 @@ public interface IBuildProjectRepository
 
     Task<int> CountAsync(BuildProjectStatus? status = null, CancellationToken ct = default);
 
-    /// <summary>Stage, completed-stage and daily-log counts per project (one aggregate query).</summary>
+    /// <summary>Stage, completed-stage and daily-log counts per project (two aggregate queries, no entity loading).</summary>
     Task<IReadOnlyDictionary<Guid, BuildProjectCounts>> GetCountsAsync(
         IReadOnlyCollection<Guid> projectIds, CancellationToken ct = default);
 

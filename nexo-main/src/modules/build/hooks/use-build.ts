@@ -138,19 +138,19 @@ export function useCreateStage(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (req: CreateBuildStageRequest) => createStage(projectId, req),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.stages(projectId) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(projectId) });
-    },
+    onSuccess: () => invalidateStages(qc, projectId),
   });
 }
 
 /** Stages feed the Geral tab's progress and the project cards: refresh them all. */
+// Returned so the mutation stays pending until the list is fresh (no second move on stale data).
 function invalidateStages(qc: ReturnType<typeof useQueryClient>, projectId: string) {
-  qc.invalidateQueries({ queryKey: BUILD_KEYS.stages(projectId) });
-  qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(projectId) });
-  qc.invalidateQueries({ queryKey: ["build", "projects"] });
-  qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: BUILD_KEYS.stages(projectId) }),
+    qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(projectId) }),
+    qc.invalidateQueries({ queryKey: ["build", "projects"] }),
+    qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() }),
+  ]);
 }
 
 export function useUpdateStageProgress(projectId: string) {
@@ -343,6 +343,8 @@ export function useCreateDailyLog(projectId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
       qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(projectId) });
+      qc.invalidateQueries({ queryKey: ["build", "projects"] });    // card log counts
+      qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
     },
   });
 }

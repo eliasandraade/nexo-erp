@@ -56,11 +56,6 @@ public class BuildStagesController : ControllerBase
             value:             dto);
     }
 
-    /// <summary>
-    /// Atualiza progresso (0-100%) de uma etapa.
-    /// 100% auto-completa a etapa.
-    /// Campo status é opcional — permite override explícito do status.
-    /// </summary>
     /// <summary>Edita nome, descrição, ordem e datas previstas da etapa.</summary>
     [HttpPut("stages/{id:guid}")]
     public async Task<ActionResult<BuildStageDto>> Update(
@@ -69,6 +64,11 @@ public class BuildStagesController : ControllerBase
         CancellationToken ct)
         => Ok(await _stages.UpdateAsync(id, request, ct));
 
+    /// <summary>
+    /// Atualiza progresso (0-100%) de uma etapa.
+    /// 100% auto-completa a etapa.
+    /// Campo status é opcional — permite override explícito do status.
+    /// </summary>
     [HttpPut("stages/{id:guid}/progress")]
     public async Task<ActionResult<BuildStageDto>> UpdateProgress(
         Guid id,

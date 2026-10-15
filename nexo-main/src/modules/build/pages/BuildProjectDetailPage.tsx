@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Trash2, Pencil, ArrowUp, ArrowDown, SlidersHorizontal, Undo2,
@@ -365,8 +365,8 @@ function TabEtapas({ projectId }: { projectId: string }) {
         <div className="space-y-2">
           {stages.map((stage, index) => (
             <div key={stage.id} className="rounded-md border border-border bg-card p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 flex-1 basis-40">
                   <p className="font-medium text-sm truncate">{stage.name}</p>
                   {stage.description && (
                     <p className="text-xs text-muted-foreground truncate">{stage.description}</p>
@@ -390,21 +390,21 @@ function TabEtapas({ projectId }: { projectId: string }) {
                   <button
                     onClick={() => move(index, -1)} disabled={index === 0 || reorderMut.isPending}
                     aria-label={`Subir ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-1 disabled:opacity-30"
+                    className="text-muted-foreground hover:text-foreground transition-colors p-2 disabled:opacity-30"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => move(index, 1)} disabled={index === stages.length - 1 || reorderMut.isPending}
                     aria-label={`Descer ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-1 disabled:opacity-30"
+                    className="text-muted-foreground hover:text-foreground transition-colors p-2 disabled:opacity-30"
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => { setEditId(stage.id); setEditPct(stage.progressPercent); }}
                     aria-label={`Atualizar progresso de ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                    className="text-muted-foreground hover:text-foreground transition-colors p-2"
                   >
                     <SlidersHorizontal className="h-3.5 w-3.5" />
                   </button>
@@ -412,14 +412,14 @@ function TabEtapas({ projectId }: { projectId: string }) {
                     onClick={() => setDetails({ id: stage.id, name: stage.name, description: stage.description ?? "",
                       start: stage.plannedStartDate ?? "", end: stage.plannedEndDate ?? "" })}
                     aria-label={`Editar ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                    className="text-muted-foreground hover:text-foreground transition-colors p-2"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(stage.id)}
                     aria-label={`Remover ${stage.name}`}
-                    className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                    className="text-muted-foreground hover:text-destructive transition-colors p-2"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -926,8 +926,7 @@ function TabDiario({ projectId }: { projectId: string }) {
     setWeatherResult(null);
     setWeatherStatus("idle");
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const isToday = logDate === today;
+      const isToday = logDate === localToday();
       const response = isToday
         ? await getWeatherCurrent(lat, lon)
         : await getWeatherHistory(lat, lon, logDate);
@@ -1285,6 +1284,12 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
   const movements = movementsData?.pages.flatMap((pg) => pg.items) ?? [];
   const totalMovements = movementsData?.pages[0]?.totalCount ?? 0;
 
+  useEffect(() => {
+    if (!confirmVoid) return;
+    const t = setTimeout(() => setConfirmVoid(null), 4000);   // armed for 4 s, then back to safe
+    return () => clearTimeout(t);
+  }, [confirmVoid]);
+
   const handleVoid = (id: string) => {
     if (confirmVoid !== id) { setConfirmVoid(id); return; }
     voidMut.mutate(id, {
@@ -1321,8 +1326,10 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 
   const isOverBudget    = financial.approvedBudget != null &&
                           financial.totalRealizedExpenses > financial.approvedBudget;
-  // the API's variance is approved − realized: negative means the project went over budget
-  const varianceIsOver  = financial.varianceAmount < 0;
+  // the API's variance is approved − realized: negative means the project went over budget;
+  // with no approved budget there is nothing to compare against
+  const noApproved      = financial.approvedBudget == null;
+  const varianceIsOver  = !noApproved && financial.varianceAmount < 0;
   const varianceIsEqual = financial.varianceAmount === 0;
 
   const coveragePercent = financial.approvedBudget
@@ -1391,12 +1398,14 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             varianceIsEqual ? "text-muted-foreground" :
                               "text-emerald-600 dark:text-emerald-400",
           )}>
-            {fmt(Math.abs(financial.varianceAmount))}
+            {noApproved ? "—" : fmt(Math.abs(financial.varianceAmount))}
           </p>
-          {!varianceIsEqual && (
-            <p className="text-xs text-muted-foreground">{varianceIsOver ? "acima do aprovado" : "abaixo do aprovado"}</p>
-          )}
-          {financial.variancePercent !== 0 && (
+          {noApproved
+            ? <p className="text-xs text-muted-foreground">sem orçamento aprovado</p>
+            : !varianceIsEqual && (
+              <p className="text-xs text-muted-foreground">{varianceIsOver ? "acima do aprovado" : "abaixo do aprovado"}</p>
+            )}
+          {!noApproved && financial.variancePercent !== 0 && (
             <p className="text-xs text-muted-foreground mt-1">
               {Math.abs(financial.variancePercent).toFixed(1)}% do aprovado
             </p>

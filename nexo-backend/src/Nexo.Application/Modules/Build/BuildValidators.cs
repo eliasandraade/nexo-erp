@@ -174,3 +174,37 @@ public class ReorderBuildStagesRequestValidator : AbstractValidator<ReorderBuild
         RuleFor(x => x.Entries).NotNull().WithMessage("Informe a nova ordem das etapas.");
     }
 }
+
+public class UpdateBuildBudgetItemRequestValidator : AbstractValidator<UpdateBuildBudgetItemRequest>
+{
+    public UpdateBuildBudgetItemRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().WithMessage("Informe o nome do item.")
+            .MaximumLength(300).WithMessage("O nome do item pode ter até 300 caracteres.");
+        RuleFor(x => x.Category).NotEmpty().WithMessage("Informe a categoria.")
+            .MaximumLength(100).WithMessage("A categoria pode ter até 100 caracteres.");
+        RuleFor(x => x.Unit).NotEmpty().WithMessage("Informe a unidade.")
+            .MaximumLength(20).WithMessage("A unidade pode ter até 20 caracteres.");
+        RuleFor(x => x.Quantity).GreaterThan(0m).WithMessage("A quantidade precisa ser maior que zero.");
+        RuleFor(x => x.UnitCost).GreaterThanOrEqualTo(0m).WithMessage("O custo unitário não pode ser negativo.");
+    }
+}
+
+public class SetBudgetMarginRequestValidator : AbstractValidator<SetBudgetMarginRequest>
+{
+    public SetBudgetMarginRequestValidator()
+    {
+        RuleFor(x => x.MarginPercent).GreaterThanOrEqualTo(0m).WithMessage("A margem não pode ser negativa.");
+    }
+}
+
+public class UpdateDailyLogRequestValidator : AbstractValidator<UpdateDailyLogRequest>
+{
+    public UpdateDailyLogRequestValidator()
+    {
+        RuleFor(x => x.Notes).NotEmpty().WithMessage("Escreva o que aconteceu no dia.")
+            .MaximumLength(5000).WithMessage("O registro pode ter até 5000 caracteres.");
+        RuleFor(x => x.WeatherSummary).MaximumLength(200).WithMessage("O clima pode ter até 200 caracteres.")
+            .When(x => x.WeatherSummary is not null);
+    }
+}

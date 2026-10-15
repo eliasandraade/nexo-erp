@@ -75,7 +75,7 @@ public class FinancialMovement : TenantEntity
     public void Void()
     {
         if (Status == MovementStatus.Voided)
-            throw new DomainException("Movement is already voided.");
+            throw new DomainException("Esta despesa já foi estornada.");
 
         Status = MovementStatus.Voided;
         SetUpdatedAt();

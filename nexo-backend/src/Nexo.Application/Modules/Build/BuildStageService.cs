@@ -74,6 +74,7 @@ public class BuildStageService
     {
         var stage = await _stages.GetByIdAsync(stageId, ct)
             ?? throw new NotFoundException("BuildStage", stageId);
+        await EnsureProjectActiveAsync(stage.ProjectId, ct);
 
         stage.UpdateDetails(
             name:         request.Name,
@@ -115,8 +116,7 @@ public class BuildStageService
         ReorderBuildStagesRequest request,
         CancellationToken         ct = default)
     {
-        _ = await _projects.GetByIdAsync(projectId, ct)
-            ?? throw new NotFoundException("BuildProject", projectId);
+        await EnsureProjectActiveAsync(projectId, ct);
 
         var stages   = await _stages.GetByProjectAsync(projectId, ct);
         var stageMap = stages.ToDictionary(s => s.Id);
@@ -143,6 +143,15 @@ public class BuildStageService
 
         _stages.Remove(stage);
         await _stages.SaveChangesAsync(ct);
+    }
+
+    /// <summary>Stages of a cancelled or completed project are history: no edits (same rule as delete).</summary>
+    private async Task EnsureProjectActiveAsync(Guid projectId, CancellationToken ct)
+    {
+        var project = await _projects.GetByIdAsync(projectId, ct)
+            ?? throw new NotFoundException("BuildProject", projectId);
+        if (!project.IsActive)
+            throw new DomainException("Esta obra não está ativa: as etapas não podem mais ser alteradas.");
     }
 
     // ── Mapper ────────────────────────────────────────────────────────────────
