@@ -24,7 +24,8 @@
 | #57 | Service: cancelamento pelo cliente e estorno de pacote | `cf00b11` | `ServiceSelfCancelAndUsageReversal` (aditiva + índice único refeito com filtro mais estreito) | Em produção |
 | #58 | Service: avisos por e-mail (confirmação e lembrete) | `86ed34c` | `ServiceCustomerEmails` (aditiva) | Em produção |
 | #59 | Service: financeiro, profissional por item, plurais | `0e6de63` | `ServiceFinanceIndexes` (só índices) | Em produção |
-| #60 | Build: fechamento (contadores, paginação, validação, estorno de despesa, etapas) | — | — | Em revisão |
+| #60 | Build: fechamento (contadores, paginação, validação, estorno de despesa, etapas) | `fc723ca` | — | Em produção |
+| #61 | Billing: integridade (webhook, carência, redirects) | — | `BillingPastDueGrace` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -836,3 +837,19 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - editar ou reordenar etapas de obra cancelada ou concluída é recusado, com a mesma regra da exclusão;
   - validadores também para editar item de orçamento, margem e diário;
   - botões das etapas com área de toque maior, quebrando linha no celular.
+
+## PR 61 — Billing: integridade
+
+O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnabled=false`), então nada muda para os clientes hoje. São correções para que, ao ligar, a cobrança e o corte de acesso estejam certos. Preços, planos e meios de pagamento são decisões do dono e ficam para o PR 62.
+
+- **Uma regra de acesso para todos os portões** (`ModuleSubscription.HasAccessAt`): o gate de módulo, os módulos do login e os módulos da loja usavam três cópias da mesma condição.
+- **Carência de 7 dias para pagamento atrasado:** já estava documentada na entidade, mas não era aplicada (`PastDue` cortava na hora). Ela conta da primeira falha (`PastDueSince`), não reinicia a cada nova tentativa do cartão, e some quando o pagamento volta.
+- **Status do Stripe sem acesso por padrão:** qualquer status desconhecido virava `Active`. Agora `incomplete`, `paused` e desconhecidos viram `Suspended`, e `incomplete_expired` vira `Canceled`.
+- **Reassinatura:** um checkout que caía numa linha existente mantinha o id da assinatura antiga, então cancelamentos e atualizações da nova nunca chegavam e o acesso nunca era cortado. Agora a linha passa a seguir a nova assinatura, e um segundo checkout de módulo já pago no Stripe é recusado (409, "use Gerenciar assinatura") para não gerar uma cobrança dupla.
+- **Redirect aberto:** as URLs de sucesso, cancelamento e retorno só são aceitas no domínio do app; fora dele, vale o padrão.
+- **Cache de acesso:** os webhooks invalidam o cache do módulo, em vez de esperar até 5 minutos.
+- **Testes:**
+  - unitários de mapeamento de status, redirect e carência;
+  - webhook com payload assinado como o Stripe faz: status desconhecido suspende e limpa o cache; assinatura inválida não muda nada; exclusão cancela;
+  - o teste do portal sem Menu ativo passou a usar um atraso já fora da carência.
+- **Migração validada** num Postgres descartável (up → down → up). Linhas `PastDue` antigas ficam sem data e seguem sem acesso, como antes.
