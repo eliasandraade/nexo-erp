@@ -104,4 +104,6 @@ public sealed record PublicAppointmentViewDto(
     string   ProfessionalName,
     string   StoreName,
     bool     CanCancel,
-    DateTime CancelDeadline);
+    DateTime CancelDeadline,
+    /// <summary>True when only the store can cancel it now: it already has a comanda or was paid with a package.</summary>
+    bool     HandledByStore = false);

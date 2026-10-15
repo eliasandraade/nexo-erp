@@ -75,12 +75,14 @@ public class SvcAppointmentService
 
     public async Task<SvcAppointmentDto> UpdateAsync(Guid id, UpdateSvcAppointmentRequest r, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        // Row first (the customer may be cancelling it by the link right now), then the professional.
+        await _repo.LockRowAsync(id, _currentTenant.Id, ct);
         var appt = await _repo.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcAppointment", id);
         if (appt.IsTerminal)
             throw new DomainException($"Cannot edit a {appt.Status} appointment.");
 
         var (price, commission) = await ResolveAndValidateRefsAsync(r.CustomerId, r.ProfessionalId, r.CatalogItemId, r.SubjectId, ct);
-        await using var tx = await _uow.BeginTransactionAsync(ct);
         await _repo.LockProfessionalAsync(r.ProfessionalId, ct);
         // A block added after the booking doesn't freeze it: editing notes or the customer keeps the
         // time. Only a time inside the old one for the same professional skips the block check.
@@ -98,6 +100,7 @@ public class SvcAppointmentService
         Guid id, ChangeSvcAppointmentStatusRequest r, CancellationToken ct = default)
     {
         await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _repo.LockRowAsync(id, _currentTenant.Id, ct);   // vs. the customer cancelling by the link
         var appt = await _repo.GetByIdAsync(id, ct) ?? throw new NotFoundException("SvcAppointment", id);
         appt.ChangeStatus(r.Status!.Value, r.Reason);   // Status is NotNull-validated upstream
         _repo.Update(appt);

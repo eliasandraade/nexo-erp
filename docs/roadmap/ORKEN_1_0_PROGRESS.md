@@ -689,3 +689,13 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - unitários: chave do link, prazo de cancelamento, estorno de saldo e de consumo;
   - Playwright: cliente vê e cancela pelo link; estorno exige motivo.
 - **Migração validada** num Postgres descartável (up → down → up).
+- **Correções da revisão independente** (sem bloqueadores; 4 should-fix e menores):
+  - **comissão após o estorno:** se a comanda paga pelo pacote já estava quitada, ou o agendamento já concluído, o próprio serviço passa a ganhar a comissão. Antes, o profissional perdia a comissão de um serviço feito. O estorno trava a comanda na mesma ordem do consumo (pacote → comanda);
+  - **cancelamento pelo link** é recusado quando o agendamento já tem comanda ou foi pago com pacote; a página explica que só a loja pode desmarcar. Antes, o saldo e a comissão ficavam presos sem ninguém saber;
+  - **cancelamento × mudança da equipe:** cancelar pelo link, mudar o status e reagendar travam a linha do agendamento. Antes, a equipe podia sobrescrever um cancelamento recém-feito pelo cliente;
+  - a tela de consumo volta a oferecer o agendamento cujo consumo foi estornado;
+  - trocar o cliente de um agendamento gera um link novo, e o antigo deixa de funcionar;
+  - um pacote vencido que recebe estorno fica "Vencido", não "Ativo";
+  - cancelar o pacote também trava a linha;
+  - a página do cliente distingue "não encontrado" de falha de rede (com "Tentar de novo"), não recarrega ao focar a janela, relê após um cancelamento recusado, e tem acessibilidade no carregamento e no foco da confirmação;
+  - testes novos: comissão do item da comanda após o estorno; link recusa cancelar com comanda aberta; link novo ao trocar de cliente; estorno em pacote vencido.

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, CalendarCheck, CalendarX, Loader2 } from "lucide-react";
@@ -27,11 +27,18 @@ export default function ManageBookingPage() {
   const portalQ = usePortal(slug);
   const theme = getPortalTheme(portalQ.data?.presetKey);
   const key = ["svc-portal-booking", slug, token];
-  const bookingQ = useQuery({ queryKey: key, queryFn: () => getAppointmentByToken(slug, token), retry: false });
+  const bookingQ = useQuery({
+    queryKey: key, queryFn: () => getAppointmentByToken(slug, token),
+    retry: false, refetchOnWindowFocus: false,          // the public rate limit is shared with booking
+  });
   const [confirming, setConfirming] = useState(false);
+  const confirmRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (confirming) confirmRef.current?.focus(); }, [confirming]);
   const cancel = useMutation({
     mutationFn: () => cancelAppointmentByToken(slug, token),
     onSuccess: (view) => { qc.setQueryData(key, view); setConfirming(false); },
+    // e.g. the deadline passed with the page open: re-read so the screen tells the truth
+    onError: () => { setConfirming(false); void qc.invalidateQueries({ queryKey: key }); },
   });
 
   const wrap = (children: React.ReactNode) => (
@@ -40,13 +47,21 @@ export default function ManageBookingPage() {
     </PortalThemeRoot>
   );
 
-  if (bookingQ.isLoading) return wrap(<Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--p-muted)" }} />);
+  if (bookingQ.isLoading) {
+    return wrap(<span role="status" aria-label="Carregando agendamento"><Loader2 className="h-7 w-7 animate-spin" style={{ color: "var(--p-muted)" }} /></span>);
+  }
   if (bookingQ.isError || !bookingQ.data) {
+    const notFound = bookingQ.error instanceof BookingApiError && bookingQ.error.status === 404;
     return wrap(
-      <div className="flex max-w-xs flex-col items-center gap-3 text-center">
+      <div role="alert" className="flex max-w-xs flex-col items-center gap-3 text-center">
         <span style={{ color: "var(--p-muted)" }}><AlertCircle className="h-9 w-9" /></span>
-        <p className="text-lg font-bold" style={{ fontFamily: "var(--p-display)" }}>Agendamento não encontrado</p>
-        <Muted className="text-sm">O link pode estar incompleto. Confira a mensagem em que você o recebeu.</Muted>
+        <p className="text-lg font-bold" style={{ fontFamily: "var(--p-display)" }}>
+          {notFound ? "Agendamento não encontrado" : "Não foi possível abrir o agendamento"}
+        </p>
+        <Muted className="text-sm">
+          {notFound ? "O link pode estar incompleto. Confira a mensagem em que você o recebeu." : "Verifique sua conexão e tente de novo em instantes."}
+        </Muted>
+        {!notFound && <Btn variant="outline" onClick={() => void bookingQ.refetch()}>Tentar de novo</Btn>}
       </div>,
     );
   }
@@ -80,7 +95,9 @@ export default function ManageBookingPage() {
       )}
       {b.canCancel && confirming && (
         <Surface className="mt-5 p-4 text-center">
-          <p className="text-sm font-semibold">Cancelar este agendamento?</p>
+          <div ref={confirmRef} tabIndex={-1} className="outline-none">
+            <p className="text-sm font-semibold">Cancelar este agendamento?</p>
+          </div>
           <Muted className="mt-1 block text-[12px]">O horário fica livre para outra pessoa.</Muted>
           <div className="mt-3 grid grid-cols-2 gap-2.5">
             <Btn variant="soft" onClick={() => setConfirming(false)} disabled={cancel.isPending}>Manter</Btn>
@@ -93,7 +110,9 @@ export default function ManageBookingPage() {
       {cancelError && <p role="alert" className="mt-3 text-center text-[13px] text-red-600">{cancelError}</p>}
       {!b.canCancel && !cancelled && (b.status === "Scheduled" || b.status === "Confirmed") && (
         <Muted className="mt-5 block text-center text-[13px]">
-          O prazo para cancelar por aqui terminou em {deadline}. Para desmarcar, fale com o estabelecimento.
+          {b.handledByStore
+            ? "Este agendamento já tem pagamento ou comanda. Para desmarcar, fale com o estabelecimento."
+            : `O prazo para cancelar por aqui terminou em ${deadline}. Para desmarcar, fale com o estabelecimento.`}
         </Muted>
       )}
       {cancelled && (

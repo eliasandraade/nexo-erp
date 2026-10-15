@@ -84,10 +84,19 @@ public class SvcCustomerPackageTests
         cp.MarkConsumed();
 
         b.Restore(1m);
-        cp.ReopenAfterReversal();
+        cp.ReopenAfterReversal(DateTime.UtcNow);
         b.RemainingQuantity.Should().Be(1m);
         cp.Status.Should().Be(SvcCustomerPackageStatus.Active);
         ((Action)(() => b.Restore(2m))).Should().Throw<DomainException>();   // would exceed the total
+    }
+
+    [Fact]
+    public void Reversal_on_a_package_whose_time_ran_out_leaves_it_expired()
+    {
+        var cp = New(expires: Start.AddDays(30));
+        cp.MarkConsumed();
+        cp.ReopenAfterReversal(Start.AddDays(31));
+        cp.Status.Should().Be(SvcCustomerPackageStatus.Expired);
     }
 
     [Fact]

@@ -103,10 +103,13 @@ public class SvcCustomerPackageService
 
     public async Task<SvcCustomerPackageDto> CancelAsync(Guid id, CancellationToken ct = default)
     {
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _customerPackages.LockAsync(id, _currentTenant.Id, ct);   // vs. a consumption or reversal in flight
         var cp = await _customerPackages.GetByIdWithItemsAsync(id, ct) ?? throw new NotFoundException("SvcCustomerPackage", id);
         cp.Cancel();
         _customerPackages.Update(cp);
         await _customerPackages.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(cp, cp.Items, await _usages.GetByCustomerPackageAsync(id, ct));
     }
 
@@ -178,6 +181,14 @@ public class SvcCustomerPackageService
         if (cp.Status == SvcCustomerPackageStatus.Cancelled)
             throw new DomainException("O pacote está cancelado; não há saldo para devolver.");
 
+        // The comanda this consumption paid (directly, or through its appointment): locked after the
+        // package — the same order a consumption takes — so a payment settling it right now sees the
+        // item uncovered, and the item's own commission is recognised below if it is already settled.
+        var appointment = usage.AppointmentId is { } aid ? await _appointments.GetByIdAsync(aid, ct) : null;
+        var orderId = usage.OrderId
+            ?? (appointment is null ? null : (await _orders.GetAllAsync(null, null, null, null, appointment.Id, ct)).FirstOrDefault()?.Id);
+        if (orderId is { } lockedOrderId) await _orders.LockAsync(lockedOrderId, _currentTenant.Id, ct);
+
         var balance = cp.Items.FirstOrDefault(i => i.Id == usage.CustomerPackageItemId)
             ?? throw new NotFoundException("SvcCustomerPackageItem", usage.CustomerPackageItemId);
 
@@ -186,11 +197,17 @@ public class SvcCustomerPackageService
         _usages.Update(usage);
         balance.Restore(usage.Quantity);
         _customerPackageItems.Update(balance);
-        cp.ReopenAfterReversal();
+        cp.ReopenAfterReversal(now);
         _customerPackages.Update(cp);
 
         await _customerPackages.SaveChangesAsync(ct);
         await _commissions.ReversePackageUsageAsync(usage.Id, now, $"{cp.Code} · {balance.NameSnapshot}", ct);
+        // No longer covered by the package: the service earns through its own source, if it was done
+        // and paid (a service not done finds nothing settled or completed — nothing is recognised).
+        if (orderId is { } oid)
+            await _commissions.RecognizeOrderIfSettledAsync(oid, now, ct);
+        else if (appointment is not null)
+            await _commissions.RecognizeAppointmentAsync(appointment, ct);
         await tx.CommitAsync(ct);
         return MapToDto(cp, cp.Items, await _usages.GetByCustomerPackageAsync(id, ct));
     }

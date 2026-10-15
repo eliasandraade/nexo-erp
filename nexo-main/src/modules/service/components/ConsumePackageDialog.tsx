@@ -53,7 +53,9 @@ export function ConsumePackageDialog({ open, onClose, customerPackage }: Consume
   );
   // Appointments this consumption can pay for: same customer, same service, not cancelled/no-show,
   // and not already paid by another consumption of this package.
-  const alreadyLinked = new Set((customerPackage?.usages ?? []).map((u) => u.appointmentId).filter(Boolean));
+  const alreadyLinked = new Set((customerPackage?.usages ?? [])
+    .filter((u) => !u.reversedAt)                       // a reversed consumption frees its appointment
+    .map((u) => u.appointmentId).filter(Boolean));
   const linkableAppointments = (open && customerPackage ? customerAppointments ?? [] : [])
     .filter((a) => a.catalogItemId === catalogItemId && a.status !== "Cancelled" && a.status !== "NoShow"
       && !alreadyLinked.has(a.id))

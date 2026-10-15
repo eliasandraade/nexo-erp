@@ -457,6 +457,28 @@ public class ServicePublicPortalTests
     }
 
     [Fact]
+    public async Task Customer_cannot_cancel_by_the_link_a_booking_that_already_has_a_comanda()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var slug = await ConfigureStoreAsync(admin, bookingEnabled: true);
+        var professional = await CreateProfessionalAsync(admin, AllWeek0622);
+        var catalog = await CreateCatalogAsync(admin);
+        var pub = _factory.CreateApiClient();
+        var slot = await PickSlotAsync(pub, slug, catalog, professional);
+        var created = await (await BookAsync(pub, slug, catalog, professional, slot)).Content.ReadFromJsonAsync<JsonElement>();
+        var token = created.GetProperty("manageToken").GetString()!;
+        var apptId = created.GetProperty("appointmentId").GetGuid();
+
+        (await admin.PostAsync($"/api/v1/service/orders/from-appointment/{apptId}", null)).IsSuccessStatusCode.Should().BeTrue();
+
+        var view = await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{slug}/appointments/{token}");
+        view.GetProperty("canCancel").GetBoolean().Should().BeFalse();
+        view.GetProperty("handledByStore").GetBoolean().Should().BeTrue();
+        (await pub.PostAsync($"/api/public/service/{slug}/appointments/{token}/cancel", null))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Fact]
     public async Task Unknown_or_malformed_link_returns_404()
     {
         var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);

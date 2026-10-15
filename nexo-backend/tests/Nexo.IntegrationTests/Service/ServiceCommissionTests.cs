@@ -733,6 +733,30 @@ public class ServiceCommissionTests
     }
 
     [Fact]
+    public async Task Reversing_the_consumption_of_a_paid_comanda_item_commissions_the_item_itself()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var prof = await ProfessionalAsync(c, 50m);
+        var customer = await CustomerAsync(c);
+        var catalog = await CatalogAsync(c, 40m, null);
+        var cp = await CustomerPackageAsync(c, customer, price: 120m, (catalog, 3m));
+        var order = await OrderAsync(c, customer, prof, (catalog, null));
+        var consumed = await (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/consume",
+                new { catalogItemId = catalog, quantity = 1m, orderId = order.Id, orderItemId = order.ItemIds.Single() }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        await PayAsync(c, order.Id, 40m);                        // settled: the item is covered by the package
+        var usageId = consumed.GetProperty("usages").EnumerateArray().Single().GetProperty("id").GetGuid();
+
+        (await c.PostAsJsonAsync($"{Base}/customer-packages/{cp}/usages/{usageId}/reverse", new { reason = "Pacote errado" }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var active = (await EntriesAsync(c, prof)).Where(IsActiveEarning).ToList();
+        active.Should().ContainSingle("the package no longer pays it — the paid comanda does");
+        active[0].GetProperty("source").GetString().Should().Be("OrderItem");
+        active[0].GetProperty("commissionAmount").GetDecimal().Should().Be(20m);
+    }
+
+    [Fact]
     public async Task Reversal_needs_a_reason_and_a_usage_of_the_same_package()
     {
         var c = await AuthClientFactory.LoginAsAdminAsync(_factory);

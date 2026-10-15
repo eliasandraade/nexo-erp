@@ -54,6 +54,17 @@ public class SvcAppointmentTests
     }
 
     [Fact]
+    public void Moving_the_booking_to_another_customer_retires_the_old_link()
+    {
+        var a = New();
+        var old = a.PublicToken;
+        a.Reschedule(Cust, Prof, Item, null, Start, End, 50m, "n", null);
+        a.PublicToken.Should().Be(old, "same customer keeps the link");
+        a.Reschedule(Guid.NewGuid(), Prof, Item, null, Start, End, 50m, "n", null);
+        a.PublicToken.Should().NotBe(old);
+    }
+
+    [Fact]
     public void Customer_cannot_cancel_a_booking_already_in_progress()
     {
         var a = New();

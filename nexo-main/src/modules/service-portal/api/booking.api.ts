@@ -149,6 +149,8 @@ export interface PublicAppointmentView {
   storeName:        string;
   canCancel:        boolean;
   cancelDeadline:   string;
+  /** Only the store can cancel it now (it already has a comanda or was paid with a package). */
+  handledByStore?:  boolean;
 }
 
 // ── Endpoints ───────────────────────────────────────────────────────────────────

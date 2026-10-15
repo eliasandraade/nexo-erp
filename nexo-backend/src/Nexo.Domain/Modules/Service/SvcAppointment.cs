@@ -93,6 +93,8 @@ public class SvcAppointment : StoreEntity
             throw new DomainException($"Cannot edit a {Status} appointment.");
         EnsureValid(customerId, professionalId, catalogItemId, startsAt, endsAt, priceSnapshot);
 
+        // the old link belongs to the previous customer: it must stop working
+        if (customerId != CustomerId && PublicToken is not null) PublicToken = NewPublicToken();
         CustomerId     = customerId;
         ProfessionalId = professionalId;
         CatalogItemId  = catalogItemId;
