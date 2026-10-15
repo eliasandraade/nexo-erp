@@ -31,7 +31,8 @@
 | #64a | Auth: bloqueio por tentativas, auditoria de login, troca obrigatória, convite (GitHub #63) | `e5ec8ca` | — | Em produção |
 | #64b | Auth: verificação em duas etapas (TOTP) (GitHub #65) | `baad911` | `AuthMfaTotp` (aditiva) | Em produção |
 | #65 | Relatórios do núcleo e painel com período (GitHub #66) | `0b260f9` | — | Em produção |
-| #66 | Fiscal: base (emissor, dados fiscais do produto, CPF na nota) | — | `FiscalFoundation` (aditiva) | Em revisão |
+| #66 | Fiscal: base (emissor, produto, cliente, CPF na nota) (GitHub #67) | `291acb5` | `FiscalFoundation` (aditiva) | Em produção |
+| #67 | CI do frontend e lockfile versionado | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -1039,6 +1040,8 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - códigos internos (13 dígitos começando por 2, como etiqueta de balança) e zeros não contam como GTIN;
   - o aviso de CPF incompleto no PDV só aparece quando o número parece completo ou ao sair do campo.
 - **Fica para depois:** emissão de verdade (provedor, certificado A1, contingência e documento fiscal da devolução); unificar o CNPJ de `Tenant.TaxId`, das configurações da empresa e do emissor; clientes do portal público que hoje guardam um identificador no lugar do CPF; mascarar o CPF do consumidor para o papel vendedor (LGPD); conferir CST × CSOSN pelo regime antes de emitir.
+
+- **Em produção** (merge `291acb5`): `GET /api/fiscal/readiness` passou de 404 para 401 sem token (a API subiu, então a migração foi aplicada), o bundle trocou, `/fiscal` responde 200 e `/health` 20/20.
 
 ## PR 67 — CI do frontend
 
