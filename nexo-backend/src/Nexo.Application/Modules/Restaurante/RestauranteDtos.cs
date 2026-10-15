@@ -72,7 +72,10 @@ public record OrderDto(
     decimal ItemsSubtotal, decimal CouvertAmount, decimal ServiceFeeAmount, decimal Total,
     string? Notes,
     DateTime OpenedAt, DateTime? ClosedAt, DateTime? CancelledAt,
-    IReadOnlyList<OrderItemDto> Items);
+    IReadOnlyList<OrderItemDto> Items,
+    decimal DeliveryFeeAmount = 0,    // taxa de entrega of the delivery order (0 for salão/balcão)
+    decimal DiscountAmount = 0,       // desconto do cupom of the delivery order (capped at what it can discount)
+    bool FromDeliveryOrder = false);  // quoted terms: no taxa de serviço
 
 public record CloseOrderResponse(
     Guid OrderId, Guid SaleId, decimal Total,

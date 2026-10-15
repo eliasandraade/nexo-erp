@@ -61,12 +61,16 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
   // ── Total calculation ──────────────────────────────────────────────────────
   // Prefer values already stored on the closed order; fall back to estimating
   // from settings while the drawer is open before close() fires.
-  const serviceFeePercent = settings?.serviceFeeEnabled ? (settings.serviceFeePercent ?? 0) : 0;
+  // A delivery/portal order was quoted without taxa de serviço (same rule as the backend).
+  const takesServiceFee = !order.fromDeliveryOrder;
+  const serviceFeePercent = settings?.serviceFeeEnabled && takesServiceFee ? (settings.serviceFeePercent ?? 0) : 0;
   const serviceFee = order.serviceFeeAmount > 0
     ? order.serviceFeeAmount
     : Math.round(order.itemsSubtotal * (serviceFeePercent / 100) * 100) / 100;
 
-  const total = order.itemsSubtotal + order.couvertAmount + serviceFee;
+  const deliveryFee = order.deliveryFeeAmount ?? 0;
+  const discount = order.discountAmount ?? 0;
+  const total = Math.max(0, Math.round((order.itemsSubtotal + order.couvertAmount + serviceFee + deliveryFee - discount) * 100) / 100);
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [entries,   setEntries]   = useState<PaymentEntry[]>(() => [makeEntry(total.toFixed(2))]);
@@ -189,6 +193,8 @@ export function PaymentDrawer({ open, order, storeId, onClose }: PaymentDrawerPr
               value={serviceFee}
             />
           )}
+          {deliveryFee > 0 && <BreakdownRow label="Taxa de entrega" value={deliveryFee} />}
+          {discount > 0 && <BreakdownRow label="Desconto (cupom)" value={-discount} />}
           <div className="flex justify-between font-semibold border-t border-border pt-2 mt-1">
             <span>Total</span>
             <span className="text-base">R$ {total.toFixed(2)}</span>

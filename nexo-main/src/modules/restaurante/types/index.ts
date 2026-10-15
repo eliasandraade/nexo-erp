@@ -125,6 +125,12 @@ export interface OrderDto {
   couvertAmount: number;
   serviceFeeAmount: number;
   total: number;
+  /** Taxa de entrega of the delivery order this comanda came from (0 otherwise). */
+  deliveryFeeAmount: number;
+  /** Desconto do cupom of the delivery order (0 otherwise). */
+  discountAmount: number;
+  /** Came from a delivery/portal order: quoted without taxa de serviço. */
+  fromDeliveryOrder?: boolean;
   notes: string | null;
   openedAt: string;
   closedAt: string | null;

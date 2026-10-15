@@ -114,6 +114,11 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
     {
         var channel   = Enum.Parse<DeliveryChannel>(request.Channel, ignoreCase: true);
         var orderType = Enum.Parse<DeliveryOrderType>(request.OrderType, ignoreCase: true);
+        if (request.DeliveryFee < 0)
+            throw new DomainException("A taxa de entrega não pode ser negativa.");
+        foreach (var itemReq in request.Items ?? [])
+            if (itemReq.Quantity <= 0 || itemReq.Quantity != Math.Floor(itemReq.Quantity))
+                throw new DomainException($"Quantidade inválida para '{itemReq.ProductName}': use um número inteiro maior que zero.");
 
         var order = RestDeliveryOrder.Create(
             tenantId:            _currentTenant.Id,
@@ -125,7 +130,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
             customerEmail:       request.CustomerEmail,
             customerId:          request.CustomerId,
             deliveryAddressJson: request.DeliveryAddressJson,
-            deliveryFee:         request.DeliveryFee,
+            deliveryFee:         orderType == DeliveryOrderType.Takeaway ? 0m : request.DeliveryFee,
             estimatedMinutes:    request.EstimatedMinutes,
             notes:               request.Notes,
             externalOrderId:     request.ExternalOrderId,
@@ -134,12 +139,34 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
 
         await SaveOrderWithRetryAsync(order, _repo.GetNextOrderNumberAsync, ct);
 
+        // A catalog product is priced by the catalog, never by the caller: this endpoint is reachable by
+        // any floor user, and the price flows into the comanda and the sale. Lines without a ProductId
+        // (unmapped external items) keep the declared price — they never reach the comanda.
         foreach (var itemReq in request.Items ?? [])
         {
+            var name = itemReq.ProductName;
+            var price = itemReq.UnitPrice;
+            IReadOnlyList<ProductModifierGroup> groups = [];
+            if (itemReq.ProductId is { } productId)
+            {
+                var product = await _products.GetByIdAsync(productId, ct)
+                    ?? throw new NotFoundException("Product", productId);
+                if (!product.IsActive)
+                    throw new DomainException($"Produto '{product.Name}' está inativo.");
+                name  = product.Name;
+                price = product.SalePrice;
+                // Adicionais: only the product's own, active, within each group's limits
+                groups = await _modifierGroups.GetByProductIdAsync(product.Id, ct);
+                ValidatePortalItemModifiers(product.Id,
+                    (itemReq.Modifiers ?? []).Where(m => m.ModifierId.HasValue)
+                        .Select(m => new CreatePortalOrderItemModifierRequest(m.ModifierId!.Value)).ToList(),
+                    groups);
+            }
+
             var item = order.AddItem(
                 _currentTenant.Id,
-                itemReq.ProductName,
-                itemReq.UnitPrice,
+                name,
+                price,
                 itemReq.Quantity,
                 itemReq.ProductId,
                 notes: itemReq.Notes);
@@ -147,12 +174,23 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
 
             foreach (var modReq in itemReq.Modifiers ?? [])
             {
-                var modifier = item.AddModifier(
+                var label = modReq.Label;
+                var modPrice = modReq.Price;
+                if (modReq.ModifierId is null && modPrice < 0)
+                    throw new DomainException("Adicional sem cadastro não pode ter preço negativo.");
+                if (modReq.ModifierId is { } modifierId)
+                {
+                    var modifier = await _modifierGroups.GetModifierByIdAsync(modifierId, ct)
+                        ?? throw new NotFoundException("Modifier", modifierId);
+                    label    = modifier.Name;
+                    modPrice = modifier.PriceAdjustment;
+                }
+                var mod = item.AddModifier(
                     _currentTenant.Id,
-                    modReq.Label,
-                    modReq.Price,
+                    label,
+                    modPrice,
                     modReq.ModifierId);
-                _repo.TrackModifier(modifier);
+                _repo.TrackModifier(mod);
             }
         }
 
@@ -371,6 +409,9 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
                 resolvedZone?.Neighborhood,
                 isFirstOrder);
 
+            // A sale needs a value to charge: a coupon may lower the order, never zero it.
+            if (order.ItemsSubtotal + deliveryFee - discountAmount <= 0)
+                throw new DomainException("Este cupom não pode zerar o pedido.");
             order.ApplyCoupon(coupon.Code, discountAmount);
             coupon.IncrementUsedCount();
 
@@ -485,6 +526,8 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         if (request.EstimatedMinutes.HasValue)
             deliveryOrder.SetEstimatedMinutes(request.EstimatedMinutes.Value);
 
+        // What the customer was quoted travels with the comanda, so the sale charges exactly that.
+        restOrder.ApplyDeliveryTerms(deliveryOrder.DeliveryFee, deliveryOrder.DiscountAmount);
         deliveryOrder.Accept(restOrder.Id);
         await _repo.SaveChangesAsync(ct);
 

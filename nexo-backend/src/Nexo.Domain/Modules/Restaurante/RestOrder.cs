@@ -18,6 +18,12 @@ public class RestOrder : StoreEntity
     public Guid?           SaleId           { get; private set; }
     public decimal         CouvertAmount    { get; private set; }
     public decimal         ServiceFeeAmount { get; private set; }
+    /// <summary>Taxa de entrega of the delivery order this comanda came from (0 otherwise).</summary>
+    public decimal         DeliveryFeeAmount { get; private set; }
+    /// <summary>Desconto (cupom) of the delivery order this comanda came from (0 otherwise).</summary>
+    public decimal         DiscountAmount    { get; private set; }
+    /// <summary>True when the comanda was created by accepting a delivery/portal order (quoted terms).</summary>
+    public bool            FromDeliveryOrder { get; private set; }
     public string?         Notes            { get; private set; }
 
     public DateTime  OpenedAt    { get; private set; }
@@ -31,7 +37,15 @@ public class RestOrder : StoreEntity
 
     // ── Computed ──────────────────────────────────────────────────────────────
     public decimal ItemsSubtotal => _items.Where(i => i.IsActive).Sum(i => i.Total);
-    public decimal Total         => ItemsSubtotal + CouvertAmount + ServiceFeeAmount;
+    /// <summary>
+    /// The coupon never goes beyond what it can discount (items + entrega): cancelling items after the
+    /// order was accepted can leave the frozen coupon larger than what is left.
+    /// </summary>
+    public decimal EffectiveDiscount => Math.Min(DiscountAmount, ItemsSubtotal + DeliveryFeeAmount);
+    /// <summary>What the customer pays: items + couvert + serviço + entrega − desconto.</summary>
+    public decimal Total         => ItemsSubtotal + CouvertAmount + ServiceFeeAmount + DeliveryFeeAmount - EffectiveDiscount;
+    /// <summary>Everything charged on top of the items (couvert, serviço, entrega).</summary>
+    public decimal SurchargesAmount => CouvertAmount + ServiceFeeAmount + DeliveryFeeAmount;
 
     // Keep Subtotal for backward compatibility with existing code
     public decimal Subtotal => ItemsSubtotal;
@@ -101,6 +115,20 @@ public class RestOrder : StoreEntity
     public void SetServiceFee(decimal amount)
     {
         ServiceFeeAmount = amount >= 0 ? amount : 0;
+        SetUpdatedAt();
+    }
+
+    /// <summary>
+    /// The terms the customer accepted on the delivery order (taxa de entrega, desconto do cupom): the
+    /// sale must charge exactly what the customer was quoted.
+    /// </summary>
+    public void ApplyDeliveryTerms(decimal deliveryFee, decimal discount)
+    {
+        if (deliveryFee < 0 || discount < 0)
+            throw new DomainException("Taxa de entrega e desconto não podem ser negativos.");
+        DeliveryFeeAmount = Math.Round(deliveryFee, 2, MidpointRounding.AwayFromZero);
+        DiscountAmount    = Math.Round(discount, 2, MidpointRounding.AwayFromZero);
+        FromDeliveryOrder = true;
         SetUpdatedAt();
     }
 

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
 import type { DeliveryOrderDto, DeliveryOrderStatus } from "../types";
@@ -185,6 +186,16 @@ export function DeliveryCard({
           </span>
         )}
       </p>
+
+      {/* ── Comanda: close and receive (the sale charges items + entrega − cupom) ── */}
+      {order.restOrderId && order.status !== "Rejected" && order.status !== "Cancelled" && (
+        <Link
+          to={`/restaurante/comanda/${order.restOrderId}`}
+          className="block rounded-lg py-2 text-center text-sm font-medium bg-white/10 hover:bg-white/15 transition-colors"
+        >
+          Abrir comanda para receber
+        </Link>
+      )}
 
       {/* ── Rejection reason (terminal) ── */}
       {order.status === "Rejected" && order.rejectionReason && (

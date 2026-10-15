@@ -31,6 +31,14 @@ public class RestOrderConfiguration : IEntityTypeConfiguration<RestOrder>
             .HasColumnType("numeric(18,2)").HasDefaultValue(0m).IsRequired();
         builder.Property(x => x.ServiceFeeAmount).HasColumnName("service_fee_amount")
             .HasColumnType("numeric(18,2)").HasDefaultValue(0m).IsRequired();
+        builder.Property(x => x.DeliveryFeeAmount).HasColumnName("delivery_fee_amount")
+            .HasColumnType("numeric(18,2)").HasDefaultValue(0m).IsRequired();
+        builder.Property(x => x.DiscountAmount).HasColumnName("discount_amount")
+            .HasColumnType("numeric(18,2)").HasDefaultValue(0m).IsRequired();
+        builder.Property(x => x.FromDeliveryOrder).HasColumnName("from_delivery_order")
+            .HasDefaultValue(false).IsRequired();
+        builder.Ignore(x => x.SurchargesAmount);
+        builder.Ignore(x => x.EffectiveDiscount);
         builder.Property(x => x.WaiterId).HasColumnName("waiter_id").IsRequired();
         builder.Property(x => x.CustomerId).HasColumnName("customer_id");
         builder.Property(x => x.SaleId).HasColumnName("sale_id");

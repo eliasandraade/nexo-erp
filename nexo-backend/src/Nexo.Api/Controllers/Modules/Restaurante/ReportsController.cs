@@ -55,6 +55,8 @@ public class ReportsController : ControllerBase
                 o.ClosedAt,
                 o.CouvertAmount,
                 o.ServiceFeeAmount,
+                o.DeliveryFeeAmount,
+                o.DiscountAmount,
                 ItemsTotal = o.Items
                     .Where(i => i.Status != RestOrderItemStatus.Cancelled)
                     .Sum(i => (decimal?)i.Total) ?? 0m,
@@ -63,7 +65,8 @@ public class ReportsController : ControllerBase
 
         // ── Aggregations ──────────────────────────────────────────────────────
         int     ordersCount        = rows.Count;
-        decimal revenue            = rows.Sum(r => r.ItemsTotal + r.CouvertAmount + r.ServiceFeeAmount);
+        decimal revenue            = rows.Sum(r => r.ItemsTotal + r.CouvertAmount + r.ServiceFeeAmount + r.DeliveryFeeAmount
+                                                - Math.Min(r.DiscountAmount, r.ItemsTotal + r.DeliveryFeeAmount));   // = the sale
         decimal averageTicket      = ordersCount > 0 ? Math.Round(revenue / ordersCount, 2) : 0m;
 
         // Average table time in minutes (only orders that have a ClosedAt)
