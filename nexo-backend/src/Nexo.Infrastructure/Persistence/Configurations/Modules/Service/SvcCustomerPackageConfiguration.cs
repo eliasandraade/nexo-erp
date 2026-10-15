@@ -39,5 +39,6 @@ public class SvcCustomerPackageConfiguration : IEntityTypeConfiguration<SvcCusto
         builder.HasIndex(x => x.SubjectId).HasDatabaseName("ix_svc_customer_packages_subject_id");
         builder.HasIndex(x => x.PackageId).HasDatabaseName("ix_svc_customer_packages_package_id");
         builder.HasIndex("TenantId", "StoreId", "Status").HasDatabaseName("ix_svc_customer_packages_tenant_store_status");
+        builder.HasIndex("TenantId", "StoreId", "CreatedAt").HasDatabaseName("ix_svc_customer_packages_store_created");
     }
 }

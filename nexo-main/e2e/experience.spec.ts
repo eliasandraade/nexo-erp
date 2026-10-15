@@ -529,4 +529,5 @@ test('Service: profissional por item da comanda',async({page})=>{
  await page.getByRole('option',{name:'Bia'}).click();
  await page.getByRole('button',{name:'Adicionar'}).click();
  await expect.poll(()=>addBody).toEqual({catalogItemId:'s1',quantity:1,professionalId:'p2'});
+ await page.setViewportSize({width:375,height:900});await noOverflow(page);
 });

@@ -16,7 +16,7 @@ public class SvcFinanceServiceTests
         IReadOnlyList<SvcFinancePaymentRow>? payments = null, IReadOnlyList<SvcFinanceOrderItemRow>? items = null,
         IReadOnlyList<SvcFinanceCommissionRow>? commissions = null, IReadOnlyList<SvcFinanceUsageRow>? usages = null)
         => new(payments ?? [], items ?? [], new Dictionary<Guid, Guid?> { [Order] = Ana }, usages ?? [], commissions ?? [],
-            [SvcAppointmentStatus.Completed, SvcAppointmentStatus.NoShow, SvcAppointmentStatus.Scheduled], 1, 300m,
+            new Dictionary<SvcAppointmentStatus, int> { [SvcAppointmentStatus.Completed] = 1, [SvcAppointmentStatus.NoShow] = 1, [SvcAppointmentStatus.Scheduled] = 1 }, 1, 300m,
             new Dictionary<Guid, string> { [Ana] = "Ana", [Bia] = "Bia" });
 
     private static SvcFinancePaymentRow Paid(decimal amount, Guid? order = null, Guid? pkg = null, SvcPaymentMethod m = SvcPaymentMethod.Pix)
@@ -36,6 +36,41 @@ public class SvcFinanceServiceTests
         var odd = SvcFinanceService.Build(Day, Day, Raw(
             payments: [Paid(10m, order: Order)], items: [new(Order, Ana, 1m), new(Order, Bia, 1m), new(Order, Bia, 1m)]));
         odd.ByProfessional.Sum(p => p.ReceivedFromOrders).Should().Be(10m, "rounding never loses or invents a cent");
+    }
+
+    [Fact]
+    public void Money_without_a_professional_lands_in_its_own_row()
+    {
+        var bare = Guid.NewGuid();
+        var s = SvcFinanceService.Build(Day, Day, Raw(
+            payments: [Paid(30m, order: bare), Paid(20m, order: Order)],
+            items: [new(Order, null, 20m)],
+            usages: [new(null, 15m)]));
+
+        var none = s.ByProfessional.Single(p => p.ProfessionalId == null);
+        none.Name.Should().Be("Sem profissional");
+        none.ReceivedFromOrders.Should().Be(50m, "an order with no professional anywhere, and an item without one");
+        none.PackageServices.Should().Be(15m);
+    }
+
+    [Fact]
+    public void An_item_the_package_paid_for_gets_none_of_the_comanda_money()
+    {
+        var s = SvcFinanceService.Build(Day, Day, Raw(
+            payments: [Paid(40m, order: Order)],
+            items: [new(Order, Ana, 60m, CoveredByPackage: true), new(Order, Bia, 40m)]));
+
+        s.ByProfessional.Should().ContainSingle(p => p.ProfessionalId == Bia).Which.ReceivedFromOrders.Should().Be(40m);
+        s.ByProfessional.Should().NotContain(p => p.ProfessionalId == Ana);
+    }
+
+    [Fact]
+    public void Allocation_always_adds_up_and_never_goes_negative()
+    {
+        SvcFinanceService.Allocate(10m, [1m, 1m, 1m]).Should().Equal(3.34m, 3.33m, 3.33m);
+        var tiny = SvcFinanceService.Allocate(0.05m, [100m, 100m, 0.01m]);
+        tiny.Sum().Should().Be(0.05m);
+        tiny.Should().OnlyContain(x => x >= 0m);
     }
 
     [Fact]

@@ -152,7 +152,8 @@ export default function OrderDetailPage() {
         {order.items.length === 0 ? (
           <p className="px-5 py-6 text-center text-[12.5px] text-muted-foreground">Nenhum item nesta ordem.</p>
         ) : (
-          <table className="w-full text-[13px]">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-[13px]">
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="px-5 py-2 text-left font-medium">Item</th>
@@ -173,7 +174,7 @@ export default function OrderDetailPage() {
                         disabled={updateItem.isPending}>
                         <SelectTrigger className="h-8 w-44 text-[12.5px]" aria-label={`${proTerm} de ${it.nameSnapshot}`}><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={ORDER_PRO}>{orderProName ? `Da ordem (${orderProName})` : "Não informado"}</SelectItem>
+                          <SelectItem value={ORDER_PRO}>{orderProName ? `Da ordem (${orderProName})` : `Sem ${proTerm.toLowerCase()}`}</SelectItem>
                           {activePros.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
                           {it.professionalId && !activePros.some((p) => p.id === it.professionalId) && (
                             <SelectItem value={it.professionalId}>{professionalName(it.professionalId) ?? "—"}</SelectItem>
@@ -206,11 +207,12 @@ export default function OrderDetailPage() {
               </tr>
             </tfoot>
           </table>
+          </div>
         )}
 
         {mutable && (
-          <div className="flex items-end gap-2 border-t border-border px-5 py-3">
-            <div className="flex-1">
+          <div className="flex flex-wrap items-end gap-2 border-t border-border px-5 py-3">
+            <div className="min-w-[12rem] flex-1">
               <Select value={newItemId} onValueChange={setNewItemId} disabled={addItem.isPending}>
                 <SelectTrigger className="h-9"><SelectValue placeholder="Adicionar item do catálogo" /></SelectTrigger>
                 <SelectContent>

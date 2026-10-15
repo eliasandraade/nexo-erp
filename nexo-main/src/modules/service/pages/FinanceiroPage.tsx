@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency } from "@/lib/formatters";
+import { ApiError } from "@/services/api-client";
 import { fetchServiceFinance } from "../api/service.api";
 import { useServicePreset } from "../context/ServicePresetContext";
 import { PAYMENT_METHOD_LABELS } from "../lib/payment";
@@ -33,10 +34,17 @@ export default function FinanceiroPage() {
   const { labels } = useServicePreset();
   const proTerm = labels?.professional ?? "Profissional";
   const apptTerm = labels?.appointment ?? "Agendamento";
+  const orderTerm = labels?.order ?? "Comanda";
   const [preset, setPreset] = useState<Preset>("month");
   const [custom, setCustom] = useState<[string, string]>(() => rangeOf("month"));
   const [from, to] = useMemo(() => (preset === "custom" ? custom : rangeOf(preset)), [preset, custom]);
-  const valid = !!from && !!to && from <= to;
+  // same limits as the server (a half-typed year must not fire requests)
+  const days = from && to ? (Date.parse(`${to}T12:00:00`) - Date.parse(`${from}T12:00:00`)) / 86_400_000 + 1 : 0;
+  const rangeError = !from || !to || from.slice(0, 4) < "2000" || to.slice(0, 4) > "2100"
+    ? "Escolha datas válidas."
+    : from > to ? "O fim do período precisa ser depois do início."
+    : days > 366 ? "Escolha um período de até 366 dias." : null;
+  const valid = rangeError === null;
 
   const q = useQuery({
     queryKey: ["service", "finance", from, to],
@@ -73,17 +81,19 @@ export default function FinanceiroPage() {
           </div>
         )}
       </div>
-      {!valid && <p role="alert" className="text-[13px] text-destructive">O fim do período precisa ser depois do início.</p>}
+      {rangeError && <p role="alert" className="text-[13px] text-destructive">{rangeError}</p>}
 
       {q.isLoading && valid && <Skeleton className="h-64 w-full" />}
-      {q.isError && <ErrorState onRetry={() => void q.refetch()} />}
+      {q.isError && (q.error instanceof ApiError && q.error.status === 422
+        ? <p role="alert" className="text-[13px] text-destructive">{q.error.message}</p>
+        : <ErrorState onRetry={() => void q.refetch()} />)}
 
       {s && (
         <>
           <div className="metric-strip">
             <Metric label="Recebido" value={formatCurrency(s.received)}
               hint={`${s.paymentsCount} ${s.paymentsCount === 1 ? "pagamento" : "pagamentos"}`} />
-            <Metric label="Ticket médio" value={formatCurrency(s.averageTicket)} hint="por comanda ou pacote pago" />
+            <Metric label="Ticket médio" value={formatCurrency(s.averageTicket)} hint={`por ${orderTerm.toLowerCase()} ou pacote pago`} />
             <Metric label="Comissões" value={formatCurrency(s.commissionTotal)} hint="reconhecidas no período" />
             <Metric label="Pacotes vendidos" value={String(s.packagesSold)} hint={formatCurrency(s.packagesSoldValue)} />
           </div>
@@ -99,12 +109,12 @@ export default function FinanceiroPage() {
                     </div>
                   ))}
                   <div className="flex justify-between gap-3 border-t border-border pt-2 text-[12px] text-muted-foreground">
-                    <dt>Comandas · Pacotes</dt>
+                    <dt>{pluralPt(orderTerm)} · Pacotes</dt>
                     <dd>{formatCurrency(s.receivedFromOrders)} · {formatCurrency(s.receivedFromPackages)}</dd>
                   </div>
                   {s.voidedCount > 0 && (
                     <div className="flex justify-between gap-3 text-[12px] text-muted-foreground">
-                      <dt>Estornados no período ({s.voidedCount})</dt>
+                      <dt title="Já fora do recebido do dia em que entraram">Estornados no período ({s.voidedCount})</dt>
                       <dd>{formatCurrency(s.voided)}</dd>
                     </div>
                   )}
@@ -115,9 +125,9 @@ export default function FinanceiroPage() {
             <SectionCard title="Agenda no período">
               <dl className="space-y-2 text-[13px]">
                 <Row term={`${pluralPt(apptTerm)} no período`} value={String(s.appointments.total)} />
-                <Row term="Realizados" value={String(s.appointments.completed)} />
-                <Row term="Cancelados" value={String(s.appointments.cancelled)} />
-                <Row term="Faltas" value={finished > 0
+                <Row term="Concluídos" value={String(s.appointments.completed)} />
+                <Row term="Com cancelamento" value={String(s.appointments.cancelled)} />
+                <Row term="Com falta" value={finished > 0
                   ? `${s.appointments.noShow} (${Math.round((s.appointments.noShow / finished) * 100)}% dos que já passaram)`
                   : String(s.appointments.noShow)} />
                 <Row term="Ainda em aberto" value={String(s.appointments.open)} />
@@ -132,7 +142,7 @@ export default function FinanceiroPage() {
                   <thead>
                     <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                       <th className="px-5 py-2 text-left font-medium">{proTerm}</th>
-                      <th className="px-3 py-2 text-right font-medium" title="Pagamentos de comandas, rateados pelos itens de cada um">Comandas pagas</th>
+                      <th className="px-3 py-2 text-right font-medium" title="Pagamentos rateados pelos itens de cada um (itens pagos por pacote ficam de fora)">Recebido em {pluralPt(orderTerm).toLowerCase()}</th>
                       <th className="px-3 py-2 text-right font-medium" title="Valor dos serviços feitos por pacote">Serviços por pacote</th>
                       <th className="px-5 py-2 text-right font-medium">Comissão</th>
                     </tr>

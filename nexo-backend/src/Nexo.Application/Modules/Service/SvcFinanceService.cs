@@ -20,6 +20,7 @@ public class SvcFinanceService
 
     public async Task<SvcFinanceSummaryDto> GetSummaryAsync(DateOnly from, DateOnly to, CancellationToken ct = default)
     {
+        if (from.Year < 2000 || to.Year > 2100) throw new DomainException("Período fora do intervalo aceito.");
         if (to < from) throw new DomainException("O fim do período precisa ser depois do início.");
         if (to.DayNumber - from.DayNumber + 1 > MaxDays) throw new DomainException($"Período de até {MaxDays} dias.");
         var raw = await _queries.LoadAsync(BusinessClock.DayStartUtc(from), BusinessClock.DayStartUtc(to.AddDays(1)), ct);
@@ -39,42 +40,36 @@ public class SvcFinanceService
         var received = paid.Sum(p => p.Amount);
         var targets = paid.Select(p => p.OrderId ?? p.CustomerPackageId).Distinct().Count();
 
-        // Credit each order payment to the professionals of its items, pro rata (cents, last one takes the rest).
-        var credit = new Dictionary<Guid?, decimal>();
-        void Add(Guid? who, decimal amount) => credit[who] = (credit.TryGetValue(who, out var v) ? v : 0m) + amount;
+        // Credit each order payment to the professionals of its items, pro rata to the cent. Items a
+        // package paid for are left out (that money came from the package). Keys: Guid.Empty = nobody.
+        var credit = new Dictionary<Guid, decimal>();
+        void Add(Guid? who, decimal amount) { var k = who ?? Guid.Empty; credit[k] = (credit.TryGetValue(k, out var v) ? v : 0m) + amount; }
         var itemsByOrder = raw.OrderItems.GroupBy(i => i.OrderId).ToDictionary(g => g.Key, g => g.ToList());
         foreach (var p in paid.Where(p => p.OrderId is not null))
         {
             var orderId = p.OrderId!.Value;
-            var items = itemsByOrder.TryGetValue(orderId, out var list) ? list.Where(i => i.TotalAmount > 0m).ToList() : [];
-            var total = items.Sum(i => i.TotalAmount);
-            if (total <= 0m)
+            var items = itemsByOrder.TryGetValue(orderId, out var list)
+                ? list.Where(i => i.TotalAmount > 0m && !i.CoveredByPackage).ToList() : [];
+            if (items.Count == 0)
             {
                 Add(raw.OrderProfessionals.TryGetValue(orderId, out var op) ? op : null, p.Amount);
                 continue;
             }
-            var left = p.Amount;
-            for (var k = 0; k < items.Count; k++)
-            {
-                var share = k == items.Count - 1
-                    ? left
-                    : Math.Round(p.Amount * items[k].TotalAmount / total, 2, MidpointRounding.AwayFromZero);
-                left -= share;
-                Add(items[k].ProfessionalId, share);
-            }
+            var shares = Allocate(p.Amount, items.Select(i => i.TotalAmount).ToList());
+            for (var k = 0; k < items.Count; k++) Add(items[k].ProfessionalId, shares[k]);
         }
 
-        var packageServices = raw.Usages.GroupBy(u => u.ProfessionalId).ToDictionary(g => g.Key, g => g.Sum(u => u.BaseAmount));
+        var packageServices = raw.Usages.GroupBy(u => u.ProfessionalId ?? Guid.Empty).ToDictionary(g => g.Key, g => g.Sum(u => u.BaseAmount));
         // A reversed earning counts only if it had been paid out (its negative entry then discounts it).
         var commission = raw.Commissions
             .Where(c => c.Kind != SvcCommissionEntryKind.Earning || c.ReversedAt is null || c.PayoutId is not null)
-            .GroupBy(c => (Guid?)c.ProfessionalId).ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
+            .GroupBy(c => c.ProfessionalId).ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
         var who = credit.Keys.Concat(packageServices.Keys).Concat(commission.Keys).Distinct();
         var byProfessional = who
             .Select(id => new SvcFinanceProfessionalDto(
-                id,
-                id is { } g && raw.ProfessionalNames.TryGetValue(g, out var n) ? n : "Sem profissional",
+                id == Guid.Empty ? null : id,
+                id != Guid.Empty && raw.ProfessionalNames.TryGetValue(id, out var n) ? n : "Sem profissional",
                 credit.TryGetValue(id, out var r) ? r : 0m,
                 packageServices.TryGetValue(id, out var ps) ? ps : 0m,
                 commission.TryGetValue(id, out var cm) ? cm : 0m))
@@ -89,7 +84,7 @@ public class SvcFinanceService
             .OrderBy(d => d.Day)
             .ToList();
 
-        var statuses = raw.AppointmentStatuses;
+        int Count(SvcAppointmentStatus s) => raw.AppointmentsByStatus.TryGetValue(s, out var n) ? n : 0;
         return new SvcFinanceSummaryDto(
             From: from, To: to,
             Received: received,
@@ -108,10 +103,27 @@ public class SvcFinanceService
             PackagesSold: raw.PackagesSold,
             PackagesSoldValue: raw.PackagesSoldValue,
             Appointments: new SvcFinanceAppointmentsDto(
-                Total: statuses.Count,
-                Completed: statuses.Count(s => s == SvcAppointmentStatus.Completed),
-                Cancelled: statuses.Count(s => s == SvcAppointmentStatus.Cancelled),
-                NoShow: statuses.Count(s => s == SvcAppointmentStatus.NoShow),
-                Open: statuses.Count(s => s is SvcAppointmentStatus.Scheduled or SvcAppointmentStatus.Confirmed or SvcAppointmentStatus.InProgress)));
+                Total: raw.AppointmentsByStatus.Values.Sum(),
+                Completed: Count(SvcAppointmentStatus.Completed),
+                Cancelled: Count(SvcAppointmentStatus.Cancelled),
+                NoShow: Count(SvcAppointmentStatus.NoShow),
+                Open: Count(SvcAppointmentStatus.Scheduled) + Count(SvcAppointmentStatus.Confirmed) + Count(SvcAppointmentStatus.InProgress)));
+    }
+
+    /// <summary>
+    /// Splits <paramref name="amount"/> over the weights to the cent (largest remainder): every
+    /// share is the weight's floor share, and the cents left go to the largest fractions — the
+    /// result always adds up exactly and never goes negative.
+    /// </summary>
+    public static IReadOnlyList<decimal> Allocate(decimal amount, IReadOnlyList<decimal> weights)
+    {
+        var total = weights.Sum();
+        var cents = (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
+        var exact = weights.Select(w => cents * w / total).ToList();
+        var floors = exact.Select(e => (long)Math.Floor(e)).ToList();
+        var left = cents - floors.Sum();
+        foreach (var k in exact.Select((e, i) => (Frac: e - Math.Floor(e), i)).OrderByDescending(x => x.Frac).ThenBy(x => x.i).Take((int)left))
+            floors[k.i]++;
+        return floors.Select(f => f / 100m).ToList();
     }
 }

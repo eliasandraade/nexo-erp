@@ -23,7 +23,7 @@
 | #56 | Service: agenda (bloqueios, semana, comanda) | `7edac28` | `ServiceTimeBlocks` (aditiva) | Em produção |
 | #57 | Service: cancelamento pelo cliente e estorno de pacote | `cf00b11` | `ServiceSelfCancelAndUsageReversal` (aditiva + índice único refeito com filtro mais estreito) | Em produção |
 | #58 | Service: avisos por e-mail (confirmação e lembrete) | `86ed34c` | `ServiceCustomerEmails` (aditiva) | Em produção |
-| #59 | Service: financeiro, profissional por item, plurais | — | — | Em revisão |
+| #59 | Service: financeiro, profissional por item, plurais | — | `ServiceFinanceIndexes` (só índices) | Em revisão |
 
 
 ## Marcos por fase
@@ -760,3 +760,12 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - integração: dois profissionais numa comanda paga + consumo de pacote → crédito e comissão de cada um; validação do período e 401 sem login;
   - Vitest dos plurais e das superfícies;
   - Playwright: financeiro (inclui 390 px sem rolagem lateral) e profissional por item.
+- **Correções da revisão independente** (1 bloqueador, should-fix e menores):
+  - **bloqueador:** dinheiro "sem profissional" (comanda sem profissional, ou consumo de pacote sem profissional) derrubava o painel com 500, por chave nula no dicionário. Agora vai para a linha "Sem profissional", com testes;
+  - itens pagos por pacote ficam fora do rateio do dinheiro da comanda, tanto o item apontado pelo consumo quanto o do agendamento pago por pacote. Antes, o mesmo serviço contava duas vezes;
+  - o rateio usa o maior resto: soma sempre exata, nunca negativa, e a ordem é estável (itens pela ordem de criação);
+  - índices para os períodos: comissões, consumos e pacotes vendidos por loja e data, e estornos de pagamento;
+  - a contagem da agenda e a soma dos pacotes passaram a ser agregadas no banco;
+  - período validado na tela (até 366 dias, anos plausíveis) e no servidor (sem 500 em datas extremas); um 422 mostra a mensagem;
+  - comanda no celular: tabela com rolagem própria e linha de "adicionar" que quebra; os textos usam o termo do ramo e evitam concordância de gênero;
+  - mensagens em português para "profissional inativo" e "item já comissionado".

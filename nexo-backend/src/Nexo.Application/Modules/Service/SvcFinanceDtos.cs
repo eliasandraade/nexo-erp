@@ -8,8 +8,12 @@ public sealed record SvcFinancePaymentRow(
     Guid Id, Guid? OrderId, Guid? CustomerPackageId, decimal Amount, SvcPaymentMethod Method,
     SvcPaymentStatus Status, DateTime PaidAt, DateTime? VoidedAt);
 
-/// <summary>An order item with the professional it is credited to (item first, then the order's).</summary>
-public sealed record SvcFinanceOrderItemRow(Guid OrderId, Guid? ProfessionalId, decimal TotalAmount);
+/// <summary>
+/// An order item with the professional it is credited to (item first, then the order's), in the
+/// order's item order. <see cref="CoveredByPackage"/>: a package consumption paid for it — the
+/// customer's money for the comanda is not for that item.
+/// </summary>
+public sealed record SvcFinanceOrderItemRow(Guid OrderId, Guid? ProfessionalId, decimal TotalAmount, bool CoveredByPackage = false);
 
 public sealed record SvcFinanceUsageRow(Guid? ProfessionalId, decimal BaseAmount);
 
@@ -22,7 +26,7 @@ public sealed record SvcFinanceRaw(
     IReadOnlyDictionary<Guid, Guid?> OrderProfessionals,
     IReadOnlyList<SvcFinanceUsageRow> Usages,
     IReadOnlyList<SvcFinanceCommissionRow> Commissions,
-    IReadOnlyList<SvcAppointmentStatus> AppointmentStatuses,
+    IReadOnlyDictionary<SvcAppointmentStatus, int> AppointmentsByStatus,
     int PackagesSold,
     decimal PackagesSoldValue,
     IReadOnlyDictionary<Guid, string> ProfessionalNames);

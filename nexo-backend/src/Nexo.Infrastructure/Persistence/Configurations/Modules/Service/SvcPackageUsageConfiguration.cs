@@ -44,6 +44,7 @@ public class SvcPackageUsageConfiguration : IEntityTypeConfiguration<SvcPackageU
             .HasConstraintName("fk_svc_package_usages_appointments").OnDelete(DeleteBehavior.Restrict);
 
         builder.HasIndex(x => x.CustomerPackageId).HasDatabaseName("ix_svc_package_usages_cp_id");
+        builder.HasIndex("TenantId", "StoreId", "CreatedAt").HasDatabaseName("ix_svc_package_usages_store_created");
         // Commission recognition looks usages up by order (an order item covered by a package is
         // commissioned through the usage, not again through the order).
         builder.HasIndex(x => x.OrderId).HasDatabaseName("ix_svc_package_usages_order_id");
