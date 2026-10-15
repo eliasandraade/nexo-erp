@@ -38,7 +38,8 @@
 | #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) (GitHub #70) | `f7a106b` | `ObservabilityErrorEvents` (aditiva) | Em produção |
 | #70 | Storage privado (URL assinada, papéis por contexto, chaves do tenant) (GitHub #72) | `4c93835` | — | Em produção |
 | #71 | Configurações reais (sem toggle placebo) (GitHub #73) | `dc70835` | — | Em produção |
-| #72 | Feature flags reais (remove infraestrutura morta) | — | — | Em revisão |
+| #72 | Feature flags reais (remove infraestrutura morta) (GitHub #74) | `84c280a` | — | Em produção |
+| #73 | Nexo → Orken (visível corrigido, interno classificado) | — | — | Em revisão |
 
 ## Marcos por fase
 
@@ -1146,8 +1147,6 @@ Antes: tudo ia para um bucket com acesso público; prontuário (Service) e fotos
 - **Fica para depois:** anexos do interpretador e imagens de ficha técnica gravados no disco do container (não são servidos, e somem a cada deploy); URLs de logo/capa/produto aceitam qualquer endereço externo.
 - **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.
 
-- **Em produção** (merge `4c93835`): `GET /api/integrations/storage/signed-url` passou de 405 para 401 sem token; `/health/ready` mostra `object-storage: Degraded — reachable, private bucket not configured`, como esperado até o dono criar o bucket privado; `/health` 20/20.
-
 ## PR 71 — Configurações reais
 
 Levantamento: **nenhum** campo da tela de Configurações tinha efeito — eram salvos e lidos de volta, e nada mais os usava. Cada um agora funciona ou saiu da tela:
@@ -1185,3 +1184,10 @@ Levantamento: as **6 flags da plataforma** (tela "Recursos", `/api/features`, so
 - As telas de IA citavam uma flag `EnablePromptLogging` que não existe; o texto agora diz apenas que o conteúdo do prompt não é guardado.
 - **Correções da revisão independente** (sem bloqueadores): BrasilAPI e ViaCEP passam a ficar **ligadas por padrão** no código (consultas gratuitas: uma chave ausente na configuração não pode desligá-las em silêncio); chaves no bloco do provedor de CEP; plano de integrações atualizado.
 - **Testes:** unitários das flags (padrões), do CEP com um e com os dois provedores desligados (o desligado não é chamado), do CNPJ com a BrasilAPI desligada ("indisponível", sem chamada); RBAC sem a rota removida; modelo do banco sem mudança (nenhuma migração pendente).
+- **Em produção** (merge `84c280a`): `/api/features` e `/api/platform/flags` passaram de 401 para 404 (rotas removidas); `/health` 20/20.
+
+## PR 73 — Nexo → Orken
+
+- **Conferência do que a pessoa usuária vê:** nenhuma tela, página pública, e-mail, recibo ou título mostra mais "Nexo". Sobravam dois pontos, corrigidos: o nome da empresa na sessão de quem opera a plataforma ("NexoERP Platform" → "Orken Platform") e o título da documentação da API, que só existe fora de produção ("Nexo API" → "Orken API").
+- **Classificação do que é interno** em `docs/engineering/NEXO_TO_ORKEN.md`: namespaces e pastas, schema do banco, cookies de sessão, emissor/público do token, chaves do navegador, política de CORS, CSS, log. Ficam como estão: renomeá-los deslogaria todo mundo, exigiria migração de schema ou reconfiguração da implantação, sem nenhum ganho visível. O documento diz quando valeria mudar (junto de uma troca que já obrigue novo login, como mover a API para `api.orken.com.br`).
+- **Em produção** (merge `4c93835`): `GET /api/integrations/storage/signed-url` passou de 405 para 401 sem token; `/health/ready` mostra `object-storage: Degraded — reachable, private bucket not configured`, como esperado até o dono criar o bucket privado; `/health` 20/20.
