@@ -69,16 +69,7 @@ public class AuthService
             return LoginOutcome.Fail("account_locked");
 
         if (!_hasher.Verify(request.Password, user.PasswordHash))
-        {
-            var lockedNow = _attempts is not null && await _attempts.RegisterFailureAsync(account, ct);
-            _audit?.Stage(lockedNow ? AuditActions.UserLoginLocked : AuditActions.UserLoginFailed,
-                lockedNow ? AuditSeverity.Critical : AuditSeverity.Warning, "User", user.Id.ToString(),
-                lockedNow ? $"Login of '{user.Login}' paused for {LockoutWindow.TotalMinutes:0} min after {LoginAttemptGuard.MaxFailures} wrong passwords."
-                          : $"Wrong password for '{user.Login}'.",
-                tenantId: user.TenantId, actorName: "anonymous", actorType: "system");
-            if (_audit is not null) await _users.SaveChangesAsync(ct);
-            return LoginOutcome.Fail(lockedNow ? "account_locked" : "invalid_credentials");
-        }
+            return await WrongPasswordAsync(user, account, ct);
 
         if (_attempts is not null) await _attempts.ResetAsync(account, ct);
         user.RecordAccess();
@@ -139,6 +130,19 @@ public class AuthService
             tokens.RefreshToken,
             tokens.AccessTokenExpiresAt,
             session));
+    }
+
+    /// <summary>Counts the wrong password (maybe locking the account) and audits it.</summary>
+    private async Task<LoginOutcome> WrongPasswordAsync(Domain.Entities.User user, string account, CancellationToken ct)
+    {
+        var lockedNow = _attempts is not null && await _attempts.RegisterFailureAsync(account, ct);
+        _audit?.Stage(lockedNow ? AuditActions.UserLoginLocked : AuditActions.UserLoginFailed,
+            lockedNow ? AuditSeverity.Critical : AuditSeverity.Warning, "User", user.Id.ToString(),
+            lockedNow ? $"Login of '{user.Login}' paused for {LockoutWindow.TotalMinutes:0} min after {LoginAttemptGuard.MaxFailures} wrong passwords."
+                      : $"Wrong password for '{user.Login}'.",
+            tenantId: user.TenantId, actorName: "anonymous", actorType: "system");
+        if (_audit is not null) await _users.SaveChangesAsync(ct);
+        return LoginOutcome.Fail(lockedNow ? "account_locked" : "invalid_credentials");
     }
 
     /// <summary>
