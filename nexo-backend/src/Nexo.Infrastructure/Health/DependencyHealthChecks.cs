@@ -34,9 +34,9 @@ public sealed class DatabaseHealthCheck : IHealthCheck
         _logger = logger;
     }
 
-    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(Timeout);
         try
         {
@@ -44,7 +44,7 @@ public sealed class DatabaseHealthCheck : IHealthCheck
                 ? HealthCheckResult.Healthy("reachable")
                 : HealthCheckResult.Unhealthy("unreachable");
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;   // the caller gave up — not a database verdict
         }
@@ -72,17 +72,17 @@ public sealed class RedisHealthCheck : IHealthCheck
         _logger   = logger;
     }
 
-    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         try
         {
             // resolved here, inside the try: the multiplexer factory throws on a bad connection string
             var redis = _services.GetService<IConnectionMultiplexer>();
             if (redis is null) return HealthCheckResult.Healthy("not configured");
-            await redis.GetDatabase().PingAsync().WaitAsync(Timeout, ct);
+            await redis.GetDatabase().PingAsync().WaitAsync(Timeout, cancellationToken);
             return HealthCheckResult.Healthy("reachable");
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -120,22 +120,22 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
         _logger  = logger;
     }
 
-    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         if (!_flags.StorageEnabled) return HealthCheckResult.Healthy("disabled");
         if (Fresh() is { } cached) return cached;
 
-        await _gate.WaitAsync(ct);
+        await _gate.WaitAsync(cancellationToken);
         try
         {
             if (Fresh() is { } again) return again;
             HealthCheckResult result;
             try
             {
-                await _storage.PingAsync(ct).WaitAsync(Timeout, ct);
+                await _storage.PingAsync(cancellationToken).WaitAsync(Timeout, cancellationToken);
                 result = HealthCheckResult.Healthy("reachable");
             }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;   // the probe gave up; keep no verdict
             }

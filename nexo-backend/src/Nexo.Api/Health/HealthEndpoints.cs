@@ -69,6 +69,6 @@ public static class HealthEndpoints
                 durationMs = Math.Round(e.Value.Duration.TotalMilliseconds),
             }),
         };
-        return ctx.Response.WriteAsync(JsonSerializer.Serialize(body, Json));
+        return ctx.Response.WriteAsync(JsonSerializer.Serialize(body, Json), ctx.RequestAborted);
     }
 }
