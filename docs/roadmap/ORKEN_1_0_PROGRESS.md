@@ -28,7 +28,8 @@
 | #61 | Billing: integridade (webhook, carência, redirects) | `1d5527b` | `BillingPastDueGrace` (aditiva) | Em produção |
 | #62 | Billing: cobrança de verdade (preços, planos, meios de pagamento) | — | — | **Aguardando decisão do dono** (preços, vitalício, Pix/boleto, trial, pacote) |
 | #63 | Auth: recuperação de senha e controle de sessões (GitHub #62) | `e64cd63` | `AuthPasswordReset` (aditiva) | Em produção |
-| #64a | Auth: bloqueio por tentativas, auditoria de login, troca obrigatória, convite | — | — | Em revisão |
+| #64a | Auth: bloqueio por tentativas, auditoria de login, troca obrigatória, convite (GitHub #63) | `e5ec8ca` | — | Em produção |
+| #64b | Auth: verificação em duas etapas (TOTP) | — | `AuthMfaTotp` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -927,3 +928,44 @@ O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnab
   - o formulário não trava por confirmação de senha escondida ao ligar o convite;
   - testes novos: convite morre ao corrigir o e-mail e ao definir senha; senha nova destrava; convite não segura o esqueci; 20 palpites em paralelo ainda travam. O host de teste usa um provedor de e-mail que aceita tudo e não envia nada.
 - **Fica para depois (anotado):** identificar o IP real atrás do proxy da Railway (`ForwardedHeaders` com proxies conhecidos). Isso deixaria o limite por IP firme e a auditoria com o IP do cliente; a exigência de troca de senha também passaria a ser aplicada na API, não só na tela.
+
+## PR 64b — Auth: verificação em duas etapas
+
+- **Aplicativo autenticador** (TOTP, RFC 6238: 6 dígitos a cada 30 s, tolerância de ±1 intervalo). Funciona com Google Authenticator, Microsoft Authenticator, 1Password, Authy e outros.
+  - Implementado sem biblioteca externa, conferido com os vetores de teste oficiais do RFC.
+  - Cada código vale uma vez (o último intervalo usado fica gravado).
+- **Segredo cifrado:** AES-256-GCM, com chave derivada (HKDF, rótulo próprio) do segredo do servidor que já existe. Nenhuma chave nova para gerenciar.
+  - Se `Jwt:Secret` for trocado, os segredos ficam ilegíveis: a pessoa entra com um código de recuperação ou um diretor desliga o recurso, e ela ativa de novo.
+- **Ativar** (`/perfil` → "Verificação em duas etapas"):
+  - QR code e a chave para digitar no app;
+  - o primeiro código confirma a configuração;
+  - aparecem 8 códigos de recuperação, que valem uma vez cada, são guardados só como hash e não são mostrados de novo.
+- **Entrar:**
+  - com a verificação ligada, a senha certa devolve um desafio de 5 minutos em vez da sessão (`mfaRequired`), e o código fecha a entrada (`POST /api/auth/mfa/verify`);
+  - código errado conta para o mesmo bloqueio por conta da senha;
+  - o desafio vale uma vez;
+  - é possível entrar com um código de recuperação.
+- **Desativar:**
+  - a própria pessoa precisa da senha e de um código (ou código de recuperação);
+  - um diretor pode desligar para quem perdeu o celular e os códigos (`POST /api/users/{id}/mfa/disable`, auditado como crítico);
+  - a lista de usuários informa quem tem a verificação ligada.
+- **Mensagens de 401:** o cliente HTTP passa a mostrar a explicação do servidor, como "Código inválido", "E-mail não verificado" ou "Conta bloqueada", que antes viravam "Unauthorized". Login errado agora responde em português.
+- **Testes:**
+  - unitários: vetores do RFC 6238, Base32, tolerância e reuso, segredo cifrado e à prova de adulteração;
+  - integração (+4, usuário próprio por teste): entrada em duas etapas; código e desafio valem uma vez; recuperação vale uma vez; desligar exige senha e código; desligamento pelo diretor; códigos errados levam ao bloqueio;
+  - RBAC: as rotas de MFA da própria pessoa ficam abertas a qualquer papel;
+  - Playwright: entrada com código (errado e certo) e ativação com QR e códigos de recuperação, em 390 px.
+- **Dependência nova:** `qrcode` 1.5.4 (MIT), para desenhar o QR no navegador. O segredo não sai para nenhum serviço externo.
+- **Migração validada** num Postgres descartável (up → down → up).
+- **Correções da revisão independente de segurança** (1 bloqueador, should-fix e menores):
+  - **bloqueador:** a senha certa zerava o contador de tentativas antes do código. Reentrando a senha entre os palpites, dava para chutar o código sem fim. Agora o contador só zera depois do código certo (teste: 9 códigos errados, nova senha, 1 errado → 429);
+  - **replay concorrente:** o intervalo TOTP e o código de recuperação passam a ser reivindicados de forma atômica no banco (`UPDATE … WHERE`), então duas requisições simultâneas com o mesmo código não passam ambas;
+  - **ativar pede a senha**, não só uma sessão aberta, para que quem usa uma sessão esquecida não tranque o dono fora. Ativar também **encerra todas as sessões**: a pessoa entra de novo, já com o código;
+  - **ativar, confirmar e desativar** usam o limite por usuário (`credential-check`) e o mesmo bloqueio por conta; a mensagem de erro é única para senha ou código errado;
+  - **segredo vinculado ao usuário** (AAD do AES-GCM) e chave própria `Mfa:EncryptionKey` (opcional; sem ela, usa `Jwt:Secret`). Segredo ilegível não dá mais erro 500: o código é recusado e o caso fica no log;
+  - **códigos de recuperação com HMAC** (chave derivada), em vez de SHA-256 puro: um dump do banco não basta para adivinhá-los offline;
+  - o campo de código aceita também um código de recuperação (o servidor distingue);
+  - código errado é auditado como `user_mfa_failed`, não como senha errada;
+  - **frontend:** o erro traz o `code` do servidor (desafio expirado detectado por código, não pelo texto); chamadas de login e de verificação não tentam renovar token num 401; 429 sem corpo ganha mensagem; o "Voltar" limpa o estado; o erro fica ligado ao campo (`aria-describedby`).
+- **Fica para depois (prioritário):** verificação em duas etapas no login da plataforma (operadores Orken) e na impersonação. A senha de um super-admin continua sendo a chave de acesso a qualquer tenant.
+- **Conflito anotado:** o PR do GitHub #64 (correção do refresh concorrente, aberto por outra sessão) toca `AuthService` e `ICacheService` e precisa de rebase sobre este.

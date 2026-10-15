@@ -84,6 +84,8 @@ export interface LoginResult {
 export interface LoginError {
   success: false;
   error: string;
+  /** Password right, two-step verification on: send a code with this challenge. */
+  mfaChallenge?: string;
 }
 
 export type LoginResponse = LoginResult | LoginError;

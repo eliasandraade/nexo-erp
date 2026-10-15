@@ -42,4 +42,10 @@ public interface IUserRepository
     Task<IReadOnlyList<User>> GetAllAsync(CancellationToken ct = default);
     Task AddAsync(User user, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
+
+    /// <summary>Claims a TOTP step for the user (only if newer than the last one) — atomic; false = replay.</summary>
+    Task<bool> TryClaimMfaStepAsync(Guid userId, long step, CancellationToken ct = default);
+
+    /// <summary>Swaps the recovery-code list only if unchanged since read — atomic; false = used concurrently.</summary>
+    Task<bool> TryReplaceRecoveryCodesAsync(Guid userId, string? expected, string replacement, CancellationToken ct = default);
 }

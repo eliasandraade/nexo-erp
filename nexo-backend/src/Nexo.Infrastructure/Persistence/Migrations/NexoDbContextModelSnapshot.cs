@@ -2394,6 +2394,31 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("login");
 
+                    b.Property<bool>("MfaEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("mfa_enabled");
+
+                    b.Property<long?>("MfaLastUsedStep")
+                        .HasColumnType("bigint")
+                        .HasColumnName("mfa_last_used_step");
+
+                    b.Property<string>("MfaPendingSecret")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("mfa_pending_secret");
+
+                    b.Property<string>("MfaRecoveryCodes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("mfa_recovery_codes");
+
+                    b.Property<string>("MfaSecret")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("mfa_secret");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")

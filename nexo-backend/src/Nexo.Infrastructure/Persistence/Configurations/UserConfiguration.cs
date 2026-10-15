@@ -77,6 +77,11 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnType("timestamptz");
         builder.Property(x => x.PasswordResetTokenHash).HasColumnName("password_reset_token_hash").HasMaxLength(64);
         builder.Property(x => x.PasswordResetExpiresAt).HasColumnName("password_reset_expires_at").HasColumnType("timestamptz");
+        builder.Property(x => x.MfaEnabled).HasColumnName("mfa_enabled").HasDefaultValue(false).IsRequired();
+        builder.Property(x => x.MfaSecret).HasColumnName("mfa_secret").HasMaxLength(200);
+        builder.Property(x => x.MfaPendingSecret).HasColumnName("mfa_pending_secret").HasMaxLength(200);
+        builder.Property(x => x.MfaLastUsedStep).HasColumnName("mfa_last_used_step");
+        builder.Property(x => x.MfaRecoveryCodes).HasColumnName("mfa_recovery_codes").HasMaxLength(1000);
         builder.HasIndex(x => x.PasswordResetTokenHash).IsUnique().HasFilter("password_reset_token_hash IS NOT NULL")
             .HasDatabaseName("ux_users_password_reset_token_hash");
 

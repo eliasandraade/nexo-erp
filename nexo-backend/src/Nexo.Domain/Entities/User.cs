@@ -39,6 +39,17 @@ public class User : TenantEntity
     public string? PasswordResetTokenHash { get; private set; }
     public DateTime? PasswordResetExpiresAt { get; private set; }
 
+    // ── Two-step verification (TOTP) ──
+    public bool MfaEnabled { get; private set; }
+    /// <summary>Encrypted secret in use (see IMfaSecretProtector).</summary>
+    public string? MfaSecret { get; private set; }
+    /// <summary>Encrypted secret being set up — becomes <see cref="MfaSecret"/> once a code proves it.</summary>
+    public string? MfaPendingSecret { get; private set; }
+    /// <summary>Last TOTP step accepted — a code is never accepted twice.</summary>
+    public long? MfaLastUsedStep { get; private set; }
+    /// <summary>SHA-256 (hex) of the unused recovery codes, separated by ';'.</summary>
+    public string? MfaRecoveryCodes { get; private set; }
+
     // Navigation
     public Tenant? Tenant { get; private set; }
 
@@ -147,6 +158,50 @@ public class User : TenantEntity
         PasswordResetExpiresAt = null;
         SetUpdatedAt();
     }
+
+    public void StartMfaSetup(string protectedSecret)
+    {
+        MfaPendingSecret = protectedSecret;
+        SetUpdatedAt();
+    }
+
+    public void EnableMfa(string protectedSecret, long usedStep, IEnumerable<string> recoveryCodeHashes)
+    {
+        MfaEnabled = true;
+        MfaSecret = protectedSecret;
+        MfaPendingSecret = null;
+        MfaLastUsedStep = usedStep;
+        MfaRecoveryCodes = string.Join(';', recoveryCodeHashes);
+        SetUpdatedAt();
+    }
+
+    public void DisableMfa()
+    {
+        MfaEnabled = false;
+        MfaSecret = null;
+        MfaPendingSecret = null;
+        MfaLastUsedStep = null;
+        MfaRecoveryCodes = null;
+        SetUpdatedAt();
+    }
+
+    public void RecordMfaStep(long step)
+    {
+        MfaLastUsedStep = step;
+        SetUpdatedAt();
+    }
+
+    /// <summary>Consumes a recovery code (by hash); false when it isn't one of the unused ones.</summary>
+    public bool UseRecoveryCode(string codeHash)
+    {
+        var codes = (MfaRecoveryCodes ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries).ToList();
+        if (!codes.Remove(codeHash)) return false;
+        MfaRecoveryCodes = string.Join(';', codes);
+        SetUpdatedAt();
+        return true;
+    }
+
+    public int MfaRecoveryCodesLeft => (MfaRecoveryCodes ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries).Length;
 
     public void ClearVerificationToken()
     {

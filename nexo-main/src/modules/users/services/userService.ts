@@ -22,6 +22,7 @@ function dtoToUser(dto: UserApiDto): User {
     createdAt:             dto.createdAt,
     createdBy:             "",
     updatedAt:             dto.updatedAt,
+    mfaEnabled:            dto.mfaEnabled ?? false,
   };
 }
 

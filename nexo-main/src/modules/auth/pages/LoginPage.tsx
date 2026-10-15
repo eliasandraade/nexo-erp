@@ -5,7 +5,8 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { resolvePostLogin } from "@/modules/workspace/resolvePostLogin";
 import { readLastWorkspace } from "@/modules/workspace/persistence";
-import { getCurrentSession } from "../services/authService";
+import { getCurrentSession, verifyMfa } from "../services/authService";
+import { ApiError } from "@/services/api-client";
 import { DASHBOARD_SUMMARY_KEY } from "@/modules/dashboard/hooks/useDashboardSummary";
 import { getDashboardSummary } from "@/modules/dashboard/api/dashboard.api";
 
@@ -18,13 +19,17 @@ const LABEL = "auth-label";
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function LoginPage() {
-  const { login }  = useAuth();
+  const { login, setSessionFromVerify }  = useAuth();
+  const [challenge, setChallenge] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [useRecovery, setUseRecovery] = useState(false);
   const navigate   = useNavigate();
   const [params]   = useSearchParams();
   const notice = ({
     "senha-redefinida": "Senha alterada. Entre com a nova senha.",
     "senha": "Senha alterada. Por segurança, entre de novo.",
     "sessoes": "Você saiu de todos os dispositivos. Entre de novo.",
+    "mfa": "Verificação em duas etapas ativada. Entre de novo com a senha e o código do app.",
   } as Record<string, string>)[params.get("motivo") ?? ""];
   const queryClient = useQueryClient();
   const formRef    = useRef<HTMLFormElement>(null);
@@ -54,31 +59,57 @@ export default function LoginPage() {
     }
 
     setLoading(true);
-    const { error: err, type } = await login({ login: loginField.trim(), password });
+    const { error: err, type, mfaChallenge } = await login({ login: loginField.trim(), password }) as
+      { error: string | null; type: string | null; mfaChallenge?: string };
     setLoading(false);
 
+    if (mfaChallenge) {
+      setChallenge(mfaChallenge);
+      setCode("");
+      return;
+    }
     if (err) {
       setError(err);
       focusField();
     } else if (type === "platform") {
       navigate("/platform", { replace: true });
     } else {
-      const session = getCurrentSession();
-      const target  = session
-        ? resolvePostLogin(session, readLastWorkspace(session))
-        : "/dashboard";
-      // Warm the dashboard cache in parallel with the route transition + chunk
-      // download, so the first data is already in flight (or done) by the time
-      // DashboardPage mounts. Only when the user actually lands on /dashboard.
-      if (target === "/dashboard") {
-        void queryClient.prefetchQuery({
-          queryKey: DASHBOARD_SUMMARY_KEY,
-          queryFn:  getDashboardSummary,
-          staleTime: 60_000,
-        });
-      }
-      navigate(target, { replace: true });
+      goHome();
     }
+  }
+
+  async function handleCode(e: FormEvent) {
+    e.preventDefault();
+    if (!challenge || !code.trim()) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const session = await verifyMfa(challenge, useRecovery ? null : code, useRecovery ? code : null);
+      setSessionFromVerify(session);
+      goHome();
+    } catch (err) {
+      setLoading(false);
+      if (err instanceof ApiError && err.code === "invalid_challenge") { setChallenge(null); setPassword(""); setCode(""); setUseRecovery(false); }
+      setError(err instanceof ApiError ? err.message : "Não foi possível conferir o código.");
+    }
+  }
+
+  function goHome() {
+    const session = getCurrentSession();
+    const target  = session
+      ? resolvePostLogin(session, readLastWorkspace(session))
+      : "/dashboard";
+    // Warm the dashboard cache in parallel with the route transition + chunk
+    // download, so the first data is already in flight (or done) by the time
+    // DashboardPage mounts. Only when the user actually lands on /dashboard.
+    if (target === "/dashboard") {
+      void queryClient.prefetchQuery({
+        queryKey: DASHBOARD_SUMMARY_KEY,
+        queryFn:  getDashboardSummary,
+        staleTime: 60_000,
+      });
+    }
+    navigate(target, { replace: true });
   }
 
   return (
@@ -101,6 +132,33 @@ export default function LoginPage() {
         <output className="mb-6 block rounded-md border border-success/30 bg-success/5 px-3 py-2 text-[13px] text-success">{notice}</output>
       )}
 
+      {challenge ? (
+        <form onSubmit={handleCode} noValidate className="space-y-4">
+          <div>
+            <label htmlFor="mfa-code" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.09em] text-muted-foreground">
+              {useRecovery ? "Código de recuperação" : "Código do aplicativo autenticador"}
+            </label>
+            <input id="mfa-code" value={code} onChange={(e) => setCode(e.target.value)} className="auth-input tracking-widest"
+              inputMode={useRecovery ? "text" : "numeric"} autoComplete="one-time-code" placeholder={useRecovery ? "xxxxx-xxxxx" : "000000"}
+              aria-describedby={error ? "mfa-error" : undefined} />
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {useRecovery ? "Cada código de recuperação vale uma vez." : "Abra o app (Google Authenticator, Microsoft Authenticator…) e digite os 6 números."}
+            </p>
+          </div>
+          {error && <p id="mfa-error" role="alert" className="text-[13px] text-destructive">{error}</p>}
+          <button type="submit" disabled={loading || !code.trim()} className="auth-submit">
+            {loading ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : "Confirmar"}
+          </button>
+          <div className="flex justify-between text-[12px]">
+            <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setUseRecovery(!useRecovery); setCode(""); setError(null); }}>
+              {useRecovery ? "Usar o código do aplicativo" : "Usar um código de recuperação"}
+            </button>
+            <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => { setChallenge(null); setError(null); setCode(""); setUseRecovery(false); }}>
+              Voltar
+            </button>
+          </div>
+        </form>
+      ) : (<>
       {/* ── Form ── */}
       <form
         ref={formRef}
@@ -184,6 +242,8 @@ export default function LoginPage() {
           </button>
         </div>
       </form>
+
+      </>)}
 
       {/* ── Register link ── */}
       <div className="mt-6 pt-5 border-t border-border">

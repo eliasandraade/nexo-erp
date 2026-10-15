@@ -46,7 +46,8 @@ public record UserDto(
     DateTime? LastAccessAt,
     DateTime? PasswordChangedAt,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    bool MfaEnabled = false);
 
 public record ValidateManagerRequest(string Login, string Password);
 

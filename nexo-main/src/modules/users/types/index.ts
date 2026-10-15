@@ -18,6 +18,8 @@ export interface User {
   createdAt: string;
   createdBy: string;
   updatedAt: string;
+  /** Two-step verification on (a director can turn it off for someone who lost the phone). */
+  mfaEnabled?: boolean;
 }
 
 export interface UserFormInput {

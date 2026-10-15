@@ -27,6 +27,8 @@ public static class DependencyInjection
     {
         services.AddScoped<AuthService>();
         services.AddScoped<LoginAttemptGuard>();
+        services.AddScoped<MfaService>();
+        services.AddScoped<IMfaChallengeService>(sp => sp.GetRequiredService<MfaService>());
         services.AddScoped<UserService>();
         services.AddScoped<TenantService>();
         services.AddScoped<SettingsService>();

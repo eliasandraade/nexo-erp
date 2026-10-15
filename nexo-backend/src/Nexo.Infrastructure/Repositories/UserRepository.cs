@@ -69,4 +69,14 @@ public class UserRepository : IUserRepository
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);
+
+    public async Task<bool> TryClaimMfaStepAsync(Guid userId, long step, CancellationToken ct = default)
+        => await _context.Users.IgnoreQueryFilters()
+            .Where(u => u.Id == userId && (u.MfaLastUsedStep == null || u.MfaLastUsedStep < step))
+            .ExecuteUpdateAsync(x => x.SetProperty(u => u.MfaLastUsedStep, step), ct) == 1;
+
+    public async Task<bool> TryReplaceRecoveryCodesAsync(Guid userId, string? expected, string replacement, CancellationToken ct = default)
+        => await _context.Users.IgnoreQueryFilters()
+            .Where(u => u.Id == userId && u.MfaRecoveryCodes == expected)
+            .ExecuteUpdateAsync(x => x.SetProperty(u => u.MfaRecoveryCodes, replacement), ct) == 1;
 }

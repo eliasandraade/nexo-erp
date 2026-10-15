@@ -16,6 +16,7 @@ public class AuthService
 
     private readonly IAuditWriter? _audit;
     private readonly LoginAttemptGuard? _attempts;
+    private readonly IMfaChallengeService? _mfa;
 
     public AuthService(
         IUserRepository users,
@@ -27,7 +28,8 @@ public class AuthService
         ISessionStore sessions,
         ICurrentTenant currentTenant,
         IAuditWriter? audit = null,
-        LoginAttemptGuard? attempts = null)
+        LoginAttemptGuard? attempts = null,
+        IMfaChallengeService? mfa = null)
     {
         _users    = users;
         _tenants  = tenants;
@@ -38,6 +40,7 @@ public class AuthService
         _sessions = sessions;
         _audit = audit;
         _attempts = attempts;
+        _mfa = mfa;
         _currentTenant = currentTenant;
     }
 
@@ -71,7 +74,50 @@ public class AuthService
         if (!_hasher.Verify(request.Password, user.PasswordHash))
             return await WrongPasswordAsync(user, account, ct);
 
+        // Two-step verification: the password alone opens nothing — a short-lived challenge waits for the
+        // code. The wrong-attempt count is NOT reset here (only after the code): otherwise re-entering
+        // the known password between guesses would allow endless code guessing.
+        if (user.MfaEnabled && _mfa is not null)
+            return LoginOutcome.NeedsMfa(await _mfa.CreateChallengeAsync(user.Id, ct));
+
         if (_attempts is not null) await _attempts.ResetAsync(account, ct);
+
+        return await CompleteLoginAsync(user, ipAddress, userAgent, ct);
+    }
+
+    /// <summary>
+    /// Second step: a TOTP (or a recovery code) for the challenge issued by <see cref="LoginAsync"/>.
+    /// Wrong codes count toward the same per-account lockout as wrong passwords.
+    /// </summary>
+    public async Task<LoginOutcome> VerifyMfaAsync(
+        MfaVerifyRequest request, string? ipAddress = null, string? userAgent = null, CancellationToken ct = default)
+    {
+        if (_mfa is null) return LoginOutcome.Fail("invalid_challenge");
+        var userId = await _mfa.ResolveChallengeAsync(request.Challenge, ct);
+        if (userId is null) return LoginOutcome.Fail("invalid_challenge");
+
+        var user = await _users.GetByIdAcrossTenantsAsync(userId.Value, ct);
+        if (user is null || user.Status != UserStatus.Active || !user.MfaEnabled) return LoginOutcome.Fail("invalid_challenge");
+
+        var account = LoginAttemptGuard.ForUser(user.Id);
+        if (_attempts is not null && await _attempts.IsLockedAsync(account, ct))
+            return LoginOutcome.Fail("account_locked");
+
+        if (!await _mfa.CheckCodeAsync(user, request.Code, request.RecoveryCode, ct))
+        {
+            var failed = await WrongPasswordAsync(user, account, ct, AuditActions.UserMfaFailed);
+            if (failed.ErrorCode == "account_locked") await _mfa.DropChallengeAsync(request.Challenge, ct);
+            return failed.ErrorCode == "account_locked" ? failed : LoginOutcome.Fail("invalid_code");
+        }
+
+        await _mfa.DropChallengeAsync(request.Challenge, ct);
+        if (_attempts is not null) await _attempts.ResetAsync(account, ct);
+        return await CompleteLoginAsync(user, ipAddress, userAgent, ct);
+    }
+
+    /// <summary>Credentials (and the second step, when on) are proven: record the access and issue the session.</summary>
+    private async Task<LoginOutcome> CompleteLoginAsync(Domain.Entities.User user, string? ipAddress, string? userAgent, CancellationToken ct)
+    {
         user.RecordAccess();
         _audit?.Stage(AuditActions.UserLoggedIn, AuditSeverity.Info, "User", user.Id.ToString(),
             $"User '{user.Login}' signed in.", tenantId: user.TenantId, actorId: user.Id, actorName: user.FullName);
@@ -133,13 +179,14 @@ public class AuthService
     }
 
     /// <summary>Counts the wrong password (maybe locking the account) and audits it.</summary>
-    private async Task<LoginOutcome> WrongPasswordAsync(Domain.Entities.User user, string account, CancellationToken ct)
+    private async Task<LoginOutcome> WrongPasswordAsync(Domain.Entities.User user, string account, CancellationToken ct,
+        string failedAction = AuditActions.UserLoginFailed)
     {
         var lockedNow = _attempts is not null && await _attempts.RegisterFailureAsync(account, ct);
-        _audit?.Stage(lockedNow ? AuditActions.UserLoginLocked : AuditActions.UserLoginFailed,
+        _audit?.Stage(lockedNow ? AuditActions.UserLoginLocked : failedAction,
             lockedNow ? AuditSeverity.Critical : AuditSeverity.Warning, "User", user.Id.ToString(),
             lockedNow ? $"Login of '{user.Login}' paused for {LockoutWindow.TotalMinutes:0} min after {LoginAttemptGuard.MaxFailures} wrong passwords."
-                      : $"Wrong password for '{user.Login}'.",
+                      : failedAction == AuditActions.UserMfaFailed ? $"Wrong two-step code for '{user.Login}'." : $"Wrong password for '{user.Login}'.",
             tenantId: user.TenantId, actorName: "anonymous", actorType: "system");
         if (_audit is not null) await _users.SaveChangesAsync(ct);
         return LoginOutcome.Fail(lockedNow ? "account_locked" : "invalid_credentials");

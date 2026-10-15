@@ -56,10 +56,11 @@ export function getCurrentSession(): AuthSession | null {
 
 export async function login(input: LoginInput): Promise<LoginResponse> {
   try {
-    const data = await apiClient.post<BackendLoginResponse>("/auth/login", {
+    const data = await apiClient.post<BackendLoginResponse | { mfaRequired: true; mfaChallenge: string }>("/auth/login", {
       login:    input.login,
       password: input.password,
     });
+    if ("mfaRequired" in data) return { success: false, error: "", mfaChallenge: data.mfaChallenge };
 
     const session = toAuthSession(data.session);
     setTokens(data.accessToken, data.refreshToken);
@@ -69,7 +70,7 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Erro ao conectar com o servidor.";
-    if (message === "Unauthorized" || message.includes("401")) {
+    if (message === "Unauthorized" || message === "Invalid login or password." || message.includes("401")) {
       return { success: false, error: "Login ou senha incorretos." };
     }
     return { success: false, error: message };
@@ -180,3 +181,22 @@ export const fetchMySessions = () => apiClient.get<UserSessionDto[]>("/auth/sess
 export async function revokeAllSessions(): Promise<void> {
   await apiClient.post("/auth/sessions/revoke-all", { confirm: true });
 }
+
+// ── Two-step verification (PR 64b) ──────────────────────────────────────────────
+
+/** Second step of the sign-in. Resolves to the session (and stores the tokens) like login does. */
+export async function verifyMfa(challenge: string, code: string | null, recoveryCode: string | null = null): Promise<AuthSession> {
+  const data = await apiClient.post<BackendLoginResponse>("/auth/mfa/verify", { challenge, code, recoveryCode });
+  const session = toAuthSession(data.session);
+  setTokens(data.accessToken, data.refreshToken);
+  persistSession(session);
+  return session;
+}
+
+export interface MfaStatus { enabled: boolean; setupPending: boolean; recoveryCodesLeft: number }
+export const fetchMfaStatus = () => apiClient.get<MfaStatus>("/auth/mfa");
+export const startMfaSetup = (password: string) => apiClient.post<{ secret: string; otpAuthUri: string }>("/auth/mfa/setup", { password });
+export const enableMfa = (code: string) => apiClient.post<{ recoveryCodes: string[] }>("/auth/mfa/enable", { code });
+/** The code field takes either the app code or a recovery code (the server tells them apart). */
+export const disableMfa = (password: string, code: string) =>
+  apiClient.post<void>("/auth/mfa/disable", { password, code });
