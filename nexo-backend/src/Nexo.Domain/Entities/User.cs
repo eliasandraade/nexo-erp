@@ -92,6 +92,13 @@ public class User : TenantEntity
         SetUpdatedAt();
     }
 
+    /// <summary>Next sign-in must choose a new password (e.g. after a manager set a temporary one).</summary>
+    public void RequirePasswordChangeOnNextLogin()
+    {
+        RequirePasswordChange = true;
+        SetUpdatedAt();
+    }
+
     public void SetStatus(UserStatus status)
     {
         Status = status;

@@ -26,6 +26,7 @@ export interface CreateUserPayload {
   phone?: string | null;
   notes?: string | null;
   requirePasswordChange?: boolean;
+  sendInvite?: boolean;
 }
 
 export interface UpdateUserPayload {

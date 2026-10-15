@@ -27,7 +27,8 @@
 | #60 | Build: fechamento (contadores, paginação, validação, estorno de despesa, etapas) | `fc723ca` | — | Em produção |
 | #61 | Billing: integridade (webhook, carência, redirects) | `1d5527b` | `BillingPastDueGrace` (aditiva) | Em produção |
 | #62 | Billing: cobrança de verdade (preços, planos, meios de pagamento) | — | — | **Aguardando decisão do dono** (preços, vitalício, Pix/boleto, trial, pacote) |
-| #63 | Auth: recuperação de senha e controle de sessões (GitHub #62) | — | `AuthPasswordReset` (aditiva) | Em revisão |
+| #63 | Auth: recuperação de senha e controle de sessões (GitHub #62) | `e64cd63` | `AuthPasswordReset` (aditiva) | Em produção |
+| #64a | Auth: bloqueio por tentativas, auditoria de login, troca obrigatória, convite | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -893,3 +894,25 @@ O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnab
   - o token sai da barra de endereço logo depois de lido;
   - teste novo: pedir de novo em seguida mantém o mesmo link; o "sair de todos" por formulário é recusado.
 - **Fica para depois (anotado):** particionar o rate limit por IP real atrás do proxy da Railway (`ForwardedHeaders` com proxies conhecidos) e enviar e-mails em segundo plano, eliminando a pequena diferença de tempo entre endereço conhecido e desconhecido. O cadastro já revela se o e-mail existe.
+
+## PR 64a — Auth: endurecimento do acesso
+
+- **Bloqueio por conta:**
+  - 10 senhas erradas seguidas, de qualquer IP, pausam o login daquela conta por 15 minutos. O limite por IP sozinho era fácil de contornar trocando de endereço;
+  - durante a pausa nem a senha certa é conferida, então um chute não pode ser confirmado;
+  - um login correto zera a contagem;
+  - resposta 429 com "Muitas tentativas… ou use Esqueci a senha".
+- **Auditoria de login:** login com sucesso, senha errada e pausa da conta ficam no registro de auditoria, com IP. As constantes já existiam e nunca eram usadas.
+- **Senha definida pelo gestor:**
+  - quando o gestor redefine a senha de alguém, a pessoa precisa trocá-la no próximo acesso (antes, a redefinição limpava essa exigência);
+  - o login informa `requirePasswordChange`, e o app leva direto para `/perfil` com o aviso "Crie sua própria senha para continuar" até a troca. Depois disso, a pessoa entra de novo.
+- **Convite por e-mail:**
+  - criar usuário passa a enviar, por padrão, um convite: um link de 72 h para a pessoa criar a própria senha, que ninguém mais conhece. É o mesmo link e a mesma tela da redefinição, com o título "Criar sua senha";
+  - o gestor ainda pode digitar uma senha, desligando o convite;
+  - convite sem e-mail é recusado;
+  - removido o padrão `"nexo@temp"` que o frontend mandava quando a senha vinha vazia.
+- **Acessibilidade:** campos de nome, e-mail e login do cadastro de usuário ganharam rótulos associados.
+- **Testes:**
+  - integração (+4, usuário próprio por teste): 10 erradas pausam até a certa, com auditoria; login certo zera e é auditado; senha do gestor força a troca e a troca limpa a exigência; convite gera link de 72 h, a pessoa cria a senha e entra; convite sem e-mail é recusado;
+  - suíte completa: integração 568/568, unitários 481/481;
+  - Playwright: troca obrigatória e convite no cadastro.

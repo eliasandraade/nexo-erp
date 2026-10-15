@@ -603,3 +603,32 @@ test('Conta: sair de todos os dispositivos',async({page})=>{
  await expect.poll(()=>revoked).toBe(true);
  await expect(page).toHaveURL(/\/login\?motivo=sessoes/);
 });
+test('Conta: senha definida pelo gestor leva à troca obrigatória',async({page})=>{
+ await prepare(page);
+ await page.addInitScript(()=>{const s=JSON.parse(localStorage.getItem('nexo:session')||'{}');s.requirePasswordChange=true;localStorage.setItem('nexo:session',JSON.stringify(s));});
+ await page.route('http://localhost:5000/api/auth/me',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({userId:'qa',tenantId:'qa',name:'Revisão local',role:'diretoria',login:'qa',email:'qa@teste.dev',activeModules:['varejo'],storeId:'qa-store',storeIds:['qa-store'],companyName:'Ambiente de teste',type:'tenant',requirePasswordChange:true})}));
+ await page.route('http://localhost:5000/api/users/qa',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'qa',fullName:'Revisão Local',email:'qa@teste.dev',login:'qa',phone:null,role:'diretoria',status:'Active',requirePasswordChange:true,notes:null,lastAccessAt:null,passwordChangedAt:null,createdAt:new Date().toISOString(),updatedAt:null})}));
+ await page.route('http://localhost:5000/api/auth/sessions',r=>r.fulfill({status:200,contentType:'application/json',body:'[]'}));
+ await page.goto('/clientes');
+ await expect(page).toHaveURL(/\/perfil\?trocar-senha=1/);
+ await expect(page.getByRole('alert')).toContainText('Crie sua própria senha');
+});
+test('Usuários: novo usuário recebe convite por e-mail em vez de senha digitada',async({page})=>{
+ await prepare(page);
+ let body: any=null;
+ await page.route('http://localhost:5000/api/users',r=>{if(r.request().method()==='POST'){body=r.request().postDataJSON();
+  return r.fulfill({status:201,contentType:'application/json',body:JSON.stringify({id:'u9',tenantId:'qa',fullName:'Ana',email:'ana@teste.dev',login:'ana',phone:null,role:'diretoria',status:'Active',requirePasswordChange:false,notes:null,lastAccessAt:null,passwordChangedAt:null,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()})});}
+  return r.fulfill({status:200,contentType:'application/json',body:'[]'});});
+ await page.goto('/usuarios/novo');
+ await page.getByLabel('Nome completo *').fill('Ana');
+ await page.getByLabel('E-mail *').fill('ana@teste.dev');
+ await page.getByLabel('Login *').fill('ana');
+ await page.getByRole('tab',{name:'Acesso e vínculo'}).click();
+ await page.getByLabel('Perfil').click();
+ await page.getByRole('option',{name:/Diretoria/}).click();
+ await page.getByRole('tab',{name:'Segurança'}).click();
+ await expect(page.getByRole('switch',{name:'Enviar convite por e-mail'})).toBeChecked();
+ await expect(page.getByLabel('Senha *')).toHaveCount(0);
+ await page.getByRole('button',{name:'Salvar'}).click();
+ await expect.poll(()=>body).toMatchObject({login:'ana',sendInvite:true,password:''});
+});

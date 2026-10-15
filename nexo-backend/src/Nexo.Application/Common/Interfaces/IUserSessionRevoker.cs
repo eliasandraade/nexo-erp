@@ -12,3 +12,9 @@ public interface IUserSessionRevoker
     /// <summary>Call after the save: drops a stamp a racing request may have re-cached meanwhile.</summary>
     Task ForgetStampAsync(Guid userId, CancellationToken ct = default);
 }
+
+/// <summary>Invites a just-created user by e-mail: a link (72 h) to choose their own password.</summary>
+public interface IUserInviter
+{
+    Task SendInviteAsync(Guid userId, CancellationToken ct = default);
+}

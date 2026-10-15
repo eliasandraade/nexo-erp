@@ -25,9 +25,11 @@ public class CreateUserRequestValidator : AbstractValidator<CreateUserRequest>
             .Matches("^[a-zA-Z0-9._-]+$")
             .WithMessage("Login may only contain letters, numbers, dots, underscores, and hyphens.");
 
+        // an invited user chooses the password through the e-mailed link
         RuleFor(x => x.Password)
-            .NotEmpty().WithMessage("Password is required.")
-            .MinimumLength(6).WithMessage("Password must be at least 6 characters.");
+            .NotEmpty().WithMessage("Informe a senha ou envie um convite por e-mail.")
+            .MinimumLength(6).WithMessage("A senha deve ter no mínimo 6 caracteres.")
+            .When(x => !x.SendInvite);
 
         RuleFor(x => x.Role)
             .NotEmpty().WithMessage("Role is required.")

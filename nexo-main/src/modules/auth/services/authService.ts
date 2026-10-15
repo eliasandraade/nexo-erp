@@ -34,6 +34,7 @@ function toAuthSession(dto: BackendSessionDto): AuthSession {
     type:         (dto.type === "platform" ? "platform" : "tenant"),
     isNewAccount: dto.isNewAccount ?? false,
     trialEndsAt:  dto.trialEndsAt ?? undefined,
+    requirePasswordChange: dto.requirePasswordChange ?? false,
   };
 }
 

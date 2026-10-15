@@ -18,6 +18,7 @@ const defaultForm: UserFormInput = {
   name: "", email: "", login: "", phone: "",
   role: "vendedor", company: "Andrade Systems", store: "", status: "active",
   password: "", passwordConfirm: "", requirePasswordChange: false, blocked: false, notes: "",
+  sendInvite: true,
 };
 
 export default function UserFormPage() {
@@ -75,8 +76,8 @@ export default function UserFormPage() {
     if ((form.role === "gerente" || form.role === "vendedor") && (!form.store || form.store === "none")) {
       e.store = "Loja é obrigatória para este perfil";
     }
-    if (isNew && !form.password) e.password = "Senha é obrigatória";
-    if (isNew && form.password && form.password.length < 6) e.password = "Senha deve ter ao menos 6 caracteres";
+    if (isNew && !form.sendInvite && !form.password) e.password = "Senha é obrigatória";
+    if (isNew && !form.sendInvite && form.password && form.password.length < 6) e.password = "Senha deve ter ao menos 6 caracteres";
     if (form.password && form.password !== form.passwordConfirm) e.passwordConfirm = "Senhas não conferem";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -97,7 +98,10 @@ export default function UserFormPage() {
           await adminResetPassword(id!, form.password);
         }
       }
-      toast({ title: isNew ? "Usuário criado com sucesso" : "Usuário atualizado com sucesso" });
+      toast({
+        title: isNew ? "Usuário criado com sucesso" : "Usuário atualizado com sucesso",
+        description: isNew && form.sendInvite ? `Enviamos para ${form.email.trim()} o link para criar a senha.` : undefined,
+      });
       navigate("/usuarios");
     } catch (err) {
       const detail = err instanceof Error ? err.message : undefined;

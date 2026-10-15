@@ -14,6 +14,7 @@ public class UserService
     private readonly ICurrentTenant _currentTenant;
 
     private readonly IUserSessionRevoker? _sessions;
+    private readonly IUserInviter? _inviter;
 
     public UserService(
         IUserRepository users,
@@ -21,8 +22,10 @@ public class UserService
         IAuditWriter audit,
         ICurrentUser currentUser,
         ICurrentTenant currentTenant,
-        IUserSessionRevoker? sessions = null)
+        IUserSessionRevoker? sessions = null,
+        IUserInviter? inviter = null)
     {
+        _inviter = inviter;
         _sessions = sessions;
         _users = users;
         _hasher = hasher;
@@ -53,7 +56,13 @@ public class UserService
             throw new ConflictException($"Email '{request.Email}' is already in use.");
 
         var role = ParseRole(request.Role);
-        var hash = _hasher.Hash(request.Password);
+        var invite = request.SendInvite;
+        if (invite && (string.IsNullOrWhiteSpace(request.Email) || _inviter is null))
+            throw new DomainException("Informe o e-mail para enviar o convite.");
+        if (!invite && (string.IsNullOrEmpty(request.Password) || request.Password.Length < 6))
+            throw new DomainException("A senha deve ter no mínimo 6 caracteres.");
+        // invited: nobody knows this password — the person sets one through the link
+        var hash = _hasher.Hash(invite ? Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32)) : request.Password);
 
         var user = User.Create(
             tenantId:               _currentTenant.Id,
@@ -78,6 +87,7 @@ public class UserService
 
         await _users.AddAsync(user, ct);
         await _users.SaveChangesAsync(ct);
+        if (invite) await _inviter!.SendInviteAsync(user.Id, ct);
 
         return MapToDto(user);
     }
@@ -151,7 +161,9 @@ public class UserService
         var user = await _users.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("User", id);
 
-        user.ChangePasswordHash(_hasher.Hash(request.NewPassword), clearRequireChange: true);
+        user.ChangePasswordHash(_hasher.Hash(request.NewPassword), clearRequireChange: false);
+        // the manager knows this password: the person replaces it on the next sign-in
+        user.RequirePasswordChangeOnNextLogin();
         user.BumpSecurityStamp();
         if (_sessions is not null) await _sessions.RevokeAllAsync(user.Id, ct);
 

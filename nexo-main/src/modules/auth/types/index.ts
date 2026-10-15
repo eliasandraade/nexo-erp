@@ -25,6 +25,8 @@ export interface AuthSession {
   isNewAccount: boolean;
   /** ISO date string when the trial ends; null if user has a paid subscription */
   trialEndsAt?: string;
+  /** A password set by a manager must be replaced before using the system. */
+  requirePasswordChange?: boolean;
 }
 
 export interface LoginInput {
@@ -48,6 +50,7 @@ export interface BackendSessionDto {
   type?: string;
   isNewAccount?: boolean;
   trialEndsAt?: string;
+  requirePasswordChange?: boolean;
 }
 
 export interface BackendSwitchStoreResponse {

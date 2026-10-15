@@ -10,7 +10,9 @@ public record CreateUserRequest(
     string Role,          // "diretoria" | "gerente" | "vendedor" | "estoquista"
     string? Phone,
     string? Notes,
-    bool RequirePasswordChange = false);
+    bool RequirePasswordChange = false,
+    /// <summary>The person gets an e-mail link to choose their own password (Password is ignored).</summary>
+    bool SendInvite = false);
 
 public record UpdateUserRequest(
     string FullName,

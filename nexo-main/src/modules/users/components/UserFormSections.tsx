@@ -17,18 +17,18 @@ export function UserMainDataSection({ form, onChange, errors }: Props) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div className="space-y-1.5">
-        <Label>Nome completo *</Label>
-        <Input value={form.name} onChange={(e) => onChange({ name: e.target.value })} className={errors.name ? "border-destructive" : ""} />
+        <Label htmlFor="user-name">Nome completo *</Label>
+        <Input id="user-name" value={form.name} onChange={(e) => onChange({ name: e.target.value })} className={errors.name ? "border-destructive" : ""} />
         {errors.name && <p className="text-xs text-destructive">{errors.name}</p>}
       </div>
       <div className="space-y-1.5">
-        <Label>E-mail *</Label>
-        <Input type="email" value={form.email} onChange={(e) => onChange({ email: e.target.value })} className={errors.email ? "border-destructive" : ""} />
+        <Label htmlFor="user-email">E-mail *</Label>
+        <Input id="user-email" type="email" value={form.email} onChange={(e) => onChange({ email: e.target.value })} className={errors.email ? "border-destructive" : ""} />
         {errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
       </div>
       <div className="space-y-1.5">
-        <Label>Login *</Label>
-        <Input value={form.login} onChange={(e) => onChange({ login: e.target.value })} className={errors.login ? "border-destructive" : ""} />
+        <Label htmlFor="user-login">Login *</Label>
+        <Input id="user-login" value={form.login} onChange={(e) => onChange({ login: e.target.value })} className={errors.login ? "border-destructive" : ""} />
         {errors.login
           ? <p className="text-xs text-destructive">{errors.login}</p>
           : <p className="text-xs text-muted-foreground">Apenas letras, números, ponto, _ e - (sem espaços)</p>
@@ -69,7 +69,7 @@ export function UserAccessSection({ form, onChange, errors, stores }: Props & { 
       <div className="space-y-1.5">
         <Label>Perfil *</Label>
         <Select value={form.role} onValueChange={(v) => onChange({ role: v as UserRole, store: "" })}>
-          <SelectTrigger className={errors.role ? "border-destructive" : ""}><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Perfil" className={errors.role ? "border-destructive" : ""}><SelectValue /></SelectTrigger>
           <SelectContent>
             {(Object.keys(roleLabels) as UserRole[]).map((r) => (
               <SelectItem key={r} value={r}>{roleLabels[r]}</SelectItem>
@@ -109,8 +109,19 @@ export function UserAccessSection({ form, onChange, errors, stores }: Props & { 
 }
 
 export function UserSecuritySection({ form, onChange, errors, isEdit }: Props & { isEdit: boolean }) {
+  const inviting = !isEdit && !!form.sendInvite;
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {!isEdit && (
+        <div className="flex items-start gap-3 md:col-span-2">
+          <Switch id="send-invite" checked={!!form.sendInvite} onCheckedChange={(v) => onChange({ sendInvite: v })} />
+          <div>
+            <Label htmlFor="send-invite" className="cursor-pointer">Enviar convite por e-mail</Label>
+            <p className="text-xs text-muted-foreground">A pessoa recebe um link para criar a própria senha (vale 72 horas). Ninguém mais fica sabendo dela.</p>
+          </div>
+        </div>
+      )}
+      {!inviting && (<>
       <div className="space-y-1.5">
         <Label>{isEdit ? "Nova senha" : "Senha *"}</Label>
         <Input type="password" value={form.password ?? ""} onChange={(e) => onChange({ password: e.target.value })} className={errors.password ? "border-destructive" : ""} />
@@ -125,6 +136,7 @@ export function UserSecuritySection({ form, onChange, errors, isEdit }: Props & 
         <Switch checked={form.requirePasswordChange} onCheckedChange={(v) => onChange({ requirePasswordChange: v })} />
         <Label className="cursor-pointer">Exigir troca de senha no próximo acesso</Label>
       </div>
+      </>)}
       <div className="flex items-center gap-3 pt-2">
         <Switch checked={form.blocked} onCheckedChange={(v) => onChange({ blocked: v })} />
         <Label className="cursor-pointer">Bloqueado</Label>

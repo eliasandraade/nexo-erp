@@ -105,6 +105,13 @@ public class AuthController : ControllerBase
         if (outcome.ErrorCode == "email_not_verified")
             return Unauthorized(new { error = "E-mail não verificado. Verifique sua caixa de entrada.", code = "email_not_verified" });
 
+        if (outcome.ErrorCode == "account_locked")
+            return StatusCode(StatusCodes.Status429TooManyRequests, new
+            {
+                error = $"Muitas tentativas com senha errada. Tente de novo em {AuthService.LockoutWindow.TotalMinutes:0} minutos ou use \"Esqueci a senha\".",
+                code = "account_locked",
+            });
+
         if (outcome.ErrorCode == "account_blocked")
             return Unauthorized(new { error = "Conta bloqueada. Entre em contato com o suporte." });
 

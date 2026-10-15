@@ -34,6 +34,8 @@ export interface UserFormInput {
   requirePasswordChange: boolean;
   blocked: boolean;
   notes: string;
+  /** New user: e-mail a link so the person chooses the password (no password typed here). */
+  sendInvite?: boolean;
 }
 
 export type PermissionAction =
