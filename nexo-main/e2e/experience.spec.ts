@@ -298,3 +298,34 @@ test('Contas a receber: aging, baixa parcial com juros e novo parcelamento',asyn
  expect(installmentsBody).toMatchObject({transactionType:'Receivable',totalAmount:1000,installments:3,description:'Instalação',customerId:null});
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Contas a pagar: fornecedor no título, pagamento com desconto e recorrência mensal',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api';
+ let settleBody: any=null, recurrenceBody: any=null;
+ const title={id:'p1',description:'Compra #7 — Atacadão',customerId:null,customerName:null,supplierId:'s1',supplierName:'Atacadão',amount:500,dueDate:'2026-10-20T15:00:00Z',competenceDate:'2026-10-05T15:00:00Z',paidAt:null,status:'Pending',daysOverdue:0,category:'Purchase',storeId:'qa-store',referenceType:'Purchase',referenceId:'c7',parentTransactionId:null};
+ await page.route(`${API}/financial/payables**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[title],aging:{notDue:500,overdue1To30:0,overdue31To60:0,overdueOver60:0,totalOpen:500,openCount:1,overdueCount:0},truncated:false})}));
+ await page.route(`${API}/financial/transactions/p1/settle`,route=>{settleBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:'{}'});});
+ await page.route(`${API}/financial/recurrences`,route=>{
+  if(route.request().method()==='POST'){recurrenceBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:'{}'});}
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'r1',transactionType:'Payable',category:'OperatingExpense',description:'Aluguel da loja',amount:1800,dayOfMonth:5,startMonth:'2026-10-01',endMonth:null,generatedThrough:'2026-11-01',isActive:true,supplierId:null,supplierName:null,customerId:null,storeId:null}])});});
+ await page.goto('/financeiro/pagar');
+ await expect(page.getByRole('heading',{name:'Contas a pagar',exact:true})).toBeVisible();
+ await expect(page.getByRole('cell',{name:'Atacadão',exact:true})).toBeVisible();
+ await expect(page.getByText('Aluguel da loja')).toBeVisible();
+ await page.getByRole('button',{name:'Pagar',exact:true}).click();
+ await page.getByLabel('Valor pago').fill('480,00');
+ await page.getByLabel('Desconto obtido').fill('20,00');
+ await expect(page.getByText('O título será quitado.')).toBeVisible();
+ await page.getByRole('button',{name:'Confirmar pagamento'}).click();
+ await expect.poll(()=>settleBody).not.toBeNull();
+ expect(settleBody).toMatchObject({amount:480,discount:20});
+ await page.getByRole('button',{name:'Nova recorrência'}).click();
+ await page.getByLabel('Descrição da recorrência').fill('Internet');
+ await page.getByLabel('Valor mensal').fill('199,90');
+ await page.getByLabel('Dia do vencimento').fill('31');
+ await page.getByRole('button',{name:'Criar recorrência'}).click();
+ await expect.poll(()=>recurrenceBody).not.toBeNull();
+ expect(recurrenceBody).toMatchObject({transactionType:'Payable',description:'Internet',amount:199.9,dayOfMonth:31,category:'OperatingExpense',supplierId:null});
+ expect(recurrenceBody.startMonth).toMatch(/^\d{4}-\d{2}-01$/);
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});

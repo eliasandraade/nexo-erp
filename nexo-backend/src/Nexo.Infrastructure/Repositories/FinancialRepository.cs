@@ -117,6 +117,7 @@ public class FinancialRepository : IFinancialRepository
         if (f.DueFrom is { } from) query = query.Where(x => x.DueDate >= from);
         if (f.DueTo is { } to) query = query.Where(x => x.DueDate < to);
         if (f.CustomerId is { } customerId) query = query.Where(x => x.CustomerId == customerId);
+        if (f.SupplierId is { } supplierId) query = query.Where(x => x.SupplierId == supplierId);
         query = f.Status == TitleStatusFilter.Settled
             ? query.OrderByDescending(x => x.PaidAt).ThenByDescending(x => x.CreatedAt)
             : query.OrderBy(x => x.DueDate).ThenBy(x => x.CreatedAt);
@@ -138,6 +139,41 @@ public class FinancialRepository : IFinancialRepository
         var list = ids.Distinct().ToList();
         if (list.Count == 0) return new Dictionary<Guid, string>();
         return await _context.Customers.Where(c => list.Contains(c.Id)).ToDictionaryAsync(c => c.Id, c => c.Name, ct);
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, string>> GetSupplierNamesAsync(IEnumerable<Guid> ids, CancellationToken ct = default)
+    {
+        var list = ids.Distinct().ToList();
+        if (list.Count == 0) return new Dictionary<Guid, string>();
+        var rows = await _context.Suppliers.Where(s => list.Contains(s.Id))
+            .Select(s => new { s.Id, s.Name, s.TradeName }).ToListAsync(ct);
+        return rows.ToDictionary(r => r.Id, r => r.TradeName ?? r.Name);
+    }
+
+    public async Task<IReadOnlyList<FinancialRecurrence>> GetRecurrencesAsync(bool includeInactive, CancellationToken ct = default)
+    {
+        var query = _context.FinancialRecurrences.AsQueryable();
+        if (!includeInactive) query = query.Where(r => r.IsActive);
+        return await query.OrderBy(r => r.DayOfMonth).ThenBy(r => r.Description).ToListAsync(ct);
+    }
+
+    public async Task<FinancialRecurrence?> GetRecurrenceByIdAsync(Guid id, CancellationToken ct = default)
+        => await _context.FinancialRecurrences.FirstOrDefaultAsync(r => r.Id == id, ct);
+
+    public async Task AddRecurrenceAsync(FinancialRecurrence recurrence, CancellationToken ct = default)
+        => await _context.FinancialRecurrences.AddAsync(recurrence, ct);
+
+    public async Task<IReadOnlyList<FinancialRecurrence>> LockRecurrencesDueAsync(
+        DateOnly horizonMonth, Guid tenantId, CancellationToken ct = default)
+    {
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.financial_recurrences WHERE tenant_id = {tenantId} AND is_active ORDER BY id FOR UPDATE", ct);
+        var due = await _context.FinancialRecurrences
+            .Where(r => r.IsActive && (r.GeneratedThrough == null || r.GeneratedThrough < horizonMonth))
+            .ToListAsync(ct);
+        foreach (var r in due)
+            await _context.Entry(r).ReloadAsync(ct);   // a request that generated while we waited moved GeneratedThrough
+        return due;
     }
 
     public async Task LockTransactionAsync(Guid id, Guid tenantId, CancellationToken ct = default)

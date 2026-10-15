@@ -44,6 +44,8 @@ public class FinancialTransaction : TenantEntity
     public Guid? ParentTransactionId { get; private set; }
     /// <summary>Cliente do título (a receber), quando houver.</summary>
     public Guid? CustomerId { get; private set; }
+    /// <summary>Fornecedor do título (a pagar), quando houver.</summary>
+    public Guid? SupplierId { get; private set; }
     public Guid CreatedByUserId { get; private set; }
 
     // Navigation
@@ -64,7 +66,8 @@ public class FinancialTransaction : TenantEntity
         Guid? referenceId = null,
         Guid? storeId = null,
         DateTime? competenceDate = null,
-        Guid? customerId = null)
+        Guid? customerId = null,
+        Guid? supplierId = null)
     {
         if (string.IsNullOrWhiteSpace(description))
             throw new DomainException("O lançamento precisa de uma descrição.");
@@ -84,6 +87,7 @@ public class FinancialTransaction : TenantEntity
             ReferenceId        = referenceId,
             StoreId            = storeId is { } s && s != Guid.Empty ? s : null,
             CustomerId         = customerId is { } c && c != Guid.Empty ? c : null,
+            SupplierId         = supplierId is { } sp && sp != Guid.Empty ? sp : null,
         };
     }
 
@@ -146,6 +150,7 @@ public class FinancialTransaction : TenantEntity
         ReferenceId         = ReferenceId,
         StoreId             = StoreId,
         CustomerId          = CustomerId,
+        SupplierId          = SupplierId,
         ParentTransactionId = ParentTransactionId ?? Id,
     };
 
@@ -170,7 +175,7 @@ public class FinancialTransaction : TenantEntity
             direction == TransactionType.Receivable ? FinancialCategory.FinancialIncome : FinancialCategory.FinancialExpense,
             amount, description, paidAt, createdByUserId,
             referenceType: SettlementReference, referenceId: Id,
-            storeId: StoreId, competenceDate: paidAt, customerId: CustomerId);
+            storeId: StoreId, competenceDate: paidAt, customerId: CustomerId, supplierId: SupplierId);
         adjustment.ParentTransactionId = ParentTransactionId ?? Id;
         if (moneyMoved) adjustment.MarkPaid(paidAt);
         else adjustment.Abate(paidAt);
@@ -210,7 +215,8 @@ public class FinancialTransaction : TenantEntity
             referenceId,
             original.StoreId,
             competenceDate: when,
-            customerId: original.CustomerId);
+            customerId: original.CustomerId,
+            supplierId: original.SupplierId);
         reversal.ReversesTransactionId = original.Id;
         reversal.MarkPaid(when);
         return reversal;
