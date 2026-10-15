@@ -1170,6 +1170,16 @@ Levantamento: **nenhum** campo da tela de Configurações tinha efeito — eram 
   - com o alerta "sem estoque" desligado, a lista do painel não fica mais vazia quando há produtos abaixo do mínimo (a consulta já não busca o que está desligado);
   - a auditoria da autorização guarda o id da venda, o do gerente, o percentual e o limite; a tela de configurações não perde edições numa atualização em segundo plano.
 - **Testes:** integração (configurações só com o que tem efeito; PDV sem modo de desconto recusado; vendedor acima do limite sem autorização → 422, com senha errada → 422, com gerente → 200 e auditado; dentro do limite passa; com autorização no caixa desligada, vendedor acima do limite → 422 mesmo com senha de gerente; gerente sem limite); Vitest da regra (mesma do servidor); Playwright da tela.
+
+## PR 74 — Código morto e documentação
+
+- **Frontend — 13 arquivos que nada importava** (detectados por um grafo de imports, inclusive `import()` dinâmico, e conferidos um a um por nome): `NavLink`, `ActionBar`, `FiltersBar`, `FormShell`, `OnboardingWizard`, `SectionHeader`, `TableShell`, `InventoryAlertCard`, `ProductRulesSection`, `PermissionGroupCard`, os serviços antigos de produtos e fornecedores (da era dos mocks) e `types/index.ts`.
+  - Ficam os componentes do kit de UI (shadcn) ainda sem uso: são biblioteca, não código do produto.
+- **Backend:** removido o "URL pré-assinada" do armazenamento local de anexos — devolvia um caminho que não é servido nem expira, e ninguém o chamava.
+- **Scripts soltos removidos:** `nexo-backend/test_dashboard.py` e `test_dash_prod.py`. O segundo lia as variáveis secretas da Railway para entrar como admin **em produção** — não deve existir no repositório.
+- **Documentação antiga arquivada** em `docs/archive/` (com índice do que era cada uma e onde está a versão atual): contexto "Nexo ERP" de abril, relatórios de segurança e testes de maio, a auditoria anterior a outubro, o retrato do código de junho e os planos já executados.
+- **Branches:** 72 branches remotas já incorporadas ao `master` foram apagadas; a lista com o SHA de cada uma (para recriar, se preciso) está em `docs/engineering/BRANCH_CLEANUP_2026-10.md`. Ficaram as `archive/*`, as não incorporadas e as de PR aberto (inclusive o GitHub #64, de outra sessão).
+- Rotas órfãs: nenhuma — toda rota do roteador tem tela, e as telas sem rota foram as removidas acima.
 - **Em produção** (merge `dc70835`): backend com deploy `SUCCESS` na Railway e frontend com bundle novo; `/configuracoes` 200, `/api/settings` 401 sem token, `/health` 20/20.
 
 ## PR 72 — Feature flags reais
