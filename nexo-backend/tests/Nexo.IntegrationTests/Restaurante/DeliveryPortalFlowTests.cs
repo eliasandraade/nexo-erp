@@ -582,6 +582,57 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
         (await _client.GetFromJsonAsync<OrderDto>($"/api/restaurante/orders/{orderId}"))!.Status.Should().NotBe("Closed");
     }
 
+    [Fact]
+    public async Task Without_an_active_Orken_Menu_the_portal_shows_the_menu_but_takes_no_orders()
+    {
+        var slug    = await SetupPublicSlugAsync("no-module");
+        var product = await CreateMenuProductAsync("NOM");
+        await SetPortalFlagsAsync(acceptingOrders: true, deliveryEnabled: true, takeawayEnabled: true);
+
+        List<(Guid Id, SubscriptionStatus Status)> previous;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            var tenantId = await db.Stores.IgnoreQueryFilters().Where(x => x.PublicSlug == slug).Select(x => x.TenantId).FirstAsync();
+            var subs = await db.ModuleSubscriptions.Where(x => x.TenantId == tenantId && x.ModuleKey == "restaurante").ToListAsync();
+            previous = subs.Select(x => (x.Id, x.Status)).ToList();
+            foreach (var sub in subs) sub.MarkPastDue();
+            await db.SaveChangesAsync();
+        }
+        try
+        {
+            var menu = await _publicClient.GetFromJsonAsync<PublicMenuDto>($"/api/public/menu/{slug}");
+            menu!.AcceptingOrders.Should().BeFalse();
+            var r = await _publicClient.PostAsJsonAsync("/api/public/orders", new
+            {
+                publicSlug = slug, orderType = "Takeaway", customerName = "Ana", customerPhone = "11911112222",
+                items = new[] { new { productId = product.Id, quantity = 1 } },
+            });
+            r.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        }
+        finally
+        {
+            using var scope = _factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            foreach (var (id, status) in previous)
+            {
+                var sub = await db.ModuleSubscriptions.FirstAsync(x => x.Id == id);
+                db.Entry(sub).Property(x => x.Status).CurrentValue = status;
+            }
+            await db.SaveChangesAsync();
+        }
+    }
+
+    [Fact]
+    public async Task A_removed_modifier_group_no_longer_applies_to_the_product()
+    {
+        var product = await CreateMenuProductAsync("MOD");
+        var group = await CreateRequiredModifierGroupAsync(product.Id);
+        (await _client.DeleteAsync($"/api/restaurante/modifier-groups/{group.Id}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var groups = await _client.GetFromJsonAsync<List<ModifierGroupDto>>($"/api/restaurante/modifier-groups?productId={product.Id}");
+        groups.Should().NotContain(g => g.Id == group.Id);
+    }
+
     // ── 11. Rastreamento em /api/public/orders/{token} ────────────────────────
 
     [Fact]

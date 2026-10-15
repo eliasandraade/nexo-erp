@@ -1,3 +1,4 @@
+using Nexo.Domain.Enums;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Restaurante.Interfaces;
 using Nexo.Domain.Exceptions;
@@ -15,13 +16,17 @@ public class PublicMenuService
     private readonly IFoodServiceSettingsRepository  _settings;
     private readonly IProductRepository              _products;
     private readonly IModifierGroupRepository        _modifiers;
+    private readonly ITenantRepository               _tenants;
+    public const string RestaurantModuleKey = "restaurante";
 
     public PublicMenuService(
         IStoreRepository               stores,
         IFoodServiceSettingsRepository settings,
         IProductRepository             products,
-        IModifierGroupRepository       modifiers)
+        IModifierGroupRepository       modifiers,
+        ITenantRepository tenants)
     {
+        _tenants = tenants;
         _stores    = stores;
         _settings  = settings;
         _products  = products;
@@ -78,7 +83,10 @@ public class PublicMenuService
         }
 
         var storeName       = foodSettings?.DisplayName ?? store.Name;
-        var acceptingOrders = foodSettings?.AcceptingOrders ?? true;
+        // Inactive store or no active Orken Menu subscription: the menu still shows, orders don't open
+        var acceptingOrders = (foodSettings?.AcceptingOrders ?? true)
+                              && store.Status == StoreStatus.Active
+                              && (await _tenants.GetActiveModuleKeysAsync(store.TenantId, ct)).Contains(RestaurantModuleKey);
         var deliveryEnabled = foodSettings?.DeliveryEnabled ?? true;
         var takeawayEnabled = foodSettings?.TakeawayEnabled ?? true;
 

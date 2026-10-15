@@ -46,6 +46,14 @@ public class ModifierGroupsController : ControllerBase
         Guid id, Guid modId, [FromBody] UpdateModifierRequest request, CancellationToken ct)
         => Ok(await _service.UpdateModifierAsync(modId, request, ct));
 
+    [HttpDelete("{id:guid}")]
+    [Authorize(Roles = AppRoles.Management)]
+    public async Task<IActionResult> DeactivateGroup(Guid id, CancellationToken ct)
+    {
+        await _service.DeactivateGroupAsync(id, ct);
+        return NoContent();
+    }
+
     [HttpDelete("{id:guid}/modifiers/{modId:guid}")]
     [Authorize(Roles = AppRoles.Management)]
     public async Task<IActionResult> DeleteModifier(Guid id, Guid modId, CancellationToken ct)

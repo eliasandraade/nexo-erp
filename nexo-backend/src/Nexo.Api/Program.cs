@@ -263,6 +263,35 @@ try
         });
     });
 
+    // Public restaurant portal (pedido, cupom): per client IP, so one caller can't flood orders or
+    // brute-force coupon codes. Defaults overridable via RateLimiting:PublicOrders:*.
+    builder.Services.Configure<RateLimiterOptions>(options =>
+    {
+        var enabled = builder.Configuration.GetValue("RateLimiting:PublicOrders:Enabled", true);
+        var permit  = builder.Configuration.GetValue("RateLimiting:PublicOrders:PermitLimit", 20);
+        var window  = builder.Configuration.GetValue("RateLimiting:PublicOrders:WindowSeconds", 60);
+
+        options.AddPolicy("public-orders", httpContext =>
+        {
+            if (!enabled)
+                return RateLimitPartition.GetNoLimiter("public-orders:disabled");
+
+            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
+                ? forwardedFor.Split(',')[0].Trim()
+                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+            return RateLimitPartition.GetFixedWindowLimiter($"pub-orders|{clientIp}", _ =>
+                new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit          = permit,
+                    Window               = TimeSpan.FromSeconds(window),
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                    QueueLimit           = 0,
+                });
+        });
+    });
+
     // ── Controllers ───────────────────────────────────────────────────────────
     // JsonStringEnumConverter: serializes all enums as their string names
     // ("Planning" instead of 0, "Draft" instead of 0, etc.).

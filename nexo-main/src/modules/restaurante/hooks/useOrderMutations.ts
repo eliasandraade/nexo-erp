@@ -5,6 +5,7 @@ import {
   addOrderItem,
   updateItemStatus,
   closeOrder,
+  cancelOrderItem,
   payOrder,
   cancelOrder,
 } from "../api/restaurante.api";
@@ -76,7 +77,18 @@ export function useCloseOrder(storeId: string) {
   return useMutation({
     mutationFn: (orderId: string) => closeOrder(orderId),
     onSuccess: invalidate,
-    onError: () => toast.error("Erro ao fechar a conta. Tente novamente."),
+    onError: (e: Error) => toast.error(e.message || "Erro ao fechar a conta. Tente novamente."),
+  });
+}
+
+// ── useCancelOrderItem ────────────────────────────────────────────────────────
+
+export function useCancelOrderItem(storeId: string) {
+  const invalidate = useInvalidateOnSuccess(storeId);
+  return useMutation({
+    mutationFn: ({ orderId, itemId }: { orderId: string; itemId: string }) => cancelOrderItem(orderId, itemId),
+    onSuccess: () => { invalidate(); toast.success("Item cancelado."); },
+    onError: (e: Error) => toast.error(e.message || "Não foi possível cancelar o item."),
   });
 }
 

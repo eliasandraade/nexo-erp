@@ -1,3 +1,4 @@
+using Nexo.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Restaurante.Interfaces;
@@ -33,6 +34,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
     private readonly IFoodServiceSettingsRepository _settings;
     private readonly IDeliveryZoneRepository       _deliveryZones;
     private readonly ICouponRepository             _coupons;
+    private readonly ITenantRepository             _tenants;
     private readonly ILogger<DeliveryOrderService> _logger;
 
     public DeliveryOrderService(
@@ -46,8 +48,10 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         IFoodServiceSettingsRepository settings,
         IDeliveryZoneRepository        deliveryZones,
         ICouponRepository              coupons,
-        ILogger<DeliveryOrderService>  logger)
+        ILogger<DeliveryOrderService>  logger,
+        ITenantRepository tenants)
     {
+        _tenants = tenants;
         _repo           = repo;
         _orders         = orders;
         _currentTenant  = currentTenant;
@@ -300,6 +304,10 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
 
         var foodSettings = await _settings.GetByStoreIdAsync(store.Id, store.TenantId, ct);
         if (foodSettings is not null && !foodSettings.AcceptingOrders)
+            throw new DomainException("O restaurante não está aceitando pedidos no momento.");
+        // An inactive store, or a tenant without an active Orken Menu, can't receive orders it can't accept
+        if (store.Status != StoreStatus.Active
+            || !(await _tenants.GetActiveModuleKeysAsync(store.TenantId, ct)).Contains(PublicMenuService.RestaurantModuleKey))
             throw new DomainException("O restaurante não está aceitando pedidos no momento.");
 
         var orderType = Enum.Parse<DeliveryOrderType>(request.OrderType, ignoreCase: true);

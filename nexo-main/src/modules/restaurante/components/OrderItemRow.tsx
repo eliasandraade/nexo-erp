@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import type { OrderItemDto } from "../types";
 
@@ -17,7 +18,14 @@ const statusLabel: Record<OrderItemDto["status"], string> = {
   Cancelled: "Cancelado",
 };
 
-export function OrderItemRow({ item }: { item: OrderItemDto }) {
+export function OrderItemRow({ item, onCancel, cancelling }: {
+  item: OrderItemDto;
+  /** When set, the item can be cancelled (two taps: the second confirms). */
+  onCancel?: () => void;
+  cancelling?: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const canCancel = !!onCancel && item.status !== "Cancelled";
   return (
     <div className="flex items-start gap-3 py-3 border-b border-border last:border-0">
       <div className="flex-1 min-w-0">
@@ -41,6 +49,18 @@ export function OrderItemRow({ item }: { item: OrderItemDto }) {
         <span className={cn("text-[10px] font-medium px-1.5 py-0.5 rounded mt-1 inline-block", statusColor[item.status])}>
           {statusLabel[item.status]}
         </span>
+        {canCancel && (
+          <button
+            type="button"
+            disabled={cancelling}
+            onClick={() => (confirming ? onCancel!() : setConfirming(true))}
+            onBlur={() => setConfirming(false)}
+            className={cn("block ml-auto mt-1 text-[11px] underline-offset-2 hover:underline disabled:opacity-50",
+              confirming ? "font-semibold text-destructive" : "text-muted-foreground")}
+          >
+            {confirming ? "Confirmar cancelamento" : "Cancelar item"}
+          </button>
+        )}
       </div>
     </div>
   );

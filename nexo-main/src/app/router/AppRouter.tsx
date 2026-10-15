@@ -92,6 +92,7 @@ import { WaiterLayout }     from "@/app/layouts/WaiterLayout";
 import { KitchenLayout }    from "@/app/layouts/KitchenLayout";
 const FloorPage             = lazy(() => import("@/modules/restaurante/pages/FloorPage"));
 const OrderPage             = lazy(() => import("@/modules/restaurante/pages/OrderPage"));
+const AdicionaisPage        = lazy(() => import("@/modules/restaurante/pages/AdicionaisPage"));
 const KitchenPage           = lazy(() => import("@/modules/restaurante/pages/KitchenPage"));
 const RestauranteSetupPage  = lazy(() => import("@/modules/restaurante/pages/RestauranteSetupPage"));
 const RelatoriosPage        = lazy(() => import("@/modules/restaurante/pages/RelatoriosPage"));
@@ -245,6 +246,7 @@ export function AppRouter() {
                   <Route element={<MainAppLayout />}>
                     <Route path="/restaurante/portal"     element={<PortalSetupPage />} />
                     <Route path="/restaurante/configurar" element={<RestauranteSetupPage />} />
+                    <Route path="/restaurante/adicionais" element={<AdicionaisPage />} />
                     <Route path="/restaurante/relatorios" element={<RelatoriosPage />} />
                     <Route path="/restaurante/financeiro" element={<FinanceiroPage />} />
                   </Route>

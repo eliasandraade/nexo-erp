@@ -30,6 +30,7 @@ import {
   Tags,
   PackageCheck,
   Landmark,
+  ListPlus,
   HandCoins,
   ChartColumnBig,
   type LucideIcon,
@@ -105,6 +106,7 @@ export const appRoutes: AppRoute[] = [
   { path: "/restaurante/cozinha",    label: "Cozinha",       icon: ChefHat,           group: "restaurante", moduleKey: "restaurante", roles: [...MGMT, "cozinha"] },
   { path: "/restaurante/portal",     label: "Cardápio online", icon: Globe,           group: "restaurante", moduleKey: "restaurante", roles: MGMT },
   { path: "/restaurante/configurar", label: "Mesas e áreas", icon: SlidersHorizontal, group: "restaurante", moduleKey: "restaurante", roles: MGMT },
+  { path: "/restaurante/adicionais", label: "Adicionais",    icon: ListPlus,          group: "restaurante", moduleKey: "restaurante", roles: MGMT },
   { path: "/restaurante/relatorios", label: "Relatórios",    icon: BarChart2,         group: "restaurante", moduleKey: "restaurante", roles: MGMT },
   { path: "/restaurante/financeiro", label: "Financeiro",    icon: TrendingUp,        group: "restaurante", moduleKey: "restaurante", roles: MGMT },
 

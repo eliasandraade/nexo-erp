@@ -69,6 +69,14 @@ public class ModifierGroupService
         return Map(modifier);
     }
 
+    /// <summary>Removes a group from the product (deactivated: history of past orders keeps its snapshots).</summary>
+    public async Task DeactivateGroupAsync(Guid groupId, CancellationToken ct = default)
+    {
+        var group = await _repo.GetByIdWithModifiersAsync(groupId, ct) ?? throw new NotFoundException("ModifierGroup", groupId);
+        group.Deactivate();
+        await _repo.SaveChangesAsync(ct);
+    }
+
     public async Task DeleteModifierAsync(Guid modifierId, CancellationToken ct = default)
     {
         var modifier = await _repo.GetModifierByIdAsync(modifierId, ct)
