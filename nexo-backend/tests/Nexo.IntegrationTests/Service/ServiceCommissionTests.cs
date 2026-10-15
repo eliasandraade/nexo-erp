@@ -664,6 +664,45 @@ public class ServiceCommissionTests
         (await EntriesAsync(c, prof)).Should().ContainSingle();
     }
 
+    // ── Finance panel (PR 59) ────────────────────────────────────────────────
+    [Fact]
+    public async Task Finance_summary_credits_each_professional_and_counts_commission_and_packages()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ana = await ProfessionalAsync(c, 10m);
+        var bia = await ProfessionalAsync(c, 20m);
+        var customer = await CustomerAsync(c);
+        var corte = await CatalogAsync(c, 60m, null);
+        var barba = await CatalogAsync(c, 40m, null);
+        var order = await OrderAsync(c, customer, ana, (corte, null), (barba, bia));   // corte → Ana (order), barba → Bia
+        await PayAsync(c, order.Id, 100m);
+        var cp = await CustomerPackageAsync(c, customer, price: 200m, (corte, 4m));
+        await ConsumeAsync(c, cp, corte, 1m, bia);                                       // Bia did 50 through the package
+
+        var r = await c.GetAsync($"{Base}/finance/summary");
+        r.StatusCode.Should().Be(HttpStatusCode.OK);
+        var s = await r.Content.ReadFromJsonAsync<JsonElement>();
+        var rows = s.GetProperty("byProfessional").EnumerateArray().ToList();
+        var a = rows.Single(x => x.GetProperty("professionalId").ValueKind != JsonValueKind.Null && x.GetProperty("professionalId").GetGuid() == ana);
+        var b = rows.Single(x => x.GetProperty("professionalId").ValueKind != JsonValueKind.Null && x.GetProperty("professionalId").GetGuid() == bia);
+        a.GetProperty("receivedFromOrders").GetDecimal().Should().Be(60m);
+        a.GetProperty("commission").GetDecimal().Should().Be(6m);
+        b.GetProperty("receivedFromOrders").GetDecimal().Should().Be(40m);
+        b.GetProperty("packageServices").GetDecimal().Should().Be(50m);
+        b.GetProperty("commission").GetDecimal().Should().Be(18m, "20% of 40 (comanda) + 20% of 50 (package)");
+        s.GetProperty("packagesSold").GetInt32().Should().BeGreaterThanOrEqualTo(1);
+        s.GetProperty("received").GetDecimal().Should().BeGreaterThanOrEqualTo(100m);
+    }
+
+    [Fact]
+    public async Task Finance_summary_validates_the_period()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        (await c.GetAsync($"{Base}/finance/summary?from=2026-10-10&to=2026-10-01")).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await c.GetAsync($"{Base}/finance/summary?from=2024-01-01&to=2026-10-01")).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await _factory.CreateApiClient().GetAsync($"{Base}/finance/summary")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
     // ── Package consumption reversal ─────────────────────────────────────────
     [Fact]
     public async Task Reversing_a_consumption_gives_the_units_back_and_reverses_its_commission()

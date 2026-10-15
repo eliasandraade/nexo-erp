@@ -52,6 +52,7 @@ describe("service-surfaces", () => {
     expect(keys).not.toContain("orders");
     expect(keys).not.toContain("packages");
     expect(keys).not.toContain("payments"); // documented gap: no order/package target
+    expect(keys).not.toContain("finance");
     expect(keys).not.toContain("subjects");
   });
 
@@ -72,7 +73,7 @@ describe("service-surfaces", () => {
     // appointment, which is exactly what the orders surface provides.
     const keys = keysFor({ appointments: true, orders: true, packages: true, commissions: true });
     expect(keys).toEqual([
-      "agenda", "orders", "packages", "payments", "professionals", "catalog",
+      "agenda", "orders", "packages", "payments", "finance", "professionals", "catalog",
     ]);
   });
 

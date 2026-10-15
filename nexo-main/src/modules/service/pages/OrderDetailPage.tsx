@@ -25,7 +25,8 @@ import {
 import { formatCurrency } from "@/lib/formatters";
 import { ApiError } from "@/services/api-client";
 import { useCustomers } from "@/modules/customers/hooks/use-customers";
-import { useOrder, useChangeOrderStatus, useAddOrderItem, useRemoveOrderItem } from "../hooks/useOrders";
+import { useOrder, useChangeOrderStatus, useAddOrderItem, useRemoveOrderItem, useUpdateOrderItem } from "../hooks/useOrders";
+import { useProfessionals } from "../hooks/useProfessionals";
 import { useCatalog } from "../hooks/useCatalog";
 import { useServicePreset } from "../context/ServicePresetContext";
 import {
@@ -37,6 +38,9 @@ import {
 } from "../lib/order-status";
 import { PaymentsPanel } from "../components/PaymentsPanel";
 
+/** Select value for "the order's professional" (Radix Select has no empty value). */
+const ORDER_PRO = "__order__";
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -46,13 +50,16 @@ export default function OrderDetailPage() {
   const { data: order, isLoading, isError, refetch } = useOrder(id);
   const { data: customers } = useCustomers(false);
   const { data: catalog } = useCatalog(true);
+  const { data: professionals } = useProfessionals(false);
 
   const changeStatus = useChangeOrderStatus();
   const addItem = useAddOrderItem();
   const removeItem = useRemoveOrderItem();
+  const updateItem = useUpdateOrderItem();
 
   const [newItemId, setNewItemId] = useState("");
   const [newQty, setNewQty] = useState("1");
+  const [newProfessional, setNewProfessional] = useState(ORDER_PRO);
 
   if (isLoading) {
     return <div className="space-y-4"><Skeleton className="h-9 w-64" /><Skeleton className="h-72 w-full" /></div>;
@@ -86,12 +93,26 @@ export default function OrderDetailPage() {
     const qty = Number(newQty);
     if (!Number.isFinite(qty) || qty <= 0) { toast.error("Quantidade inválida."); return; }
     try {
-      await addItem.mutateAsync({ id: order.id, body: { catalogItemId: newItemId, quantity: qty } });
-      setNewItemId(""); setNewQty("1");
+      await addItem.mutateAsync({ id: order.id, body: {
+        catalogItemId: newItemId, quantity: qty, professionalId: newProfessional === ORDER_PRO ? null : newProfessional,
+      } });
+      setNewItemId(""); setNewQty("1"); setNewProfessional(ORDER_PRO);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Não foi possível adicionar o item.");
     }
   };
+
+  const professionalName = (pid: string | null | undefined) => professionals?.find((p) => p.id === pid)?.name;
+  const activePros = (professionals ?? []).filter((p) => p.isActive);
+  const orderProName = professionalName(order.professionalId);
+  const proTerm = labels?.professional ?? "Profissional";
+
+  // who did the item earns its commission: the item's professional, else the order's
+  const handleItemProfessional = (it: (typeof order.items)[number], value: string) =>
+    updateItem.mutate(
+      { id: order.id, itemId: it.id, body: { quantity: it.quantity, professionalId: value === ORDER_PRO ? null : value } },
+      { onError: (e) => toast.error(e instanceof ApiError ? e.message : "Não foi possível trocar o profissional.") },
+    );
 
   const handleRemoveItem = async (itemId: string) => {
     try { await removeItem.mutateAsync({ id: order.id, itemId }); }
@@ -135,6 +156,7 @@ export default function OrderDetailPage() {
             <thead>
               <tr className="border-b border-border text-[11px] uppercase tracking-wide text-muted-foreground">
                 <th className="px-5 py-2 text-left font-medium">Item</th>
+                <th className="px-3 py-2 text-left font-medium">{proTerm}</th>
                 <th className="px-3 py-2 text-right font-medium">Qtd</th>
                 <th className="px-3 py-2 text-right font-medium">Unitário</th>
                 <th className="px-3 py-2 text-right font-medium">Total</th>
@@ -145,6 +167,23 @@ export default function OrderDetailPage() {
               {order.items.map((it) => (
                 <tr key={it.id} className="border-b border-border/60">
                   <td className="px-5 py-2.5 text-foreground">{it.nameSnapshot}</td>
+                  <td className="px-3 py-1.5 text-muted-foreground">
+                    {mutable ? (
+                      <Select value={it.professionalId ?? ORDER_PRO} onValueChange={(v) => handleItemProfessional(it, v)}
+                        disabled={updateItem.isPending}>
+                        <SelectTrigger className="h-8 w-44 text-[12.5px]" aria-label={`${proTerm} de ${it.nameSnapshot}`}><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ORDER_PRO}>{orderProName ? `Da ordem (${orderProName})` : "Não informado"}</SelectItem>
+                          {activePros.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                          {it.professionalId && !activePros.some((p) => p.id === it.professionalId) && (
+                            <SelectItem value={it.professionalId}>{professionalName(it.professionalId) ?? "—"}</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      professionalName(it.professionalId) ?? orderProName ?? "—"
+                    )}
+                  </td>
                   <td className="px-3 py-2.5 text-right text-muted-foreground">{it.quantity}</td>
                   <td className="px-3 py-2.5 text-right text-muted-foreground">{formatCurrency(it.unitPriceSnapshot)}</td>
                   <td className="px-3 py-2.5 text-right font-medium text-foreground">{formatCurrency(it.totalAmount)}</td>
@@ -161,7 +200,7 @@ export default function OrderDetailPage() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={3} className="px-5 py-3 text-right text-[12px] font-medium text-muted-foreground">Total</td>
+                <td colSpan={4} className="px-5 py-3 text-right text-[12px] font-medium text-muted-foreground">Total</td>
                 <td className="px-3 py-3 text-right text-[15px] font-bold text-foreground">{formatCurrency(order.totalAmount)}</td>
                 <td />
               </tr>
@@ -181,8 +220,15 @@ export default function OrderDetailPage() {
                 </SelectContent>
               </Select>
             </div>
+            <Select value={newProfessional} onValueChange={setNewProfessional} disabled={addItem.isPending}>
+              <SelectTrigger className="h-9 w-44" aria-label={`${proTerm} do item`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ORDER_PRO}>{orderProName ? `Da ordem (${orderProName})` : `Sem ${proTerm.toLowerCase()}`}</SelectItem>
+                {activePros.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <Input type="number" min={1} step={1} value={newQty} onChange={(e) => setNewQty(e.target.value)}
-              className="h-9 w-20" disabled={addItem.isPending} />
+              className="h-9 w-20" aria-label="Quantidade" disabled={addItem.isPending} />
             <Button onClick={handleAddItem} disabled={addItem.isPending || !newItemId}>
               <Plus className="mr-1.5 h-4 w-4" /> Adicionar
             </Button>

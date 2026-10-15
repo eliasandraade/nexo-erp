@@ -30,6 +30,7 @@ import { useOrders } from "../hooks/useOrders";
 import { useServicePreset } from "../context/ServicePresetContext";
 import { ORDER_STATUS_LABELS, ORDER_STATUS_VARIANTS } from "../lib/order-status";
 import { OrderCreateDialog } from "../components/OrderCreateDialog";
+import { pluralPt } from "../lib/plural";
 
 const STATUS_FILTERS: SvcOrderStatus[] = ["Draft", "Open", "InProgress", "Completed", "Cancelled"];
 
@@ -53,7 +54,7 @@ export default function OrdensPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Operação"
-        title={`${orderTerm}s`}
+        title={pluralPt(orderTerm)}
         description="Ordens de serviço com itens, status e total."
         actions={
           <Button onClick={() => setCreateOpen(true)}>

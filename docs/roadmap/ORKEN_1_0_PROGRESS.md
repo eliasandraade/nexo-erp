@@ -22,7 +22,8 @@
 | #55 | Fechamento do Menu | `115458e` | — | Em produção |
 | #56 | Service: agenda (bloqueios, semana, comanda) | `7edac28` | `ServiceTimeBlocks` (aditiva) | Em produção |
 | #57 | Service: cancelamento pelo cliente e estorno de pacote | `cf00b11` | `ServiceSelfCancelAndUsageReversal` (aditiva + índice único refeito com filtro mais estreito) | Em produção |
-| #58 | Service: avisos por e-mail (confirmação e lembrete) | — | `ServiceCustomerEmails` (aditiva) | Em revisão |
+| #58 | Service: avisos por e-mail (confirmação e lembrete) | `86ed34c` | `ServiceCustomerEmails` (aditiva) | Em produção |
+| #59 | Service: financeiro, profissional por item, plurais | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -735,3 +736,27 @@ Livro único, competência × caixa, títulos com baixa parcial, recorrências, 
   - **sem provedor configurado:** o job não reivindica nada e a tela avisa;
   - o log de erro do Resend não grava mais o corpo da resposta, que podia ter o destinatário;
   - o formulário não perde a edição quando outra seção salva.
+
+## PR 59 — Service: financeiro, profissional por item e plurais
+
+- **Financeiro do Service** (`GET /api/v1/service/finance/summary?from&to`, tela `/service/financeiro`):
+  - só leitura, por dias do Brasil (padrão: o mês corrente até hoje; até 366 dias);
+  - regime de caixa: conta os pagamentos ainda válidos pela data de recebimento;
+  - total, quantidade, ticket médio por comanda ou pacote pago, separação comandas × pacotes, por meio de pagamento e por dia; estornos do período aparecem à parte;
+  - **por profissional:**
+    - o que as comandas pagas lhe renderam, rateando cada pagamento pelos itens (profissional do item, senão o da comanda), ao centavo, com o último item absorvendo o arredondamento;
+    - o valor dos serviços que fez por pacote (consumos não estornados);
+    - a comissão reconhecida. Um ganho estornado só conta se já tinha sido pago, porque o lançamento negativo o desconta;
+  - pacotes vendidos no período (quantidade e valor, sem os cancelados);
+  - desfecho da agenda: realizados, cancelados, faltas (com a taxa sobre os que já passaram) e em aberto;
+  - entra na navegação para os ramos com comandas ou pacotes.
+- **Profissional por item da comanda:**
+  - a tabela de itens ganhou a coluna do profissional, editável enquanto a comanda está aberta;
+  - "Adicionar item" permite escolher quem faz;
+  - o padrão continua sendo o profissional da comanda. Um item já comissionado recusa a troca, como antes.
+- **Plurais dos termos de cada ramo** (`pluralPt`): "Ordens de serviço", "Sessões", "Avaliações", "Professores", "Instrutores", "Personais". Antes saíam "Ordem de serviços", "Sessãos" etc. Aplicado nos títulos, contagens e descrições do Service.
+- **Testes:**
+  - unitários do cálculo: rateio ao centavo, totais por origem e meio, ticket, regra do ganho estornado;
+  - integração: dois profissionais numa comanda paga + consumo de pacote → crédito e comissão de cada um; validação do período e 401 sem login;
+  - Vitest dos plurais e das superfícies;
+  - Playwright: financeiro (inclui 390 px sem rolagem lateral) e profissional por item.

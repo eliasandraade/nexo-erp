@@ -4,11 +4,13 @@ import {
   ClipboardList,
   CreditCard,
   Package,
+  Wallet,
   Users,
   Boxes,
   type LucideIcon,
 } from "lucide-react";
 import type { ServicePresetDto, SvcSubjectKind } from "../api/service.api";
+import { pluralPt } from "./plural";
 
 /**
  * The navigable Service surfaces. Which ones are active is driven entirely by the resolved
@@ -27,7 +29,8 @@ export type ServiceSurfaceKey =
   | "agenda"
   | "orders"
   | "packages"
-  | "payments";
+  | "payments"
+  | "finance";
 
 /** Extra context (beyond the preset) that can switch a surface on. */
 export interface SurfaceContext {
@@ -69,7 +72,7 @@ export const SERVICE_SURFACES: ServiceSurface[] = [
     path: "/service/agenda",
     icon: CalendarClock,
     label: () => "Agenda",
-    description: (p) => `Agende e acompanhe ${p.labels.appointment.toLowerCase()}s.`,
+    description: (p) => `Agende e acompanhe ${pluralPt(p.labels.appointment.toLowerCase())}.`,
     // Public booking creates appointments even for verticals without the capability, so the
     // owner must be able to see the Agenda once the portal is on.
     isEnabled: (p, ctx) => p.capabilities.appointments || !!ctx?.publicBookingEnabled,
@@ -79,7 +82,7 @@ export const SERVICE_SURFACES: ServiceSurface[] = [
     path: "/service/ordens",
     icon: ClipboardList,
     label: (p) => p.labels.order,
-    description: (p) => `Abra e feche ${p.labels.order.toLowerCase()}s com itens e total.`,
+    description: (p) => `Abra e feche ${pluralPt(p.labels.order.toLowerCase())} com itens e total.`,
     isEnabled: (p) => p.capabilities.orders,
   },
   {
@@ -100,11 +103,20 @@ export const SERVICE_SURFACES: ServiceSurface[] = [
     isEnabled: (p) => p.capabilities.orders || p.capabilities.packages,
   },
   {
+    key: "finance",
+    path: "/service/financeiro",
+    icon: Wallet,
+    label: () => "Financeiro",
+    description: () => "Recebido no período, por profissional, comissões e pacotes.",
+    // money only enters through payments — same targets
+    isEnabled: (p) => p.capabilities.orders || p.capabilities.packages,
+  },
+  {
     key: "professionals",
     path: "/service/profissionais",
     icon: Users,
     label: () => "Profissionais",
-    description: (p) => `Equipe de ${p.labels.professional.toLowerCase()}s e comissões.`,
+    description: (p) => `Equipe de ${pluralPt(p.labels.professional.toLowerCase())} e comissões.`,
     isEnabled: () => true,
   },
   {
@@ -112,7 +124,7 @@ export const SERVICE_SURFACES: ServiceSurface[] = [
     path: "/service/catalogo",
     icon: BookMarked,
     label: () => "Catálogo",
-    description: (p) => `${p.labels.catalogItem}s, duração e preço.`,
+    description: (p) => `${pluralPt(p.labels.catalogItem)}, duração e preço.`,
     isEnabled: () => true,
   },
   {

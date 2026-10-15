@@ -491,3 +491,42 @@ test('Service: liga os avisos por e-mail com o lembrete escolhido',async({page})
  await expect.poll(()=>body).toEqual({customerEmailsEnabled:true,reminderHoursBefore:2});
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Service: financeiro do período por profissional',async({page})=>{
+ await prepare(page);
+ let asked='';
+ await page.route(/\/v1\/service\/finance\/summary/,route=>{asked=new URL(route.request().url()).search;
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({from:'2026-10-01',to:'2026-10-15',received:400,paymentsCount:3,averageTicket:200,
+   receivedFromOrders:100,receivedFromPackages:300,voided:20,voidedCount:1,byMethod:[{method:'Pix',amount:360,count:2},{method:'Cash',amount:40,count:1}],
+   byDay:[{day:'2026-10-10',amount:400}],byProfessional:[{professionalId:'p1',name:'Rafa',receivedFromOrders:60,packageServices:50,commission:16},{professionalId:null,name:'Sem profissional',receivedFromOrders:40,packageServices:0,commission:0}],
+   commissionTotal:16,packagesSold:1,packagesSoldValue:300,appointments:{total:4,completed:2,cancelled:1,noShow:1,open:0}})});});
+ await page.goto('/service/financeiro');
+ await expect(page.getByRole('heading',{name:'Financeiro',exact:true})).toBeVisible();
+ await expect(page.getByText('R$ 400,00').first()).toBeVisible();
+ await expect(page.getByRole('cell',{name:'Rafa'})).toBeVisible();
+ await expect(page.getByText(/33% dos que já passaram/)).toBeVisible();
+ await page.getByRole('tab',{name:'Hoje'}).click();
+ await expect.poll(()=>asked).toMatch(/from=(\d{4}-\d{2}-\d{2})&to=\1$/);
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});
+test('Service: profissional por item da comanda',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api'; let updateBody: any=null, addBody: any=null;
+ const order={id:'o1',code:'OS-1',customerId:'c1',subjectId:null,professionalId:'p1',appointmentId:null,status:'Open',notes:null,cancellationReason:null,totalAmount:60,
+  items:[{id:'i1',orderId:'o1',catalogItemId:'s1',professionalId:null,nameSnapshot:'Corte',descriptionSnapshot:null,quantity:1,unitPriceSnapshot:60,totalAmount:60}],createdAt:new Date().toISOString(),updatedAt:null};
+ await page.route(`${API}/v1/service/orders/o1/items/i1`,route=>{updateBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(order)});});
+ await page.route(`${API}/v1/service/orders/o1/items`,route=>{addBody=route.request().postDataJSON();return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(order)});});
+ await page.route(`${API}/v1/service/orders/o1`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(order)}));
+ await page.route(`${API}/v1/service/payments/order/o1/summary`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({targetId:'o1',targetType:'Order',totalAmount:60,paidAmount:0,voidedAmount:0,remainingAmount:60,isFullyPaid:false})}));
+ await page.route(`${API}/v1/service/professionals**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'p1',name:'Rafa',isActive:true},{id:'p2',name:'Bia',isActive:true}])}));
+ await page.route(`${API}/v1/service/catalog**`,route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify([{id:'s1',name:'Corte',price:60,isActive:true}])}));
+ await page.goto('/service/ordens/o1');
+ await page.getByLabel(/de Corte$/).click();
+ await page.getByRole('option',{name:'Bia'}).click();
+ await expect.poll(()=>updateBody).toEqual({quantity:1,professionalId:'p2'});
+ await page.getByRole('combobox').filter({hasText:'Adicionar item do catálogo'}).click();
+ await page.getByRole('option',{name:/Corte/}).click();
+ await page.getByLabel(/do item$/).click();
+ await page.getByRole('option',{name:'Bia'}).click();
+ await page.getByRole('button',{name:'Adicionar'}).click();
+ await expect.poll(()=>addBody).toEqual({catalogItemId:'s1',quantity:1,professionalId:'p2'});
+});

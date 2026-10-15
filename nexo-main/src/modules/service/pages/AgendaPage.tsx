@@ -50,6 +50,7 @@ import {
 } from "../lib/appointment-status";
 import { AppointmentDialog } from "../components/AppointmentDialog";
 import { AppointmentStatusDialog } from "../components/AppointmentStatusDialog";
+import { pluralPt } from "../lib/plural";
 
 const ACTION_LABELS: Record<SvcAppointmentStatus, string> = {
   Scheduled: "Reagendar",
@@ -256,7 +257,7 @@ export default function AgendaPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Agenda"
-        title={`${apptTerm}s`}
+        title={pluralPt(apptTerm)}
         description="Agenda por dia ou semana, por profissional, com os horários bloqueados."
         actions={
           <div className="flex gap-2">
@@ -295,7 +296,7 @@ export default function AgendaPage() {
             </SelectContent>
           </Select>
           <span className="ml-auto text-[12px] text-muted-foreground">
-            {visibleCount} {visibleCount === 1 ? apptTerm.toLowerCase() : `${apptTerm.toLowerCase()}s`}
+            {visibleCount} {visibleCount === 1 ? apptTerm.toLowerCase() : pluralPt(apptTerm.toLowerCase())}
           </span>
         </div>
 

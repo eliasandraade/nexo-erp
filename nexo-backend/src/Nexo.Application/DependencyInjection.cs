@@ -82,6 +82,7 @@ public static class DependencyInjection
         services.AddScoped<SvcRecordEntryService>();
         services.AddScoped<SvcAppointmentService>();
         services.AddScoped<SvcTimeBlockService>();
+        services.AddScoped<SvcFinanceService>();
         services.AddScoped<SvcOrderService>();
         services.AddScoped<SvcPackageService>();
         services.AddScoped<SvcCustomerPackageService>();

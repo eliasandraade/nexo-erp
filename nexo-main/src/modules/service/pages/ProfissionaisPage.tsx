@@ -29,6 +29,7 @@ import { useProfessionals, useSetProfessionalActive } from "../hooks/useProfessi
 import { useServicePreset } from "../context/ServicePresetContext";
 import { ProfessionalDialog } from "../components/ProfessionalDialog";
 import { CommissionPanel } from "../components/CommissionPanel";
+import { pluralPt } from "../lib/plural";
 
 export default function ProfissionaisPage() {
   const { labels, capabilities } = useServicePreset();
@@ -60,7 +61,7 @@ export default function ProfissionaisPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Cadastros"
-        title={term === "Profissional" ? "Profissionais" : `${term}s`}
+        title={pluralPt(term)}
         description={`Equipe que executa os serviços${capabilities?.commissions ? " e suas comissões" : ""}.`}
         actions={
           <Button onClick={() => setDialog({ open: true, editing: null })}>
