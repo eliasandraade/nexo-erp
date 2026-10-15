@@ -119,7 +119,7 @@ function TelemetryRow({ rec }: { rec: AiTelemetryRecord }) {
               {!rec.rawPrompt && (
                 <div className="col-span-4">
                   <p className="text-xs text-muted-foreground italic">
-                    Prompt raw não disponível — ative <span className="font-mono">EnablePromptLogging</span> nas Feature Flags.
+                    Prompt não registrado — o texto dos prompts não é guardado.
                   </p>
                 </div>
               )}

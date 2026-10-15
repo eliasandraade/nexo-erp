@@ -67,8 +67,18 @@ public class CompositeCepLookupProviderTests
     private static CompositeCepLookupProvider BuildComposite(
         BrasilApiCepProvider brasilApi,
         ViaCepProvider       viaCep,
-        ICacheService        cache)
-        => new(brasilApi, viaCep, cache, NullLogger<CompositeCepLookupProvider>.Instance);
+        ICacheService        cache,
+        bool brasilApiOn = true,
+        bool viaCepOn = true)
+        => new(brasilApi, viaCep, cache, Providers(brasilApiOn, viaCepOn), NullLogger<CompositeCepLookupProvider>.Instance);
+
+    private static Nexo.Application.Integrations.Options.IIntegrationFeatureFlags Providers(bool brasilApi, bool viaCep)
+    {
+        var flags = NSubstitute.Substitute.For<Nexo.Application.Integrations.Options.IIntegrationFeatureFlags>();
+        NSubstitute.SubstituteExtensions.Returns(flags.BrasilApiEnabled, brasilApi);
+        NSubstitute.SubstituteExtensions.Returns(flags.ViaCepEnabled, viaCep);
+        return flags;
+    }
 
     // ── JSON stubs ────────────────────────────────────────────────────────────
 
@@ -164,6 +174,32 @@ public class CompositeCepLookupProviderTests
 
         result.Should().NotBeNull();
         result!.Provider.Should().Be("ViaCep");
+    }
+
+    // ── Tests: switches (PR 72) ───────────────────────────────────────────────
+
+    [Fact]
+    public async Task A_provider_switched_off_is_not_called()
+    {
+        var cache = Substitute.For<ICacheService>();
+        cache.GetAsync<CepLookupResult>(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((CepLookupResult?)null);
+        // BrasilAPI would answer, but it is off: ViaCEP answers
+        var sut = BuildComposite(MakeBrasilApiProvider(HttpStatusCode.OK, BrasilApiFoundJson),
+            MakeViaCepProvider(HttpStatusCode.OK, ViaCepFoundJson), cache, brasilApiOn: false);
+
+        var result = await sut.LookupAsync("01310100", CancellationToken.None);
+
+        result!.Provider.Should().Be("ViaCep");
+    }
+
+    [Fact]
+    public async Task Both_providers_off_answer_nothing_without_calling_out()
+    {
+        var cache = Substitute.For<ICacheService>();
+        cache.GetAsync<CepLookupResult>(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns((CepLookupResult?)null);
+        var sut = BuildComposite(MakeBrasilApiProviderThatThrows(), MakeViaCepProviderThatThrows(), cache, brasilApiOn: false, viaCepOn: false);
+
+        (await sut.LookupAsync("01310100", CancellationToken.None)).Should().BeNull();
     }
 
     // ── Tests: both providers return null ─────────────────────────────────────

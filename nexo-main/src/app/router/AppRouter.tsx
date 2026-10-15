@@ -114,7 +114,6 @@ const PlatformTenantDetailPage = lazy(() => import("@/modules/platform/pages/Pla
 const PlatformSystemPage       = lazy(() => import("@/modules/platform/pages/PlatformSystemPage"));
 const PlatformActivityPage     = lazy(() => import("@/modules/platform/pages/PlatformActivityPage"));
 const PlatformTrialPage        = lazy(() => import("@/modules/platform/pages/PlatformTrialPage"));
-const PlatformFlagsPage        = lazy(() => import("@/modules/platform/pages/PlatformFlagsPage"));
 const AiDashboardPage          = lazy(() => import("@/modules/platform/pages/ai/AiDashboardPage"));
 const AiPlaygroundPage         = lazy(() => import("@/modules/platform/pages/ai/AiPlaygroundPage"));
 const AiProvidersPage          = lazy(() => import("@/modules/platform/pages/ai/AiProvidersPage"));
@@ -345,7 +344,6 @@ export function AppRouter() {
                 <Route path="/platform/trial"                    element={<PlatformTrialPage />} />
                 <Route path="/platform/activity"                 element={<PlatformActivityPage />} />
                 <Route path="/platform/system"                   element={<PlatformSystemPage />} />
-                <Route path="/platform/flags"                    element={<PlatformFlagsPage />} />
                 {/* AI Operations */}
                 <Route path="/platform/ai"                       element={<AiDashboardPage />} />
                 <Route path="/platform/ai/playground"            element={<AiPlaygroundPage />} />

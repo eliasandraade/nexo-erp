@@ -6,10 +6,7 @@ public interface IIntegrationFeatureFlags
     bool ViaCepEnabled { get; }
     bool OpenFoodFactsEnabled { get; }
     bool StorageEnabled { get; }
-    bool PdfEnabled { get; }
     bool WeatherEnabled { get; }
     bool StripeEnabled { get; }
-    bool MercadoPagoEnabled { get; }
-    bool WhatsAppEnabled { get; }
     bool FiscalEnabled { get; }
 }

@@ -7,21 +7,19 @@ namespace Nexo.UnitTests.Integrations;
 public class IntegrationFeatureFlagsTests
 {
     [Fact]
-    public void AllFlags_DefaultToFalse_WhenConfigSectionIsEmpty()
+    public void Paid_or_sensitive_integrations_default_off_and_free_lookups_default_on()
     {
         var configuration = new ConfigurationBuilder().Build();
 
         var flags = new IntegrationFeatureFlags(configuration);
 
-        flags.BrasilApiEnabled.Should().BeFalse();
-        flags.ViaCepEnabled.Should().BeFalse();
+        // CEP/CNPJ lookups are free public APIs: a missing key must not silently switch them off
+        flags.BrasilApiEnabled.Should().BeTrue();
+        flags.ViaCepEnabled.Should().BeTrue();
         flags.OpenFoodFactsEnabled.Should().BeFalse();
         flags.StorageEnabled.Should().BeFalse();
-        flags.PdfEnabled.Should().BeFalse();
         flags.WeatherEnabled.Should().BeFalse();
         flags.StripeEnabled.Should().BeFalse();
-        flags.MercadoPagoEnabled.Should().BeFalse();
-        flags.WhatsAppEnabled.Should().BeFalse();
         flags.FiscalEnabled.Should().BeFalse();
     }
 
@@ -38,14 +36,11 @@ public class IntegrationFeatureFlagsTests
         var flags = new IntegrationFeatureFlags(configuration);
 
         flags.BrasilApiEnabled.Should().BeTrue();
-        flags.ViaCepEnabled.Should().BeFalse();
+        flags.ViaCepEnabled.Should().BeTrue("on by default");
         flags.OpenFoodFactsEnabled.Should().BeFalse();
         flags.StorageEnabled.Should().BeFalse();
-        flags.PdfEnabled.Should().BeFalse();
         flags.WeatherEnabled.Should().BeFalse();
         flags.StripeEnabled.Should().BeFalse();
-        flags.MercadoPagoEnabled.Should().BeFalse();
-        flags.WhatsAppEnabled.Should().BeFalse();
         flags.FiscalEnabled.Should().BeFalse();
     }
 
@@ -59,11 +54,8 @@ public class IntegrationFeatureFlagsTests
                 ["Integrations:Features:ViaCepEnabled"]        = "true",
                 ["Integrations:Features:OpenFoodFactsEnabled"] = "true",
                 ["Integrations:Features:StorageEnabled"]       = "true",
-                ["Integrations:Features:PdfEnabled"]           = "true",
                 ["Integrations:Features:WeatherEnabled"]       = "true",
                 ["Integrations:Features:StripeEnabled"]        = "true",
-                ["Integrations:Features:MercadoPagoEnabled"]   = "true",
-                ["Integrations:Features:WhatsAppEnabled"]      = "true",
                 ["Integrations:Features:FiscalEnabled"]        = "true"
             })
             .Build();
@@ -74,11 +66,8 @@ public class IntegrationFeatureFlagsTests
         flags.ViaCepEnabled.Should().BeTrue();
         flags.OpenFoodFactsEnabled.Should().BeTrue();
         flags.StorageEnabled.Should().BeTrue();
-        flags.PdfEnabled.Should().BeTrue();
         flags.WeatherEnabled.Should().BeTrue();
         flags.StripeEnabled.Should().BeTrue();
-        flags.MercadoPagoEnabled.Should().BeTrue();
-        flags.WhatsAppEnabled.Should().BeTrue();
         flags.FiscalEnabled.Should().BeTrue();
     }
 

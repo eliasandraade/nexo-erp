@@ -37,8 +37,8 @@
 | #65b | Relatórios: atalhos para os das outras áreas (GitHub #71) | `c5b90bf` | — | Em produção |
 | #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) (GitHub #70) | `f7a106b` | `ObservabilityErrorEvents` (aditiva) | Em produção |
 | #70 | Storage privado (URL assinada, papéis por contexto, chaves do tenant) (GitHub #72) | `4c93835` | — | Em produção |
-| #71 | Configurações reais (sem toggle placebo) | — | — | Em revisão |
-
+| #71 | Configurações reais (sem toggle placebo) (GitHub #73) | `dc70835` | — | Em produção |
+| #72 | Feature flags reais (remove infraestrutura morta) | — | — | Em revisão |
 
 ## Marcos por fase
 
@@ -1145,6 +1145,7 @@ Antes: tudo ia para um bucket com acesso público; prontuário (Service) e fotos
 - **Para o dono, na ordem:** (1) criar o bucket R2 privado **sem** domínio público nem r2.dev; (2) dar acesso a ele ao token da aplicação; (3) configurar `Integrations__Storage__R2__PrivateBucketName`; (4) se já houver fotos de obra sob `private/` no bucket atual, copiá-las para o novo antes (senão passam a 404). Fotos e anexos antigos com chave pública (`tenants/…`) continuam acessíveis pela URL pública até uma migração que os mova (cópia + regravação + exclusão da cópia pública — exige aprovação, por excluir dados).
 - **Fica para depois:** anexos do interpretador e imagens de ficha técnica gravados no disco do container (não são servidos, e somem a cada deploy); URLs de logo/capa/produto aceitam qualquer endereço externo.
 - **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.
+
 - **Em produção** (merge `4c93835`): `GET /api/integrations/storage/signed-url` passou de 405 para 401 sem token; `/health/ready` mostra `object-storage: Degraded — reachable, private bucket not configured`, como esperado até o dono criar o bucket privado; `/health` 20/20.
 
 ## PR 71 — Configurações reais
@@ -1170,3 +1171,17 @@ Levantamento: **nenhum** campo da tela de Configurações tinha efeito — eram 
   - com o alerta "sem estoque" desligado, a lista do painel não fica mais vazia quando há produtos abaixo do mínimo (a consulta já não busca o que está desligado);
   - a auditoria da autorização guarda o id da venda, o do gerente, o percentual e o limite; a tela de configurações não perde edições numa atualização em segundo plano.
 - **Testes:** integração (configurações só com o que tem efeito; PDV sem modo de desconto recusado; vendedor acima do limite sem autorização → 422, com senha errada → 422, com gerente → 200 e auditado; dentro do limite passa; com autorização no caixa desligada, vendedor acima do limite → 422 mesmo com senha de gerente; gerente sem limite); Vitest da regra (mesma do servidor); Playwright da tela.
+- **Em produção** (merge `dc70835`): backend com deploy `SUCCESS` na Railway e frontend com bundle novo; `/configuracoes` 200, `/api/settings` 401 sem token, `/health` 20/20.
+
+## PR 72 — Feature flags reais
+
+Levantamento: as **6 flags da plataforma** (tela "Recursos", `/api/features`, sobreposição por empresa) não eram lidas por nenhum código — o hook do frontend nunca era importado e o backend nunca consultava as tabelas. Além disso, 6 chaves de configuração também não tinham leitor.
+
+- **Removido (infraestrutura morta):** tela "Recursos" da plataforma, `PlatformFlagsController` (criar, alternar, sobrepor por empresa), `FeaturesController` (`/api/features`), o hook `useFeatureFlags` e as chamadas de API. As tabelas `feature_flags` e `tenant_feature_overrides` **ficam** (apagá-las seria migração destrutiva); as entidades estão marcadas como sem uso.
+- **Flags de configuração** (`Integrations:Features:*`, por implantação — appsettings ou variável de ambiente; quem muda é quem opera o servidor; sem escopo por empresa nem rollout, porque nada aqui pede isso):
+  - **passam a valer:** `BrasilApiEnabled` e `ViaCepEnabled` viram interruptores reais — cada provedor de CEP só é consultado se estiver ligado, e a consulta de CNPJ responde "indisponível" (o cadastro manual continua) com a BrasilAPI desligada;
+  - **já valiam** (sem mudança): Storage, Stripe, OpenFoodFacts, Weather, Fiscal; e no interpretador, a escolha do analisador;
+  - **removidas** (ninguém lia): `PdfEnabled`, `MercadoPagoEnabled`, `WhatsAppEnabled` e `Interpreter:Features:EnableMemoryRebuild`.
+- As telas de IA citavam uma flag `EnablePromptLogging` que não existe; o texto agora diz apenas que o conteúdo do prompt não é guardado.
+- **Correções da revisão independente** (sem bloqueadores): BrasilAPI e ViaCEP passam a ficar **ligadas por padrão** no código (consultas gratuitas: uma chave ausente na configuração não pode desligá-las em silêncio); chaves no bloco do provedor de CEP; plano de integrações atualizado.
+- **Testes:** unitários das flags (padrões), do CEP com um e com os dois provedores desligados (o desligado não é chamado), do CNPJ com a BrasilAPI desligada ("indisponível", sem chamada); RBAC sem a rota removida; modelo do banco sem mudança (nenhuma migração pendente).

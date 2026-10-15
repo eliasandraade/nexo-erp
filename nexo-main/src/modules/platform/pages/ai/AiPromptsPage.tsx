@@ -113,8 +113,7 @@ function VersionRow({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground italic">
-                  Conteúdo não disponível — ative{" "}
-                  <span className="font-mono">EnablePromptLogging</span> nas Feature Flags.
+                  Conteúdo não registrado — o texto dos prompts não é guardado.
                 </p>
               )}
             </div>
