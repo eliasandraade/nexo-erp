@@ -33,13 +33,6 @@ public sealed class LocalAttachmentStorage : IAttachmentStorage
         return storageKey;
     }
 
-    public Task<string> GetPresignedUrlAsync(string storageKey, TimeSpan expiry, CancellationToken ct = default)
-    {
-        // Local filesystem: return a relative path; the API layer serves it via StaticFiles.
-        var url = $"/attachments/{storageKey}";
-        return Task.FromResult(url);
-    }
-
     public Task DeleteAsync(string storageKey, CancellationToken ct = default)
     {
         var fullPath = Path.Combine(_baseDir, storageKey);

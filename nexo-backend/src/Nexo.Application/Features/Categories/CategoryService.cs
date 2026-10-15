@@ -74,8 +74,8 @@ public class CategoryService
         var category = await _categories.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("Category", id);
 
-        if (await _categories.HasChildrenAsync(id, ct))
-            throw new ConflictException("Cannot deactivate a category that has active subcategories.");
+        if (await _categories.HasActiveChildrenAsync(id, ct))
+            throw new ConflictException("Esta categoria tem subcategorias ativas. Remova-as antes.");
 
         category.Deactivate();
         await _categories.SaveChangesAsync(ct);

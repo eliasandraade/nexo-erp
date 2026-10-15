@@ -39,7 +39,8 @@
 | #70 | Storage privado (URL assinada, papéis por contexto, chaves do tenant) (GitHub #72) | `4c93835` | — | Em produção |
 | #71 | Configurações reais (sem toggle placebo) (GitHub #73) | `dc70835` | — | Em produção |
 | #72 | Feature flags reais (remove infraestrutura morta) (GitHub #74) | `84c280a` | — | Em produção |
-| #73 | Nexo → Orken (visível corrigido, interno classificado) | — | — | Em revisão |
+| #73 | Nexo → Orken (visível corrigido, interno classificado) (GitHub #75) | `6b8a24e` | — | Em produção |
+| #74 | Código morto e documentação (arquivos órfãos, docs antigas, branches) | — | — | Em revisão |
 
 ## Marcos por fase
 
@@ -1119,6 +1120,7 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - Service — financeiro (receita, comissões e resultado por profissional), Restaurante e Obras, **só para quem tem o módulo**.
 - Vendas, produtos, vendedores, formas de pagamento, estoque e clientes ficam na própria página (PR 65).
 - Playwright: os atalhos aparecem e levam às telas certas.
+- **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.
 
 ## PR 70 — Storage privado
 
@@ -1145,7 +1147,7 @@ Antes: tudo ia para um bucket com acesso público; prontuário (Service) e fotos
   - o frontend codifica a chave por segmento ao apagar (`%2F` não é decodificado no caminho e a exclusão falhava sempre).
 - **Para o dono, na ordem:** (1) criar o bucket R2 privado **sem** domínio público nem r2.dev; (2) dar acesso a ele ao token da aplicação; (3) configurar `Integrations__Storage__R2__PrivateBucketName`; (4) se já houver fotos de obra sob `private/` no bucket atual, copiá-las para o novo antes (senão passam a 404). Fotos e anexos antigos com chave pública (`tenants/…`) continuam acessíveis pela URL pública até uma migração que os mova (cópia + regravação + exclusão da cópia pública — exige aprovação, por excluir dados).
 - **Fica para depois:** anexos do interpretador e imagens de ficha técnica gravados no disco do container (não são servidos, e somem a cada deploy); URLs de logo/capa/produto aceitam qualquer endereço externo.
-- **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.
+- **Em produção** (merge `4c93835`): `GET /api/integrations/storage/signed-url` passou de 405 para 401 sem token; `/health/ready` mostra `object-storage: Degraded — reachable, private bucket not configured`, como esperado até o dono criar o bucket privado; `/health` 20/20.
 
 ## PR 71 — Configurações reais
 
@@ -1190,4 +1192,19 @@ Levantamento: as **6 flags da plataforma** (tela "Recursos", `/api/features`, so
 
 - **Conferência do que a pessoa usuária vê:** nenhuma tela, página pública, e-mail, recibo ou título mostra mais "Nexo". Sobravam dois pontos, corrigidos: o nome da empresa na sessão de quem opera a plataforma ("NexoERP Platform" → "Orken Platform") e o título da documentação da API, que só existe fora de produção ("Nexo API" → "Orken API").
 - **Classificação do que é interno** em `docs/engineering/NEXO_TO_ORKEN.md`: namespaces e pastas, schema do banco, cookies de sessão, emissor/público do token, chaves do navegador, política de CORS, CSS, log. Ficam como estão: renomeá-los deslogaria todo mundo, exigiria migração de schema ou reconfiguração da implantação, sem nenhum ganho visível. O documento diz quando valeria mudar (junto de uma troca que já obrigue novo login, como mover a API para `api.orken.com.br`).
-- **Em produção** (merge `4c93835`): `GET /api/integrations/storage/signed-url` passou de 405 para 401 sem token; `/health/ready` mostra `object-storage: Degraded — reachable, private bucket not configured`, como esperado até o dono criar o bucket privado; `/health` 20/20.
+- **Em produção** (merge `6b8a24e`): backend com deploy `SUCCESS` na Railway; `/health` 20/20. O nome da sessão da plataforma só aparece com login, então a conferência foi o deploy e a saúde.
+
+## PR 74 — Código morto e documentação
+
+- **Frontend — 13 arquivos que nada importava** (detectados por um grafo de imports, inclusive `import()` dinâmico, e conferidos um a um por nome): `NavLink`, `ActionBar`, `FiltersBar`, `FormShell`, `OnboardingWizard`, `SectionHeader`, `TableShell`, `InventoryAlertCard`, `ProductRulesSection`, `PermissionGroupCard`, os serviços antigos de produtos e fornecedores (da era dos mocks) e `types/index.ts`.
+  - Ficam os componentes do kit de UI (shadcn) ainda sem uso: são biblioteca, não código do produto.
+- **Backend:** removido o "URL pré-assinada" do armazenamento local de anexos — devolvia um caminho que não é servido nem expira, e ninguém o chamava.
+- **Scripts soltos removidos:** `nexo-backend/test_dashboard.py` e `test_dash_prod.py`. O segundo lia as variáveis secretas da Railway para entrar como admin **em produção** — não deve existir no repositório.
+- **Documentação antiga arquivada** em `docs/archive/` (com índice do que era cada uma e onde está a versão atual): contexto "Nexo ERP" de abril, relatórios de segurança e testes de maio, a auditoria anterior a outubro, o retrato do código de junho e os planos já executados.
+- **Branches:** 70 branches remotas já incorporadas ao `master` foram apagadas; a lista com o SHA de cada uma (para recriar, se preciso) está em `docs/engineering/BRANCH_CLEANUP_2026-10.md`. Ficaram as `archive/*`, as não incorporadas, as de PR aberto (inclusive o GitHub #64, de outra sessão) e duas incorporadas que ainda têm worktree local em uso.
+- **Telas que não diziam a verdade** (apontadas pela auditoria final):
+  - excluir categoria chamava uma rota que nunca existiu (405); agora a categoria sai da lista (desativada) e os produtos continuam com ela;
+    - revisão independente: a lista de produtos passou a mostrar o nome da categoria removida (antes mostrava "—"), e uma categoria pai cujas subcategorias foram todas removidas também pode ser removida (antes contava as inativas e respondia 409 para sempre); mensagem em português; testes de integração novos.
+  - o painel de IA da plataforma prometia chaves "criptografadas com AES-256", mas elas são só codificadas; a tela agora avisa para não cadastrar chaves de produção;
+  - o "Resultado" por competência do financeiro não desconta o custo das mercadorias vendidas; agora se chama "Resultado (antes do CMV)" e explica que o lucro real é menor.
+- Rotas órfãs: nenhuma — toda rota do roteador tem tela, e as telas sem rota foram as removidas acima.

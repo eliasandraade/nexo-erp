@@ -51,6 +51,7 @@ export default function ProdutosPage() {
     : (data?.items ?? []);
 
   const { data: categories = [] } = useCategories();
+  const { data: allCategories = [] } = useCategories(true);
 
   const totalPages = data?.totalPages ?? 1;
   const totalCount = data?.totalCount ?? 0;
@@ -96,7 +97,7 @@ export default function ProdutosPage() {
             />
           ) : products.length > 0 ? (
             <>
-              <ProductTable products={products} categories={categories} />
+              <ProductTable products={products} categories={allCategories} />
               <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
                 <span>{totalCount} produto(s) encontrado(s)</span>
                 <DataPagination page={page} totalPages={totalPages} onPageChange={setPage} />

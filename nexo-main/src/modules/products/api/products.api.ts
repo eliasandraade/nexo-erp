@@ -98,8 +98,8 @@ export function deactivateProduct(id: string): Promise<void> {
 
 // ── Categories ────────────────────────────────────────────────────────────────
 
-export function fetchCategories(): Promise<CategoryDto[]> {
-  return apiClient.get<CategoryDto[]>("/categories");
+export function fetchCategories(includeInactive = false): Promise<CategoryDto[]> {
+  return apiClient.get<CategoryDto[]>(includeInactive ? "/categories?includeInactive=true" : "/categories");
 }
 
 export interface CategoryPayload {
@@ -115,8 +115,9 @@ export function updateCategory(id: string, payload: CategoryPayload): Promise<Ca
   return apiClient.put<CategoryDto>(`/categories/${id}`, payload);
 }
 
+/** Takes the category out of the lists; products keep it. (There is no hard delete — there never was a DELETE route.) */
 export function deleteCategory(id: string): Promise<void> {
-  return apiClient.delete<void>(`/categories/${id}`);
+  return apiClient.post<void>(`/categories/${id}/deactivate`);
 }
 
 export function patchProductImage(id: string, imageUrl: string | null): Promise<ProductDto> {

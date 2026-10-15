@@ -121,8 +121,8 @@ export function ManageCategoriesDialog({ open, onClose }: ManageCategoriesDialog
 
   const handleDelete = (id: string) => {
     deleteMut.mutate(id, {
-      onSuccess: () => { toast.success("Categoria removida."); setDeleteConfirm(null); },
-      onError:   () => { toast.error("Erro ao remover categoria. Ela pode ter produtos vinculados."); setDeleteConfirm(null); },
+      onSuccess: () => { toast.success("Categoria removida da lista. Os produtos continuam com ela."); setDeleteConfirm(null); },
+      onError:   (e: Error) => { toast.error(e.message || "Erro ao remover categoria."); setDeleteConfirm(null); },
     });
   };
 

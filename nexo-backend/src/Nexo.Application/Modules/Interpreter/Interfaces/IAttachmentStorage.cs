@@ -10,9 +10,6 @@ public interface IAttachmentStorage
         Guid        tenantId,
         CancellationToken ct = default);
 
-    // Returns a time-limited pre-signed URL for secure client access.
-    Task<string> GetPresignedUrlAsync(string storageKey, TimeSpan expiry, CancellationToken ct = default);
-
     Task DeleteAsync(string storageKey, CancellationToken ct = default);
 
     // Verifies storage backend is reachable (used by health checks).
