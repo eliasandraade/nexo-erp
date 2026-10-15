@@ -34,6 +34,7 @@
 | #66 | Fiscal: base (emissor, produto, cliente, CPF na nota) (GitHub #67) | `291acb5` | `FiscalFoundation` (aditiva) | Em produção |
 | #67 | CI do frontend e lockfile versionado (GitHub #68) | `be47ace` | — | Em produção |
 | #68 | Saúde e resiliência (live, ready, relatório) (GitHub #69) | `66ca9db` | — | Em produção |
+| #65b | Relatórios: atalhos para os das outras áreas (GitHub #71) | `c5b90bf` | — | Em produção |
 | #69 | Observabilidade (ID de requisição, logs JSON, erros, métricas) | — | `ObservabilityErrorEvents` (aditiva) | Em revisão |
 
 
@@ -1113,3 +1114,4 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
   - Service — financeiro (receita, comissões e resultado por profissional), Restaurante e Obras, **só para quem tem o módulo**.
 - Vendas, produtos, vendedores, formas de pagamento, estoque e clientes ficam na própria página (PR 65).
 - Playwright: os atalhos aparecem e levam às telas certas.
+- **Em produção** (merge `c5b90bf`): bundle do frontend trocou, `/relatorios` 200.
