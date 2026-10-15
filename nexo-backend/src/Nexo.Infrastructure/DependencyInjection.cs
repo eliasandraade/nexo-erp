@@ -248,6 +248,8 @@ public static class DependencyInjection
         }
         services.AddScoped<DefaultFinancialAccountProvisioner>();
         services.AddScoped<RegistrationService>();
+        services.AddScoped<AccountSecurityService>();
+        services.AddScoped<IUserSessionRevoker>(sp => sp.GetRequiredService<AccountSecurityService>());
 
         // ── Audit ─────────────────────────────────────────────────────────────
         services.AddScoped<IAuditWriter, AuditWriterService>();

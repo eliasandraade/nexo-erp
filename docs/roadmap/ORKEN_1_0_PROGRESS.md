@@ -25,7 +25,9 @@
 | #58 | Service: avisos por e-mail (confirmação e lembrete) | `86ed34c` | `ServiceCustomerEmails` (aditiva) | Em produção |
 | #59 | Service: financeiro, profissional por item, plurais | `0e6de63` | `ServiceFinanceIndexes` (só índices) | Em produção |
 | #60 | Build: fechamento (contadores, paginação, validação, estorno de despesa, etapas) | `fc723ca` | — | Em produção |
-| #61 | Billing: integridade (webhook, carência, redirects) | — | `BillingPastDueGrace` (aditiva) | Em revisão |
+| #61 | Billing: integridade (webhook, carência, redirects) | `1d5527b` | `BillingPastDueGrace` (aditiva) | Em produção |
+| #62 | Billing: cobrança de verdade (preços, planos, meios de pagamento) | — | — | **Aguardando decisão do dono** (preços, vitalício, Pix/boleto, trial, pacote) |
+| #63 | Auth: recuperação de senha e controle de sessões (GitHub #62) | — | `AuthPasswordReset` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -861,3 +863,33 @@ O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnab
   - a impersonação da plataforma usa a mesma regra de acesso;
   - `IsActive()` sem compilar expressão a cada chamada;
   - o handler do checkout lê a assinatura por uma interface (`IStripeSubscriptionFetcher`), e por isso ganhou testes: reassinatura segue a nova assinatura com plano e status; linha nova `incomplete` fica sem acesso.
+
+## PR 63 — Auth: recuperação de senha e controle de sessões
+
+- **Esqueci a senha** (`POST /api/auth/forgot-password`, tela `/esqueci-senha`, link no login):
+  - envia por e-mail um link de uso único que vale 1 hora, para cada conta ativa com aquele endereço;
+  - a resposta é sempre a mesma, exista a conta ou não, para não permitir descobrir quem tem conta;
+  - mesmo limite de taxa do login;
+  - o banco guarda só o hash SHA-256 do token.
+- **Redefinir senha** (`POST /api/auth/reset-password`, tela `/redefinir-senha?token=`):
+  - grava a nova senha, limpa o link e encerra todas as sessões;
+  - uma conta ainda não verificada fica verificada, porque o link provou o e-mail.
+- **Trocar senha encerra todas as sessões:** antes, trocar a própria senha ou o gerente redefinir a de alguém mantinha as sessões antigas vivas. Agora a troca muda o *security stamp* e revoga todas; a tela leva de volta ao login com aviso.
+- **Refresh respeita a revogação:** o refresh token guarda o stamp de quando foi emitido, e um refresh depois da troca é recusado. Isso fecha a brecha dos tokens que nunca viraram "sessão" registrada (verificação de e-mail, troca de loja), que a revogação por lista não alcançava.
+- **Sessões do próprio usuário** (`GET /api/auth/sessions`, `POST /api/auth/sessions/revoke-all`, seção "Sessões ativas" em `/perfil`):
+  - lista os aparelhos (navegador e sistema, último uso, IP);
+  - "Sair de todos os dispositivos", em dois toques, inclui o aparelho atual;
+  - o logout marca a sessão como encerrada, então ela sai da lista.
+- **Testes:**
+  - integração (+5, cada um com usuário próprio): esqueci a senha responde igual para endereço conhecido e desconhecido, guardando só o hash; o link funciona uma vez e encerra as sessões; link vencido, desconhecido ou senha curta são recusados; trocar a senha derruba os refresh tokens; "sair de todos" derruba inclusive token não registrado e o access token em uso;
+  - RBAC: as rotas de sessão ficam abertas a qualquer papel, por serem do próprio usuário;
+  - Playwright: esqueci, redefinir (erro, confirmação e sucesso) e sair de todos.
+- **Migração validada** num Postgres descartável (up → down → up).
+- **Correções da revisão independente** (sem bloqueadores; 4 should-fix e menores):
+  - **anti-spam do "esqueci a senha":** um link enviado há menos de 5 minutos continua sendo o válido, sem novo e-mail; há também um teto de 5 pedidos por hora por endereço, seja qual for o IP. Antes, repetir o formulário enchia a caixa da vítima, invalidava o link que ela ia usar e gastava a cota do Resend;
+  - **CSRF:** "sair de todos" exige corpo JSON, que um formulário de outro site não consegue mandar sem preflight. Com cookies `SameSite=None` em produção, isso era um ataque fácil para deslogar alguém;
+  - **mesmo e-mail em vários tenants:** o e-mail traz o nome da empresa e o login, para a pessoa saber qual conta está redefinindo; empresa inativa não recebe link;
+  - **cache do security stamp** é limpo de novo depois do commit, porque uma requisição concorrente da sessão antiga podia recolocar o stamp velho por até 60 s;
+  - o token sai da barra de endereço logo depois de lido;
+  - teste novo: pedir de novo em seguida mantém o mesmo link; o "sair de todos" por formulário é recusado.
+- **Fica para depois (anotado):** particionar o rate limit por IP real atrás do proxy da Railway (`ForwardedHeaders` com proxies conhecidos) e enviar e-mails em segundo plano, eliminando a pequena diferença de tempo entre endereço conhecido e desconhecido. O cadastro já revela se o e-mail existe.

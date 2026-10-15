@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Eye, EyeOff, KeyRound, Loader2, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Loader2, MonitorSmartphone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { fetchMySessions, revokeAllSessions } from "@/modules/auth/services/authService";
 import {
   roleLabels,
   statusLabels,
@@ -91,7 +93,15 @@ function PerfilSkeleton() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PerfilPage() {
-  const { session } = useAuth();
+  const { session, logout } = useAuth();
+  const navigate = useNavigate();
+  const sessionsQ = useQuery({ queryKey: ["auth", "sessions"], queryFn: fetchMySessions });
+  const [confirmAll, setConfirmAll] = useState(false);
+  const revokeAll = useMutation({
+    mutationFn: revokeAllSessions,
+    onSuccess: () => { logout(); navigate("/login?motivo=sessoes", { replace: true }); },
+    onError: () => toast.error("Não foi possível encerrar as sessões agora."),
+  });
 
   const { data: user, isLoading } = useQuery({
     queryKey: ["profile", session?.userId],
@@ -115,10 +125,9 @@ export default function PerfilPage() {
         confirmPassword,
       }),
     onSuccess: () => {
-      toast.success("Senha alterada com sucesso.");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
+      // the server ended every session (this one too): sign in again with the new password
+      logout();
+      navigate("/login?motivo=senha", { replace: true });
     },
     onError: (err: Error) => {
       toast.error(err.message);
@@ -400,6 +409,51 @@ export default function PerfilPage() {
           </div>
         </form>
       </SectionCard>
+
+      <SectionCard title="Sessões ativas" description="Aparelhos conectados à sua conta. Trocar a senha também encerra todas.">
+        {sessionsQ.isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : (
+          <ul className="space-y-2">
+            {(sessionsQ.data ?? []).map((s) => (
+              <li key={s.id} className="flex items-start gap-3 rounded-md border border-border px-3 py-2 text-[13px]">
+                <MonitorSmartphone className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <p className="truncate text-foreground">{describeAgent(s.userAgent)}</p>
+                  <p className="text-[12px] text-muted-foreground">
+                    Último uso {formatDateTime(s.lastUsedAt)}{s.ipAddress ? ` · IP ${s.ipAddress}` : ""}
+                  </p>
+                </div>
+              </li>
+            ))}
+            {(sessionsQ.data ?? []).length === 0 && <li className="text-[13px] text-muted-foreground">Nenhuma sessão registrada.</li>}
+          </ul>
+        )}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          {confirmAll ? (
+            <>
+              <Button size="sm" variant="destructive" disabled={revokeAll.isPending} onClick={() => revokeAll.mutate()}>
+                {revokeAll.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Sim, sair de todos
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirmAll(false)}>Cancelar</Button>
+              <span className="text-[12px] text-muted-foreground">Inclui este aparelho.</span>
+            </>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setConfirmAll(true)}>Sair de todos os dispositivos</Button>
+          )}
+        </div>
+      </SectionCard>
     </div>
   );
+}
+
+const BROWSERS: [string, string][] = [["Edg/", "Edge"], ["Chrome/", "Chrome"], ["Firefox/", "Firefox"], ["Safari/", "Safari"]];
+const SYSTEMS: [string, string][] = [["Android", "Android"], ["iPhone", "iPhone/iPad"], ["iPad", "iPhone/iPad"], ["Windows", "Windows"], ["Mac OS X", "macOS"], ["Linux", "Linux"]];
+
+/** A readable device name from the browser's user agent (best effort; first match wins). */
+function describeAgent(ua: string | null): string {
+  if (!ua) return "Aparelho desconhecido";
+  const browser = BROWSERS.find(([part]) => ua.includes(part))?.[1] ?? "Navegador";
+  const os = SYSTEMS.find(([part]) => ua.includes(part))?.[1];
+  return os ? `${browser} · ${os}` : browser;
 }

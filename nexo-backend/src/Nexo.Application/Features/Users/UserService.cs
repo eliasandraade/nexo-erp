@@ -13,13 +13,17 @@ public class UserService
     private readonly ICurrentUser _currentUser;
     private readonly ICurrentTenant _currentTenant;
 
+    private readonly IUserSessionRevoker? _sessions;
+
     public UserService(
         IUserRepository users,
         IPasswordHasher hasher,
         IAuditWriter audit,
         ICurrentUser currentUser,
-        ICurrentTenant currentTenant)
+        ICurrentTenant currentTenant,
+        IUserSessionRevoker? sessions = null)
     {
+        _sessions = sessions;
         _users = users;
         _hasher = hasher;
         _audit = audit;
@@ -121,6 +125,9 @@ public class UserService
             throw new ForbiddenException("Current password is incorrect.");
 
         user.ChangePasswordHash(_hasher.Hash(request.NewPassword));
+        // a changed password ends every session (a stolen session must not survive it)
+        user.BumpSecurityStamp();
+        if (_sessions is not null) await _sessions.RevokeAllAsync(user.Id, ct);
 
         _audit.Stage(
             actionType:  AuditActions.UserPasswordChanged,
@@ -133,6 +140,7 @@ public class UserService
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
+        if (_sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
     }
 
     public async Task AdminChangePasswordAsync(
@@ -144,6 +152,8 @@ public class UserService
             ?? throw new NotFoundException("User", id);
 
         user.ChangePasswordHash(_hasher.Hash(request.NewPassword), clearRequireChange: true);
+        user.BumpSecurityStamp();
+        if (_sessions is not null) await _sessions.RevokeAllAsync(user.Id, ct);
 
         _audit.Stage(
             actionType:  AuditActions.UserPasswordChanged,
@@ -156,6 +166,7 @@ public class UserService
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
+        if (_sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
     }
 
     public async Task<ValidateManagerResponse> ValidateManagerAsync(
