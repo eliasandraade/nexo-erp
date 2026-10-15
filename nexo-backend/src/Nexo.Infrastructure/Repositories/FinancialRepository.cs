@@ -97,14 +97,21 @@ public class FinancialRepository : IFinancialRepository
     public async Task<IReadOnlyList<FinancialTransaction>> GetTitlesAsync(
         TitlesFilter f, DateTime todayStartUtc, int take, CancellationToken ct = default)
     {
-        var query = _context.FinancialTransactions.Where(x => x.TransactionType == f.Type);
+        // Títulos only: not juros/desconto lines, not mirrors of money that never was a título
+        // (Service, counter-entries, devoluções) and not à-vista sale payments (due the moment they
+        // were created). A real título — a prazo, parcela, manual, compra — stays.
+        var query = _context.FinancialTransactions.Where(x => x.TransactionType == f.Type
+            && x.ReferenceType != FinancialTransaction.SettlementReference
+            && (x.ReferenceType == null || !x.ReferenceType.StartsWith("Svc"))
+            && x.ReferenceType != "SaleCancellation" && x.ReferenceType != "SaleReturn"
+            && !(x.ReferenceType == "Sale" && x.DueDate <= x.CreatedAt.AddMinutes(1)));
         query = f.Status switch
         {
             TitleStatusFilter.Open    => query.Where(x => x.Status == TransactionStatus.Pending || x.Status == TransactionStatus.Overdue),
             // overdue = flagged by the job, or pending and already past due (the job runs hourly)
             TitleStatusFilter.Overdue => query.Where(x => x.Status == TransactionStatus.Overdue
                                                           || (x.Status == TransactionStatus.Pending && x.DueDate < todayStartUtc)),
-            TitleStatusFilter.Settled => query.Where(x => x.Status == TransactionStatus.Paid),
+            TitleStatusFilter.Settled => query.Where(x => x.Status == TransactionStatus.Paid || x.Status == TransactionStatus.Abated),
             _                         => query,
         };
         if (f.DueFrom is { } from) query = query.Where(x => x.DueDate >= from);
@@ -144,8 +151,11 @@ public class FinancialRepository : IFinancialRepository
     public async Task LockTransactionsByReferenceAsync(
         string referenceType, Guid referenceId, Guid tenantId, CancellationToken ct = default)
     {
-        await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM nexo.financial_transactions WHERE reference_type = {referenceType} AND reference_id = {referenceId} AND tenant_id = {tenantId} ORDER BY id FOR UPDATE", ct);
+        // Twice: rows inserted by a baixa that committed while we waited (its remainder) are not in the
+        // first statement's snapshot; the second one sees and locks them too.
+        for (var pass = 0; pass < 2; pass++)
+            await _context.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM nexo.financial_transactions WHERE reference_type = {referenceType} AND reference_id = {referenceId} AND tenant_id = {tenantId} ORDER BY id FOR UPDATE", ct);
         foreach (var tracked in _context.ChangeTracker.Entries<FinancialTransaction>()
                      .Where(e => e.Entity.ReferenceType == referenceType && e.Entity.ReferenceId == referenceId).ToList())
             await tracked.ReloadAsync(ct);

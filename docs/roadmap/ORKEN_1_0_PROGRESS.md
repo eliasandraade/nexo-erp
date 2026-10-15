@@ -401,5 +401,19 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
   - +4 unitários (desmembramento, limite da baixa, categorias dos ajustes, renegociação);
   - `ReceivablesTests`, 5 de integração: baixa parcial nos dois regimes, parcelas e centavos, juros e desconto, aging com job de vencidos e renegociação, cancelamento de venda a prazo parcialmente recebida, parcelamentos inválidos;
   - Playwright: tela de contas a receber.
+- **Revisão independente (corrigido antes do merge):**
+  - **Desconto contava como dinheiro no regime de caixa.** Uma baixa de 90 + 10 de desconto registrava 100 recebidos. Agora a parte abatida pelo desconto tem status próprio, **`Abated`** (abatido): conta em competência e nunca em caixa. O lançamento do desconto também fica abatido. Receitas recebidas no caixa passam a ser só o dinheiro.
+  - **Cancelar a origem depois de uma baixa com desconto deixava saldo.** O estorno devolvia o valor cheio, e o caixa ficava negativo pelo desconto. Agora estorno e devolução cobrem só o dinheiro que entrou, e a parte abatida não é estornada. O teste de integração confere que caixa e competência fecham em zero depois do cancelamento.
+  - **Juros recebidos continuam como receita financeira quando a venda é cancelada.** Eles compensaram o atraso; devolvê-los é decisão comercial.
+  - **Datas em fuso do Brasil:**
+    - um título renegociado para hoje volta a "em aberto" pelo dia do Brasil;
+    - uma data sem hora vira meio-dia no Brasil, para nunca cair na véspera;
+    - os filtros `dueFrom`/`dueTo` usam dias do Brasil, com `dueTo` inclusivo.
+  - **Frontend:** "1.000" é lido como mil reais, e o parcelamento valida R$ 0,01 por parcela.
+  - **Abas "Recebidos" e "Todos":** mostram só títulos de verdade. Ficam de fora pagamentos à vista do PDV, Service, estornos, devoluções e ajustes de juros ou desconto.
+  - **Job de vencidos:** índice parcial `(due_date) WHERE status = 'Pending'`.
+  - **Parcelamento:** valida que a conta está ativa e é do mesmo tipo.
+  - **Cancelamento:** trava os lançamentos da origem duas vezes, para pegar o restante criado por uma baixa concorrente.
+- **Fica para depois:** estornar uma baixa feita por engano, reabrindo o título.
 - **Decisão pendente (regra comercial e contábil, não implementada):** baixar um título como **perda** (calote) e cobrar juros ou multa **automaticamente** por percentual. Hoje juros e multa são informados na baixa.
 

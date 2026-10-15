@@ -86,6 +86,9 @@ public class ReceivablesTests
         discount.Category.Should().Be("FinancialExpense");
         discount.TransactionType.Should().Be("Payable");
         discount.Amount.Should().Be(3.33m);
+        discount.Status.Should().Be("Abated");               // no money moved: competência only
+        early.Settled.Amount.Should().Be(30m);               // the money part
+        early.Settled.Status.Should().Be("Paid");
 
         // more than the balance, negative values, or settling twice are refused
         (await SettleAsync(c, parcels[2].Id, new SettleTransactionRequest(40m)))
@@ -157,6 +160,33 @@ public class ReceivablesTests
     }
 
     [Fact]
+    public async Task A_discounted_baixa_then_cancelling_the_sale_nets_to_zero_in_both_regimes()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var customer = await CustomerAsync(c);
+        var sale = await CreditSaleAsync(c, customer, 100m);
+        var receivable = (await TitlesAsync(c, $"status=open&customerId={customer}")).Items.Single();
+
+        await SettleOkAsync(c, receivable.Id, new SettleTransactionRequest(90m, Discount: 10m));
+        (await c.PostAsJsonAsync($"/api/sales/{sale.Id}/cancel", new { reason = "Devolvido" })).EnsureSuccessStatusCode();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        var ids = await db.FinancialTransactions.IgnoreQueryFilters()
+            .Where(t => (t.ReferenceType == "Sale" || t.ReferenceType == "SaleCancellation") && t.ReferenceId == sale.Id)
+            .Select(t => t.Id).ToListAsync();
+        var all = await db.FinancialTransactions.IgnoreQueryFilters()
+            .Where(t => ids.Contains(t.Id) || (t.ReferenceType == FinancialTransaction.SettlementReference && ids.Contains(t.ReferenceId!.Value)))
+            .ToListAsync();
+        static decimal Signed(FinancialTransaction t) => t.TransactionType == TransactionType.Receivable ? t.Amount : -t.Amount;
+
+        all.Where(t => t.Status == TransactionStatus.Paid).Sum(Signed).Should().Be(0m);              // caixa: 90 in, 90 back
+        all.Where(t => t.Status != TransactionStatus.Cancelled).Sum(Signed).Should().Be(0m);         // competência
+        all.Where(t => t.Status == TransactionStatus.Paid && t.Category == FinancialCategory.Revenue)
+            .Sum(t => t.Amount).Should().Be(90m);                                                    // receitas recebidas = money only
+    }
+
+    [Fact]
     public async Task Invalid_installment_plans_are_rejected()
     {
         var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
@@ -174,6 +204,10 @@ public class ReceivablesTests
                 new CreateInstallmentsRequest("Receivable", 10m, "x", DateTime.UtcNow, CustomerId: Guid.NewGuid())))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await c.GetAsync($"{Fin}/receivables?status=lost")).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        var payable = (await c.GetFromJsonAsync<List<FinancialAccountDto>>($"{Fin}/accounts"))!.First(a => a.AccountType == "Payable");
+        (await c.PostAsJsonAsync($"{Fin}/transactions/installments",
+                new CreateInstallmentsRequest("Receivable", 10m, "x", DateTime.UtcNow, FinancialAccountId: payable.Id)))
+            .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);   // a receivable can't land on Contas a Pagar
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

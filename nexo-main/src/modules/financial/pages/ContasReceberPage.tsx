@@ -29,7 +29,9 @@ import {
 function money(value: string): number {
   if (!value.trim()) return 0;
   // "1.234,56" (dots are thousands when there is a comma) or "12.50"
-  const normalized = value.includes(",") ? value.replace(/\./g, "").replace(",", ".") : value;
+  // pt-BR: "1.000" is one thousand (dot groups of 3 digits), "12.50" is twelve and a half
+  const thousandsOnly = /^\d{1,3}(\.\d{3})+$/.test(value.trim());
+  const normalized = value.includes(",") || thousandsOnly ? value.replace(/\./g, "").replace(",", ".") : value;
   const n = Number(normalized.trim());
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
 }
@@ -47,6 +49,7 @@ const STATUS_LABEL: Record<TitleDto["status"], string> = {
   Overdue: "Vencido",
   Paid: "Recebido",
   Cancelled: "Cancelado",
+  Abated: "Abatido (desconto)",
 };
 
 /**
@@ -227,7 +230,7 @@ function NewReceivableDialog({ onClose, onDone }: { onClose: () => void; onDone:
 
   const totalValue = money(total);
   const n = Number.parseInt(installments, 10);
-  const valid = description.trim() && totalValue > 0 && n >= 1 && n <= 60 && firstDue;
+  const valid = description.trim() && n >= 1 && n <= 60 && totalValue >= 0.01 * n && firstDue;
 
   const create = useMutation({
     mutationFn: () => createInstallments({

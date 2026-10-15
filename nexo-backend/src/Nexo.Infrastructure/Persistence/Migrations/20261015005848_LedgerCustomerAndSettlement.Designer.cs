@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261015002721_LedgerCustomerAndSettlement")]
+    [Migration("20261015005848_LedgerCustomerAndSettlement")]
     partial class LedgerCustomerAndSettlement
     {
         /// <inheritdoc />
@@ -709,6 +709,9 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId", "Status");
 
                     b.HasIndex("TenantId", "TransactionType", "Status", "DueDate");
+
+                    b.HasIndex(new[] { "DueDate" }, "ix_financial_transactions_pending_due")
+                        .HasFilter("status = 'Pending'");
 
                     b.ToTable("financial_transactions", "nexo");
                 });

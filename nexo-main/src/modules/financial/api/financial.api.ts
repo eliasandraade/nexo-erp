@@ -15,7 +15,7 @@ export interface LedgerEntryDto {
   competenceDate: string;
   dueDate: string;
   paidAt: string | null;
-  status: "Pending" | "Overdue" | "Paid" | "Cancelled";
+  status: "Pending" | "Overdue" | "Paid" | "Cancelled" | "Abated";
   storeId: string | null;
   referenceType: string | null;
   referenceId: string | null;
@@ -79,7 +79,7 @@ export interface TitleDto {
   dueDate: string;
   competenceDate: string;
   paidAt: string | null;
-  status: "Pending" | "Overdue" | "Paid" | "Cancelled";
+  status: "Pending" | "Overdue" | "Paid" | "Cancelled" | "Abated";
   daysOverdue: number;
   category: FinancialCategory;
   storeId: string | null;

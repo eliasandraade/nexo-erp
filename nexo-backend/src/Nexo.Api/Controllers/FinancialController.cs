@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Authorization;
@@ -91,24 +92,27 @@ public class FinancialController : ControllerBase
     /// <summary>Contas a receber: open/overdue/settled títulos with the aging of what is open.</summary>
     [HttpGet("receivables")]
     public Task<ActionResult<TitlesDto>> GetReceivables(
-        [FromQuery] string status = "open", [FromQuery] DateTime? dueFrom = null, [FromQuery] DateTime? dueTo = null,
+        [FromQuery] string status = "open", [FromQuery] DateOnly? dueFrom = null, [FromQuery] DateOnly? dueTo = null,
         [FromQuery] Guid? customerId = null, CancellationToken ct = default)
         => TitlesAsync(TransactionType.Receivable, status, dueFrom, dueTo, customerId, ct);
 
     /// <summary>Contas a pagar: open/overdue/settled títulos with the aging of what is open.</summary>
     [HttpGet("payables")]
     public Task<ActionResult<TitlesDto>> GetPayables(
-        [FromQuery] string status = "open", [FromQuery] DateTime? dueFrom = null, [FromQuery] DateTime? dueTo = null,
+        [FromQuery] string status = "open", [FromQuery] DateOnly? dueFrom = null, [FromQuery] DateOnly? dueTo = null,
         CancellationToken ct = default)
         => TitlesAsync(TransactionType.Payable, status, dueFrom, dueTo, null, ct);
 
     private async Task<ActionResult<TitlesDto>> TitlesAsync(
-        TransactionType type, string status, DateTime? dueFrom, DateTime? dueTo, Guid? customerId, CancellationToken ct)
+        TransactionType type, string status, DateOnly? dueFrom, DateOnly? dueTo, Guid? customerId, CancellationToken ct)
     {
         if (!Enum.TryParse<TitleStatusFilter>(status, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
             return UnprocessableEntity(new { error = "Situação inválida: use open, overdue, settled ou all." });
         return Ok(await _service.GetTitlesAsync(new TitlesFilter(
-            type, parsed, dueFrom?.ToUniversalTime(), dueTo?.ToUniversalTime(), customerId), ct));
+            type, parsed,
+            dueFrom is { } f ? BusinessClock.DayStartUtc(f) : null,
+            dueTo is { } t ? BusinessClock.DayStartUtc(t.AddDays(1)) : null,   // dueTo is inclusive (Brazil day)
+            customerId), ct));
     }
 
     /// <summary>Baixa total ou parcial, com juros, multa e desconto.</summary>

@@ -92,6 +92,13 @@ UPDATE nexo.financial_transactions ft SET customer_id = p.customer_id
    AND ft.reference_type IN ('SvcPayment', 'SvcPaymentVoid') AND ft.reference_id = p.id;");
 
             migrationBuilder.CreateIndex(
+                name: "ix_financial_transactions_pending_due",
+                schema: "nexo",
+                table: "financial_transactions",
+                column: "due_date",
+                filter: "status = 'Pending'");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_financial_transactions_tenant_id_customer_id",
                 schema: "nexo",
                 table: "financial_transactions",
@@ -107,6 +114,11 @@ UPDATE nexo.financial_transactions ft SET customer_id = p.customer_id
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropIndex(
+                name: "ix_financial_transactions_pending_due",
+                schema: "nexo",
+                table: "financial_transactions");
+
             migrationBuilder.DropIndex(
                 name: "IX_financial_transactions_tenant_id_customer_id",
                 schema: "nexo",

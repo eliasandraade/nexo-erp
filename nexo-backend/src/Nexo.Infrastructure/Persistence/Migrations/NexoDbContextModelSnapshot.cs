@@ -707,6 +707,9 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "TransactionType", "Status", "DueDate");
 
+                    b.HasIndex(new[] { "DueDate" }, "ix_financial_transactions_pending_due")
+                        .HasFilter("status = 'Pending'");
+
                     b.ToTable("financial_transactions", "nexo");
                 });
 

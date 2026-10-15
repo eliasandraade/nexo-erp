@@ -107,6 +107,9 @@ public class FinancialTransactionConfiguration : IEntityTypeConfiguration<Financ
         // Contas a receber / a pagar: open títulos by direction and due date; a customer's títulos
         builder.HasIndex(x => new { x.TenantId, x.TransactionType, x.Status, x.DueDate });
         builder.HasIndex(x => new { x.TenantId, x.CustomerId });
+        // OverdueTitlesJob: pending títulos by due date, across tenants
+        builder.HasIndex(x => x.DueDate, "ix_financial_transactions_pending_due")
+            .HasFilter("status = 'Pending'");
         builder.Ignore(x => x.IsOpen);
 
         builder.HasOne(x => x.FinancialAccount)

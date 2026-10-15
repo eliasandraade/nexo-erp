@@ -187,7 +187,7 @@ public class FinancialService
         {
             // A supplier's open bill can be renegotiated; other module entries are fixed at the origin.
             if (tx.ReferenceType != PurchaseService.PurchaseReference) EnsureNotSystemOwned(tx);
-            tx.Update(request.Amount, request.Description, Utc(request.DueDate));   // open entries only (domain)
+            tx.Update(request.Amount, request.Description, Utc(request.DueDate), BusinessClock.TodayStartUtc());   // open only (domain)
         }, ct);
 
     public Task<FinancialTransactionDto> MarkPaidAsync(Guid id, MarkTransactionPaidRequest request, CancellationToken ct = default)
@@ -221,11 +221,15 @@ public class FinancialService
         return MapTransactionToDto(tx);
     }
 
-    /// <summary>timestamptz takes UTC: a date-only or zone-less value is read as UTC.</summary>
+    /// <summary>
+    /// timestamptz takes UTC. A date without time ("2026-10-20") is a business day: noon in Brazil, so it
+    /// never lands on the previous day; any other zone-less value is read as UTC.
+    /// </summary>
     private static DateTime Utc(DateTime value) => value.Kind switch
     {
         DateTimeKind.Utc   => value,
         DateTimeKind.Local => value.ToUniversalTime(),
+        _ when value.TimeOfDay == TimeSpan.Zero => BusinessClock.NoonUtc(DateOnly.FromDateTime(value)),
         _                  => DateTime.SpecifyKind(value, DateTimeKind.Utc),
     };
 
@@ -254,8 +258,9 @@ public class FinancialService
             ?? throw new NotFoundException("FinancialTransaction", id);
         EnsureNotServiceManaged(tx);
 
-        var remainder = tx.Settle(request.Amount + request.Discount, paidAt);
+        var (remainder, abated) = tx.Settle(request.Amount, request.Discount, paidAt);
         if (remainder is not null) await _financial.AddTransactionAsync(remainder, ct);
+        if (abated is not null) await _financial.AddTransactionAsync(abated, ct);
 
         var isReceivable = tx.TransactionType == TransactionType.Receivable;
         var adjustments = new List<FinancialTransaction>();
@@ -263,13 +268,14 @@ public class FinancialService
         if (charges > 0)
             adjustments.Add(tx.CreateSettlementAdjustment(
                 await DefaultAccountIdAsync(tx.TransactionType, ct), tx.TransactionType, charges,
-                $"Juros/multa — {tx.Description}", paidAt, _currentUser.UserId));
+                $"Juros/multa — {tx.Description}", paidAt, _currentUser.UserId, moneyMoved: true));
         if (request.Discount > 0)
         {
             var opposite = isReceivable ? TransactionType.Payable : TransactionType.Receivable;
             adjustments.Add(tx.CreateSettlementAdjustment(
                 await DefaultAccountIdAsync(opposite, ct), opposite, request.Discount,
-                $"Desconto {(isReceivable ? "concedido" : "obtido")} — {tx.Description}", paidAt, _currentUser.UserId));
+                $"Desconto {(isReceivable ? "concedido" : "obtido")} — {tx.Description}", paidAt, _currentUser.UserId,
+                moneyMoved: false));
         }
         foreach (var a in adjustments) await _financial.AddTransactionAsync(a, ct);
 
@@ -353,7 +359,13 @@ public class FinancialService
 
         Guid accountId;
         if (request.FinancialAccountId is { } given)
-            accountId = (await _financial.GetAccountByIdAsync(given, ct) ?? throw new NotFoundException("FinancialAccount", given)).Id;
+        {
+            var account = await _financial.GetAccountByIdAsync(given, ct) ?? throw new NotFoundException("FinancialAccount", given);
+            var expected = type == TransactionType.Receivable ? FinancialAccountType.Receivable : FinancialAccountType.Payable;
+            if (!account.IsActive || account.AccountType != expected)
+                throw new DomainException("A conta precisa estar ativa e ser do mesmo tipo do lançamento.");
+            accountId = account.Id;
+        }
         else
             accountId = await DefaultAccountIdAsync(type, ct);
 

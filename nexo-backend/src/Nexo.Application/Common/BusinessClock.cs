@@ -21,6 +21,14 @@ public static class BusinessClock
         return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local.Date, DateTimeKind.Unspecified), Brazil);
     }
 
+    /// <summary>UTC instant at which a Brazil calendar day begins.</summary>
+    public static DateTime DayStartUtc(DateOnly day)
+        => TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), Brazil);
+
+    /// <summary>Noon of a Brazil calendar day, in UTC — a date-only value that never slips a day.</summary>
+    public static DateTime NoonUtc(DateOnly day)
+        => TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(new TimeOnly(12, 0), DateTimeKind.Unspecified), Brazil);
+
     /// <summary>Whole days a título is late (0 when due today or later).</summary>
     public static int DaysOverdue(DateTime dueDateUtc, DateTime? nowUtc = null)
     {

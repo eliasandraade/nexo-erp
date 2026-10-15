@@ -17,6 +17,9 @@ namespace Nexo.Domain.Entities;
 /// Estados: Pending/Overdue → Paid | Cancelled. Quitado não se cancela nem se edita: corrige-se com
 /// um estorno (<see cref="CreateReversal"/>), e o original continua visível.
 /// </summary>
+/// <summary>Result of a baixa: the open remainder and the abated (desconto) piece, when any.</summary>
+public record SettleOutcome(FinancialTransaction? Remainder, FinancialTransaction? Abated);
+
 public class FinancialTransaction : TenantEntity
 {
     private FinancialTransaction() { }
@@ -85,56 +88,82 @@ public class FinancialTransaction : TenantEntity
     }
 
     /// <summary>
-    /// Baixa de um título em aberto: <paramref name="covered"/> is how much of it this settlement
-    /// extinguishes (money received + discount granted). A partial baixa splits the título — this one
-    /// becomes the settled part and the returned remainder stays open with the same due date,
-    /// competência, category, store and customer, so both regimes stay exact.
+    /// Baixa de um título em aberto: <paramref name="money"/> really moved, <paramref name="discount"/>
+    /// extinguishes part of it without money. A baixa below the balance splits the título — the open
+    /// remainder keeps due date, competência, category, store and customer. The money part is Paid
+    /// (counts on caixa); the desconto part is Abated (competência only), so receitas recebidas never
+    /// include a discount and undoing the origin reverses exactly the money.
     /// </summary>
-    public FinancialTransaction? Settle(decimal covered, DateTime paidAt)
+    public SettleOutcome Settle(decimal money, decimal discount, DateTime paidAt)
     {
         if (!IsOpen)
             throw new DomainException(Status == TransactionStatus.Paid
                 ? "Este lançamento já está quitado."
-                : "Um lançamento cancelado não pode ser quitado.");
-        covered = Math.Round(covered, 2, MidpointRounding.AwayFromZero);
+                : "Este lançamento não está em aberto.");
+        money    = Math.Round(money, 2, MidpointRounding.AwayFromZero);
+        discount = Math.Round(discount, 2, MidpointRounding.AwayFromZero);
+        if (money < 0 || discount < 0)
+            throw new DomainException("Valores da baixa não podem ser negativos.");
+        var covered = money + discount;
         if (covered <= 0)
             throw new DomainException("A baixa precisa cobrir algum valor.");
         if (covered > Amount)
             throw new DomainException($"A baixa ({covered:F2}) passa do saldo do título ({Amount:F2}).");
 
-        FinancialTransaction? remainder = null;
-        if (covered < Amount)
+        var remainder = covered < Amount ? Child(Amount - covered) : null;
+        FinancialTransaction? abated = null;
+        if (money > 0)
         {
-            remainder = new FinancialTransaction(TenantId)
+            if (discount > 0)
             {
-                FinancialAccountId  = FinancialAccountId,
-                TransactionType     = TransactionType,
-                Category            = Category,
-                Amount              = Amount - covered,
-                Description         = Description,
-                CompetenceDate      = CompetenceDate,
-                DueDate             = DueDate,
-                Status              = Status,             // an overdue remainder stays overdue
-                CreatedByUserId     = CreatedByUserId,
-                ReferenceType       = ReferenceType,
-                ReferenceId         = ReferenceId,
-                StoreId             = StoreId,
-                CustomerId          = CustomerId,
-                ParentTransactionId = ParentTransactionId ?? Id,
-            };
-            Amount = covered;
+                abated = Child(discount);
+                abated.Abate(paidAt);
+            }
+            Amount = money;
+            MarkPaid(paidAt);
         }
-        MarkPaid(paidAt);
-        return remainder;
+        else
+        {
+            Amount = discount;
+            Abate(paidAt);
+        }
+        return new SettleOutcome(remainder, abated);
+    }
+
+    /// <summary>A piece of this título (same facts), keeping the link to the original.</summary>
+    private FinancialTransaction Child(decimal amount) => new(TenantId)
+    {
+        FinancialAccountId  = FinancialAccountId,
+        TransactionType     = TransactionType,
+        Category            = Category,
+        Amount              = amount,
+        Description         = Description,
+        CompetenceDate      = CompetenceDate,
+        DueDate             = DueDate,
+        Status              = Status,             // an overdue remainder stays overdue
+        CreatedByUserId     = CreatedByUserId,
+        ReferenceType       = ReferenceType,
+        ReferenceId         = ReferenceId,
+        StoreId             = StoreId,
+        CustomerId          = CustomerId,
+        ParentTransactionId = ParentTransactionId ?? Id,
+    };
+
+    private void Abate(DateTime when)
+    {
+        Status = TransactionStatus.Abated;
+        PaidAt = when;
+        SetUpdatedAt();
     }
 
     /// <summary>
-    /// Juros/multa or desconto of a baixa, as its own settled lançamento: received interest is
-    /// financial income, a discount granted is a financial expense (mirrored for a payable).
+    /// Juros/multa or desconto of a baixa, as its own lançamento: received interest is financial income,
+    /// a discount granted is a financial expense (mirrored for a payable). Juros moved money (Paid); a
+    /// desconto did not (Abated — competência only, matching the abated part of the título).
     /// </summary>
     public FinancialTransaction CreateSettlementAdjustment(
         Guid financialAccountId, TransactionType direction, decimal amount, string description,
-        DateTime paidAt, Guid createdByUserId)
+        DateTime paidAt, Guid createdByUserId, bool moneyMoved)
     {
         var adjustment = Create(
             TenantId, financialAccountId, direction,
@@ -142,8 +171,9 @@ public class FinancialTransaction : TenantEntity
             amount, description, paidAt, createdByUserId,
             referenceType: SettlementReference, referenceId: Id,
             storeId: StoreId, competenceDate: paidAt, customerId: CustomerId);
-        adjustment.ParentTransactionId = Id;
-        adjustment.MarkPaid(paidAt);
+        adjustment.ParentTransactionId = ParentTransactionId ?? Id;
+        if (moneyMoved) adjustment.MarkPaid(paidAt);
+        else adjustment.Abate(paidAt);
         return adjustment;
     }
 
@@ -216,7 +246,7 @@ public class FinancialTransaction : TenantEntity
         }
     }
 
-    public void Update(decimal amount, string description, DateTime dueDate)
+    public void Update(decimal amount, string description, DateTime dueDate, DateTime? todayStartUtc = null)
     {
         if (!IsOpen)
             throw new DomainException("Só um lançamento em aberto pode ser alterado.");
@@ -226,7 +256,7 @@ public class FinancialTransaction : TenantEntity
         Description = description.Trim();
         DueDate     = dueDate;
         // Renegotiated to a date still ahead: no longer overdue (the job re-flags it if it lapses).
-        if (Status == TransactionStatus.Overdue && dueDate >= DateTime.UtcNow.Date)
+        if (Status == TransactionStatus.Overdue && dueDate >= (todayStartUtc ?? DateTime.UtcNow.Date))
             Status = TransactionStatus.Pending;
         SetUpdatedAt();
     }
