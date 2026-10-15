@@ -695,6 +695,8 @@ test('Relatórios: vendas do período sem as devoluções, estoque, clientes e p
  await expect(page.getByText('Dinheiro',{exact:true})).toBeVisible();
  await expect(page.getByText('R$ 5.230,50')).toBeVisible();
  await expect(page.getByText('Novos neste mês')).toBeVisible();
+ await expect(page.getByRole('link',{name:/Entradas, saídas e saldo dia a dia/})).toHaveAttribute('href','/financeiro/fluxo');
+ await expect(page.getByRole('link',{name:/Service — financeiro/})).toBeVisible();
  await page.getByRole('radio',{name:'Escolher datas'}).click();
  await page.getByLabel('De').fill('2026-03-10');
  await page.getByLabel('Até').fill('2026-03-01');
