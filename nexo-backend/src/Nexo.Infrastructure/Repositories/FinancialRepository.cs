@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Financial;
@@ -149,6 +150,61 @@ public class FinancialRepository : IFinancialRepository
         var rows = await _context.Suppliers.Where(s => list.Contains(s.Id))
             .Select(s => new { s.Id, s.Name, s.TradeName }).ToListAsync(ct);
         return rows.ToDictionary(r => r.Id, r => string.IsNullOrWhiteSpace(r.TradeName) ? r.Name : r.TradeName);
+    }
+
+    public async Task<decimal> GetRealizedNetAsync(DateTime? fromUtc, DateTime toUtc, CancellationToken ct = default)
+    {
+        var query = _context.FinancialTransactions.Where(x => x.Status == TransactionStatus.Paid && x.PaidAt < toUtc);
+        if (fromUtc is { } from) query = query.Where(x => x.PaidAt >= from);
+        return await query.SumAsync(x => x.TransactionType == TransactionType.Receivable ? x.Amount : -x.Amount, ct);
+    }
+
+    public async Task<IReadOnlyList<CashFlowDayRow>> GetCashFlowDaysAsync(
+        DateTime fromUtc, DateTime toUtc, DateTime todayStartUtc, CancellationToken ct = default)
+    {
+        // Grouped by Brazil calendar day in the database: a busy store has a row per à-vista sale.
+        var tenantId = _context.CurrentTenantIdForFilter;
+        var projectFrom = fromUtc > todayStartUtc ? fromUtc : todayStartUtc;
+        var rows = await _context.Database.SqlQuery<CashFlowSqlRow>($"""
+            SELECT (paid_at AT TIME ZONE 'America/Sao_Paulo')::date AS "Day", transaction_type AS "Type",
+                   true AS "Realized", sum(amount) AS "Amount"
+              FROM nexo.financial_transactions
+             WHERE tenant_id = {tenantId} AND status = 'Paid' AND paid_at >= {fromUtc} AND paid_at < {toUtc}
+             GROUP BY 1, 2
+            UNION ALL
+            SELECT (due_date AT TIME ZONE 'America/Sao_Paulo')::date, transaction_type, false, sum(amount)
+              FROM nexo.financial_transactions
+             WHERE tenant_id = {tenantId} AND status IN ('Pending', 'Overdue')
+               AND due_date >= {projectFrom} AND due_date < {toUtc}
+             GROUP BY 1, 2
+            """).ToListAsync(ct);
+        return rows.Select(r => new CashFlowDayRow(
+            r.Day, Enum.Parse<TransactionType>(r.Type), r.Realized, r.Amount)).ToList();
+    }
+
+    private sealed class CashFlowSqlRow
+    {
+        public DateOnly Day { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public bool Realized { get; set; }
+        public decimal Amount { get; set; }
+    }
+
+    public async Task<decimal> GetProjectedNetAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct = default)
+        => await _context.FinancialTransactions
+            .Where(x => (x.Status == TransactionStatus.Pending || x.Status == TransactionStatus.Overdue)
+                        && x.DueDate >= fromUtc && x.DueDate < toUtc)
+            .SumAsync(x => x.TransactionType == TransactionType.Receivable ? x.Amount : -x.Amount, ct);
+
+    public async Task<(decimal In, decimal Out)> GetOverdueTotalsAsync(DateTime todayStartUtc, CancellationToken ct = default)
+    {
+        var rows = await _context.FinancialTransactions
+            .Where(x => (x.Status == TransactionStatus.Pending || x.Status == TransactionStatus.Overdue) && x.DueDate < todayStartUtc)
+            .GroupBy(x => x.TransactionType)
+            .Select(g => new { Type = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct);
+        return (rows.Where(r => r.Type == TransactionType.Receivable).Sum(r => r.Total),
+                rows.Where(r => r.Type == TransactionType.Payable).Sum(r => r.Total));
     }
 
     public async Task<IReadOnlyList<FinancialRecurrence>> GetRecurrencesAsync(bool includeInactive, CancellationToken ct = default)

@@ -44,7 +44,11 @@ public record FinancialAccountDto(
     Guid? ParentAccountId,
     bool IsActive,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    decimal OpeningBalance = 0,
+    DateOnly? OpeningBalanceDate = null);
+
+public record SetOpeningBalanceRequest(decimal Amount, DateOnly Date);
 
 public record FinancialTransactionDto(
     Guid Id,

@@ -50,6 +50,16 @@ public class FinancialAccountConfiguration : IEntityTypeConfiguration<FinancialA
             .HasColumnType("timestamptz")
             .IsRequired();
 
+        builder.Property(x => x.OpeningBalance)
+            .HasColumnName("opening_balance")
+            .HasColumnType("numeric(18,2)")
+            .HasDefaultValue(0m)
+            .IsRequired();
+
+        builder.Property(x => x.OpeningBalanceDate)
+            .HasColumnName("opening_balance_date")
+            .HasColumnType("date");
+
         builder.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         builder.HasIndex(x => x.TenantId);
 

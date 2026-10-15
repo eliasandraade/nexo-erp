@@ -29,6 +29,10 @@ public static class BusinessClock
     public static DateTime NoonUtc(DateOnly day)
         => TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(new TimeOnly(12, 0), DateTimeKind.Unspecified), Brazil);
 
+    /// <summary>A UTC instant as Brazil local time.</summary>
+    public static DateTime ToBrazil(DateTime utc)
+        => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), Brazil);
+
     /// <summary>Whole days a título is late (0 when due today or later).</summary>
     public static int DaysOverdue(DateTime dueDateUtc, DateTime? nowUtc = null)
     {

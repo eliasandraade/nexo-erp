@@ -3,7 +3,7 @@ export function money(value: string): number {
   const v = value.trim();
   if (!v) return 0;
   // pt-BR: with a comma, dots are thousands; "1.000" (dot groups of 3 digits) is one thousand; "12.50" is decimal
-  const thousandsOnly = /^\d{1,3}(\.\d{3})+$/.test(v);
+  const thousandsOnly = /^-?\d{1,3}(\.\d{3})+$/.test(v);
   const normalized = v.includes(",") || thousandsOnly ? v.replace(/\./g, "").replace(",", ".") : v;
   const n = Number(normalized);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
