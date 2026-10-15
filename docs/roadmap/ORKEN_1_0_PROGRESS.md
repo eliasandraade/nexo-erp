@@ -32,7 +32,8 @@
 | #64b | Auth: verificação em duas etapas (TOTP) (GitHub #65) | `baad911` | `AuthMfaTotp` (aditiva) | Em produção |
 | #65 | Relatórios do núcleo e painel com período (GitHub #66) | `0b260f9` | — | Em produção |
 | #66 | Fiscal: base (emissor, produto, cliente, CPF na nota) (GitHub #67) | `291acb5` | `FiscalFoundation` (aditiva) | Em produção |
-| #67 | CI do frontend e lockfile versionado | — | — | Em revisão |
+| #67 | CI do frontend e lockfile versionado (GitHub #68) | `be47ace` | — | Em produção |
+| #68 | Saúde e resiliência (live, ready, relatório) | — | — | Em revisão |
 
 
 ## Marcos por fase
@@ -1052,6 +1053,8 @@ A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, e
 - **Playwright no CI** com 1 nova tentativa (só no CI), para um runner lento não reprovar um PR que não mexeu no teste.
 - **Cadeia de dependências:** a instalação (CI e Docker) usa `--ignore-scripts`, então nenhum pacote roda script de instalação na máquina de build (os binários nativos vêm como pacotes opcionais do lockfile); o Playwright roda pelos scripts do projeto (`npm run e2e:install` / `e2e:critical`), sem `npx` baixando pacote na hora. Apontado pelo SonarCloud (S6505/S8543).
 - **Para regerar o lock** depois de mudar dependências: `docker run --rm -v "$PWD:/w" -w /w node:20-slim npm install --package-lock-only` dentro de `nexo-main`.
+
+- **Em produção** (merge `be47ace`): o log de build da Railway mostra `npm ci --ignore-scripts` a partir do lockfile e o `vite build` concluído; deploy `SUCCESS`; páginas 200. O hash do bundle saiu **idêntico** ao anterior (mesmo código, mesmas versões): o build ficou reproduzível.
 
 ## PR 68 — Saúde e resiliência
 
