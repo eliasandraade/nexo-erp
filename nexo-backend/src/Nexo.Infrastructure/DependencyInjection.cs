@@ -260,6 +260,7 @@ public static class DependencyInjection
         // ── Reports ───────────────────────────────────────────────────────────
         services.AddScoped<Nexo.Infrastructure.Reports.ReportsService>();
         services.AddScoped<Nexo.Infrastructure.Reports.SalesAnalytics>();
+        services.AddScoped<Nexo.Infrastructure.Fiscal.FiscalService>();
 
         // ── Dashboard ─────────────────────────────────────────────────────────
         services.AddScoped<Nexo.Infrastructure.Dashboard.DashboardService>();

@@ -67,7 +67,7 @@ export default function PdvPage() {
     }
   }
 
-  function handleFinalize(payments: PaymentEntry[]) {
+  function handleFinalize(payments: PaymentEntry[], consumerDocument?: string) {
     if (!cashSession?.id) return;
 
     // Snapshot cart before clearing so the success modal can display it
@@ -81,6 +81,7 @@ export default function PdvPage() {
         payments,
         discountAmount: snapshotDiscountTotal,
         cashSessionId:  cashSession.id,
+        consumerDocument,
       },
       {
         onSuccess: (dto) => {

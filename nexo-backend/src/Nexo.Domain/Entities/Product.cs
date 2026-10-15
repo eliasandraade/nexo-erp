@@ -24,6 +24,13 @@ public class Product : StoreEntity
     public bool IsIngredient { get; private set; }                  // true = insumo de estoque do restaurante
     public string? ImageUrl { get; private set; }                   // URL externa de imagem do produto
 
+    // Dados fiscais (PR 66) — informados pelo contador; nada aqui calcula imposto
+    public string? Ncm { get; private set; }                        // 8 dígitos
+    public string? Cest { get; private set; }                       // 7 dígitos, quando há substituição tributária
+    public int? FiscalOrigin { get; private set; }                  // origem da mercadoria, 0–8 (tabela da NF-e)
+    public string? Cfop { get; private set; }                       // CFOP padrão de venda, 4 dígitos
+    public string? TaxSituation { get; private set; }               // CST (2 dígitos) ou CSOSN (3 dígitos) do ICMS
+
     // Navigation
     public Category? Category { get; private set; }
     public ICollection<SaleItem> SaleItems { get; private set; } = [];
@@ -101,4 +108,17 @@ public class Product : StoreEntity
 
     public void Deactivate() { IsActive = false; SetUpdatedAt(); }
     public void Activate()   { IsActive = true;  SetUpdatedAt(); }
+
+    /// <summary>Fiscal data as typed by the accountant; empty strings clear a field.</summary>
+    public void UpdateFiscal(string? ncm, string? cest, int? origin, string? cfop, string? taxSituation)
+    {
+        Ncm          = Clean(ncm);
+        Cest         = Clean(cest);
+        FiscalOrigin = origin;
+        Cfop         = Clean(cfop);
+        TaxSituation = Clean(taxSituation);
+        SetUpdatedAt();
+
+        static string? Clean(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+    }
 }

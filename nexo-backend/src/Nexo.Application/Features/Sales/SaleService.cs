@@ -169,6 +169,11 @@ public class SaleService
             if (!sale.Items.Any())
                 throw new DomainException("Cannot confirm a sale with no items.");
 
+            var consumer = FiscalCodes.Digits(request.ConsumerDocument);
+            if (consumer.Length > 0 && !FiscalCodes.IsCpf(consumer) && !FiscalCodes.IsCnpj(consumer))
+                throw new DomainException("CPF/CNPJ na nota inválido. Confira os números.");
+            sale.SetConsumerDocument(consumer);
+
             // Recalculate totals with final discount/tax, then plan the payments against it
             sale.RecalculateTotals(sale.Items, request.DiscountAmount, request.TaxAmount, request.SurchargesAmount);
             var plan = SalePaymentPlan.Build(request.Payments, sale.Total);
@@ -718,5 +723,6 @@ public class SaleService
         s.UpdatedAt,
         s.ReturnedAmount,
         s.CancellationReason,
-        s.SurchargesAmount);
+        s.SurchargesAmount,
+        s.ConsumerDocument);
 }

@@ -89,6 +89,10 @@ public class SaleConfiguration : IEntityTypeConfiguration<Sale>
             .HasColumnName("cancellation_reason")
             .HasMaxLength(500);
 
+        builder.Property(x => x.ConsumerDocument)
+            .HasColumnName("consumer_document")
+            .HasMaxLength(14);
+
         builder.Property(x => x.ReturnedAmount)
             .HasColumnName("returned_amount")
             .HasColumnType("numeric(18,2)")

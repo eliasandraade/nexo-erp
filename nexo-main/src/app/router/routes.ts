@@ -33,6 +33,7 @@ import {
   ListPlus,
   HandCoins,
   ChartColumnBig,
+  ScrollText,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
@@ -89,6 +90,7 @@ export const appRoutes: AppRoute[] = [
   { path: "/financeiro/pagar",   label: "Contas a pagar",   icon: Receipt,    group: "core",        roles: MGMT },
   { path: "/financeiro/fluxo",   label: "Fluxo de caixa",   icon: ChartColumnBig, group: "core",    roles: MGMT },
   { path: "/relatorios",    label: "Relatórios",     icon: BarChart2,         group: "core",        roles: MGMT },
+  { path: "/fiscal",        label: "Fiscal",         icon: ScrollText,        group: "core",        roles: MGMT },
 
   // ── Estoque — management + estoquista ────────────────────────────────────
   { path: "/produtos",      label: "Produtos",       icon: Package,           group: "inventario",  roles: [...MGMT, "estoquista"] },

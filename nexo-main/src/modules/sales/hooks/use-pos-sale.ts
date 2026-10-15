@@ -11,6 +11,8 @@ export interface CompleteSaleArgs {
   payments: PaymentEntry[];
   discountAmount: number;
   cashSessionId: string;
+  /** "CPF/CNPJ na nota", digits only; omitted when the customer did not ask. */
+  consumerDocument?: string;
 }
 
 /** Maps frontend PaymentMethod ("cash" | "pix" | "card") to backend PaymentInput. */
@@ -44,12 +46,14 @@ export function useCompleteSale() {
       payments,
       discountAmount,
       cashSessionId,
+      consumerDocument,
     }: CompleteSaleArgs): Promise<SaleDto> => {
       const key = JSON.stringify({ items, payments, discountAmount, cashSessionId });
       const confirmBody = {
         payments:       payments.map(toPaymentInput),
         discountAmount,
         taxAmount: 0,
+        consumerDocument: consumerDocument || undefined,
       };
 
       if (pending.current?.key === key) {

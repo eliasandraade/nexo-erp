@@ -30,7 +30,8 @@
 | #63 | Auth: recuperação de senha e controle de sessões (GitHub #62) | `e64cd63` | `AuthPasswordReset` (aditiva) | Em produção |
 | #64a | Auth: bloqueio por tentativas, auditoria de login, troca obrigatória, convite (GitHub #63) | `e5ec8ca` | — | Em produção |
 | #64b | Auth: verificação em duas etapas (TOTP) (GitHub #65) | `baad911` | `AuthMfaTotp` (aditiva) | Em produção |
-| #65 | Relatórios do núcleo e painel com período | — | — | Em revisão |
+| #65 | Relatórios do núcleo e painel com período (GitHub #66) | `0b260f9` | — | Em produção |
+| #66 | Fiscal: base (emissor, dados fiscais do produto, CPF na nota) | — | `FiscalFoundation` (aditiva) | Em revisão |
 
 
 ## Marcos por fase
@@ -995,3 +996,32 @@ O Stripe continua **desligado** em produção (`Integrations:Features:StripeEnab
   - o seletor de período virou um grupo de opções acessível, e o gráfico ganhou a tabela "Ver dia a dia" como alternativa em texto;
   - fica documentado: a devolução é abatida no período da venda, então um mês fechado muda se uma venda dele for devolvida depois (o razão financeiro lança o estorno no dia do estorno).
 - **Fica para depois:** o download de arquivos não renova um token vencido (comportamento anterior, também do PDF); índice por `COALESCE(confirmed_at, created_at)` se as vendas crescerem muito.
+- **Em produção** (merge `0b260f9`): `GET /api/reports/sales/export` passou de 404 para 401 sem token, o bundle do frontend trocou, `/relatorios` responde 200 e `/health` respondeu 20/20.
+
+## PR 66 — Fiscal: base (sem emissão)
+
+A emissão de NFC-e/NF-e depende de um provedor pago e de certificado digital, então fica fora (decisão do dono). Este PR deixa os dados prontos e confere o que falta, sem calcular imposto nem falar com a Sefaz.
+
+- **Emissor por loja** (`fiscal_profiles`, um por loja, porque cada filial tem CNPJ e IE próprios):
+  - razão social, nome fantasia, CNPJ, IE (números ou ISENTO), IM, regime tributário (Simples, Simples acima do sublimite, MEI, Presumido, Real) e endereço com código IBGE;
+  - o CRT sai do regime pelo layout da NF-e (1, 2, 3, 4), não por regra de imposto;
+  - CNPJ, IE e CEP são guardados sem máscara; UF em maiúsculas;
+  - `GET/PUT /api/fiscal/profile` (gerência). Sem perfil, o GET responde 204.
+- **Dados fiscais do produto:**
+  - NCM (8), CEST (7), origem da mercadoria (0–8), CFOP de venda (4, começando por 5, 6 ou 7) e CST/CSOSN (2 ou 3), todos opcionais e informados pelo contador;
+  - `GET/PUT /api/fiscal/products/{id}`;
+  - botão "Dados fiscais" na tela do produto (gerência).
+- **Preparação** (`GET /api/fiscal/readiness`): emissor preenchido ou não, produtos à venda sem NCM, códigos de barras que não são GTIN (vão como "SEM GTIN") e a lista dos primeiros 50 para corrigir. `emissionAvailable` é sempre `false` por enquanto.
+- **CPF/CNPJ na nota:**
+  - campo opcional no PDV, com máscara e conferência dos dígitos antes de finalizar;
+  - o servidor confere de novo (422 com mensagem; a venda continua em rascunho);
+  - fica gravado na venda (`consumer_document`) e sai no recibo.
+- **Validadores** (servidor e navegador, mesmas regras): CPF, CNPJ, GTIN-8/12/13/14, NCM, CEST e código IBGE.
+- **Tela `/fiscal`** (gerência): aviso de que a emissão ainda não existe, indicadores, formulário do emissor e lista de produtos para revisar com correção em diálogo.
+- **Migração `FiscalFoundation`** (aditiva: tabela nova e colunas anuláveis), validada num Postgres descartável (sobe → desce → sobe).
+- **Testes:**
+  - unitários dos validadores (25);
+  - integração: perfil recusado com CNPJ/IBGE/UF errados e salvo sem máscara, CRT por regime, produto listado até ganhar NCM, formatos fiscais inválidos → 400, CPF na nota inválido → 422 com a venda em rascunho, válido gravado só com dígitos;
+  - Vitest dos validadores e das regras da tela;
+  - Playwright: tela fiscal (CNPJ inválido barrado, emissor salvo, produto corrigido) e CPF na nota no PDV.
+- **Fica para depois:** emissão de verdade (provedor, certificado A1, série/número, contingência e documento fiscal da devolução), unificar o CNPJ cadastrado em `Tenant.TaxId` e nas configurações da empresa com o do emissor, e clientes do portal público que hoje guardam um identificador no lugar do CPF.
