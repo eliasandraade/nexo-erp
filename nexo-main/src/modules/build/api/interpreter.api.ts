@@ -108,6 +108,10 @@ export interface MovementListResponse {
   pageSize:   number;
 }
 
+/** Undoes a confirmed movement: it leaves the project and the ledger gets the counter-entry. */
+export const voidMovement = (id: string): Promise<{ id: string; status: string; voidedAt: string }> =>
+  apiClient.post(`/v1/movements/${id}/void`);
+
 export const fetchProjectMovements = (
   projectId: string,
   params?: { status?: string; page?: number; pageSize?: number },

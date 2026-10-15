@@ -29,6 +29,7 @@ namespace Nexo.Api.Controllers.Modules.Build;
 [Route("api/v1/build")]
 [Authorize(Roles = AppRoles.Management)]
 [RequireModule("build")]
+[Nexo.Api.Filters.ValidateBody]
 public class BuildBudgetsController : ControllerBase
 {
     private readonly BuildBudgetService _budgets;

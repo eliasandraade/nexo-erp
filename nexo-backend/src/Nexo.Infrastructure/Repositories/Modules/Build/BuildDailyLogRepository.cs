@@ -42,6 +42,14 @@ public class BuildDailyLogRepository : IBuildDailyLogRepository
             .ToListAsync(ct);
     }
 
+    public async Task<int> CountByProjectAsync(Guid projectId, DateOnly? from, DateOnly? to, CancellationToken ct = default)
+    {
+        var query = _context.BldDailyLogs.Where(x => x.ProjectId == projectId);
+        if (from.HasValue) query = query.Where(x => x.Date >= from.Value);
+        if (to.HasValue)   query = query.Where(x => x.Date <= to.Value);
+        return await query.CountAsync(ct);
+    }
+
     public async Task<bool> ExistsForDateAsync(Guid projectId, DateOnly date, CancellationToken ct = default)
         => await _context.BldDailyLogs
             .AnyAsync(x => x.ProjectId == projectId && x.Date == date, ct);

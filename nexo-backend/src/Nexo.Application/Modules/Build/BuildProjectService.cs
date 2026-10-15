@@ -37,10 +37,12 @@ public class BuildProjectService
         int                 pageSize = 20,
         CancellationToken   ct       = default)
     {
+        (page, pageSize) = BuildPaging.Clamp(page, pageSize);
         var total = await _projects.CountAsync(status, ct);
         var items = await _projects.GetAllAsync(status, page, pageSize, ct);
+        var counts = await _projects.GetCountsAsync(items.Select(p => p.Id).ToList(), ct);
         return new BuildPagedResult<BuildProjectDto>(
-            items.Select(MapToDto).ToList(),
+            items.Select(p => MapToDto(p, counts.GetValueOrDefault(p.Id))).ToList(),
             total, page, pageSize);
     }
 
@@ -48,7 +50,7 @@ public class BuildProjectService
     {
         var project = await _projects.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("BuildProject", id);
-        return MapToDto(project);
+        return await ToDtoAsync(project, ct);
     }
 
     public async Task<BuildProjectDetailsDto> GetDetailsAsync(Guid id, CancellationToken ct = default)
@@ -80,7 +82,7 @@ public class BuildProjectService
 
         await _projects.AddAsync(project, ct);
         await _projects.SaveChangesAsync(ct);
-        return MapToDto(project);
+        return await ToDtoAsync(project, ct);
     }
 
     public async Task<BuildProjectDto> UpdateAsync(
@@ -106,7 +108,7 @@ public class BuildProjectService
 
         _projects.Update(project);
         await _projects.SaveChangesAsync(ct);
-        return MapToDto(project);
+        return await ToDtoAsync(project, ct);
     }
 
     // ── Status transitions ────────────────────────────────────────────────────
@@ -118,7 +120,7 @@ public class BuildProjectService
         project.Start();
         _projects.Update(project);
         await _projects.SaveChangesAsync(ct);
-        return MapToDto(project);
+        return await ToDtoAsync(project, ct);
     }
 
     public async Task<BuildProjectDto> PauseAsync(Guid id, CancellationToken ct = default)
@@ -128,7 +130,7 @@ public class BuildProjectService
         project.Pause();
         _projects.Update(project);
         await _projects.SaveChangesAsync(ct);
-        return MapToDto(project);
+        return await ToDtoAsync(project, ct);
     }
 
     public async Task<BuildProjectDto> CompleteAsync(Guid id, CancellationToken ct = default)
@@ -138,7 +140,7 @@ public class BuildProjectService
         project.Complete();
         _projects.Update(project);
         await _projects.SaveChangesAsync(ct);
-        return MapToDto(project);
+        return await ToDtoAsync(project, ct);
     }
 
     public async Task<BuildProjectDto> CancelAsync(Guid id, CancellationToken ct = default)
@@ -148,12 +150,15 @@ public class BuildProjectService
         project.Cancel();
         _projects.Update(project);
         await _projects.SaveChangesAsync(ct);
-        return MapToDto(project);
+        return await ToDtoAsync(project, ct);
     }
 
     // ── Mappers ───────────────────────────────────────────────────────────────
 
-    internal static BuildProjectDto MapToDto(BuildProject p) => new(
+    private async Task<BuildProjectDto> ToDtoAsync(BuildProject p, CancellationToken ct)
+        => MapToDto(p, (await _projects.GetCountsAsync([p.Id], ct)).GetValueOrDefault(p.Id));
+
+    internal static BuildProjectDto MapToDto(BuildProject p, BuildProjectCounts counts) => new(
         Id:                  p.Id,
         Name:                p.Name,
         ClientName:          p.ClientName,
@@ -165,9 +170,9 @@ public class BuildProjectService
         ActualEndDate:       p.ActualEndDate,
         BudgetEstimated:     p.BudgetEstimated,
         BudgetApproved:      p.BudgetApproved,
-        StageCount:          p.Stages.Count,
-        CompletedStageCount: p.Stages.Count(s => s.Status == BuildStageStatus.Completed),
-        LogCount:            p.DailyLogs.Count,
+        StageCount:          counts.Stages,
+        CompletedStageCount: counts.CompletedStages,
+        LogCount:            counts.Logs,
         CreatedAt:           p.CreatedAt,
         UpdatedAt:           p.UpdatedAt);
 

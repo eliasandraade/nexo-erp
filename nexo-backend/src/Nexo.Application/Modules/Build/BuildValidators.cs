@@ -10,29 +10,29 @@ public class CreateBuildProjectRequestValidator : AbstractValidator<CreateBuildP
     public CreateBuildProjectRequestValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Project name is required.")
-            .MaximumLength(200).WithMessage("Project name must not exceed 200 characters.");
+            .NotEmpty().WithMessage("Informe o nome da obra.")
+            .MaximumLength(200).WithMessage("O nome da obra pode ter até 200 caracteres.");
 
         RuleFor(x => x.ClientName)
-            .NotEmpty().WithMessage("Client name is required.")
-            .MaximumLength(200).WithMessage("Client name must not exceed 200 characters.");
+            .NotEmpty().WithMessage("Informe o cliente.")
+            .MaximumLength(200).WithMessage("O nome do cliente pode ter até 200 caracteres.");
 
         RuleFor(x => x.Type)
-            .NotEmpty().WithMessage("Project type is required.")
+            .NotEmpty().WithMessage("Informe o tipo da obra.")
             .Must(t => Enum.TryParse<BuildProjectType>(t, ignoreCase: true, out _))
-            .WithMessage($"Invalid project type. Valid values: {string.Join(", ", Enum.GetNames<BuildProjectType>())}.");
+            .WithMessage("Tipo de obra inválido.");
 
         RuleFor(x => x.Location)
-            .MaximumLength(300).WithMessage("Location must not exceed 300 characters.")
+            .MaximumLength(300).WithMessage("O endereço pode ter até 300 caracteres.")
             .When(x => x.Location is not null);
 
         RuleFor(x => x.BudgetEstimated)
-            .GreaterThanOrEqualTo(0m).WithMessage("Budget estimated cannot be negative.")
+            .GreaterThanOrEqualTo(0m).WithMessage("O orçamento estimado não pode ser negativo.")
             .When(x => x.BudgetEstimated.HasValue);
 
         RuleFor(x => x)
             .Must(x => x.StartDate is null || x.ExpectedEndDate is null || x.StartDate <= x.ExpectedEndDate)
-            .WithMessage("Expected end date must be on or after start date.");
+            .WithMessage("A previsão de término precisa ser depois do início.");
     }
 }
 
@@ -41,33 +41,33 @@ public class UpdateBuildProjectRequestValidator : AbstractValidator<UpdateBuildP
     public UpdateBuildProjectRequestValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Project name is required.")
-            .MaximumLength(200).WithMessage("Project name must not exceed 200 characters.");
+            .NotEmpty().WithMessage("Informe o nome da obra.")
+            .MaximumLength(200).WithMessage("O nome da obra pode ter até 200 caracteres.");
 
         RuleFor(x => x.ClientName)
-            .NotEmpty().WithMessage("Client name is required.")
-            .MaximumLength(200).WithMessage("Client name must not exceed 200 characters.");
+            .NotEmpty().WithMessage("Informe o cliente.")
+            .MaximumLength(200).WithMessage("O nome do cliente pode ter até 200 caracteres.");
 
         RuleFor(x => x.Type)
-            .NotEmpty().WithMessage("Project type is required.")
+            .NotEmpty().WithMessage("Informe o tipo da obra.")
             .Must(t => Enum.TryParse<BuildProjectType>(t, ignoreCase: true, out _))
-            .WithMessage($"Invalid project type. Valid values: {string.Join(", ", Enum.GetNames<BuildProjectType>())}.");
+            .WithMessage("Tipo de obra inválido.");
 
         RuleFor(x => x.Location)
-            .MaximumLength(300).WithMessage("Location must not exceed 300 characters.")
+            .MaximumLength(300).WithMessage("O endereço pode ter até 300 caracteres.")
             .When(x => x.Location is not null);
 
         RuleFor(x => x.BudgetEstimated)
-            .GreaterThanOrEqualTo(0m).WithMessage("Budget estimated cannot be negative.")
+            .GreaterThanOrEqualTo(0m).WithMessage("O orçamento estimado não pode ser negativo.")
             .When(x => x.BudgetEstimated.HasValue);
 
         RuleFor(x => x.BudgetApproved)
-            .GreaterThanOrEqualTo(0m).WithMessage("Budget approved cannot be negative.")
+            .GreaterThanOrEqualTo(0m).WithMessage("O orçamento aprovado não pode ser negativo.")
             .When(x => x.BudgetApproved.HasValue);
 
         RuleFor(x => x)
             .Must(x => x.StartDate is null || x.ExpectedEndDate is null || x.StartDate <= x.ExpectedEndDate)
-            .WithMessage("Expected end date must be on or after start date.");
+            .WithMessage("A previsão de término precisa ser depois do início.");
     }
 }
 
@@ -78,16 +78,16 @@ public class CreateBuildStageRequestValidator : AbstractValidator<CreateBuildSta
     public CreateBuildStageRequestValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Stage name is required.")
-            .MaximumLength(200).WithMessage("Stage name must not exceed 200 characters.");
+            .NotEmpty().WithMessage("Informe o nome da etapa.")
+            .MaximumLength(200).WithMessage("O nome da etapa pode ter até 200 caracteres.");
 
         RuleFor(x => x.Description)
-            .MaximumLength(1000).WithMessage("Description must not exceed 1000 characters.")
+            .MaximumLength(1000).WithMessage("A descrição pode ter até 1000 caracteres.")
             .When(x => x.Description is not null);
 
         RuleFor(x => x)
             .Must(x => x.PlannedStart is null || x.PlannedEnd is null || x.PlannedStart <= x.PlannedEnd)
-            .WithMessage("Planned end date must be on or after planned start date.");
+            .WithMessage("O fim previsto precisa ser depois do início previsto.");
     }
 }
 
@@ -98,11 +98,11 @@ public class CreateBuildBudgetRequestValidator : AbstractValidator<CreateBuildBu
     public CreateBuildBudgetRequestValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Budget name is required.")
-            .MaximumLength(200).WithMessage("Budget name must not exceed 200 characters.");
+            .NotEmpty().WithMessage("Informe o nome do orçamento.")
+            .MaximumLength(200).WithMessage("O nome do orçamento pode ter até 200 caracteres.");
 
         RuleFor(x => x.MarginPercent)
-            .GreaterThanOrEqualTo(0m).WithMessage("Margin percent cannot be negative.");
+            .GreaterThanOrEqualTo(0m).WithMessage("A margem não pode ser negativa.");
     }
 }
 
@@ -111,22 +111,22 @@ public class AddBuildBudgetItemRequestValidator : AbstractValidator<AddBuildBudg
     public AddBuildBudgetItemRequestValidator()
     {
         RuleFor(x => x.Name)
-            .NotEmpty().WithMessage("Item name is required.")
-            .MaximumLength(300).WithMessage("Item name must not exceed 300 characters.");
+            .NotEmpty().WithMessage("Informe o nome do item.")
+            .MaximumLength(300).WithMessage("O nome do item pode ter até 300 caracteres.");
 
         RuleFor(x => x.Category)
-            .NotEmpty().WithMessage("Category is required.")
-            .MaximumLength(100).WithMessage("Category must not exceed 100 characters.");
+            .NotEmpty().WithMessage("Informe a categoria.")
+            .MaximumLength(100).WithMessage("A categoria pode ter até 100 caracteres.");
 
         RuleFor(x => x.Unit)
-            .NotEmpty().WithMessage("Unit is required.")
-            .MaximumLength(20).WithMessage("Unit must not exceed 20 characters.");
+            .NotEmpty().WithMessage("Informe a unidade.")
+            .MaximumLength(20).WithMessage("A unidade pode ter até 20 caracteres.");
 
         RuleFor(x => x.Quantity)
-            .GreaterThan(0m).WithMessage("Quantity must be greater than zero.");
+            .GreaterThan(0m).WithMessage("A quantidade precisa ser maior que zero.");
 
         RuleFor(x => x.UnitCost)
-            .GreaterThanOrEqualTo(0m).WithMessage("Unit cost cannot be negative.");
+            .GreaterThanOrEqualTo(0m).WithMessage("O custo unitário não pode ser negativo.");
     }
 }
 
@@ -137,15 +137,74 @@ public class CreateDailyLogRequestValidator : AbstractValidator<CreateDailyLogRe
     public CreateDailyLogRequestValidator()
     {
         RuleFor(x => x.Notes)
-            .NotEmpty().WithMessage("Notes are required.")
-            .MaximumLength(5000).WithMessage("Notes must not exceed 5000 characters.");
+            .NotEmpty().WithMessage("Escreva o que aconteceu no dia.")
+            .MaximumLength(5000).WithMessage("O registro pode ter até 5000 caracteres.");
 
         RuleFor(x => x.WeatherSummary)
-            .MaximumLength(200).WithMessage("Weather summary must not exceed 200 characters.")
+            .MaximumLength(200).WithMessage("O clima pode ter até 200 caracteres.")
             .When(x => x.WeatherSummary is not null);
 
         RuleFor(x => x.Date)
             .LessThanOrEqualTo(DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1))
-            .WithMessage("Daily log date cannot be more than 1 day in the future.");
+            .WithMessage("O diário não pode ser de mais de um dia no futuro.");
+    }
+}
+
+public class UpdateBuildStageRequestValidator : AbstractValidator<UpdateBuildStageRequest>
+{
+    public UpdateBuildStageRequestValidator()
+    {
+        RuleFor(x => x.Name)
+            .NotEmpty().WithMessage("Informe o nome da etapa.")
+            .MaximumLength(200).WithMessage("O nome da etapa pode ter até 200 caracteres.");
+        RuleFor(x => x.Description)
+            .MaximumLength(1000).WithMessage("A descrição pode ter até 1000 caracteres.")
+            .When(x => x.Description is not null);
+        RuleFor(x => x.Order).GreaterThanOrEqualTo(0).WithMessage("Ordem inválida.");
+        RuleFor(x => x)
+            .Must(x => x.PlannedStart is null || x.PlannedEnd is null || x.PlannedStart <= x.PlannedEnd)
+            .WithMessage("O fim previsto precisa ser depois do início previsto.");
+    }
+}
+
+public class ReorderBuildStagesRequestValidator : AbstractValidator<ReorderBuildStagesRequest>
+{
+    public ReorderBuildStagesRequestValidator()
+    {
+        RuleFor(x => x.Entries).NotNull().WithMessage("Informe a nova ordem das etapas.");
+    }
+}
+
+public class UpdateBuildBudgetItemRequestValidator : AbstractValidator<UpdateBuildBudgetItemRequest>
+{
+    public UpdateBuildBudgetItemRequestValidator()
+    {
+        RuleFor(x => x.Name).NotEmpty().WithMessage("Informe o nome do item.")
+            .MaximumLength(300).WithMessage("O nome do item pode ter até 300 caracteres.");
+        RuleFor(x => x.Category).NotEmpty().WithMessage("Informe a categoria.")
+            .MaximumLength(100).WithMessage("A categoria pode ter até 100 caracteres.");
+        RuleFor(x => x.Unit).NotEmpty().WithMessage("Informe a unidade.")
+            .MaximumLength(20).WithMessage("A unidade pode ter até 20 caracteres.");
+        RuleFor(x => x.Quantity).GreaterThan(0m).WithMessage("A quantidade precisa ser maior que zero.");
+        RuleFor(x => x.UnitCost).GreaterThanOrEqualTo(0m).WithMessage("O custo unitário não pode ser negativo.");
+    }
+}
+
+public class SetBudgetMarginRequestValidator : AbstractValidator<SetBudgetMarginRequest>
+{
+    public SetBudgetMarginRequestValidator()
+    {
+        RuleFor(x => x.MarginPercent).GreaterThanOrEqualTo(0m).WithMessage("A margem não pode ser negativa.");
+    }
+}
+
+public class UpdateDailyLogRequestValidator : AbstractValidator<UpdateDailyLogRequest>
+{
+    public UpdateDailyLogRequestValidator()
+    {
+        RuleFor(x => x.Notes).NotEmpty().WithMessage("Escreva o que aconteceu no dia.")
+            .MaximumLength(5000).WithMessage("O registro pode ter até 5000 caracteres.");
+        RuleFor(x => x.WeatherSummary).MaximumLength(200).WithMessage("O clima pode ter até 200 caracteres.")
+            .When(x => x.WeatherSummary is not null);
     }
 }

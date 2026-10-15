@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Features.Auth;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
@@ -22,9 +24,11 @@ namespace Nexo.IntegrationTests.Build;
 public class BuildFlowTests
 {
     private readonly HttpClient _client;
+    private readonly TestWebApplicationFactory _factory;
 
     public BuildFlowTests(TestWebApplicationFactory factory)
     {
+        _factory = factory;
         _client = factory.CreateApiClient();
     }
 
@@ -137,5 +141,112 @@ public class BuildFlowTests
         var dup = await _client.PostAsJsonAsync($"/api/v1/build/projects/{id}/daily-logs",
             new { date, notes = "Segundo registro mesma data." });
         dup.IsSuccessStatusCode.Should().BeFalse();
+    }
+
+    // ── PR 60: closure ────────────────────────────────────────────────────────
+
+    private async Task<Guid> StageAsync(Guid projectId, string name)
+    {
+        var r = await _client.PostAsJsonAsync($"/api/v1/build/projects/{projectId}/stages", new { name });
+        r.StatusCode.Should().Be(HttpStatusCode.Created);
+        return (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+    }
+
+    [Fact]
+    public async Task Project_list_shows_real_stage_and_log_counts()
+    {
+        await AuthenticateAsync();
+        var id = (await CreateProjectAsync()).GetProperty("id").GetGuid();
+        var done = await StageAsync(id, "Fundação");
+        await StageAsync(id, "Alvenaria");
+        (await _client.PutAsJsonAsync($"/api/v1/build/stages/{done}/progress", new { progressPercent = 100, status = "Completed" }))
+            .IsSuccessStatusCode.Should().BeTrue();
+        (await _client.PostAsJsonAsync($"/api/v1/build/projects/{id}/daily-logs", new { date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-3)), notes = "Concretagem" }))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var list = await _client.GetFromJsonAsync<JsonElement>("/api/v1/build/projects?pageSize=100");
+        var card = list.GetProperty("items").EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == id);
+        card.GetProperty("stageCount").GetInt32().Should().Be(2);
+        card.GetProperty("completedStageCount").GetInt32().Should().Be(1);
+        card.GetProperty("logCount").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Daily_logs_page_with_the_real_total()
+    {
+        await AuthenticateAsync();
+        var id = (await CreateProjectAsync()).GetProperty("id").GetGuid();
+        for (var d = 1; d <= 3; d++)
+            (await _client.PostAsJsonAsync($"/api/v1/build/projects/{id}/daily-logs", new { date = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(-d)), notes = $"Dia {d}" }))
+                .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var first = await _client.GetFromJsonAsync<JsonElement>($"/api/v1/build/projects/{id}/daily-logs?page=1&pageSize=2");
+        first.GetProperty("total").GetInt32().Should().Be(3);
+        first.GetProperty("items").GetArrayLength().Should().Be(2);
+        var second = await _client.GetFromJsonAsync<JsonElement>($"/api/v1/build/projects/{id}/daily-logs?page=2&pageSize=2");
+        second.GetProperty("items").GetArrayLength().Should().Be(1);
+        (await _client.GetFromJsonAsync<JsonElement>($"/api/v1/build/projects/{id}/daily-logs?pageSize=100000"))
+            .GetProperty("pageSize").GetInt32().Should().Be(100, "page size is bounded");
+    }
+
+    [Fact]
+    public async Task Requests_are_validated_with_readable_messages()
+    {
+        await AuthenticateAsync();
+        var r = await _client.PostAsJsonAsync("/api/v1/build/projects", new { name = "", clientName = "X", type = "House" });
+        r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await r.Content.ReadAsStringAsync()).Should().Contain("Informe o nome da obra.");
+
+        var id = (await CreateProjectAsync()).GetProperty("id").GetGuid();
+        (await _client.PostAsJsonAsync($"/api/v1/build/projects/{id}/stages", new { name = "Etapa", plannedStart = "2026-10-10", plannedEnd = "2026-10-01" }))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        // the old frontend contract ({ items }) used to crash the reorder with a 500
+        (await _client.PutAsJsonAsync($"/api/v1/build/projects/{id}/stages/reorder", new { items = Array.Empty<object>() }))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task A_stage_can_be_edited()
+    {
+        await AuthenticateAsync();
+        var id = (await CreateProjectAsync()).GetProperty("id").GetGuid();
+        var stage = await StageAsync(id, "Fundacao");
+        var r = await _client.PutAsJsonAsync($"/api/v1/build/stages/{stage}",
+            new { name = "Fundação", description = "Sapatas", order = 0, plannedStart = "2026-11-01", plannedEnd = "2026-11-20" });
+        r.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await r.Content.ReadFromJsonAsync<JsonElement>();
+        body.GetProperty("name").GetString().Should().Be("Fundação");
+        body.GetProperty("plannedEndDate").GetString().Should().Be("2026-11-20");
+    }
+
+    [Fact]
+    public async Task A_wrong_expense_is_reversed_out_of_the_project_and_the_ledger()
+    {
+        await AuthenticateAsync();
+        var id = (await CreateProjectAsync(budgetEstimated: 1000m)).GetProperty("id").GetGuid();
+        var analyzed = await (await _client.PostAsJsonAsync("/api/v1/interpreter/analyze",
+            new { text = "cimento 100 reais", inputSource = "Text" })).Content.ReadFromJsonAsync<JsonElement>();
+        var draft = analyzed.GetProperty("draftId").GetGuid();
+        (await _client.PostAsJsonAsync($"/api/v1/movements/{draft}/confirm", new
+        {
+            amount = 100m, date = DateOnly.FromDateTime(DateTime.UtcNow), description = "Cimento",
+            direction = "Out", nature = "Expense", categoryId = (Guid?)null, contextType = "Obra", contextId = id,
+            accountId = (Guid?)null, originalSuggestionId = analyzed.GetProperty("suggestionId").GetGuid(),
+        })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.GetFromJsonAsync<JsonElement>($"/api/v1/build/projects/{id}/financial-summary"))
+            .GetProperty("totalRealizedExpenses").GetDecimal().Should().Be(100m);
+
+        (await _client.PostAsync($"/api/v1/movements/{draft}/void", null)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await _client.GetFromJsonAsync<JsonElement>($"/api/v1/build/projects/{id}/financial-summary"))
+            .GetProperty("totalRealizedExpenses").GetDecimal().Should().Be(0m, "a voided expense leaves the project");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Nexo.Infrastructure.Persistence.NexoDbContext>();
+            var mirror = await db.FinancialTransactions.IgnoreQueryFilters().Where(t => t.ReferenceId == draft).ToListAsync();
+            mirror.Should().HaveCount(2, "the ledger keeps the expense and gets its counter-entry");
+            mirror.Should().ContainSingle(t => t.ReversesTransactionId != null);
+        }
+        (await _client.PostAsync($"/api/v1/movements/{draft}/void", null)).IsSuccessStatusCode.Should().BeFalse("voided once");
     }
 }

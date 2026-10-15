@@ -47,6 +47,8 @@ public class BuildBudgetService
         int                pageSize  = 20,
         CancellationToken  ct        = default)
     {
+        (page, pageSize) = BuildPaging.Clamp(page, pageSize);
+        var total = await _budgets.CountAsync(projectId, status, ct);
         var list = await _budgets.GetAllAsync(projectId, status, page, pageSize, ct);
 
         var dtos = new List<BuildBudgetDto>();
@@ -56,7 +58,7 @@ public class BuildBudgetService
             dtos.Add(MapToDto(b, items));
         }
 
-        return new BuildPagedResult<BuildBudgetDto>(dtos, dtos.Count, page, pageSize);
+        return new BuildPagedResult<BuildBudgetDto>(dtos, total, page, pageSize);
     }
 
     public async Task<BuildBudgetDto> GetByIdAsync(Guid id, CancellationToken ct = default)

@@ -24,6 +24,8 @@ public record BuildProjectDto(
     DateTimeOffset     CreatedAt,
     DateTimeOffset     UpdatedAt);
 
+public readonly record struct BuildProjectCounts(int Stages, int CompletedStages, int Logs);
+
 public record BuildProjectDetailsDto(
     Guid                        Id,
     string                      Name,

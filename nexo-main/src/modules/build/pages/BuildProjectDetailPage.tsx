@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Trash2, Pencil,
+  ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Trash2, Pencil, ArrowUp, ArrowDown, SlidersHorizontal, Undo2,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
   MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2,
 } from "lucide-react";
@@ -15,13 +15,13 @@ import { toast } from "sonner";
 import {
   useProjectDetails, useProjectFinancial,
   useStartProject, usePauseProject, useCompleteProject, useCancelProject,
-  useStages, useCreateStage, useUpdateStageProgress, useDeleteStage,
+  useStages, useCreateStage, useUpdateStageProgress, useDeleteStage, useUpdateStage, useReorderStages,
   useBudgets, useBudget, useCreateBudget,
   useSendBudget, useApproveBudget, useRejectBudget,
   useAddBudgetItem, useUpdateBudgetItem, useRemoveBudgetItem, useSetBudgetMargin,
   useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto, useRemoveDailyLogPhoto,
 } from "../hooks/use-build";
-import { useProjectMovements } from "../hooks/use-interpreter";
+import { useProjectMovements, useVoidMovement } from "../hooks/use-interpreter";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { BudgetStatusBadge } from "../components/BudgetStatusBadge";
 import { BuildExpenseDialog } from "../components/BuildExpenseDialog";
@@ -225,8 +225,10 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
               className="text-destructive border-destructive/30 hover:bg-destructive/5"
               onClick={() => {
                 if (confirm("Cancelar esta obra? Esta ação não pode ser desfeita.")) {
-                  handleAction(cancelMut as ReturnType<typeof useStartProject>, "cancelada");
-                  navigate("/build");
+                  cancelMut.mutate(undefined as never, {
+                    onSuccess: () => { toast.success("Obra cancelada com sucesso!"); navigate("/build"); },
+                    onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao cancelar a obra."),
+                  });
                 }
               }}
               disabled={cancelMut.isPending}
@@ -245,11 +247,44 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
 
 // ── Tab: Etapas ───────────────────────────────────────────────────────────────
 
+/** Today's date in the user's calendar (not UTC — after 9 pm in Brazil UTC is already tomorrow). */
+function localToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const fmtDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+
 function TabEtapas({ projectId }: { projectId: string }) {
   const { data: stages = [], isLoading } = useStages(projectId);
   const createMut   = useCreateStage(projectId);
   const progressMut = useUpdateStageProgress(projectId);
   const deleteMut   = useDeleteStage(projectId);
+  const updateMut   = useUpdateStage(projectId);
+  const reorderMut  = useReorderStages(projectId);
+  const [details, setDetails] = useState<{ id: string; name: string; description: string; start: string; end: string } | null>(null);
+
+  const saveDetails = (stage: BuildStageDto) => {
+    if (!details || !details.name.trim()) return;
+    if (details.start && details.end && details.end < details.start) { toast.error("O fim previsto precisa ser depois do início."); return; }
+    updateMut.mutate({ id: stage.id, req: {
+      name: details.name.trim(), description: details.description.trim() || null, order: stage.order,
+      plannedStart: details.start || null, plannedEnd: details.end || null,
+    } }, {
+      onSuccess: () => { setDetails(null); toast.success("Etapa atualizada."); },
+      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar etapa."),
+    });
+  };
+
+  // swap with the neighbour and renumber everything 0..n-1 (gaps or duplicates heal themselves)
+  const move = (index: number, delta: -1 | 1) => {
+    const order = [...stages];
+    const target = index + delta;
+    if (target < 0 || target >= order.length) return;
+    [order[index], order[target]] = [order[target], order[index]];
+    reorderMut.mutate({ entries: order.map((st, i) => ({ stageId: st.id, order: i })) }, {
+      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao reordenar."),
+    });
+  };
 
   const [adding, setAdding]   = useState(false);
   const [newName, setNewName] = useState("");
@@ -328,13 +363,18 @@ function TabEtapas({ projectId }: { projectId: string }) {
         </div>
       ) : (
         <div className="space-y-2">
-          {stages.map((stage) => (
+          {stages.map((stage, index) => (
             <div key={stage.id} className="rounded-md border border-border bg-card p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 flex-1 basis-40">
                   <p className="font-medium text-sm truncate">{stage.name}</p>
                   {stage.description && (
                     <p className="text-xs text-muted-foreground truncate">{stage.description}</p>
+                  )}
+                  {(stage.plannedStartDate || stage.plannedEndDate) && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Previsto: {stage.plannedStartDate ? fmtDay(stage.plannedStartDate) : "—"} a {stage.plannedEndDate ? fmtDay(stage.plannedEndDate) : "—"}
+                    </p>
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
@@ -348,19 +388,72 @@ function TabEtapas({ projectId }: { projectId: string }) {
                      stage.status === "InProgress" ? "Em andamento" : "Pendente"}
                   </span>
                   <button
+                    onClick={() => move(index, -1)} disabled={index === 0 || reorderMut.isPending}
+                    aria-label={`Subir ${stage.name}`}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-2 disabled:opacity-30"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => move(index, 1)} disabled={index === stages.length - 1 || reorderMut.isPending}
+                    aria-label={`Descer ${stage.name}`}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-2 disabled:opacity-30"
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  </button>
+                  <button
                     onClick={() => { setEditId(stage.id); setEditPct(stage.progressPercent); }}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-1"
+                    aria-label={`Atualizar progresso de ${stage.name}`}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-2"
+                  >
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setDetails({ id: stage.id, name: stage.name, description: stage.description ?? "",
+                      start: stage.plannedStartDate ?? "", end: stage.plannedEndDate ?? "" })}
+                    aria-label={`Editar ${stage.name}`}
+                    className="text-muted-foreground hover:text-foreground transition-colors p-2"
                   >
                     <Pencil className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => handleDelete(stage.id)}
-                    className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                    aria-label={`Remover ${stage.name}`}
+                    className="text-muted-foreground hover:text-destructive transition-colors p-2"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
+
+              {details?.id === stage.id && (
+                <div className="grid gap-2 rounded-md border border-dashed border-primary/40 p-3 sm:grid-cols-2">
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label htmlFor={`stage-name-${stage.id}`} className="text-xs">Nome</Label>
+                    <Input id={`stage-name-${stage.id}`} value={details.name} maxLength={200}
+                      onChange={(e) => setDetails({ ...details, name: e.target.value })} className="text-sm" />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label htmlFor={`stage-desc-${stage.id}`} className="text-xs">Descrição</Label>
+                    <Input id={`stage-desc-${stage.id}`} value={details.description} maxLength={1000}
+                      onChange={(e) => setDetails({ ...details, description: e.target.value })} className="text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`stage-start-${stage.id}`} className="text-xs">Início previsto</Label>
+                    <Input id={`stage-start-${stage.id}`} type="date" value={details.start}
+                      onChange={(e) => setDetails({ ...details, start: e.target.value })} className="text-sm" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor={`stage-end-${stage.id}`} className="text-xs">Fim previsto</Label>
+                    <Input id={`stage-end-${stage.id}`} type="date" value={details.end}
+                      onChange={(e) => setDetails({ ...details, end: e.target.value })} className="text-sm" />
+                  </div>
+                  <div className="flex gap-2 sm:col-span-2">
+                    <Button size="sm" onClick={() => saveDetails(stage)} disabled={!details.name.trim() || updateMut.isPending}>Salvar etapa</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setDetails(null)}>Cancelar</Button>
+                  </div>
+                </div>
+              )}
 
               {/* Progress bar + inline edit */}
               {editId === stage.id ? (
@@ -792,12 +885,12 @@ function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
 // ── Tab: Diário ───────────────────────────────────────────────────────────────
 
 function TabDiario({ projectId }: { projectId: string }) {
-  const { data, isLoading } = useDailyLogs(projectId);
+  const { data, isLoading, hasNextPage, fetchNextPage, isFetchingNextPage } = useDailyLogs(projectId);
   const createMut   = useCreateDailyLog(projectId);
   const addPhotoMut = useAddDailyLogPhoto(projectId);
 
   const [adding, setAdding]         = useState(false);
-  const [logDate, setLogDate]       = useState(() => new Date().toISOString().slice(0, 10));
+  const [logDate, setLogDate]       = useState(localToday);
   const [logNotes, setLogNotes]     = useState("");
   const [logWeather, setLogWeather] = useState("");
 
@@ -833,8 +926,7 @@ function TabDiario({ projectId }: { projectId: string }) {
     setWeatherResult(null);
     setWeatherStatus("idle");
     try {
-      const today = new Date().toISOString().slice(0, 10);
-      const isToday = logDate === today;
+      const isToday = logDate === localToday();
       const response = isToday
         ? await getWeatherCurrent(lat, lon)
         : await getWeatherHistory(lat, lon, logDate);
@@ -864,7 +956,8 @@ function TabDiario({ projectId }: { projectId: string }) {
   const removePhotoMut = useRemoveDailyLogPhoto(projectId);
   const [uploadingLogId, setUploadingLogId] = useState<string | null>(null);
 
-  const logs = data?.items ?? [];
+  const logs = data?.pages.flatMap((pg) => pg.items) ?? [];
+  const totalLogs = data?.pages[0]?.total ?? 0;
 
   const handleCreateLog = () => {
     if (!logNotes.trim()) return;
@@ -875,7 +968,7 @@ function TabDiario({ projectId }: { projectId: string }) {
     }, {
       onSuccess: () => {
         setAdding(false);
-        setLogNotes(""); setLogWeather(""); setLogDate(new Date().toISOString().slice(0, 10));
+        setLogNotes(""); setLogWeather(""); setLogDate(localToday());
         toast.success("Diário registrado!");
       },
       onError: (e) => {
@@ -927,7 +1020,7 @@ function TabDiario({ projectId }: { projectId: string }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {logs.length} registro{logs.length !== 1 ? "s" : ""}
+          {totalLogs} registro{totalLogs !== 1 ? "s" : ""}
         </p>
         {!adding && (
           <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
@@ -1165,6 +1258,14 @@ function TabDiario({ projectId }: { projectId: string }) {
           ))}
         </div>
       )}
+      {hasNextPage && (
+        <div className="text-center">
+          <Button size="sm" variant="outline" onClick={() => void fetchNextPage()} disabled={isFetchingNextPage}>
+            {isFetchingNextPage ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+            Carregar registros anteriores ({logs.length} de {totalLogs})
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1175,9 +1276,27 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
   const [expenseOpen, setExpenseOpen] = useState(false);
 
   const { data: financial, isLoading, isError } = useProjectFinancial(projectId);
-  const { data: movementsData, isLoading: movLoading } = useProjectMovements(projectId);
+  const { data: movementsData, isLoading: movLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
+    useProjectMovements(projectId);
+  const voidMut = useVoidMovement(projectId);
+  const [confirmVoid, setConfirmVoid] = useState<string | null>(null);
 
-  const movements = movementsData?.items ?? [];
+  const movements = movementsData?.pages.flatMap((pg) => pg.items) ?? [];
+  const totalMovements = movementsData?.pages[0]?.totalCount ?? 0;
+
+  useEffect(() => {
+    if (!confirmVoid) return;
+    const t = setTimeout(() => setConfirmVoid(null), 4000);   // armed for 4 s, then back to safe
+    return () => clearTimeout(t);
+  }, [confirmVoid]);
+
+  const handleVoid = (id: string) => {
+    if (confirmVoid !== id) { setConfirmVoid(id); return; }
+    voidMut.mutate(id, {
+      onSuccess: () => { setConfirmVoid(null); toast.success("Despesa estornada. Ela saiu da obra e o financeiro recebeu o estorno."); },
+      onError:   (e) => { setConfirmVoid(null); toast.error(e instanceof ApiError ? e.message : "Não foi possível estornar."); },
+    });
+  };
 
   const { data: suppliers = [] } = useQuery({
     queryKey:  ["suppliers", "list"],
@@ -1207,7 +1326,10 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 
   const isOverBudget    = financial.approvedBudget != null &&
                           financial.totalRealizedExpenses > financial.approvedBudget;
-  const varianceIsOver  = financial.varianceAmount > 0;
+  // the API's variance is approved − realized: negative means the project went over budget;
+  // with no approved budget there is nothing to compare against
+  const noApproved      = financial.approvedBudget == null;
+  const varianceIsOver  = !noApproved && financial.varianceAmount < 0;
   const varianceIsEqual = financial.varianceAmount === 0;
 
   const coveragePercent = financial.approvedBudget
@@ -1276,9 +1398,14 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
             varianceIsEqual ? "text-muted-foreground" :
                               "text-emerald-600 dark:text-emerald-400",
           )}>
-            {varianceIsOver ? "+" : ""}{fmt(financial.varianceAmount)}
+            {noApproved ? "—" : fmt(Math.abs(financial.varianceAmount))}
           </p>
-          {financial.variancePercent !== 0 && (
+          {noApproved
+            ? <p className="text-xs text-muted-foreground">sem orçamento aprovado</p>
+            : !varianceIsEqual && (
+              <p className="text-xs text-muted-foreground">{varianceIsOver ? "acima do aprovado" : "abaixo do aprovado"}</p>
+            )}
+          {!noApproved && financial.variancePercent !== 0 && (
             <p className="text-xs text-muted-foreground mt-1">
               {Math.abs(financial.variancePercent).toFixed(1)}% do aprovado
             </p>
@@ -1384,11 +1511,29 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
                     {supplierName(m.supplierId) ? ` · ${supplierName(m.supplierId)}` : ""}
                   </p>
                 </div>
-                <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400 shrink-0">
-                  -{fmt(m.amount)}
-                </p>
+                <div className="flex shrink-0 items-center gap-2">
+                  <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
+                    -{fmt(m.amount)}
+                  </p>
+                  <Button
+                    size="sm" variant={confirmVoid === m.id ? "destructive" : "ghost"} className="h-7 px-2"
+                    disabled={voidMut.isPending}
+                    onBlur={() => setConfirmVoid((c) => (c === m.id ? null : c))}
+                    onClick={() => handleVoid(m.id)}
+                    aria-label={`${confirmVoid === m.id ? "Confirmar estorno de" : "Estornar"} ${m.description}`}
+                  >
+                    {confirmVoid === m.id ? "Estornar" : <Undo2 className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
               </div>
             ))}
+          </div>
+        )}
+        {hasNextPage && (
+          <div className="text-center">
+            <Button size="sm" variant="outline" onClick={() => void fetchNextPage()} disabled={isFetchingNextPage}>
+              Carregar despesas anteriores ({movements.length} de {totalMovements})
+            </Button>
           </div>
         )}
       </div>

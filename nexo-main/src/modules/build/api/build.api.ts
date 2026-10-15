@@ -103,15 +103,15 @@ export interface BuildDailyLogDto {
   date:           string;  // yyyy-MM-dd
   weatherSummary: string | null;
   notes:          string;
-  createdBy:      string;
+  photoCount?:    number;
   createdAt:      string;
   updatedAt:      string;
   photos:         BuildDailyLogPhotoDto[];
 }
 
 export interface BuildProjectDetailsDto extends BuildProjectDto {
-  stages:         BuildStageDto[];
-  recentDailyLogs: BuildDailyLogDto[];
+  stages:     BuildStageDto[];
+  recentLogs: BuildDailyLogDto[];
 }
 
 export interface BuildProjectFinancialSummaryDto {
@@ -182,10 +182,18 @@ export interface UpdateBuildProjectRequest {
 }
 
 export interface CreateBuildStageRequest {
-  name:             string;
-  description?:     string;
-  plannedStartDate?: string;
-  plannedEndDate?:  string;
+  name:          string;
+  description?:  string;
+  plannedStart?: string;   // yyyy-MM-dd
+  plannedEnd?:   string;
+}
+
+export interface UpdateBuildStageRequest {
+  name:         string;
+  description:  string | null;
+  order:        number;
+  plannedStart: string | null;
+  plannedEnd:   string | null;
 }
 
 export interface UpdateBuildStageProgressRequest {
@@ -194,7 +202,7 @@ export interface UpdateBuildStageProgressRequest {
 }
 
 export interface ReorderBuildStagesRequest {
-  items: Array<{ stageId: string; order: number }>;
+  entries: Array<{ stageId: string; order: number }>;
 }
 
 export interface CreateBuildBudgetRequest {
@@ -300,6 +308,9 @@ export const updateStageProgress = (
   req: UpdateBuildStageProgressRequest,
 ): Promise<BuildStageDto> =>
   apiClient.put(`/v1/build/stages/${id}/progress`, req);
+
+export const updateStage = (id: string, req: UpdateBuildStageRequest): Promise<BuildStageDto> =>
+  apiClient.put(`/v1/build/stages/${id}`, req);
 
 export const reorderStages = (projectId: string, req: ReorderBuildStagesRequest): Promise<void> =>
   apiClient.put(`/v1/build/projects/${projectId}/stages/reorder`, req);
