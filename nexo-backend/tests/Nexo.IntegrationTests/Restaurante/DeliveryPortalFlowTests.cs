@@ -615,7 +615,8 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
             var tenantId = await db.Stores.IgnoreQueryFilters().Where(x => x.PublicSlug == slug).Select(x => x.TenantId).FirstAsync();
             var subs = await db.ModuleSubscriptions.Where(x => x.TenantId == tenantId && x.ModuleKey == "restaurante").ToListAsync();
             previous = subs.Select(x => (x.Id, x.Status)).ToList();
-            foreach (var sub in subs) sub.MarkPastDue();
+            // past due for more than the 7-day grace: no access (a recent past due still has it)
+            foreach (var sub in subs) sub.MarkPastDue(DateTime.UtcNow.AddDays(-8));
             await db.SaveChangesAsync();
         }
         try
@@ -637,6 +638,7 @@ public class DeliveryPortalFlowTests : IAsyncLifetime
             {
                 var sub = await db.ModuleSubscriptions.FirstAsync(x => x.Id == id);
                 db.Entry(sub).Property(x => x.Status).CurrentValue = status;
+                db.Entry(sub).Property(x => x.PastDueSince).CurrentValue = null;
             }
             await db.SaveChangesAsync();
         }

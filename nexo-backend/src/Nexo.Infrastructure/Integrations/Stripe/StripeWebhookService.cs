@@ -19,6 +19,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
     private readonly IModuleSubscriptionRepository      _subscriptions;
     private readonly IStripeProcessedEventRepository    _processedEvents;
     private readonly ITenantRepository                  _tenants;
+    private readonly IModuleAccessService               _access;
     private readonly ILogger<StripeWebhookService>     _logger;
 
     public StripeWebhookService(
@@ -26,8 +27,10 @@ public sealed class StripeWebhookService : IStripeWebhookService
         IModuleSubscriptionRepository subscriptions,
         IStripeProcessedEventRepository processedEvents,
         ITenantRepository tenants,
+        IModuleAccessService access,
         ILogger<StripeWebhookService> logger)
     {
+        _access          = access;
         _options         = options.Value;
         _subscriptions   = subscriptions;
         _processedEvents = processedEvents;
@@ -122,7 +125,15 @@ public sealed class StripeWebhookService : IStripeWebhookService
 
         if (existing != null)
         {
-            existing.SyncFromStripe(SubscriptionStatus.Active, periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
+            if (!string.IsNullOrEmpty(existing.StripeSubscriptionId) && existing.StripeSubscriptionId != stripeSubId
+                && existing.IsActive())
+                _logger.LogError(
+                    "[Billing] Second Stripe subscription for an active module — tenant={TenantId}, module={Module}, old={Old}, new={New}. Cancel the old one in Stripe.",
+                    tenantId, moduleKey, existing.StripeSubscriptionId, stripeSubId);
+            // the row now follows the subscription this checkout created (before: it kept the old
+            // id, so later updates/cancellations of the new one never reached it)
+            existing.AttachStripe(stripeSubId, priceId, planType);
+            existing.SyncFromStripe(BillingRules.MapStripeStatus(stripeSub.Status), periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
         }
         else
         {
@@ -132,6 +143,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
         }
 
         await _subscriptions.SaveChangesAsync(ct);
+        _access.InvalidateCache(tenantId, moduleKey);
         _logger.LogInformation("[Billing] Subscription activated — tenant={TenantId}, module={Module}", tenantId, moduleKey);
     }
 
@@ -145,8 +157,9 @@ public sealed class StripeWebhookService : IStripeWebhookService
         }
 
         var (periodStart, periodEnd) = GetPeriodFromSubscription(stripeSub);
-        sub.SyncFromStripe(MapStatus(stripeSub.Status), periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
+        sub.SyncFromStripe(BillingRules.MapStripeStatus(stripeSub.Status), periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
         await _subscriptions.SaveChangesAsync(ct);
+        _access.InvalidateCache(sub.TenantId, sub.ModuleKey);
     }
 
     private async Task HandleSubscriptionDeletedAsync(Subscription stripeSub, CancellationToken ct)
@@ -156,6 +169,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
 
         sub.Cancel();
         await _subscriptions.SaveChangesAsync(ct);
+        _access.InvalidateCache(sub.TenantId, sub.ModuleKey);
         _logger.LogInformation("[Billing] Subscription canceled — stripeId={StripeId}", stripeSub.Id);
     }
 
@@ -170,6 +184,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
 
         sub.MarkPastDue();
         await _subscriptions.SaveChangesAsync(ct);
+        _access.InvalidateCache(sub.TenantId, sub.ModuleKey);
         _logger.LogWarning("[Billing] Payment failed — marked past_due for stripeId={StripeId}", subscriptionId);
     }
 
@@ -199,17 +214,6 @@ public sealed class StripeWebhookService : IStripeWebhookService
         var allForTenant = await _subscriptions.GetByTenantIdAsync(tenantId, ct);
         return allForTenant.FirstOrDefault(s => s.ModuleKey == moduleKey.ToLowerInvariant());
     }
-
-    private static SubscriptionStatus MapStatus(string stripeStatus)
-        => stripeStatus switch
-        {
-            "active"   => SubscriptionStatus.Active,
-            "trialing" => SubscriptionStatus.Trialing,
-            "past_due" => SubscriptionStatus.PastDue,
-            "canceled" => SubscriptionStatus.Canceled,
-            "unpaid"   => SubscriptionStatus.Suspended,
-            _          => SubscriptionStatus.Active,
-        };
 
     private static PlanType MapPlanType(string? interval)
         => interval switch

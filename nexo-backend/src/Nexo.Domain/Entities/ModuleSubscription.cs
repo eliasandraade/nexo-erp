@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Nexo.Domain.Enums;
 using Nexo.Domain.Common;
 
@@ -30,6 +31,24 @@ public class ModuleSubscription : BaseEntity
     public DateTime? CurrentPeriodEnd { get; private set; }     // null = lifetime
 
     public bool CancelAtPeriodEnd { get; private set; }
+    /// <summary>When the payment started failing — the grace period counts from here.</summary>
+    public DateTime? PastDueSince { get; private set; }
+
+    /// <summary>Days a PastDue subscription keeps access while the card is retried.</summary>
+    public const int PastDueGraceDays = 7;
+
+    /// <summary>
+    /// The single access rule (used by every gate and query): active or trialing within the period
+    /// (null end = lifetime), or past due for less than <see cref="PastDueGraceDays"/> days.
+    /// </summary>
+    public static Expression<Func<ModuleSubscription, bool>> HasAccessAt(DateTime nowUtc)
+    {
+        var graceStart = nowUtc.AddDays(-PastDueGraceDays);
+        return s =>
+            ((s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Trialing)
+                && (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd > nowUtc))
+            || (s.Status == SubscriptionStatus.PastDue && s.PastDueSince != null && s.PastDueSince > graceStart);
+    }
     public DateTime? CanceledAt { get; private set; }
 
     // For AdminGrant plans
@@ -105,16 +124,7 @@ public class ModuleSubscription : BaseEntity
         };
     }
 
-    public bool IsActive()
-    {
-        if (Status != SubscriptionStatus.Active && Status != SubscriptionStatus.Trialing)
-            return false;
-
-        // Lifetime subscriptions never expire
-        if (CurrentPeriodEnd == null) return true;
-
-        return CurrentPeriodEnd > DateTime.UtcNow;
-    }
+    public bool IsActive() => HasAccessAt(DateTime.UtcNow).Compile()(this);
 
     public void Renew(DateTime newPeriodEnd)
     {
@@ -124,9 +134,20 @@ public class ModuleSubscription : BaseEntity
         SetUpdatedAt();
     }
 
-    public void MarkPastDue()
+    public void MarkPastDue(DateTime? nowUtc = null)
     {
         Status = SubscriptionStatus.PastDue;
+        PastDueSince ??= nowUtc ?? DateTime.UtcNow;   // the grace counts from the first failure
+        SetUpdatedAt();
+    }
+
+    /// <summary>A (re)checkout completed: this row now follows that Stripe subscription.</summary>
+    public void AttachStripe(string subscriptionId, string priceId, PlanType planType)
+    {
+        StripeSubscriptionId = subscriptionId;
+        StripePriceId        = priceId;
+        PlanType             = planType;
+        CanceledAt           = null;
         SetUpdatedAt();
     }
 
@@ -164,6 +185,8 @@ public class ModuleSubscription : BaseEntity
         CurrentPeriodStart = periodStart;
         CurrentPeriodEnd   = periodEnd;
         CancelAtPeriodEnd  = cancelAtPeriodEnd;
+        PastDueSince       = status == SubscriptionStatus.PastDue ? PastDueSince ?? DateTime.UtcNow : null;
+        if (status == SubscriptionStatus.Canceled) CanceledAt ??= DateTime.UtcNow;
         SetUpdatedAt();
     }
 }

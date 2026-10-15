@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
@@ -163,9 +163,8 @@ public class RegistrationService
         var activeModules = await _db.ModuleSubscriptions
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(s => s.TenantId == tenant.Id
-                     && (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Trialing)
-                     && (s.CurrentPeriodEnd == null || s.CurrentPeriodEnd > DateTime.UtcNow))
+            .Where(s => s.TenantId == tenant.Id)
+            .Where(ModuleSubscription.HasAccessAt(DateTime.UtcNow))
             .Select(s => s.ModuleKey)
             .ToListAsync(ct);
 

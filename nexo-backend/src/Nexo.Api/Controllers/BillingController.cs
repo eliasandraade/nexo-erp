@@ -80,6 +80,13 @@ public class BillingController : ControllerBase
         var tenant = await _tenants.GetByIdAsync(_currentTenant.Id, ct);
         if (tenant == null) return NotFound(new { error = "Tenant não encontrado." });
 
+        // A second checkout for a module already paid in Stripe would create a second subscription
+        // that keeps charging: changes go through the customer portal.
+        var current = (await _subscriptions.GetByTenantIdAsync(tenant.Id, ct))
+            .FirstOrDefault(s => s.ModuleKey == moduleKey && !string.IsNullOrEmpty(s.StripeSubscriptionId) && s.IsActive());
+        if (current is not null)
+            return Conflict(new { error = "Este módulo já tem uma assinatura ativa. Use \"Gerenciar assinatura\" para trocar de plano ou cancelar." });
+
         try
         {
             var stripeCustomerId = string.IsNullOrEmpty(tenant.StripeCustomerId)
@@ -93,8 +100,8 @@ public class BillingController : ControllerBase
             }
 
             var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
-            var successUrl = body.SuccessUrl ?? $"{frontendUrl}/assinatura?sucesso=1";
-            var cancelUrl  = body.CancelUrl  ?? $"{frontendUrl}/assinatura";
+            var successUrl = BillingRules.SafeRedirect(body.SuccessUrl, $"{frontendUrl}/assinatura?sucesso=1", frontendUrl);
+            var cancelUrl  = BillingRules.SafeRedirect(body.CancelUrl, $"{frontendUrl}/assinatura", frontendUrl);
 
             var result = await _billing.CreateCheckoutSessionAsync(new CreateCheckoutRequest(
                 tenant.Id, stripeCustomerId, moduleKey, priceId, successUrl, cancelUrl), ct);
@@ -127,7 +134,8 @@ public class BillingController : ControllerBase
 
         try
         {
-            var returnUrl = body?.ReturnUrl ?? $"{_config["App:FrontendUrl"] ?? "http://localhost:5173"}/assinatura";
+            var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
+            var returnUrl = BillingRules.SafeRedirect(body?.ReturnUrl, $"{frontendUrl}/assinatura", frontendUrl);
             var result    = await _billing.CreatePortalSessionAsync(tenant.StripeCustomerId, returnUrl, ct);
             return Ok(new { portalUrl = result.PortalUrl });
         }
