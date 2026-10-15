@@ -16,7 +16,8 @@
 | #49 | Modelo financeiro unificado (livro) | `d6634a5` | `UnifiedFinancialLedger` (aditiva + classificação e backfill do histórico à vista) | Em produção |
 | #50 | Contas a receber | `645fb56` | `LedgerCustomerAndSettlement` (aditiva + cliente do título + reexecução idempotente do backfill) | Em produção |
 | #51 | Contas a pagar e recorrências | `0bc1844` | `PayablesSupplierAndRecurrences` (aditiva + fornecedor das compras) | Em produção |
-| #52 | Fluxo de caixa | — | `AccountOpeningBalance` (aditiva) | Em revisão |
+| #52 | Fluxo de caixa | `fbdb126` | `AccountOpeningBalance` (aditiva) | Em produção |
+| #53 | Integração financeira das verticais | — | `VerticalExpensesInLedger` (backfill: despesas do restaurante e movimentações confirmadas) | Em revisão |
 
 
 ## Marcos por fase
@@ -499,4 +500,54 @@ Estimativas honestas de maturidade, na mesma régua da auditoria de linha de bas
     - escolher a conta preenche o saldo atual;
     - o tooltip mostra saldo negativo com sinal.
 - **Não incluso:** conciliação bancária (importar extrato OFX e casar com os lançamentos). É uma feature própria, fica como lacuna para depois do 1.0, sem número na missão.
+
+## PR 53 — Integração financeira das verticais
+
+- **Antes:** despesas do restaurante (`RestExpense`) e movimentações do Build/Interpreter (`FinancialMovement`) ficavam fora do livro. Contas a pagar, fluxo de caixa e o livro não as viam.
+- **`VerticalLedgerPostingService`**, chamado pelas próprias origens, na mesma gravação delas:
+  - **Despesa do restaurante** vira uma **conta a pagar quitada**:
+    - quitada na data de pagamento, ou na data de competência quando a tela não informa uma (a tela do restaurante não tem esse campo, e o resumo do restaurante sempre contou a despesa como gasta no mês dela);
+    - competência no mês da despesa;
+    - loja da despesa;
+    - categoria do livro a partir da categoria do restaurante (impostos/taxas → impostos; folha/salário → folha; outros → outras saídas; o resto → despesas operacionais).
+    - Editar só a descrição não muda o livro. Valor, data, categoria ou pagamento trocam o lançamento: o anterior é estornado **nas datas originais** (correção, o mês fica certo) e entra o novo.
+    - Excluir a despesa estorna o lançamento **hoje**; o livro guarda a história.
+  - **Movimentação confirmada** (obra, loja…) vira lançamento **quitado na data dela**:
+    - saída de despesa → despesas operacionais; outras saídas → outras saídas; entrada → outras entradas;
+    - fornecedor da saída;
+    - loja quando o contexto é loja;
+    - **transferência entre contas fica fora** (não é receita nem despesa);
+    - movimentação interna também fica fora;
+    - anular uma movimentação confirmada estorna o lançamento hoje; reprocessar (volta a rascunho) estorna nas datas originais;
+    - confirmar de novo lança outra vez.
+- **No financeiro, esses títulos se pagam na origem:** pagar ou baixar uma despesa do restaurante ou uma movimentação pelo financeiro responde 422 com a orientação. Editar e cancelar também ficam na origem.
+  - A tela de contas a pagar mostra "Pague na despesa do restaurante" ou "Quitado na obra" no lugar do botão.
+  - O livro nomeia as novas origens.
+- **Migration `VerticalExpensesInLedger`:**
+  - backfill das despesas existentes (valor maior que zero) e das movimentações confirmadas que não são transferência;
+  - reaproveita o id da origem e não duplica;
+  - o Down remove exatamente esses lançamentos;
+  - validada num Postgres descartável (despesa aberta e paga, imposto, valor zero, transferência, rascunho, anulada, contexto loja; Up e Down).
+- **Folha do restaurante:** o salário mensal dos funcionários continua sendo um custo de referência no resumo do restaurante, não um pagamento. No livro, a folha entra como **despesa recorrente** (categoria Folha) em contas a pagar.
+- **Testes:**
+  - unitário: a confirmação lança no livro, e a transferência não;
+  - integração em `EmployeeExpenseTests`: despesa vira conta a pagar, o financeiro recusa o pagamento, informar a data de pagamento troca o título aberto pelo quitado, editar só a descrição não muda o livro, excluir estorna; categorias mapeadas.
+- **Revisão independente (corrigido antes do merge):**
+  - **Bloqueio:** a despesa sem data de pagamento virava conta a pagar aberta para sempre, vencida, sem como pagar e fora do caixa realizado; o backfill fazia isso com todo o histórico. Agora ela é quitada na competência, na execução e na migration.
+  - **Correção no mesmo mês:** corrigir uma despesa ou reprocessar uma movimentação de um mês fechado não soma duas vezes; o estorno usa as datas do original.
+  - **Concorrência:** trava por registro de origem (`pg_advisory_xact_lock`) e transação na tela de despesas. Duas confirmações ou edições simultâneas não lançam duas vezes, e lançamentos duplicados antigos são retirados todos.
+  - **Movimentação interna** fora do livro; valores menores que um centavo são ignorados sem erro; o Down remove todos os tipos de referência novos.
+  - **Fica para depois:** campo "data de pagamento" na tela de despesas do restaurante (para despesas pagas fora do mês); classificação contábil de adiantamento (hoje entra como outras saídas).
+
+## Marco — Fase 3 (financeiro, PRs 49–53)
+
+| Área | Antes | Depois | O que ainda falta |
+|---|---|---|---|
+| Financeiro (núcleo) | 20% | ~85% | conciliação bancária (OFX), estornar uma baixa feita por engano, DRE com CMV (relatórios, PR 65) |
+| Contas a receber | ◐ | ~85% | baixa como perda, juros e multa automáticos por percentual (regra comercial) |
+| Contas a pagar | ◐ | ~85% | editar recorrência pela tela |
+| Fluxo de caixa | ○ | ~80% | saldo por conta (exige lançar cada pagamento em caixa ou banco), conciliação |
+| Integração das verticais | ○ | ~80% | data de pagamento na tela de despesas do restaurante, folha a partir do cadastro de funcionários |
+
+Livro único, competência × caixa, títulos com baixa parcial, recorrências, fluxo de caixa e verticais no livro: o financeiro deixou de ser cinco registros paralelos.
 

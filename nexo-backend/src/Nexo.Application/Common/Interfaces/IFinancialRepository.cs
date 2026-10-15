@@ -55,6 +55,9 @@ public interface IFinancialRepository
     /// </summary>
     Task<IReadOnlyList<FinancialRecurrence>> LockRecurrencesDueAsync(DateOnly horizonMonth, Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>Transaction-scoped lock on a record of origin (pg_advisory_xact_lock): one posting at a time.</summary>
+    Task LockReferenceAsync(Guid referenceId, CancellationToken ct = default);
+
     /// <summary>Row lock (FOR UPDATE) on a lançamento, reloading it if tracked — serialises pay × cancel.</summary>
     Task LockTransactionAsync(Guid id, Guid tenantId, CancellationToken ct = default);
     /// <summary>Row locks on every lançamento of a record of origin (e.g. a sale being cancelled).</summary>

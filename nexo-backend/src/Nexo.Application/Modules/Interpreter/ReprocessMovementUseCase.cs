@@ -1,3 +1,4 @@
+using Nexo.Application.Features.Financial;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
@@ -27,6 +28,7 @@ public class ReprocessMovementUseCase
     private readonly ICurrentUser                        _currentUser;
     private readonly ILogger<ReprocessMovementUseCase>  _logger;
     private readonly ITelemetryWriter?                  _telemetry;
+    private readonly VerticalLedgerPostingService        _ledger;
 
     public ReprocessMovementUseCase(
         IAnalyzerSelector                    analyzerSelector,
@@ -42,8 +44,10 @@ public class ReprocessMovementUseCase
         ICurrentTenant                       currentTenant,
         ICurrentUser                         currentUser,
         ILogger<ReprocessMovementUseCase>    logger,
+        VerticalLedgerPostingService         ledger,
         ITelemetryWriter?                    telemetry = null)
     {
+        _ledger                = ledger;
         _analyzerSelector      = analyzerSelector;
         _interpretationService = interpretationService;
         _memoryService         = memoryService;
@@ -96,7 +100,8 @@ public class ReprocessMovementUseCase
             analyzerProvider:          command.ForceAnalyzer ?? AnalyzerProvider.RuleBased,
             promptVersion:             "current");
 
-        // Reset to Draft — human must re-confirm.
+        // Reset to Draft — human must re-confirm (a confirmed one leaves the livro until then).
+        var wasConfirmed = movement.Status == MovementStatus.Confirmed;
         movement.ResetToDraft();
 
         // Resolve attachment if the movement has one.
@@ -160,6 +165,7 @@ public class ReprocessMovementUseCase
             await _extractionRepo.AddAsync(newExtraction, innerCt);
             await _suggestionRepo.AddAsync(newSuggestion, innerCt);
             await _reprocessLogRepo.AddAsync(reprocessLog, innerCt);
+            if (wasConfirmed) await _ledger.RetireMovementAsync(movement, correction: true, innerCt);
             await _movementRepo.SaveChangesAsync(innerCt);
         }, ct);
 

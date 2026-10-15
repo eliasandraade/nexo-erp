@@ -29,6 +29,14 @@ import { dayToIso, money, todayInput } from "../lib/inputs";
 
 export type TitleDirection = "Receivable" | "Payable";
 
+/** Títulos settled at their origin (restaurant expense, Build movement, Service): no baixa here. */
+const SETTLED_AT_ORIGIN: Record<string, string> = {
+  RestExpense: "Pague na despesa do restaurante",
+  FinancialMovement: "Quitado na obra",
+};
+const originHint = (t: TitleDto) =>
+  t.referenceType ? SETTLED_AT_ORIGIN[t.referenceType] ?? (t.referenceType.startsWith("Svc") ? "Pelo Service" : null) : null;
+
 /** Everything that changes between contas a receber and contas a pagar. */
 const COPY = {
   Receivable: {
@@ -159,9 +167,9 @@ export function TitlesView({ direction }: { direction: TitleDirection }) {
                   </TableCell>
                   <TableCell className="text-right font-medium tabular-nums">{formatCurrency(t.amount)}</TableCell>
                   <TableCell className="text-right">
-                    {(t.status === "Pending" || t.status === "Overdue") && (
-                      <Button size="sm" variant="outline" onClick={() => setSettling(t)}>{copy.action}</Button>
-                    )}
+                    {(t.status === "Pending" || t.status === "Overdue") && (originHint(t)
+                      ? <span className="text-xs text-muted-foreground">{originHint(t)}</span>
+                      : <Button size="sm" variant="outline" onClick={() => setSettling(t)}>{copy.action}</Button>)}
                   </TableCell>
                 </TableRow>
               ))}

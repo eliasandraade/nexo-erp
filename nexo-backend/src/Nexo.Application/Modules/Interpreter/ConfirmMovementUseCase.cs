@@ -1,3 +1,4 @@
+using Nexo.Application.Features.Financial;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
@@ -23,6 +24,7 @@ public class ConfirmMovementUseCase
     private readonly ICurrentTenant                      _currentTenant;
     private readonly ICurrentUser                        _currentUser;
     private readonly ILogger<ConfirmMovementUseCase>     _logger;
+    private readonly VerticalLedgerPostingService        _ledger;
 
     public ConfirmMovementUseCase(
         IFinancialMovementRepository        movementRepo,
@@ -34,8 +36,10 @@ public class ConfirmMovementUseCase
         IUnitOfWork                         uow,
         ICurrentTenant                      currentTenant,
         ICurrentUser                        currentUser,
-        ILogger<ConfirmMovementUseCase>     logger)
+        ILogger<ConfirmMovementUseCase>     logger,
+        VerticalLedgerPostingService        ledger)
     {
+        _ledger         = ledger;
         _movementRepo   = movementRepo;
         _suggestionRepo = suggestionRepo;
         _correctionRepo = correctionRepo;
@@ -114,6 +118,7 @@ public class ConfirmMovementUseCase
                 await _correctionRepo.AddRangeAsync(corrections, innerCt);
 
             await _auditLogRepo.AddAsync(auditLog, innerCt);
+            await _ledger.PostMovementAsync(movement, innerCt);   // the livro sees it, settled on its date
             await _movementRepo.SaveChangesAsync(innerCt);
         }, ct);
 

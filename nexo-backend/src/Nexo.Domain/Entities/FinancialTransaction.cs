@@ -197,7 +197,8 @@ public class FinancialTransaction : TenantEntity
         DateTime when,
         Guid createdByUserId,
         string referenceType,
-        Guid referenceId)
+        Guid referenceId,
+        DateTime? competenceDate = null)
     {
         if (original.Status != TransactionStatus.Paid)
             throw new DomainException("Só um lançamento quitado é estornado; um em aberto é cancelado.");
@@ -214,7 +215,7 @@ public class FinancialTransaction : TenantEntity
             referenceType,
             referenceId,
             original.StoreId,
-            competenceDate: when,
+            competenceDate: competenceDate ?? when,
             customerId: original.CustomerId,
             supplierId: original.SupplierId);
         reversal.ReversesTransactionId = original.Id;

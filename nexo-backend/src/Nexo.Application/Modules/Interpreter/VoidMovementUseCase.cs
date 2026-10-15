@@ -1,3 +1,4 @@
+using Nexo.Application.Features.Financial;
 using System.Text.Json;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Interpreter.Interfaces;
@@ -13,14 +14,17 @@ public class VoidMovementUseCase
     private readonly IUnitOfWork                  _uow;
     private readonly ICurrentTenant               _currentTenant;
     private readonly ICurrentUser                 _currentUser;
+    private readonly VerticalLedgerPostingService _ledger;
 
     public VoidMovementUseCase(
         IFinancialMovementRepository movementRepo,
         IMovementAuditLogRepository  auditLogRepo,
         IUnitOfWork                  uow,
         ICurrentTenant               currentTenant,
-        ICurrentUser                 currentUser)
+        ICurrentUser                 currentUser,
+        VerticalLedgerPostingService ledger)
     {
+        _ledger        = ledger;
         _movementRepo  = movementRepo;
         _auditLogRepo  = auditLogRepo;
         _uow           = uow;
@@ -43,6 +47,7 @@ public class VoidMovementUseCase
             movement.Status, movement.Amount, movement.Direction, movement.Nature
         });
 
+        var wasConfirmed = movement.Status == MovementStatus.Confirmed;
         movement.Void();
 
         var auditLog = MovementAuditLog.Record(
@@ -57,6 +62,7 @@ public class VoidMovementUseCase
         {
             _movementRepo.Update(movement);
             await _auditLogRepo.AddAsync(auditLog, innerCt);
+            if (wasConfirmed) await _ledger.RetireMovementAsync(movement, correction: false, innerCt);   // reversed in the livro
             await _movementRepo.SaveChangesAsync(innerCt);
         }, ct);
 
