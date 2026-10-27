@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.TaxIntelligence;
 using Nexo.Application.Modules.TaxIntelligence.Engine;
@@ -14,7 +15,9 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 /// Opportunities: detection after a calculation, then Identified → InReview → Approved/Rejected, with
 /// the guardrails able to block at any point before approval. Approval writes the decision dossier in
 /// the same transaction. Nothing here changes a sale, a price, a ledger or a document — an approved
-/// opportunity is a recorded decision, and carrying it out is up to the business.
+/// opportunity is a recorded decision, and carrying it out is up to the business. Approval follows the
+/// <see cref="TaxIntelligencePolicyOptions"/>: rules not yet approved by a tax professional block it
+/// when so configured (production), and whoever analysed alone must justify approving their own work.
 /// </summary>
 public sealed class TaxOpportunityService
 {
@@ -22,30 +25,42 @@ public sealed class TaxOpportunityService
     private const string AuditEntity = "Opportunity";
 
     private readonly NexoDbContext _db;
+    private readonly TaxEngineRegistry _engines;
+    private readonly TaxCatalogService _catalog;
+    private readonly TaxIntelligencePolicyOptions _policy;
     private readonly ICurrentTenant _tenant;
     private readonly TaxAuditTrail _audit;
     private readonly ILogger<TaxOpportunityService> _log;
 
-    public TaxOpportunityService(NexoDbContext db, ICurrentTenant tenant, TaxAuditTrail audit, ILogger<TaxOpportunityService> log)
+    public TaxOpportunityService(
+        NexoDbContext db, TaxEngineRegistry engines, TaxCatalogService catalog, IOptions<TaxIntelligencePolicyOptions> policy,
+        ICurrentTenant tenant, TaxAuditTrail audit, ILogger<TaxOpportunityService> log)
     {
         _db = db;
+        _engines = engines;
+        _catalog = catalog;
+        _policy = policy.Value;
         _tenant = tenant;
         _audit = audit;
         _log = log;
     }
 
-    /// <summary>Runs every detector on a calculation's input. Idempotent: one opportunity per detector and calculation.</summary>
-    public async Task<IReadOnlyList<Guid>> DetectAsync(Guid calculationId, TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue, CancellationToken ct)
+    /// <summary>
+    /// Runs every detector on a calculation's input with the engine that made the calculation.
+    /// Idempotent: one opportunity per detector and calculation.
+    /// </summary>
+    public async Task<IReadOnlyList<Guid>> DetectAsync(
+        Guid calculationId, ITaxEngine engine, TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue, CancellationToken ct)
     {
         var created = new List<Guid>();
         foreach (var detector in TaxOpportunityDetectors.All)
         {
             if (await _db.TaxOpportunities.AnyAsync(o => o.SourceCalculationId == calculationId && o.DetectorKey == detector.Key, ct))
                 continue;
-            foreach (var c in detector.Detect(input, catalogue))
+            foreach (var c in detector.Detect(engine, input, catalogue))
             {
-                var o = TaxOpportunity.Create(_tenant.Id, c.Type, c.Title, c.Summary, c.DetectorKey, calculationId,
-                    TaxCanonical.Serialize(c.Current), TaxCanonical.Serialize(c.Proposed), c.EstimatedImpact, c.Risk, c.Confidence,
+                var o = TaxOpportunity.Create(_tenant.Id, c.Type, c.Title, c.Summary, c.DetectorKey, engine.Version, calculationId,
+                    engine.Canonical.Serialize(c.Current), engine.Canonical.Serialize(c.Proposed), c.EstimatedImpact, c.Risk, c.Confidence,
                     string.Join(",", c.LegalSourceCodes), c.Caveats);
                 foreach (var r in c.Requirements) o.AddRequirement(r.Code, r.Text, r.LegalSourceCode);
                 _db.TaxOpportunities.Add(o);
@@ -84,8 +99,17 @@ public sealed class TaxOpportunityService
         var o = await _db.TaxOpportunities.AsNoTracking().Include(x => x.Requirements).Include(x => x.Evidence)
             .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Oportunidade", id);
         var decision = await _db.TaxDecisions.AsNoTracking().FirstOrDefaultAsync(d => d.OpportunityId == id, ct);
-        return Map(o, decision);
+        var pending = await _catalog.PendingProfessionalReviewAsync(await RuleVersionsBehindAsync(o, ct), ct);
+        return Map(o, decision, pending.Count > 0);
     }
+
+    /// <summary>The catalogue rule versions an opportunity rests on: those that matched in its calculation.</summary>
+    private async Task<IReadOnlyList<Guid>> RuleVersionsBehindAsync(TaxOpportunity o, CancellationToken ct)
+        => o.SourceCalculationId is null
+            ? []
+            : await _db.TaxRuleExecutions.AsNoTracking()
+                .Where(e => e.CalculationId == o.SourceCalculationId && e.Matched)
+                .Select(e => e.RuleVersionId).Distinct().ToListAsync(ct);
 
     public Task<TaxOpportunityDto> StartReviewAsync(Guid id, CancellationToken ct) => MutateAsync(id, o =>
     {
@@ -116,7 +140,7 @@ public sealed class TaxOpportunityService
 
     public Task<TaxOpportunityDto> AddEvidenceAsync(Guid id, AddEvidenceRequest r, CancellationToken ct) => MutateAsync(id, o =>
     {
-        var hash = TaxCanonical.Hash($"{r.Description.Trim()}\n{r.DocumentReference?.Trim()}");
+        var hash = _engines.Current.Canonical.Hash($"{r.Description.Trim()}\n{r.DocumentReference?.Trim()}");
         var e = o.AddEvidence(r.Description, r.DocumentReference, hash, _audit.UserId, _audit.UserName);
         _db.TaxOpportunityEvidence.Add(e);
         _audit.Record(TaxAuditActions.OpportunityEvidenceAdded, AuditEntity, o.Id, "Evidência anexada.", new { evidenceId = e.Id, hash });
@@ -140,21 +164,33 @@ public sealed class TaxOpportunityService
 
     /// <summary>
     /// Approves and freezes the dossier: facts, both scenarios, rule versions and their hashes, legal
-    /// excerpts, requirements as answered, evidence, approver, risk and engine version.
+    /// excerpts (with their text verification), the professional review state of the rules, requirements
+    /// as answered, evidence, who analysed and who approved (with the self-approval justification, if
+    /// any), risk and engine version.
     /// </summary>
     public async Task<TaxOpportunityDto> ApproveAsync(Guid id, ApproveOpportunityRequest r, CancellationToken ct)
     {
         var o = await LoadForUpdateAsync(id, ct);
         var now = DateTime.UtcNow;
-        o.Approve(r.AcknowledgeHighRisk, _audit.UserId, _audit.UserName, now);
+        var selfApproval = _policy.RequireSeparateApprover && o.IsSoleAnalyst(_audit.UserId);
+        o.Approve(r.AcknowledgeHighRisk, _audit.UserId, _audit.UserName, now, _policy.RequireSeparateApprover, r.SelfApprovalJustification);
+        var justification = selfApproval ? r.SelfApprovalJustification!.Trim() : null;
 
+        var ruleIds = await RuleVersionsBehindAsync(o, ct);
+        var pendingReview = await _catalog.PendingProfessionalReviewAsync(ruleIds, ct);
+        if (_policy.RequireApprovedRulesForDecisions && pendingReview.Count > 0)
+            throw new DomainException(
+                $"Regras ainda sem revisão tributária aprovada: {string.Join(", ", pendingReview)}. Ativação técnica não é aprovação profissional.",
+                "tax_professional_review_pending");
+
+        var engine = EngineOf(o);
         var calc = o.SourceCalculationId is null ? null
             : await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstOrDefaultAsync(c => c.Id == o.SourceCalculationId, ct);
         var codes = o.LegalSourceCodes.Split(',', StringSplitOptions.RemoveEmptyEntries)
             .Concat(calc?.Executions.Where(e => e.Matched).SelectMany(e => e.LegalSourceCodes.Split(',', StringSplitOptions.RemoveEmptyEntries)) ?? [])
             .Distinct().ToList();
         var sources = await _db.TaxLegalSources.AsNoTracking().Where(s => codes.Contains(s.Code))
-            .OrderBy(s => s.Code).Select(s => new { s.Code, s.Title, s.Reference, s.Url, s.Excerpt, verification = s.Verification.ToString() })
+            .OrderBy(s => s.Code).Select(s => new { s.Code, s.Title, s.Reference, s.Url, s.Excerpt, textVerification = s.TextVerification.ToString() })
             .ToListAsync(ct);
 
         var dossier = new
@@ -167,21 +203,26 @@ public sealed class TaxOpportunityService
             rules = calc?.Executions.Where(e => e.Matched).DistinctBy(e => e.RuleVersionId)
                 .Select(e => new { e.RuleKey, e.RuleVersion, e.RuleVersionId, e.ContentHash, e.LegalSourceCodes }).ToList(),
             legalSources = sources,
+            // Text verification of a source says only that the excerpt matches the official text.
+            professionalReview = new { pendingRules = pendingReview, requiredByPolicy = _policy.RequireApprovedRulesForDecisions },
             requirements = o.Requirements.OrderBy(x => x.Code).Select(x => new { x.Code, x.Text, x.LegalSourceCode, x.Met, x.Note, x.AnsweredByName, x.AnsweredAt }),
             evidence = o.Evidence.OrderBy(x => x.CreatedAt).Select(x => new { x.Description, x.DocumentReference, x.ContentHash, x.AddedByName, x.CreatedAt }),
             risk = o.Risk.ToString(),
             highRiskAcknowledged = r.AcknowledgeHighRisk,
+            reviewStartedBy = o.ReviewStartedByName,
             approvedBy = new { id = _audit.UserId, name = _audit.UserName },
             approvedAt = now,
-            engineVersion = TaxEngine.Version,
+            segregationOfDuties = new { required = _policy.RequireSeparateApprover, selfApproval, justification },
+            engineVersion = o.EngineVersion,
         };
-        var dossierJson = System.Text.Json.JsonSerializer.Serialize(dossier, TaxCanonical.Options);
-        var decision = TaxDecision.Create(_tenant.Id, o.Id, o.Title, dossierJson, TaxCanonical.Hash(dossierJson), o.Risk,
-            r.AcknowledgeHighRisk, TaxEngine.Version, _audit.UserId, _audit.UserName, now);
+        var dossierJson = System.Text.Json.JsonSerializer.Serialize(dossier, engine.Canonical.Options);
+        var decision = TaxDecision.Create(_tenant.Id, o.Id, o.Title, dossierJson, engine.Canonical.Hash(dossierJson), o.Risk,
+            r.AcknowledgeHighRisk, o.EngineVersion, _audit.UserId, _audit.UserName, now, justification);
         _db.TaxDecisions.Add(decision);
         _audit.Record(TaxAuditActions.OpportunityApproved, AuditEntity, o.Id,
             $"Aprovada por {_audit.UserName}: {o.Title}. Dossiê {decision.DossierHash[..12]}.",
-            new { decisionId = decision.Id, decision.DossierHash, risk = o.Risk.ToString(), r.AcknowledgeHighRisk }, AuditSeverity.Warning);
+            new { decisionId = decision.Id, decision.DossierHash, risk = o.Risk.ToString(), r.AcknowledgeHighRisk, selfApproval, justification,
+                pendingProfessionalReview = pendingReview }, AuditSeverity.Warning);
         await SaveAsync(ct);
         _log.LogInformation("Tax opportunity {OpportunityId} approved; decision {DecisionId}", o.Id, decision.Id);
         return await GetAsync(id, ct);
@@ -218,20 +259,29 @@ public sealed class TaxOpportunityService
         if (_db.Database.CurrentTransaction is not null) await _db.Database.CommitTransactionAsync(ct);
     }
 
-    private static TaxOpportunityDto Map(TaxOpportunity o, TaxDecision? d)
+    /// <summary>The engine version that produced the opportunity's scenarios; never guessed.</summary>
+    private ITaxEngine EngineOf(TaxOpportunity o)
+        => _engines.TryGet(o.EngineVersion, out var engine)
+            ? engine
+            : throw new DomainException(
+                $"Esta oportunidade foi produzida pela engine {o.EngineVersion}, que não está disponível nesta versão do Orken.",
+                "tax_engine_unavailable");
+
+    private TaxOpportunityDto Map(TaxOpportunity o, TaxDecision? d, bool professionalReviewPending)
     {
         var blocked = o.Status == TaxOpportunityStatus.Blocked;
+        var canonical = EngineOf(o).Canonical;
         return new TaxOpportunityDto(
-            o.Id, o.Type, o.ImpactNature, o.Status, o.Title, blocked ? BlockedSummary : o.Summary, o.DetectorKey, o.SourceCalculationId,
-            blocked ? null : o.EstimatedImpact, o.Risk, o.Confidence,
+            o.Id, o.Type, o.ImpactNature, o.Status, o.Title, blocked ? BlockedSummary : o.Summary, o.DetectorKey, o.EngineVersion,
+            o.SourceCalculationId, blocked ? null : o.EstimatedImpact, o.Risk, o.Confidence,
             o.LegalSourceCodes.Split(',', StringSplitOptions.RemoveEmptyEntries), o.Caveats, o.BlockedAs, o.BlockReason,
-            o.RejectionReason, o.ReviewedByName, o.ReviewedAt, o.CreatedAt,
+            o.RejectionReason, o.ReviewStartedByName, o.ReviewedByName, o.ReviewedAt, o.CreatedAt, professionalReviewPending,
             o.Requirements.OrderBy(r => r.CreatedAt).ThenBy(r => r.Code)
                 .Select(r => new TaxOpportunityRequirementDto(r.Id, r.Code, r.Text, r.LegalSourceCode, r.Met, r.Note, r.AnsweredByName, r.AnsweredAt)).ToList(),
             o.Evidence.OrderBy(e => e.CreatedAt)
                 .Select(e => new TaxOpportunityEvidenceDto(e.Id, e.Description, e.DocumentReference, e.ContentHash, e.AddedByName, e.CreatedAt)).ToList(),
-            TaxCanonical.Deserialize<ScenarioResult>(o.CurrentScenarioJson),
-            blocked ? null : TaxCanonical.Deserialize<ScenarioResult>(o.ProposedScenarioJson),
+            canonical.Deserialize<ScenarioResult>(o.CurrentScenarioJson),
+            blocked ? null : canonical.Deserialize<ScenarioResult>(o.ProposedScenarioJson),
             d is null ? null : MapDecision(d));
     }
 
@@ -240,5 +290,5 @@ public sealed class TaxOpportunityService
 
     private static TaxDecisionDto MapDecision(TaxDecision d) => new(
         d.Id, d.OpportunityId, d.Strategy, d.Risk, d.HighRiskAcknowledged, d.EngineVersion, d.ApprovedByName, d.ApprovedAt,
-        d.DossierHash, TaxJson.Element(d.DossierJson));
+        d.SelfApprovalJustification, d.DossierHash, TaxJson.Element(d.DossierJson));
 }

@@ -24,6 +24,8 @@ public class TaxOpportunity : StoreEntity
     public string Summary { get; private set; } = string.Empty;
     /// <summary>Detector that found it, e.g. "unconditional-discount@1".</summary>
     public string DetectorKey { get; private set; } = string.Empty;
+    /// <summary>Engine version that produced the scenarios (their JSON is in its canonical form).</summary>
+    public string EngineVersion { get; private set; } = string.Empty;
     public Guid? SourceCalculationId { get; private set; }
     public string CurrentScenarioJson { get; private set; } = "{}";
     public string ProposedScenarioJson { get; private set; } = "{}";
@@ -40,6 +42,9 @@ public class TaxOpportunity : StoreEntity
     public Guid? ReviewedById { get; private set; }
     public string? ReviewedByName { get; private set; }
     public DateTime? ReviewedAt { get; private set; }
+    /// <summary>Who opened the analysis — with requirement answers and evidence, the people who analysed it.</summary>
+    public Guid? ReviewStartedById { get; private set; }
+    public string? ReviewStartedByName { get; private set; }
 
     public IReadOnlyCollection<TaxOpportunityRequirement> Requirements => _requirements.AsReadOnly();
     public IReadOnlyCollection<TaxOpportunityEvidence> Evidence => _evidence.AsReadOnly();
@@ -53,11 +58,12 @@ public class TaxOpportunity : StoreEntity
         TaxOpportunityType.TaxDeferral => TaxImpactNature.Deferral,
         TaxOpportunityType.CashFlowOptimization => TaxImpactNature.CashFlow,
         TaxOpportunityType.CreditOptimization or TaxOpportunityType.RefundOpportunity => TaxImpactNature.Credit,
+        TaxOpportunityType.CalculatedTaxReduction => TaxImpactNature.CalculatedTaxReduction,
         _ => TaxImpactNature.RiskAvoided,
     };
 
     public static TaxOpportunity Create(
-        Guid tenantId, TaxOpportunityType type, string title, string summary, string detectorKey,
+        Guid tenantId, TaxOpportunityType type, string title, string summary, string detectorKey, string engineVersion,
         Guid? sourceCalculationId, string currentScenarioJson, string proposedScenarioJson, decimal estimatedImpact,
         TaxRiskLevel risk, int confidence, string legalSourceCodes, string? caveats)
     {
@@ -69,6 +75,7 @@ public class TaxOpportunity : StoreEntity
             Title = title,
             Summary = summary,
             DetectorKey = detectorKey,
+            EngineVersion = engineVersion,
             SourceCalculationId = sourceCalculationId,
             CurrentScenarioJson = currentScenarioJson,
             ProposedScenarioJson = proposedScenarioJson,
@@ -93,6 +100,8 @@ public class TaxOpportunity : StoreEntity
         if (Status != TaxOpportunityStatus.Identified)
             throw new DomainException("A oportunidade já está em análise.", "tax_opportunity_state");
         Status = TaxOpportunityStatus.InReview;
+        ReviewStartedById = userId;
+        ReviewStartedByName = userName;
         ReviewedById = userId;
         ReviewedByName = userName;
         ReviewedAt = atUtc;
@@ -149,12 +158,23 @@ public class TaxOpportunity : StoreEntity
         SetUpdatedAt();
     }
 
+    /// <summary>People who analysed the opportunity: who opened the review, answered requirements or added evidence.</summary>
+    public IReadOnlySet<Guid> Analysts => new[] { ReviewStartedById }
+        .Concat(_requirements.Select(r => r.AnsweredById))
+        .Concat(_evidence.Select(e => (Guid?)e.AddedById))
+        .Where(id => id is not null).Select(id => id!.Value).ToHashSet();
+
+    /// <summary>Whether this approver did the whole analysis alone (segregation of duties).</summary>
+    public bool IsSoleAnalyst(Guid userId) => Analysts.Count > 0 && Analysts.All(a => a == userId);
+
     /// <summary>
     /// Approval checks. It records nothing but the status — the decision dossier is written by the
     /// caller in the same transaction. Every requirement must be met; a HIGH risk needs the approver
-    /// to acknowledge it explicitly.
+    /// to acknowledge it explicitly; and, with segregation of duties on, whoever analysed it alone
+    /// cannot be the only approver unless a justification is recorded (small teams).
     /// </summary>
-    public void Approve(bool highRiskAcknowledged, Guid userId, string userName, DateTime atUtc)
+    public void Approve(bool highRiskAcknowledged, Guid userId, string userName, DateTime atUtc,
+        bool requireSeparateApprover = false, string? selfApprovalJustification = null)
     {
         if (Status == TaxOpportunityStatus.Blocked)
             throw new DomainException("Uma estrutura proibida não pode ser aprovada.", "tax_opportunity_blocked");
@@ -165,6 +185,10 @@ public class TaxOpportunity : StoreEntity
             throw new DomainException($"Há requisitos não atendidos: {string.Join("; ", pending)}", "tax_opportunity_requirements");
         if (Risk == TaxRiskLevel.High && !highRiskAcknowledged)
             throw new DomainException("Risco alto: a aprovação precisa reconhecer o risco expressamente.", "tax_opportunity_high_risk");
+        if (requireSeparateApprover && IsSoleAnalyst(userId) && string.IsNullOrWhiteSpace(selfApprovalJustification))
+            throw new DomainException(
+                "Quem fez a análise sozinho não aprova a própria análise sem justificar. Peça a outra pessoa para revisar ou registre a justificativa.",
+                "tax_self_approval_requires_justification");
 
         Status = TaxOpportunityStatus.Approved;
         ReviewedById = userId;

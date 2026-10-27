@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore.Migrations;
 using Nexo.Application.Modules.TaxIntelligence.Engine;
 using Nexo.Domain.Enums;
 using Nexo.Domain.Modules.TaxIntelligence;
@@ -6,10 +5,12 @@ using Nexo.Domain.Modules.TaxIntelligence;
 namespace Nexo.Infrastructure.TaxIntelligence.Catalog;
 
 /// <summary>
-/// First content of the tax catalogue, inserted by the TaxIntelligenceFoundation migration.
+/// First content of the tax catalogue, as typed engine vocabulary. The TaxIntelligenceFoundation
+/// migration does NOT read this class: it carries the same rows as literals, so no later change of
+/// code can change what that migration inserts. The unit tests check that the literal rows and this
+/// description agree under the frozen canonical form V1 (and pin the content hashes).
 /// FROZEN: never edit this class — a change of law or a correction is a new rule version added by a
-/// new migration (or through the platform API). The unit tests pin the content hashes, so an edit
-/// here, or in the canonical form, fails the build.
+/// new migration (or through the platform API).
 ///
 /// Every excerpt was copied from the compiled text of LC 214/2025 on the Planalto site (which already
 /// carries the changes of LC 227/2026) on 26/10/2026. "Verified" means the excerpt matches the
@@ -19,11 +20,11 @@ namespace Nexo.Infrastructure.TaxIntelligence.Catalog;
 public static class TaxCatalogV1
 {
     public const string Origin = "seed:tax-catalog-v1";
-    private const string Url = "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm";
-    private const string Lc214 = "Lei Complementar nº 214, de 16 de janeiro de 2025";
-    private const string VerifiedBy = "Conferência literal com o texto compilado do Planalto (Orken Tax Intelligence v1) — pendente de revisão por profissional tributário";
-    private static readonly DateOnly Published = new(2025, 1, 16);
-    private static readonly DateTime SeededAt = new(2026, 10, 26, 0, 0, 0, DateTimeKind.Utc);
+    public const string Url = "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm";
+    public const string Lc214 = "Lei Complementar nº 214, de 16 de janeiro de 2025";
+    public const string VerifiedBy = "Conferência literal com o texto compilado do Planalto (Orken Tax Intelligence v1) — pendente de revisão por profissional tributário";
+    public static readonly DateOnly Published = new(2025, 1, 16);
+    public static readonly DateTime SeededAt = new(2026, 10, 26, 0, 0, 0, DateTimeKind.Utc);
 
     public sealed record SourceSeed(Guid Id, string Code, string Reference, string Excerpt);
 
@@ -32,7 +33,7 @@ public static class TaxCatalogV1
         Guid VersionId, TaxRuleStatus Status, DateOnly ValidFrom, DateOnly? ValidTo, int Priority,
         IReadOnlyList<TaxCondition> Conditions, TaxRuleResult Result, IReadOnlyList<string> SourceCodes, string? Notes)
     {
-        public string ContentHash => TaxCanonical.RuleContentHash(Key, 1, ValidFrom, ValidTo, Priority, Conditions, Result);
+        public string ContentHash => TaxCanonicalV1.Instance.RuleContentHash(Key, 1, ValidFrom, ValidTo, Priority, Conditions, Result);
     }
 
     private static Guid S(int n) => Guid.Parse($"7a9c1e00-0000-4000-8000-{n:D12}");
@@ -166,42 +167,4 @@ public static class TaxCatalogV1
             [new SupplierRegimeNotIn(Simples), new ItemGeneralRegime()], new RateResult(TaxType.IbsMunicipal, 0.05m),
             ["LC214-2025-ART344"], "Alíquota literal do art. 344, mas a aplicação aos optantes do Simples Nacional a partir de 2027 não foi verificada: não ativar antes dessa análise."),
     ];
-
-    /// <summary>Inserts the catalogue. Called once, from the TaxIntelligenceFoundation migration.</summary>
-    public static void Seed(MigrationBuilder mb)
-    {
-        foreach (var s in Sources)
-        {
-            mb.InsertData("tax_legal_sources",
-                ["id", "code", "kind", "title", "reference", "url", "excerpt", "published_on", "verification", "verified_at", "verified_by", "notes", "created_at", "updated_at"],
-                [s.Id, s.Code, LegalSourceKind.ComplementaryLaw.ToString(), Lc214, s.Reference, Url, s.Excerpt, Published,
-                 LegalSourceVerification.Verified.ToString(), SeededAt, VerifiedBy, "Texto compilado, com as alterações da LC 227/2026.", SeededAt, SeededAt],
-                "nexo");
-        }
-
-        var codeToId = Sources.ToDictionary(s => s.Code, s => s.Id);
-        foreach (var r in Rules)
-        {
-            mb.InsertData("tax_rules",
-                ["id", "key", "name", "description", "created_at", "updated_at"],
-                [r.RuleId, r.Key, r.Name, r.Description, SeededAt, SeededAt],
-                "nexo");
-
-            mb.InsertData("tax_rule_versions",
-                ["id", "rule_id", "version", "status", "valid_from", "valid_to", "priority", "conditions", "result", "content_hash",
-                 "origin", "created_by", "notes", "activated_at", "status_changed_at", "created_at", "updated_at"],
-                ["uuid", "uuid", "integer", "character varying(30)", "date", "date", "integer", "json", "json", "character varying(64)",
-                 "character varying(60)", "character varying(200)", "character varying(2000)", "timestamptz", "timestamptz", "timestamptz", "timestamptz"],
-                [r.VersionId, r.RuleId, 1, r.Status.ToString(), r.ValidFrom, r.ValidTo, r.Priority,
-                 TaxCanonical.Serialize(r.Conditions), TaxCanonical.Serialize(r.Result), r.ContentHash,
-                 Origin, "Orken (catálogo inicial)", r.Notes, r.Status == TaxRuleStatus.Active ? SeededAt : null, SeededAt, SeededAt, SeededAt],
-                "nexo");
-
-            foreach (var code in r.SourceCodes)
-                mb.InsertData("tax_rule_version_sources",
-                    ["rule_version_id", "legal_source_id"],
-                    [r.VersionId, codeToId[code]],
-                    "nexo");
-        }
-    }
 }

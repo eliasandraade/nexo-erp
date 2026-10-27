@@ -1,4 +1,5 @@
 using FluentValidation;
+using Nexo.Domain.Modules.TaxIntelligence;
 
 namespace Nexo.Application.Modules.TaxIntelligence;
 
@@ -66,6 +67,11 @@ public sealed class CreateTaxProfileVersionRequestValidator : AbstractValidator<
         RuleFor(x => x.SecondaryCnaes).Must(l => l is null || l.All(s => s is not null));
         RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
         RuleFor(x => x.ValidFrom).Must(d => d.Year is >= 2000 and <= 2100).WithMessage("Início de vigência inválido.");
+        RuleFor(x => x.AccessoryObligations).IsInEnum().When(x => x.AccessoryObligations is not null);
+        RuleFor(x => x.AccessoryObligationsEvidence).MaximumLength(1000);
+        RuleFor(x => x.AccessoryObligationsEvidence).NotEmpty()
+            .When(x => x.AccessoryObligations == AccessoryObligationsStatus.VerifiedCompliant)
+            .WithMessage("Para marcar como verificado, informe o que foi conferido (a evidência).");
     }
 }
 
@@ -151,6 +157,24 @@ public sealed class AddEvidenceRequestValidator : AbstractValidator<AddEvidenceR
 public sealed class RejectOpportunityRequestValidator : AbstractValidator<RejectOpportunityRequest>
 {
     public RejectOpportunityRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(1000);
+}
+
+public sealed class ApproveOpportunityRequestValidator : AbstractValidator<ApproveOpportunityRequest>
+{
+    public ApproveOpportunityRequestValidator() => RuleFor(x => x.SelfApprovalJustification).MaximumLength(1000);
+}
+
+public sealed class RecordProfessionalReviewRequestValidator : AbstractValidator<RecordProfessionalReviewRequest>
+{
+    public RecordProfessionalReviewRequestValidator()
+    {
+        RuleFor(x => x.Status).IsInEnum();
+        RuleFor(x => x.Reviewer).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Notes).MaximumLength(4000);
+        RuleFor(x => x.Notes).NotEmpty()
+            .When(x => x.Status is ProfessionalReviewStatus.ChangesRequired or ProfessionalReviewStatus.Rejected)
+            .WithMessage("Uma revisão que pede mudança ou rejeita precisa dizer por quê.");
+    }
 }
 
 public sealed class BlockOpportunityRequestValidator : AbstractValidator<BlockOpportunityRequest>

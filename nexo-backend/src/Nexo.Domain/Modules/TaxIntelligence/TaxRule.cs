@@ -59,9 +59,31 @@ public class TaxRuleVersion : BaseEntity
     public DateTime? ActivatedAt { get; private set; }
     public DateTime? StatusChangedAt { get; private set; }
 
+    /// <summary>Professional review of the interpretation — independent of <see cref="Status"/> (technical).</summary>
+    public ProfessionalReviewStatus ProfessionalReview { get; private set; } = ProfessionalReviewStatus.Pending;
+    public string? ProfessionalReviewedBy { get; private set; }
+    public DateTime? ProfessionalReviewedAt { get; private set; }
+    public string? ProfessionalReviewNotes { get; private set; }
+
     public IReadOnlyCollection<TaxRuleVersionSource> Sources => _sources.AsReadOnly();
 
     public bool Covers(DateOnly date) => ValidFrom <= date && (ValidTo is null || date <= ValidTo);
+
+    /// <summary>
+    /// Records a tax professional's review. Content never changes; a review that asks for changes or
+    /// rejects the reading must say why. Each review is audited by the caller.
+    /// </summary>
+    public void RecordProfessionalReview(ProfessionalReviewStatus status, string reviewer, string? notes, DateTime atUtc)
+    {
+        if (string.IsNullOrWhiteSpace(reviewer)) throw new DomainException("Informe quem revisou.");
+        if (status is ProfessionalReviewStatus.ChangesRequired or ProfessionalReviewStatus.Rejected && string.IsNullOrWhiteSpace(notes))
+            throw new DomainException("Uma revisão que pede mudança ou rejeita precisa dizer por quê.");
+        ProfessionalReview = status;
+        ProfessionalReviewedBy = reviewer.Trim();
+        ProfessionalReviewedAt = atUtc;
+        ProfessionalReviewNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        SetUpdatedAt();
+    }
 
     public static TaxRuleVersion Create(
         Guid ruleId, int version, DateOnly validFrom, DateOnly? validTo, int priority,

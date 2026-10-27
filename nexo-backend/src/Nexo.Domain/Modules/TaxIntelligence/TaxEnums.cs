@@ -41,11 +41,41 @@ public enum LegalSourceKind
     Other = 10,
 }
 
-/// <summary>Verified = the excerpt was checked against the official text (who and when are recorded).</summary>
-public enum LegalSourceVerification
+/// <summary>
+/// Whether the excerpt reproduces the official text — and nothing more. Verified says the words match
+/// the source (who compared and when are recorded); it is not a legal opinion about any rule. The
+/// professional review of a rule's interpretation is <see cref="ProfessionalReviewStatus"/>.
+/// </summary>
+public enum TextVerificationStatus
 {
     Unverified = 1,
     Verified = 2,
+}
+
+/// <summary>
+/// A tax professional's review of how a rule version reads the law. Independent of the technical
+/// status (a rule can be technically Active while its review is still Pending) and of the text
+/// verification of its sources. Nothing in the catalogue starts Approved.
+/// </summary>
+public enum ProfessionalReviewStatus
+{
+    Pending = 1,
+    Approved = 2,
+    ChangesRequired = 3,
+    Rejected = 4,
+}
+
+/// <summary>
+/// Ancillary obligations of IBS/CBS (the condition of the 2026 collection waiver, LC 214/2025, art. 348,
+/// § 1º). A declaration is not a verification: only <see cref="VerifiedCompliant"/> may satisfy a rule
+/// that depends on compliance. What evidence proves compliance is pending professional review.
+/// </summary>
+public enum AccessoryObligationsStatus
+{
+    Unknown = 1,
+    DeclaredCompliant = 2,
+    VerifiedCompliant = 3,
+    NonCompliant = 4,
 }
 
 /// <summary>Where the facts of a tax transaction came from. The engine never reads the source.</summary>
@@ -81,6 +111,8 @@ public enum TaxOpportunityType
     CashFlowOptimization = 4,
     RefundOpportunity = 5,
     RiskReduction = 6,
+    /// <summary>Lower IBS/CBS as calculated/stated on the document — not, by itself, an economic saving.</summary>
+    CalculatedTaxReduction = 7,
 }
 
 /// <summary>
@@ -94,6 +126,12 @@ public enum TaxImpactNature
     CashFlow = 3,
     Credit = 4,
     RiskAvoided = 5,
+    /// <summary>
+    /// The tax calculated (and stated on the document) goes down. Whether that becomes a definitive
+    /// economic saving depends on the treatment of the period (e.g. 2026 compensation/waiver, art. 348)
+    /// and on professional review — so it is never counted as a saving.
+    /// </summary>
+    CalculatedTaxReduction = 6,
 }
 
 /// <summary>

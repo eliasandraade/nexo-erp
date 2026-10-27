@@ -56,7 +56,7 @@ public sealed class TaxOverviewService
             profileConfigured, from, today, calcs?.Count ?? 0, taxedBase, tax,
             taxedBase > 0 ? decimal.Round(tax / taxedBase * 100m, 4) : null,
             credits.Sum(c => c.Available), credits.Sum(c => c.Blocked), credits.Sum(c => c.NotAppropriated),
-            open.Count, Sum(TaxImpactNature.DefinitiveSaving), Sum(TaxImpactNature.Deferral), Sum(TaxImpactNature.CashFlow),
+            open.Count, Sum(TaxImpactNature.DefinitiveSaving), Sum(TaxImpactNature.CalculatedTaxReduction), Sum(TaxImpactNature.Deferral), Sum(TaxImpactNature.CashFlow),
             Sum(TaxImpactNature.Credit), open.Count(o => o.Risk == TaxRiskLevel.High), blocked, divergences,
             rulesToday.Where(r => r.Key == TaxRuleStatus.Active).Sum(r => r.Count),
             rulesToday.Where(r => r.Key is TaxRuleStatus.PendingRegulation or TaxRuleStatus.Unverified).Sum(r => r.Count));

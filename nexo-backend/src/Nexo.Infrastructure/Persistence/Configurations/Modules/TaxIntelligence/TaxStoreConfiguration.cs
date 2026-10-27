@@ -43,7 +43,9 @@ internal sealed class TaxProfileVersionConfiguration : IEntityTypeConfiguration<
         b.Property(x => x.SecondaryCnaes).HasColumnName("secondary_cnaes").HasColumnType("text[]").IsRequired();
         b.Property(x => x.SpecialRegimes).HasColumnName("special_regimes").HasColumnType("text[]").IsRequired();
         b.Property(x => x.Benefits).HasColumnName("benefits").HasColumnType("text[]").IsRequired();
-        b.Property(x => x.AccessoryObligationsCompliant).HasColumnName("accessory_obligations_compliant");
+        b.Property(x => x.AccessoryObligations).HasColumnName("accessory_obligations").HasConversion<string>().HasMaxLength(30).IsRequired();
+        b.Property(x => x.AccessoryObligationsEvidence).HasColumnName("accessory_obligations_evidence").HasMaxLength(1000);
+        b.Ignore(x => x.ComplianceForRules);
         b.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500).IsRequired();
         b.Property(x => x.CreatedById).HasColumnName("created_by_id").IsRequired();
         b.Property(x => x.CreatedByName).HasColumnName("created_by_name").HasMaxLength(200).IsRequired();
@@ -213,6 +215,7 @@ internal sealed class TaxOpportunityConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.Title).HasColumnName("title").HasMaxLength(200).IsRequired();
         b.Property(x => x.Summary).HasColumnName("summary").HasMaxLength(2000).IsRequired();
         b.Property(x => x.DetectorKey).HasColumnName("detector_key").HasMaxLength(80).IsRequired();
+        b.Property(x => x.EngineVersion).HasColumnName("engine_version").HasMaxLength(60).IsRequired();
         b.Property(x => x.SourceCalculationId).HasColumnName("source_calculation_id");
         b.HasOne<TaxCalculation>().WithMany().HasForeignKey(x => x.SourceCalculationId)
             .HasConstraintName("fk_tax_opportunities_calculations").OnDelete(DeleteBehavior.Restrict);
@@ -230,6 +233,9 @@ internal sealed class TaxOpportunityConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.BlockReason).HasColumnName("block_reason").HasMaxLength(1000);
         b.Property(x => x.RejectionReason).HasColumnName("rejection_reason").HasMaxLength(1000);
         b.Property(x => x.ReviewedById).HasColumnName("reviewed_by_id");
+        b.Property(x => x.ReviewStartedById).HasColumnName("review_started_by_id");
+        b.Property(x => x.ReviewStartedByName).HasColumnName("review_started_by_name").HasMaxLength(200);
+        b.Ignore(x => x.Analysts);
         b.Property(x => x.ReviewedByName).HasColumnName("reviewed_by_name").HasMaxLength(200);
         b.Property(x => x.ReviewedAt).HasColumnName("reviewed_at").HasColumnType("timestamptz");
         b.Ignore(x => x.ImpactNature);
@@ -290,6 +296,7 @@ internal sealed class TaxDecisionConfiguration : IEntityTypeConfiguration<TaxDec
         b.Property(x => x.DossierHash).HasColumnName("dossier_hash").HasMaxLength(64).IsRequired();
         b.Property(x => x.Risk).HasColumnName("risk").HasConversion<string>().HasMaxLength(10).IsRequired();
         b.Property(x => x.HighRiskAcknowledged).HasColumnName("high_risk_acknowledged").IsRequired();
+        b.Property(x => x.SelfApprovalJustification).HasColumnName("self_approval_justification").HasMaxLength(1000);
         b.Property(x => x.EngineVersion).HasColumnName("engine_version").HasMaxLength(60).IsRequired();
         b.Property(x => x.ApprovedById).HasColumnName("approved_by_id").IsRequired();
         b.Property(x => x.ApprovedByName).HasColumnName("approved_by_name").HasMaxLength(200).IsRequired();

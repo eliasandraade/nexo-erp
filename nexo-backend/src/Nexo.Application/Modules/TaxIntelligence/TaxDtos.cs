@@ -10,7 +10,8 @@ namespace Nexo.Application.Modules.TaxIntelligence;
 public sealed record TaxProfileVersionDto(
     Guid Id, int VersionNumber, DateOnly ValidFrom, TaxRegime Regime, string State, string CityIbgeCode,
     string PrimaryCnae, IReadOnlyList<string> SecondaryCnaes, IReadOnlyList<string> SpecialRegimes,
-    IReadOnlyList<string> Benefits, bool? AccessoryObligationsCompliant, string Reason, string CreatedByName, DateTime CreatedAt);
+    IReadOnlyList<string> Benefits, AccessoryObligationsStatus AccessoryObligations, string? AccessoryObligationsEvidence,
+    string Reason, string CreatedByName, DateTime CreatedAt);
 
 /// <summary>Facts already known from the fiscal profile (issuer data), offered to prefill a version.</summary>
 public sealed record TaxProfileSuggestionDto(TaxRegime Regime, string State, string CityIbgeCode);
@@ -21,7 +22,7 @@ public sealed record TaxProfileDto(
 public sealed record CreateTaxProfileVersionRequest(
     DateOnly ValidFrom, TaxRegime Regime, string State, string CityIbgeCode, string PrimaryCnae,
     IReadOnlyList<string>? SecondaryCnaes, IReadOnlyList<string>? SpecialRegimes, IReadOnlyList<string>? Benefits,
-    bool? AccessoryObligationsCompliant, string Reason);
+    AccessoryObligationsStatus? AccessoryObligations, string? AccessoryObligationsEvidence, string Reason);
 
 // ── Transactions and calculations ────────────────────────────────────────────
 
@@ -47,12 +48,16 @@ public sealed record TaxCalculationDto(
     DateOnly ReferenceDate, Guid ProfileVersionId, int ProfileVersionNumber, string EngineVersion,
     string InputHash, string RuleSetHash, string OutputHash, decimal TotalBase, decimal TotalTax,
     bool Reused, DateTime CreatedAt, TaxEngineInput Input, TaxEngineOutput Output,
-    IReadOnlyList<Guid> OpportunityIds);
+    IReadOnlyList<Guid> OpportunityIds, IReadOnlyList<string> ProfileAdvisories);
 
-/// <summary>Result of running a stored calculation again with exactly the rule versions it used.</summary>
+/// <summary>
+/// Result of running a stored calculation again with exactly the engine version and rule versions it
+/// used. <see cref="EngineAvailable"/> false means that engine is no longer registered: nothing was
+/// re-run (the current engine is never used in its place) and <see cref="RecomputedOutputHash"/> is null.
+/// </summary>
 public sealed record TaxCalculationVerificationDto(
-    Guid CalculationId, bool Reproducible, bool EngineVersionMatches, string StoredEngineVersion, string CurrentEngineVersion,
-    string StoredOutputHash, string RecomputedOutputHash, IReadOnlyList<string> Differences);
+    Guid CalculationId, bool Reproducible, bool EngineAvailable, bool EngineVersionMatches, string StoredEngineVersion,
+    string CurrentEngineVersion, string StoredOutputHash, string? RecomputedOutputHash, IReadOnlyList<string> Differences);
 
 // ── Simulations ──────────────────────────────────────────────────────────────
 
@@ -89,17 +94,20 @@ public sealed record TaxOpportunityEvidenceDto(Guid Id, string Description, stri
 
 public sealed record TaxDecisionDto(
     Guid Id, Guid OpportunityId, string Strategy, TaxRiskLevel Risk, bool HighRiskAcknowledged, string EngineVersion,
-    string ApprovedByName, DateTime ApprovedAt, string DossierHash, JsonElement Dossier);
+    string ApprovedByName, DateTime ApprovedAt, string? SelfApprovalJustification, string DossierHash, JsonElement Dossier);
 
 /// <summary>
 /// An opportunity. When it is blocked as a prohibited structure, <see cref="EstimatedImpact"/> and
-/// <see cref="Proposed"/> are null: no saving is offered for it.
+/// <see cref="Proposed"/> are null: no saving is offered for it. <see cref="ProfessionalReviewPending"/>
+/// says whether any rule behind it still awaits a tax professional's review (technical activation is not
+/// professional approval).
 /// </summary>
 public sealed record TaxOpportunityDto(
     Guid Id, TaxOpportunityType Type, TaxImpactNature ImpactNature, TaxOpportunityStatus Status, string Title, string Summary,
-    string DetectorKey, Guid? SourceCalculationId, decimal? EstimatedImpact, TaxRiskLevel Risk, int Confidence,
+    string DetectorKey, string EngineVersion, Guid? SourceCalculationId, decimal? EstimatedImpact, TaxRiskLevel Risk, int Confidence,
     IReadOnlyList<string> LegalSourceCodes, string? Caveats, ProhibitedStructure? BlockedAs, string? BlockReason,
-    string? RejectionReason, string? ReviewedByName, DateTime? ReviewedAt, DateTime CreatedAt,
+    string? RejectionReason, string? ReviewStartedByName, string? ReviewedByName, DateTime? ReviewedAt, DateTime CreatedAt,
+    bool ProfessionalReviewPending,
     IReadOnlyList<TaxOpportunityRequirementDto> Requirements, IReadOnlyList<TaxOpportunityEvidenceDto> Evidence,
     ScenarioResult? Current, ScenarioResult? Proposed, TaxDecisionDto? Decision);
 
@@ -111,7 +119,11 @@ public sealed record AnswerRequirementRequest(bool? Met, string? Note);
 public sealed record AddEvidenceRequest(string Description, string? DocumentReference);
 public sealed record RejectOpportunityRequest(string Reason);
 public sealed record BlockOpportunityRequest(ProhibitedStructure Structure, string Reason);
-public sealed record ApproveOpportunityRequest(bool AcknowledgeHighRisk);
+/// <summary>
+/// <c>SelfApprovalJustification</c> is required only when segregation of duties is on and the approver
+/// did the whole analysis alone; it is recorded in the dossier and the audit trail.
+/// </summary>
+public sealed record ApproveOpportunityRequest(bool AcknowledgeHighRisk, string? SelfApprovalJustification = null);
 
 // ── Credits ──────────────────────────────────────────────────────────────────
 
@@ -160,12 +172,14 @@ public sealed record SplitProviderStatusDto(bool Configured, string Message);
 
 public sealed record TaxLegalSourceDto(
     Guid Id, string Code, LegalSourceKind Kind, string Title, string Reference, string Url, string Excerpt,
-    DateOnly? PublishedOn, LegalSourceVerification Verification, DateTime? VerifiedAt, string? VerifiedBy, string? Notes);
+    DateOnly? PublishedOn, TextVerificationStatus TextVerification, DateTime? VerifiedAt, string? VerifiedBy, string? Notes);
 
 public sealed record TaxRuleVersionDto(
     Guid Id, int Version, TaxRuleStatus Status, DateOnly ValidFrom, DateOnly? ValidTo, int Priority,
     JsonElement Conditions, JsonElement Result, string ContentHash, string Origin, string CreatedBy, string? Notes,
-    DateTime? ActivatedAt, IReadOnlyList<string> LegalSourceCodes, DateTime CreatedAt);
+    DateTime? ActivatedAt, IReadOnlyList<string> LegalSourceCodes, DateTime CreatedAt,
+    ProfessionalReviewStatus ProfessionalReview, string? ProfessionalReviewedBy, DateTime? ProfessionalReviewedAt,
+    string? ProfessionalReviewNotes);
 
 public sealed record TaxRuleDto(Guid Id, string Key, string Name, string Description, IReadOnlyList<TaxRuleVersionDto> Versions);
 
@@ -183,14 +197,18 @@ public sealed record CreateTaxRuleVersionRequest(
 
 public sealed record ChangeTaxRuleVersionStatusRequest(TaxRuleStatus Status);
 
+/// <summary>A tax professional's review of a rule version's interpretation (separate from its technical status).</summary>
+public sealed record RecordProfessionalReviewRequest(ProfessionalReviewStatus Status, string Reviewer, string? Notes);
+
 // ── Overview ─────────────────────────────────────────────────────────────────
 
 /// <summary>
-/// Dashboard figures from real data only. Savings, deferrals and cash-flow effects are reported
-/// apart and never added together.
+/// Dashboard figures from real data only. Savings, calculated-tax reductions, deferrals and cash-flow
+/// effects are reported apart and never added together: a lower IBS/CBS on the document is not, by
+/// itself, a definitive saving.
 /// </summary>
 public sealed record TaxOverviewDto(
     bool ProfileConfigured, DateOnly PeriodFrom, DateOnly PeriodTo, int Calculations, decimal TaxedBase, decimal EstimatedTax,
     decimal? EffectiveRatePercent, decimal CreditsAvailable, decimal CreditsBlocked, decimal CreditsNotAppropriated,
-    int OpenOpportunities, decimal PotentialSavings, decimal PotentialDeferrals, decimal PotentialCashFlow, decimal PotentialCredits,
+    int OpenOpportunities, decimal PotentialSavings, decimal PotentialCalculatedTaxReductions, decimal PotentialDeferrals, decimal PotentialCashFlow, decimal PotentialCredits,
     int OpenHighRisk, int BlockedOpportunities, int SplitDivergences, int ActiveRulesToday, int PendingRulesToday);

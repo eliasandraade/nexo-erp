@@ -7,7 +7,11 @@ namespace Nexo.Application.Modules.TaxIntelligence.Engine;
 // and the rules it ran are identified by id, version and content hash — nothing is read from the
 // database, the clock or the environment during a run.
 
-/// <summary>The tax facts of the establishment on the reference date (from its profile version).</summary>
+/// <summary>
+/// The tax facts of the establishment on the reference date (from its profile version).
+/// <c>AccessoryObligationsCompliant</c> is true only when compliance was verified (a declaration
+/// alone is null = unknown); its V1 shape is part of the hashed input and stays as is.
+/// </summary>
 public sealed record TaxEngineProfile(
     Guid ProfileVersionId,
     TaxRegime Regime,

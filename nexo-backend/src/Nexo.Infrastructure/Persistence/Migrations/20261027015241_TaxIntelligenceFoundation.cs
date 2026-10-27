@@ -6,11 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
-    /// <summary>
-    /// Tax Intelligence foundation: 21 new tables (catalogue + establishment data) and the first
-    /// catalogue content. Additive only — no existing table is touched; Down drops only these tables.
-    /// Canonical documents are "json" (not jsonb) so the stored text is exactly what was hashed.
-    /// </summary>
+    /// <inheritdoc />
     public partial class TaxIntelligenceFoundation : Migration
     {
         /// <inheritdoc />
@@ -29,7 +25,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     url = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     excerpt = table.Column<string>(type: "text", nullable: false),
                     published_on = table.Column<DateOnly>(type: "date", nullable: true),
-                    verification = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    text_verification = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
                     verified_at = table.Column<DateTime>(type: "timestamptz", nullable: true),
                     verified_by = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     notes = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
@@ -176,7 +172,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     secondary_cnaes = table.Column<List<string>>(type: "text[]", nullable: false),
                     special_regimes = table.Column<List<string>>(type: "text[]", nullable: false),
                     benefits = table.Column<List<string>>(type: "text[]", nullable: false),
-                    accessory_obligations_compliant = table.Column<bool>(type: "boolean", nullable: true),
+                    accessory_obligations = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: false),
+                    accessory_obligations_evidence = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     reason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     created_by_id = table.Column<Guid>(type: "uuid", nullable: false),
                     created_by_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
@@ -231,6 +228,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     notes = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: true),
                     activated_at = table.Column<DateTime>(type: "timestamptz", nullable: true),
                     status_changed_at = table.Column<DateTime>(type: "timestamptz", nullable: true),
+                    professional_review = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: false),
+                    professional_reviewed_by = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
+                    professional_reviewed_at = table.Column<DateTime>(type: "timestamptz", nullable: true),
+                    professional_review_notes = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     updated_at = table.Column<DateTime>(type: "timestamptz", nullable: false)
                 },
@@ -534,6 +535,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     summary = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
                     detector_key = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
+                    engine_version = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
                     source_calculation_id = table.Column<Guid>(type: "uuid", nullable: true),
                     current_scenario = table.Column<string>(type: "json", nullable: false),
                     proposed_scenario = table.Column<string>(type: "json", nullable: false),
@@ -548,6 +550,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     reviewed_by_id = table.Column<Guid>(type: "uuid", nullable: true),
                     reviewed_by_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     reviewed_at = table.Column<DateTime>(type: "timestamptz", nullable: true),
+                    review_started_by_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    review_started_by_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     updated_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -731,6 +735,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     dossier_hash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     risk = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
                     high_risk_acknowledged = table.Column<bool>(type: "boolean", nullable: false),
+                    self_approval_justification = table.Column<string>(type: "character varying(1000)", maxLength: 1000, nullable: true),
                     engine_version = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
                     approved_by_id = table.Column<Guid>(type: "uuid", nullable: false),
                     approved_by_name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
@@ -1298,8 +1303,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 table: "tax_transactions",
                 column: "store_id");
 
-            // First catalogue content: legal sources (literal excerpts) and the rules built on them.
-            Nexo.Infrastructure.TaxIntelligence.Catalog.TaxCatalogV1.Seed(migrationBuilder);
+            // Catalogue V1 as literal rows (see the .CatalogV1.cs part of this migration).
+            SeedCatalogV1(migrationBuilder);
         }
 
         /// <inheritdoc />

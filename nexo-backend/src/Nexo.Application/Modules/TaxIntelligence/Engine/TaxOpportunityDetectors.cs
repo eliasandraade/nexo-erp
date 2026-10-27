@@ -28,7 +28,8 @@ public interface ITaxOpportunityDetector
     /// <summary>"name@version" — stored with each opportunity so it is known which logic produced it.</summary>
     string Key { get; }
 
-    IEnumerable<OpportunityCandidate> Detect(TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue);
+    /// <summary>Runs with the engine version that produced the calculation being examined.</summary>
+    IEnumerable<OpportunityCandidate> Detect(ITaxEngine engine, TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue);
 }
 
 public static class TaxOpportunityDetectors
@@ -42,22 +43,29 @@ public static class TaxOpportunityDetectors
 /// When an outbound operation has conditional discounts on taxed lines, the alternative is to grant
 /// them unconditionally — a commercial change (the condition goes away), lawful only if the discount
 /// really is on the document and no longer depends on a later event.
+/// The impact is a <see cref="TaxOpportunityType.CalculatedTaxReduction"/>: the IBS/CBS calculated on
+/// the document goes down. It is never presented as a definitive saving — in 2026 the amount is
+/// compensable or waived (art. 348), and whether it becomes an economic gain in any period is for a
+/// tax professional to assess, not for the detector.
 /// </summary>
 public sealed class UnconditionalDiscountDetector : ITaxOpportunityDetector
 {
-    public const string DetectorKey = "unconditional-discount@1";
+    /// <summary>v2: same logic and scenarios as v1; the impact is a calculated-tax reduction, not a saving.</summary>
+    public const string DetectorKey = "unconditional-discount@2";
+    /// <summary>Opportunities stored by v1 (classified as a saving) keep their key and their guardrails.</summary>
+    public const string DetectorKeyV1 = "unconditional-discount@1";
     public const string RequirementOnDocument = "on-document";
     public const string RequirementNoLaterEvent = "no-later-event";
     public const string RequirementCommercialTerms = "commercial-terms";
 
     public string Key => DetectorKey;
 
-    public IEnumerable<OpportunityCandidate> Detect(TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue)
+    public IEnumerable<OpportunityCandidate> Detect(ITaxEngine engine, TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue)
     {
         if (input.Direction != Nexo.Domain.Modules.TaxIntelligence.TaxDirection.Outbound) yield break;
         if (input.Lines.All(l => l.ConditionalDiscount <= 0)) yield break;
 
-        var results = TaxSimulator.Compare(input,
+        var results = TaxSimulator.Compare(engine, input,
             [new TaxScenario("Desconto incondicional no documento fiscal", ConvertConditionalDiscounts: true)], catalogue);
         var current = results[0];
         var proposed = results[1];
@@ -69,6 +77,7 @@ public sealed class UnconditionalDiscountDetector : ITaxOpportunityDetector
         var caveats = new List<string>
         {
             "Muda a condição comercial: o desconto deixa de depender de pagamento antecipado, meta ou outro evento futuro.",
+            "É redução do IBS/CBS calculado sobre a operação, não economia definitiva: o efeito econômico depende do período e de revisão profissional.",
         };
         if (current.NoCashEffectInPeriod)
             caveats.Add("Em 2026 o IBS e a CBS calculados são compensáveis com PIS/Cofins ou dispensados para quem cumpre as obrigações acessórias (LC 214/2025, art. 348): a redução aparece no valor destacado, não no caixa do período.");
@@ -77,10 +86,10 @@ public sealed class UnconditionalDiscountDetector : ITaxOpportunityDetector
 
         yield return new OpportunityCandidate(
             DetectorKey,
-            TaxOpportunityType.TaxSaving,
+            TaxOpportunityType.CalculatedTaxReduction,
             Title: "Conceder o desconto como incondicional",
             Summary: FormattableString.Invariant(
-                $"R$ {conditional:0.00} de desconto concedido sob condição integram a base do IBS e da CBS. Concedido sem condição e destacado no documento fiscal, sai da base: {impact:0.00} a menos de tributo nesta operação."),
+                $"R$ {conditional:0.00} de desconto concedido sob condição integram a base do IBS e da CBS. Concedido sem condição e destacado no documento fiscal, sai da base: redução do IBS/CBS calculado de {impact:0.00} nesta operação."),
             current, proposed, impact,
             TaxRiskLevel.Low,
             Confidence: allInformed ? 90 : 70,
@@ -108,7 +117,8 @@ public static class TaxGuardrails
         if (met) return null;
         return (detectorKey, requirementCode) switch
         {
-            (UnconditionalDiscountDetector.DetectorKey, UnconditionalDiscountDetector.RequirementNoLaterEvent) => new Violation(
+            (UnconditionalDiscountDetector.DetectorKey or UnconditionalDiscountDetector.DetectorKeyV1,
+                UnconditionalDiscountDetector.RequirementNoLaterEvent) => new Violation(
                 ProhibitedStructure.DocumentMismatch,
                 "O desconto ainda depende de evento posterior: destacá-lo como incondicional faria o documento fiscal dizer algo diferente da operação real."),
             _ => null,

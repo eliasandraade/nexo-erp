@@ -46,7 +46,11 @@ public class TaxOpportunitiesController : ControllerBase
     public async Task<ActionResult<TaxOpportunityDto>> Reject(Guid id, [FromBody] RejectOpportunityRequest request, CancellationToken ct)
         => Ok(await _service.RejectAsync(id, request, ct));
 
-    /// <summary>Approves and records the decision dossier. Diretoria only; high risk must be acknowledged.</summary>
+    /// <summary>
+    /// Approves and records the decision dossier. Diretoria only; high risk must be acknowledged; whoever
+    /// analysed alone must justify approving it; with the production policy, every rule behind it must be
+    /// professionally approved.
+    /// </summary>
     [HttpPost("opportunities/{id:guid}/approve")]
     [Authorize(Roles = AppRoles.Directors)]
     public async Task<ActionResult<TaxOpportunityDto>> Approve(Guid id, [FromBody] ApproveOpportunityRequest request, CancellationToken ct)

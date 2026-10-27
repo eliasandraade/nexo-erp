@@ -77,4 +77,5 @@ public static class TaxAuditActions
     public const string RuleCreated = "tax_rule_created";
     public const string RuleVersionCreated = "tax_rule_version_created";
     public const string RuleVersionStatusChanged = "tax_rule_version_status_changed";
+    public const string RuleVersionProfessionalReview = "tax_rule_version_professional_review";
 }

@@ -7529,6 +7529,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(10)")
                         .HasColumnName("risk");
 
+                    b.Property<string>("SelfApprovalJustification")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("self_approval_justification");
+
                     b.Property<Guid>("StoreId")
                         .HasColumnType("uuid")
                         .HasColumnName("store_id");
@@ -7604,6 +7609,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("reference");
 
+                    b.Property<string>("TextVerification")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("text_verification");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -7619,12 +7630,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("url");
-
-                    b.Property<string>("Verification")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("character varying(20)")
-                        .HasColumnName("verification");
 
                     b.Property<DateTime?>("VerifiedAt")
                         .HasColumnType("timestamptz")
@@ -7685,6 +7690,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(80)")
                         .HasColumnName("detector_key");
 
+                    b.Property<string>("EngineVersion")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("engine_version");
+
                     b.Property<decimal>("EstimatedImpact")
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("estimated_impact");
@@ -7704,6 +7715,15 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("rejection_reason");
+
+                    b.Property<Guid?>("ReviewStartedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("review_started_by_id");
+
+                    b.Property<string>("ReviewStartedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("review_started_by_name");
 
                     b.Property<DateTime?>("ReviewedAt")
                         .HasColumnType("timestamptz")
@@ -7970,9 +7990,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<bool?>("AccessoryObligationsCompliant")
-                        .HasColumnType("boolean")
-                        .HasColumnName("accessory_obligations_compliant");
+                    b.Property<string>("AccessoryObligations")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("accessory_obligations");
+
+                    b.Property<string>("AccessoryObligationsEvidence")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("accessory_obligations_evidence");
 
                     b.Property<List<string>>("Benefits")
                         .IsRequired()
@@ -8248,6 +8275,26 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<int>("Priority")
                         .HasColumnType("integer")
                         .HasColumnName("priority");
+
+                    b.Property<string>("ProfessionalReview")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("professional_review");
+
+                    b.Property<string>("ProfessionalReviewNotes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("professional_review_notes");
+
+                    b.Property<DateTime?>("ProfessionalReviewedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("professional_reviewed_at");
+
+                    b.Property<string>("ProfessionalReviewedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("professional_reviewed_by");
 
                     b.Property<string>("ResultJson")
                         .IsRequired()

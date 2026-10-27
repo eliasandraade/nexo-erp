@@ -7,6 +7,8 @@ namespace Nexo.Domain.Modules.TaxIntelligence;
 /// A provision of law a rule rests on (platform-wide, no tenant). The excerpt is the literal text
 /// of the official source, so a decision can be explained years later even if the page changes.
 /// The text of a verified source never changes: a new wording of the law is a new source.
+/// "Verified" means the excerpt matches the official text — never that a rule built on it was
+/// professionally approved (that is <see cref="TaxRuleVersion.ProfessionalReview"/>).
 /// </summary>
 public class TaxLegalSource : BaseEntity
 {
@@ -22,12 +24,12 @@ public class TaxLegalSource : BaseEntity
     public string Url { get; private set; } = string.Empty;
     public string Excerpt { get; private set; } = string.Empty;
     public DateOnly? PublishedOn { get; private set; }
-    public LegalSourceVerification Verification { get; private set; }
+    public TextVerificationStatus TextVerification { get; private set; }
     public DateTime? VerifiedAt { get; private set; }
     public string? VerifiedBy { get; private set; }
     public string? Notes { get; private set; }
 
-    public bool IsVerified => Verification == LegalSourceVerification.Verified;
+    public bool IsTextVerified => TextVerification == TextVerificationStatus.Verified;
 
     public static TaxLegalSource Create(
         string code, LegalSourceKind kind, string title, string reference, string url, string excerpt,
@@ -47,16 +49,16 @@ public class TaxLegalSource : BaseEntity
             Url = url.Trim(),
             Excerpt = excerpt.Trim(),
             PublishedOn = publishedOn,
-            Verification = LegalSourceVerification.Unverified,
+            TextVerification = TextVerificationStatus.Unverified,
             Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim(),
         };
     }
 
-    /// <summary>Records that someone compared the excerpt with the official text.</summary>
+    /// <summary>Records that someone compared the excerpt with the official text (text only, not a legal opinion).</summary>
     public void MarkVerified(string verifiedBy, DateTime verifiedAtUtc)
     {
         if (string.IsNullOrWhiteSpace(verifiedBy)) throw new DomainException("Informe quem conferiu a fonte.");
-        Verification = LegalSourceVerification.Verified;
+        TextVerification = TextVerificationStatus.Verified;
         VerifiedBy = verifiedBy.Trim();
         VerifiedAt = verifiedAtUtc;
         SetUpdatedAt();

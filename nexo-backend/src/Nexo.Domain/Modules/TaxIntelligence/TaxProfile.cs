@@ -29,12 +29,12 @@ public class TaxProfile : StoreEntity
     public TaxProfileVersion AddVersion(
         DateOnly validFrom, TaxRegime regime, string state, string cityIbgeCode, string primaryCnae,
         IReadOnlyList<string> secondaryCnaes, IReadOnlyList<string> specialRegimes, IReadOnlyList<string> benefits,
-        bool? accessoryObligationsCompliant, string reason, Guid createdById, string createdByName)
+        AccessoryObligationsStatus accessoryObligations, string? accessoryObligationsEvidence, string reason, Guid createdById, string createdByName)
     {
         var number = _versions.Count == 0 ? 1 : _versions.Max(v => v.VersionNumber) + 1;
         var version = new TaxProfileVersion(
             TenantId, Id, number, validFrom, regime, state, cityIbgeCode, primaryCnae, secondaryCnaes,
-            specialRegimes, benefits, accessoryObligationsCompliant, reason, createdById, createdByName);
+            specialRegimes, benefits, accessoryObligations, accessoryObligationsEvidence, reason, createdById, createdByName);
         _versions.Add(version);
         SetUpdatedAt();
         return version;
@@ -53,9 +53,12 @@ public class TaxProfileVersion : StoreEntity
     internal TaxProfileVersion(
         Guid tenantId, Guid profileId, int versionNumber, DateOnly validFrom, TaxRegime regime, string state,
         string cityIbgeCode, string primaryCnae, IReadOnlyList<string> secondaryCnaes, IReadOnlyList<string> specialRegimes,
-        IReadOnlyList<string> benefits, bool? accessoryObligationsCompliant, string reason, Guid createdById, string createdByName)
+        IReadOnlyList<string> benefits, AccessoryObligationsStatus accessoryObligations, string? accessoryObligationsEvidence, string reason,
+        Guid createdById, string createdByName)
         : base(tenantId)
     {
+        if (accessoryObligations == AccessoryObligationsStatus.VerifiedCompliant && string.IsNullOrWhiteSpace(accessoryObligationsEvidence))
+            throw new DomainException("Para marcar como verificado, informe o que foi conferido (a evidência).", "tax_profile_compliance_evidence");
         if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe o motivo da nova versão do perfil.");
         if (state.Length != 2) throw new DomainException("UF inválida.");
         if (cityIbgeCode.Length != 7 || !cityIbgeCode.All(char.IsAsciiDigit)) throw new DomainException("Código IBGE do município inválido.");
@@ -71,7 +74,8 @@ public class TaxProfileVersion : StoreEntity
         SecondaryCnaes = secondaryCnaes.Distinct().ToList();
         SpecialRegimes = specialRegimes.Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToList();
         Benefits = benefits.Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToList();
-        AccessoryObligationsCompliant = accessoryObligationsCompliant;
+        AccessoryObligations = accessoryObligations;
+        AccessoryObligationsEvidence = string.IsNullOrWhiteSpace(accessoryObligationsEvidence) ? null : accessoryObligationsEvidence.Trim();
         Reason = reason.Trim();
         CreatedById = createdById;
         CreatedByName = createdByName;
@@ -90,10 +94,24 @@ public class TaxProfileVersion : StoreEntity
     /// <summary>Tax benefits the establishment declares, as free text with their legal basis.</summary>
     public List<string> Benefits { get; private set; } = [];
     /// <summary>
-    /// Whether the establishment fulfils the IBS/CBS ancillary obligations — the condition of the
-    /// 2026 collection waiver (LC 214/2025, art. 348, § 1º). Null = not declared.
+    /// IBS/CBS ancillary obligations — the condition of the 2026 collection waiver (LC 214/2025, art. 348,
+    /// § 1º). A declaration is not a verification; which evidence proves compliance is pending
+    /// professional review, so the evidence is recorded as given.
     /// </summary>
-    public bool? AccessoryObligationsCompliant { get; private set; }
+    public AccessoryObligationsStatus AccessoryObligations { get; private set; } = AccessoryObligationsStatus.Unknown;
+    /// <summary>What was checked to mark compliance as verified (required for VerifiedCompliant).</summary>
+    public string? AccessoryObligationsEvidence { get; private set; }
+
+    /// <summary>
+    /// The compliance fact handed to the engine: only a verified status counts as compliant; a mere
+    /// declaration or no information stays unknown (the rule that needs it is not applied, and says why).
+    /// </summary>
+    public bool? ComplianceForRules => AccessoryObligations switch
+    {
+        AccessoryObligationsStatus.VerifiedCompliant => true,
+        AccessoryObligationsStatus.NonCompliant => false,
+        _ => null,
+    };
     public string Reason { get; private set; } = string.Empty;
     public Guid CreatedById { get; private set; }
     public string CreatedByName { get; private set; } = string.Empty;

@@ -45,4 +45,12 @@ public class PlatformTaxCatalogController : ControllerBase
     [HttpPost("rule-versions/{id:guid}/status")]
     public async Task<ActionResult<TaxRuleVersionDto>> ChangeStatus(Guid id, [FromBody] ChangeTaxRuleVersionStatusRequest request, CancellationToken ct)
         => Ok(await _catalog.ChangeStatusAsync(id, request, ct));
+
+    /// <summary>
+    /// Records a tax professional's review of a version (Pending/Approved/ChangesRequired/Rejected).
+    /// Separate from the technical status: it never activates or deactivates anything. Audited.
+    /// </summary>
+    [HttpPost("rule-versions/{id:guid}/professional-review")]
+    public async Task<ActionResult<TaxRuleVersionDto>> RecordProfessionalReview(Guid id, [FromBody] RecordProfessionalReviewRequest request, CancellationToken ct)
+        => Ok(await _catalog.RecordProfessionalReviewAsync(id, request, ct));
 }
