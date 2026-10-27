@@ -200,10 +200,14 @@ public class TaxOpportunity : StoreEntity
         SetUpdatedAt();
     }
 
-    /// <summary>People who analysed the opportunity: who opened the review, answered requirements or added evidence.</summary>
+    /// <summary>
+    /// People who took part in the analysis: who opened the review, answered requirements, added evidence
+    /// or accepted/rejected evidence. None of them can be an independent approver.
+    /// </summary>
     public IReadOnlySet<Guid> Analysts => new[] { ReviewStartedById }
         .Concat(_requirements.Select(r => r.AnsweredById))
         .Concat(_evidence.Select(e => (Guid?)e.AddedById))
+        .Concat(_evidence.Select(e => e.ReviewedById))
         .Where(id => id is not null).Select(id => id!.Value).ToHashSet();
 
     /// <summary>Whether this approver did the whole analysis alone (segregation of duties).</summary>

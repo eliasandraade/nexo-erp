@@ -224,6 +224,8 @@ public sealed class TaxOpportunityService
         var compliance = await _compliance.InForceAsync(referenceDate, ct);
 
         var commercial = o.Evidence.Where(x => x.Type == TaxEvidenceType.CommercialInstrument).ToList();
+        var original = engine.Canonical.Deserialize<ScenarioResult>(o.CurrentScenarioJson);
+        var proposed = engine.Canonical.Deserialize<ScenarioResult>(o.ProposedScenarioJson);
         var pendingIssues = new List<string> { "Verificação da execução pendente: o documento fiscal da operação ainda não foi conferido." };
         if (pendingReview.Count > 0) pendingIssues.Add($"Revisão tributária pendente: {string.Join(", ", pendingReview)}.");
         if (compliance?.Status != ComplianceAssessmentStatus.Verified)
@@ -252,6 +254,15 @@ public sealed class TaxOpportunityService
             facts = calc is null ? null : new { calc.Id, calc.ReferenceDate, calc.InputHash, calc.RuleSetHash, calc.OutputHash, calc.EngineVersion, input = TaxJson.Element(calc.InputJson) },
             originalScenario = TaxJson.Element(o.CurrentScenarioJson),
             proposedScenario = TaxJson.Element(o.ProposedScenarioJson),
+            // Arithmetic between the two stored scenarios — not a statement about money saved.
+            impactAnalysis = new
+            {
+                nature = o.ImpactNature.ToString(),
+                baseDifference = original.Output.TotalBase - proposed.Output.TotalBase,
+                calculatedTaxDifference = original.TaxTotal - proposed.TaxTotal,
+                noCashEffectInPeriod = original.NoCashEffectInPeriod,
+                financialEffect = FinancialEffectNotDetermined,
+            },
             rules = calc?.Executions.Where(e => e.Matched).DistinctBy(e => e.RuleVersionId)
                 .Select(e => new { e.RuleKey, e.RuleVersion, e.RuleVersionId, e.ContentHash, e.LegalSourceCodes }).ToList(),
             legalSources = sources,
@@ -290,6 +301,7 @@ public sealed class TaxOpportunityService
             approvedAt = now,
             makerChecker = new { required = approval.ToString(), materialityThreshold = _policy.MaterialityThreshold, selfApproval, justification },
             engineVersion = o.EngineVersion,
+            canonicalVersion = engine.Canonical.Id,
         };
         var dossierJson = System.Text.Json.JsonSerializer.Serialize(dossier, engine.Canonical.Options);
         var decision = TaxDecision.Create(_tenant.Id, o.Id, o.Title, dossierJson, engine.Canonical.Hash(dossierJson), o.Risk,
@@ -303,6 +315,10 @@ public sealed class TaxOpportunityService
         _log.LogInformation("Tax opportunity {OpportunityId} approved; decision {DecisionId}", o.Id, decision.Id);
         return await GetAsync(id, ct);
     }
+
+    /// <summary>What the dossier says about money: the calculated-tax difference is not a demonstrated financial effect.</summary>
+    public const string FinancialEffectNotDetermined =
+        "Não determinado: a diferença é do IBS/CBS calculado entre os cenários; o efeito financeiro depende do período (compensação ou dispensa em 2026), dos preços praticados e de revisão profissional.";
 
     /// <summary>Integrity, not truth: what the hashes in a dossier do and do not show.</summary>
     public const string IntegrityNotice =
@@ -346,6 +362,7 @@ public sealed class TaxOpportunityService
             verifiedBy = new { id = _audit.UserId, name = _audit.UserName },
             verifiedAt = now,
             engineVersion = o.EngineVersion,
+            canonicalVersion = engine.Canonical.Id,
         };
         var json = System.Text.Json.JsonSerializer.Serialize(dossier, engine.Canonical.Options);
         var verification = TaxExecutionVerification.Create(_tenant.Id, o.Id, decision.Id, r.Outcome, r.FiscalDocumentReference,
