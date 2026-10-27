@@ -83,7 +83,7 @@ jobs:
           /d:sonar.token="${SONAR_TOKEN}"
           /d:sonar.projectBaseDir="${GITHUB_WORKSPACE}"
           /d:sonar.cs.vscoveragexml.reportsPaths="nexo-backend/TestResults/**/*.xml"
-          /d:sonar.javascript.lcov.reportsPaths="nexo-main/coverage/lcov.info"
+          /d:sonar.javascript.lcov.reportPaths="nexo-main/coverage/lcov.info"
           /d:sonar.coverage.exclusions="**/Persistence/Migrations/**,nexo-main/e2e/**,**/*.test.ts,**/*.test.tsx,nexo-main/src/**/test/**,nexo-backend/tools/**"
           /d:sonar.cpd.exclusions="**/Persistence/Migrations/**"
           /d:sonar.qualitygate.wait=true

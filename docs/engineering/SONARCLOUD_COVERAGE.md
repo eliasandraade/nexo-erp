@@ -12,7 +12,7 @@ Duas causas, ambas fora do código de produto:
 | Parte | Ferramenta | Relatório | Onde |
 |---|---|---|---|
 | Backend | Microsoft Code Coverage (vem com `Microsoft.NET.Test.Sdk`; nenhum pacote novo) | XML do Visual Studio — o formato que o SonarCloud importa para C# (`sonar.cs.vscoveragexml.reportsPaths`) | `nexo-backend/TestResults/{unit,integration}/**/*.xml`; artefato `backend-coverage` e tabela no resumo do job `backend-tests` |
-| Frontend | `@vitest/coverage-v8` (mesma versão do Vitest) | `lcov` (`sonar.javascript.lcov.reportsPaths`) + resumo em texto | `nexo-main/coverage/lcov.info`; artefato `frontend-coverage` no `frontend-ci` |
+| Frontend | `@vitest/coverage-v8` (mesma versão do Vitest) | `lcov` (`sonar.javascript.lcov.reportPaths`) + resumo em texto | `nexo-main/coverage/lcov.info`; artefato `frontend-coverage` no `frontend-ci` |
 
 - Backend: `nexo-backend/coverage.runsettings` mede só os assemblies de produto (`Nexo.Api`, `Application`, `Domain`, `Infrastructure`, `Shared`), nunca os de teste; migrations do EF ficam fora (são scripts gerados).
 - Frontend: `npm run test:coverage`; ficam fora os próprios testes, `src/test` e o kit `components/ui` (shadcn).
@@ -40,6 +40,10 @@ A exclusão das migrations do cálculo de duplicação foi feita na interface (a
 - O job `sonarcloud` deixa de mostrar o aviso "SONAR_TOKEN not set" e termina com "ANALYSIS SUCCESSFUL".
 - No PR, o comentário do SonarCloud passa a mostrar cobertura diferente de 0,0% e `new_lines_to_cover > 0`.
 - Na primeira análise, conferir se os arquivos TypeScript do `nexo-main` aparecem no projeto (o scanner do .NET analisa arquivos fora dos `.csproj` a partir do `sonar.projectBaseDir`). Se não aparecerem, ajustar `sonar.sources`/`sonar.inclusions` no passo *Begin analysis*.
+
+### Atenção ao nome das propriedades
+
+C# usa `sonar.cs.vscoveragexml.reportsPaths` (plural); TypeScript usa `sonar.javascript.lcov.reportPaths` (singular). Com o nome errado o sensor de cobertura TS nem é ativado e o frontend aparece com 0%. O `lcov` do Vitest traz caminhos relativos a `nexo-main`; o workflow os prefixa porque a análise roda na raiz do repositório.
 
 ## Cobertura medida (26/10/2026, branch `feat/tax-intelligence-v1`)
 
