@@ -42,7 +42,7 @@ módulo operacional (venda, proposta manual, compra futura)
 perfil vigente na data (TaxProfileVersion) ───┤
                                               ▼
                      TaxEngineInput (canônico, hash)
-catálogo: versões que cobrem a data ─► TaxEngine.Run ─► TaxEngineOutput (hash)
+catálogo: versões que cobrem a data ─► registry.Current.Run ─► TaxEngineOutput (hash)
                                               │
        TaxTransaction + TaxCalculation + TaxComponent + TaxRuleExecution (imutáveis)
                                               │
@@ -66,7 +66,7 @@ catálogo: versões que cobrem a data ─► TaxEngine.Run ─► TaxEngineOutpu
 3. Arts. 343 e 346 — alíquotas de teste de 2026: IBS estadual 0,1%, CBS 0,9%.
 4. Art. 348 — em 2026 o recolhido é compensado com PIS/Cofins (I e II); as alíquotas têm redução nos regimes diferenciados e outras bases nos específicos (III, a e b); não se aplicam ao Simples Nacional (III, c); recolhimento dispensado para quem cumpre as obrigações acessórias (§ 1º).
 
-Como o art. 348 torna o efeito de caixa de 2026 nulo ou compensável, o detector **não promete dinheiro**: a oportunidade é do tipo `TaxSaving` (redução definitiva da base quando a alíquota for cheia), mas traz a ressalva de que em 2026 a diferença aparece no valor destacado, não no caixa. O cenário de 2027+ só pode ser simulado com hipótese de alíquota explícita, porque a alíquota de referência depende de resolução do Senado (art. 349).
+Como o art. 348 torna o efeito de caixa de 2026 nulo ou compensável, o detector **não promete dinheiro**: a oportunidade é do tipo `CalculatedTaxReduction` (natureza `CalculatedTaxReduction` — "redução do IBS/CBS calculado"), **nunca** `TaxSaving`/`DefinitiveSaving`, e não entra em `potentialSavings` no painel (tem o próprio total, `potentialCalculatedTaxReductions`). Se essa redução vira economia em algum período é avaliação de profissional, não do detector; a ressalva de 2026 continua. O detector passou a `unconditional-discount@2` (mesma lógica e cenários; só a natureza mudou); oportunidades `@1` mantêm a chave e o guardrail. O cenário de 2027+ só pode ser simulado com hipótese de alíquota explícita, porque a alíquota de referência depende de resolução do Senado (art. 349).
 
 Fluxo ponta a ponta (coberto por teste de integração):
 proposta com desconto condicional → `TaxTransaction` → cálculo base (desconto na base) → detector → cenário alternativo (desconto incondicional) → comparação (−R$ 0,50 em R$ 50 de desconto) → fundamentação (art. 12) → requisitos (consta da nota; não depende de evento posterior; condição comercial retirada) → revisão → aprovação → `TaxDecision`.

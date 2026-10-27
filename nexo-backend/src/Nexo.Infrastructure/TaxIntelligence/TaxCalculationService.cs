@@ -14,15 +14,21 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 /// Official calculations: facts → canonical transaction → engine → stored result with its full trace.
 /// The calculation key (engine version + input hash + rule-set hash) makes it idempotent: the same
 /// facts under the same rules return the stored calculation. After a new calculation the opportunity
-/// detectors run — they only propose, nothing is applied.
+/// detectors run — they only propose, nothing is applied. New calculations use the current engine; a
+/// stored one is always read, re-detected and verified with the exact engine version it records.
+/// Before anything runs, the supported-operation matrix of V1 (<see cref="TaxCoveragePolicyV1"/>)
+/// decides whether the fact pattern is covered: if not, the attempt is refused with its reasons and
+/// recorded — it is never calculated as zero. A system calculation states the rules and the data it used.
 /// </summary>
 public sealed class TaxCalculationService
 {
     private const int MaxList = 200;
 
     private readonly NexoDbContext _db;
+    private readonly TaxEngineRegistry _engines;
     private readonly ICurrentTenant _tenant;
     private readonly TaxProfileService _profiles;
+    private readonly TaxComplianceService _compliance;
     private readonly TaxCatalogService _catalog;
     private readonly TaxOpportunityService _opportunities;
     private readonly SaleTaxFactsReader _sales;
@@ -30,12 +36,15 @@ public sealed class TaxCalculationService
     private readonly ILogger<TaxCalculationService> _log;
 
     public TaxCalculationService(
-        NexoDbContext db, ICurrentTenant tenant, TaxProfileService profiles, TaxCatalogService catalog,
+        NexoDbContext db, TaxEngineRegistry engines, ICurrentTenant tenant, TaxProfileService profiles, TaxComplianceService compliance,
+        TaxCatalogService catalog,
         TaxOpportunityService opportunities, SaleTaxFactsReader sales, TaxAuditTrail audit, ILogger<TaxCalculationService> log)
     {
         _db = db;
+        _engines = engines;
         _tenant = tenant;
         _profiles = profiles;
+        _compliance = compliance;
         _catalog = catalog;
         _opportunities = opportunities;
         _sales = sales;
@@ -49,16 +58,25 @@ public sealed class TaxCalculationService
     public async Task<TaxCalculationDto> CalculateSaleAsync(Guid saleId, CancellationToken ct)
         => await RunAsync(await _sales.ReadAsync(saleId, ct), ct);
 
-    /// <summary>Builds the engine input of an operation on its date: the facts plus the profile version in force.</summary>
-    public async Task<(TaxEngineInput Input, TaxProfileVersion Profile)> BuildInputAsync(TaxOperationRequest op, CancellationToken ct)
+    /// <summary>
+    /// Builds the engine input of an operation on its date: the facts, the profile version in force and
+    /// the compliance fact of the ancillary-obligation assessment in force (only a verification counts).
+    /// </summary>
+    public async Task<(TaxEngineInput Input, TaxProfileVersion Profile, TaxComplianceAssessment? Compliance)> BuildInputAsync(
+        TaxOperationRequest op, CancellationToken ct)
     {
         var profile = await _profiles.GetInForceAsync(op.OperationDate, ct);
-        return (ToInput(op, profile), profile);
+        var compliance = await _compliance.InForceAsync(op.OperationDate, ct);
+        return (ToInput(op, profile, compliance?.ForRules), profile, compliance);
     }
 
-    public static TaxEngineInput ToInput(TaxOperationRequest op, TaxProfileVersion profile) => new(
+    /// <summary>Preview of the supported-operation matrix for an operation, without calculating anything.</summary>
+    public async Task<TaxCoverageDecision> CoverageAsync(TaxOperationRequest op, CancellationToken ct)
+        => TaxCoveragePolicyV1.Assess(op, (await _profiles.GetInForceAsync(op.OperationDate, ct)).Regime);
+
+    public static TaxEngineInput ToInput(TaxOperationRequest op, TaxProfileVersion profile, bool? complianceForRules) => new(
         op.OperationDate,
-        new TaxEngineProfile(profile.Id, profile.Regime, profile.State, profile.CityIbgeCode, profile.AccessoryObligationsCompliant),
+        new TaxEngineProfile(profile.Id, profile.Regime, profile.State, profile.CityIbgeCode, complianceForRules),
         op.Direction,
         op.CounterpartyRegime,
         ToLines(op.Lines));
@@ -72,42 +90,49 @@ public sealed class TaxCalculationService
     private async Task<TaxCalculationDto> RunAsync(TaxOperationFacts facts, CancellationToken ct)
     {
         var op = facts.Operation;
-        var (input, profile) = await BuildInputAsync(op, ct);
-        var catalogue = await _catalog.LoadForDateAsync(op.OperationDate, ct);
+        var (input, profile, compliance) = await BuildInputAsync(op, ct);
+        var coverage = TaxCoveragePolicyV1.Assess(op, profile.Regime);
+        if (!coverage.Supported) await RefuseAsync(facts, coverage, ct);
+        var engine = _engines.Current;
+        var canonical = engine.Canonical;
+        var catalogue = await _catalog.LoadForDateAsync(op.OperationDate, canonical, ct);
 
-        var inputJson = TaxCanonical.Serialize(input);
-        var inputHash = TaxCanonical.Hash(inputJson);
-        var ruleSetHash = TaxEngine.RuleSetHash(TaxEngine.SelectActive(catalogue, op.OperationDate));
+        var inputJson = canonical.Serialize(input);
+        var inputHash = canonical.Hash(inputJson);
+        var ruleSetHash = engine.RuleSetHash(engine.SelectActive(catalogue, op.OperationDate));
         // Same facts (all of them, description included) + same rules + same engine = the same calculation.
-        var factsHash = TaxCanonical.HashOf(op);
-        var key = TaxCanonical.Hash($"{TaxEngine.Version}|{inputHash}|{ruleSetHash}|{facts.Source}|{facts.SourceId}|{factsHash}");
+        var factsHash = canonical.HashOf(op);
+        var key = canonical.Hash($"{engine.Version}|{inputHash}|{ruleSetHash}|{facts.Source}|{facts.SourceId}|{factsHash}");
 
         var existing = await _db.TaxCalculations.AsNoTracking().FirstOrDefaultAsync(c => c.CalculationKey == key, ct);
-        if (existing is not null) return await GetAsync(existing.Id, reused: true, ct);
+        if (existing is not null) return await GetAsync(existing.Id, reused: true, ct, coverage);
 
-        var output = TaxEngine.Run(input, catalogue);
-        var outputJson = TaxCanonical.Serialize(output);
+        var output = engine.Run(input, catalogue);
+        var outputJson = canonical.Serialize(output);
 
         var transaction = TaxTransaction.Create(_tenant.Id, facts.Source, facts.SourceId, op.Direction, op.OperationDate,
             op.Description, op.CounterpartyRegime, op.CounterpartyState, factsHash, _audit.UserId);
+        var t = op.Timing!;   // a supported operation always states its timing
+        transaction.SetTiming(t.SupplyPattern, t.DocumentDate, t.SupplyDate, t.PaymentOrAdvanceDate, t.CompetencePeriod, t.ExecutionFrom, t.ExecutionTo);
         foreach (var (l, i) in op.Lines.Select((l, i) => (l, i)))
             transaction.AddLine(i + 1, l.ItemKind, l.Description, l.Ncm, l.Quantity, l.GrossAmount, l.UnconditionalDiscount,
-                l.ConditionalDiscount, l.Surcharges, l.ExcludedTaxes ?? 0m, l.ExcludedTaxes is not null, l.SpecialTreatment);
+                l.ConditionalDiscount, l.Surcharges, l.ExcludedTaxes ?? 0m, l.ExcludedTaxes is not null, l.SpecialTreatment, l.Nbs, l.CClassTrib);
 
-        var calc = TaxCalculation.Create(_tenant.Id, transaction.Id, profile.Id, op.OperationDate, TaxEngine.Version,
-            inputJson, inputHash, ruleSetHash, key, outputJson, TaxCanonical.Hash(outputJson), output.TotalBase, output.TotalTax, _audit.UserId);
+        var calc = TaxCalculation.Create(_tenant.Id, transaction.Id, profile.Id, op.OperationDate, engine.Version,
+            inputJson, inputHash, ruleSetHash, key, outputJson, canonical.Hash(outputJson), output.TotalBase, output.TotalTax, _audit.UserId);
         foreach (var line in output.Lines)
             foreach (var c in line.Components)
                 calc.AddComponent(line.Index, c.Tax, c.Base, c.RatePercent, c.Amount, c.RuleVersionId);
         foreach (var e in output.Executions)
             calc.AddExecution(e.RuleVersionId, e.RuleKey, e.RuleVersion, e.ContentHash, e.LineIndex, e.Matched,
-                TaxCanonical.Serialize(e.Conditions), e.Output, string.Join(",", e.LegalSourceCodes));
+                canonical.Serialize(e.Conditions), e.Output, string.Join(",", e.LegalSourceCodes));
 
         _db.TaxTransactions.Add(transaction);
         _db.TaxCalculations.Add(calc);
         _audit.Record(TaxAuditActions.CalculationCreated, "Calculation", calc.Id,
             $"Cálculo de {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}: base {output.TotalBase:N2}, tributos {output.TotalTax:N2}.",
-            new { source = facts.Source.ToString(), facts.SourceId, inputHash, ruleSetHash, engine = TaxEngine.Version, rules = output.Executions.Count });
+            new { source = facts.Source.ToString(), facts.SourceId, inputHash, ruleSetHash, engine = engine.Version, rules = output.Executions.Count,
+                coverage = coverage.PolicyVersion, complianceAssessmentId = compliance?.Id });
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -117,15 +142,32 @@ public sealed class TaxCalculationService
             // The same calculation was stored by a concurrent request: return that one.
             _db.ChangeTracker.Clear();
             var stored = await _db.TaxCalculations.AsNoTracking().FirstAsync(c => c.CalculationKey == key, ct);
-            return await GetAsync(stored.Id, reused: true, ct);
+            return await GetAsync(stored.Id, reused: true, ct, coverage);
         }
 
         _log.LogInformation(
             "Tax calculation {CalculationId} from {Source}: {RuleCount} rule runs, {ComponentCount} components, engine {EngineVersion}, input {InputHash}",
-            calc.Id, facts.Source, output.Executions.Count, calc.Components.Count, TaxEngine.Version, inputHash);
+            calc.Id, facts.Source, output.Executions.Count, calc.Components.Count, engine.Version, inputHash);
 
-        await _opportunities.DetectAsync(calc.Id, input, catalogue, ct);
-        return await GetAsync(calc.Id, reused: false, ct);
+        await _opportunities.DetectAsync(calc.Id, engine, input, catalogue, ct);
+        return await GetAsync(calc.Id, reused: false, ct, coverage);
+    }
+
+    /// <summary>
+    /// Refuses an operation outside the V1 recorte: records the attempt and its reasons in the audit
+    /// trail, then answers 422 with each reason. Nothing is calculated — never a zero.
+    /// </summary>
+    private async Task RefuseAsync(TaxOperationFacts facts, TaxCoverageDecision coverage, CancellationToken ct)
+    {
+        var op = facts.Operation;
+        var reasons = coverage.Findings.Select(f => f.LineIndex is null ? f.Message : $"Linha {f.LineIndex}: {f.Message}").ToList();
+        _audit.Record(TaxAuditActions.CalculationRefused, "Calculation", Guid.NewGuid(),
+            $"Cálculo recusado ({coverage.Status}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
+            new { source = facts.Source.ToString(), facts.SourceId, status = coverage.Status.ToString(), coverage.PolicyVersion, findings = coverage.Findings });
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Tax calculation refused from {Source}: {Status} ({Codes})", facts.Source, coverage.Status,
+            string.Join(",", coverage.Findings.Select(f => f.Code)));
+        throw new DomainException($"{TaxCoveragePolicyV1.NotSupportedMessage} ({coverage.Status})", "tax_operation_not_supported", reasons);
     }
 
     /// <summary>Runs the detectors again on a stored calculation (e.g. after a new detector ships). Idempotent.</summary>
@@ -133,26 +175,23 @@ public sealed class TaxCalculationService
     {
         var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Cálculo", id);
-        var input = TaxCanonical.Deserialize<TaxEngineInput>(calc.InputJson);
-        // The scenarios must come from the same rules as the calculation (and the dossier that may follow).
-        return await _opportunities.DetectAsync(calc.Id, input, await RulesAsThenAsync(calc, ct), ct);
+        // Same engine and same rules as the calculation (and the dossier that may follow).
+        var engine = EngineOf(calc);
+        var input = engine.Canonical.Deserialize<TaxEngineInput>(calc.InputJson);
+        var output = engine.Canonical.Deserialize<TaxEngineOutput>(calc.OutputJson);
+        var executed = calc.Executions.Select(e => e.RuleVersionId).ToList();
+        var rules = await _catalog.LoadByIdsAsync(executed.Concat(output.NotApplied.Select(n => n.RuleVersionId)).Distinct().ToList(),
+            engine.Canonical, ct);
+        return await _opportunities.DetectAsync(calc.Id, engine, input, TaxReproduction.RulesAsThen(executed, output, rules), ct);
     }
 
-    private async Task<IReadOnlyList<TaxEngineRule>> RulesAsThenAsync(TaxCalculation calc, CancellationToken ct)
-    {
-        var output = TaxCanonical.Deserialize<TaxEngineOutput>(calc.OutputJson);
-        var rules = await _catalog.LoadByIdsAsync(calc.Executions.Select(e => e.RuleVersionId)
-            .Concat(output.NotApplied.Select(n => n.RuleVersionId)).Distinct().ToList(), ct);
-        return AsThen(calc, output, rules);
-    }
-
-    /// <summary>The rule versions as they were when the calculation ran: what ran was active, what was listed kept its status.</summary>
-    private static IReadOnlyList<TaxEngineRule> AsThen(TaxCalculation calc, TaxEngineOutput output, IReadOnlyList<TaxEngineRule> rules)
-    {
-        var executed = calc.Executions.Select(e => e.RuleVersionId).ToHashSet();
-        var listed = output.NotApplied.ToDictionary(n => n.RuleVersionId, n => n.Status);
-        return rules.Select(r => r with { Status = executed.Contains(r.VersionId) ? TaxRuleStatus.Active : listed[r.VersionId] }).ToList();
-    }
+    /// <summary>The engine version that made the calculation; if this build no longer has it, nothing is guessed.</summary>
+    private ITaxEngine EngineOf(TaxCalculation calc)
+        => _engines.TryGet(calc.EngineVersion, out var engine)
+            ? engine
+            : throw new DomainException(
+                $"Este cálculo foi feito pela engine {calc.EngineVersion}, que não está disponível nesta versão do Orken.",
+                "tax_engine_unavailable");
 
     public async Task<IReadOnlyList<TaxCalculationSummaryDto>> ListAsync(int take, CancellationToken ct)
     {
@@ -174,63 +213,62 @@ public sealed class TaxCalculationService
             .ToList();
     }
 
-    public Task<TaxCalculationDto> GetAsync(Guid id, CancellationToken ct) => GetAsync(id, reused: false, ct);
+    public Task<TaxCalculationDto> GetAsync(Guid id, CancellationToken ct) => GetAsync(id, reused: false, ct, null);
 
-    private async Task<TaxCalculationDto> GetAsync(Guid id, bool reused, CancellationToken ct)
+    private async Task<TaxCalculationDto> GetAsync(Guid id, bool reused, CancellationToken ct, TaxCoverageDecision? coverage)
     {
         var calc = await _db.TaxCalculations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Cálculo", id);
         var transaction = await _db.TaxTransactions.AsNoTracking().FirstAsync(t => t.Id == calc.TransactionId, ct);
-        var profileNumber = await _db.TaxProfileVersions.AsNoTracking()
-            .Where(v => v.Id == calc.ProfileVersionId).Select(v => v.VersionNumber).FirstAsync(ct);
+        var profile = await _db.TaxProfileVersions.AsNoTracking()
+            .Where(v => v.Id == calc.ProfileVersionId).Select(v => new { v.VersionNumber, v.Regime }).FirstAsync(ct);
+        var compliance = await _compliance.InForceAsync(calc.ReferenceDate, ct);
+        // A stored calculation was supported when it ran; the matrix is re-derived from its stored facts for display.
+        coverage ??= TaxCoveragePolicyV1.Assess(await StoredOperationAsync(transaction, ct), profile.Regime);
         var opportunityIds = await _db.TaxOpportunities.AsNoTracking()
             .Where(o => o.SourceCalculationId == id).OrderBy(o => o.CreatedAt).Select(o => o.Id).ToListAsync(ct);
 
+        var canonical = EngineOf(calc).Canonical;
         return new TaxCalculationDto(
             calc.Id, calc.TransactionId, transaction.Source, transaction.SourceId, transaction.Direction, transaction.Description,
-            calc.ReferenceDate, calc.ProfileVersionId, profileNumber, calc.EngineVersion, calc.InputHash, calc.RuleSetHash,
+            calc.ReferenceDate, calc.ProfileVersionId, profile.VersionNumber, calc.EngineVersion, calc.InputHash, calc.RuleSetHash,
             calc.OutputHash, calc.TotalBase, calc.TotalTax, reused, calc.CreatedAt,
-            TaxCanonical.Deserialize<TaxEngineInput>(calc.InputJson),
-            TaxCanonical.Deserialize<TaxEngineOutput>(calc.OutputJson),
-            opportunityIds);
+            canonical.Deserialize<TaxEngineInput>(calc.InputJson),
+            canonical.Deserialize<TaxEngineOutput>(calc.OutputJson),
+            opportunityIds,
+            TaxComplianceAdvisories.For(compliance),
+            coverage,
+            compliance is null ? null : TaxComplianceService.Map(compliance));
+    }
+
+    private async Task<TaxOperationRequest> StoredOperationAsync(TaxTransaction t, CancellationToken ct)
+    {
+        var lines = await _db.TaxTransactionLines.AsNoTracking().Where(l => l.TransactionId == t.Id).OrderBy(l => l.LineIndex).ToListAsync(ct);
+        return new TaxOperationRequest(t.OperationDate, t.Direction, t.CounterpartyRegime, t.CounterpartyState, t.Description,
+            lines.Select(l => new TaxLineRequest(l.ItemKind, l.Description, l.Ncm, l.Quantity, l.GrossAmount, l.UnconditionalDiscount,
+                l.ConditionalDiscount, l.Surcharges, l.ExcludedTaxesInformed ? l.ExcludedTaxes : null, l.SpecialTreatment, l.Nbs, l.CClassTrib)).ToList(),
+            new TaxOperationTiming(t.SupplyPattern, t.DocumentDate, t.SupplyDate, t.PaymentOrAdvanceDate, t.CompetencePeriod, t.ExecutionFrom, t.ExecutionTo));
     }
 
     /// <summary>
-    /// Runs the stored input again with exactly the rule versions the calculation looked at (whatever
-    /// their status today) and compares the output hash. Nothing is written.
+    /// Runs the stored input again with exactly the engine version and the rule versions the calculation
+    /// used (whatever their status today) and compares the output hash. If that engine version is not
+    /// in this build, the answer is "cannot reproduce" — the current engine never stands in. Nothing is written.
     /// </summary>
     public async Task<TaxCalculationVerificationDto> VerifyAsync(Guid id, CancellationToken ct)
     {
         var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Cálculo", id);
-        var differences = new List<string>();
-        var storedOutput = TaxCanonical.Deserialize<TaxEngineOutput>(calc.OutputJson);
+        var stored = new StoredCalculation(calc.EngineVersion, calc.InputJson, calc.InputHash, calc.OutputJson, calc.OutputHash,
+            calc.Executions.Select(e => new StoredRuleRun(e.RuleVersionId, e.RuleKey, e.RuleVersion, e.ContentHash)).ToList());
 
-        var rules = await _catalog.LoadByIdsAsync(calc.Executions.Select(e => e.RuleVersionId)
-            .Concat(storedOutput.NotApplied.Select(n => n.RuleVersionId)).Distinct().ToList(), ct);
+        var result = await TaxReproduction.VerifyAsync(stored, _engines,
+            (engine, ids) => _catalog.LoadByIdsAsync(ids, engine.Canonical, ct));
 
-        foreach (var e in calc.Executions.DistinctBy(e => e.RuleVersionId))
-        {
-            var rule = rules.FirstOrDefault(r => r.VersionId == e.RuleVersionId);
-            if (rule is null) differences.Add($"Versão de regra {e.RuleKey} v{e.RuleVersion} não existe mais no catálogo.");
-            else if (rule.ContentHash != e.ContentHash) differences.Add($"O conteúdo de {e.RuleKey} v{e.RuleVersion} mudou desde o cálculo.");
-        }
-
-        var asThen = AsThen(calc, storedOutput, rules);
-        var input = TaxCanonical.Deserialize<TaxEngineInput>(calc.InputJson);
-        if (TaxCanonical.Hash(calc.InputJson) != calc.InputHash)
-            differences.Add("O input armazenado não corresponde ao seu hash.");
-        if (TaxCanonical.Hash(calc.OutputJson) != calc.OutputHash)
-            differences.Add("O resultado armazenado não corresponde ao seu hash.");
-
-        var engineMatches = calc.EngineVersion == TaxEngine.Version;
-        if (!engineMatches) differences.Add($"O cálculo foi feito pela engine {calc.EngineVersion}; a atual é {TaxEngine.Version}.");
-
-        var recomputed = TaxCanonical.Hash(TaxCanonical.Serialize(TaxEngine.Run(input, asThen)));
-        if (recomputed != calc.OutputHash) differences.Add("O resultado recalculado é diferente do armazenado.");
-
-        _log.LogInformation("Tax calculation {CalculationId} verification: reproducible={Reproducible}", id, differences.Count == 0);
-        return new TaxCalculationVerificationDto(id, differences.Count == 0, engineMatches, calc.EngineVersion, TaxEngine.Version,
-            calc.OutputHash, recomputed, differences);
+        _log.LogInformation("Tax calculation {CalculationId} verification with engine {EngineVersion}: available={Available} reproducible={Reproducible}",
+            id, calc.EngineVersion, result.EngineAvailable, result.Reproducible);
+        return new TaxCalculationVerificationDto(id, result.Reproducible, result.EngineAvailable,
+            calc.EngineVersion == result.CurrentEngineVersion, calc.EngineVersion, result.CurrentEngineVersion,
+            calc.OutputHash, result.RecomputedOutputHash, result.Differences);
     }
 }

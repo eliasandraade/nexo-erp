@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/services/api-client";
 import {
-  creditProblems, emptyCredit, movementProblems, toCreditRequest, toMovementRequest,
+  complianceProblems, creditProblems, emptyCompliance, emptyCredit, movementProblems, toComplianceRequest, toCreditRequest, toMovementRequest,
   emptyHypothesis, emptyOffer, emptyScenario, offersProblems, scenarioProblems, simulationProblems, toCompareRequest, toScenarioRequest,
   emptyLine, emptyOperation, formatIsoDate, isProfileMissing, lineProblems, linesProblems, operationProblems, parseDecimal,
   profileDraftProblems, splitList, toLineRequest, toOperationRequest, toProfileVersionRequest, type LineDraft, type ProfileDraft,
@@ -30,8 +30,9 @@ describe("operation lines", () => {
     expect(toLineRequest(line({ ncm: "6109.10.00", unconditionalDiscount: "5", conditionalDiscount: "", surcharges: "2,50", quantity: "3", specialTreatment: " " })))
       .toEqual({
         itemKind: "Good", description: "Camiseta", ncm: "61091000", quantity: 3, grossAmount: 100,
-        unconditionalDiscount: 5, conditionalDiscount: 0, surcharges: 2.5, excludedTaxes: null, specialTreatment: null,
+        unconditionalDiscount: 5, conditionalDiscount: 0, surcharges: 2.5, excludedTaxes: null, specialTreatment: null, nbs: null, cClassTrib: null,
       });
+    expect(toLineRequest(line({ cClassTrib: " 000001 ", nbs: "1.0101.10.00" }))).toMatchObject({ cClassTrib: "000001", nbs: "1.0101.10.00" });
   });
 
   it("validates a line like the server does", () => {
@@ -59,20 +60,37 @@ describe("operation lines", () => {
 describe("profile version", () => {
   const draft: ProfileDraft = {
     validFrom: "2026-01-01", regime: "LucroPresumido", state: "SP", cityIbgeCode: "3550308", primaryCnae: "4781-4/00",
-    secondaryCnaes: "4782-2/01; 4789-0/99", specialRegimes: "", benefits: "", compliance: "unknown", reason: "Abertura",
+    secondaryCnaes: "4782-2/01; 4789-0/99", specialRegimes: "", benefits: "", reason: "Abertura",
   };
 
-  it("validates and maps, keeping \"não sei\" as null", () => {
+  it("validates and maps", () => {
     expect(profileDraftProblems(draft)).toEqual([]);
     expect(toProfileVersionRequest(draft)).toEqual({
       validFrom: "2026-01-01", regime: "LucroPresumido", state: "SP", cityIbgeCode: "3550308", primaryCnae: "4781400",
-      secondaryCnaes: ["4782201", "4789099"], specialRegimes: [], benefits: [], accessoryObligationsCompliant: null, reason: "Abertura",
+      secondaryCnaes: ["4782201", "4789099"], specialRegimes: [], benefits: [], reason: "Abertura",
     });
-    expect(toProfileVersionRequest({ ...draft, compliance: "yes" }).accessoryObligationsCompliant).toBe(true);
-    expect(toProfileVersionRequest({ ...draft, compliance: "no" }).accessoryObligationsCompliant).toBe(false);
     expect(profileDraftProblems({ ...draft, cityIbgeCode: "355", primaryCnae: "47", secondaryCnaes: "1", reason: " " })).toEqual([
       "Código IBGE do município: 7 números.", "CNAE principal: 7 números.", "Cada CNAE secundário tem 7 números.", "Diga o motivo da nova versão.",
     ]);
+  });
+
+});
+
+describe("ancillary-obligation assessment", () => {
+  const base = { ...emptyCompliance(), periodFrom: "2026-01-01", periodTo: "2026-06-30", scope: "Estabelecimento — NF-e", assessedBy: "Contabilidade" };
+
+  it("asks for period and scope, and for what was checked before it counts as verified", () => {
+    expect(complianceProblems({ ...base, status: "Declared" })).toEqual([]);
+    expect(complianceProblems({ ...base, status: "Verified" })).toEqual(["Para verificar, diga quais obrigações foram conferidas e com qual evidência."]);
+    expect(complianceProblems({ ...base, status: "Declared", scope: " ", periodTo: "2025-12-31" })).toEqual([
+      "O fim do período é anterior ao início.", "Informe o escopo (o que a avaliação cobre).",
+    ]);
+    expect(complianceProblems({ ...base, status: "UnderRemediation" })).toEqual(["Descreva a inconsistência ou o que está sendo regularizado."]);
+  });
+
+  it("maps the checked obligations and keeps PNCT as a recorded fact", () => {
+    const req = toComplianceRequest({ ...base, status: "Verified", obligationsChecked: "NF-e com IBS/CBS\nNFC-e", evidence: " relatório ", pnctParticipation: true });
+    expect(req).toMatchObject({ status: "Verified", obligationsChecked: ["NF-e com IBS/CBS", "NFC-e"], evidence: "relatório", pnctParticipation: true, notes: null });
   });
 });
 
@@ -122,11 +140,11 @@ describe("simulation scenarios and supplier offers", () => {
 
 describe("credits", () => {
   it("validates and maps a credit registration", () => {
-    const d = { ...emptyCredit("2026-10-01"), originalAmount: "10,00", eligibleAmount: "9,50", eligibilityBasis: "Insumo da atividade", supplierDocument: "11.222.333/0001-81" };
+    const d = { ...emptyCredit("2026-10-01"), originalAmount: "10,00", potentialAmount: "9,50", potentialBasis: "Insumo da atividade", supplierDocument: "11.222.333/0001-81" };
     expect(creditProblems(d)).toEqual([]);
-    expect(toCreditRequest(d)).toMatchObject({ tax: "Cbs", sourceDocumentKey: null, supplierDocument: "11222333000181", originalAmount: 10, eligibleAmount: 9.5, expiresOn: null });
-    expect(creditProblems({ ...d, sourceDocumentKey: "123", eligibleAmount: "11", expiresOn: "2026-09-01" })).toEqual([
-      "A chave de acesso tem 44 números.", "O vencimento é anterior à aquisição.", "O crédito não passa do imposto destacado.",
+    expect(toCreditRequest(d)).toMatchObject({ tax: "Cbs", sourceDocumentKey: null, supplierDocument: "11222333000181", originalAmount: 10, potentialAmount: 9.5, expiresOn: null });
+    expect(creditProblems({ ...d, sourceDocumentKey: "123", potentialAmount: "11", expiresOn: "2026-09-01" })).toEqual([
+      "A chave de acesso tem 44 números.", "O vencimento é anterior à aquisição.", "O crédito potencial não passa do imposto destacado.",
     ]);
   });
 
@@ -137,5 +155,8 @@ describe("credits", () => {
     expect(movementProblems({ ...base, movement: "Expire", amount: "" })).toEqual([]);
     expect(toMovementRequest({ ...base, obligationReference: "10/2026" })).toEqual({ movement: "Use", amount: 5, reason: null, obligationTax: "Cbs", obligationReference: "10/2026", onDate: null });
     expect(toMovementRequest({ ...base, movement: "Expire", amount: "" })).toMatchObject({ amount: null, obligationTax: null, obligationReference: null });
+    expect(movementProblems({ ...base, movement: "StartRequirementsReview", amount: "" })).toEqual([]);
+    expect(movementProblems({ ...base, movement: "ConfirmToBeAppropriated", amount: "5" })).toEqual(["Diga a base da confirmação dos requisitos."]);
+    expect(movementProblems({ ...base, movement: "Discard", amount: "" })).toEqual(["Diga o motivo."]);
   });
 });

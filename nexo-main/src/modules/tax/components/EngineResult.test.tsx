@@ -65,7 +65,7 @@ describe("TechnicalTrail", () => {
 
   it("shows the fingerprints and reports a successful reproduction", async () => {
     vi.mocked(api.verifyTaxCalculation).mockResolvedValue({
-      calculationId: "calc-1", reproducible: true, engineVersionMatches: true, storedEngineVersion: "orken-tax-engine/1.0.0",
+      calculationId: "calc-1", reproducible: true, engineAvailable: true, engineVersionMatches: true, storedEngineVersion: "orken-tax-engine/1.0.0",
       currentEngineVersion: "orken-tax-engine/1.0.0", storedOutputHash: "out", recomputedOutputHash: "out", differences: [],
     });
     renderTax(<TechnicalTrail output={current.output} hashes={hashes} />);
@@ -75,13 +75,28 @@ describe("TechnicalTrail", () => {
     expect(screen.getByText(`Regras executadas (${current.output.executions.length})`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Verificar reprodução/ }));
 
-    expect(await screen.findByText(/Reproduzido: as mesmas regras/)).toBeInTheDocument();
+    expect(await screen.findByText(/Reproduzido: o mesmo motor, as mesmas regras/)).toBeInTheDocument();
     expect(api.verifyTaxCalculation).toHaveBeenCalledWith("calc-1");
+  });
+
+  it("says plainly when the engine that made the calculation is gone, and shows no recomputed hash", async () => {
+    vi.mocked(api.verifyTaxCalculation).mockResolvedValue({
+      calculationId: "calc-1", reproducible: false, engineAvailable: false, engineVersionMatches: false,
+      storedEngineVersion: "orken-tax-engine/1.0.0", currentEngineVersion: "orken-tax-engine/2.0.0", storedOutputHash: "a",
+      recomputedOutputHash: null, differences: ["A engine orken-tax-engine/1.0.0 que fez este cálculo não está disponível."],
+    });
+    renderTax(<TechnicalTrail output={current.output} hashes={hashes} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Rastro técnico/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Verificar reprodução/ }));
+
+    expect(await screen.findByText(/Nenhum outro motor foi usado no lugar dele/)).toBeInTheDocument();
+    expect(screen.queryByText(/recalculado:/)).not.toBeInTheDocument();
   });
 
   it("reports a failed reproduction with the engine versions and the differences", async () => {
     vi.mocked(api.verifyTaxCalculation).mockResolvedValue({
-      calculationId: "calc-1", reproducible: false, engineVersionMatches: false, storedEngineVersion: "orken-tax-engine/0.9.0",
+      calculationId: "calc-1", reproducible: false, engineAvailable: true, engineVersionMatches: false, storedEngineVersion: "orken-tax-engine/0.9.0",
       currentEngineVersion: "orken-tax-engine/1.0.0", storedOutputHash: "a", recomputedOutputHash: "b",
       differences: ["O resultado recalculado é diferente do armazenado."],
     });

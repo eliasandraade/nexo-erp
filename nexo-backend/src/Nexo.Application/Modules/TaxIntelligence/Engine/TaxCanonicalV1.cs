@@ -7,27 +7,34 @@ using System.Text.Json.Serialization;
 namespace Nexo.Application.Modules.TaxIntelligence.Engine;
 
 /// <summary>
-/// One way to turn engine data into text, so equal data always gives equal bytes and equal hashes:
-/// camelCase names in declaration order, enums by name, no indentation, and decimals written without
-/// trailing zeros (10.50 and 10.5 are the same amount). Changing anything here changes every hash —
-/// it is part of the engine version.
+/// Canonical form V1 — FROZEN, part of <see cref="TaxEngineV1"/>'s contract: equal data always gives
+/// equal bytes and equal hashes. camelCase names in declaration order, enums by name, no indentation,
+/// decimals without trailing zeros (10.50 and 10.5 are the same amount), SHA-256 in lowercase hex.
+/// Never edit: a different canonical form is a new class owned by a new engine version, so the hashes
+/// of calculations made by V1 stay reproducible.
 /// </summary>
-public static class TaxCanonical
+public sealed class TaxCanonicalV1 : ITaxCanonicalizer
 {
-    public static readonly JsonSerializerOptions Options = Build();
+    public static readonly TaxCanonicalV1 Instance = new();
 
-    public static string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+    private TaxCanonicalV1() { }
 
-    public static T Deserialize<T>(string json)
+    public string Id => "orken-canonical/1";
+
+    public JsonSerializerOptions Options { get; } = Build();
+
+    public string Serialize<T>(T value) => JsonSerializer.Serialize(value, Options);
+
+    public T Deserialize<T>(string json)
         => JsonSerializer.Deserialize<T>(json, Options) ?? throw new JsonException($"Empty {typeof(T).Name} document.");
 
-    public static string Hash(string text)
+    public string Hash(string text)
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
 
-    public static string HashOf<T>(T value) => Hash(Serialize(value));
+    public string HashOf<T>(T value) => Hash(Serialize(value));
 
     /// <summary>Fingerprint of a rule version's content — what makes two versions behave the same.</summary>
-    public static string RuleContentHash(
+    public string RuleContentHash(
         string key, int version, DateOnly validFrom, DateOnly? validTo, int priority,
         IReadOnlyList<TaxCondition> conditions, TaxRuleResult result)
         => HashOf(new RuleContent(key, version, validFrom, validTo, priority, conditions, result));

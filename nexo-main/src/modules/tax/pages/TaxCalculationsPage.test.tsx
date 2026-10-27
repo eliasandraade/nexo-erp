@@ -56,6 +56,7 @@ describe("TaxCalculationsPage", () => {
     const body = vi.mocked(api.createTaxCalculation).mock.calls[0][0];
     expect(body.direction).toBe("Outbound");
     expect(body.lines[0]).toMatchObject({ description: "Camiseta", grossAmount: 1000, unconditionalDiscount: 100, conditionalDiscount: 50, excludedTaxes: null });
+    expect(body.timing).toEqual({ supplyPattern: "SingleSupply" });
     expect(await screen.findByText("detalhe do cálculo")).toBeInTheDocument();
   });
 
@@ -78,6 +79,21 @@ describe("TaxCalculationsPage", () => {
 
     const link = await screen.findByRole("link", { name: /perfil/i });
     expect(link.getAttribute("href")).toContain("/tributos/perfil");
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("shows why an operation outside the engine's recorte was not calculated — never a zero", async () => {
+    vi.mocked(api.calculateSale).mockRejectedValue(new ApiError(422,
+      "Linha 1: Classificação insuficiente para o recorte: falta cClassTrib. | Linha 2: Classificação insuficiente para o recorte: falta cClassTrib.",
+      "tax_operation_not_supported"));
+    show();
+
+    fireEvent.change(screen.getByLabelText("Código da venda"), { target: { value: SALE } });
+    fireEvent.click(screen.getByRole("button", { name: "Calcular venda" }));
+
+    expect(await screen.findByText("Operação não suportada pela versão atual da engine.")).toBeInTheDocument();
+    expect(screen.getByText(/o sistema não devolve zero para o que não modela/)).toBeInTheDocument();
+    expect(screen.getAllByText(/falta cClassTrib/)).toHaveLength(2);
     expect(toastError).not.toHaveBeenCalled();
   });
 

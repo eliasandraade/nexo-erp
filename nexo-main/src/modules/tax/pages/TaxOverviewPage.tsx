@@ -12,6 +12,7 @@ import { formatCurrency } from "@/lib/formatters";
 import { TAX_KEYS, getTaxOverview } from "../api/tax.api";
 import { formatIsoDate, formatPercent } from "../lib/forms";
 import { overviewAttention, overviewImpacts } from "../lib/overview";
+import { POTENTIAL_CREDIT_COPY } from "../lib/labels";
 import { TaxNote, TaxSubNav } from "../components/TaxShell";
 import { ImpactBadge } from "../components/TaxBadges";
 
@@ -83,11 +84,13 @@ export default function TaxOverviewPage() {
 
           <section className="space-y-3">
             <h2 className="section-heading">Créditos</h2>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricBlock label="Potencial estimado" value={formatCurrency(o.creditsPotential)} caption="estimativa — não é crédito validado" />
+              <MetricBlock label="A apropriar" value={formatCurrency(o.creditsToBeAppropriated)} caption="requisitos confirmados" />
               <MetricBlock label="Disponíveis" value={formatCurrency(o.creditsAvailable)} variant={o.creditsAvailable > 0 ? "success" : "default"} />
               <MetricBlock label="Bloqueados" value={formatCurrency(o.creditsBlocked)} icon={Lock} variant={o.creditsBlocked > 0 ? "warning" : "default"} />
-              <MetricBlock label="Não apropriados" value={formatCurrency(o.creditsNotAppropriated)} caption="reconhecidos, ainda fora dos livros" />
             </div>
+            {o.creditsPotential > 0 && <p className="text-xs text-muted-foreground">{POTENTIAL_CREDIT_COPY}</p>}
           </section>
 
           <section className="space-y-3">

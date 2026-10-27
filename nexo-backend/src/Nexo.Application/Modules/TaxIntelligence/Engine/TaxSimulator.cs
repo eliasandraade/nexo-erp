@@ -49,13 +49,14 @@ public static class TaxSimulator
 {
     public const string HypothesisKeyPrefix = "HYPOTHESIS.";
 
+    /// <summary>Runs the baseline and each scenario with the given engine version (new work uses the current one).</summary>
     public static IReadOnlyList<ScenarioResult> Compare(
-        TaxEngineInput baseline, IReadOnlyList<TaxScenario> scenarios, IReadOnlyCollection<TaxEngineRule> catalogue)
+        ITaxEngine engine, TaxEngineInput baseline, IReadOnlyList<TaxScenario> scenarios, IReadOnlyCollection<TaxEngineRule> catalogue)
     {
-        var baseResult = Run("Cenário atual", isBaseline: true, baseline, new TaxScenario("Cenário atual"), catalogue, null);
+        var baseResult = Run(engine, "Cenário atual", isBaseline: true, baseline, new TaxScenario("Cenário atual"), catalogue, null);
         var results = new List<ScenarioResult> { baseResult };
         foreach (var s in scenarios)
-            results.Add(Run(s.Name, isBaseline: false, Apply(baseline, s), s, catalogue, baseResult));
+            results.Add(Run(engine, s.Name, isBaseline: false, Apply(baseline, s), s, catalogue, baseResult));
         return results;
     }
 
@@ -75,11 +76,12 @@ public static class TaxSimulator
     }
 
     private static ScenarioResult Run(
-        string name, bool isBaseline, TaxEngineInput input, TaxScenario s, IReadOnlyCollection<TaxEngineRule> catalogue, ScenarioResult? baseline)
+        ITaxEngine engine, string name, bool isBaseline, TaxEngineInput input, TaxScenario s, IReadOnlyCollection<TaxEngineRule> catalogue,
+        ScenarioResult? baseline)
     {
         var hypotheses = new List<string>();
-        var rules = WithHypotheses(catalogue, s.RateHypotheses ?? [], hypotheses);
-        var output = TaxEngine.Run(input, rules);
+        var rules = WithHypotheses(engine.Canonical, catalogue, s.RateHypotheses ?? [], hypotheses);
+        var output = engine.Run(input, rules);
 
         var charged = input.Lines.Sum(l => l.Gross - l.UnconditionalDiscount - l.ConditionalDiscount + l.Surcharges);
         var credit = 0m;
@@ -92,9 +94,9 @@ public static class TaxSimulator
         var noCash = output.Notes.Any(n => TaxNoteCodes.NoCashEffect.Contains(n.Code));
 
         return new ScenarioResult(
-            name, isBaseline, input, output, TaxEngine.Money(charged), output.TotalTax, TaxEngine.Money(credit), TaxEngine.Money(effective),
+            name, isBaseline, input, output, engine.RoundMoney(charged), output.TotalTax, engine.RoundMoney(credit), engine.RoundMoney(effective),
             TaxDeltaVsBaseline: baseline is null ? 0m : output.TotalTax - baseline.TaxTotal,
-            EffectiveCostDeltaVsBaseline: baseline is null ? 0m : TaxEngine.Money(effective) - baseline.EffectiveCost,
+            EffectiveCostDeltaVsBaseline: baseline is null ? 0m : engine.RoundMoney(effective) - baseline.EffectiveCost,
             noCash, hypotheses);
     }
 
@@ -103,7 +105,7 @@ public static class TaxSimulator
     /// applies to suppliers under the regular regime — IBS/CBS inside the Simples Nacional is not simulated.
     /// </summary>
     private static IReadOnlyCollection<TaxEngineRule> WithHypotheses(
-        IReadOnlyCollection<TaxEngineRule> catalogue, IReadOnlyList<RateHypothesis> hypotheses, List<string> labels)
+        ITaxCanonicalizer canonical, IReadOnlyCollection<TaxEngineRule> catalogue, IReadOnlyList<RateHypothesis> hypotheses, List<string> labels)
     {
         if (hypotheses.Count == 0) return catalogue;
         var taxes = hypotheses.Select(h => h.Tax).ToHashSet();
@@ -115,7 +117,7 @@ public static class TaxSimulator
             IReadOnlyList<TaxCondition> conditions =
                 [new SupplierRegimeNotIn([TaxRegime.SimplesNacional, TaxRegime.SimplesNacionalExcessoSublimite, TaxRegime.Mei])];
             TaxRuleResult result = new RateResult(h.Tax, h.RatePercent);
-            var hash = TaxCanonical.RuleContentHash(key, 1, DateOnly.MinValue, null, 0, conditions, result);
+            var hash = canonical.RuleContentHash(key, 1, DateOnly.MinValue, null, 0, conditions, result);
             rules.Add(new TaxEngineRule(Guid.Empty, key, 1, TaxRuleStatus.Active, DateOnly.MinValue, null, 0, conditions, result, hash, [], IsHypothesis: true));
             labels.Add(FormattableString.Invariant($"Hipótese: {h.Tax} a {h.RatePercent}% — {h.Label}"));
         }

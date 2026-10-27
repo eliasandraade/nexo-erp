@@ -11,12 +11,15 @@ export interface ImpactTile {
 
 /**
  * The potential impacts of open opportunities, one tile per nature. They are different things
- * (a deferral is not a saving; a credit depends on conditions) and are deliberately NOT summed:
- * there is no "total" here on purpose.
+ * (a lower IBS/CBS on the document is not a saving; a deferral is not a saving; a credit depends
+ * on conditions) and are deliberately NOT summed: there is no "total" here on purpose.
  */
-export function overviewImpacts(o: Pick<TaxOverviewDto, "potentialSavings" | "potentialDeferrals" | "potentialCashFlow" | "potentialCredits">): ImpactTile[] {
+export function overviewImpacts(
+  o: Pick<TaxOverviewDto, "potentialSavings" | "potentialCalculatedTaxReductions" | "potentialDeferrals" | "potentialCashFlow" | "potentialCredits">,
+): ImpactTile[] {
   const pairs: [ImpactNature, number][] = [
     ["DefinitiveSaving", o.potentialSavings],
+    ["CalculatedTaxReduction", o.potentialCalculatedTaxReductions],
     ["Deferral", o.potentialDeferrals],
     ["CashFlow", o.potentialCashFlow],
     ["Credit", o.potentialCredits],
@@ -43,6 +46,6 @@ export function overviewAttention(o: TaxOverviewDto): string[] {
   if (!o.profileConfigured) a.push("Cadastre o perfil tributário: sem ele nenhum cálculo é feito.");
   if (o.openHighRisk > 0) a.push(`${o.openHighRisk} ${o.openHighRisk === 1 ? "oportunidade de risco alto espera" : "oportunidades de risco alto esperam"} decisão da diretoria.`);
   if (o.splitDivergences > 0) a.push(`${o.splitDivergences} ${o.splitDivergences === 1 ? "retenção do split não confere" : "retenções do split não conferem"} com o esperado.`);
-  if (o.creditsNotAppropriated > 0) a.push("Há créditos reconhecidos que ainda não foram apropriados.");
+  if (o.creditsToBeAppropriated > 0) a.push("Há créditos com requisitos confirmados que ainda não foram apropriados.");
   return a;
 }

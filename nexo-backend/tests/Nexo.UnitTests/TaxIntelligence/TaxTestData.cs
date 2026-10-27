@@ -9,6 +9,9 @@ internal static class TaxTestData
 {
     public static readonly DateOnly Mid2026 = new(2026, 6, 15);
 
+    /// <summary>The frozen engine V1 every catalogue-v1 test runs against.</summary>
+    public static readonly TaxEngineV1 V1 = new();
+
     /// <summary>The seeded catalogue as the engine sees it.</summary>
     public static IReadOnlyList<TaxEngineRule> Catalogue() => TaxCatalogV1.Rules
         .Select(r => new TaxEngineRule(r.VersionId, r.Key, 1, r.Status, r.ValidFrom, r.ValidTo, r.Priority, r.Conditions, r.Result,
@@ -33,6 +36,6 @@ internal static class TaxTestData
         TaxRuleResult result = new RateResult(tax, rate);
         IReadOnlyList<TaxCondition> conditions = [];
         return new TaxEngineRule(Guid.NewGuid(), key, version, status, from, to, 10, conditions, result,
-            TaxCanonical.RuleContentHash(key, version, from, to, 10, conditions, result), ["TEST-SOURCE"]);
+            TaxCanonicalV1.Instance.RuleContentHash(key, version, from, to, 10, conditions, result), ["TEST-SOURCE"]);
     }
 }

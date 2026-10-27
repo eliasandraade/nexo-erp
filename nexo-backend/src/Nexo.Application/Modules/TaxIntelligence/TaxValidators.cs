@@ -1,4 +1,5 @@
 using FluentValidation;
+using Nexo.Domain.Modules.TaxIntelligence;
 
 namespace Nexo.Application.Modules.TaxIntelligence;
 
@@ -34,6 +35,23 @@ public sealed class TaxLineRequestValidator : AbstractValidator<TaxLineRequest>
         RuleFor(x => x).Must(x => x.UnconditionalDiscount + x.ConditionalDiscount <= x.GrossAmount)
             .WithMessage("Os descontos passam do valor da linha.");
         RuleFor(x => x.SpecialTreatment).MaximumLength(60);
+        // Formats are checked loosely on purpose: V1 records these codes, it does not interpret them.
+        RuleFor(x => x.Nbs).Must(n => n!.All(c => char.IsAsciiDigit(c) || c == '.') && n.Count(char.IsAsciiDigit) is >= 1 and <= 12)
+            .When(x => !string.IsNullOrEmpty(x.Nbs)).WithMessage("NBS: só números (e pontos).");
+        RuleFor(x => x.CClassTrib).Must(c => c!.All(char.IsAsciiLetterOrDigit) && c.Length <= 10)
+            .When(x => !string.IsNullOrEmpty(x.CClassTrib)).WithMessage("cClassTrib: até 10 letras ou números.");
+    }
+}
+
+public sealed class TaxOperationTimingValidator : AbstractValidator<TaxOperationTiming>
+{
+    public TaxOperationTimingValidator()
+    {
+        RuleFor(x => x.SupplyPattern).IsInEnum();
+        RuleFor(x => x.CompetencePeriod).Must(p => p!.Length == 7 && p[4] == '-' && p.Remove(4, 1).All(char.IsAsciiDigit))
+            .When(x => !string.IsNullOrEmpty(x.CompetencePeriod)).WithMessage("Competência no formato AAAA-MM.");
+        RuleFor(x => x).Must(x => x.ExecutionFrom is null || x.ExecutionTo is null || x.ExecutionTo >= x.ExecutionFrom)
+            .WithMessage("O fim do período de execução é anterior ao início.");
     }
 }
 
@@ -48,6 +66,24 @@ public sealed class TaxOperationRequestValidator : AbstractValidator<TaxOperatio
         RuleFor(x => x.OperationDate).Must(d => d.Year is >= 2000 and <= 2100).WithMessage("Data da operação inválida.");
         RuleFor(x => x.Lines).NotEmpty().Must(l => l.Count <= TaxValidation.MaxLines).WithMessage($"No máximo {TaxValidation.MaxLines} linhas.");
         RuleForEach(x => x.Lines).NotNull().SetValidator(new TaxLineRequestValidator());
+        RuleFor(x => x.Timing!).SetValidator(new TaxOperationTimingValidator()).When(x => x.Timing is not null);
+    }
+}
+
+public sealed class RecordComplianceAssessmentRequestValidator : AbstractValidator<RecordComplianceAssessmentRequest>
+{
+    public RecordComplianceAssessmentRequestValidator()
+    {
+        RuleFor(x => x.Status).IsInEnum();
+        RuleFor(x => x).Must(x => x.PeriodTo >= x.PeriodFrom).WithMessage("O fim do período é anterior ao início.");
+        RuleFor(x => x.Scope).MaximumLength(500);
+        RuleFor(x => x.Scope).NotEmpty().When(x => x.Status != ComplianceAssessmentStatus.Unknown)
+            .WithMessage("Informe o escopo da avaliação (o que ela cobre).");
+        RuleFor(x => x.ObligationsChecked).Must(l => l is null || (l.Count <= 30 && l.All(o => o is not null && o.Length <= 200)));
+        RuleFor(x => x.Evidence).MaximumLength(2000);
+        RuleFor(x => x.AssessedBy).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Notes).MaximumLength(2000);
+        RuleFor(x => x.Limitations).MaximumLength(2000);
     }
 }
 
@@ -145,12 +181,64 @@ public sealed class AddEvidenceRequestValidator : AbstractValidator<AddEvidenceR
     {
         RuleFor(x => x.Description).NotEmpty().MaximumLength(1000);
         RuleFor(x => x.DocumentReference).MaximumLength(200);
+        RuleFor(x => x.Type).IsInEnum();
+        RuleFor(x => x.Notes).MaximumLength(1000);
+    }
+}
+
+public sealed class ReviewEvidenceRequestValidator : AbstractValidator<ReviewEvidenceRequest>
+{
+    public ReviewEvidenceRequestValidator()
+    {
+        RuleFor(x => x.Notes).MaximumLength(1000);
+        RuleFor(x => x.Notes).NotEmpty().When(x => !x.Accepted).WithMessage("Diga por que a evidência foi recusada.");
+    }
+}
+
+public sealed class VerifyExecutionRequestValidator : AbstractValidator<VerifyExecutionRequest>
+{
+    public VerifyExecutionRequestValidator()
+    {
+        RuleFor(x => x.Outcome).IsInEnum();
+        RuleFor(x => x.FiscalDocumentReference).MaximumLength(200);
+        RuleFor(x => x.AuthorizationProtocol).MaximumLength(100);
+        RuleFor(x => x.Notes).MaximumLength(2000);
+        RuleFor(x => x.Notes).NotEmpty().When(x => x.Outcome == TaxExecutionOutcome.Diverged).WithMessage("Descreva o que divergiu.");
     }
 }
 
 public sealed class RejectOpportunityRequestValidator : AbstractValidator<RejectOpportunityRequest>
 {
     public RejectOpportunityRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(1000);
+}
+
+public sealed class ApproveOpportunityRequestValidator : AbstractValidator<ApproveOpportunityRequest>
+{
+    public ApproveOpportunityRequestValidator() => RuleFor(x => x.SelfApprovalJustification).MaximumLength(1000);
+}
+
+public sealed class RecordProfessionalReviewRequestValidator : AbstractValidator<RecordProfessionalReviewRequest>
+{
+    public RecordProfessionalReviewRequestValidator()
+    {
+        RuleFor(x => x.Status).IsInEnum();
+        RuleFor(x => x.Reviewer).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Notes).MaximumLength(4000);
+        RuleFor(x => x.ProfessionalReference).MaximumLength(100);
+        RuleFor(x => x.Scope).MaximumLength(2000);
+        RuleFor(x => x.Assumptions).MaximumLength(4000);
+        RuleFor(x => x.Caveats).MaximumLength(4000);
+        RuleFor(x => x.Status).NotEqual(ProfessionalReviewStatus.Pending).WithMessage("Pendente é o estado inicial; registre a revisão recebida.");
+        RuleFor(x => x.Scope).NotEmpty().When(x => x.Status is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats)
+            .WithMessage("Uma aprovação diz o escopo.");
+        RuleFor(x => x.ValidFrom).NotNull().When(x => x.Status is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats)
+            .WithMessage("Uma aprovação diz desde quando vale.");
+        RuleFor(x => x.Caveats).NotEmpty().When(x => x.Status == ProfessionalReviewStatus.ApprovedWithCaveats)
+            .WithMessage("Aprovação com ressalvas precisa das ressalvas.");
+        RuleFor(x => x.Notes).NotEmpty()
+            .When(x => x.Status is ProfessionalReviewStatus.ChangesRequired or ProfessionalReviewStatus.Rejected)
+            .WithMessage("Uma revisão que pede mudança ou rejeita precisa dizer por quê.");
+    }
 }
 
 public sealed class BlockOpportunityRequestValidator : AbstractValidator<BlockOpportunityRequest>
@@ -173,8 +261,8 @@ public sealed class RegisterTaxCreditRequestValidator : AbstractValidator<Regist
         RuleFor(x => x.SupplierDocument).Must(d => TaxValidation.Digits(d, 11) || TaxValidation.Digits(d, 14))
             .When(x => !string.IsNullOrEmpty(x.SupplierDocument)).WithMessage("CPF ou CNPJ do fornecedor, só dígitos.");
         RuleFor(x => x.OriginalAmount).GreaterThan(0).LessThan(TaxValidation.MaxAmount).Must(TaxValidation.Cents);
-        RuleFor(x => x.EligibleAmount).GreaterThanOrEqualTo(0).Must(TaxValidation.Cents);
-        RuleFor(x => x.EligibilityBasis).NotEmpty().MaximumLength(500);
+        RuleFor(x => x.PotentialAmount).GreaterThanOrEqualTo(0).Must(TaxValidation.Cents);
+        RuleFor(x => x.PotentialBasis).NotEmpty().MaximumLength(500);
         RuleFor(x => x).Must(x => x.ExpiresOn is null || x.ExpiresOn >= x.AcquiredOn).WithMessage("O vencimento é anterior à aquisição.");
     }
 }
@@ -184,10 +272,12 @@ public sealed class TaxCreditMovementRequestValidator : AbstractValidator<TaxCre
     public TaxCreditMovementRequestValidator()
     {
         RuleFor(x => x.Movement).IsInEnum();
-        RuleFor(x => x.Amount).NotNull().GreaterThan(0).LessThan(TaxValidation.MaxAmount).When(x => x.Movement != TaxCreditMovement.Expire);
+        RuleFor(x => x.Amount).NotNull().GreaterThan(0).LessThan(TaxValidation.MaxAmount)
+            .When(x => x.Movement is not (TaxCreditMovement.Expire or TaxCreditMovement.StartRequirementsReview or TaxCreditMovement.Discard));
         RuleFor(x => x.Amount!.Value).Must(TaxValidation.Cents).When(x => x.Amount is not null).WithName("Amount");
         RuleFor(x => x.Reason).MaximumLength(500);
-        RuleFor(x => x.Reason).NotEmpty().When(x => x.Movement is TaxCreditMovement.Block or TaxCreditMovement.Reverse);
+        RuleFor(x => x.Reason).NotEmpty()
+            .When(x => x.Movement is TaxCreditMovement.Block or TaxCreditMovement.Reverse or TaxCreditMovement.ConfirmToBeAppropriated or TaxCreditMovement.Discard);
         RuleFor(x => x.ObligationTax).NotNull().IsInEnum().When(x => x.Movement == TaxCreditMovement.Use);
         RuleFor(x => x.ObligationReference).NotEmpty().MaximumLength(100).When(x => x.Movement == TaxCreditMovement.Use);
     }

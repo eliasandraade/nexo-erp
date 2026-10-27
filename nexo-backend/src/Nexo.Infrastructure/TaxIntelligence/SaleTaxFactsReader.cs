@@ -23,7 +23,8 @@ public sealed class SaleTaxFactsReader
     [
         "Descontos dados no PDV foram tratados como incondicionais: para isso precisam constar do documento fiscal (LC 214/2025, art. 12, § 3º).",
         "O desconto e os acréscimos da venda foram rateados entre os itens pelo valor líquido de cada um.",
-        "Os itens foram tratados como regime geral: o cadastro do produto ainda não informa regime diferenciado ou específico.",
+        "O cadastro do produto ainda não informa cClassTrib: sem ele a V1 não calcula a venda (classificação insuficiente), em vez de presumir o regime geral.",
+        "Venda no PDV é um fornecimento único e imediato: data da venda = data do fornecimento = data do documento.",
         "ICMS, ISS, PIS e Cofins embutidos no preço não são conhecidos na venda — a base pode estar maior do que a real.",
     ];
 
@@ -53,7 +54,8 @@ public sealed class SaleTaxFactsReader
 
         var date = DateOnly.FromDateTime(BusinessClock.ToBrazil(sale.ConfirmedAt.Value));
         return new TaxOperationFacts(TaxTransactionSource.Sale, sale.Id,
-            new TaxOperationRequest(date, TaxDirection.Outbound, null, null, $"Venda #{sale.Number}", lines));
+            new TaxOperationRequest(date, TaxDirection.Outbound, null, null, $"Venda #{sale.Number}", lines,
+                new TaxOperationTiming(TaxSupplyPattern.SingleSupply, DocumentDate: date, SupplyDate: date)));
     }
 
     /// <summary>Splits an amount over weights in cents, the remainder going to the largest fractions (sums exactly).</summary>

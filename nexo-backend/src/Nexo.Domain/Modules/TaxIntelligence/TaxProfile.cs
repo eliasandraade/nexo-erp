@@ -29,12 +29,12 @@ public class TaxProfile : StoreEntity
     public TaxProfileVersion AddVersion(
         DateOnly validFrom, TaxRegime regime, string state, string cityIbgeCode, string primaryCnae,
         IReadOnlyList<string> secondaryCnaes, IReadOnlyList<string> specialRegimes, IReadOnlyList<string> benefits,
-        bool? accessoryObligationsCompliant, string reason, Guid createdById, string createdByName)
+        string reason, Guid createdById, string createdByName)
     {
         var number = _versions.Count == 0 ? 1 : _versions.Max(v => v.VersionNumber) + 1;
         var version = new TaxProfileVersion(
             TenantId, Id, number, validFrom, regime, state, cityIbgeCode, primaryCnae, secondaryCnaes,
-            specialRegimes, benefits, accessoryObligationsCompliant, reason, createdById, createdByName);
+            specialRegimes, benefits, reason, createdById, createdByName);
         _versions.Add(version);
         SetUpdatedAt();
         return version;
@@ -53,7 +53,7 @@ public class TaxProfileVersion : StoreEntity
     internal TaxProfileVersion(
         Guid tenantId, Guid profileId, int versionNumber, DateOnly validFrom, TaxRegime regime, string state,
         string cityIbgeCode, string primaryCnae, IReadOnlyList<string> secondaryCnaes, IReadOnlyList<string> specialRegimes,
-        IReadOnlyList<string> benefits, bool? accessoryObligationsCompliant, string reason, Guid createdById, string createdByName)
+        IReadOnlyList<string> benefits, string reason, Guid createdById, string createdByName)
         : base(tenantId)
     {
         if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe o motivo da nova versão do perfil.");
@@ -71,7 +71,6 @@ public class TaxProfileVersion : StoreEntity
         SecondaryCnaes = secondaryCnaes.Distinct().ToList();
         SpecialRegimes = specialRegimes.Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToList();
         Benefits = benefits.Select(s => s.Trim()).Where(s => s.Length > 0).Distinct().ToList();
-        AccessoryObligationsCompliant = accessoryObligationsCompliant;
         Reason = reason.Trim();
         CreatedById = createdById;
         CreatedByName = createdByName;
@@ -89,11 +88,8 @@ public class TaxProfileVersion : StoreEntity
     public List<string> SpecialRegimes { get; private set; } = [];
     /// <summary>Tax benefits the establishment declares, as free text with their legal basis.</summary>
     public List<string> Benefits { get; private set; } = [];
-    /// <summary>
-    /// Whether the establishment fulfils the IBS/CBS ancillary obligations — the condition of the
-    /// 2026 collection waiver (LC 214/2025, art. 348, § 1º). Null = not declared.
-    /// </summary>
-    public bool? AccessoryObligationsCompliant { get; private set; }
+    // Ancillary obligations are not a timeless fact of the profile: see TaxComplianceAssessment
+    // (per period and scope, historical).
     public string Reason { get; private set; } = string.Empty;
     public Guid CreatedById { get; private set; }
     public string CreatedByName { get; private set; } = string.Empty;

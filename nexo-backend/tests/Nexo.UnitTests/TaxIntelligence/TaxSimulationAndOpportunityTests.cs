@@ -12,7 +12,7 @@ public class TaxSimulationAndOpportunityTests
     [Fact]
     public void Converting_conditional_discounts_lowers_the_base_by_the_discount()
     {
-        var results = TaxSimulator.Compare(Input(), [new TaxScenario("Incondicional", ConvertConditionalDiscounts: true)], Catalogue());
+        var results = TaxSimulator.Compare(V1, Input(), [new TaxScenario("Incondicional", ConvertConditionalDiscounts: true)], Catalogue());
 
         results.Should().HaveCount(2);
         results[0].IsBaseline.Should().BeTrue();
@@ -26,17 +26,17 @@ public class TaxSimulationAndOpportunityTests
     public void A_scenario_never_changes_the_baseline_input()
     {
         var baseline = Input();
-        var before = TaxCanonical.Serialize(baseline);
+        var before = TaxCanonicalV1.Instance.Serialize(baseline);
 
-        TaxSimulator.Compare(baseline, [new TaxScenario("x", Regime: TaxRegime.SimplesNacional, ConvertConditionalDiscounts: true)], Catalogue());
+        TaxSimulator.Compare(V1, baseline, [new TaxScenario("x", Regime: TaxRegime.SimplesNacional, ConvertConditionalDiscounts: true)], Catalogue());
 
-        TaxCanonical.Serialize(baseline).Should().Be(before);
+        TaxCanonicalV1.Instance.Serialize(baseline).Should().Be(before);
     }
 
     [Fact]
     public void A_rate_hypothesis_replaces_the_rate_and_is_labelled()
     {
-        var results = TaxSimulator.Compare(Input(date: new DateOnly(2027, 3, 1)),
+        var results = TaxSimulator.Compare(V1, Input(date: new DateOnly(2027, 3, 1)),
             [new TaxScenario("Hipótese 2027", RateHypotheses: [new RateHypothesis(TaxType.Cbs, 8.8m, "estimativa do usuário")])],
             Catalogue());
 
@@ -51,7 +51,7 @@ public class TaxSimulationAndOpportunityTests
     public void Supplier_comparison_nets_the_credit_only_when_assumed()
     {
         var input = Input(direction: TaxDirection.Inbound, counterparty: TaxRegime.LucroReal);
-        var results = TaxSimulator.Compare(input,
+        var results = TaxSimulator.Compare(V1, input,
             [
                 new TaxScenario("Sem crédito"),
                 new TaxScenario("Com crédito", AssumeCreditable: true),
@@ -66,7 +66,7 @@ public class TaxSimulationAndOpportunityTests
     [Fact]
     public void Simples_supplier_gives_no_credit_estimate_even_when_assumed()
     {
-        var results = TaxSimulator.Compare(Input(direction: TaxDirection.Inbound, counterparty: TaxRegime.SimplesNacional),
+        var results = TaxSimulator.Compare(V1, Input(direction: TaxDirection.Inbound, counterparty: TaxRegime.SimplesNacional),
             [new TaxScenario("Simples", AssumeCreditable: true)], Catalogue());
 
         results[1].CreditEstimate.Should().Be(0m);
@@ -75,18 +75,30 @@ public class TaxSimulationAndOpportunityTests
     [Fact]
     public void Detector_proposes_the_unconditional_discount_with_its_requirements_and_caveats()
     {
-        var candidate = new UnconditionalDiscountDetector().Detect(Input(), Catalogue()).Single();
+        var candidate = new UnconditionalDiscountDetector().Detect(V1, Input(), Catalogue()).Single();
 
-        candidate.Type.Should().Be(TaxOpportunityType.TaxSaving);
+        candidate.Type.Should().Be(TaxOpportunityType.CalculatedTaxReduction, "a lower IBS/CBS on the document is not, by itself, a saving");
+        TaxOpportunity.NatureOf(candidate.Type).Should().Be(TaxImpactNature.CalculatedTaxReduction);
+        candidate.DetectorKey.Should().Be("unconditional-discount@3");
+        candidate.Summary.Should().Contain("redução do IBS/CBS calculado").And.NotContain("a menos de tributo").And.NotContainEquivalentOf("economia");
         candidate.EstimatedImpact.Should().Be(0.50m);
         candidate.Risk.Should().Be(TaxRiskLevel.Low);
         candidate.Confidence.Should().Be(90);
-        candidate.Requirements.Select(r => r.Code).Should().Equal(
-            UnconditionalDiscountDetector.RequirementOnDocument,
+        candidate.Requirements.Where(r => r.Phase == RequirementPhase.ScenarioApproval).Select(r => r.Code).Should().Equal(
+            UnconditionalDiscountDetector.RequirementCommercialTerms,
+            UnconditionalDiscountDetector.RequirementConditionRemoved,
             UnconditionalDiscountDetector.RequirementNoLaterEvent,
-            UnconditionalDiscountDetector.RequirementCommercialTerms);
+            UnconditionalDiscountDetector.RequirementNoRecharge);
+        candidate.Requirements.Where(r => r.Phase == RequirementPhase.ExecutionVerification).Select(r => r.Code).Should().Equal(
+            UnconditionalDiscountDetector.RequirementOnDocument,
+            UnconditionalDiscountDetector.RequirementPriceReduced);
+        candidate.Requirements.Single(r => r.Code == UnconditionalDiscountDetector.RequirementCommercialTerms).RequiredEvidence
+            .Should().Be(TaxEvidenceType.CommercialInstrument, "the scenario rests on a commercial instrument, not on a label");
+        candidate.Requirements.Single(r => r.Code == UnconditionalDiscountDetector.RequirementOnDocument).RequiredEvidence
+            .Should().Be(TaxEvidenceType.FiscalDocument);
         candidate.LegalSourceCodes.Should().Contain(TaxLegalCodes.Lc214Art12UnconditionalDiscount);
-        candidate.Caveats.Should().Contain("art. 348", "in 2026 the reduction is in the amount stated, not in cash");
+        candidate.Caveats.Should().Contain("art. 348", "in 2026 the reduction is in the amount stated, not in cash")
+            .And.Contain("não economia definitiva");
     }
 
     [Theory]
@@ -97,16 +109,16 @@ public class TaxSimulationAndOpportunityTests
         var noConditional = new TaxEngineLine(1, TaxItemKind.Good, 1000m, 100m, 0m, 0m, 0m, true);
         var detector = new UnconditionalDiscountDetector();
 
-        detector.Detect(Input(regime, lines: noConditional), Catalogue()).Should().BeEmpty();
+        detector.Detect(V1, Input(regime, lines: noConditional), Catalogue()).Should().BeEmpty();
         if (regime == TaxRegime.SimplesNacional)
-            detector.Detect(Input(regime), Catalogue()).Should().BeEmpty("no IBS/CBS test rate for the Simples — no saving");
-        detector.Detect(Input(regime, direction: TaxDirection.Inbound, counterparty: TaxRegime.LucroReal), Catalogue())
+            detector.Detect(V1, Input(regime), Catalogue()).Should().BeEmpty("no IBS/CBS test rate for the Simples — no saving");
+        detector.Detect(V1, Input(regime, direction: TaxDirection.Inbound, counterparty: TaxRegime.LucroReal), Catalogue())
             .Should().BeEmpty("only the supplier decides its own discounts");
     }
 
     [Fact]
     public void Lower_confidence_when_taxes_in_the_price_are_unknown()
-        => new UnconditionalDiscountDetector().Detect(Input(lines: Line(informed: false)), Catalogue()).Single().Confidence.Should().Be(70);
+        => new UnconditionalDiscountDetector().Detect(V1, Input(lines: Line(informed: false)), Catalogue()).Single().Confidence.Should().Be(70);
 
     [Fact]
     public void Guardrail_blocks_a_discount_that_still_depends_on_a_later_event()
@@ -117,13 +129,15 @@ public class TaxSimulationAndOpportunityTests
         v!.Structure.Should().Be(ProhibitedStructure.DocumentMismatch);
         TaxGuardrails.OnRequirementAnswered(UnconditionalDiscountDetector.DetectorKey, UnconditionalDiscountDetector.RequirementNoLaterEvent, met: true).Should().BeNull();
         TaxGuardrails.OnRequirementAnswered(UnconditionalDiscountDetector.DetectorKey, UnconditionalDiscountDetector.RequirementOnDocument, met: false).Should().BeNull();
+        TaxGuardrails.OnRequirementAnswered(UnconditionalDiscountDetector.DetectorKeyV1, UnconditionalDiscountDetector.RequirementNoLaterEvent, met: false)
+            .Should().NotBeNull("opportunities stored by v1 keep their guardrail");
     }
 
     // ── Opportunity workflow (domain) ───────────────────────────────────────────
 
     private static TaxOpportunity Opportunity(TaxRiskLevel risk = TaxRiskLevel.Low)
     {
-        var o = TaxOpportunity.Create(Guid.NewGuid(), TaxOpportunityType.TaxSaving, "t", "s", "d@1", null, "{}", "{}", 10m, risk, 90, "", null);
+        var o = TaxOpportunity.Create(Guid.NewGuid(), TaxOpportunityType.TaxSaving, "t", "s", "d@1", TaxEngineV1.VersionId, null, "{}", "{}", 10m, risk, 90, "", null);
         o.AddRequirement("a", "A", null);
         o.AddRequirement("b", "B", null);
         return o;
@@ -149,7 +163,7 @@ public class TaxSimulationAndOpportunityTests
         o.Invoking(x => x.Approve(false, user, "u", DateTime.UtcNow)).Should().Throw<DomainException>().Which.Code.Should().Be("tax_opportunity_requirements");
 
         o.AnswerRequirement(o.Requirements.Last().Id, true, null, user, "u", DateTime.UtcNow);
-        o.Approve(false, user, "u", DateTime.UtcNow);
+        o.Approve(false, Guid.NewGuid(), "aprovador", DateTime.UtcNow);
         o.Status.Should().Be(TaxOpportunityStatus.Approved);
         o.Invoking(x => x.Reject("x", user, "u", DateTime.UtcNow)).Should().Throw<DomainException>();
     }
@@ -163,7 +177,7 @@ public class TaxSimulationAndOpportunityTests
         foreach (var r in o.Requirements.ToList()) o.AnswerRequirement(r.Id, true, null, user, "u", DateTime.UtcNow);
 
         o.Invoking(x => x.Approve(false, user, "u", DateTime.UtcNow)).Should().Throw<DomainException>().Which.Code.Should().Be("tax_opportunity_high_risk");
-        o.Approve(true, user, "u", DateTime.UtcNow);
+        o.Approve(true, Guid.NewGuid(), "aprovador", DateTime.UtcNow, ApprovalRequirement.IndependentApprover);
         o.Status.Should().Be(TaxOpportunityStatus.Approved);
     }
 

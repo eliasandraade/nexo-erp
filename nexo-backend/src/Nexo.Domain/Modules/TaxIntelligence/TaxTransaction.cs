@@ -30,6 +30,17 @@ public class TaxTransaction : StoreEntity
     public string FactsHash { get; private set; } = string.Empty;
     public Guid CreatedById { get; private set; }
 
+    // Events and dates the law may tell apart. Engine V1 supports only a single, immediate supply
+    // (operation date = supply date = document date); the rest is recorded, never silently assumed.
+    public TaxSupplyPattern SupplyPattern { get; private set; } = TaxSupplyPattern.SingleSupply;
+    public DateOnly? DocumentDate { get; private set; }
+    public DateOnly? SupplyDate { get; private set; }
+    public DateOnly? PaymentOrAdvanceDate { get; private set; }
+    /// <summary>Competence period "yyyy-MM", when the document states one.</summary>
+    public string? CompetencePeriod { get; private set; }
+    public DateOnly? ExecutionFrom { get; private set; }
+    public DateOnly? ExecutionTo { get; private set; }
+
     public IReadOnlyCollection<TaxTransactionLine> Lines => _lines.AsReadOnly();
 
     public static TaxTransaction Create(
@@ -48,17 +59,29 @@ public class TaxTransaction : StoreEntity
             CreatedById = createdById,
         };
 
+    public void SetTiming(TaxSupplyPattern pattern, DateOnly? documentDate, DateOnly? supplyDate, DateOnly? paymentOrAdvanceDate,
+        string? competencePeriod, DateOnly? executionFrom, DateOnly? executionTo)
+    {
+        SupplyPattern = pattern;
+        DocumentDate = documentDate;
+        SupplyDate = supplyDate;
+        PaymentOrAdvanceDate = paymentOrAdvanceDate;
+        CompetencePeriod = string.IsNullOrWhiteSpace(competencePeriod) ? null : competencePeriod.Trim();
+        ExecutionFrom = executionFrom;
+        ExecutionTo = executionTo;
+    }
+
     public void AddLine(
         int index, TaxItemKind kind, string description, string? ncm, decimal quantity, decimal grossAmount,
         decimal unconditionalDiscount, decimal conditionalDiscount, decimal surcharges, decimal excludedTaxes,
-        bool excludedTaxesInformed, string? specialTreatment)
+        bool excludedTaxesInformed, string? specialTreatment, string? nbs = null, string? cClassTrib = null)
     {
         if (grossAmount < 0 || unconditionalDiscount < 0 || conditionalDiscount < 0 || surcharges < 0 || excludedTaxes < 0)
             throw new DomainException("Valores da operação não podem ser negativos.");
         if (unconditionalDiscount + conditionalDiscount > grossAmount)
             throw new DomainException("Os descontos passam do valor da linha.");
         _lines.Add(new TaxTransactionLine(TenantId, Id, index, kind, description, ncm, quantity, grossAmount,
-            unconditionalDiscount, conditionalDiscount, surcharges, excludedTaxes, excludedTaxesInformed, specialTreatment));
+            unconditionalDiscount, conditionalDiscount, surcharges, excludedTaxes, excludedTaxesInformed, specialTreatment, nbs, cClassTrib));
     }
 }
 
@@ -73,8 +96,11 @@ public class TaxTransactionLine : StoreEntity
     internal TaxTransactionLine(
         Guid tenantId, Guid transactionId, int index, TaxItemKind kind, string description, string? ncm,
         decimal quantity, decimal grossAmount, decimal unconditionalDiscount, decimal conditionalDiscount,
-        decimal surcharges, decimal excludedTaxes, bool excludedTaxesInformed, string? specialTreatment) : base(tenantId)
+        decimal surcharges, decimal excludedTaxes, bool excludedTaxesInformed, string? specialTreatment, string? nbs, string? cClassTrib)
+        : base(tenantId)
     {
+        Nbs = string.IsNullOrWhiteSpace(nbs) ? null : nbs.Trim();
+        CClassTrib = string.IsNullOrWhiteSpace(cClassTrib) ? null : cClassTrib.Trim();
         TransactionId = transactionId;
         LineIndex = index;
         ItemKind = kind;
@@ -95,6 +121,10 @@ public class TaxTransactionLine : StoreEntity
     public TaxItemKind ItemKind { get; private set; }
     public string Description { get; private set; } = string.Empty;
     public string? Ncm { get; private set; }
+    /// <summary>Nomenclatura Brasileira de Serviços — the classification of a service item.</summary>
+    public string? Nbs { get; private set; }
+    /// <summary>Código de Classificação Tributária do IBS/CBS (cClassTrib), as stated. Not interpreted by V1.</summary>
+    public string? CClassTrib { get; private set; }
     public decimal Quantity { get; private set; }
     public decimal GrossAmount { get; private set; }
     /// <summary>Discount stated on the fiscal document that does not depend on a later event (art. 12, § 3º).</summary>

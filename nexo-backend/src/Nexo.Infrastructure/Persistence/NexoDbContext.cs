@@ -159,6 +159,9 @@ public class NexoDbContext : DbContext
     public DbSet<TaxOpportunityRequirement> TaxOpportunityRequirements => Set<TaxOpportunityRequirement>();
     public DbSet<TaxOpportunityEvidence>  TaxOpportunityEvidence   => Set<TaxOpportunityEvidence>();
     public DbSet<TaxDecision>             TaxDecisions             => Set<TaxDecision>();
+    public DbSet<TaxExecutionVerification> TaxExecutionVerifications => Set<TaxExecutionVerification>();
+    public DbSet<TaxComplianceAssessment> TaxComplianceAssessments => Set<TaxComplianceAssessment>();
+    public DbSet<TaxTransactionLine>      TaxTransactionLines      => Set<TaxTransactionLine>();
     public DbSet<TaxCredit>               TaxCredits               => Set<TaxCredit>();
     public DbSet<TaxCreditLedgerEntry>    TaxCreditLedgerEntries   => Set<TaxCreditLedgerEntry>();
     public DbSet<SplitExpectation>        TaxSplitExpectations     => Set<SplitExpectation>();

@@ -1,0 +1,97 @@
+using Nexo.Domain.Common;
+using Nexo.Domain.Exceptions;
+
+namespace Nexo.Domain.Modules.TaxIntelligence;
+
+/// <summary>
+/// An assessment of the IBS/CBS ancillary obligations of an establishment for a period and a scope —
+/// the condition of the 2026 collection waiver (LC 214/2025, art. 348, § 1º). Historical and
+/// append-only: an establishment can be verified for one period or scope and not for another, and a
+/// newer assessment of the same period is recorded beside the old one (the newest wins for
+/// calculations made after it). Never a statement that "the company is compliant": only what was
+/// checked, for which period and scope, by whom, with which limitations.
+/// </summary>
+public class TaxComplianceAssessment : StoreEntity
+{
+    private TaxComplianceAssessment() { }   // EF Core
+    private TaxComplianceAssessment(Guid tenantId) : base(tenantId) { }
+
+    public ComplianceAssessmentStatus Status { get; private set; }
+    public DateOnly PeriodFrom { get; private set; }
+    public DateOnly PeriodTo { get; private set; }
+    /// <summary>What the assessment covers (e.g. "estabelecimento, NF-e e NFC-e emitidas").</summary>
+    public string Scope { get; private set; } = string.Empty;
+    /// <summary>Obligations that were actually checked, as described by whoever assessed.</summary>
+    public List<string> ObligationsChecked { get; private set; } = [];
+    /// <summary>What supports the assessment (document references, reports…), as given. Not interpreted.</summary>
+    public string? Evidence { get; private set; }
+    /// <summary>Who assessed (person or office, possibly external to the company).</summary>
+    public string AssessedBy { get; private set; } = string.Empty;
+    public DateTime AssessedAt { get; private set; }
+    public string? Notes { get; private set; }
+    /// <summary>What the assessment does not cover or could not check.</summary>
+    public string? Limitations { get; private set; }
+    /// <summary>
+    /// Taking part in the Programa Nacional de Conformidade Tributária (Ato Conjunto RFB/CGIBS nº 5/2026).
+    /// Recorded as a fact only: it never means the obligations are fully met.
+    /// </summary>
+    public bool PnctParticipation { get; private set; }
+    public Guid RecordedById { get; private set; }
+    public string RecordedByName { get; private set; } = string.Empty;
+
+    public static TaxComplianceAssessment Record(
+        Guid tenantId, ComplianceAssessmentStatus status, DateOnly periodFrom, DateOnly periodTo, string? scope,
+        IReadOnlyList<string> obligationsChecked, string? evidence, string assessedBy, DateTime assessedAt, string? notes,
+        string? limitations, bool pnctParticipation, Guid recordedById, string recordedByName)
+    {
+        if (periodTo < periodFrom) throw new DomainException("O fim do período é anterior ao início.", "tax_compliance_period");
+        if (string.IsNullOrWhiteSpace(assessedBy)) throw new DomainException("Informe quem avaliou.", "tax_compliance_assessor");
+        var checkedList = obligationsChecked.Select(o => o.Trim()).Where(o => o.Length > 0).Distinct().ToList();
+        if (status != ComplianceAssessmentStatus.Unknown && string.IsNullOrWhiteSpace(scope))
+            throw new DomainException("Informe o escopo da avaliação (o que ela cobre).", "tax_compliance_scope");
+        if (status is ComplianceAssessmentStatus.Verified or ComplianceAssessmentStatus.RemediationVerified
+            && (checkedList.Count == 0 || string.IsNullOrWhiteSpace(evidence)))
+            throw new DomainException("Uma verificação precisa dizer quais obrigações foram conferidas e com qual evidência.", "tax_compliance_evidence");
+        if (status is ComplianceAssessmentStatus.InconsistencyIdentified or ComplianceAssessmentStatus.UnderRemediation
+            or ComplianceAssessmentStatus.NonCompliant && string.IsNullOrWhiteSpace(notes))
+            throw new DomainException("Descreva a inconsistência ou o que está sendo regularizado.", "tax_compliance_notes");
+
+        return new TaxComplianceAssessment(tenantId)
+        {
+            Status = status,
+            PeriodFrom = periodFrom,
+            PeriodTo = periodTo,
+            Scope = scope?.Trim() ?? string.Empty,
+            ObligationsChecked = checkedList,
+            Evidence = Clean(evidence),
+            AssessedBy = assessedBy.Trim(),
+            AssessedAt = assessedAt,
+            Notes = Clean(notes),
+            Limitations = Clean(limitations),
+            PnctParticipation = pnctParticipation,
+            RecordedById = recordedById,
+            RecordedByName = recordedByName,
+        };
+    }
+
+    public bool Covers(DateOnly date) => PeriodFrom <= date && date <= PeriodTo;
+
+    /// <summary>
+    /// The compliance fact handed to the engine for a date inside the period. Only a verification
+    /// counts as met; a declaration, an inconsistency under remediation, a verified remediation, PNCT
+    /// participation or "not applicable" stay unknown (the rule that needs it is not applied, and the
+    /// calculation says why). A recorded non-compliance is false.
+    /// </summary>
+    public bool? ForRules => Status switch
+    {
+        ComplianceAssessmentStatus.Verified => true,
+        ComplianceAssessmentStatus.NonCompliant => false,
+        _ => null,
+    };
+
+    /// <summary>The assessment in force on a date: the newest one whose period covers it, or none.</summary>
+    public static TaxComplianceAssessment? InForce(IEnumerable<TaxComplianceAssessment> assessments, DateOnly date)
+        => assessments.Where(a => a.Covers(date)).OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.AssessedAt).FirstOrDefault();
+
+    private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+}

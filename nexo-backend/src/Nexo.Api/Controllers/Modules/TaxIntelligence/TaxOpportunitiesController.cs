@@ -38,6 +38,20 @@ public class TaxOpportunitiesController : ControllerBase
     public async Task<ActionResult<TaxOpportunityDto>> AddEvidence(Guid id, [FromBody] AddEvidenceRequest request, CancellationToken ct)
         => Ok(await _service.AddEvidenceAsync(id, request, ct));
 
+    /// <summary>Accepts or rejects a piece of evidence; a rejected one supports no requirement.</summary>
+    [HttpPost("opportunities/{id:guid}/evidence/{evidenceId:guid}/review")]
+    public async Task<ActionResult<TaxOpportunityDto>> ReviewEvidence(Guid id, Guid evidenceId, [FromBody] ReviewEvidenceRequest request, CancellationToken ct)
+        => Ok(await _service.ReviewEvidenceAsync(id, evidenceId, request, ct));
+
+    /// <summary>
+    /// After the operation: records whether it happened as the scenario was approved (authorised fiscal
+    /// document, final amounts) or diverged. Diretoria only; sealed with its own dossier hash.
+    /// </summary>
+    [HttpPost("opportunities/{id:guid}/execution")]
+    [Authorize(Roles = AppRoles.Directors)]
+    public async Task<ActionResult<TaxOpportunityDto>> VerifyExecution(Guid id, [FromBody] VerifyExecutionRequest request, CancellationToken ct)
+        => Ok(await _service.VerifyExecutionAsync(id, request, ct));
+
     [HttpPost("opportunities/{id:guid}/block")]
     public async Task<ActionResult<TaxOpportunityDto>> Block(Guid id, [FromBody] BlockOpportunityRequest request, CancellationToken ct)
         => Ok(await _service.BlockAsync(id, request, ct));
@@ -46,7 +60,11 @@ public class TaxOpportunitiesController : ControllerBase
     public async Task<ActionResult<TaxOpportunityDto>> Reject(Guid id, [FromBody] RejectOpportunityRequest request, CancellationToken ct)
         => Ok(await _service.RejectAsync(id, request, ct));
 
-    /// <summary>Approves and records the decision dossier. Diretoria only; high risk must be acknowledged.</summary>
+    /// <summary>
+    /// Approves the scenario and records the decision dossier — it does not execute any commercial or fiscal
+    /// change. Diretoria only; high risk must be acknowledged; the maker-checker requirement follows risk and
+    /// materiality; with the production policy, every rule behind it must be professionally approved.
+    /// </summary>
     [HttpPost("opportunities/{id:guid}/approve")]
     [Authorize(Roles = AppRoles.Directors)]
     public async Task<ActionResult<TaxOpportunityDto>> Approve(Guid id, [FromBody] ApproveOpportunityRequest request, CancellationToken ct)

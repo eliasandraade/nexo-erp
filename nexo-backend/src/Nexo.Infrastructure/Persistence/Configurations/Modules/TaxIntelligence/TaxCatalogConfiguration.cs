@@ -22,13 +22,13 @@ internal sealed class TaxLegalSourceConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.Url).HasColumnName("url").HasMaxLength(500).IsRequired();
         b.Property(x => x.Excerpt).HasColumnName("excerpt").IsRequired();
         b.Property(x => x.PublishedOn).HasColumnName("published_on");
-        b.Property(x => x.Verification).HasColumnName("verification").HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.TextVerification).HasColumnName("text_verification").HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(x => x.VerifiedAt).HasColumnName("verified_at").HasColumnType("timestamptz");
         b.Property(x => x.VerifiedBy).HasColumnName("verified_by").HasMaxLength(200);
         b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(1000);
         b.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         b.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
-        b.Ignore(x => x.IsVerified);
+        b.Ignore(x => x.IsTextVerified);
     }
 }
 
@@ -75,6 +75,16 @@ internal sealed class TaxRuleVersionConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(2000);
         b.Property(x => x.ActivatedAt).HasColumnName("activated_at").HasColumnType("timestamptz");
         b.Property(x => x.StatusChangedAt).HasColumnName("status_changed_at").HasColumnType("timestamptz");
+        b.Property(x => x.ProfessionalReview).HasColumnName("professional_review").HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.ProfessionalReviewedBy).HasColumnName("professional_reviewed_by").HasMaxLength(200);
+        b.Property(x => x.ProfessionalReviewedAt).HasColumnName("professional_reviewed_at").HasColumnType("timestamptz");
+        b.Property(x => x.ProfessionalReviewNotes).HasColumnName("professional_review_notes").HasMaxLength(4000);
+        b.Property(x => x.ProfessionalReference).HasColumnName("professional_reference").HasMaxLength(100);
+        b.Property(x => x.ProfessionalReviewScope).HasColumnName("professional_review_scope").HasMaxLength(2000);
+        b.Property(x => x.ProfessionalReviewValidFrom).HasColumnName("professional_review_valid_from");
+        b.Property(x => x.ProfessionalReviewValidTo).HasColumnName("professional_review_valid_to");
+        b.Property(x => x.ProfessionalReviewAssumptions).HasColumnName("professional_review_assumptions").HasMaxLength(4000);
+        b.Property(x => x.ProfessionalReviewCaveats).HasColumnName("professional_review_caveats").HasMaxLength(4000);
         b.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         b.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 

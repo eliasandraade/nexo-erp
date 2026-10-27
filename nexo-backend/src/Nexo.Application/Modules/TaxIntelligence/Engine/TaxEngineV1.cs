@@ -13,13 +13,23 @@ namespace Nexo.Application.Modules.TaxIntelligence.Engine;
 /// line apply the base rules (starting from the gross price), then the rate rules on that base; then
 /// the note rules on the whole operation. Rules that cover the date but are not active are listed as
 /// not applied.
+///
+/// FROZEN as "orken-tax-engine/1.0.0": calculations made by it are verified by running it again, so
+/// its behaviour and its canonical form (<see cref="TaxCanonicalV1"/>) must never change. A change of
+/// semantics is a new class (TaxEngineV2…) registered in <see cref="TaxEngineRegistry"/>; this one
+/// stays registered to reproduce what it produced. The golden tests pin its outputs.
 /// </summary>
-public static class TaxEngine
+public sealed class TaxEngineV1 : ITaxEngine
 {
-    /// <summary>Bumped whenever the evaluation semantics or the canonical form change.</summary>
-    public const string Version = "orken-tax-engine/1.0.0";
+    public const string VersionId = "orken-tax-engine/1.0.0";
 
-    public static IReadOnlyList<TaxEngineRule> SelectActive(IEnumerable<TaxEngineRule> rules, DateOnly date)
+    public string Version => VersionId;
+
+    public ITaxCanonicalizer Canonical => TaxCanonicalV1.Instance;
+
+    public decimal RoundMoney(decimal value) => Money(value);
+
+    public IReadOnlyList<TaxEngineRule> SelectActive(IEnumerable<TaxEngineRule> rules, DateOnly date)
         => rules
             .Where(r => r.Status == TaxRuleStatus.Active && r.Covers(date))
             .GroupBy(r => r.Key, StringComparer.Ordinal)
@@ -28,12 +38,12 @@ public static class TaxEngine
             .ToList();
 
     /// <summary>Hash of the rule versions a run used — part of the calculation key.</summary>
-    public static string RuleSetHash(IEnumerable<TaxEngineRule> selected)
-        => TaxCanonical.Hash(string.Join('\n', selected
+    public string RuleSetHash(IEnumerable<TaxEngineRule> selected)
+        => TaxCanonicalV1.Instance.Hash(string.Join('\n', selected
             .OrderBy(r => r.Key, StringComparer.Ordinal)
             .Select(r => $"{r.Key}@{r.Version}#{r.ContentHash}")));
 
-    public static TaxEngineOutput Run(TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue)
+    public TaxEngineOutput Run(TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue)
     {
         var date = input.ReferenceDate;
         var active = SelectActive(catalogue, date);
@@ -79,7 +89,7 @@ public static class TaxEngine
             .ToList();
 
         return new TaxEngineOutput(
-            Version, lines, totals,
+            VersionId, lines, totals,
             TotalBase: lines.Sum(l => l.Base),
             TotalTax: totals.Sum(t => t.Amount),
             notes, warnings.Distinct().ToList(), executions, notApplied);
@@ -167,7 +177,7 @@ public static class TaxEngine
     private static (bool Matched, IReadOnlyList<ConditionTrace> Traces) Evaluate(
         TaxEngineRule rule, TaxEngineInput input, TaxEngineLine? line, List<string> warnings)
     {
-        var traces = rule.Conditions.Select(c => TaxConditionEvaluator.Evaluate(c, input, line)).ToList();
+        var traces = rule.Conditions.Select(c => TaxConditionEvaluatorV1.Evaluate(c, input, line)).ToList();
         var unknown = traces.Where(t => t.Outcome == ConditionOutcome.Unknown).ToList();
         if (unknown.Count > 0 && traces.All(t => t.Outcome != ConditionOutcome.Failed))
             warnings.Add($"A regra {rule.Key} não pôde ser avaliada: {string.Join("; ", unknown.Select(u => u.Actual))}.");
@@ -178,11 +188,11 @@ public static class TaxEngine
         => new(rule.VersionId, rule.Key, rule.Version, rule.ContentHash, lineIndex, matched, traces, output, rule.LegalSourceCodes, rule.IsHypothesis);
 
     /// <summary>Two decimals, half away from zero — an engineering convention of this engine version, not a legal rule.</summary>
-    public static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
+    private static decimal Money(decimal value) => decimal.Round(value, 2, MidpointRounding.AwayFromZero);
 }
 
-/// <summary>Evaluates one condition against the operation and, for line rules, the line.</summary>
-public static class TaxConditionEvaluator
+/// <summary>Evaluates one condition against the operation and, for line rules, the line. Part of engine V1 (frozen).</summary>
+public static class TaxConditionEvaluatorV1
 {
     public static ConditionTrace Evaluate(TaxCondition condition, TaxEngineInput input, TaxEngineLine? line) => condition switch
     {

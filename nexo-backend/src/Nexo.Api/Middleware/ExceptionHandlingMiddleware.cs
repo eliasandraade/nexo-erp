@@ -66,7 +66,7 @@ public class ExceptionHandlingMiddleware
         catch (DomainException ex)
         {
             _logger.LogWarning("Domain rule violation: {Message}", ex.Message);
-            await WriteErrorAsync(ctx, 422, ex.Message, code: ex.Code);
+            await WriteErrorAsync(ctx, 422, ex.Message, ex.Details.Count > 0 ? ex.Details.ToArray() : null, ex.Code);
         }
         catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
         {

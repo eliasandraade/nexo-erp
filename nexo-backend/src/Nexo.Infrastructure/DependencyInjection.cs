@@ -276,8 +276,19 @@ public static class DependencyInjection
         services.AddScoped<Nexo.Application.Integrations.Pdf.IReceiptHeaderProvider>(sp => sp.GetRequiredService<Nexo.Infrastructure.Fiscal.FiscalService>());
 
         // Tax Intelligence: versioned catalogue, deterministic engine, opportunities, credits, split payment.
+        // Engine versions this build can run: new calculations use the current one; a stored calculation
+        // is only ever reproduced by the exact version it records.
+        services.AddSingleton(Nexo.Application.Modules.TaxIntelligence.Engine.TaxEngineRegistry.Default);
+        // Production stance unless configured: only professionally approved rules back a decision.
+        // Development and Testing default to off so the workflow can be exercised before the review.
+        services.Configure<Nexo.Infrastructure.TaxIntelligence.TaxIntelligencePolicyOptions>(o =>
+        {
+            o.RequireApprovedRulesForDecisions = !IsDevelopmentOrTesting(configuration);
+            configuration.GetSection(Nexo.Infrastructure.TaxIntelligence.TaxIntelligencePolicyOptions.Section).Bind(o);
+        });
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxAuditTrail>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxCatalogService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxComplianceService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxProfileService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.SaleTaxFactsReader>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxOpportunityService>();

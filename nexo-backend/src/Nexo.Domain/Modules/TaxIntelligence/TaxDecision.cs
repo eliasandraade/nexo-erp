@@ -19,6 +19,8 @@ public class TaxDecision : StoreEntity
     public string DossierHash { get; private set; } = string.Empty;
     public TaxRiskLevel Risk { get; private set; }
     public bool HighRiskAcknowledged { get; private set; }
+    /// <summary>Set when the approver also did the whole analysis (segregation of duties waived, with reason).</summary>
+    public string? SelfApprovalJustification { get; private set; }
     public string EngineVersion { get; private set; } = string.Empty;
     public Guid ApprovedById { get; private set; }
     public string ApprovedByName { get; private set; } = string.Empty;
@@ -26,7 +28,8 @@ public class TaxDecision : StoreEntity
 
     public static TaxDecision Create(
         Guid tenantId, Guid opportunityId, string strategy, string dossierJson, string dossierHash, TaxRiskLevel risk,
-        bool highRiskAcknowledged, string engineVersion, Guid approvedById, string approvedByName, DateTime approvedAtUtc)
+        bool highRiskAcknowledged, string engineVersion, Guid approvedById, string approvedByName, DateTime approvedAtUtc,
+        string? selfApprovalJustification = null)
         => new(tenantId)
         {
             OpportunityId = opportunityId,
@@ -35,6 +38,7 @@ public class TaxDecision : StoreEntity
             DossierHash = dossierHash,
             Risk = risk,
             HighRiskAcknowledged = highRiskAcknowledged,
+            SelfApprovalJustification = string.IsNullOrWhiteSpace(selfApprovalJustification) ? null : selfApprovalJustification.Trim(),
             EngineVersion = engineVersion,
             ApprovedById = approvedById,
             ApprovedByName = approvedByName,

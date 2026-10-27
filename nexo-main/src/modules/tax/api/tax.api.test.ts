@@ -45,18 +45,24 @@ describe("tax API client routes", () => {
   it("sends the workflow actions with the bodies the server validates", () => {
     api.startOpportunityReview("o1");
     api.answerRequirement("o1", "r1", false, "depende de pagamento");
-    api.addOpportunityEvidence("o1", "Contrato novo", null);
+    api.addOpportunityEvidence("o1", { description: "Contrato novo", documentReference: null, type: "CommercialInstrument", requirementId: "r1", notes: null });
+    api.reviewOpportunityEvidence("o1", "e1", false, "sem assinatura");
+    api.verifyOpportunityExecution("o1", { outcome: "Verified", fiscalDocumentReference: "chave", authorizationProtocol: null, notes: null });
     api.blockOpportunity("o1", "DocumentMismatch", "motivo");
     api.rejectOpportunity("o1", "não vale");
     api.approveOpportunity("o1", true);
+    api.approveOpportunity("o1", false, "  Diretoria de uma pessoa ");
 
     expect(post.mock.calls).toEqual([
       ["/tax/opportunities/o1/review", {}],
       ["/tax/opportunities/o1/requirements/r1", { met: false, note: "depende de pagamento" }],
-      ["/tax/opportunities/o1/evidence", { description: "Contrato novo", documentReference: null }],
+      ["/tax/opportunities/o1/evidence", { description: "Contrato novo", documentReference: null, type: "CommercialInstrument", requirementId: "r1", notes: null }],
+      ["/tax/opportunities/o1/evidence/e1/review", { accepted: false, notes: "sem assinatura" }],
+      ["/tax/opportunities/o1/execution", { outcome: "Verified", fiscalDocumentReference: "chave", authorizationProtocol: null, notes: null }],
       ["/tax/opportunities/o1/block", { structure: "DocumentMismatch", reason: "motivo" }],
       ["/tax/opportunities/o1/reject", { reason: "não vale" }],
-      ["/tax/opportunities/o1/approve", { acknowledgeHighRisk: true }],
+      ["/tax/opportunities/o1/approve", { acknowledgeHighRisk: true, selfApprovalJustification: null }],
+      ["/tax/opportunities/o1/approve", { acknowledgeHighRisk: false, selfApprovalJustification: "Diretoria de uma pessoa" }],
     ]);
   });
 

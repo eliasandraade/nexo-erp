@@ -77,4 +77,10 @@ public static class TaxAuditActions
     public const string RuleCreated = "tax_rule_created";
     public const string RuleVersionCreated = "tax_rule_version_created";
     public const string RuleVersionStatusChanged = "tax_rule_version_status_changed";
+    public const string RuleVersionProfessionalReview = "tax_rule_version_professional_review";
+    public const string ComplianceAssessmentRecorded = "tax_compliance_assessment_recorded";
+    public const string CalculationRefused = "tax_calculation_refused";
+    public const string OpportunityEvidenceReviewed = "tax_opportunity_evidence_reviewed";
+    public const string OpportunityExecutionVerified = "tax_opportunity_execution_verified";
+    public const string CreditStageChanged = "tax_credit_stage_changed";
 }

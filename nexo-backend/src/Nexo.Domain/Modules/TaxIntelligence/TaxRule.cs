@@ -59,9 +59,64 @@ public class TaxRuleVersion : BaseEntity
     public DateTime? ActivatedAt { get; private set; }
     public DateTime? StatusChangedAt { get; private set; }
 
+    /// <summary>Professional review of the interpretation — independent of <see cref="Status"/> (technical).</summary>
+    public ProfessionalReviewStatus ProfessionalReview { get; private set; } = ProfessionalReviewStatus.Pending;
+    public string? ProfessionalReviewedBy { get; private set; }
+    /// <summary>Professional identification of the reviewer (e.g. a council registration), when the profession has one.</summary>
+    public string? ProfessionalReference { get; private set; }
+    public DateTime? ProfessionalReviewedAt { get; private set; }
+    /// <summary>What the review covered — an approval is valid only inside it.</summary>
+    public string? ProfessionalReviewScope { get; private set; }
+    public DateOnly? ProfessionalReviewValidFrom { get; private set; }
+    public DateOnly? ProfessionalReviewValidTo { get; private set; }
+    public string? ProfessionalReviewAssumptions { get; private set; }
+    public string? ProfessionalReviewCaveats { get; private set; }
+    public string? ProfessionalReviewNotes { get; private set; }
+
+    /// <summary>Approved (with or without caveats) by a professional, for a date inside the review's validity.</summary>
+    public bool IsProfessionallyApprovedOn(DateOnly date)
+        => ProfessionalReview is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats
+           && ProfessionalReviewValidFrom is not null && ProfessionalReviewValidFrom <= date
+           && (ProfessionalReviewValidTo is null || date <= ProfessionalReviewValidTo);
+
     public IReadOnlyCollection<TaxRuleVersionSource> Sources => _sources.AsReadOnly();
 
     public bool Covers(DateOnly date) => ValidFrom <= date && (ValidTo is null || date <= ValidTo);
+
+    /// <summary>
+    /// Records a tax professional's review. Content and technical status never change. An approval
+    /// states its scope and from when it holds; an approval with caveats states them; a review that
+    /// asks for changes or rejects says why. Each review is audited by the caller.
+    /// </summary>
+    public void RecordProfessionalReview(ProfessionalReviewInput r, DateTime atUtc)
+    {
+        if (r.Status == ProfessionalReviewStatus.Pending)
+            throw new DomainException("Pendente é o estado inicial; registre a revisão recebida.", "tax_review_status");
+        if (string.IsNullOrWhiteSpace(r.Reviewer)) throw new DomainException("Informe quem revisou.", "tax_review_reviewer");
+        if (r.ValidFrom is not null && r.ValidTo is not null && r.ValidTo < r.ValidFrom)
+            throw new DomainException("O fim da validade da revisão é anterior ao início.", "tax_review_validity");
+        if (r.Status is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats
+            && (string.IsNullOrWhiteSpace(r.Scope) || r.ValidFrom is null))
+            throw new DomainException("Uma aprovação diz o escopo e desde quando vale.", "tax_review_scope");
+        if (r.Status == ProfessionalReviewStatus.ApprovedWithCaveats && string.IsNullOrWhiteSpace(r.Caveats))
+            throw new DomainException("Aprovação com ressalvas precisa das ressalvas.", "tax_review_caveats");
+        if (r.Status is ProfessionalReviewStatus.ChangesRequired or ProfessionalReviewStatus.Rejected && string.IsNullOrWhiteSpace(r.Notes))
+            throw new DomainException("Uma revisão que pede mudança ou rejeita precisa dizer por quê.", "tax_review_notes");
+
+        ProfessionalReview = r.Status;
+        ProfessionalReviewedBy = r.Reviewer.Trim();
+        ProfessionalReference = Clean(r.ProfessionalReference);
+        ProfessionalReviewedAt = atUtc;
+        ProfessionalReviewScope = Clean(r.Scope);
+        ProfessionalReviewValidFrom = r.ValidFrom;
+        ProfessionalReviewValidTo = r.ValidTo;
+        ProfessionalReviewAssumptions = Clean(r.Assumptions);
+        ProfessionalReviewCaveats = Clean(r.Caveats);
+        ProfessionalReviewNotes = Clean(r.Notes);
+        SetUpdatedAt();
+    }
+
+    private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
     public static TaxRuleVersion Create(
         Guid ruleId, int version, DateOnly validFrom, DateOnly? validTo, int priority,
@@ -115,6 +170,11 @@ public class TaxRuleVersion : BaseEntity
         SetUpdatedAt();
     }
 }
+
+/// <summary>A professional review as received: who, under which identification, scope, validity, assumptions and caveats.</summary>
+public sealed record ProfessionalReviewInput(
+    ProfessionalReviewStatus Status, string Reviewer, string? ProfessionalReference, string? Scope, DateOnly? ValidFrom,
+    DateOnly? ValidTo, string? Assumptions, string? Caveats, string? Notes);
 
 /// <summary>Join between a rule version and a legal source (tax_rule_version_sources).</summary>
 public class TaxRuleVersionSource
