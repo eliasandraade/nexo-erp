@@ -143,7 +143,9 @@ public sealed record TaxCreditTotalsDto(CreditTax Tax, decimal Eligible, decimal
 
 // ── Split payment ────────────────────────────────────────────────────────────
 
-public sealed record SplitSettlementDto(Guid Id, decimal ActualAmount, SplitSettlementSource Source, string ExternalReference, DateTime SettledAt);
+public sealed record SplitSettlementDto(
+    Guid Id, decimal ActualAmount, SplitSettlementSource Source, string ExternalReference, DateTime SettledAt,
+    Guid? ReversesSettlementId, bool Reversed, string? Reason);
 
 public sealed record SplitExpectationDto(
     Guid Id, Guid CalculationId, TaxType Tax, SplitProcedure Procedure, decimal Expected, decimal Actual, decimal Difference,
@@ -151,6 +153,7 @@ public sealed record SplitExpectationDto(
 
 public sealed record CreateSplitExpectationsRequest(SplitProcedure Procedure);
 public sealed record RecordSplitSettlementRequest(decimal ActualAmount, string ExternalReference, DateTime SettledAt);
+public sealed record ReverseSplitSettlementRequest(string Reason);
 public sealed record SplitProviderStatusDto(bool Configured, string Message);
 
 // ── Catalogue ────────────────────────────────────────────────────────────────

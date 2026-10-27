@@ -26,7 +26,8 @@ public class SplitExpectation : StoreEntity
 
 /// <summary>
 /// What was actually retained for an expectation, as reported manually or by a provider adapter.
-/// Append-only: a correction is another settlement with its own reference.
+/// Append-only: a wrong entry is cancelled by a reversal — another row with the opposite amount
+/// that points at it — and the right amount is then recorded again. Nothing is edited or deleted.
 /// </summary>
 public class SplitSettlement : StoreEntity
 {
@@ -40,6 +41,11 @@ public class SplitSettlement : StoreEntity
     public string ExternalReference { get; private set; } = string.Empty;
     public DateTime SettledAt { get; private set; }
     public Guid RecordedById { get; private set; }
+    /// <summary>Set on a reversal: the settlement it cancels (one reversal per settlement).</summary>
+    public Guid? ReversesSettlementId { get; private set; }
+    public string? Reason { get; private set; }
+
+    public bool IsReversal => ReversesSettlementId is not null;
 
     public static SplitSettlement Record(
         Guid tenantId, Guid expectationId, decimal actualAmount, SplitSettlementSource source, string externalReference,
@@ -58,6 +64,24 @@ public class SplitSettlement : StoreEntity
             RecordedById = recordedById,
         };
     }
+
+    /// <summary>Cancels a wrong settlement: same expectation, opposite amount, the reason recorded.</summary>
+    public static SplitSettlement ReversalOf(SplitSettlement original, string reason, DateTime atUtc, Guid recordedById)
+    {
+        if (original.IsReversal) throw new DomainException("Um estorno não pode ser estornado.", "tax_split_reversal");
+        if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe o motivo do estorno.");
+        return new SplitSettlement(original.TenantId)
+        {
+            ExpectationId = original.ExpectationId,
+            ActualAmount = -original.ActualAmount,
+            Source = original.Source,
+            ExternalReference = $"estorno:{original.ExternalReference}",
+            SettledAt = atUtc,
+            RecordedById = recordedById,
+            ReversesSettlementId = original.Id,
+            Reason = reason.Trim(),
+        };
+    }
 }
 
 public enum SplitReconciliationStatus
@@ -74,12 +98,13 @@ public sealed record SplitReconciliation(decimal Expected, decimal Actual, decim
     /// <summary>Tolerance of one cent for rounding between engine and provider.</summary>
     public const decimal Tolerance = 0.01m;
 
-    public static SplitReconciliation Of(decimal expected, IEnumerable<decimal> settlements)
+    /// <param name="amounts">Every settlement amount, reversals (negative) included.</param>
+    /// <param name="liveSettlements">Settlements neither reversed nor reversals — none means still pending.</param>
+    public static SplitReconciliation Of(decimal expected, IEnumerable<decimal> amounts, int liveSettlements)
     {
-        var list = settlements.ToList();
-        var actual = list.Sum();
+        var actual = amounts.Sum();
         var diff = actual - expected;
-        return new SplitReconciliation(expected, actual, diff, StatusOf(list.Count, diff));
+        return new SplitReconciliation(expected, actual, diff, StatusOf(liveSettlements, diff));
     }
 
     private static SplitReconciliationStatus StatusOf(int settlements, decimal diff)

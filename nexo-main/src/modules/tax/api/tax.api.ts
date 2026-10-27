@@ -385,6 +385,18 @@ export interface CreditMovementRequest {
   onDate: string | null;
 }
 
+/** A retention recorded for an expectation. A reversal has a negative amount and points at the entry it cancels. */
+export interface SplitSettlementDto {
+  id: string;
+  actualAmount: number;
+  source: "Manual" | "Provider";
+  externalReference: string;
+  settledAt: string;
+  reversesSettlementId: string | null;
+  reversed: boolean;
+  reason: string | null;
+}
+
 export interface SplitExpectationDto {
   id: string;
   calculationId: string;
@@ -394,7 +406,7 @@ export interface SplitExpectationDto {
   actual: number;
   difference: number;
   status: SplitStatus;
-  settlements: { id: string; actualAmount: number; source: "Manual" | "Provider"; externalReference: string; settledAt: string }[];
+  settlements: SplitSettlementDto[];
   createdAt: string;
 }
 
@@ -501,6 +513,10 @@ export const listSplitExpectations = (calculationId?: string) =>
   apiClient.get<SplitExpectationDto[]>(calculationId ? `/tax/split/expectations?calculationId=${calculationId}` : "/tax/split/expectations");
 export const recordSplitSettlement = (id: string, actualAmount: number, externalReference: string, settledAt: string) =>
   apiClient.post<SplitExpectationDto>(`/tax/split/expectations/${id}/settlements`, { actualAmount, externalReference, settledAt });
+
+/** Cancels a wrong retention with an opposite entry; the original stays on record. */
+export const reverseSplitSettlement = (settlementId: string, reason: string) =>
+  apiClient.post<SplitExpectationDto>(`/tax/split/settlements/${settlementId}/reverse`, { reason });
 
 export const listTaxRules = () => apiClient.get<TaxRuleDto[]>("/tax/rules");
 export const listLegalSources = () => apiClient.get<TaxLegalSourceDto[]>("/tax/legal-sources");

@@ -231,6 +231,11 @@ public class TaxCreditsController : ControllerBase
     [HttpPost("split/expectations/{id:guid}/settlements")]
     public async Task<ActionResult<SplitExpectationDto>> RecordSettlement(Guid id, [FromBody] RecordSplitSettlementRequest request, CancellationToken ct)
         => Ok(await _split.RecordSettlementAsync(id, request, ct));
+
+    /// <summary>Cancels a wrong retention with an opposite entry (the original stays on record); then record the right amount.</summary>
+    [HttpPost("split/settlements/{id:guid}/reverse")]
+    public async Task<ActionResult<SplitExpectationDto>> ReverseSettlement(Guid id, [FromBody] ReverseSplitSettlementRequest request, CancellationToken ct)
+        => Ok(await _split.ReverseSettlementAsync(id, request, ct));
 }
 
 /// <summary>Catalogue administration — platform admins only. Versions are never edited; only their status moves.</summary>

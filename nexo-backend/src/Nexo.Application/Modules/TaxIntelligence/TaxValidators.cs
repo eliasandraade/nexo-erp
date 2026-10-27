@@ -201,6 +201,11 @@ public sealed class RecordSplitSettlementRequestValidator : AbstractValidator<Re
     }
 }
 
+public sealed class ReverseSplitSettlementRequestValidator : AbstractValidator<ReverseSplitSettlementRequest>
+{
+    public ReverseSplitSettlementRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
+}
+
 public sealed class CreateLegalSourceRequestValidator : AbstractValidator<CreateLegalSourceRequest>
 {
     public CreateLegalSourceRequestValidator()

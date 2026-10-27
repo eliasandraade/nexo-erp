@@ -123,11 +123,35 @@ public sealed class TaxSplitPaymentService
         return dto;
     }
 
+    /// <summary>Cancels a wrong settlement with an opposite entry; the original stays on record.</summary>
+    public async Task<SplitExpectationDto> ReverseSettlementAsync(Guid settlementId, ReverseSplitSettlementRequest r, CancellationToken ct)
+    {
+        var original = await _db.TaxSplitSettlements.AsNoTracking().FirstOrDefaultAsync(s => s.Id == settlementId, ct)
+            ?? throw new NotFoundException("Retenção registrada", settlementId);
+        var reversal = SplitSettlement.ReversalOf(original, r.Reason, DateTime.UtcNow, _audit.UserId);
+        _db.TaxSplitSettlements.Add(reversal);
+        _audit.Record(TaxAuditActions.SplitSettlementReversed, "SplitExpectation", original.ExpectationId,
+            $"Retenção {original.ExternalReference} ({original.ActualAmount:N2}) estornada: {r.Reason}",
+            new { settlementId, reversalId = reversal.Id, original.ActualAmount, r.Reason }, AuditSeverity.Warning);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new ConflictException("Esta retenção já foi estornada.");
+        }
+        return (await ListAsync(null, MaxList, ct)).First(e => e.Id == original.ExpectationId);
+    }
+
     private static SplitExpectationDto Map(SplitExpectation e, IReadOnlyList<SplitSettlement> settlements)
     {
-        var rec = SplitReconciliation.Of(e.ExpectedAmount, settlements.Select(s => s.ActualAmount));
+        var reversed = settlements.Where(s => s.ReversesSettlementId is not null).Select(s => s.ReversesSettlementId!.Value).ToHashSet();
+        var live = settlements.Count(s => !s.IsReversal && !reversed.Contains(s.Id));
+        var rec = SplitReconciliation.Of(e.ExpectedAmount, settlements.Select(s => s.ActualAmount), live);
         return new SplitExpectationDto(e.Id, e.CalculationId, e.Tax, e.Procedure, rec.Expected, rec.Actual, rec.Difference, rec.Status,
-            settlements.OrderBy(s => s.SettledAt).Select(s => new SplitSettlementDto(s.Id, s.ActualAmount, s.Source, s.ExternalReference, s.SettledAt)).ToList(),
+            settlements.OrderBy(s => s.SettledAt).Select(s => new SplitSettlementDto(s.Id, s.ActualAmount, s.Source, s.ExternalReference, s.SettledAt,
+                s.ReversesSettlementId, reversed.Contains(s.Id), s.Reason)).ToList(),
             e.CreatedAt);
     }
 }

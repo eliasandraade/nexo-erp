@@ -254,6 +254,7 @@ public class TaxIntelligenceTests
         blocked.GetProperty("blockedAs").GetString().Should().Be("DocumentMismatch");
         blocked.GetProperty("estimatedImpact").ValueKind.Should().Be(JsonValueKind.Null, "no saving is offered for a prohibited structure");
         blocked.GetProperty("proposed").ValueKind.Should().Be(JsonValueKind.Null);
+        blocked.GetProperty("summary").GetString().Should().NotContain("a menos de tributo", "the saving is not advertised, even in the summary");
         var approve = await Post(admin, $"/api/tax/opportunities/{oppId}/approve", new { acknowledgeHighRisk = true });
         (await Json(approve, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString().Should().Be("tax_opportunity_blocked");
     }
@@ -352,6 +353,14 @@ public class TaxIntelligenceTests
         }));
         uses.Count(u => u.StatusCode == HttpStatusCode.OK).Should().Be(2, "24 available pays only two uses of 10");
 
+        var duplicate = await Post(admin, "/api/tax/credits", new
+        {
+            tax = "Cbs", sourceDocumentType = "NF-e", sourceDocumentKey = "35261012345678000190550010000012341000012345",
+            supplierDocument = "12345678000190", acquiredOn = "2026-06-01", expiresOn = (string?)null,
+            originalAmount = 100m, eligibleAmount = 100m, eligibilityBasis = "repetido",
+        });
+        duplicate.StatusCode.Should().Be(HttpStatusCode.Conflict, "the same document cannot give the same credit twice");
+
         var final = await Json(await admin.GetAsync($"/api/tax/credits/{id}"));
         final.GetProperty("balance").GetProperty("used").GetDecimal().Should().Be(21m);
         final.GetProperty("balance").GetProperty("available").GetDecimal().Should().Be(4m);
@@ -377,6 +386,16 @@ public class TaxIntelligenceTests
         (await Json(await Post(admin, $"/api/tax/split/expectations/{cbsId}/settlements", new { actualAmount = 1m, externalReference = "psp-2", settledAt = DateTime.UtcNow })))
             .GetProperty("status").GetString().Should().Be("Excess");
         (await Post(admin, $"/api/tax/split/expectations/{cbsId}/settlements", new { actualAmount = 1m, externalReference = "psp-2", settledAt = DateTime.UtcNow }))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        // The wrong entry is reversed (append-only) and the reconciliation is right again.
+        var listed = (await Json(await admin.GetAsync($"/api/tax/split/expectations?calculationId={id}"))).EnumerateArray()
+            .Single(e => e.GetProperty("id").GetGuid() == cbsId);
+        var wrong = listed.GetProperty("settlements").EnumerateArray().Single(s => s.GetProperty("externalReference").GetString() == "psp-2");
+        var fixedUp = await Json(await Post(admin, $"/api/tax/split/settlements/{wrong.GetProperty("id").GetGuid()}/reverse", new { reason = "digitado em duplicidade" }));
+        fixedUp.GetProperty("status").GetString().Should().Be("Matched");
+        fixedUp.GetProperty("settlements").GetArrayLength().Should().Be(3, "the original and its reversal stay on record");
+        (await Post(admin, $"/api/tax/split/settlements/{wrong.GetProperty("id").GetGuid()}/reverse", new { reason = "de novo" }))
             .StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 

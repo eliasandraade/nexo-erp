@@ -306,6 +306,9 @@ internal sealed class TaxCreditConfiguration : IEntityTypeConfiguration<TaxCredi
         b.HasIndex(x => new { x.TenantId, x.StoreId, x.Tax }).HasDatabaseName("ix_tax_credits_tenant_store_tax");
         b.Property(x => x.SourceDocumentType).HasColumnName("source_document_type").HasMaxLength(40).IsRequired();
         b.Property(x => x.SourceDocumentKey).HasColumnName("source_document_key").HasMaxLength(44);
+        // One credit per electronic document and tax: a retried or repeated registration cannot double the balance.
+        b.HasIndex(x => new { x.TenantId, x.StoreId, x.Tax, x.SourceDocumentKey }).IsUnique()
+            .HasFilter("source_document_key IS NOT NULL").HasDatabaseName("ux_tax_credits_document_tax");
         b.Property(x => x.SupplierDocument).HasColumnName("supplier_document").HasMaxLength(14);
         b.Property(x => x.AcquiredOn).HasColumnName("acquired_on").IsRequired();
         b.Property(x => x.ExpiresOn).HasColumnName("expires_on");
@@ -371,5 +374,13 @@ internal sealed class SplitSettlementConfiguration : IEntityTypeConfiguration<Sp
         b.HasIndex(x => new { x.ExpectationId, x.ExternalReference }).IsUnique().HasDatabaseName("ux_tax_split_settlements_expectation_reference");
         b.Property(x => x.SettledAt).HasColumnName("settled_at").HasColumnType("timestamptz").IsRequired();
         b.Property(x => x.RecordedById).HasColumnName("recorded_by_id").IsRequired();
+        b.Property(x => x.ReversesSettlementId).HasColumnName("reverses_settlement_id");
+        b.HasOne<SplitSettlement>().WithMany().HasForeignKey(x => x.ReversesSettlementId)
+            .HasConstraintName("fk_tax_split_settlements_reverses").OnDelete(DeleteBehavior.Restrict);
+        // A settlement is reversed at most once.
+        b.HasIndex(x => x.ReversesSettlementId).IsUnique().HasFilter("reverses_settlement_id IS NOT NULL")
+            .HasDatabaseName("ux_tax_split_settlements_reverses");
+        b.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+        b.Ignore(x => x.IsReversal);
     }
 }

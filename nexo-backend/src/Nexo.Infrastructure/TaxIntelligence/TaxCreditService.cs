@@ -58,14 +58,24 @@ public sealed class TaxCreditService
 
     public async Task<TaxCreditDto> RegisterAsync(RegisterTaxCreditRequest r, CancellationToken ct)
     {
+        var key = string.IsNullOrWhiteSpace(r.SourceDocumentKey) ? null : r.SourceDocumentKey.Trim();
+        if (key is not null && await _db.TaxCredits.AnyAsync(c => c.Tax == r.Tax && c.SourceDocumentKey == key, ct))
+            throw new ConflictException("Já existe um crédito deste tributo para este documento.");
         var credit = TaxCredit.Register(_tenant.Id, r.Tax, r.SourceDocumentType,
-            string.IsNullOrWhiteSpace(r.SourceDocumentKey) ? null : r.SourceDocumentKey.Trim(), r.SupplierDocument,
+            key, r.SupplierDocument,
             r.AcquiredOn, r.ExpiresOn, r.OriginalAmount, r.EligibleAmount, r.EligibilityBasis, null, _audit.UserId, _audit.UserName);
         _db.TaxCredits.Add(credit);
         _audit.Record(TaxAuditActions.CreditRegistered, "Credit", credit.Id,
             $"Crédito de {r.Tax} registrado: {r.EligibleAmount:N2} elegível de {r.OriginalAmount:N2} ({r.SourceDocumentType}).",
-            new { tax = r.Tax.ToString(), r.OriginalAmount, r.EligibleAmount, r.EligibilityBasis, hasDocumentKey = r.SourceDocumentKey is not null });
-        await _db.SaveChangesAsync(ct);
+            new { tax = r.Tax.ToString(), r.OriginalAmount, r.EligibleAmount, r.EligibilityBasis, hasDocumentKey = key is not null });
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new ConflictException("Já existe um crédito deste tributo para este documento.");
+        }
         return Map(credit);
     }
 

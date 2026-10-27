@@ -221,7 +221,7 @@ public sealed class TaxOpportunityService
     {
         var blocked = o.Status == TaxOpportunityStatus.Blocked;
         return new TaxOpportunityDto(
-            o.Id, o.Type, o.ImpactNature, o.Status, o.Title, o.Summary, o.DetectorKey, o.SourceCalculationId,
+            o.Id, o.Type, o.ImpactNature, o.Status, o.Title, blocked ? BlockedSummary : o.Summary, o.DetectorKey, o.SourceCalculationId,
             blocked ? null : o.EstimatedImpact, o.Risk, o.Confidence,
             o.LegalSourceCodes.Split(',', StringSplitOptions.RemoveEmptyEntries), o.Caveats, o.BlockedAs, o.BlockReason,
             o.RejectionReason, o.ReviewedByName, o.ReviewedAt, o.CreatedAt,
@@ -233,6 +233,9 @@ public sealed class TaxOpportunityService
             blocked ? null : TaxCanonical.Deserialize<ScenarioResult>(o.ProposedScenarioJson),
             d is null ? null : MapDecision(d));
     }
+
+    /// <summary>The detector's summary states the saving; once blocked, only a neutral description is shown.</summary>
+    public const string BlockedSummary = "Proposta bloqueada como estrutura proibida. O benefício estimado não é exibido nem oferecido; o registro fica para auditoria.";
 
     private static TaxDecisionDto MapDecision(TaxDecision d) => new(
         d.Id, d.OpportunityId, d.Strategy, d.Risk, d.HighRiskAcknowledged, d.EngineVersion, d.ApprovedByName, d.ApprovedAt,

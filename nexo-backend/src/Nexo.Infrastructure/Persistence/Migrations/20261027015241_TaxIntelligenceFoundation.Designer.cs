@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261027013301_TaxIntelligenceFoundation")]
+    [Migration("20261027015241_TaxIntelligenceFoundation")]
     partial class TaxIntelligenceFoundation
     {
         /// <inheritdoc />
@@ -7079,9 +7079,18 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("external_reference");
 
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
                     b.Property<Guid>("RecordedById")
                         .HasColumnType("uuid")
                         .HasColumnName("recorded_by_id");
+
+                    b.Property<Guid?>("ReversesSettlementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reverses_settlement_id");
 
                     b.Property<DateTime>("SettledAt")
                         .HasColumnType("timestamptz")
@@ -7106,6 +7115,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ReversesSettlementId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_tax_split_settlements_reverses")
+                        .HasFilter("reverses_settlement_id IS NOT NULL");
 
                     b.HasIndex("StoreId")
                         .HasDatabaseName("ix_tax_split_settlements_store_id");
@@ -7373,6 +7387,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("TenantId", "StoreId", "Tax")
                         .HasDatabaseName("ix_tax_credits_tenant_store_tax");
+
+                    b.HasIndex("TenantId", "StoreId", "Tax", "SourceDocumentKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_tax_credits_document_tax")
+                        .HasFilter("source_document_key IS NOT NULL");
 
                     b.ToTable("tax_credits", "nexo");
                 });
@@ -10528,6 +10547,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_tax_split_settlements_expectations");
+
+                    b.HasOne("Nexo.Domain.Modules.TaxIntelligence.SplitSettlement", null)
+                        .WithMany()
+                        .HasForeignKey("ReversesSettlementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_tax_split_settlements_reverses");
 
                     b.HasOne("Nexo.Domain.Entities.Store", null)
                         .WithMany()

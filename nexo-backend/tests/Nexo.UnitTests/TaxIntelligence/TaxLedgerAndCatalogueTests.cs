@@ -97,10 +97,21 @@ public class TaxLedgerAndCatalogueTests
     [Fact]
     public void Split_reconciliation_reads_expected_versus_actual()
     {
-        SplitReconciliation.Of(10m, []).Status.Should().Be(SplitReconciliationStatus.Pending);
-        SplitReconciliation.Of(10m, [10.01m]).Status.Should().Be(SplitReconciliationStatus.Matched);
-        SplitReconciliation.Of(10m, [6m, 6m]).Should().Be(new SplitReconciliation(10m, 12m, 2m, SplitReconciliationStatus.Excess));
-        SplitReconciliation.Of(10m, [7m]).Status.Should().Be(SplitReconciliationStatus.Insufficient);
+        SplitReconciliation.Of(10m, [], 0).Status.Should().Be(SplitReconciliationStatus.Pending);
+        SplitReconciliation.Of(10m, [10.01m], 1).Status.Should().Be(SplitReconciliationStatus.Matched);
+        SplitReconciliation.Of(10m, [6m, 6m], 2).Should().Be(new SplitReconciliation(10m, 12m, 2m, SplitReconciliationStatus.Excess));
+        SplitReconciliation.Of(10m, [7m], 1).Status.Should().Be(SplitReconciliationStatus.Insufficient);
+        SplitReconciliation.Of(10m, [100m, -100m], 0).Status.Should().Be(SplitReconciliationStatus.Pending, "a reversed entry leaves nothing retained");
+        SplitReconciliation.Of(10m, [100m, -100m, 10m], 1).Status.Should().Be(SplitReconciliationStatus.Matched);
+    }
+
+    [Fact]
+    public void A_reversal_cancels_a_settlement_once_and_is_never_reversed_itself()
+    {
+        var s = SplitSettlement.Record(Guid.NewGuid(), Guid.NewGuid(), 100m, SplitSettlementSource.Manual, "psp-1", DateTime.UtcNow, Actor);
+        var r = SplitSettlement.ReversalOf(s, "digitado errado", DateTime.UtcNow, Actor);
+        (r.ActualAmount, r.ReversesSettlementId, r.ExternalReference).Should().Be((-100m, s.Id, "estorno:psp-1"));
+        FluentActions.Invoking(() => SplitSettlement.ReversalOf(r, "x", DateTime.UtcNow, Actor)).Should().Throw<DomainException>();
     }
 
     [Fact]

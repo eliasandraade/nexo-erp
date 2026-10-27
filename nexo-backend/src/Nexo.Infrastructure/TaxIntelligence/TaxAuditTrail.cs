@@ -71,6 +71,7 @@ public static class TaxAuditActions
     public const string CreditMovement = "tax_credit_movement";
     public const string SplitExpectationsCreated = "tax_split_expectations_created";
     public const string SplitSettlementRecorded = "tax_split_settlement_recorded";
+    public const string SplitSettlementReversed = "tax_split_settlement_reversed";
     public const string LegalSourceCreated = "tax_legal_source_created";
     public const string LegalSourceVerified = "tax_legal_source_verified";
     public const string RuleCreated = "tax_rule_created";

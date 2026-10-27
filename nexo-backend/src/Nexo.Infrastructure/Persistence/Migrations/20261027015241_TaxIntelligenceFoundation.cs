@@ -867,6 +867,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     external_reference = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     settled_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     recorded_by_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    reverses_settlement_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    reason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     updated_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
                     tenant_id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -880,6 +882,13 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         column: x => x.expectation_id,
                         principalSchema: "nexo",
                         principalTable: "tax_split_expectations",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Restrict);
+                    table.ForeignKey(
+                        name: "fk_tax_split_settlements_reverses",
+                        column: x => x.reverses_settlement_id,
+                        principalSchema: "nexo",
+                        principalTable: "tax_split_settlements",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
@@ -996,6 +1005,14 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 schema: "nexo",
                 table: "tax_credits",
                 columns: new[] { "tenant_id", "store_id", "tax" });
+
+            migrationBuilder.CreateIndex(
+                name: "ux_tax_credits_document_tax",
+                schema: "nexo",
+                table: "tax_credits",
+                columns: new[] { "tenant_id", "store_id", "tax", "source_document_key" },
+                unique: true,
+                filter: "source_document_key IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_tax_decisions_store_id",
@@ -1235,6 +1252,14 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 table: "tax_split_settlements",
                 columns: new[] { "expectation_id", "external_reference" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "ux_tax_split_settlements_reverses",
+                schema: "nexo",
+                table: "tax_split_settlements",
+                column: "reverses_settlement_id",
+                unique: true,
+                filter: "reverses_settlement_id IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "ix_tax_transaction_lines_store_id",
