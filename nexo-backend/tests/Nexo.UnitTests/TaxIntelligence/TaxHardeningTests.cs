@@ -322,10 +322,12 @@ public class TaxHardeningTests
         var version = TaxRuleVersion.Create(Guid.NewGuid(), 1, new DateOnly(2026, 1, 1), null, 1, "[]", "{}", "h", "platform", "admin", null, []);
         var at = new DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc);
 
-        version.Invoking(v => v.RecordProfessionalReview(ProfessionalReviewStatus.Rejected, "Contadora", null, at)).Should().Throw<DomainException>();
-        version.Invoking(v => v.RecordProfessionalReview(ProfessionalReviewStatus.Approved, " ", null, at)).Should().Throw<DomainException>();
+        static ProfessionalReviewInput Review(ProfessionalReviewStatus s, string reviewer, string? notes)
+            => new(s, reviewer, null, null, null, null, null, null, notes);
+        version.Invoking(v => v.RecordProfessionalReview(Review(ProfessionalReviewStatus.Rejected, "Contadora", null), at)).Should().Throw<DomainException>();
+        version.Invoking(v => v.RecordProfessionalReview(Review(ProfessionalReviewStatus.Approved, " ", null), at)).Should().Throw<DomainException>();
 
-        version.RecordProfessionalReview(ProfessionalReviewStatus.ChangesRequired, " Contadora ", " ajustar vigência ", at);
+        version.RecordProfessionalReview(Review(ProfessionalReviewStatus.ChangesRequired, " Contadora ", " ajustar vigência "), at);
         version.ProfessionalReview.Should().Be(ProfessionalReviewStatus.ChangesRequired);
         version.ProfessionalReviewedBy.Should().Be("Contadora");
         version.ProfessionalReviewedAt.Should().Be(at);
@@ -335,43 +337,49 @@ public class TaxHardeningTests
 
     // ── Ancillary obligations ───────────────────────────────────────────────────
 
-    private static TaxProfileVersion ProfileWith(AccessoryObligationsStatus status, string? evidence = null)
-        => TaxProfile.Create(Guid.NewGuid()).AddVersion(new DateOnly(2026, 1, 1), TaxRegime.LucroPresumido, "SP", "3550308", "4711302",
-            [], [], [], status, evidence, "teste", Guid.NewGuid(), "u");
+    internal static TaxComplianceAssessment Assessment(ComplianceAssessmentStatus status, string? scope = "estabelecimento",
+        string? evidence = null, bool pnct = false, string? notes = null, IReadOnlyList<string>? checkedList = null)
+        => TaxComplianceAssessment.Record(Guid.NewGuid(), status, new DateOnly(2026, 1, 1), new DateOnly(2026, 6, 30), scope,
+            checkedList ?? [], evidence, "Contabilidade", DateTime.UtcNow, notes, null, pnct, Guid.NewGuid(), "u");
 
     [Fact]
     public void A_declaration_of_compliance_is_not_a_verification()
     {
-        var declared = ProfileWith(AccessoryObligationsStatus.DeclaredCompliant);
-        var verified = ProfileWith(AccessoryObligationsStatus.VerifiedCompliant, "recibos de entrega conferidos");
+        var declared = Assessment(ComplianceAssessmentStatus.Declared);
+        var verified = Assessment(ComplianceAssessmentStatus.Verified, evidence: "recibos de entrega conferidos", checkedList: ["NF-e com IBS/CBS"]);
 
-        declared.ComplianceForRules.Should().BeNull("a declaration alone satisfies no rule that needs verified compliance");
-        verified.ComplianceForRules.Should().BeTrue();
-        ProfileWith(AccessoryObligationsStatus.NonCompliant).ComplianceForRules.Should().BeFalse();
+        declared.ForRules.Should().BeNull("a declaration alone satisfies no rule that needs verified compliance");
+        verified.ForRules.Should().BeTrue();
+        Assessment(ComplianceAssessmentStatus.NonCompliant, notes: "NF-e sem os campos").ForRules.Should().BeFalse();
 
-        V1.Run(Input(compliant: declared.ComplianceForRules), Catalogue()).Notes.Select(n => n.Code).Should().NotContain(TaxNoteCodes.Waiver2026);
-        V1.Run(Input(compliant: verified.ComplianceForRules), Catalogue()).Notes.Select(n => n.Code).Should().Contain(TaxNoteCodes.Waiver2026);
+        V1.Run(Input(compliant: declared.ForRules), Catalogue()).Notes.Select(n => n.Code).Should().NotContain(TaxNoteCodes.Waiver2026);
+        V1.Run(Input(compliant: verified.ForRules), Catalogue()).Notes.Select(n => n.Code).Should().Contain(TaxNoteCodes.Waiver2026);
 
-        TaxProfileAdvisories.For(AccessoryObligationsStatus.DeclaredCompliant).Should().ContainSingle()
+        TaxComplianceAdvisories.For(declared).Should().ContainSingle()
             .Which.Should().Contain("não verificadas").And.Contain("revisão profissional");
-        TaxProfileAdvisories.For(AccessoryObligationsStatus.VerifiedCompliant).Should().BeEmpty();
+        TaxComplianceAdvisories.For(verified).Should().ContainSingle()
+            .Which.Should().StartWith("Obrigações verificadas no período e no escopo indicados").And.NotContainEquivalentOf("empresa conforme");
     }
 
     [Fact]
     public void Unknown_compliance_draws_no_conclusion()
     {
-        var unknown = ProfileWith(AccessoryObligationsStatus.Unknown);
+        var unknown = Assessment(ComplianceAssessmentStatus.Unknown, scope: null);
 
-        unknown.ComplianceForRules.Should().BeNull();
-        var output = V1.Run(Input(compliant: unknown.ComplianceForRules), Catalogue());
+        unknown.ForRules.Should().BeNull();
+        var output = V1.Run(Input(compliant: unknown.ForRules), Catalogue());
         output.Notes.Select(n => n.Code).Should().NotContain(TaxNoteCodes.Waiver2026);
-        TaxProfileAdvisories.For(AccessoryObligationsStatus.Unknown).Should().ContainSingle().Which.Should().Contain("nenhuma conclusão");
+        TaxComplianceAdvisories.For(null).Should().ContainSingle().Which.Should().Contain("nenhuma conclusão");
     }
 
     [Fact]
     public void Verified_compliance_requires_the_evidence_that_was_checked()
-        => FluentActions.Invoking(() => ProfileWith(AccessoryObligationsStatus.VerifiedCompliant, " "))
-            .Should().Throw<DomainException>().Which.Code.Should().Be("tax_profile_compliance_evidence");
+    {
+        FluentActions.Invoking(() => Assessment(ComplianceAssessmentStatus.Verified, evidence: " ", checkedList: ["NF-e"]))
+            .Should().Throw<DomainException>().Which.Code.Should().Be("tax_compliance_evidence");
+        FluentActions.Invoking(() => Assessment(ComplianceAssessmentStatus.Verified, evidence: "recibos"))
+            .Should().Throw<DomainException>().Which.Code.Should().Be("tax_compliance_evidence");
+    }
 
     // ── Calculated-tax reduction ────────────────────────────────────────────────
 
@@ -407,27 +415,23 @@ public class TaxHardeningTests
 
         o.IsSoleAnalyst(ana).Should().BeTrue();
         o.ReviewStartedById.Should().Be(ana);
-        o.Invoking(x => x.Approve(false, ana, "Ana", DateTime.UtcNow, requireSeparateApprover: true))
+        o.Invoking(x => x.Approve(false, ana, "Ana", DateTime.UtcNow, ApprovalRequirement.SelfApprovalWithJustification))
             .Should().Throw<DomainException>().Which.Code.Should().Be("tax_self_approval_requires_justification");
 
-        o.Approve(false, ana, "Ana", DateTime.UtcNow, requireSeparateApprover: true, selfApprovalJustification: "equipe de uma pessoa");
+        o.Approve(false, ana, "Ana", DateTime.UtcNow, ApprovalRequirement.SelfApprovalWithJustification, "equipe de uma pessoa");
         o.Status.Should().Be(TaxOpportunityStatus.Approved);
     }
 
     [Fact]
-    public void Another_person_approves_without_justification_and_the_policy_can_be_off()
+    public void Another_person_approves_without_justification()
     {
         var ana = Guid.NewGuid();
         var bia = Guid.NewGuid();
 
         var byOther = Reviewed(ana);
         byOther.IsSoleAnalyst(bia).Should().BeFalse();
-        byOther.Approve(false, bia, "Bia", DateTime.UtcNow, requireSeparateApprover: true);
+        byOther.Approve(false, bia, "Bia", DateTime.UtcNow, ApprovalRequirement.IndependentApprover);
         byOther.Status.Should().Be(TaxOpportunityStatus.Approved);
-
-        var policyOff = Reviewed(ana);
-        policyOff.Approve(false, ana, "Ana", DateTime.UtcNow, requireSeparateApprover: false);
-        policyOff.Status.Should().Be(TaxOpportunityStatus.Approved);
     }
 
     [Fact]

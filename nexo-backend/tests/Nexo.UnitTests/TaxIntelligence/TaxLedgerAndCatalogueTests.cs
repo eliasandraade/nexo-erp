@@ -15,22 +15,28 @@ public class TaxLedgerAndCatalogueTests
     private static readonly DateOnly Day = new(2026, 7, 1);
     private const string Key = "35261012345678000190550010000012341000012345";
 
+    /// <summary>A credit whose requirements were confirmed: 90 to be appropriated.</summary>
     private static TaxCredit Credit(string? key = Key, DateOnly? expires = null)
-        => TaxCredit.Register(Guid.NewGuid(), CreditTax.Cbs, "NF-e", key, "12345678000190", new DateOnly(2026, 6, 1), expires,
-            100m, 90m, "declarado", null, Actor, "u");
+    {
+        var c = TaxCredit.Register(Guid.NewGuid(), CreditTax.Cbs, "NF-e", key, "12345678000190", new DateOnly(2026, 6, 1), expires,
+            100m, 90m, "estimativa gerencial", null);
+        c.StartRequirementsReview();
+        c.ConfirmToBeAppropriated(90m, "requisitos conferidos", new DateOnly(2026, 6, 1), Actor, "u");
+        return c;
+    }
 
     [Fact]
     public void Balances_are_sums_of_the_entries()
     {
         var c = Credit();
-        c.Balance().NotAppropriated.Should().Be(90m);
+        c.Balance().ToBeAppropriated.Should().Be(90m);
 
         c.Appropriate(60m, "ok", Day, Actor, "u");
         c.Use(20m, CreditTax.Cbs, "apuracao-2026-06", new DateOnly(2026, 7, 1), Actor, "u");
         c.Block(10m, "em análise", Day, Actor, "u");
 
         var b = c.Balance();
-        (b.Eligible, b.Appropriated, b.Used, b.Blocked, b.Available, b.NotAppropriated).Should().Be((90m, 60m, 20m, 10m, 30m, 30m));
+        (b.Potential, b.Appropriated, b.Used, b.Blocked, b.Available, b.ToBeAppropriated).Should().Be((90m, 60m, 20m, 10m, 30m, 30m));
         c.Entries.Select(e => e.Type).Should().Equal(
             TaxCreditEntryType.Recognized, TaxCreditEntryType.Appropriated, TaxCreditEntryType.Used, TaxCreditEntryType.Blocked);
     }
@@ -71,7 +77,7 @@ public class TaxLedgerAndCatalogueTests
         c.ReverseAppropriation(20m, "documento cancelado", Day, Actor, "u");
 
         var b = c.Balance();
-        (b.Appropriated, b.Available, b.NotAppropriated).Should().Be((30m, 30m, 40m));
+        (b.Appropriated, b.Available, b.ToBeAppropriated).Should().Be((30m, 30m, 40m));
     }
 
     [Fact]
@@ -129,12 +135,12 @@ public class TaxLedgerAndCatalogueTests
     public void Profile_versions_are_added_never_edited()
     {
         var p = TaxProfile.Create(Guid.NewGuid());
-        var v1 = p.AddVersion(new DateOnly(2026, 1, 1), TaxRegime.SimplesNacional, "SP", "3550308", "4711302", [], [], [], AccessoryObligationsStatus.Unknown, null, "início", Actor, "u");
-        var v2 = p.AddVersion(new DateOnly(2026, 7, 1), TaxRegime.LucroPresumido, "SP", "3550308", "4711302", [], [], [], AccessoryObligationsStatus.VerifiedCompliant, "recibos de entrega das declarações", "saída do Simples", Actor, "u");
+        var v1 = p.AddVersion(new DateOnly(2026, 1, 1), TaxRegime.SimplesNacional, "SP", "3550308", "4711302", [], [], [], "início", Actor, "u");
+        var v2 = p.AddVersion(new DateOnly(2026, 7, 1), TaxRegime.LucroPresumido, "SP", "3550308", "4711302", [], [], [], "saída do Simples", Actor, "u");
 
         (v1.VersionNumber, v2.VersionNumber).Should().Be((1, 2));
         v1.Regime.Should().Be(TaxRegime.SimplesNacional, "the old version keeps the old regime");
-        p.Invoking(x => x.AddVersion(new DateOnly(2026, 1, 1), TaxRegime.LucroReal, "SP", "355030", "4711302", [], [], [], AccessoryObligationsStatus.Unknown, null, "x", Actor, "u"))
+        p.Invoking(x => x.AddVersion(new DateOnly(2026, 1, 1), TaxRegime.LucroReal, "SP", "355030", "4711302", [], [], [], "x", Actor, "u"))
             .Should().Throw<DomainException>("IBGE code has 7 digits");
     }
 

@@ -79,15 +79,23 @@ public class TaxSimulationAndOpportunityTests
 
         candidate.Type.Should().Be(TaxOpportunityType.CalculatedTaxReduction, "a lower IBS/CBS on the document is not, by itself, a saving");
         TaxOpportunity.NatureOf(candidate.Type).Should().Be(TaxImpactNature.CalculatedTaxReduction);
-        candidate.DetectorKey.Should().Be("unconditional-discount@2");
+        candidate.DetectorKey.Should().Be("unconditional-discount@3");
         candidate.Summary.Should().Contain("redução do IBS/CBS calculado").And.NotContain("a menos de tributo").And.NotContainEquivalentOf("economia");
         candidate.EstimatedImpact.Should().Be(0.50m);
         candidate.Risk.Should().Be(TaxRiskLevel.Low);
         candidate.Confidence.Should().Be(90);
-        candidate.Requirements.Select(r => r.Code).Should().Equal(
-            UnconditionalDiscountDetector.RequirementOnDocument,
+        candidate.Requirements.Where(r => r.Phase == RequirementPhase.ScenarioApproval).Select(r => r.Code).Should().Equal(
+            UnconditionalDiscountDetector.RequirementCommercialTerms,
+            UnconditionalDiscountDetector.RequirementConditionRemoved,
             UnconditionalDiscountDetector.RequirementNoLaterEvent,
-            UnconditionalDiscountDetector.RequirementCommercialTerms);
+            UnconditionalDiscountDetector.RequirementNoRecharge);
+        candidate.Requirements.Where(r => r.Phase == RequirementPhase.ExecutionVerification).Select(r => r.Code).Should().Equal(
+            UnconditionalDiscountDetector.RequirementOnDocument,
+            UnconditionalDiscountDetector.RequirementPriceReduced);
+        candidate.Requirements.Single(r => r.Code == UnconditionalDiscountDetector.RequirementCommercialTerms).RequiredEvidence
+            .Should().Be(TaxEvidenceType.CommercialInstrument, "the scenario rests on a commercial instrument, not on a label");
+        candidate.Requirements.Single(r => r.Code == UnconditionalDiscountDetector.RequirementOnDocument).RequiredEvidence
+            .Should().Be(TaxEvidenceType.FiscalDocument);
         candidate.LegalSourceCodes.Should().Contain(TaxLegalCodes.Lc214Art12UnconditionalDiscount);
         candidate.Caveats.Should().Contain("art. 348", "in 2026 the reduction is in the amount stated, not in cash")
             .And.Contain("não economia definitiva");
@@ -155,7 +163,7 @@ public class TaxSimulationAndOpportunityTests
         o.Invoking(x => x.Approve(false, user, "u", DateTime.UtcNow)).Should().Throw<DomainException>().Which.Code.Should().Be("tax_opportunity_requirements");
 
         o.AnswerRequirement(o.Requirements.Last().Id, true, null, user, "u", DateTime.UtcNow);
-        o.Approve(false, user, "u", DateTime.UtcNow);
+        o.Approve(false, Guid.NewGuid(), "aprovador", DateTime.UtcNow);
         o.Status.Should().Be(TaxOpportunityStatus.Approved);
         o.Invoking(x => x.Reject("x", user, "u", DateTime.UtcNow)).Should().Throw<DomainException>();
     }
@@ -169,7 +177,7 @@ public class TaxSimulationAndOpportunityTests
         foreach (var r in o.Requirements.ToList()) o.AnswerRequirement(r.Id, true, null, user, "u", DateTime.UtcNow);
 
         o.Invoking(x => x.Approve(false, user, "u", DateTime.UtcNow)).Should().Throw<DomainException>().Which.Code.Should().Be("tax_opportunity_high_risk");
-        o.Approve(true, user, "u", DateTime.UtcNow);
+        o.Approve(true, Guid.NewGuid(), "aprovador", DateTime.UtcNow, ApprovalRequirement.IndependentApprover);
         o.Status.Should().Be(TaxOpportunityStatus.Approved);
     }
 

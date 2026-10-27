@@ -18,9 +18,15 @@ public class TaxDomainEdgeTests
     private static readonly DateOnly Day = new(2026, 7, 1);
     private const string Key = "35261012345678000190550010000012341000012345";
 
+    /// <summary>A potential credit whose requirements were then confirmed for the potential amount.</summary>
     private static TaxCredit Credit(decimal original = 100m, decimal eligible = 90m, string? key = Key)
-        => TaxCredit.Register(Guid.NewGuid(), CreditTax.Cbs, "NF-e", key, null, new DateOnly(2026, 6, 1), null,
-            original, eligible, "declarado", null, Actor, "u");
+    {
+        var c = TaxCredit.Register(Guid.NewGuid(), CreditTax.Cbs, "NF-e", key, null, new DateOnly(2026, 6, 1), null,
+            original, eligible, "estimativa gerencial", null);
+        c.StartRequirementsReview();
+        c.ConfirmToBeAppropriated(eligible, "requisitos conferidos", new DateOnly(2026, 6, 1), Actor, "u");
+        return c;
+    }
 
     // ── credits ────────────────────────────────────────────────────────────────
 
@@ -46,7 +52,7 @@ public class TaxDomainEdgeTests
         c.Invoking(x => x.Appropriate(10.01m, "x", Day, Actor, "u"))
             .Should().Throw<DomainException>().Which.Code.Should().Be(TaxCredit.AmountErrorCode);
         c.Appropriate(10m, "resto", Day, Actor, "u");
-        c.Balance().NotAppropriated.Should().Be(0m);
+        c.Balance().ToBeAppropriated.Should().Be(0m);
     }
 
     [Fact]
@@ -118,7 +124,7 @@ public class TaxDomainEdgeTests
 
         (o.Status, o.RejectionReason, o.ReviewedByName).Should().Be((TaxOpportunityStatus.Rejected, "Cliente não aceita mudar a condição", "Diretora"));
         o.Invoking(x => x.StartReview(Actor, "u", DateTime.UtcNow)).Should().Throw<DomainException>().Which.Code.Should().Be("tax_opportunity_closed");
-        o.Invoking(x => x.AddEvidence("x", null, "h", Actor, "u")).Should().Throw<DomainException>().Which.Code.Should().Be("tax_opportunity_closed");
+        o.Invoking(x => x.AddEvidence(TaxEvidenceType.Other, null, "x", null, "h", null, Actor, "u")).Should().Throw<DomainException>().Which.Code.Should().Be("tax_opportunity_closed");
         o.Invoking(x => x.Block(ProhibitedStructure.Simulation, "x", Actor, "u", DateTime.UtcNow)).Should().Throw<DomainException>();
     }
 
@@ -126,7 +132,7 @@ public class TaxDomainEdgeTests
     public void Evidence_and_blocking_always_carry_their_text()
     {
         var o = Opportunity();
-        o.Invoking(x => x.AddEvidence(" ", null, "h", Actor, "u")).Should().Throw<DomainException>();
+        o.Invoking(x => x.AddEvidence(TaxEvidenceType.Other, null, " ", null, "h", null, Actor, "u")).Should().Throw<DomainException>();
         o.Invoking(x => x.Block(ProhibitedStructure.FalseExpense, " ", Actor, "u", DateTime.UtcNow)).Should().Throw<DomainException>();
     }
 
