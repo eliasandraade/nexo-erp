@@ -7,6 +7,7 @@ using Nexo.Domain.Modules.Build;
 using Nexo.Domain.Modules.Interpreter;
 using Nexo.Domain.Modules.Restaurante;
 using Nexo.Domain.Modules.Service;
+using Nexo.Domain.Modules.TaxIntelligence;
 using Nexo.Domain.Modules.Varejo;
 
 namespace Nexo.Infrastructure.Persistence;
@@ -140,6 +141,28 @@ public class NexoDbContext : DbContext
     public DbSet<SvcCommissionEntry>     SvcCommissionEntries    => Set<SvcCommissionEntry>();
     public DbSet<SvcCommissionPayout>    SvcCommissionPayouts    => Set<SvcCommissionPayout>();
     public DbSet<SvcSettings>            SvcSettings             => Set<SvcSettings>();
+
+    // ── Tax Intelligence ─────────────────────────────────────────────────────
+    // Catalogue (platform-global — no tenant query filter): legal sources, rules, rule versions.
+    public DbSet<TaxLegalSource>          TaxLegalSources          => Set<TaxLegalSource>();
+    public DbSet<TaxRule>                 TaxRules                 => Set<TaxRule>();
+    public DbSet<TaxRuleVersion>          TaxRuleVersions          => Set<TaxRuleVersion>();
+    // Establishment data (tenant + store filter).
+    public DbSet<TaxProfile>              TaxProfiles              => Set<TaxProfile>();
+    public DbSet<TaxProfileVersion>       TaxProfileVersions       => Set<TaxProfileVersion>();
+    public DbSet<TaxTransaction>          TaxTransactions          => Set<TaxTransaction>();
+    public DbSet<TaxCalculation>          TaxCalculations          => Set<TaxCalculation>();
+    public DbSet<TaxComponent>            TaxComponents            => Set<TaxComponent>();
+    public DbSet<TaxRuleExecution>        TaxRuleExecutions        => Set<TaxRuleExecution>();
+    public DbSet<TaxSimulation>           TaxSimulations           => Set<TaxSimulation>();
+    public DbSet<TaxOpportunity>          TaxOpportunities         => Set<TaxOpportunity>();
+    public DbSet<TaxOpportunityRequirement> TaxOpportunityRequirements => Set<TaxOpportunityRequirement>();
+    public DbSet<TaxOpportunityEvidence>  TaxOpportunityEvidence   => Set<TaxOpportunityEvidence>();
+    public DbSet<TaxDecision>             TaxDecisions             => Set<TaxDecision>();
+    public DbSet<TaxCredit>               TaxCredits               => Set<TaxCredit>();
+    public DbSet<TaxCreditLedgerEntry>    TaxCreditLedgerEntries   => Set<TaxCreditLedgerEntry>();
+    public DbSet<SplitExpectation>        TaxSplitExpectations     => Set<SplitExpectation>();
+    public DbSet<SplitSettlement>         TaxSplitSettlements      => Set<SplitSettlement>();
 
     // ── Operational Interpretation Engine ────────────────────────────────────
     public DbSet<FinancialMovement>        IntMovements         => Set<FinancialMovement>();

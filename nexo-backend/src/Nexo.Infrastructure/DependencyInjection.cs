@@ -274,6 +274,19 @@ public static class DependencyInjection
         services.AddScoped<Nexo.Infrastructure.Reports.SalesAnalytics>();
         services.AddScoped<Nexo.Infrastructure.Fiscal.FiscalService>();
         services.AddScoped<Nexo.Application.Integrations.Pdf.IReceiptHeaderProvider>(sp => sp.GetRequiredService<Nexo.Infrastructure.Fiscal.FiscalService>());
+
+        // Tax Intelligence: versioned catalogue, deterministic engine, opportunities, credits, split payment.
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxAuditTrail>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxCatalogService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxProfileService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.SaleTaxFactsReader>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxOpportunityService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxCalculationService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxSimulationService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxCreditService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxSplitPaymentService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxOverviewService>();
+        services.AddSingleton<Nexo.Infrastructure.TaxIntelligence.ISplitPaymentProvider, Nexo.Infrastructure.TaxIntelligence.NotConfiguredSplitPaymentProvider>();
         services.AddSingleton<Nexo.Application.Features.Fiscal.IFiscalDocumentProvider, Nexo.Application.Features.Fiscal.NotConfiguredFiscalProvider>();
 
         // ── Dashboard ─────────────────────────────────────────────────────────

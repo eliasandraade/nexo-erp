@@ -51,14 +51,14 @@ public class TaxTransaction : StoreEntity
     public void AddLine(
         int index, TaxItemKind kind, string description, string? ncm, decimal quantity, decimal grossAmount,
         decimal unconditionalDiscount, decimal conditionalDiscount, decimal surcharges, decimal excludedTaxes,
-        bool excludedTaxesInformed)
+        bool excludedTaxesInformed, string? specialTreatment)
     {
         if (grossAmount < 0 || unconditionalDiscount < 0 || conditionalDiscount < 0 || surcharges < 0 || excludedTaxes < 0)
             throw new DomainException("Valores da operação não podem ser negativos.");
         if (unconditionalDiscount + conditionalDiscount > grossAmount)
             throw new DomainException("Os descontos passam do valor da linha.");
         _lines.Add(new TaxTransactionLine(TenantId, Id, index, kind, description, ncm, quantity, grossAmount,
-            unconditionalDiscount, conditionalDiscount, surcharges, excludedTaxes, excludedTaxesInformed));
+            unconditionalDiscount, conditionalDiscount, surcharges, excludedTaxes, excludedTaxesInformed, specialTreatment));
     }
 }
 
@@ -73,7 +73,7 @@ public class TaxTransactionLine : StoreEntity
     internal TaxTransactionLine(
         Guid tenantId, Guid transactionId, int index, TaxItemKind kind, string description, string? ncm,
         decimal quantity, decimal grossAmount, decimal unconditionalDiscount, decimal conditionalDiscount,
-        decimal surcharges, decimal excludedTaxes, bool excludedTaxesInformed) : base(tenantId)
+        decimal surcharges, decimal excludedTaxes, bool excludedTaxesInformed, string? specialTreatment) : base(tenantId)
     {
         TransactionId = transactionId;
         LineIndex = index;
@@ -87,6 +87,7 @@ public class TaxTransactionLine : StoreEntity
         Surcharges = surcharges;
         ExcludedTaxes = excludedTaxes;
         ExcludedTaxesInformed = excludedTaxesInformed;
+        SpecialTreatment = string.IsNullOrWhiteSpace(specialTreatment) ? null : specialTreatment.Trim();
     }
 
     public Guid TransactionId { get; private set; }
@@ -106,4 +107,6 @@ public class TaxTransactionLine : StoreEntity
     public decimal ExcludedTaxes { get; private set; }
     /// <summary>False when the source did not say how much of those taxes is in the price.</summary>
     public bool ExcludedTaxesInformed { get; private set; }
+    /// <summary>Regime diferenciado or específico of the item, when the source declares one; null = general regime.</summary>
+    public string? SpecialTreatment { get; private set; }
 }
