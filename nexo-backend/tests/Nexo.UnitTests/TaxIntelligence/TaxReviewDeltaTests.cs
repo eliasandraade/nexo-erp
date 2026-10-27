@@ -281,6 +281,19 @@ public class TaxReviewDeltaTests
     }
 
     [Fact]
+    public void Whoever_reviewed_the_evidence_is_not_an_independent_approver()
+    {
+        var o = DiscountOpportunity(TaxRiskLevel.High);
+        PrepareScenario(o, Guid.NewGuid());
+        var bia = Guid.NewGuid();
+        o.ReviewEvidence(o.Evidence.Single().Id, true, null, bia, "Bia", DateTime.UtcNow);
+
+        o.Analysts.Should().Contain(bia, "accepting evidence is taking part in the analysis");
+        o.Invoking(x => x.Approve(true, bia, "Bia", DateTime.UtcNow, ApprovalRequirement.IndependentApprover))
+            .Should().Throw<DomainException>().Which.Code.Should().Be("tax_approval_requires_independent_approver");
+    }
+
+    [Fact]
     public void A_material_amount_requires_a_different_approver()
     {
         var policy = new TaxIntelligencePolicyOptions { MaterialityThreshold = 1000m };
