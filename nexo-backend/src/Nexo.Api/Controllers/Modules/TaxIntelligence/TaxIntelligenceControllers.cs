@@ -217,7 +217,7 @@ public class TaxCreditsController : ControllerBase
     /// <summary>Appends a movement (appropriate, use, block, unblock, reverse, expire). Balances are sums of the entries.</summary>
     [HttpPost("credits/{id:guid}/movements")]
     public async Task<ActionResult<TaxCreditDto>> Move(Guid id, [FromBody] TaxCreditMovementRequest request, CancellationToken ct)
-        => Ok(await _credits.MoveAsync(id, request, ct));
+        => Ok(await _credits.MoveAsync(id, request, TaxToday.Brazil(), ct));
 
     [HttpGet("split/provider")]
     public ActionResult<SplitProviderStatusDto> SplitProvider() => Ok(_split.ProviderStatus());

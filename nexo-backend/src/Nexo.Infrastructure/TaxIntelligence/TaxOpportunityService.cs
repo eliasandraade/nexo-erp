@@ -96,12 +96,13 @@ public sealed class TaxOpportunityService
     {
         var requirement = o.Requirements.FirstOrDefault(x => x.Id == requirementId) ?? throw new NotFoundException("Requisito", requirementId);
         var before = requirement.Met;
-        o.AnswerRequirement(requirementId, r.Met, r.Note, _audit.UserId, _audit.UserName, DateTime.UtcNow);
+        var met = r.Met ?? throw new DomainException("Diga se o requisito foi atendido.");
+        o.AnswerRequirement(requirementId, met, r.Note, _audit.UserId, _audit.UserName, DateTime.UtcNow);
         _audit.Record(TaxAuditActions.OpportunityRequirementAnswered, "Opportunity", o.Id,
-            $"Requisito \"{requirement.Text}\": {(r.Met ? "atendido" : "não atendido")}.",
-            new { requirementId, requirement.Code, before, after = r.Met, r.Note });
+            $"Requisito \"{requirement.Text}\": {(met ? "atendido" : "não atendido")}.",
+            new { requirementId, requirement.Code, before, after = met, r.Note });
 
-        var violation = TaxGuardrails.OnRequirementAnswered(o.DetectorKey, requirement.Code, r.Met);
+        var violation = TaxGuardrails.OnRequirementAnswered(o.DetectorKey, requirement.Code, met);
         if (violation is not null)
         {
             o.Block(violation.Structure, violation.Reason, _audit.UserId, _audit.UserName, DateTime.UtcNow);

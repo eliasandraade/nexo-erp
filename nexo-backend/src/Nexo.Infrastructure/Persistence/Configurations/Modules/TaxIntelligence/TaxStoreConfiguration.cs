@@ -336,6 +336,7 @@ internal sealed class TaxCreditLedgerEntryConfiguration : IEntityTypeConfigurati
         b.HasIndex(x => new { x.CreditId, x.ObligationReference }).IsUnique()
             .HasFilter("type = 'Used'").HasDatabaseName("ux_tax_credit_ledger_entries_credit_obligation");
         b.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500).IsRequired();
+        b.Property(x => x.OccurredOn).HasColumnName("occurred_on").IsRequired();
         b.Property(x => x.ActorId).HasColumnName("actor_id").IsRequired();
         b.Property(x => x.ActorName).HasColumnName("actor_name").HasMaxLength(200).IsRequired();
     }

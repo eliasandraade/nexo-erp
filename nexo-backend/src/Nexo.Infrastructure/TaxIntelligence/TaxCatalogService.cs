@@ -156,9 +156,12 @@ public sealed class TaxCatalogService
 
     public async Task<TaxRuleVersionDto> ChangeStatusAsync(Guid versionId, ChangeTaxRuleVersionStatusRequest r, CancellationToken ct)
     {
+        var ruleId = await _db.TaxRuleVersions.AsNoTracking().Where(v => v.Id == versionId).Select(v => (Guid?)v.RuleId).FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException("Versão de regra", versionId);
+        // Lock first, read after: a status change made by another admin meanwhile is seen, not overwritten.
+        await LockRuleAsync(ruleId, ct);
         var version = await _db.TaxRuleVersions.Include(v => v.Sources).ThenInclude(s => s.LegalSource)
-            .FirstOrDefaultAsync(v => v.Id == versionId, ct) ?? throw new NotFoundException("Versão de regra", versionId);
-        await LockRuleAsync(version.RuleId, ct);
+            .FirstAsync(v => v.Id == versionId, ct);
 
         if (r.Status == TaxRuleStatus.Active)
         {

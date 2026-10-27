@@ -69,8 +69,11 @@ public sealed class TaxCreditService
         return Map(credit);
     }
 
-    public async Task<TaxCreditDto> MoveAsync(Guid id, TaxCreditMovementRequest r, CancellationToken ct)
+    public async Task<TaxCreditDto> MoveAsync(Guid id, TaxCreditMovementRequest r, DateOnly today, CancellationToken ct)
     {
+        // A use may refer to an earlier obligation date, never a future one; every other movement is dated today.
+        var onDate = r.OnDate ?? today;
+        if (onDate > today) throw new DomainException("A data do movimento não pode ser futura.", "tax_credit_future_date");
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT 1 FROM nexo.tax_credits WHERE id = {id} AND tenant_id = {_tenant.Id} FOR UPDATE", ct);
@@ -82,13 +85,13 @@ public sealed class TaxCreditService
         var reason = r.Reason?.Trim() ?? string.Empty;
         var entry = r.Movement switch
         {
-            TaxCreditMovement.Appropriate => credit.Appropriate(amount, reason.Length > 0 ? reason : "Apropriação.", _audit.UserId, _audit.UserName),
+            TaxCreditMovement.Appropriate => credit.Appropriate(amount, reason.Length > 0 ? reason : "Apropriação.", today, _audit.UserId, _audit.UserName),
             TaxCreditMovement.Use => credit.Use(amount, r.ObligationTax ?? credit.Tax, r.ObligationReference ?? string.Empty,
-                r.OnDate ?? DateOnly.FromDateTime(DateTime.UtcNow), _audit.UserId, _audit.UserName),
-            TaxCreditMovement.Block => credit.Block(amount, reason, _audit.UserId, _audit.UserName),
-            TaxCreditMovement.Unblock => credit.Unblock(amount, reason.Length > 0 ? reason : "Desbloqueio.", _audit.UserId, _audit.UserName),
-            TaxCreditMovement.Reverse => credit.ReverseAppropriation(amount, reason, _audit.UserId, _audit.UserName),
-            TaxCreditMovement.Expire => credit.Expire(r.OnDate ?? DateOnly.FromDateTime(DateTime.UtcNow), _audit.UserId, _audit.UserName),
+                onDate, _audit.UserId, _audit.UserName),
+            TaxCreditMovement.Block => credit.Block(amount, reason, today, _audit.UserId, _audit.UserName),
+            TaxCreditMovement.Unblock => credit.Unblock(amount, reason.Length > 0 ? reason : "Desbloqueio.", today, _audit.UserId, _audit.UserName),
+            TaxCreditMovement.Reverse => credit.ReverseAppropriation(amount, reason, today, _audit.UserId, _audit.UserName),
+            TaxCreditMovement.Expire => credit.Expire(today, _audit.UserId, _audit.UserName),
             _ => throw new DomainException("Movimento desconhecido."),
         };
         _db.TaxCreditLedgerEntries.Add(entry);
@@ -112,6 +115,6 @@ public sealed class TaxCreditService
     private static TaxCreditDto Map(TaxCredit c) => new(
         c.Id, c.Tax, c.SourceDocumentType, c.SourceDocumentKey, c.SupplierDocument, c.AcquiredOn, c.ExpiresOn, c.OriginalAmount,
         c.EligibilityBasis, c.Balance(),
-        c.Entries.OrderBy(e => e.CreatedAt).Select(e => new TaxCreditEntryDto(e.Id, e.Type, e.Amount, e.ObligationReference, e.Reason, e.ActorName, e.CreatedAt)).ToList(),
+        c.Entries.OrderBy(e => e.CreatedAt).Select(e => new TaxCreditEntryDto(e.Id, e.Type, e.Amount, e.ObligationReference, e.Reason, e.OccurredOn, e.ActorName, e.CreatedAt)).ToList(),
         c.CreatedAt);
 }

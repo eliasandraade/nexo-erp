@@ -471,6 +471,35 @@ public class TaxIntelligenceTests
     }
 
     [Fact]
+    public async Task Review_answers_and_credit_dates_are_never_guessed()
+    {
+        var admin = await AdminWithProfileAsync();
+        var calc = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Resposta"), gross: 1005m)));
+        var oppId = calc.GetProperty("opportunityIds")[0].GetGuid();
+        await Json(await Post(admin, $"/api/tax/opportunities/{oppId}/review", new { }));
+        var requirement = (await Json(await admin.GetAsync($"/api/tax/opportunities/{oppId}"))).GetProperty("requirements").EnumerateArray()
+            .Single(r => r.GetProperty("code").GetString() == "no-later-event");
+
+        (await Post(admin, $"/api/tax/opportunities/{oppId}/requirements/{requirement.GetProperty("id").GetGuid()}", new { note = "sem resposta" }))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "a missing answer is not a 'no' (which would block the opportunity for good)");
+        (await Json(await admin.GetAsync($"/api/tax/opportunities/{oppId}"))).GetProperty("status").GetString().Should().Be("InReview");
+
+        var credit = await Json(await Post(admin, "/api/tax/credits", new
+        {
+            tax = "Cbs", sourceDocumentType = "NF-e", sourceDocumentKey = "35261012345678000190550010000012341000012346",
+            supplierDocument = (string?)null, acquiredOn = "2026-06-01", expiresOn = "2026-06-30",
+            originalAmount = 10m, eligibleAmount = 10m, eligibilityBasis = "teste",
+        }));
+        var id = credit.GetProperty("id").GetGuid();
+        await Json(await Post(admin, $"/api/tax/credits/{id}/movements", new { movement = "Appropriate", amount = 10m }));
+        var future = await Post(admin, $"/api/tax/credits/{id}/movements",
+            new { movement = "Use", amount = 1m, obligationTax = "Cbs", obligationReference = "obr-fut", onDate = "2099-01-01" });
+        (await Json(future, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString().Should().Be("tax_credit_future_date");
+        var expired = await Json(await Post(admin, $"/api/tax/credits/{id}/movements", new { movement = "Expire" }));
+        expired.GetProperty("balance").GetProperty("available").GetDecimal().Should().Be(0m, "expiry is dated by the server, after the term");
+    }
+
+    [Fact]
     public async Task Bad_input_is_refused_before_the_engine()
     {
         var admin = await AdminWithProfileAsync();

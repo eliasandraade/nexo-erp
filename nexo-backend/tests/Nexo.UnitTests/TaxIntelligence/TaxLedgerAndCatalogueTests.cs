@@ -12,6 +12,7 @@ namespace Nexo.UnitTests.TaxIntelligence;
 public class TaxLedgerAndCatalogueTests
 {
     private static readonly Guid Actor = Guid.NewGuid();
+    private static readonly DateOnly Day = new(2026, 7, 1);
     private const string Key = "35261012345678000190550010000012341000012345";
 
     private static TaxCredit Credit(string? key = Key, DateOnly? expires = null)
@@ -24,9 +25,9 @@ public class TaxLedgerAndCatalogueTests
         var c = Credit();
         c.Balance().NotAppropriated.Should().Be(90m);
 
-        c.Appropriate(60m, "ok", Actor, "u");
+        c.Appropriate(60m, "ok", Day, Actor, "u");
         c.Use(20m, CreditTax.Cbs, "apuracao-2026-06", new DateOnly(2026, 7, 1), Actor, "u");
-        c.Block(10m, "em análise", Actor, "u");
+        c.Block(10m, "em análise", Day, Actor, "u");
 
         var b = c.Balance();
         (b.Eligible, b.Appropriated, b.Used, b.Blocked, b.Available, b.NotAppropriated).Should().Be((90m, 60m, 20m, 10m, 30m, 30m));
@@ -36,14 +37,14 @@ public class TaxLedgerAndCatalogueTests
 
     [Fact]
     public void Appropriation_needs_the_electronic_document()
-        => Credit(key: null).Invoking(c => c.Appropriate(10m, "x", Actor, "u"))
+        => Credit(key: null).Invoking(c => c.Appropriate(10m, "x", Day, Actor, "u"))
             .Should().Throw<DomainException>().Which.Code.Should().Be("tax_credit_document");
 
     [Fact]
     public void A_credit_is_never_used_twice_nor_beyond_its_balance()
     {
         var c = Credit();
-        c.Appropriate(50m, "ok", Actor, "u");
+        c.Appropriate(50m, "ok", Day, Actor, "u");
         c.Use(30m, CreditTax.Cbs, "obr-1", new DateOnly(2026, 7, 1), Actor, "u");
 
         c.Invoking(x => x.Use(1m, CreditTax.Cbs, "obr-1", new DateOnly(2026, 7, 1), Actor, "u")).Should().Throw<ConflictException>();
@@ -57,7 +58,7 @@ public class TaxLedgerAndCatalogueTests
     public void Ibs_credit_never_pays_cbs()
     {
         var c = Credit();
-        c.Appropriate(50m, "ok", Actor, "u");
+        c.Appropriate(50m, "ok", Day, Actor, "u");
         c.Invoking(x => x.Use(10m, CreditTax.Ibs, "obr", new DateOnly(2026, 7, 1), Actor, "u"))
             .Should().Throw<DomainException>().Which.Code.Should().Be("tax_credit_cross_tax");
     }
@@ -66,8 +67,8 @@ public class TaxLedgerAndCatalogueTests
     public void A_reversed_appropriation_does_not_come_back_as_appropriable()
     {
         var c = Credit();
-        c.Appropriate(50m, "ok", Actor, "u");
-        c.ReverseAppropriation(20m, "documento cancelado", Actor, "u");
+        c.Appropriate(50m, "ok", Day, Actor, "u");
+        c.ReverseAppropriation(20m, "documento cancelado", Day, Actor, "u");
 
         var b = c.Balance();
         (b.Appropriated, b.Available, b.NotAppropriated).Should().Be((30m, 30m, 40m));
@@ -77,7 +78,7 @@ public class TaxLedgerAndCatalogueTests
     public void Expired_credit_cannot_be_used_and_its_balance_is_written_off()
     {
         var c = Credit(expires: new DateOnly(2026, 12, 31));
-        c.Appropriate(50m, "ok", Actor, "u");
+        c.Appropriate(50m, "ok", Day, Actor, "u");
 
         c.Invoking(x => x.Use(1m, CreditTax.Cbs, "obr", new DateOnly(2027, 1, 2), Actor, "u"))
             .Should().Throw<DomainException>().Which.Code.Should().Be("tax_credit_expired");
@@ -91,7 +92,7 @@ public class TaxLedgerAndCatalogueTests
     [InlineData(-1)]
     [InlineData(0.001)]
     public void Movements_are_positive_cents(decimal amount)
-        => Credit().Invoking(c => c.Appropriate(amount, "x", Actor, "u")).Should().Throw<DomainException>();
+        => Credit().Invoking(c => c.Appropriate(amount, "x", Day, Actor, "u")).Should().Throw<DomainException>();
 
     [Fact]
     public void Split_reconciliation_reads_expected_versus_actual()
@@ -186,6 +187,39 @@ public class TaxLedgerAndCatalogueTests
         FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [new ProfileFlagIs("whatever", true)], new NoteResult("a", "b"))).Should().Throw<DomainException>();
         FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [new ItemGeneralRegime()], new NoteResult("a", "b"))).Should().Throw<DomainException>();
         FluentActions.Invoking(() => TaxCanonical.Deserialize<TaxRuleResult>("{\"kind\":\"script\",\"code\":\"x\"}")).Should().Throw<Exception>();
+    }
+
+    [Fact]
+    public void Content_with_missing_lists_or_undefined_enums_never_enters_the_catalogue()
+    {
+        // An activated rule the engine cannot run would turn every calculation of its dates into a 500.
+        string[] bad =
+        [
+            "[{\"kind\":\"supplier-regime-in\"}]",
+            "[{\"kind\":\"supplier-regime-not-in\",\"regimes\":[99]}]",
+            "[{\"kind\":\"item-kind-in\"}]",
+            "[{\"kind\":\"direction-is\",\"direction\":7}]",
+            "[{\"kind\":\"profile-flag-is\",\"value\":true}]",
+            "[null]",
+        ];
+        foreach (var json in bad)
+            FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", TaxCanonical.Deserialize<List<TaxCondition>>(json), new NoteResult("a", "b")))
+                .Should().Throw<DomainException>(json);
+
+        FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [], TaxCanonical.Deserialize<TaxRuleResult>("{\"kind\":\"base-inclusion\",\"component\":99}")))
+            .Should().Throw<DomainException>();
+        FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [], TaxCanonical.Deserialize<TaxRuleResult>("{\"kind\":\"rate\",\"tax\":9,\"ratePercent\":1}")))
+            .Should().Throw<DomainException>();
+        FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", null, new NoteResult("a", "b"))).Should().Throw<DomainException>();
+    }
+
+    [Fact]
+    public void Ledger_entries_keep_the_date_they_refer_to()
+    {
+        var c = Credit();
+        c.Appropriate(50m, "ok", Day, Actor, "u");
+        c.Use(10m, CreditTax.Cbs, "obr", new DateOnly(2026, 6, 30), Actor, "u").OccurredOn.Should().Be(new DateOnly(2026, 6, 30));
+        c.Entries.First().OccurredOn.Should().Be(c.AcquiredOn);
     }
 
     [Fact]

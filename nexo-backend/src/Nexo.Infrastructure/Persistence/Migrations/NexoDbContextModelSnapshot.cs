@@ -7408,6 +7408,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("obligation_reference");
 
+                    b.Property<DateOnly>("OccurredOn")
+                        .HasColumnType("date")
+                        .HasColumnName("occurred_on");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(500)

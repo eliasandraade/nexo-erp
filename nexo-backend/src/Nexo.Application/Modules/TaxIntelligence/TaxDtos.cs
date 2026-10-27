@@ -107,7 +107,7 @@ public sealed record TaxOpportunitySummaryDto(
     Guid Id, TaxOpportunityType Type, TaxImpactNature ImpactNature, TaxOpportunityStatus Status, string Title,
     decimal? EstimatedImpact, TaxRiskLevel Risk, int Confidence, DateTime CreatedAt);
 
-public sealed record AnswerRequirementRequest(bool Met, string? Note);
+public sealed record AnswerRequirementRequest(bool? Met, string? Note);
 public sealed record AddEvidenceRequest(string Description, string? DocumentReference);
 public sealed record RejectOpportunityRequest(string Reason);
 public sealed record BlockOpportunityRequest(ProhibitedStructure Structure, string Reason);
@@ -132,7 +132,7 @@ public enum TaxCreditMovement
 public sealed record TaxCreditMovementRequest(
     TaxCreditMovement Movement, decimal? Amount, string? Reason, CreditTax? ObligationTax, string? ObligationReference, DateOnly? OnDate);
 
-public sealed record TaxCreditEntryDto(Guid Id, TaxCreditEntryType Type, decimal Amount, string? ObligationReference, string Reason, string ActorName, DateTime CreatedAt);
+public sealed record TaxCreditEntryDto(Guid Id, TaxCreditEntryType Type, decimal Amount, string? ObligationReference, string Reason, DateOnly OccurredOn, string ActorName, DateTime CreatedAt);
 
 public sealed record TaxCreditDto(
     Guid Id, CreditTax Tax, string SourceDocumentType, string? SourceDocumentKey, string? SupplierDocument,

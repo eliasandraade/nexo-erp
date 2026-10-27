@@ -131,10 +131,27 @@ public sealed class TaxCalculationService
     /// <summary>Runs the detectors again on a stored calculation (e.g. after a new detector ships). Idempotent.</summary>
     public async Task<IReadOnlyList<Guid>> DetectAgainAsync(Guid id, CancellationToken ct)
     {
-        var calc = await _db.TaxCalculations.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct)
+        var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Cálculo", id);
         var input = TaxCanonical.Deserialize<TaxEngineInput>(calc.InputJson);
-        return await _opportunities.DetectAsync(calc.Id, input, await _catalog.LoadForDateAsync(calc.ReferenceDate, ct), ct);
+        // The scenarios must come from the same rules as the calculation (and the dossier that may follow).
+        return await _opportunities.DetectAsync(calc.Id, input, await RulesAsThenAsync(calc, ct), ct);
+    }
+
+    private async Task<IReadOnlyList<TaxEngineRule>> RulesAsThenAsync(TaxCalculation calc, CancellationToken ct)
+    {
+        var output = TaxCanonical.Deserialize<TaxEngineOutput>(calc.OutputJson);
+        var rules = await _catalog.LoadByIdsAsync(calc.Executions.Select(e => e.RuleVersionId)
+            .Concat(output.NotApplied.Select(n => n.RuleVersionId)).Distinct().ToList(), ct);
+        return AsThen(calc, output, rules);
+    }
+
+    /// <summary>The rule versions as they were when the calculation ran: what ran was active, what was listed kept its status.</summary>
+    private static IReadOnlyList<TaxEngineRule> AsThen(TaxCalculation calc, TaxEngineOutput output, IReadOnlyList<TaxEngineRule> rules)
+    {
+        var executed = calc.Executions.Select(e => e.RuleVersionId).ToHashSet();
+        var listed = output.NotApplied.ToDictionary(n => n.RuleVersionId, n => n.Status);
+        return rules.Select(r => r with { Status = executed.Contains(r.VersionId) ? TaxRuleStatus.Active : listed[r.VersionId] }).ToList();
     }
 
     public async Task<IReadOnlyList<TaxCalculationSummaryDto>> ListAsync(int take, CancellationToken ct)
@@ -189,9 +206,8 @@ public sealed class TaxCalculationService
         var differences = new List<string>();
         var storedOutput = TaxCanonical.Deserialize<TaxEngineOutput>(calc.OutputJson);
 
-        var executedIds = calc.Executions.Select(e => e.RuleVersionId).ToHashSet();
-        var notApplied = storedOutput.NotApplied.ToDictionary(n => n.RuleVersionId, n => n.Status);
-        var rules = await _catalog.LoadByIdsAsync(executedIds.Concat(notApplied.Keys).Distinct().ToList(), ct);
+        var rules = await _catalog.LoadByIdsAsync(calc.Executions.Select(e => e.RuleVersionId)
+            .Concat(storedOutput.NotApplied.Select(n => n.RuleVersionId)).Distinct().ToList(), ct);
 
         foreach (var e in calc.Executions.DistinctBy(e => e.RuleVersionId))
         {
@@ -200,8 +216,7 @@ public sealed class TaxCalculationService
             else if (rule.ContentHash != e.ContentHash) differences.Add($"O conteúdo de {e.RuleKey} v{e.RuleVersion} mudou desde o cálculo.");
         }
 
-        // As they were at the time: what ran was active, what was listed kept its status.
-        var asThen = rules.Select(r => r with { Status = executedIds.Contains(r.VersionId) ? Domain.Modules.TaxIntelligence.TaxRuleStatus.Active : notApplied[r.VersionId] }).ToList();
+        var asThen = AsThen(calc, storedOutput, rules);
         var input = TaxCanonical.Deserialize<TaxEngineInput>(calc.InputJson);
         if (TaxCanonical.Hash(calc.InputJson) != calc.InputHash)
             differences.Add("O input armazenado não corresponde ao seu hash.");

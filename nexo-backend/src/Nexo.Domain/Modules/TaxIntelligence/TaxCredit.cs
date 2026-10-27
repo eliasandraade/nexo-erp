@@ -59,20 +59,20 @@ public class TaxCredit : StoreEntity
             EligibilityBasis = eligibilityBasis.Trim(),
             SourceCalculationId = sourceCalculationId,
         };
-        c.Append(TaxCreditEntryType.Recognized, eligibleAmount, null, "Crédito identificado no documento de aquisição.", actorId, actorName);
+        c.Append(TaxCreditEntryType.Recognized, eligibleAmount, null, "Crédito identificado no documento de aquisição.", acquiredOn, actorId, actorName);
         return c;
     }
 
     public TaxCreditBalance Balance() => TaxCreditBalance.Of(EligibleAmount, _entries);
 
-    public TaxCreditLedgerEntry Appropriate(decimal amount, string reason, Guid actorId, string actorName)
+    public TaxCreditLedgerEntry Appropriate(decimal amount, string reason, DateOnly onDate, Guid actorId, string actorName)
     {
         Positive(amount);
         if (SourceDocumentKey is null)
             throw new DomainException("Sem a chave do documento fiscal eletrônico o crédito não pode ser apropriado (LC 214/2025, art. 47, § 1º, II).", "tax_credit_document");
         if (amount > Balance().NotAppropriated)
             throw new DomainException("O valor passa do que ainda pode ser apropriado.", "tax_credit_amount");
-        return Append(TaxCreditEntryType.Appropriated, amount, null, reason, actorId, actorName);
+        return Append(TaxCreditEntryType.Appropriated, amount, null, reason, onDate, actorId, actorName);
     }
 
     /// <summary>
@@ -93,33 +93,33 @@ public class TaxCredit : StoreEntity
             throw new ConflictException("Este crédito já foi usado nesta obrigação.");
         if (amount > Balance().Available)
             throw new DomainException("O valor passa do saldo disponível.", "tax_credit_amount");
-        return Append(TaxCreditEntryType.Used, amount, obligationReference.Trim(), $"Usado na obrigação {obligationReference.Trim()}.", actorId, actorName);
+        return Append(TaxCreditEntryType.Used, amount, obligationReference.Trim(), $"Usado na obrigação {obligationReference.Trim()}.", onDate, actorId, actorName);
     }
 
-    public TaxCreditLedgerEntry Block(decimal amount, string reason, Guid actorId, string actorName)
+    public TaxCreditLedgerEntry Block(decimal amount, string reason, DateOnly onDate, Guid actorId, string actorName)
     {
         Positive(amount);
         if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe por que o crédito está bloqueado.");
         if (amount > Balance().Available)
             throw new DomainException("Só o saldo disponível pode ser bloqueado.", "tax_credit_amount");
-        return Append(TaxCreditEntryType.Blocked, amount, null, reason, actorId, actorName);
+        return Append(TaxCreditEntryType.Blocked, amount, null, reason, onDate, actorId, actorName);
     }
 
-    public TaxCreditLedgerEntry Unblock(decimal amount, string reason, Guid actorId, string actorName)
+    public TaxCreditLedgerEntry Unblock(decimal amount, string reason, DateOnly onDate, Guid actorId, string actorName)
     {
         Positive(amount);
         if (amount > Balance().Blocked)
             throw new DomainException("O valor passa do que está bloqueado.", "tax_credit_amount");
-        return Append(TaxCreditEntryType.Unblocked, amount, null, reason, actorId, actorName);
+        return Append(TaxCreditEntryType.Unblocked, amount, null, reason, onDate, actorId, actorName);
     }
 
-    public TaxCreditLedgerEntry ReverseAppropriation(decimal amount, string reason, Guid actorId, string actorName)
+    public TaxCreditLedgerEntry ReverseAppropriation(decimal amount, string reason, DateOnly onDate, Guid actorId, string actorName)
     {
         Positive(amount);
         if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe o motivo do estorno.");
         if (amount > Balance().Available)
             throw new DomainException("Só o saldo disponível pode ser estornado.", "tax_credit_amount");
-        return Append(TaxCreditEntryType.Reversed, amount, null, reason, actorId, actorName);
+        return Append(TaxCreditEntryType.Reversed, amount, null, reason, onDate, actorId, actorName);
     }
 
     /// <summary>Writes off what is still available once the credit's term has passed.</summary>
@@ -129,12 +129,12 @@ public class TaxCredit : StoreEntity
             throw new DomainException("O crédito ainda não venceu.", "tax_credit_not_expired");
         var available = Balance().Available;
         if (available <= 0) throw new DomainException("Não há saldo disponível para baixar.", "tax_credit_amount");
-        return Append(TaxCreditEntryType.Expired, available, null, $"Prazo de uso encerrado em {ExpiresOn:dd/MM/yyyy}.", actorId, actorName);
+        return Append(TaxCreditEntryType.Expired, available, null, $"Prazo de uso encerrado em {ExpiresOn:dd/MM/yyyy}.", onDate, actorId, actorName);
     }
 
-    private TaxCreditLedgerEntry Append(TaxCreditEntryType type, decimal amount, string? obligationReference, string reason, Guid actorId, string actorName)
+    private TaxCreditLedgerEntry Append(TaxCreditEntryType type, decimal amount, string? obligationReference, string reason, DateOnly onDate, Guid actorId, string actorName)
     {
-        var entry = new TaxCreditLedgerEntry(TenantId, Id, type, decimal.Round(amount, 2), obligationReference, reason, actorId, actorName);
+        var entry = new TaxCreditLedgerEntry(TenantId, Id, type, decimal.Round(amount, 2), obligationReference, reason, onDate, actorId, actorName);
         _entries.Add(entry);
         SetUpdatedAt();
         return entry;
@@ -153,8 +153,9 @@ public class TaxCreditLedgerEntry : StoreEntity
     private TaxCreditLedgerEntry() { }   // EF Core
 
     internal TaxCreditLedgerEntry(Guid tenantId, Guid creditId, TaxCreditEntryType type, decimal amount,
-        string? obligationReference, string reason, Guid actorId, string actorName) : base(tenantId)
+        string? obligationReference, string reason, DateOnly occurredOn, Guid actorId, string actorName) : base(tenantId)
     {
+        OccurredOn = occurredOn;
         CreditId = creditId;
         Type = type;
         Amount = amount;
@@ -169,6 +170,8 @@ public class TaxCreditLedgerEntry : StoreEntity
     public decimal Amount { get; private set; }
     public string? ObligationReference { get; private set; }
     public string Reason { get; private set; } = string.Empty;
+    /// <summary>Business date the movement refers to (the obligation's date for a use) — never after the day it was recorded.</summary>
+    public DateOnly OccurredOn { get; private set; }
     public Guid ActorId { get; private set; }
     public string ActorName { get; private set; } = string.Empty;
 }
