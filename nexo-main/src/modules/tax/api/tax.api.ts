@@ -358,7 +358,8 @@ export interface TaxCreditDto {
   originalAmount: number;
   eligibilityBasis: string;
   balance: CreditBalance;
-  entries: { id: string; type: CreditEntryType; amount: number; obligationReference: string | null; reason: string; actorName: string; createdAt: string }[];
+  /** occurredOn: the business date the movement refers to (a use may refer to an earlier obligation date). */
+  entries: { id: string; type: CreditEntryType; amount: number; obligationReference: string | null; reason: string; occurredOn: string; actorName: string; createdAt: string }[];
   createdAt: string;
 }
 
@@ -510,7 +511,7 @@ export const moveTaxCredit = (id: string, body: CreditMovementRequest) => apiCli
 
 export const getSplitProvider = () => apiClient.get<{ configured: boolean; message: string }>("/tax/split/provider");
 export const listSplitExpectations = (calculationId?: string) =>
-  apiClient.get<SplitExpectationDto[]>(calculationId ? `/tax/split/expectations?calculationId=${calculationId}` : "/tax/split/expectations");
+  apiClient.get<SplitExpectationDto[]>(calculationId ? `/tax/split/expectations?calculationId=${encodeURIComponent(calculationId)}` : "/tax/split/expectations");
 export const recordSplitSettlement = (id: string, actualAmount: number, externalReference: string, settledAt: string) =>
   apiClient.post<SplitExpectationDto>(`/tax/split/expectations/${id}/settlements`, { actualAmount, externalReference, settledAt });
 

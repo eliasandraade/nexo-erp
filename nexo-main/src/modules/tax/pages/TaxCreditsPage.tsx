@@ -114,7 +114,7 @@ function Credits() {
                   <ul className="mt-1 space-y-1 text-xs">
                     {c.entries.map((e) => (
                       <li key={e.id} className="break-words">
-                        <span className="font-medium">{labelOf(CREDIT_ENTRY_TYPES, e.type)}</span> {formatCurrency(e.amount)}
+                        <span className="font-medium">{labelOf(CREDIT_ENTRY_TYPES, e.type)}</span> {formatCurrency(e.amount)} em {formatIsoDate(e.occurredOn)}
                         {e.obligationReference ? ` · obrigação ${e.obligationReference}` : ""} · {e.reason} · {e.actorName}, {formatDateTime(e.createdAt)}
                       </li>
                     ))}

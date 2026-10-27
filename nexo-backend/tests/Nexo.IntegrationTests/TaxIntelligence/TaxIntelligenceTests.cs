@@ -6,6 +6,9 @@ using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Nexo.Application.Features.Cash;
+using Nexo.Application.Features.Products;
+using Nexo.Application.Features.Sales;
 using Nexo.Application.Features.Users;
 using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
@@ -516,6 +519,176 @@ public class TaxIntelligenceTests
         (await Json(future, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString().Should().Be("tax_credit_future_date");
         var expired = await Json(await Post(admin, $"/api/tax/credits/{id}/movements", new { movement = "Expire" }));
         expired.GetProperty("balance").GetProperty("available").GetDecimal().Should().Be(0m, "expiry is dated by the server, after the term");
+    }
+
+    [Fact]
+    public async Task A_confirmed_sale_is_calculated_from_its_facts_without_touching_it()
+    {
+        var admin = await AdminWithProfileAsync();
+        var open = await admin.PostAsJsonAsync("/api/cash/sessions/open", new OpenCashSessionRequest(0m, "tax"));
+        var session = open.StatusCode == HttpStatusCode.Created
+            ? (await open.Content.ReadFromJsonAsync<CashSessionDto>())!
+            : (await admin.GetFromJsonAsync<CashSessionDto>("/api/cash/sessions/open"))!;
+        async Task<ProductDto> ProductAsync(decimal price)
+        {
+            var code = $"TAX-{Guid.NewGuid():N}"[..20];
+            var r = await admin.PostAsJsonAsync("/api/products", new CreateProductRequest(Code: code, Name: code, Unit: "Un", SalePrice: price, TrackStock: false));
+            r.StatusCode.Should().Be(HttpStatusCode.Created, await r.Content.ReadAsStringAsync());
+            return (await r.Content.ReadFromJsonAsync<ProductDto>())!;
+        }
+        var a = await ProductAsync(100m);
+        var b = await ProductAsync(50m);
+        var draft = (await (await admin.PostAsJsonAsync("/api/sales", new CreateSaleRequest(CashSessionId: session.Id)))
+            .Content.ReadFromJsonAsync<SaleDto>())!;
+        (await admin.PostAsJsonAsync($"/api/sales/{draft.Id}/items", new AddSaleItemRequest(a.Id, 1, 100m, DiscountAmount: 5m))).EnsureSuccessStatusCode();
+        (await admin.PostAsJsonAsync($"/api/sales/{draft.Id}/items", new AddSaleItemRequest(b.Id, 2, 50m))).EnsureSuccessStatusCode();
+
+        var notYet = await Post(admin, $"/api/tax/calculations/from-sale/{draft.Id}", new { });
+        (await Json(notYet, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString().Should().Be("tax_sale_not_confirmed");
+
+        var confirmed = await admin.PostAsJsonAsync($"/api/sales/{draft.Id}/confirm",
+            new ConfirmSaleRequest([new PaymentInput("Pix", "Cash", 198m)], SurchargesAmount: 3m));
+        confirmed.StatusCode.Should().Be(HttpStatusCode.OK, await confirmed.Content.ReadAsStringAsync());
+        var before = await admin.GetStringAsync($"/api/sales/{draft.Id}");
+
+        var calc = await Json(await Post(admin, $"/api/tax/calculations/from-sale/{draft.Id}", new { }));
+        calc.GetProperty("source").GetString().Should().Be("Sale");
+        calc.GetProperty("sourceId").GetGuid().Should().Be(draft.Id);
+        // 100 − 5 + 1,46 (surcharge share) and 100 + 1,54: the sale's 3,00 split by net value, to the cent
+        calc.GetProperty("totalBase").GetDecimal().Should().Be(198.00m);
+        calc.GetProperty("totalTax").GetDecimal().Should().Be(1.98m);
+        calc.GetProperty("output").GetProperty("warnings").EnumerateArray().Select(w => w.GetString())
+            .Should().Contain(w => w!.Contains("não foram informados"), "the sale does not know the taxes inside the price");
+
+        var again = await Json(await Post(admin, $"/api/tax/calculations/from-sale/{draft.Id}", new { }));
+        again.GetProperty("reused").GetBoolean().Should().BeTrue();
+        again.GetProperty("id").GetGuid().Should().Be(calc.GetProperty("id").GetGuid());
+        (await admin.GetStringAsync($"/api/sales/{draft.Id}")).Should().Be(before, "Sales provides facts; the tax domain never writes to it");
+    }
+
+    [Fact]
+    public async Task Rejected_and_manually_blocked_opportunities_are_closed_and_listed_by_status()
+    {
+        var admin = await AdminWithProfileAsync();
+        var first = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Rejeição"), gross: 1006m)));
+        var rejectedId = first.GetProperty("opportunityIds")[0].GetGuid();
+        var second = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Bloqueio manual"), gross: 1007m)));
+        var blockedId = second.GetProperty("opportunityIds")[0].GetGuid();
+
+        (await Json(await Post(admin, $"/api/tax/opportunities/{rejectedId}/reject", new { reason = "Cliente não aceita mudar a condição" })))
+            .GetProperty("status").GetString().Should().Be("Rejected");
+        var approveRejected = await Post(admin, $"/api/tax/opportunities/{rejectedId}/approve", new { acknowledgeHighRisk = false });
+        (await Json(approveRejected, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString().Should().Be("tax_opportunity_state");
+        (await Post(admin, $"/api/tax/opportunities/{rejectedId}/reject", new { reason = "" })).StatusCode
+            .Should().Be(HttpStatusCode.BadRequest, "a rejection always says why");
+
+        var blocked = await Json(await Post(admin, $"/api/tax/opportunities/{blockedId}/block",
+            new { structure = "ArtificialTransaction", reason = "Operação montada só para o desconto" }));
+        blocked.GetProperty("status").GetString().Should().Be("Blocked");
+        blocked.GetProperty("blockedAs").GetString().Should().Be("ArtificialTransaction");
+        blocked.GetProperty("estimatedImpact").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var rejectedList = (await Json(await admin.GetAsync("/api/tax/opportunities?status=Rejected&take=200"))).EnumerateArray().ToList();
+        rejectedList.Should().Contain(o => o.GetProperty("id").GetGuid() == rejectedId);
+        rejectedList.Should().OnlyContain(o => o.GetProperty("status").GetString() == "Rejected");
+        var blockedRow = (await Json(await admin.GetAsync("/api/tax/opportunities?status=Blocked&take=200"))).EnumerateArray()
+            .Single(o => o.GetProperty("id").GetGuid() == blockedId);
+        blockedRow.GetProperty("estimatedImpact").ValueKind.Should().Be(JsonValueKind.Null, "the list never shows a blocked saving either");
+
+        // Running the detectors again finds the same opportunity and creates nothing new.
+        var redetect = await Json(await Post(admin, $"/api/tax/calculations/{first.GetProperty("id").GetGuid()}/opportunities/detect", new { }));
+        redetect.GetArrayLength().Should().Be(0);
+        var calcRow = (await Json(await admin.GetAsync("/api/tax/calculations?take=200"))).EnumerateArray()
+            .Single(c => c.GetProperty("id").GetGuid() == first.GetProperty("id").GetGuid());
+        calcRow.GetProperty("openOpportunities").GetInt32().Should().Be(0, "the only opportunity was rejected");
+    }
+
+    [Fact]
+    public async Task The_decision_dossier_can_be_read_back_unchanged()
+    {
+        var admin = await AdminWithProfileAsync();
+        var calc = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Dossiê"), gross: 1008m)));
+        var oppId = calc.GetProperty("opportunityIds")[0].GetGuid();
+        await Json(await Post(admin, $"/api/tax/opportunities/{oppId}/review", new { }));
+        foreach (var r in (await Json(await admin.GetAsync($"/api/tax/opportunities/{oppId}"))).GetProperty("requirements").EnumerateArray())
+            await Json(await Post(admin, $"/api/tax/opportunities/{oppId}/requirements/{r.GetProperty("id").GetGuid()}", new { met = true }));
+        var approved = await Json(await Post(admin, $"/api/tax/opportunities/{oppId}/approve", new { acknowledgeHighRisk = false }));
+        var decision = approved.GetProperty("decision");
+
+        var read = await Json(await admin.GetAsync($"/api/tax/decisions/{decision.GetProperty("id").GetGuid()}"));
+        read.GetProperty("dossierHash").GetString().Should().Be(decision.GetProperty("dossierHash").GetString());
+        read.GetProperty("dossier").GetRawText().Should().Be(decision.GetProperty("dossier").GetRawText());
+        (await admin.GetAsync($"/api/tax/decisions/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await Post(admin, $"/api/tax/opportunities/{oppId}/reject", new { reason = "tarde demais" })).StatusCode
+            .Should().Be(HttpStatusCode.UnprocessableEntity, "an approved decision is final");
+    }
+
+    [Fact]
+    public async Task Credit_blocks_unblocks_and_reversals_keep_the_balance_and_the_history()
+    {
+        var admin = await AdminWithProfileAsync();
+        var credit = await Json(await Post(admin, "/api/tax/credits", new
+        {
+            tax = "Ibs", sourceDocumentType = "NF-e", sourceDocumentKey = "35261012345678000190550010000012341000099999",
+            supplierDocument = (string?)null, acquiredOn = "2026-06-01", expiresOn = (string?)null,
+            originalAmount = 60m, eligibleAmount = 50m, eligibilityBasis = "declarado",
+        }));
+        var id = credit.GetProperty("id").GetGuid();
+        Task<HttpResponseMessage> Move(object body) => Post(admin, $"/api/tax/credits/{id}/movements", body);
+
+        await Json(await Move(new { movement = "Appropriate", amount = 50m }));
+        var blocked = await Json(await Move(new { movement = "Block", amount = 20m, reason = "em fiscalização" }));
+        (blocked.GetProperty("balance").GetProperty("available").GetDecimal(), blocked.GetProperty("balance").GetProperty("blocked").GetDecimal())
+            .Should().Be((30m, 20m));
+        (await Move(new { movement = "Block", amount = 1m })).StatusCode.Should().Be(HttpStatusCode.BadRequest, "a block says why");
+        (await Json(await Move(new { movement = "Unblock", amount = 25m }), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("tax_credit_amount");
+        await Json(await Move(new { movement = "Unblock", amount = 20m }));
+        var reversed = await Json(await Move(new { movement = "Reverse", amount = 10m, reason = "nota de compra cancelada" }));
+        reversed.GetProperty("balance").GetProperty("available").GetDecimal().Should().Be(40m);
+        reversed.GetProperty("balance").GetProperty("notAppropriated").GetDecimal().Should().Be(0m, "a reversed appropriation is not appropriable again");
+        reversed.GetProperty("entries").EnumerateArray().Select(e => e.GetProperty("type").GetString())
+            .Should().Equal("Recognized", "Appropriated", "Blocked", "Unblocked", "Reversed");
+
+        var totals = (await Json(await admin.GetAsync("/api/tax/credits/totals"))).EnumerateArray().Single(t => t.GetProperty("tax").GetString() == "Ibs");
+        totals.GetProperty("available").GetDecimal().Should().BeGreaterThanOrEqualTo(40m);
+        (await admin.GetAsync($"/api/tax/credits/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Saved_simulations_are_listed_and_unknown_ids_are_not_found()
+    {
+        var admin = await AdminWithProfileAsync();
+        var name = Unique("Lista");
+        await Json(await Post(admin, "/api/tax/simulations", new
+        {
+            name, baseline = Operation(Unique("Base lista")),
+            scenarios = new object[] { new { name = "Simples", regime = "SimplesNacional", convertConditionalDiscounts = false, assumeCreditable = false } },
+        }));
+
+        var row = (await Json(await admin.GetAsync("/api/tax/simulations?take=100"))).EnumerateArray().Single(s => s.GetProperty("name").GetString() == name);
+        row.GetProperty("scenarios").GetInt32().Should().Be(2, "baseline + one scenario");
+        (await admin.GetAsync($"/api/tax/simulations/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await admin.GetAsync($"/api/tax/calculations/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await Post(admin, $"/api/tax/calculations/{Guid.NewGuid()}/verify", new { })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task The_profile_offers_the_fiscal_issuer_data_as_a_starting_point()
+    {
+        var admin = await AdminWithProfileAsync();
+        var saved = await admin.PutAsJsonAsync("/api/fiscal/profile", new
+        {
+            legalName = "Orken Testes Ltda", tradeName = (string?)null, cnpj = "11222333000181", stateRegistration = "ISENTO",
+            municipalRegistration = (string?)null, taxRegime = "LucroPresumido", street = "Rua A", number = "1", complement = (string?)null,
+            district = "Centro", cityName = "São Paulo", cityIbgeCode = "3550308", state = "SP", zipCode = "01001000",
+            operationNature = (string?)null, nfceSeries = (int?)null, nfceNextNumber = (long?)null, nfeSeries = (int?)null, nfeNextNumber = (long?)null,
+        }, Web);
+        saved.StatusCode.Should().Be(HttpStatusCode.OK, await saved.Content.ReadAsStringAsync());
+
+        var suggestion = (await Json(await admin.GetAsync("/api/tax/profile"))).GetProperty("suggestion");
+        (suggestion.GetProperty("regime").GetString(), suggestion.GetProperty("state").GetString(), suggestion.GetProperty("cityIbgeCode").GetString())
+            .Should().Be(("LucroPresumido", "SP", "3550308"));
     }
 
     [Fact]
