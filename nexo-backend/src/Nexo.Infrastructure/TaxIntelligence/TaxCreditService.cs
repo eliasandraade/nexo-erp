@@ -88,6 +88,9 @@ public sealed class TaxCreditService
         // A use may refer to an earlier obligation date, never a future one; every other movement is dated today.
         var onDate = r.OnDate ?? today;
         if (onDate > today) throw new DomainException("A data do movimento não pode ser futura.", "tax_credit_future_date");
+        // A chosen date is never silently replaced by today's.
+        if (r.Movement != TaxCreditMovement.Use && onDate != today)
+            throw new DomainException("Só o uso do crédito aceita outra data; os demais movimentos são registrados hoje.", "tax_credit_date_only_for_use");
         await using var tx = await _db.Database.BeginTransactionAsync(ct);
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT 1 FROM nexo.tax_credits WHERE id = {id} AND tenant_id = {_tenant.Id} FOR UPDATE", ct);

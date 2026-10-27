@@ -258,7 +258,9 @@ function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | n
           <Field id="mv-reason" label={reasonLabel(m.movement)}>
             <Input id="mv-reason" maxLength={500} value={m.reason} onChange={(e) => setM({ ...m, reason: e.target.value })} />
           </Field>
-          <Field id="mv-date" label="Data (vazio = hoje)"><Input id="mv-date" type="date" value={m.onDate} onChange={(e) => setM({ ...m, onDate: e.target.value })} /></Field>
+          {m.movement === "Use"
+            ? <Field id="mv-date" label="Data do uso (vazio = hoje)"><Input id="mv-date" type="date" value={m.onDate} onChange={(e) => setM({ ...m, onDate: e.target.value })} /></Field>
+            : <p className="text-xs text-muted-foreground">Este movimento é registrado com a data de hoje.</p>}
           {touched && <ProblemList problems={problems} />}
         </form>
         <DialogFooter>

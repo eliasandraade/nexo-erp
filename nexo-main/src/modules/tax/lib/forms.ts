@@ -444,6 +444,7 @@ export function toMovementRequest(m: MovementDraft): CreditMovementRequest {
     reason: m.reason.trim() === "" ? null : m.reason.trim(),
     obligationTax: use ? m.obligationTax : null,
     obligationReference: use ? m.obligationReference.trim() : null,
-    onDate: m.onDate === "" ? null : m.onDate,
+    // Only a use may refer to another date; every other movement is registered today.
+    onDate: use && m.onDate !== "" ? m.onDate : null,
   };
 }

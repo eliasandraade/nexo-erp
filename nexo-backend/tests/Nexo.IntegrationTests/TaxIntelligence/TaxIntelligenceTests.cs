@@ -611,6 +611,9 @@ public class TaxIntelligenceTests
         var future = await Post(admin, $"/api/tax/credits/{id}/movements",
             new { movement = "Use", amount = 1m, obligationTax = "Cbs", obligationReference = "obr-fut", onDate = "2099-01-01" });
         (await Json(future, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString().Should().Be("tax_credit_future_date");
+        var backdated = await Post(admin, $"/api/tax/credits/{id}/movements", new { movement = "Block", amount = 1m, reason = "teste", onDate = "2026-06-15" });
+        (await Json(backdated, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString()
+            .Should().Be("tax_credit_date_only_for_use", "a chosen date is never silently replaced by today's");
         var partial = await Post(admin, $"/api/tax/credits/{id}/movements", new { movement = "Expire", amount = 2m });
         (await Json(partial, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString()
             .Should().Be("tax_credit_expire_whole_balance", "a partial amount is never silently turned into a full write-off");
