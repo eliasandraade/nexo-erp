@@ -14,18 +14,20 @@ def merge(paths):
     # (module, source file, line) -> covered?
     lines = {}
     for path in paths:
-        root = ET.parse(path).getroot()
-        for module in root.iter("module"):
-            name = module.get("name", "?")
-            files = {f.get("id"): f.get("path", "") for f in module.iter("source_file")}
-            for fn in module.iter("function"):
-                for r in fn.iter("range"):
-                    src = files.get(r.get("source_id"), "")
-                    covered = r.get("covered") in ("yes", "partial")
-                    for ln in range(int(r.get("start_line", 0)), int(r.get("end_line", 0)) + 1):
-                        key = (name, src, ln)
-                        lines[key] = lines.get(key, False) or covered
+        for module in ET.parse(path).getroot().iter("module"):
+            add_module(lines, module)
     return lines
+
+
+def add_module(lines, module):
+    name = module.get("name", "?")
+    files = {f.get("id"): f.get("path", "") for f in module.iter("source_file")}
+    for r in module.iter("range"):
+        src = files.get(r.get("source_id"), "")
+        covered = r.get("covered") in ("yes", "partial")
+        for ln in range(int(r.get("start_line", 0)), int(r.get("end_line", 0)) + 1):
+            key = (name, src, ln)
+            lines[key] = lines.get(key, False) or covered
 
 
 def main():
