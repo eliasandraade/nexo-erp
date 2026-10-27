@@ -140,7 +140,8 @@ public sealed class TaxOpportunityService
 
     public Task<TaxOpportunityDto> AddEvidenceAsync(Guid id, AddEvidenceRequest r, CancellationToken ct) => MutateAsync(id, o =>
     {
-        var hash = _engines.Current.Canonical.Hash($"{r.Description.Trim()}\n{r.DocumentReference?.Trim()}");
+        // Same versioned hashing contract as the dossier: the canonical form of the opportunity's engine.
+        var hash = EngineOf(o).Canonical.Hash($"{r.Description.Trim()}\n{r.DocumentReference?.Trim()}");
         var e = o.AddEvidence(r.Description, r.DocumentReference, hash, _audit.UserId, _audit.UserName);
         _db.TaxOpportunityEvidence.Add(e);
         _audit.Record(TaxAuditActions.OpportunityEvidenceAdded, AuditEntity, o.Id, "Evidência anexada.", new { evidenceId = e.Id, hash });
