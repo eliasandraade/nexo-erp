@@ -5,7 +5,11 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Nexo.Application.Modules.TaxIntelligence.Engine;
 using Nexo.Application.Features.Cash;
 using Nexo.Application.Features.Products;
 using Nexo.Application.Features.Sales;
@@ -51,7 +55,7 @@ public class TaxIntelligenceTests
             {
                 validFrom = "2026-01-01", regime = "LucroPresumido", state = "SP", cityIbgeCode = "3550308", primaryCnae = "4711302",
                 secondaryCnaes = Array.Empty<string>(), specialRegimes = Array.Empty<string>(), benefits = Array.Empty<string>(),
-                accessoryObligationsCompliant = (bool?)null, reason = "Perfil de teste",
+                accessoryObligations = "Unknown", accessoryObligationsEvidence = (string?)null, reason = "Perfil de teste",
             }));
         return admin;
     }
@@ -119,7 +123,11 @@ public class TaxIntelligenceTests
 
         var sources = await Json(await admin.GetAsync("/api/tax/legal-sources"));
         var art12 = sources.EnumerateArray().Single(s => s.GetProperty("code").GetString() == "LC214-2025-ART12-P2-III-P3");
-        art12.GetProperty("verification").GetString().Should().Be("Verified");
+        art12.GetProperty("textVerification").GetString().Should().Be("Verified", "the excerpt matches the official text");
+        rules.EnumerateArray().SelectMany(r => r.GetProperty("versions").EnumerateArray())
+            .Should().OnlyContain(v => v.GetProperty("professionalReview").GetString() == "Pending"
+                || v.GetProperty("origin").GetString() != "seed:tax-catalog-v1", "nothing in the catalogue V1 is professionally approved");
+        v1.GetProperty("professionalReview").GetString().Should().Be("Pending", "an active rule is not an approved interpretation");
         art12.GetProperty("excerpt").GetString().Should().Contain("não dependa de evento posterior");
         art12.GetProperty("url").GetString().Should().StartWith("https://www.planalto.gov.br/");
     }
@@ -148,7 +156,9 @@ public class TaxIntelligenceTests
 
         var verify = await Json(await Post(admin, $"/api/tax/calculations/{id}/verify", new { }));
         verify.GetProperty("reproducible").GetBoolean().Should().BeTrue();
+        verify.GetProperty("engineAvailable").GetBoolean().Should().BeTrue();
         verify.GetProperty("recomputedOutputHash").GetString().Should().Be(first.GetProperty("outputHash").GetString());
+        first.GetProperty("profileAdvisories")[0].GetString().Should().Contain("não informado", "unknown compliance is said, not assumed");
     }
 
     [Fact]
@@ -213,7 +223,11 @@ public class TaxIntelligenceTests
 
         var opp = await Json(await admin.GetAsync($"/api/tax/opportunities/{oppId}"));
         opp.GetProperty("status").GetString().Should().Be("Identified", "detection only proposes");
-        opp.GetProperty("impactNature").GetString().Should().Be("DefinitiveSaving");
+        opp.GetProperty("type").GetString().Should().Be("CalculatedTaxReduction");
+        opp.GetProperty("impactNature").GetString().Should().Be("CalculatedTaxReduction", "a lower IBS/CBS on the document is not a definitive saving");
+        opp.GetProperty("summary").GetString().Should().Contain("redução do IBS/CBS calculado");
+        opp.GetProperty("engineVersion").GetString().Should().Be("orken-tax-engine/1.0.0");
+        opp.GetProperty("professionalReviewPending").GetBoolean().Should().BeTrue();
         opp.GetProperty("estimatedImpact").GetDecimal().Should().Be(0.50m);
 
         var gerente = await UserAsync(admin, "gerente");
@@ -234,6 +248,11 @@ public class TaxIntelligenceTests
             .Should().Contain("LC214-2025-ART12-P2-III-P3");
         dossier.GetProperty("evidence")[0].GetProperty("documentReference").GetString().Should().Be("PROP-123");
         dossier.GetProperty("engineVersion").GetString().Should().Be("orken-tax-engine/1.0.0");
+        dossier.GetProperty("legalSources")[0].GetProperty("textVerification").GetString().Should().Be("Verified");
+        dossier.GetProperty("professionalReview").GetProperty("pendingRules").GetArrayLength().Should().BeGreaterThan(0);
+        dossier.GetProperty("segregationOfDuties").GetProperty("selfApproval").GetBoolean().Should().BeFalse("the gerente analysed, the Diretoria approved");
+        dossier.GetProperty("reviewStartedBy").GetString().Should().Be("Pessoa gerente");
+        decision.GetProperty("selfApprovalJustification").ValueKind.Should().Be(JsonValueKind.Null);
 
         var after = await Json(await admin.GetAsync($"/api/tax/calculations/{calc.GetProperty("id").GetGuid()}"));
         after.GetProperty("input").GetProperty("lines")[0].GetProperty("conditionalDiscount").GetDecimal()
@@ -461,7 +480,7 @@ public class TaxIntelligenceTests
         {
             validFrom = "2026-01-01", regime = "LucroReal", state = "SP", cityIbgeCode = "3550308", primaryCnae = "4711302",
             secondaryCnaes = Array.Empty<string>(), specialRegimes = Array.Empty<string>(), benefits = Array.Empty<string>(),
-            accessoryObligationsCompliant = (bool?)null, reason = "tentativa",
+            accessoryObligations = "Unknown", accessoryObligationsEvidence = (string?)null, reason = "tentativa",
         })).StatusCode.Should().Be(HttpStatusCode.Forbidden, "a change of regime is Diretoria only");
         (await Post(admin, "/api/platform/tax/rules", new { key = "X.Y", name = "x", description = "x" }))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden, "tenant users never edit the catalogue");
@@ -476,7 +495,8 @@ public class TaxIntelligenceTests
 
         var o = await Json(await admin.GetAsync("/api/tax/overview"));
         o.GetProperty("profileConfigured").GetBoolean().Should().BeTrue();
-        o.GetProperty("potentialSavings").GetDecimal().Should().BeGreaterThan(0m);
+        o.GetProperty("potentialCalculatedTaxReductions").GetDecimal().Should().BeGreaterThan(0m);
+        o.GetProperty("potentialSavings").GetDecimal().Should().Be(0m, "a calculated-tax reduction is never added to savings");
         o.GetProperty("potentialDeferrals").GetDecimal().Should().Be(0m, "no deferral detector exists — nothing is invented");
         o.GetProperty("activeRulesToday").GetInt32().Should().BeGreaterThan(0);
     }
@@ -488,7 +508,11 @@ public class TaxIntelligenceTests
 
         var paths = doc.GetProperty("paths").EnumerateObject().Select(p => p.Name).ToList();
         paths.Should().Contain(["/api/tax/calculations", "/api/tax/calculations/{id}/verify", "/api/tax/simulations",
-            "/api/tax/opportunities/{id}/approve", "/api/tax/credits/{id}/movements", "/api/tax/rules", "/api/platform/tax/rules/{key}/versions"]);
+            "/api/tax/opportunities/{id}/approve", "/api/tax/credits/{id}/movements", "/api/tax/rules", "/api/platform/tax/rules/{key}/versions",
+            "/api/platform/tax/rule-versions/{id}/professional-review"]);
+        var schemas = doc.GetProperty("components").GetProperty("schemas");
+        schemas.TryGetProperty("RecordProfessionalReviewRequest", out _).Should().BeTrue();
+        schemas.GetProperty("TaxImpactNature").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).Should().Contain("CalculatedTaxReduction");
         doc.GetProperty("components").GetProperty("schemas").TryGetProperty("TaxCalculationDto", out _).Should().BeTrue();
     }
 
@@ -612,8 +636,15 @@ public class TaxIntelligenceTests
         await Json(await Post(admin, $"/api/tax/opportunities/{oppId}/review", new { }));
         foreach (var r in (await Json(await admin.GetAsync($"/api/tax/opportunities/{oppId}"))).GetProperty("requirements").EnumerateArray())
             await Json(await Post(admin, $"/api/tax/opportunities/{oppId}/requirements/{r.GetProperty("id").GetGuid()}", new { met = true }));
-        var approved = await Json(await Post(admin, $"/api/tax/opportunities/{oppId}/approve", new { acknowledgeHighRisk = false }));
+        var alone = await Post(admin, $"/api/tax/opportunities/{oppId}/approve", new { acknowledgeHighRisk = false });
+        (await Json(alone, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString()
+            .Should().Be("tax_self_approval_requires_justification", "whoever analysed alone does not silently approve it");
+        var approved = await Json(await Post(admin, $"/api/tax/opportunities/{oppId}/approve",
+            new { acknowledgeHighRisk = false, selfApprovalJustification = "Empresa com uma só pessoa na Diretoria." }));
         var decision = approved.GetProperty("decision");
+        decision.GetProperty("selfApprovalJustification").GetString().Should().Be("Empresa com uma só pessoa na Diretoria.");
+        decision.GetProperty("dossier").GetProperty("segregationOfDuties").GetProperty("justification").GetString()
+            .Should().Be("Empresa com uma só pessoa na Diretoria.");
 
         var read = await Json(await admin.GetAsync($"/api/tax/decisions/{decision.GetProperty("id").GetGuid()}"));
         read.GetProperty("dossierHash").GetString().Should().Be(decision.GetProperty("dossierHash").GetString());
@@ -702,5 +733,179 @@ public class TaxIntelligenceTests
                 unconditionalDiscount = 20m, conditionalDiscount = 0m, surcharges = 0m } },
         });
         r.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // ── pre-merge hardening ─────────────────────────────────────────────────────
+
+    /// <summary>A stand-in for a future engine: another version id; must never run a V1 calculation.</summary>
+    private sealed class FakeEngineV2 : ITaxEngine
+    {
+        public const string VersionId = "orken-tax-engine/2.0.0-test";
+        private static readonly TaxEngineV1 Inner = new();
+        public static int Runs;
+        public string Version => VersionId;
+        public ITaxCanonicalizer Canonical => TaxCanonicalV1.Instance;
+        public IReadOnlyList<TaxEngineRule> SelectActive(IEnumerable<TaxEngineRule> rules, DateOnly date) => Inner.SelectActive(rules, date);
+        public string RuleSetHash(IEnumerable<TaxEngineRule> selected) => Inner.RuleSetHash(selected);
+        public decimal RoundMoney(decimal value) => Inner.RoundMoney(value);
+
+        public TaxEngineOutput Run(TaxEngineInput input, IReadOnlyCollection<TaxEngineRule> catalogue)
+        {
+            Interlocked.Increment(ref Runs);
+            return Inner.Run(input, catalogue) with { EngineVersion = VersionId };
+        }
+    }
+
+    private HttpClient HostWith(HttpClient authenticated, Action<IServiceCollection>? services = null, Action<IWebHostBuilder>? host = null)
+    {
+        var client = _factory.WithWebHostBuilder(b =>
+        {
+            host?.Invoke(b);
+            if (services is not null) b.ConfigureTestServices(services);
+        }).CreateClient();
+        client.DefaultRequestHeaders.Authorization = authenticated.DefaultRequestHeaders.Authorization;
+        return client;
+    }
+
+    private static Action<IServiceCollection> Engines(params ITaxEngine[] engines) => s =>
+    {
+        s.RemoveAll<TaxEngineRegistry>();
+        s.AddSingleton(new TaxEngineRegistry(engines, FakeEngineV2.VersionId));
+    };
+
+    [Fact]
+    public async Task A_V1_calculation_is_verified_by_V1_after_a_V2_becomes_current()
+    {
+        var admin = await AdminWithProfileAsync();
+        var v1Calc = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Antes da V2"), gross: 1011m)));
+        var id = v1Calc.GetProperty("id").GetGuid();
+
+        var withV2 = HostWith(admin, Engines(new TaxEngineV1(), new FakeEngineV2()));
+        var runsBefore = FakeEngineV2.Runs;
+        var verify = await Json(await Post(withV2, $"/api/tax/calculations/{id}/verify", new { }));
+
+        verify.GetProperty("reproducible").GetBoolean().Should().BeTrue(verify.GetRawText());
+        verify.GetProperty("engineAvailable").GetBoolean().Should().BeTrue();
+        verify.GetProperty("engineVersionMatches").GetBoolean().Should().BeFalse("the current engine is V2");
+        verify.GetProperty("storedEngineVersion").GetString().Should().Be("orken-tax-engine/1.0.0");
+        verify.GetProperty("currentEngineVersion").GetString().Should().Be(FakeEngineV2.VersionId);
+        FakeEngineV2.Runs.Should().Be(runsBefore, "V2 never re-runs a V1 calculation");
+
+        var newCalc = await Json(await Post(withV2, "/api/tax/calculations", Operation(Unique("Depois da V2"), gross: 1012m)));
+        newCalc.GetProperty("engineVersion").GetString().Should().Be(FakeEngineV2.VersionId, "new calculations use the current engine");
+        (await Json(await admin.GetAsync($"/api/tax/calculations/{id}"))).GetProperty("engineVersion").GetString()
+            .Should().Be("orken-tax-engine/1.0.0", "a stored calculation keeps the engine that made it");
+    }
+
+    [Fact]
+    public async Task A_calculation_whose_engine_is_gone_is_not_reproduced_by_the_current_one()
+    {
+        var admin = await AdminWithProfileAsync();
+        var v1Calc = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Engine ausente"), gross: 1013m)));
+        var id = v1Calc.GetProperty("id").GetGuid();
+
+        var withoutV1 = HostWith(admin, Engines(new FakeEngineV2()));
+        var runsBefore = FakeEngineV2.Runs;
+        var verify = await Json(await Post(withoutV1, $"/api/tax/calculations/{id}/verify", new { }));
+
+        verify.GetProperty("reproducible").GetBoolean().Should().BeFalse();
+        verify.GetProperty("engineAvailable").GetBoolean().Should().BeFalse();
+        verify.GetProperty("recomputedOutputHash").ValueKind.Should().Be(JsonValueKind.Null);
+        verify.GetProperty("differences")[0].GetString().Should().Contain("não pode ser executada");
+        FakeEngineV2.Runs.Should().Be(runsBefore);
+        (await Json(await withoutV1.GetAsync($"/api/tax/calculations/{id}"), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("tax_engine_unavailable", "stored data is never read with another engine's canonical form");
+    }
+
+    [Fact]
+    public async Task With_the_production_policy_rules_awaiting_professional_review_cannot_back_a_decision()
+    {
+        var admin = await AdminWithProfileAsync();
+        var calc = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Política"), gross: 1014m)));
+        var oppId = calc.GetProperty("opportunityIds")[0].GetGuid();
+        var gerente = await UserAsync(admin, "gerente");
+        await Json(await Post(gerente, $"/api/tax/opportunities/{oppId}/review", new { }));
+        foreach (var r in (await Json(await admin.GetAsync($"/api/tax/opportunities/{oppId}"))).GetProperty("requirements").EnumerateArray())
+            await Json(await Post(gerente, $"/api/tax/opportunities/{oppId}/requirements/{r.GetProperty("id").GetGuid()}", new { met = true }));
+
+        var production = HostWith(admin, host: b => b.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "true"));
+        var refused = await Json(await Post(production, $"/api/tax/opportunities/{oppId}/approve", new { acknowledgeHighRisk = false }),
+            HttpStatusCode.UnprocessableEntity);
+
+        refused.GetProperty("code").GetString().Should().Be("tax_professional_review_pending");
+        refused.GetProperty("error").GetString().Should().Contain("CBS.RATE.2026-TEST v1").And.Contain("não é aprovação profissional");
+        (await Json(await admin.GetAsync($"/api/tax/opportunities/{oppId}"))).GetProperty("status").GetString()
+            .Should().Be("InReview", "nothing was recorded");
+        (await CountAsync(db => db.TaxDecisions.Where(d => d.OpportunityId == oppId))).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_professional_review_is_recorded_by_the_platform_only_and_audited()
+    {
+        var platform = await PlatformAsync();
+        await Json(await Post(platform, "/api/platform/tax/legal-sources", new
+        {
+            code = "TEST-REVIEW-" + Guid.NewGuid().ToString("N")[..8], kind = "Other", title = "Fonte de teste", reference = "art. 1",
+            url = "https://www.planalto.gov.br/teste", excerpt = "Texto de teste.", publishedOn = (string?)null, notes = (string?)null,
+        }));
+        var key = "TEST.REVIEW." + Guid.NewGuid().ToString("N")[..8].ToUpperInvariant();
+        await Json(await Post(platform, "/api/platform/tax/rules", new { key, name = "Regra de teste", description = "Só para o teste." }));
+        var sourceCode = (await Json(await platform.GetAsync("/api/platform/tax/legal-sources"))).EnumerateArray()
+            .Select(s => s.GetProperty("code").GetString()!).Last(c => c.StartsWith("TEST-REVIEW-"));
+        var version = await Json(await Post(platform, $"/api/platform/tax/rules/{key}/versions", new
+        {
+            validFrom = "2040-01-01", validTo = (string?)null, priority = 1, conditions = Array.Empty<object>(),
+            result = new { kind = "note", code = "test", text = "nota" }, legalSourceCodes = new[] { sourceCode }, notes = (string?)null,
+        }));
+        var versionId = version.GetProperty("id").GetGuid();
+        version.GetProperty("professionalReview").GetString().Should().Be("Pending");
+
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        (await Post(admin, $"/api/platform/tax/rule-versions/{versionId}/professional-review", new { status = "Approved", reviewer = "x" }))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden, "tenants never review the shared catalogue");
+        (await Post(platform, $"/api/platform/tax/rule-versions/{versionId}/professional-review", new { status = "Rejected", reviewer = "Contadora" }))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "a rejection must say why");
+
+        var reviewed = await Json(await Post(platform, $"/api/platform/tax/rule-versions/{versionId}/professional-review",
+            new { status = "ChangesRequired", reviewer = "Contadora de teste", notes = "Ajustar a vigência." }));
+        reviewed.GetProperty("professionalReview").GetString().Should().Be("ChangesRequired");
+        reviewed.GetProperty("professionalReviewedBy").GetString().Should().Be("Contadora de teste");
+        reviewed.GetProperty("status").GetString().Should().Be("Draft", "a professional review never moves the technical status");
+        (await CountAsync(db => db.AuditRecords.IgnoreQueryFilters()
+            .Where(a => a.ActionType == "tax_rule_version_professional_review" && a.EntityId == versionId.ToString()))).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Declared_compliance_is_not_treated_as_verified_compliance()
+    {
+        var admin = await AdminWithProfileAsync();
+        async Task AddVersion(string from, string status, string? evidence) => await Json(await Post(admin, "/api/tax/profile/versions", new
+        {
+            validFrom = from, regime = "LucroPresumido", state = "SP", cityIbgeCode = "3550308", primaryCnae = "4711302",
+            secondaryCnaes = Array.Empty<string>(), specialRegimes = Array.Empty<string>(), benefits = Array.Empty<string>(),
+            accessoryObligations = status, accessoryObligationsEvidence = evidence, reason = "Teste de obrigações acessórias",
+        }));
+
+        (await Post(admin, "/api/tax/profile/versions", new
+        {
+            validFrom = "2026-11-01", regime = "LucroPresumido", state = "SP", cityIbgeCode = "3550308", primaryCnae = "4711302",
+            secondaryCnaes = Array.Empty<string>(), specialRegimes = Array.Empty<string>(), benefits = Array.Empty<string>(),
+            accessoryObligations = "VerifiedCompliant", accessoryObligationsEvidence = (string?)null, reason = "sem evidência",
+        })).StatusCode.Should().Be(HttpStatusCode.BadRequest, "verified compliance needs the evidence that was checked");
+
+        await AddVersion("2026-11-01", "DeclaredCompliant", null);
+        await AddVersion("2026-12-01", "VerifiedCompliant", "Recibos de entrega conferidos pela contabilidade");
+        await AddVersion("2026-12-20", "Unknown", null);
+
+        static IEnumerable<string?> Notes(JsonElement c) => c.GetProperty("output").GetProperty("notes").EnumerateArray().Select(n => n.GetProperty("code").GetString());
+
+        var declared = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Declarado"), gross: 1015m, date: "2026-11-15")));
+        Notes(declared).Should().NotContain(TaxNoteCodes.Waiver2026, "a declaration does not satisfy a rule that needs verified compliance");
+        declared.GetProperty("input").GetProperty("profile").GetProperty("accessoryObligationsCompliant").ValueKind.Should().Be(JsonValueKind.Null);
+        declared.GetProperty("profileAdvisories")[0].GetString().Should().Contain("não verificadas");
+
+        var verified = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Verificado"), gross: 1016m, date: "2026-12-10")));
+        Notes(verified).Should().Contain(TaxNoteCodes.Waiver2026);
+        verified.GetProperty("profileAdvisories").GetArrayLength().Should().Be(0);
     }
 }

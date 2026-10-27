@@ -129,12 +129,12 @@ public class TaxLedgerAndCatalogueTests
     public void Profile_versions_are_added_never_edited()
     {
         var p = TaxProfile.Create(Guid.NewGuid());
-        var v1 = p.AddVersion(new DateOnly(2026, 1, 1), TaxRegime.SimplesNacional, "SP", "3550308", "4711302", [], [], [], null, "início", Actor, "u");
-        var v2 = p.AddVersion(new DateOnly(2026, 7, 1), TaxRegime.LucroPresumido, "SP", "3550308", "4711302", [], [], [], true, "saída do Simples", Actor, "u");
+        var v1 = p.AddVersion(new DateOnly(2026, 1, 1), TaxRegime.SimplesNacional, "SP", "3550308", "4711302", [], [], [], AccessoryObligationsStatus.Unknown, null, "início", Actor, "u");
+        var v2 = p.AddVersion(new DateOnly(2026, 7, 1), TaxRegime.LucroPresumido, "SP", "3550308", "4711302", [], [], [], AccessoryObligationsStatus.VerifiedCompliant, "recibos de entrega das declarações", "saída do Simples", Actor, "u");
 
         (v1.VersionNumber, v2.VersionNumber).Should().Be((1, 2));
         v1.Regime.Should().Be(TaxRegime.SimplesNacional, "the old version keeps the old regime");
-        p.Invoking(x => x.AddVersion(new DateOnly(2026, 1, 1), TaxRegime.LucroReal, "SP", "355030", "4711302", [], [], [], null, "x", Actor, "u"))
+        p.Invoking(x => x.AddVersion(new DateOnly(2026, 1, 1), TaxRegime.LucroReal, "SP", "355030", "4711302", [], [], [], AccessoryObligationsStatus.Unknown, null, "x", Actor, "u"))
             .Should().Throw<DomainException>("IBGE code has 7 digits");
     }
 
@@ -157,7 +157,7 @@ public class TaxLedgerAndCatalogueTests
         var hashes = TaxCatalogV1.Rules.ToDictionary(r => r.Key, r => r.ContentHash);
         hashes.Should().HaveCount(12);
         hashes.Values.Should().OnlyHaveUniqueItems().And.OnlyContain(h => h.Length == 64);
-        TaxCanonical.Hash(string.Join("\n", hashes.OrderBy(h => h.Key, StringComparer.Ordinal).Select(h => $"{h.Key}={h.Value}")))
+        TaxCanonicalV1.Instance.Hash(string.Join("\n", hashes.OrderBy(h => h.Key, StringComparer.Ordinal).Select(h => $"{h.Key}={h.Value}")))
             .Should().Be(PinnedCatalogueHash);
     }
 
@@ -183,9 +183,9 @@ public class TaxLedgerAndCatalogueTests
     {
         foreach (var r in TaxCatalogV1.Rules)
         {
-            var conditions = TaxCanonical.Deserialize<List<TaxCondition>>(TaxCanonical.Serialize(r.Conditions));
-            var result = TaxCanonical.Deserialize<TaxRuleResult>(TaxCanonical.Serialize(r.Result));
-            TaxCanonical.RuleContentHash(r.Key, 1, r.ValidFrom, r.ValidTo, r.Priority, conditions, result).Should().Be(r.ContentHash, r.Key);
+            var conditions = TaxCanonicalV1.Instance.Deserialize<List<TaxCondition>>(TaxCanonicalV1.Instance.Serialize(r.Conditions));
+            var result = TaxCanonicalV1.Instance.Deserialize<TaxRuleResult>(TaxCanonicalV1.Instance.Serialize(r.Result));
+            TaxCanonicalV1.Instance.RuleContentHash(r.Key, 1, r.ValidFrom, r.ValidTo, r.Priority, conditions, result).Should().Be(r.ContentHash, r.Key);
         }
     }
 
@@ -197,7 +197,7 @@ public class TaxLedgerAndCatalogueTests
         FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [], new RateResult(TaxType.Cbs, 0.12345m))).Should().Throw<DomainException>();
         FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [new ProfileFlagIs("whatever", true)], new NoteResult("a", "b"))).Should().Throw<DomainException>();
         FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [new ItemGeneralRegime()], new NoteResult("a", "b"))).Should().Throw<DomainException>();
-        FluentActions.Invoking(() => TaxCanonical.Deserialize<TaxRuleResult>("{\"kind\":\"script\",\"code\":\"x\"}")).Should().Throw<Exception>();
+        FluentActions.Invoking(() => TaxCanonicalV1.Instance.Deserialize<TaxRuleResult>("{\"kind\":\"script\",\"code\":\"x\"}")).Should().Throw<Exception>();
     }
 
     [Fact]
@@ -214,12 +214,12 @@ public class TaxLedgerAndCatalogueTests
             "[null]",
         ];
         foreach (var json in bad)
-            FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", TaxCanonical.Deserialize<List<TaxCondition>>(json), new NoteResult("a", "b")))
+            FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", TaxCanonicalV1.Instance.Deserialize<List<TaxCondition>>(json), new NoteResult("a", "b")))
                 .Should().Throw<DomainException>(json);
 
-        FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [], TaxCanonical.Deserialize<TaxRuleResult>("{\"kind\":\"base-inclusion\",\"component\":99}")))
+        FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [], TaxCanonicalV1.Instance.Deserialize<TaxRuleResult>("{\"kind\":\"base-inclusion\",\"component\":99}")))
             .Should().Throw<DomainException>();
-        FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [], TaxCanonical.Deserialize<TaxRuleResult>("{\"kind\":\"rate\",\"tax\":9,\"ratePercent\":1}")))
+        FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [], TaxCanonicalV1.Instance.Deserialize<TaxRuleResult>("{\"kind\":\"rate\",\"tax\":9,\"ratePercent\":1}")))
             .Should().Throw<DomainException>();
         FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", null, new NoteResult("a", "b"))).Should().Throw<DomainException>();
     }
@@ -236,7 +236,7 @@ public class TaxLedgerAndCatalogueTests
     [Fact]
     public void Conditions_are_stored_with_a_kind_discriminator()
     {
-        var json = TaxCanonical.Serialize<IReadOnlyList<TaxCondition>>([new SupplierRegimeNotIn([TaxRegime.Mei]), new ItemGeneralRegime()]);
+        var json = TaxCanonicalV1.Instance.Serialize<IReadOnlyList<TaxCondition>>([new SupplierRegimeNotIn([TaxRegime.Mei]), new ItemGeneralRegime()]);
         using var doc = JsonDocument.Parse(json);
         doc.RootElement[0].GetProperty("kind").GetString().Should().Be("supplier-regime-not-in");
         doc.RootElement[0].GetProperty("regimes")[0].GetString().Should().Be("Mei");

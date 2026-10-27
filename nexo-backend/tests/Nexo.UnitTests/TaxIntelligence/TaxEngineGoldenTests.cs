@@ -9,7 +9,7 @@ namespace Nexo.UnitTests.TaxIntelligence;
 /// <summary>
 /// Golden outputs of engine 1.0.0 on the seeded catalogue. A stored calculation is reproducible only
 /// while the engine produces byte-identical output for the same input — if one of these hashes
-/// changes, the change altered results and needs a new <see cref="TaxEngine.Version"/> (and the old
+/// changes, the change altered results and needs a new <see cref="TaxEngineV1.VersionId"/> (and the old
 /// evaluator kept for past calculations), not a new pinned value.
 /// </summary>
 public class TaxEngineGoldenTests
@@ -26,5 +26,5 @@ public class TaxEngineGoldenTests
     [Theory]
     [MemberData(nameof(Cases))]
     public void Engine_output_is_unchanged(string name, TaxEngineInput input, string expectedHash)
-        => TaxCanonical.HashOf(TaxEngine.Run(input, Catalogue())).Should().Be(expectedHash, name);
+        => TaxCanonicalV1.Instance.HashOf(V1.Run(input, Catalogue())).Should().Be(expectedHash, name);
 }

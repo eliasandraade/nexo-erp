@@ -12,7 +12,7 @@ public class TaxEngineTests
     [Fact]
     public void Regular_regime_2026_applies_the_test_rates_on_the_base_of_article_12()
     {
-        var output = TaxEngine.Run(Input(), Catalogue());
+        var output = V1.Run(Input(), Catalogue());
 
         var line = output.Lines.Single();
         line.Base.Should().Be(840m, "1000 gross + 20 surcharges − 100 unconditional − 80 taxes in the price; the conditional 50 stays");
@@ -26,7 +26,7 @@ public class TaxEngineTests
     [Fact]
     public void Every_rule_looked_at_is_traced_with_its_conditions_and_legal_sources()
     {
-        var output = TaxEngine.Run(Input(), Catalogue());
+        var output = V1.Run(Input(), Catalogue());
 
         var cbs = output.Executions.Single(e => e.RuleKey == "CBS.RATE.2026-TEST");
         cbs.Matched.Should().BeTrue();
@@ -44,7 +44,7 @@ public class TaxEngineTests
     [InlineData(TaxRegime.Mei)]
     public void Simples_Nacional_gets_no_test_rate_and_a_note(TaxRegime regime)
     {
-        var output = TaxEngine.Run(Input(regime), Catalogue());
+        var output = V1.Run(Input(regime), Catalogue());
 
         output.TotalTax.Should().Be(0m);
         output.Lines.Single().Components.Should().BeEmpty();
@@ -54,10 +54,10 @@ public class TaxEngineTests
     [Fact]
     public void Waiver_note_only_when_the_profile_declares_compliance()
     {
-        TaxEngine.Run(Input(compliant: true), Catalogue()).Notes.Select(n => n.Code).Should().Contain(TaxNoteCodes.Waiver2026);
-        TaxEngine.Run(Input(compliant: false), Catalogue()).Notes.Select(n => n.Code).Should().NotContain(TaxNoteCodes.Waiver2026);
+        V1.Run(Input(compliant: true), Catalogue()).Notes.Select(n => n.Code).Should().Contain(TaxNoteCodes.Waiver2026);
+        V1.Run(Input(compliant: false), Catalogue()).Notes.Select(n => n.Code).Should().NotContain(TaxNoteCodes.Waiver2026);
 
-        var undeclared = TaxEngine.Run(Input(compliant: null), Catalogue());
+        var undeclared = V1.Run(Input(compliant: null), Catalogue());
         undeclared.Notes.Select(n => n.Code).Should().NotContain(TaxNoteCodes.Waiver2026);
         undeclared.Warnings.Should().Contain(w => w.Contains("IBSCBS.NOTE.2026-WAIVER"), "an undeclared fact is reported, not assumed");
     }
@@ -65,7 +65,7 @@ public class TaxEngineTests
     [Fact]
     public void Item_under_a_special_regime_gets_no_rate_and_a_warning()
     {
-        var output = TaxEngine.Run(Input(lines: Line(special: "reducao-60")), Catalogue());
+        var output = V1.Run(Input(lines: Line(special: "reducao-60")), Catalogue());
 
         output.TotalTax.Should().Be(0m);
         output.Warnings.Should().Contain(w => w.Contains("regime diferenciado"));
@@ -74,19 +74,19 @@ public class TaxEngineTests
     [Fact]
     public void Inbound_with_unknown_supplier_regime_is_not_guessed()
     {
-        var output = TaxEngine.Run(Input(direction: TaxDirection.Inbound), Catalogue());
+        var output = V1.Run(Input(direction: TaxDirection.Inbound), Catalogue());
 
         output.TotalTax.Should().Be(0m);
         output.Warnings.Should().Contain(w => w.Contains("regime do fornecedor não informado"));
 
-        TaxEngine.Run(Input(direction: TaxDirection.Inbound, counterparty: TaxRegime.LucroReal), Catalogue())
+        V1.Run(Input(direction: TaxDirection.Inbound, counterparty: TaxRegime.LucroReal), Catalogue())
             .TotalTax.Should().Be(8.40m, "for an acquisition the supplier is the counterparty");
     }
 
     [Fact]
     public void Missing_taxes_in_the_price_are_flagged()
     {
-        var output = TaxEngine.Run(Input(lines: Line(informed: false)), Catalogue());
+        var output = V1.Run(Input(lines: Line(informed: false)), Catalogue());
 
         output.Lines.Single().Base.Should().Be(920m);
         output.Warnings.Should().Contain(w => w.Contains("não foram informados"));
@@ -95,7 +95,7 @@ public class TaxEngineTests
     [Fact]
     public void Rules_pending_regulation_or_unverified_are_listed_and_never_applied()
     {
-        var output = TaxEngine.Run(Input(date: new DateOnly(2027, 3, 1)), Catalogue());
+        var output = V1.Run(Input(date: new DateOnly(2027, 3, 1)), Catalogue());
 
         output.TotalTax.Should().Be(0m, "no 2027 rate is active in the catalogue");
         output.NotApplied.Select(n => (n.RuleKey, n.Status)).Should().Contain(
@@ -110,11 +110,11 @@ public class TaxEngineTests
     [Fact]
     public void The_same_input_gives_byte_identical_output()
     {
-        var a = TaxCanonical.Serialize(TaxEngine.Run(Input(), Catalogue()));
-        var b = TaxCanonical.Serialize(TaxEngine.Run(Input(), Catalogue().Reverse().ToList()));
+        var a = TaxCanonicalV1.Instance.Serialize(V1.Run(Input(), Catalogue()));
+        var b = TaxCanonicalV1.Instance.Serialize(V1.Run(Input(), Catalogue().Reverse().ToList()));
 
         b.Should().Be(a, "catalogue order must not matter");
-        TaxCanonical.Hash(a).Should().HaveLength(64);
+        TaxCanonicalV1.Instance.Hash(a).Should().HaveLength(64);
     }
 
     [Fact]
@@ -123,14 +123,14 @@ public class TaxEngineTests
         var a = Input(lines: new TaxEngineLine(1, TaxItemKind.Good, 10.5m, 0m, 0m, 0m, 0m, true));
         var b = Input(lines: new TaxEngineLine(1, TaxItemKind.Good, 10.50m, 0m, 0m, 0m, 0m, true));
 
-        TaxCanonical.HashOf(b).Should().Be(TaxCanonical.HashOf(a));
+        TaxCanonicalV1.Instance.HashOf(b).Should().Be(TaxCanonicalV1.Instance.HashOf(a));
     }
 
     [Fact]
     public void Output_does_not_depend_on_the_server_culture()
     {
-        var invariant = WithCulture(CultureInfo.InvariantCulture, () => TaxCanonical.Serialize(TaxEngine.Run(Input(), Catalogue())));
-        var brazil = WithCulture(new CultureInfo("pt-BR"), () => TaxCanonical.Serialize(TaxEngine.Run(Input(), Catalogue())));
+        var invariant = WithCulture(CultureInfo.InvariantCulture, () => TaxCanonicalV1.Instance.Serialize(V1.Run(Input(), Catalogue())));
+        var brazil = WithCulture(new CultureInfo("pt-BR"), () => TaxCanonicalV1.Instance.Serialize(V1.Run(Input(), Catalogue())));
 
         brazil.Should().Be(invariant);
     }
@@ -138,9 +138,9 @@ public class TaxEngineTests
     [Fact]
     public void Money_keeps_cents_with_half_away_from_zero()
     {
-        TaxEngine.Money(0.125m).Should().Be(0.13m);
-        TaxEngine.Money(2.675m).Should().Be(2.68m);
-        var output = TaxEngine.Run(Input(lines: new TaxEngineLine(1, TaxItemKind.Good, 0.05m, 0m, 0m, 0m, 0m, true)), Catalogue());
+        V1.RoundMoney(0.125m).Should().Be(0.13m);
+        V1.RoundMoney(2.675m).Should().Be(2.68m);
+        var output = V1.Run(Input(lines: new TaxEngineLine(1, TaxItemKind.Good, 0.05m, 0m, 0m, 0m, 0m, true)), Catalogue());
         output.Lines.Single().Components.Single(c => c.Tax == TaxType.Cbs).Amount.Should().Be(0.00m);
     }
 
@@ -150,7 +150,7 @@ public class TaxEngineTests
         var day = new DateOnly(2031, 3, 3);
         var rules = new[] { Rate("A.RATE", 1, 1m, day, day), Rate("B.RATE", 1, 2m, day, day) };
 
-        var act = () => TaxEngine.Run(Input(date: day), rules);
+        var act = () => V1.Run(Input(date: day), rules);
 
         act.Should().Throw<TaxRuleConflictException>();
     }
@@ -166,8 +166,8 @@ public class TaxEngineTests
             Rate("X.RATE", 2, 2m, y2032, null),
         };
 
-        TaxEngine.Run(Input(date: new DateOnly(2031, 6, 1)), rules).Lines.Single().Components.Single().RatePercent.Should().Be(1m);
-        TaxEngine.Run(Input(date: new DateOnly(2032, 6, 1)), rules).Lines.Single().Components.Single().RatePercent.Should().Be(2m);
+        V1.Run(Input(date: new DateOnly(2031, 6, 1)), rules).Lines.Single().Components.Single().RatePercent.Should().Be(1m);
+        V1.Run(Input(date: new DateOnly(2032, 6, 1)), rules).Lines.Single().Components.Single().RatePercent.Should().Be(2m);
     }
 
     [Fact]
@@ -175,15 +175,15 @@ public class TaxEngineTests
     {
         var day = new DateOnly(2031, 3, 3);
         var v1 = Rate("X.RATE", 1, 1m, day, day);
-        var past = TaxCanonical.Serialize(TaxEngine.Run(Input(date: day), [v1]));
+        var past = TaxCanonicalV1.Instance.Serialize(V1.Run(Input(date: day), [v1]));
 
         var v2 = Rate("X.RATE", 2, 3m, day, day);
-        var now = TaxEngine.Run(Input(date: day), [v1, v2]);
+        var now = V1.Run(Input(date: day), [v1, v2]);
         now.Lines.Single().Components.Single().RatePercent.Should().Be(3m, "the highest active version covering the date wins");
 
-        TaxCanonical.Serialize(TaxEngine.Run(Input(date: day), [v1])).Should().Be(past, "rebuilding with the versions it used gives the same output");
-        TaxEngine.RuleSetHash(TaxEngine.SelectActive([v1, v2], day))
-            .Should().NotBe(TaxEngine.RuleSetHash(TaxEngine.SelectActive([v1], day)));
+        TaxCanonicalV1.Instance.Serialize(V1.Run(Input(date: day), [v1])).Should().Be(past, "rebuilding with the versions it used gives the same output");
+        V1.RuleSetHash(V1.SelectActive([v1, v2], day))
+            .Should().NotBe(V1.RuleSetHash(V1.SelectActive([v1], day)));
     }
 
     [Fact]
@@ -196,8 +196,8 @@ public class TaxEngineTests
             Rate("Y.RATE", 1, 1m, day, day, TaxRuleStatus.Revoked, TaxType.IbsState),
         };
 
-        TaxEngine.SelectActive(rules, day).Should().BeEmpty();
-        TaxEngine.Run(Input(date: day), rules).NotApplied.Should().BeEmpty("only rules still to come are listed");
+        V1.SelectActive(rules, day).Should().BeEmpty();
+        V1.Run(Input(date: day), rules).NotApplied.Should().BeEmpty("only rules still to come are listed");
     }
 
     private static T WithCulture<T>(CultureInfo culture, Func<T> f)

@@ -116,6 +116,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("RateLimiting:PublicBooking:Enabled", "false");
         builder.UseSetting("RateLimiting:PublicOrders:Enabled", "false");
         builder.UseSetting("RateLimiting:CredentialCheck:Enabled", "false");
+
+        // The catalogue V1 awaits professional review, so the production policy (only professionally
+        // approved rules support a decision) would refuse every approval. The suite runs the workflow
+        // with it off; TaxIntelligenceTests turns it on in a derived host to prove the refusal.
+        builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "false");
     }
 
     /// <summary>Creates an HttpClient pre-configured for the test server.</summary>

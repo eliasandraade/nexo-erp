@@ -91,7 +91,7 @@ public class TaxDomainEdgeTests
 
     private static TaxOpportunity Opportunity()
     {
-        var o = TaxOpportunity.Create(Guid.NewGuid(), TaxOpportunityType.TaxSaving, "t", "s", "d@1", null, "{}", "{}", 1m, TaxRiskLevel.Low, 80, "", null);
+        var o = TaxOpportunity.Create(Guid.NewGuid(), TaxOpportunityType.TaxSaving, "t", "s", "d@1", TaxEngineV1.VersionId, null, "{}", "{}", 1m, TaxRiskLevel.Low, 80, "", null);
         o.AddRequirement("a", "A", null);
         return o;
     }
@@ -136,7 +136,7 @@ public class TaxDomainEdgeTests
     public void A_base_that_would_go_negative_is_taken_as_zero_and_reported()
     {
         // taxes in the price larger than what is left after the discount (bad source data)
-        var output = TaxEngine.Run(Input(lines: new TaxEngineLine(1, TaxItemKind.Good, 100m, 90m, 0m, 0m, 50m, true)), Catalogue());
+        var output = V1.Run(Input(lines: new TaxEngineLine(1, TaxItemKind.Good, 100m, 90m, 0m, 0m, 50m, true)), Catalogue());
 
         output.Lines.Single().Base.Should().Be(0m);
         output.TotalTax.Should().Be(0m);
@@ -150,16 +150,16 @@ public class TaxDomainEdgeTests
         IReadOnlyList<TaxCondition> servicesOnly = [new ItemKindIn([TaxItemKind.Service])];
         TaxRuleResult rate = new RateResult(TaxType.Cbs, 2m);
         var rule = new TaxEngineRule(Guid.NewGuid(), "SERVICE.RATE", 1, TaxRuleStatus.Active, day, day, 1, servicesOnly, rate,
-            TaxCanonical.RuleContentHash("SERVICE.RATE", 1, day, day, 1, servicesOnly, rate), ["TEST"]);
+            TaxCanonicalV1.Instance.RuleContentHash("SERVICE.RATE", 1, day, day, 1, servicesOnly, rate), ["TEST"]);
         var good = new TaxEngineLine(1, TaxItemKind.Good, 100m, 0m, 0m, 0m, 0m, true);
         var service = new TaxEngineLine(2, TaxItemKind.Service, 100m, 0m, 0m, 0m, 0m, true);
 
-        var output = TaxEngine.Run(Input(date: day, lines: [good, service]), [rule]);
+        var output = V1.Run(Input(date: day, lines: [good, service]), [rule]);
 
         output.Lines.Single(l => l.Index == 1).Components.Should().BeEmpty();
         output.Lines.Single(l => l.Index == 2).Components.Single().Amount.Should().Be(2m);
         output.Executions.Single(e => e.LineIndex == 1).Conditions.Single().Actual.Should().Be("Good");
-        TaxConditionEvaluator.Evaluate(servicesOnly[0], Input(date: day), line: null).Outcome
+        TaxConditionEvaluatorV1.Evaluate(servicesOnly[0], Input(date: day), line: null).Outcome
             .Should().Be(ConditionOutcome.Failed, "a line condition says nothing about the operation as a whole");
     }
 
@@ -170,9 +170,9 @@ public class TaxDomainEdgeTests
     [Fact]
     public void The_vocabulary_is_closed_kinds_the_engine_does_not_know_are_refused()
     {
-        FluentActions.Invoking(() => TaxConditionEvaluator.Evaluate(new UnknownCondition(), Input(), Line()))
+        FluentActions.Invoking(() => TaxConditionEvaluatorV1.Evaluate(new UnknownCondition(), Input(), Line()))
             .Should().Throw<InvalidOperationException>();
-        FluentActions.Invoking(() => TaxConditionEvaluator.Evaluate(new ProfileFlagIs("noSuchFlag", true), Input(), null))
+        FluentActions.Invoking(() => TaxConditionEvaluatorV1.Evaluate(new ProfileFlagIs("noSuchFlag", true), Input(), null))
             .Should().Throw<InvalidOperationException>();
         FluentActions.Invoking(() => TaxRuleContentValidator.Validate("K", [new UnknownCondition()], new NoteResult("a", "b")))
             .Should().Throw<DomainException>();
@@ -181,7 +181,7 @@ public class TaxDomainEdgeTests
         IReadOnlyList<TaxCondition> unknown = [new UnknownCondition()];
         TaxRuleResult note = new NoteResult("x", "y");
         var rule = new TaxEngineRule(Guid.NewGuid(), "BAD.CONDITION", 1, TaxRuleStatus.Active, day, day, 1, unknown, note, "h", []);
-        FluentActions.Invoking(() => TaxEngine.Run(Input(date: day), [rule]))
+        FluentActions.Invoking(() => V1.Run(Input(date: day), [rule]))
             .Should().Throw<InvalidOperationException>("a rule the engine cannot evaluate fails loudly, never silently matches");
     }
 
