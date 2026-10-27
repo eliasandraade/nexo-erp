@@ -43,8 +43,7 @@ public sealed class TaxOverviewService
         decimal Sum(TaxImpactNature n) => open.Where(o => TaxOpportunity.NatureOf(o.Type) == n).Sum(o => o.EstimatedImpact);
         var blocked = await _db.TaxOpportunities.CountAsync(o => o.Status == TaxOpportunityStatus.Blocked, ct);
 
-        var expectations = await _split.ListAsync(null, 200, ct);
-        var divergences = expectations.Count(e => e.Status is SplitReconciliationStatus.Excess or SplitReconciliationStatus.Insufficient);
+        var divergences = await _split.CountDivergencesAsync(ct);
 
         var rulesToday = await _db.TaxRuleVersions.AsNoTracking()
             .Where(v => v.ValidFrom <= today && (v.ValidTo == null || v.ValidTo >= today))

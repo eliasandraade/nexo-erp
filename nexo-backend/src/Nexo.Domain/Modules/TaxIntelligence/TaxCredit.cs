@@ -120,7 +120,8 @@ public class TaxCredit : StoreEntity
         if (string.IsNullOrWhiteSpace(basis)) throw new DomainException("Informe a base da confirmação dos requisitos.");
         Stage = TaxCreditStage.ToBeAppropriated;
         RecognitionBasis = basis.Trim();
-        return Append(TaxCreditEntryType.Recognized, amount, null, $"Requisitos confirmados: {basis.Trim()}", onDate, actorId, actorName);
+        // The entry type already says "requirements confirmed": the reason is the basis as given, within its limit.
+        return Append(TaxCreditEntryType.Recognized, amount, null, basis.Trim(), onDate, actorId, actorName);
     }
 
     public void Discard(string reason)

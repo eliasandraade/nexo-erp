@@ -415,6 +415,17 @@ public class TaxReviewDeltaTests
     }
 
     [Fact]
+    public void The_confirmation_basis_is_stored_as_given_within_its_limit()
+    {
+        var c = Potential();
+        c.StartRequirementsReview();
+        var basis = new string('b', 500);
+        var entry = c.ConfirmToBeAppropriated(35m, basis, new DateOnly(2026, 7, 1), Guid.NewGuid(), "u");
+        entry.Reason.Should().Be(basis, "no prefix pushes a valid 500-character basis past the column limit");
+        entry.Type.Should().Be(TaxCreditEntryType.Recognized);
+    }
+
+    [Fact]
     public void A_discarded_potential_credit_never_moves_again()
     {
         var c = Potential();

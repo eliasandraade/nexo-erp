@@ -96,6 +96,15 @@ public sealed class TaxSplitPaymentService
         return expectations.Select(e => Map(e, settlements.Where(s => s.ExpectationId == e.Id).ToList())).ToList();
     }
 
+    /// <summary>Expectations of the store whose retentions do not match — over all of them, not a page.</summary>
+    public async Task<int> CountDivergencesAsync(CancellationToken ct)
+    {
+        var expectations = await _db.TaxSplitExpectations.AsNoTracking().ToListAsync(ct);
+        var settlements = (await _db.TaxSplitSettlements.AsNoTracking().ToListAsync(ct)).ToLookup(s => s.ExpectationId);
+        return expectations.Select(e => Map(e, settlements[e.Id].ToList()))
+            .Count(e => e.Status is SplitReconciliationStatus.Excess or SplitReconciliationStatus.Insufficient);
+    }
+
     public async Task<SplitExpectationDto> RecordSettlementAsync(Guid expectationId, RecordSplitSettlementRequest r, CancellationToken ct)
     {
         var expectation = await _db.TaxSplitExpectations.AsNoTracking().FirstOrDefaultAsync(e => e.Id == expectationId, ct)
