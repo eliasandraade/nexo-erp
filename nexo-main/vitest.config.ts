@@ -11,6 +11,14 @@ export default defineConfig({
     exclude: ["src/**/*.e2e.spec.ts"],
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // `npm run test:coverage`: lcov for SonarCloud (sonar.javascript.lcov.reportsPaths) + a text summary.
+    coverage: {
+      provider: "v8",
+      reporter: ["text-summary", "lcov"],
+      reportsDirectory: "coverage",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/**/*.{test,spec}.{ts,tsx}", "src/test/**", "src/**/*.d.ts", "src/components/ui/**"],
+    },
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
