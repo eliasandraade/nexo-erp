@@ -8,6 +8,8 @@ Domínio tributário próprio do ORKEN. Os módulos operacionais (vendas, compra
 | [rule-engine.md](rule-engine.md) | Vocabulário das regras, avaliação, versionamento temporal, como criar e testar uma regra |
 | [audit-model.md](audit-model.md) | Hashes, reprodução de cálculo histórico, trilha de auditoria, dossiê de decisão |
 | [legal-sources.md](legal-sources.md) | Fontes jurídicas usadas, o que foi conferido e como adicionar uma fonte |
+| [final-tax-review.md](final-tax-review.md) | **Homologação final** — o que mudou após a revisão e o que o profissional precisa confirmar |
+| [homologation/example-dossier.md](homologation/example-dossier.md) | Dossiê real de exemplo gerado pelo sistema (dados de teste) |
 | [supported-operations.md](supported-operations.md) | Matriz de operações suportadas pela V1 (fail closed) |
 | [roadmap.md](roadmap.md) | Limitações atuais e próximos passos |
 | [adr-0001-versioned-isolated-tax-rules.md](adr-0001-versioned-isolated-tax-rules.md) | Decisão: regras tributárias versionadas e isoladas dos domínios operacionais |

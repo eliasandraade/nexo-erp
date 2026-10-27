@@ -1,0 +1,1335 @@
+{
+  "notice": "Exemplo de homologação gerado pelo próprio sistema (teste de integração TaxHomologationDossierTests) sobre dados controlados de teste: empresa, CNPJ, documentos e conferências são fictícios. Prova o fluxo; não afirma fato jurídico. Nenhuma regra está profissionalmente aprovada. O hash demonstra integridade, não veracidade material.",
+  "calculation": {
+    "id": "48ede933-cad0-489c-928c-f208053c4fe6",
+    "engineVersion": "orken-tax-engine/1.0.0",
+    "inputHash": "4baa643c5a46dcf5d198b7b5635b190634691abe3d485385df9ba1d40ce0c388",
+    "ruleSetHash": "2081c4a6802ddb811cbbd305efe1f8fb13a1fe8aada92d743efec03443518fe5",
+    "outputHash": "42421c55fc626e31916b554d3908cc232bd64aa09b826777ca5d26786063d5f0",
+    "totalBase": 9100.00,
+    "totalTax": 91.00,
+    "coverage": {
+      "status": "Supported",
+      "policyVersion": "orken-coverage/1",
+      "findings": [],
+      "assumptions": [
+        "Fornecimento único e imediato: data da operação = data do fornecimento = data do documento.",
+        "Itens sem regime diferenciado ou específico, com a classificação informada; o cClassTrib é registrado, não interpretado pela V1."
+      ],
+      "supported": true
+    },
+    "advisories": [
+      "Obrigações verificadas no período e no escopo indicados: 01/06/2026 a 30/06/2026, Estabelecimento de teste — NF-e de saída do período (avaliado por Contabilidade de teste); limitações: Dados controlados de teste; não representam uma conferência real.."
+    ],
+    "notes": [
+      {
+        "code": "IBSCBS-2026-COMPENSATION",
+        "text": "O IBS e a CBS recolhidos em 2026 são compensados com o PIS e a Cofins devidos no mesmo período; sem débitos suficientes, compensados com outro tributo federal ou ressarcidos em até 60 dias (LC 214/2025, art. 348, I e II).",
+        "ruleKey": "IBSCBS.NOTE.2026-COMPENSATION",
+        "legalSourceCodes": [
+          "LC214-2025-ART348"
+        ]
+      },
+      {
+        "code": "IBSCBS-2026-WAIVER",
+        "text": "Obrigações acessórias verificadas no período e no escopo indicados: o art. 348, § 1º, da LC 214/2025 dispensa o recolhimento do IBS e da CBS de 2026 de quem cumpre as obrigações acessórias; PIS e Cofins continuam devidos integralmente (§ 2º).",
+        "ruleKey": "IBSCBS.NOTE.2026-WAIVER",
+        "legalSourceCodes": [
+          "LC214-2025-ART348"
+        ]
+      }
+    ],
+    "warnings": []
+  },
+  "opportunity": {
+    "title": "Conceder o desconto como incondicional",
+    "type": "CalculatedTaxReduction",
+    "impactNature": "CalculatedTaxReduction",
+    "status": "ExecutionVerified",
+    "requiredApproval": "SelfApprovalWithJustification",
+    "caveats": "Muda a condição comercial: o desconto deixa de depender de pagamento antecipado, meta ou outro evento futuro. É redução do IBS/CBS calculado sobre a operação, não economia definitiva: o efeito econômico depende do período e de revisão profissional. Em 2026 o IBS e a CBS calculados são compensáveis com PIS/Cofins ou dispensados para quem cumpre as obrigações acessórias (LC 214/2025, art. 348): a redução aparece no valor destacado, não no caixa do período.",
+    "requirements": [
+      {
+        "id": "1eb46e31-d8f3-49ac-8eff-c1e58bf17558",
+        "code": "commercial-terms",
+        "text": "Um instrumento comercial (proposta, pedido, contrato ou aditivo) sustenta o preço com o desconto sem condição.",
+        "legalSourceCode": null,
+        "met": true,
+        "note": "Aditivo ADITIVO-TESTE-001 assinado antes do fato gerador (fixture).",
+        "answeredByName": "Analista de Teste",
+        "answeredAt": "2026-10-27T09:10:54.841869Z",
+        "phase": "ScenarioApproval",
+        "requiredEvidence": "CommercialInstrument",
+        "hasRequiredEvidence": true
+      },
+      {
+        "id": "3a402594-8c5f-4768-bb87-b803e3f014d2",
+        "code": "condition-removed",
+        "text": "A condição que deixa de existir está identificada (ex.: pagamento antecipado, meta de volume).",
+        "legalSourceCode": null,
+        "met": true,
+        "note": "Condição removida: desconto dependia de pagamento antecipado (fixture).",
+        "answeredByName": "Analista de Teste",
+        "answeredAt": "2026-10-27T09:10:54.871214Z",
+        "phase": "ScenarioApproval",
+        "requiredEvidence": null,
+        "hasRequiredEvidence": true
+      },
+      {
+        "id": "c9b894b6-d368-4939-94d4-3dc3a9541cf7",
+        "code": "no-later-event",
+        "text": "O desconto não depende de evento posterior (pagamento antecipado, meta de volume, devolução…).",
+        "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
+        "met": true,
+        "note": "O desconto passa a constar do preço, sem depender de evento posterior (fixture).",
+        "answeredByName": "Analista de Teste",
+        "answeredAt": "2026-10-27T09:10:54.88995Z",
+        "phase": "ScenarioApproval",
+        "requiredEvidence": null,
+        "hasRequiredEvidence": true
+      },
+      {
+        "id": "82ab76c1-d4f0-49c3-b772-794a876d463a",
+        "code": "no-recharge",
+        "text": "O valor descontado não volta a ser cobrado se a antiga condição não ocorrer.",
+        "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
+        "met": true,
+        "note": "O aditivo não prevê cobrança do valor se a antiga condição não ocorrer (fixture).",
+        "answeredByName": "Analista de Teste",
+        "answeredAt": "2026-10-27T09:10:54.906191Z",
+        "phase": "ScenarioApproval",
+        "requiredEvidence": null,
+        "hasRequiredEvidence": true
+      },
+      {
+        "id": "9532241f-4744-4328-be65-7457566ee82e",
+        "code": "on-document",
+        "text": "O desconto consta do documento fiscal autorizado da operação.",
+        "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
+        "met": true,
+        "note": "Desconto destacado na NF-e NFE-TESTE-0001 (fixture).",
+        "answeredByName": "Analista de Teste",
+        "answeredAt": "2026-10-27T09:10:55.114235Z",
+        "phase": "ExecutionVerification",
+        "requiredEvidence": "FiscalDocument",
+        "hasRequiredEvidence": true
+      },
+      {
+        "id": "17a5ebc0-73aa-4262-a916-9fe95907294d",
+        "code": "price-reduced",
+        "text": "O preço efetivamente cobrado reflete a redução (valores finais conferidos).",
+        "legalSourceCode": null,
+        "met": true,
+        "note": "Valor cobrado conferido com o aditivo (fixture).",
+        "answeredByName": "Analista de Teste",
+        "answeredAt": "2026-10-27T09:10:55.130678Z",
+        "phase": "ExecutionVerification",
+        "requiredEvidence": null,
+        "hasRequiredEvidence": true
+      }
+    ],
+    "evidence": [
+      {
+        "id": "63d715d7-020d-4fcd-83a1-2001f59eded5",
+        "type": "CommercialInstrument",
+        "requirementId": "1eb46e31-d8f3-49ac-8eff-c1e58bf17558",
+        "description": "Aditivo ao pedido PED-TESTE-001: preço com desconto fixo, sem condição de pagamento antecipado",
+        "documentReference": "ADITIVO-TESTE-001",
+        "contentHash": "ba0341cd9ebf35f202a6f8d3e2ea36c09f5f63ae240585c01f2d1ef82e551c55",
+        "notes": "FIXTURE DE TESTE — dado controlado, não real",
+        "status": "Submitted",
+        "addedByName": "Analista de Teste",
+        "createdAt": "2026-10-27T09:10:54.778339Z",
+        "reviewedByName": null,
+        "reviewedAt": null,
+        "reviewNotes": null
+      },
+      {
+        "id": "a1f5e4b0-f27d-4331-9d93-ae8181cb0543",
+        "type": "FiscalDocument",
+        "requirementId": "9532241f-4744-4328-be65-7457566ee82e",
+        "description": "NF-e autorizada com o desconto destacado no documento",
+        "documentReference": "NFE-TESTE-0001",
+        "contentHash": "51a50b662c16633711478026e573219b92d659235def53e2d715279e1968c6a6",
+        "notes": "FIXTURE DE TESTE — dado controlado, não real",
+        "status": "Submitted",
+        "addedByName": "Analista de Teste",
+        "createdAt": "2026-10-27T09:10:55.095575Z",
+        "reviewedByName": null,
+        "reviewedAt": null,
+        "reviewNotes": null
+      }
+    ]
+  },
+  "scenarioDecision": {
+    "dossierHash": "cfe66bf42ffab8e1be28337163add65e31b47d64d8eb9768404ec7ec0ffbc2c4",
+    "approvedByName": "Empresa de Teste Homologação Ltda",
+    "dossier": {
+      "kind": "scenario-approval",
+      "integrityNotice": "O hash e a versão demonstram a integridade deste registro — que ele não foi alterado — e não a veracidade material dos fatos declarados.",
+      "strategy": "Conceder o desconto como incondicional",
+      "opportunity": {
+        "id": "9c5fd6dd-b78a-4795-a7f8-df2cd1a21764",
+        "type": "CalculatedTaxReduction",
+        "nature": "CalculatedTaxReduction",
+        "summary": "R$ 500.00 de desconto concedido sob condição integram a base do IBS e da CBS. Concedido sem condição e destacado no documento fiscal, sai da base: redução do IBS/CBS calculado de 5.00 nesta operação.",
+        "detectorKey": "unconditional-discount@3",
+        "estimatedImpact": 5,
+        "confidence": 90,
+        "caveats": "Muda a condição comercial: o desconto deixa de depender de pagamento antecipado, meta ou outro evento futuro. É redução do IBS/CBS calculado sobre a operação, não economia definitiva: o efeito econômico depende do período e de revisão profissional. Em 2026 o IBS e a CBS calculados são compensáveis com PIS/Cofins ou dispensados para quem cumpre as obrigações acessórias (LC 214/2025, art. 348): a redução aparece no valor destacado, não no caixa do período."
+      },
+      "taxpayer": {
+        "legalName": "Empresa de Teste Homologação Ltda",
+        "cnpj": "11222333000181",
+        "state": "SP",
+        "cityIbgeCode": "3550308"
+      },
+      "establishment": {
+        "storeId": "b9876447-58f7-45bb-846c-49889daf2cb3",
+        "profileVersionId": "4845342e-d7ca-43e2-b8b6-f383faf82f55",
+        "versionNumber": 1,
+        "regime": "LucroPresumido",
+        "state": "SP",
+        "cityIbgeCode": "3550308",
+        "primaryCnae": "4781400"
+      },
+      "counterparty": {
+        "regime": "LucroReal",
+        "state": "SP"
+      },
+      "relevantDates": {
+        "operationDate": "2026-06-15",
+        "supplyPattern": "SingleSupply",
+        "documentDate": "2026-06-15",
+        "supplyDate": "2026-06-15",
+        "paymentOrAdvanceDate": null,
+        "competencePeriod": null,
+        "executionFrom": null,
+        "executionTo": null
+      },
+      "classification": [
+        {
+          "lineIndex": 1,
+          "kind": "Good",
+          "ncm": "61091000",
+          "nbs": null,
+          "cClassTrib": "TEST01",
+          "specialTreatment": null
+        }
+      ],
+      "facts": {
+        "id": "48ede933-cad0-489c-928c-f208053c4fe6",
+        "referenceDate": "2026-06-15",
+        "inputHash": "4baa643c5a46dcf5d198b7b5635b190634691abe3d485385df9ba1d40ce0c388",
+        "ruleSetHash": "2081c4a6802ddb811cbbd305efe1f8fb13a1fe8aada92d743efec03443518fe5",
+        "outputHash": "42421c55fc626e31916b554d3908cc232bd64aa09b826777ca5d26786063d5f0",
+        "engineVersion": "orken-tax-engine/1.0.0",
+        "input": {
+          "referenceDate": "2026-06-15",
+          "profile": {
+            "profileVersionId": "4845342e-d7ca-43e2-b8b6-f383faf82f55",
+            "regime": "LucroPresumido",
+            "state": "SP",
+            "cityIbgeCode": "3550308",
+            "accessoryObligationsCompliant": true
+          },
+          "direction": "Outbound",
+          "counterpartyRegime": "LucroReal",
+          "lines": [
+            {
+              "index": 1,
+              "kind": "Good",
+              "gross": 10000,
+              "unconditionalDiscount": 0,
+              "conditionalDiscount": 500,
+              "surcharges": 0,
+              "excludedTaxes": 900,
+              "excludedTaxesInformed": true,
+              "specialTreatment": null
+            }
+          ]
+        }
+      },
+      "originalScenario": {
+        "name": "Cenário atual",
+        "isBaseline": true,
+        "input": {
+          "referenceDate": "2026-06-15",
+          "profile": {
+            "profileVersionId": "4845342e-d7ca-43e2-b8b6-f383faf82f55",
+            "regime": "LucroPresumido",
+            "state": "SP",
+            "cityIbgeCode": "3550308",
+            "accessoryObligationsCompliant": true
+          },
+          "direction": "Outbound",
+          "counterpartyRegime": "LucroReal",
+          "lines": [
+            {
+              "index": 1,
+              "kind": "Good",
+              "gross": 10000,
+              "unconditionalDiscount": 0,
+              "conditionalDiscount": 500,
+              "surcharges": 0,
+              "excludedTaxes": 900,
+              "excludedTaxesInformed": true,
+              "specialTreatment": null
+            }
+          ]
+        },
+        "output": {
+          "engineVersion": "orken-tax-engine/1.0.0",
+          "lines": [
+            {
+              "index": 1,
+              "gross": 10000,
+              "base": 9100,
+              "baseSteps": [
+                {
+                  "ruleKey": "IBSCBS.BASE.SURCHARGES",
+                  "ruleVersion": 1,
+                  "component": "Surcharges",
+                  "included": true,
+                  "delta": 0
+                },
+                {
+                  "ruleKey": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+                  "ruleVersion": 1,
+                  "component": "ConditionalDiscount",
+                  "included": true,
+                  "delta": 0
+                },
+                {
+                  "ruleKey": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+                  "ruleVersion": 1,
+                  "component": "UnconditionalDiscount",
+                  "included": false,
+                  "delta": 0
+                },
+                {
+                  "ruleKey": "IBSCBS.BASE.TRANSITION-TAXES",
+                  "ruleVersion": 1,
+                  "component": "ExcludedTaxes",
+                  "included": false,
+                  "delta": -900
+                }
+              ],
+              "components": [
+                {
+                  "tax": "Cbs",
+                  "base": 9100,
+                  "ratePercent": 0.9,
+                  "amount": 81.9,
+                  "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+                  "ruleKey": "CBS.RATE.2026-TEST",
+                  "isHypothesis": false
+                },
+                {
+                  "tax": "IbsState",
+                  "base": 9100,
+                  "ratePercent": 0.1,
+                  "amount": 9.1,
+                  "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+                  "ruleKey": "IBS.RATE.2026-TEST-STATE",
+                  "isHypothesis": false
+                }
+              ]
+            }
+          ],
+          "totals": [
+            {
+              "tax": "Cbs",
+              "base": 9100,
+              "amount": 81.9
+            },
+            {
+              "tax": "IbsState",
+              "base": 9100,
+              "amount": 9.1
+            }
+          ],
+          "totalBase": 9100,
+          "totalTax": 91,
+          "notes": [
+            {
+              "code": "IBSCBS-2026-COMPENSATION",
+              "text": "O IBS e a CBS recolhidos em 2026 são compensados com o PIS e a Cofins devidos no mesmo período; sem débitos suficientes, compensados com outro tributo federal ou ressarcidos em até 60 dias (LC 214/2025, art. 348, I e II).",
+              "ruleKey": "IBSCBS.NOTE.2026-COMPENSATION",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ]
+            },
+            {
+              "code": "IBSCBS-2026-WAIVER",
+              "text": "Obrigações acessórias verificadas no período e no escopo indicados: o art. 348, § 1º, da LC 214/2025 dispensa o recolhimento do IBS e da CBS de 2026 de quem cumpre as obrigações acessórias; PIS e Cofins continuam devidos integralmente (§ 2º).",
+              "ruleKey": "IBSCBS.NOTE.2026-WAIVER",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ]
+            }
+          ],
+          "warnings": [],
+          "executions": [
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000001",
+              "ruleKey": "IBSCBS.BASE.SURCHARGES",
+              "ruleVersion": 1,
+              "contentHash": "a876b32b8467f4079ffd8bd892522c89c2415909660b43a326f45c7b157fbf48",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [],
+              "output": "mantém Surcharges: 0.00",
+              "legalSourceCodes": [
+                "LC214-2025-ART12-CAPUT-P1"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000002",
+              "ruleKey": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+              "ruleVersion": 1,
+              "contentHash": "6ceb5f96f39abf737b5feccb3f516fefc53fc1de45dcd6db7819ebe30a22b47c",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [],
+              "output": "mantém ConditionalDiscount: 0.00",
+              "legalSourceCodes": [
+                "LC214-2025-ART12-CAPUT-P1"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000003",
+              "ruleKey": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+              "ruleVersion": 1,
+              "contentHash": "fc56d1469478465d8b7f0bd07029f375c2ba3d64596930ba0baf3aa342ab380b",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [],
+              "output": "exclui UnconditionalDiscount: 0.00",
+              "legalSourceCodes": [
+                "LC214-2025-ART12-P2-III-P3"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000004",
+              "ruleKey": "IBSCBS.BASE.TRANSITION-TAXES",
+              "ruleVersion": 1,
+              "contentHash": "8fe5f049b57aab0c71b0bf9bc466262a6ea4b23418e1e160e501e0d92b22ff93",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [],
+              "output": "exclui ExcludedTaxes: -900.00",
+              "legalSourceCodes": [
+                "LC214-2025-ART12-P2-V"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+              "ruleKey": "CBS.RATE.2026-TEST",
+              "ruleVersion": 1,
+              "contentHash": "e2de5c9cde13f0cb9e4f1c8820d84e2401e08bd05ea727cb9994677252fa09c4",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [
+                {
+                  "kind": "supplier-regime-not-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "item-general-regime",
+                  "expected": "regime geral",
+                  "actual": "regime geral",
+                  "outcome": "Passed"
+                }
+              ],
+              "output": "Cbs 0.9% sobre 9100.00 = 81.90",
+              "legalSourceCodes": [
+                "LC214-2025-ART346",
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+              "ruleKey": "IBS.RATE.2026-TEST-STATE",
+              "ruleVersion": 1,
+              "contentHash": "acfeedf5b258de43d760e27a6e9f945b0f8ff541678ced46e1309dbd23e7e76a",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [
+                {
+                  "kind": "supplier-regime-not-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "item-general-regime",
+                  "expected": "regime geral",
+                  "actual": "regime geral",
+                  "outcome": "Passed"
+                }
+              ],
+              "output": "IbsState 0.1% sobre 9100.00 = 9.10",
+              "legalSourceCodes": [
+                "LC214-2025-ART343",
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000007",
+              "ruleKey": "IBSCBS.NOTE.2026-SIMPLES",
+              "ruleVersion": 1,
+              "contentHash": "32489294dadefad3bb8bd6f58c1ee2cd272d8c43f3d1d6d95edb36bd7c39a776",
+              "lineIndex": null,
+              "matched": false,
+              "conditions": [
+                {
+                  "kind": "supplier-regime-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Failed"
+                }
+              ],
+              "output": "não se aplica",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000008",
+              "ruleKey": "IBSCBS.NOTE.2026-COMPENSATION",
+              "ruleVersion": 1,
+              "contentHash": "d6130ea8c549084ba1e5cd517915b05c603564f96a2363057634a2c01034755b",
+              "lineIndex": null,
+              "matched": true,
+              "conditions": [
+                {
+                  "kind": "direction-is",
+                  "expected": "Outbound",
+                  "actual": "Outbound",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "supplier-regime-not-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Passed"
+                }
+              ],
+              "output": "nota IBSCBS-2026-COMPENSATION",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000109",
+              "ruleKey": "IBSCBS.NOTE.2026-WAIVER",
+              "ruleVersion": 2,
+              "contentHash": "87345221b058670aee375166c8e97025a230c28793ad18639261a40a47e55121",
+              "lineIndex": null,
+              "matched": true,
+              "conditions": [
+                {
+                  "kind": "direction-is",
+                  "expected": "Outbound",
+                  "actual": "Outbound",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "supplier-regime-not-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "profile-flag-is",
+                  "expected": "accessoryObligationsCompliant=True",
+                  "actual": "accessoryObligationsCompliant=True",
+                  "outcome": "Passed"
+                }
+              ],
+              "output": "nota IBSCBS-2026-WAIVER",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            }
+          ],
+          "notApplied": []
+        },
+        "charged": 9500,
+        "taxTotal": 91,
+        "creditEstimate": 0,
+        "effectiveCost": 91,
+        "taxDeltaVsBaseline": 0,
+        "effectiveCostDeltaVsBaseline": 0,
+        "noCashEffectInPeriod": true,
+        "hypotheses": []
+      },
+      "proposedScenario": {
+        "name": "Desconto incondicional no documento fiscal",
+        "isBaseline": false,
+        "input": {
+          "referenceDate": "2026-06-15",
+          "profile": {
+            "profileVersionId": "4845342e-d7ca-43e2-b8b6-f383faf82f55",
+            "regime": "LucroPresumido",
+            "state": "SP",
+            "cityIbgeCode": "3550308",
+            "accessoryObligationsCompliant": true
+          },
+          "direction": "Outbound",
+          "counterpartyRegime": "LucroReal",
+          "lines": [
+            {
+              "index": 1,
+              "kind": "Good",
+              "gross": 10000,
+              "unconditionalDiscount": 500,
+              "conditionalDiscount": 0,
+              "surcharges": 0,
+              "excludedTaxes": 900,
+              "excludedTaxesInformed": true,
+              "specialTreatment": null
+            }
+          ]
+        },
+        "output": {
+          "engineVersion": "orken-tax-engine/1.0.0",
+          "lines": [
+            {
+              "index": 1,
+              "gross": 10000,
+              "base": 8600,
+              "baseSteps": [
+                {
+                  "ruleKey": "IBSCBS.BASE.SURCHARGES",
+                  "ruleVersion": 1,
+                  "component": "Surcharges",
+                  "included": true,
+                  "delta": 0
+                },
+                {
+                  "ruleKey": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+                  "ruleVersion": 1,
+                  "component": "ConditionalDiscount",
+                  "included": true,
+                  "delta": 0
+                },
+                {
+                  "ruleKey": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+                  "ruleVersion": 1,
+                  "component": "UnconditionalDiscount",
+                  "included": false,
+                  "delta": -500
+                },
+                {
+                  "ruleKey": "IBSCBS.BASE.TRANSITION-TAXES",
+                  "ruleVersion": 1,
+                  "component": "ExcludedTaxes",
+                  "included": false,
+                  "delta": -900
+                }
+              ],
+              "components": [
+                {
+                  "tax": "Cbs",
+                  "base": 8600,
+                  "ratePercent": 0.9,
+                  "amount": 77.4,
+                  "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+                  "ruleKey": "CBS.RATE.2026-TEST",
+                  "isHypothesis": false
+                },
+                {
+                  "tax": "IbsState",
+                  "base": 8600,
+                  "ratePercent": 0.1,
+                  "amount": 8.6,
+                  "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+                  "ruleKey": "IBS.RATE.2026-TEST-STATE",
+                  "isHypothesis": false
+                }
+              ]
+            }
+          ],
+          "totals": [
+            {
+              "tax": "Cbs",
+              "base": 8600,
+              "amount": 77.4
+            },
+            {
+              "tax": "IbsState",
+              "base": 8600,
+              "amount": 8.6
+            }
+          ],
+          "totalBase": 8600,
+          "totalTax": 86,
+          "notes": [
+            {
+              "code": "IBSCBS-2026-COMPENSATION",
+              "text": "O IBS e a CBS recolhidos em 2026 são compensados com o PIS e a Cofins devidos no mesmo período; sem débitos suficientes, compensados com outro tributo federal ou ressarcidos em até 60 dias (LC 214/2025, art. 348, I e II).",
+              "ruleKey": "IBSCBS.NOTE.2026-COMPENSATION",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ]
+            },
+            {
+              "code": "IBSCBS-2026-WAIVER",
+              "text": "Obrigações acessórias verificadas no período e no escopo indicados: o art. 348, § 1º, da LC 214/2025 dispensa o recolhimento do IBS e da CBS de 2026 de quem cumpre as obrigações acessórias; PIS e Cofins continuam devidos integralmente (§ 2º).",
+              "ruleKey": "IBSCBS.NOTE.2026-WAIVER",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ]
+            }
+          ],
+          "warnings": [],
+          "executions": [
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000001",
+              "ruleKey": "IBSCBS.BASE.SURCHARGES",
+              "ruleVersion": 1,
+              "contentHash": "a876b32b8467f4079ffd8bd892522c89c2415909660b43a326f45c7b157fbf48",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [],
+              "output": "mantém Surcharges: 0.00",
+              "legalSourceCodes": [
+                "LC214-2025-ART12-CAPUT-P1"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000002",
+              "ruleKey": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+              "ruleVersion": 1,
+              "contentHash": "6ceb5f96f39abf737b5feccb3f516fefc53fc1de45dcd6db7819ebe30a22b47c",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [],
+              "output": "mantém ConditionalDiscount: 0.00",
+              "legalSourceCodes": [
+                "LC214-2025-ART12-CAPUT-P1"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000003",
+              "ruleKey": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+              "ruleVersion": 1,
+              "contentHash": "fc56d1469478465d8b7f0bd07029f375c2ba3d64596930ba0baf3aa342ab380b",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [],
+              "output": "exclui UnconditionalDiscount: -500.00",
+              "legalSourceCodes": [
+                "LC214-2025-ART12-P2-III-P3"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000004",
+              "ruleKey": "IBSCBS.BASE.TRANSITION-TAXES",
+              "ruleVersion": 1,
+              "contentHash": "8fe5f049b57aab0c71b0bf9bc466262a6ea4b23418e1e160e501e0d92b22ff93",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [],
+              "output": "exclui ExcludedTaxes: -900.00",
+              "legalSourceCodes": [
+                "LC214-2025-ART12-P2-V"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+              "ruleKey": "CBS.RATE.2026-TEST",
+              "ruleVersion": 1,
+              "contentHash": "e2de5c9cde13f0cb9e4f1c8820d84e2401e08bd05ea727cb9994677252fa09c4",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [
+                {
+                  "kind": "supplier-regime-not-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "item-general-regime",
+                  "expected": "regime geral",
+                  "actual": "regime geral",
+                  "outcome": "Passed"
+                }
+              ],
+              "output": "Cbs 0.9% sobre 8600.00 = 77.40",
+              "legalSourceCodes": [
+                "LC214-2025-ART346",
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+              "ruleKey": "IBS.RATE.2026-TEST-STATE",
+              "ruleVersion": 1,
+              "contentHash": "acfeedf5b258de43d760e27a6e9f945b0f8ff541678ced46e1309dbd23e7e76a",
+              "lineIndex": 1,
+              "matched": true,
+              "conditions": [
+                {
+                  "kind": "supplier-regime-not-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "item-general-regime",
+                  "expected": "regime geral",
+                  "actual": "regime geral",
+                  "outcome": "Passed"
+                }
+              ],
+              "output": "IbsState 0.1% sobre 8600.00 = 8.60",
+              "legalSourceCodes": [
+                "LC214-2025-ART343",
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000007",
+              "ruleKey": "IBSCBS.NOTE.2026-SIMPLES",
+              "ruleVersion": 1,
+              "contentHash": "32489294dadefad3bb8bd6f58c1ee2cd272d8c43f3d1d6d95edb36bd7c39a776",
+              "lineIndex": null,
+              "matched": false,
+              "conditions": [
+                {
+                  "kind": "supplier-regime-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Failed"
+                }
+              ],
+              "output": "não se aplica",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000008",
+              "ruleKey": "IBSCBS.NOTE.2026-COMPENSATION",
+              "ruleVersion": 1,
+              "contentHash": "d6130ea8c549084ba1e5cd517915b05c603564f96a2363057634a2c01034755b",
+              "lineIndex": null,
+              "matched": true,
+              "conditions": [
+                {
+                  "kind": "direction-is",
+                  "expected": "Outbound",
+                  "actual": "Outbound",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "supplier-regime-not-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Passed"
+                }
+              ],
+              "output": "nota IBSCBS-2026-COMPENSATION",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            },
+            {
+              "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000109",
+              "ruleKey": "IBSCBS.NOTE.2026-WAIVER",
+              "ruleVersion": 2,
+              "contentHash": "87345221b058670aee375166c8e97025a230c28793ad18639261a40a47e55121",
+              "lineIndex": null,
+              "matched": true,
+              "conditions": [
+                {
+                  "kind": "direction-is",
+                  "expected": "Outbound",
+                  "actual": "Outbound",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "supplier-regime-not-in",
+                  "expected": "SimplesNacional,SimplesNacionalExcessoSublimite,Mei",
+                  "actual": "LucroPresumido",
+                  "outcome": "Passed"
+                },
+                {
+                  "kind": "profile-flag-is",
+                  "expected": "accessoryObligationsCompliant=True",
+                  "actual": "accessoryObligationsCompliant=True",
+                  "outcome": "Passed"
+                }
+              ],
+              "output": "nota IBSCBS-2026-WAIVER",
+              "legalSourceCodes": [
+                "LC214-2025-ART348"
+              ],
+              "isHypothesis": false
+            }
+          ],
+          "notApplied": []
+        },
+        "charged": 9500,
+        "taxTotal": 86,
+        "creditEstimate": 0,
+        "effectiveCost": 86,
+        "taxDeltaVsBaseline": -5,
+        "effectiveCostDeltaVsBaseline": -5,
+        "noCashEffectInPeriod": true,
+        "hypotheses": []
+      },
+      "impactAnalysis": {
+        "nature": "CalculatedTaxReduction",
+        "baseDifference": 500,
+        "calculatedTaxDifference": 5,
+        "noCashEffectInPeriod": true,
+        "financialEffect": "Não determinado: a diferença é do IBS/CBS calculado entre os cenários; o efeito financeiro depende do período (compensação ou dispensa em 2026), dos preços praticados e de revisão profissional."
+      },
+      "rules": [
+        {
+          "ruleKey": "IBS.RATE.2026-TEST-STATE",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+          "contentHash": "acfeedf5b258de43d760e27a6e9f945b0f8ff541678ced46e1309dbd23e7e76a",
+          "legalSourceCodes": "LC214-2025-ART343,LC214-2025-ART348"
+        },
+        {
+          "ruleKey": "CBS.RATE.2026-TEST",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+          "contentHash": "e2de5c9cde13f0cb9e4f1c8820d84e2401e08bd05ea727cb9994677252fa09c4",
+          "legalSourceCodes": "LC214-2025-ART346,LC214-2025-ART348"
+        },
+        {
+          "ruleKey": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000002",
+          "contentHash": "6ceb5f96f39abf737b5feccb3f516fefc53fc1de45dcd6db7819ebe30a22b47c",
+          "legalSourceCodes": "LC214-2025-ART12-CAPUT-P1"
+        },
+        {
+          "ruleKey": "IBSCBS.BASE.SURCHARGES",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000001",
+          "contentHash": "a876b32b8467f4079ffd8bd892522c89c2415909660b43a326f45c7b157fbf48",
+          "legalSourceCodes": "LC214-2025-ART12-CAPUT-P1"
+        },
+        {
+          "ruleKey": "IBSCBS.NOTE.2026-WAIVER",
+          "ruleVersion": 2,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000109",
+          "contentHash": "87345221b058670aee375166c8e97025a230c28793ad18639261a40a47e55121",
+          "legalSourceCodes": "LC214-2025-ART348"
+        },
+        {
+          "ruleKey": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000003",
+          "contentHash": "fc56d1469478465d8b7f0bd07029f375c2ba3d64596930ba0baf3aa342ab380b",
+          "legalSourceCodes": "LC214-2025-ART12-P2-III-P3"
+        },
+        {
+          "ruleKey": "IBSCBS.BASE.TRANSITION-TAXES",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000004",
+          "contentHash": "8fe5f049b57aab0c71b0bf9bc466262a6ea4b23418e1e160e501e0d92b22ff93",
+          "legalSourceCodes": "LC214-2025-ART12-P2-V"
+        },
+        {
+          "ruleKey": "IBSCBS.NOTE.2026-COMPENSATION",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000008",
+          "contentHash": "d6130ea8c549084ba1e5cd517915b05c603564f96a2363057634a2c01034755b",
+          "legalSourceCodes": "LC214-2025-ART348"
+        }
+      ],
+      "legalSources": [
+        {
+          "code": "LC214-2025-ART12-CAPUT-P1",
+          "title": "Lei Complementar nº 214, de 16 de janeiro de 2025",
+          "reference": "art. 12, caput e § 1º",
+          "url": "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm",
+          "excerpt": "Art. 12. A base de cálculo do IBS e da CBS é o valor da operação, salvo disposição em contrário prevista nesta Lei Complementar.\n§ 1º O valor da operação compreende o valor integral cobrado pelo fornecedor a qualquer título, inclusive os valores correspondentes a:\nI - acréscimos decorrentes de ajuste do valor da operação;\nII - juros, multas, acréscimos e encargos;\nIII - descontos concedidos sob condição;\nIV - valor do transporte cobrado como parte do valor da operação, no transporte efetuado pelo próprio fornecedor ou no transporte por sua conta e ordem;\nV - tributos e preços públicos, inclusive tarifas, incidentes sobre a operação ou suportados pelo fornecedor, exceto aqueles previstos no § 2º deste artigo; e\nVI - demais importâncias cobradas ou recebidas como parte do valor da operação, inclusive seguros e taxas.",
+          "textVerification": "Verified"
+        },
+        {
+          "code": "LC214-2025-ART12-P2-III-P3",
+          "title": "Lei Complementar nº 214, de 16 de janeiro de 2025",
+          "reference": "art. 12, § 2º, III, e § 3º",
+          "url": "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm",
+          "excerpt": "§ 2º Não integram a base de cálculo do IBS e da CBS:\nIII - os descontos incondicionais;\n§ 3º Para efeitos do disposto no inciso III do § 2º deste artigo, considera-se desconto incondicional a parcela redutora do preço da operação que conste do respectivo documento fiscal e não dependa de evento posterior, inclusive se realizado por meio de programa de fidelidade concedido de forma não onerosa pelo próprio fornecedor.",
+          "textVerification": "Verified"
+        },
+        {
+          "code": "LC214-2025-ART12-P2-V",
+          "title": "Lei Complementar nº 214, de 16 de janeiro de 2025",
+          "reference": "art. 12, § 2º, V",
+          "url": "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm",
+          "excerpt": "§ 2º Não integram a base de cálculo do IBS e da CBS:\nV - o montante incidente na operação dos tributos a que se referem o inciso II do caput do art. 155, o inciso III do caput do art. 156 e a alínea “b” do inciso I e o inciso IV do caput do art. 195 da Constituição Federal, e da Contribuição para os Programas de Integração Social e de Formação do Patrimônio do Servidor Público (Contribuição para o PIS/Pasep) a que se refere o art. 239 da Constituição Federal, de 1º de janeiro de 2026 a 31 de dezembro de 2032;",
+          "textVerification": "Verified"
+        },
+        {
+          "code": "LC214-2025-ART343",
+          "title": "Lei Complementar nº 214, de 16 de janeiro de 2025",
+          "reference": "art. 343, caput",
+          "url": "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm",
+          "excerpt": "Art. 343. Em relação aos fatos geradores ocorridos de 1º de janeiro a 31 de dezembro de 2026, o IBS será cobrado mediante aplicação da alíquota estadual de 0,1% (um décimo por cento).",
+          "textVerification": "Verified"
+        },
+        {
+          "code": "LC214-2025-ART346",
+          "title": "Lei Complementar nº 214, de 16 de janeiro de 2025",
+          "reference": "art. 346",
+          "url": "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm",
+          "excerpt": "Art. 346. Em relação aos fatos geradores ocorridos de 1º de janeiro a 31 de dezembro de 2026, a CBS será cobrada mediante aplicação da alíquota de 0,9% (nove décimos por cento).",
+          "textVerification": "Verified"
+        },
+        {
+          "code": "LC214-2025-ART348",
+          "title": "Lei Complementar nº 214, de 16 de janeiro de 2025",
+          "reference": "art. 348, caput, I a III e §§ 1º e 2º",
+          "url": "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm",
+          "excerpt": "Art. 348. Em relação aos fatos geradores ocorridos de 1º de janeiro a 31 de dezembro de 2026:\nI - o montante recolhido do IBS e da CBS será compensado com o valor devido, no mesmo período de apuração, das contribuições previstas no art. 195, inciso I, alínea “b”, e inciso IV, e da contribuição para o PIS a que se refere o art. 239, ambos da Constituição Federal;\nII - caso o contribuinte não possua débitos suficientes para efetuar a compensação de que trata o inciso I, o valor recolhido poderá ser:\na) compensado com qualquer outro tributo federal, nos termos da legislação; ou\nb) ressarcido em até 60 (sessenta) dias, mediante requerimento;\nIII - as alíquotas do IBS e da CBS previstas nos arts. 343 e 346 desta Lei Complementar:\na) serão aplicadas com a respectiva redução no caso das operações sujeitas a alíquota reduzida, no âmbito de regimes diferenciados de tributação;\nb) serão aplicadas em relação aos regimes específicos de que trata esta Lei Complementar, observadas as respectivas bases de cálculo, exceto em relação aos combustíveis e biocombustíveis de que tratam os arts. 172 a 180;\nc) não serão aplicadas em relação às operações dos contribuintes optantes pelo Simples Nacional.\n§ 1º Fica dispensado o recolhimento do IBS e da CBS relativo aos fatos geradores ocorridos no período indicado no caput em relação aos sujeitos passivos que cumprirem as obrigações acessórias previstas na legislação.\n§ 2º O sujeito passivo dispensado do recolhimento na forma do § 1º permanece obrigado ao pagamento integral das Contribuições previstas no art. 195, inciso I, alínea “b”, e inciso IV, e da contribuição para o Programa de Integração Social a que se refere o art. 239, ambos da Constituição Federal.",
+          "textVerification": "Verified"
+        }
+      ],
+      "professionalReview": {
+        "pendingRules": [
+          "CBS.RATE.2026-TEST v1",
+          "IBS.RATE.2026-TEST-STATE v1",
+          "IBSCBS.BASE.CONDITIONAL-DISCOUNT v1",
+          "IBSCBS.BASE.SURCHARGES v1",
+          "IBSCBS.BASE.TRANSITION-TAXES v1",
+          "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1",
+          "IBSCBS.NOTE.2026-COMPENSATION v1",
+          "IBSCBS.NOTE.2026-WAIVER v2"
+        ],
+        "requiredByPolicy": false,
+        "reviews": [
+          {
+            "key": "CBS.RATE.2026-TEST",
+            "version": 1,
+            "status": "Pending",
+            "reviewer": null,
+            "professionalReference": null,
+            "scope": null,
+            "validFrom": null,
+            "validTo": null,
+            "assumptions": null,
+            "caveats": null
+          },
+          {
+            "key": "IBS.RATE.2026-TEST-STATE",
+            "version": 1,
+            "status": "Pending",
+            "reviewer": null,
+            "professionalReference": null,
+            "scope": null,
+            "validFrom": null,
+            "validTo": null,
+            "assumptions": null,
+            "caveats": null
+          },
+          {
+            "key": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+            "version": 1,
+            "status": "Pending",
+            "reviewer": null,
+            "professionalReference": null,
+            "scope": null,
+            "validFrom": null,
+            "validTo": null,
+            "assumptions": null,
+            "caveats": null
+          },
+          {
+            "key": "IBSCBS.BASE.SURCHARGES",
+            "version": 1,
+            "status": "Pending",
+            "reviewer": null,
+            "professionalReference": null,
+            "scope": null,
+            "validFrom": null,
+            "validTo": null,
+            "assumptions": null,
+            "caveats": null
+          },
+          {
+            "key": "IBSCBS.BASE.TRANSITION-TAXES",
+            "version": 1,
+            "status": "Pending",
+            "reviewer": null,
+            "professionalReference": null,
+            "scope": null,
+            "validFrom": null,
+            "validTo": null,
+            "assumptions": null,
+            "caveats": null
+          },
+          {
+            "key": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+            "version": 1,
+            "status": "Pending",
+            "reviewer": null,
+            "professionalReference": null,
+            "scope": null,
+            "validFrom": null,
+            "validTo": null,
+            "assumptions": null,
+            "caveats": null
+          },
+          {
+            "key": "IBSCBS.NOTE.2026-COMPENSATION",
+            "version": 1,
+            "status": "Pending",
+            "reviewer": null,
+            "professionalReference": null,
+            "scope": null,
+            "validFrom": null,
+            "validTo": null,
+            "assumptions": null,
+            "caveats": null
+          },
+          {
+            "key": "IBSCBS.NOTE.2026-WAIVER",
+            "version": 2,
+            "status": "Pending",
+            "reviewer": null,
+            "professionalReference": null,
+            "scope": null,
+            "validFrom": null,
+            "validTo": null,
+            "assumptions": null,
+            "caveats": null
+          }
+        ]
+      },
+      "complianceAssessment": {
+        "status": "Verified",
+        "periodFrom": "2026-06-01",
+        "periodTo": "2026-06-30",
+        "scope": "Estabelecimento de teste — NF-e de saída do período",
+        "obligationsChecked": [
+          "Emissão de NF-e com os campos de IBS/CBS preenchidos (fixture)"
+        ],
+        "assessedBy": "Contabilidade de teste",
+        "assessedAt": "2026-10-27T09:10:53.518144Z",
+        "limitations": "Dados controlados de teste; não representam uma conferência real.",
+        "pnctParticipation": false
+      },
+      "requirements": [
+        {
+          "code": "commercial-terms",
+          "phase": "ScenarioApproval",
+          "text": "Um instrumento comercial (proposta, pedido, contrato ou aditivo) sustenta o preço com o desconto sem condição.",
+          "legalSourceCode": null,
+          "met": true,
+          "note": "Aditivo ADITIVO-TESTE-001 assinado antes do fato gerador (fixture).",
+          "answeredByName": "Analista de Teste",
+          "answeredAt": "2026-10-27T09:10:54.841869Z",
+          "requiredEvidence": "CommercialInstrument"
+        },
+        {
+          "code": "condition-removed",
+          "phase": "ScenarioApproval",
+          "text": "A condição que deixa de existir está identificada (ex.: pagamento antecipado, meta de volume).",
+          "legalSourceCode": null,
+          "met": true,
+          "note": "Condição removida: desconto dependia de pagamento antecipado (fixture).",
+          "answeredByName": "Analista de Teste",
+          "answeredAt": "2026-10-27T09:10:54.871214Z",
+          "requiredEvidence": null
+        },
+        {
+          "code": "no-later-event",
+          "phase": "ScenarioApproval",
+          "text": "O desconto não depende de evento posterior (pagamento antecipado, meta de volume, devolução…).",
+          "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
+          "met": true,
+          "note": "O desconto passa a constar do preço, sem depender de evento posterior (fixture).",
+          "answeredByName": "Analista de Teste",
+          "answeredAt": "2026-10-27T09:10:54.88995Z",
+          "requiredEvidence": null
+        },
+        {
+          "code": "no-recharge",
+          "phase": "ScenarioApproval",
+          "text": "O valor descontado não volta a ser cobrado se a antiga condição não ocorrer.",
+          "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
+          "met": true,
+          "note": "O aditivo não prevê cobrança do valor se a antiga condição não ocorrer (fixture).",
+          "answeredByName": "Analista de Teste",
+          "answeredAt": "2026-10-27T09:10:54.906191Z",
+          "requiredEvidence": null
+        },
+        {
+          "code": "on-document",
+          "phase": "ExecutionVerification",
+          "text": "O desconto consta do documento fiscal autorizado da operação.",
+          "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
+          "met": null,
+          "note": null,
+          "answeredByName": null,
+          "answeredAt": null,
+          "requiredEvidence": "FiscalDocument"
+        },
+        {
+          "code": "price-reduced",
+          "phase": "ExecutionVerification",
+          "text": "O preço efetivamente cobrado reflete a redução (valores finais conferidos).",
+          "legalSourceCode": null,
+          "met": null,
+          "note": null,
+          "answeredByName": null,
+          "answeredAt": null,
+          "requiredEvidence": null
+        }
+      ],
+      "commercialEvidence": [
+        {
+          "type": "CommercialInstrument",
+          "requirementId": "1eb46e31-d8f3-49ac-8eff-c1e58bf17558",
+          "description": "Aditivo ao pedido PED-TESTE-001: preço com desconto fixo, sem condição de pagamento antecipado",
+          "documentReference": "ADITIVO-TESTE-001",
+          "contentHash": "ba0341cd9ebf35f202a6f8d3e2ea36c09f5f63ae240585c01f2d1ef82e551c55",
+          "status": "Submitted",
+          "notes": "FIXTURE DE TESTE — dado controlado, não real",
+          "addedByName": "Analista de Teste",
+          "createdAt": "2026-10-27T09:10:54.778339Z",
+          "reviewedByName": null,
+          "reviewedAt": null,
+          "reviewNotes": null
+        }
+      ],
+      "evidence": [
+        {
+          "type": "CommercialInstrument",
+          "requirementId": "1eb46e31-d8f3-49ac-8eff-c1e58bf17558",
+          "description": "Aditivo ao pedido PED-TESTE-001: preço com desconto fixo, sem condição de pagamento antecipado",
+          "documentReference": "ADITIVO-TESTE-001",
+          "contentHash": "ba0341cd9ebf35f202a6f8d3e2ea36c09f5f63ae240585c01f2d1ef82e551c55",
+          "status": "Submitted",
+          "notes": "FIXTURE DE TESTE — dado controlado, não real",
+          "addedByName": "Analista de Teste",
+          "createdAt": "2026-10-27T09:10:54.778339Z",
+          "reviewedByName": null,
+          "reviewedAt": null,
+          "reviewNotes": null
+        }
+      ],
+      "fiscalDocumentEvidence": {
+        "status": "pending-execution-verification"
+      },
+      "executionVerification": {
+        "status": "pending"
+      },
+      "pendingIssues": [
+        "Verificação da execução pendente: o documento fiscal da operação ainda não foi conferido.",
+        "Revisão tributária pendente: CBS.RATE.2026-TEST v1, IBS.RATE.2026-TEST-STATE v1, IBSCBS.BASE.CONDITIONAL-DISCOUNT v1, IBSCBS.BASE.SURCHARGES v1, IBSCBS.BASE.TRANSITION-TAXES v1, IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1, IBSCBS.NOTE.2026-COMPENSATION v1, IBSCBS.NOTE.2026-WAIVER v2."
+      ],
+      "risk": "Low",
+      "highRiskAcknowledged": false,
+      "reviewStartedBy": "Analista de Teste",
+      "approvedBy": {
+        "id": "e9ec6386-9b74-4a84-b959-c33ad0eeaf60",
+        "name": "Empresa de Teste Homologação Ltda"
+      },
+      "approvedAt": "2026-10-27T09:10:54.9316304Z",
+      "makerChecker": {
+        "required": "SelfApprovalWithJustification",
+        "materialityThreshold": null,
+        "selfApproval": false,
+        "justification": null
+      },
+      "engineVersion": "orken-tax-engine/1.0.0",
+      "canonicalVersion": "orken-canonical/1"
+    }
+  },
+  "executionVerification": {
+    "outcome": "Verified",
+    "dossierHash": "31f2098e57d7fed259c7c6d963f7df2adab576ed8ae94698b1524ca50b33d5d4",
+    "dossier": {
+      "kind": "execution-verification",
+      "integrityNotice": "O hash e a versão demonstram a integridade deste registro — que ele não foi alterado — e não a veracidade material dos fatos declarados.",
+      "decision": {
+        "id": "28cefbc4-11de-4eca-97db-a1e70a843e92",
+        "dossierHash": "cfe66bf42ffab8e1be28337163add65e31b47d64d8eb9768404ec7ec0ffbc2c4",
+        "approvedAt": "2026-10-27T09:10:54.93163Z",
+        "approvedByName": "Empresa de Teste Homologação Ltda"
+      },
+      "outcome": "Verified",
+      "fiscalDocument": {
+        "reference": "NFE-TESTE-0001",
+        "protocol": "PROTOCOLO-TESTE-0001"
+      },
+      "requirements": [
+        {
+          "code": "on-document",
+          "text": "O desconto consta do documento fiscal autorizado da operação.",
+          "met": true,
+          "note": "Desconto destacado na NF-e NFE-TESTE-0001 (fixture).",
+          "answeredByName": "Analista de Teste",
+          "answeredAt": "2026-10-27T09:10:55.114235Z",
+          "requiredEvidence": "FiscalDocument"
+        },
+        {
+          "code": "price-reduced",
+          "text": "O preço efetivamente cobrado reflete a redução (valores finais conferidos).",
+          "met": true,
+          "note": "Valor cobrado conferido com o aditivo (fixture).",
+          "answeredByName": "Analista de Teste",
+          "answeredAt": "2026-10-27T09:10:55.130678Z",
+          "requiredEvidence": null
+        }
+      ],
+      "fiscalDocumentEvidence": [
+        {
+          "type": "FiscalDocument",
+          "requirementId": "9532241f-4744-4328-be65-7457566ee82e",
+          "description": "NF-e autorizada com o desconto destacado no documento",
+          "documentReference": "NFE-TESTE-0001",
+          "contentHash": "51a50b662c16633711478026e573219b92d659235def53e2d715279e1968c6a6",
+          "status": "Submitted",
+          "notes": "FIXTURE DE TESTE — dado controlado, não real",
+          "addedByName": "Analista de Teste",
+          "createdAt": "2026-10-27T09:10:55.095575Z",
+          "reviewedByName": null,
+          "reviewedAt": null,
+          "reviewNotes": null
+        }
+      ],
+      "notes": "Execução conferida com documentos de teste (FIXTURE DE TESTE — dado controlado, não real).",
+      "verifiedBy": {
+        "id": "e9ec6386-9b74-4a84-b959-c33ad0eeaf60",
+        "name": "Empresa de Teste Homologação Ltda"
+      },
+      "verifiedAt": "2026-10-27T09:10:55.1621091Z",
+      "engineVersion": "orken-tax-engine/1.0.0",
+      "canonicalVersion": "orken-canonical/1"
+    }
+  }
+}
