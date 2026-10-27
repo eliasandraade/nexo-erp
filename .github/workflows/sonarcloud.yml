@@ -64,11 +64,16 @@ jobs:
         run: |
           npm ci --no-audit --no-fund --ignore-scripts
           npm run test:coverage
+          # Vitest writes paths relative to nexo-main (SF:src/...); the analysis runs from the
+          # repository root, so without the prefix SonarCloud drops every frontend file.
+          sed -i 's#^SF:src/#SF:nexo-main/src/#' coverage/lcov.info
 
       - name: Install SonarScanner for .NET
         if: steps.gate.outputs.enabled == 'true'
         run: dotnet tool install --global dotnet-sonarscanner --version 11.3.0
 
+      # sonar.qualitygate.wait: "end" waits for SonarCloud to compute the Quality Gate and fails this
+      # job when the gate is red — so a red gate means a red `sonarcloud` check, and green means green.
       - name: Begin analysis
         if: steps.gate.outputs.enabled == 'true'
         run: >-
@@ -79,8 +84,10 @@ jobs:
           /d:sonar.projectBaseDir="${GITHUB_WORKSPACE}"
           /d:sonar.cs.vscoveragexml.reportsPaths="nexo-backend/TestResults/**/*.xml"
           /d:sonar.javascript.lcov.reportsPaths="nexo-main/coverage/lcov.info"
-          /d:sonar.coverage.exclusions="**/Persistence/Migrations/**,nexo-main/e2e/**,**/*.test.ts,**/*.test.tsx"
+          /d:sonar.coverage.exclusions="**/Persistence/Migrations/**,nexo-main/e2e/**,**/*.test.ts,**/*.test.tsx,nexo-main/src/**/test/**,nexo-backend/tools/**"
           /d:sonar.cpd.exclusions="**/Persistence/Migrations/**"
+          /d:sonar.qualitygate.wait=true
+          /d:sonar.qualitygate.timeout=300
 
       - name: Build backend
         if: steps.gate.outputs.enabled == 'true'
