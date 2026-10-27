@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { verifyTaxCalculation, type EngineInput, type EngineOutput, type TaxVerificationDto } from "../api/tax.api";
+import { verificationHeadline } from "../lib/labels";
 import { BASE_COMPONENTS, CONDITION_OUTCOMES, RULE_STATUS, TAX_NAMES, labelOf, toneOf } from "../lib/labels";
 import { errorMessage, formatPercent } from "../lib/forms";
 import { ToneBadge } from "./TaxBadges";
@@ -193,14 +194,14 @@ export function TechnicalTrail({ output, hashes }: Readonly<{ output: EngineOutp
             {verification && (
               <output className={cn("block rounded-md border p-2 text-xs", verification.reproducible ? "border-success/40 text-success" : "border-destructive/40 text-destructive")}>
                 <span className="block font-medium">
-                  {verification.reproducible
-                    ? "Reproduzido: as mesmas regras e a mesma entrada dão exatamente o mesmo resultado."
-                    : "Não reproduziu: o resultado recalculado é diferente do guardado."}
+                  {verificationHeadline(verification)}
                 </span>
                 {!verification.engineVersionMatches && (
                   <span className="block mt-1">Motor guardado {verification.storedEngineVersion}, motor atual {verification.currentEngineVersion}.</span>
                 )}
-                <span className="block mt-1 break-all font-mono text-muted-foreground">recalculado: {verification.recomputedOutputHash}</span>
+                {verification.recomputedOutputHash && (
+                  <span className="block mt-1 break-all font-mono text-muted-foreground">recalculado: {verification.recomputedOutputHash}</span>
+                )}
                 {verification.differences.length > 0 && <ul className="mt-1 list-disc pl-4">{verification.differences.map((d) => <li key={d}>{d}</li>)}</ul>}
               </output>
             )}

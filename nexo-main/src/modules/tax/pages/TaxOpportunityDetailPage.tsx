@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Ban, CheckCircle2, CircleHelp, FileCheck2, Gavel, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { ApiError } from "@/services/api-client";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -104,6 +105,11 @@ export default function TaxOpportunityDetailPage() {
               <p className="flex flex-wrap items-center gap-2"><RiskBadge risk={o.risk} /> confiança {o.confidence}%</p>
               {o.caveats && <p className="whitespace-pre-line text-muted-foreground">{o.caveats}</p>}
               <p>Fonte: <SourceLinks codes={o.legalSourceCodes} /></p>
+              {o.professionalReviewPending && (
+                <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-warning">
+                  Revisão tributária pendente: as regras usadas estão em vigor no motor, mas a interpretação ainda não foi aprovada por um profissional tributário.
+                </p>
+              )}
             </div>
           </SectionCard>
 
@@ -120,6 +126,9 @@ export default function TaxOpportunityDetailPage() {
               <div className="space-y-2 text-sm">
                 <p className="flex items-center gap-2 font-medium text-success"><CheckCircle2 className="h-4 w-4" /> Aprovada por {o.decision.approvedByName} em {formatDateTime(o.decision.approvedAt)}</p>
                 <p className="text-muted-foreground">Estratégia: {o.decision.strategy}{o.decision.highRiskAcknowledged ? " · risco alto assumido" : ""}</p>
+                {o.decision.selfApprovalJustification && (
+                  <p className="text-muted-foreground">Aprovada por quem fez a análise. Justificativa: {o.decision.selfApprovalJustification}</p>
+                )}
                 <p className="break-all font-mono text-xs text-muted-foreground">dossiê {o.decision.dossierHash} · motor {o.decision.engineVersion}</p>
                 <details className="rounded-md border border-border">
                   <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Dossiê da decisão</summary>
@@ -233,13 +242,21 @@ function Evidence({ o, editable, onUpdated }: Readonly<{ o: TaxOpportunityDto; e
   );
 }
 
+/** Server code when whoever analysed alone tries to approve without a justification (segregation of duties). */
+const SELF_APPROVAL_CODE = "tax_self_approval_requires_justification";
+
 function ApproveDialog({ open, o, onClose, onUpdated }: Readonly<{ open: boolean; o: TaxOpportunityDto; onClose: () => void; onUpdated: (o: TaxOpportunityDto) => void }>) {
   const [ack, setAck] = useState(false);
+  const [needsJustification, setNeedsJustification] = useState(false);
+  const [justification, setJustification] = useState("");
   const high = o.risk === "High";
   const approve = useMutation({
-    mutationFn: () => approveOpportunity(o.id, high ? ack : false),
+    mutationFn: () => approveOpportunity(o.id, high ? ack : false, needsJustification ? justification : null),
     onSuccess: (n) => { onUpdated(n); toast.success("Oportunidade aprovada. Dossiê da decisão guardado."); onClose(); },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: (e) => {
+      if (e instanceof ApiError && e.code === SELF_APPROVAL_CODE) setNeedsJustification(true);
+      toast.error(errorMessage(e));
+    },
   });
   const pending = o.requirements.filter((r) => r.met !== true).length;
 
@@ -255,6 +272,14 @@ function ApproveDialog({ open, o, onClose, onUpdated }: Readonly<{ open: boolean
         <div className="space-y-3 text-sm">
           <p className="flex flex-wrap items-center gap-2"><ImpactBadge nature={o.impactNature} /><RiskBadge risk={o.risk} /></p>
           {pending > 0 && <p className="text-warning">{pending} {pending === 1 ? "condição ainda não está cumprida" : "condições ainda não estão cumpridas"}: o servidor vai recusar.</p>}
+          {o.professionalReviewPending && (
+            <p className="text-warning">Revisão tributária pendente: em produção, a aprovação só é aceita depois que as regras forem revisadas por um profissional.</p>
+          )}
+          {needsJustification && (
+            <Field id="self-approval" label="Por que você aprova a própria análise?" hint="Fica registrado no dossiê e na auditoria. O ideal é outra pessoa revisar.">
+              <Textarea id="self-approval" rows={2} maxLength={1000} value={justification} onChange={(e) => setJustification(e.target.value)} />
+            </Field>
+          )}
           {high && (
             <label htmlFor="ack-high" className="flex items-start gap-2 rounded-md border border-destructive/40 p-2">
               <Checkbox id="ack-high" checked={ack} onCheckedChange={(c) => setAck(c === true)} className="mt-0.5" />
@@ -264,7 +289,7 @@ function ApproveDialog({ open, o, onClose, onUpdated }: Readonly<{ open: boolean
         </div>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button type="button" disabled={approve.isPending || (high && !ack)} onClick={() => approve.mutate()}>{approve.isPending ? "Aprovando…" : "Aprovar"}</Button>
+          <Button type="button" disabled={approve.isPending || (high && !ack) || (needsJustification && !justification.trim())} onClick={() => approve.mutate()}>{approve.isPending ? "Aprovando…" : "Aprovar"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

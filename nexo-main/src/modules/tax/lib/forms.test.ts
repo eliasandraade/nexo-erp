@@ -59,20 +59,29 @@ describe("operation lines", () => {
 describe("profile version", () => {
   const draft: ProfileDraft = {
     validFrom: "2026-01-01", regime: "LucroPresumido", state: "SP", cityIbgeCode: "3550308", primaryCnae: "4781-4/00",
-    secondaryCnaes: "4782-2/01; 4789-0/99", specialRegimes: "", benefits: "", compliance: "unknown", reason: "Abertura",
+    secondaryCnaes: "4782-2/01; 4789-0/99", specialRegimes: "", benefits: "", compliance: "Unknown", complianceEvidence: "", reason: "Abertura",
   };
 
-  it("validates and maps, keeping \"não sei\" as null", () => {
+  it("validates and maps, keeping \"não sei\" as Unknown", () => {
     expect(profileDraftProblems(draft)).toEqual([]);
     expect(toProfileVersionRequest(draft)).toEqual({
       validFrom: "2026-01-01", regime: "LucroPresumido", state: "SP", cityIbgeCode: "3550308", primaryCnae: "4781400",
-      secondaryCnaes: ["4782201", "4789099"], specialRegimes: [], benefits: [], accessoryObligationsCompliant: null, reason: "Abertura",
+      secondaryCnaes: ["4782201", "4789099"], specialRegimes: [], benefits: [],
+      accessoryObligations: "Unknown", accessoryObligationsEvidence: null, reason: "Abertura",
     });
-    expect(toProfileVersionRequest({ ...draft, compliance: "yes" }).accessoryObligationsCompliant).toBe(true);
-    expect(toProfileVersionRequest({ ...draft, compliance: "no" }).accessoryObligationsCompliant).toBe(false);
+    expect(toProfileVersionRequest({ ...draft, compliance: "DeclaredCompliant" }).accessoryObligations).toBe("DeclaredCompliant");
+    expect(toProfileVersionRequest({ ...draft, compliance: "NonCompliant" }).accessoryObligations).toBe("NonCompliant");
     expect(profileDraftProblems({ ...draft, cityIbgeCode: "355", primaryCnae: "47", secondaryCnaes: "1", reason: " " })).toEqual([
       "Código IBGE do município: 7 números.", "CNAE principal: 7 números.", "Cada CNAE secundário tem 7 números.", "Diga o motivo da nova versão.",
     ]);
+  });
+
+  it("asks what was checked before compliance counts as verified — a declaration is not a verification", () => {
+    expect(profileDraftProblems({ ...draft, compliance: "VerifiedCompliant" })).toEqual(["Para marcar como verificado, diga o que foi conferido."]);
+    expect(profileDraftProblems({ ...draft, compliance: "DeclaredCompliant" })).toEqual([]);
+    const verified = toProfileVersionRequest({ ...draft, compliance: "VerifiedCompliant", complianceEvidence: "  recibos de entrega  " });
+    expect(verified.accessoryObligations).toBe("VerifiedCompliant");
+    expect(verified.accessoryObligationsEvidence).toBe("recibos de entrega");
   });
 });
 

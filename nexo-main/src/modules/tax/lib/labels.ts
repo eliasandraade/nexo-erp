@@ -1,17 +1,22 @@
 import { TAX_REGIMES } from "@/modules/fiscal/api/fiscal.api";
 import type {
-  BaseComponent, ConditionOutcome, CreditEntryType, CreditMovement, CreditTax, ImpactNature, OpportunityStatus,
-  OpportunityType, ProhibitedStructure, RiskLevel, RuleStatus, SplitProcedure, SplitStatus, TaxDirection, TaxItemKind,
-  TaxRegime, TaxTransactionSource, TaxType,
+  AccessoryObligationsStatus, BaseComponent, ConditionOutcome, CreditEntryType, CreditMovement, CreditTax, ImpactNature, OpportunityStatus,
+  OpportunityType, ProfessionalReviewStatus, ProhibitedStructure, RiskLevel, RuleStatus, SplitProcedure, SplitStatus, TaxDirection,
+  TaxItemKind, TaxRegime, TaxTransactionSource, TaxType, TaxVerificationDto, TextVerificationStatus,
 } from "../api/tax.api";
 
 /** Visual tone of a badge: each impact nature has its own, so they are never read as the same thing. */
-export type Tone = "saving" | "deferral" | "cash" | "credit" | "risk" | "neutral" | "danger" | "warning" | "success";
+export type Tone = "saving" | "reduction" | "deferral" | "cash" | "credit" | "risk" | "neutral" | "danger" | "warning" | "success";
 
 export interface ToneLabel { label: string; tone: Tone }
 
 export const IMPACT_NATURES: Record<ImpactNature, ToneLabel & { hint: string }> = {
   DefinitiveSaving: { label: "Economia", tone: "saving", hint: "Imposto que deixa de ser pago de vez." },
+  CalculatedTaxReduction: {
+    label: "Redução do IBS/CBS calculado — não é economia",
+    tone: "reduction",
+    hint: "O tributo calculado no documento diminui. Se isso vira economia depende do período (em 2026 é compensável ou dispensado) e de revisão profissional.",
+  },
   Deferral: { label: "Diferimento — não é economia", tone: "deferral", hint: "O imposto é pago depois, não deixa de ser pago." },
   CashFlow: { label: "Fluxo de caixa", tone: "cash", hint: "Muda quando o dinheiro sai ou entra, não quanto." },
   Credit: { label: "Crédito", tone: "credit", hint: "Valor que pode abater imposto devido, se as condições forem cumpridas." },
@@ -33,6 +38,7 @@ export const OPPORTUNITY_TYPES: Record<OpportunityType, string> = {
   CashFlowOptimization: "Caixa",
   RefundOpportunity: "Restituição",
   RiskReduction: "Redução de risco",
+  CalculatedTaxReduction: "Redução do IBS/CBS calculado",
 };
 
 export const RISK_LEVELS: Record<RiskLevel, ToneLabel> = {
@@ -62,6 +68,28 @@ export const RULE_STATUS: Record<RuleStatus, ToneLabel> = {
   Active: { label: "Em vigor", tone: "success" },
   Superseded: { label: "Substituída", tone: "neutral" },
   Revoked: { label: "Revogada", tone: "danger" },
+};
+
+/** Text verification says only that the excerpt matches the official text. */
+export const TEXT_VERIFICATION: Record<TextVerificationStatus, ToneLabel> = {
+  Verified: { label: "Texto oficial conferido", tone: "success" },
+  Unverified: { label: "Texto não conferido", tone: "warning" },
+};
+
+/** A tax professional's review of the rule — technical activation is not professional approval. */
+export const PROFESSIONAL_REVIEW: Record<ProfessionalReviewStatus, ToneLabel> = {
+  Pending: { label: "Revisão tributária pendente", tone: "warning" },
+  Approved: { label: "Revisão tributária aprovada", tone: "success" },
+  ChangesRequired: { label: "Revisão tributária pediu ajustes", tone: "danger" },
+  Rejected: { label: "Revisão tributária rejeitou", tone: "danger" },
+};
+
+/** A declaration is not a verification: only "verificado" satisfies a rule that depends on compliance. */
+export const ACCESSORY_OBLIGATIONS: Record<AccessoryObligationsStatus, { label: string; short: string }> = {
+  Unknown: { label: "Não sei / não informado", short: "Não informado" },
+  DeclaredCompliant: { label: "Declaro que entrega todas (sem verificação)", short: "Declarado, não verificado" },
+  VerifiedCompliant: { label: "Verificado — informe o que foi conferido", short: "Verificado" },
+  NonCompliant: { label: "Não entrega todas", short: "Não cumpre" },
 };
 
 export const CONDITION_OUTCOMES: Record<ConditionOutcome, ToneLabel> = {
@@ -138,6 +166,7 @@ export function toneOf<K extends string>(map: Record<K, ToneLabel>, key: K | str
 /** Tailwind classes for each tone. Indigo stays reserved for actions, so no tone uses primary. */
 export const TONE_CLASSES: Record<Tone, string> = {
   saving: "border-success/40 bg-success/10 text-success",
+  reduction: "border-slate-500/40 bg-slate-500/10 text-slate-700 dark:text-slate-300",
   deferral: "border-warning/40 bg-warning/10 text-warning",
   cash: "border-sky-500/40 bg-sky-500/10 text-sky-600 dark:text-sky-400",
   credit: "border-teal-500/40 bg-teal-500/10 text-teal-700 dark:text-teal-300",
@@ -147,3 +176,10 @@ export const TONE_CLASSES: Record<Tone, string> = {
   warning: "border-warning/40 bg-warning/10 text-warning",
   success: "border-success/40 bg-success/10 text-success",
 };
+
+/** What a verification proved, in plain words. The engine that made a calculation is the only one that re-runs it. */
+export function verificationHeadline(v: TaxVerificationDto): string {
+  if (!v.engineAvailable) return `Não foi possível reproduzir: o motor ${v.storedEngineVersion} que fez este cálculo não está disponível. Nenhum outro motor foi usado no lugar dele.`;
+  if (v.reproducible) return "Reproduzido: o mesmo motor, as mesmas regras e a mesma entrada dão exatamente o mesmo resultado.";
+  return "Não reproduziu: o resultado recalculado é diferente do guardado.";
+}

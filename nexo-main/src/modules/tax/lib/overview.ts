@@ -11,12 +11,15 @@ export interface ImpactTile {
 
 /**
  * The potential impacts of open opportunities, one tile per nature. They are different things
- * (a deferral is not a saving; a credit depends on conditions) and are deliberately NOT summed:
- * there is no "total" here on purpose.
+ * (a lower IBS/CBS on the document is not a saving; a deferral is not a saving; a credit depends
+ * on conditions) and are deliberately NOT summed: there is no "total" here on purpose.
  */
-export function overviewImpacts(o: Pick<TaxOverviewDto, "potentialSavings" | "potentialDeferrals" | "potentialCashFlow" | "potentialCredits">): ImpactTile[] {
+export function overviewImpacts(
+  o: Pick<TaxOverviewDto, "potentialSavings" | "potentialCalculatedTaxReductions" | "potentialDeferrals" | "potentialCashFlow" | "potentialCredits">,
+): ImpactTile[] {
   const pairs: [ImpactNature, number][] = [
     ["DefinitiveSaving", o.potentialSavings],
+    ["CalculatedTaxReduction", o.potentialCalculatedTaxReductions],
     ["Deferral", o.potentialDeferrals],
     ["CashFlow", o.potentialCashFlow],
     ["Credit", o.potentialCredits],

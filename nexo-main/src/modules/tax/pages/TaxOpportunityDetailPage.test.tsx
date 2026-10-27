@@ -3,6 +3,7 @@ import { screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { opportunity, renderTax } from "../test/render";
 import TaxOpportunityDetailPage from "./TaxOpportunityDetailPage";
 import * as api from "../api/tax.api";
+import { ApiError } from "@/services/api-client";
 
 const session = { role: "diretoria" as string };
 vi.mock("@/modules/auth/context/AuthContext", () => ({ useAuth: () => ({ session }) }));
@@ -26,15 +27,35 @@ describe("TaxOpportunityDetailPage", () => {
   beforeEach(() => { session.role = "diretoria"; vi.clearAllMocks(); });
   afterEach(cleanup);
 
-  it("answers the business questions and shows the saving as a saving", async () => {
+  it("answers the business questions and shows a calculated-tax reduction, never as a saving", async () => {
     show();
 
     expect(await screen.findByText("O que aconteceu?")).toBeInTheDocument();
     expect(screen.getByText("Quanto muda?")).toBeInTheDocument();
     expect(screen.getByText("Qual o risco e qual a fonte?")).toBeInTheDocument();
     expect(screen.getByText("Quem precisa aprovar?")).toBeInTheDocument();
-    expect(screen.getAllByText("Economia").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Redução do IBS/CBS calculado — não é economia").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Economia")).not.toBeInTheDocument();
     expect(screen.getByText("R$ 0,50")).toBeInTheDocument();
+    expect(screen.getByText(/Revisão tributária pendente: as regras usadas estão em vigor no motor/)).toBeInTheDocument();
+  });
+
+  it("asks for a justification when whoever analysed alone approves, and sends it", async () => {
+    const o = opportunity({ requirements: opportunity().requirements.map((r) => ({ ...r, met: true })) });
+    approve
+      .mockRejectedValueOnce(new ApiError(422, "Quem fez a análise sozinho não aprova a própria análise sem justificar.", "tax_self_approval_requires_justification"))
+      .mockResolvedValueOnce({ ...o, status: "Approved" });
+    show(o);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Aprovar/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Aprovar" }).at(-1)!);
+    const field = await screen.findByLabelText("Por que você aprova a própria análise?");
+    const confirm = screen.getAllByRole("button", { name: "Aprovar" }).at(-1)!;
+    expect(confirm).toBeDisabled();
+
+    fireEvent.change(field, { target: { value: "Diretoria de uma pessoa" } });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(approve).toHaveBeenLastCalledWith("op-1", false, "Diretoria de uma pessoa"));
   });
 
   it("never offers a blocked structure: no saving, no approval, the reason in a red alert", async () => {
@@ -70,7 +91,7 @@ describe("TaxOpportunityDetailPage", () => {
     fireEvent.click(screen.getByRole("checkbox"));
     expect(confirm).toBeEnabled();
     fireEvent.click(confirm);
-    await waitFor(() => expect(approve).toHaveBeenCalledWith("op-1", true));
+    await waitFor(() => expect(approve).toHaveBeenCalledWith("op-1", true, null));
   });
 
   it("warns that unmet requirements will be refused, without hiding the server's decision", async () => {
@@ -84,11 +105,13 @@ describe("TaxOpportunityDetailPage", () => {
     show(opportunity({
       status: "Approved",
       decision: { id: "d1", opportunityId: "op-1", strategy: "Conceder o desconto como incondicional", risk: "Low", highRiskAcknowledged: false,
-        engineVersion: "orken-tax-engine/1.0.0", approvedByName: "Diretora", approvedAt: "2026-10-27T13:00:00Z", dossierHash: "ab12cd", dossier: { strategy: "x" } },
+        engineVersion: "orken-tax-engine/1.0.0", approvedByName: "Diretora", approvedAt: "2026-10-27T13:00:00Z",
+        selfApprovalJustification: "Diretoria de uma pessoa", dossierHash: "ab12cd", dossier: { strategy: "x" } },
     }));
 
     expect(await screen.findByText(/Aprovada por Diretora/)).toBeInTheDocument();
     expect(screen.getByText(/dossiê ab12cd · motor orken-tax-engine\/1\.0\.0/)).toBeInTheDocument();
+    expect(screen.getByText(/Justificativa: Diretoria de uma pessoa/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Recusar" })).not.toBeInTheDocument();
   });
 

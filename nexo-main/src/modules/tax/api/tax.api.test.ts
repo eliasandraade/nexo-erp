@@ -49,6 +49,7 @@ describe("tax API client routes", () => {
     api.blockOpportunity("o1", "DocumentMismatch", "motivo");
     api.rejectOpportunity("o1", "não vale");
     api.approveOpportunity("o1", true);
+    api.approveOpportunity("o1", false, "  Diretoria de uma pessoa ");
 
     expect(post.mock.calls).toEqual([
       ["/tax/opportunities/o1/review", {}],
@@ -56,7 +57,8 @@ describe("tax API client routes", () => {
       ["/tax/opportunities/o1/evidence", { description: "Contrato novo", documentReference: null }],
       ["/tax/opportunities/o1/block", { structure: "DocumentMismatch", reason: "motivo" }],
       ["/tax/opportunities/o1/reject", { reason: "não vale" }],
-      ["/tax/opportunities/o1/approve", { acknowledgeHighRisk: true }],
+      ["/tax/opportunities/o1/approve", { acknowledgeHighRisk: true, selfApprovalJustification: null }],
+      ["/tax/opportunities/o1/approve", { acknowledgeHighRisk: false, selfApprovalJustification: "Diretoria de uma pessoa" }],
     ]);
   });
 

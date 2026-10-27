@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDateTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { TAX_KEYS, listLegalSources, listTaxRules, type TaxLegalSourceDto, type TaxRuleDto } from "../api/tax.api";
-import { RULE_STATUS, labelOf, toneOf } from "../lib/labels";
+import { PROFESSIONAL_REVIEW, RULE_STATUS, TEXT_VERIFICATION, labelOf, toneOf } from "../lib/labels";
 import { formatIsoDate } from "../lib/forms";
 import { ToneBadge } from "../components/TaxBadges";
 import { SourceLinks } from "../components/EngineResult";
@@ -41,7 +41,10 @@ export default function TaxRulesPage() {
         description="Cada regra aplicada tem versão, vigência e a fonte jurídica de onde vem. Regras pendentes de regulamentação aparecem, mas não são aplicadas."
       />
       <TaxSubNav />
-      <TaxNote>As regras são mantidas pela plataforma Orken e nunca editadas: uma mudança vira uma nova versão, e cada cálculo guarda a versão que usou.</TaxNote>
+      <TaxNote>
+        As regras são mantidas pela plataforma Orken e nunca editadas: uma mudança vira uma nova versão, e cada cálculo guarda a versão que usou.
+        “Texto oficial conferido” quer dizer só que o trecho reproduz a lei; a revisão da interpretação por um profissional tributário é um estado à parte.
+      </TaxNote>
       <Tabs value={tab} onValueChange={(v) => setParams(v === "fontes" ? { aba: "fontes" } : {})}>
         <TabsList>
           <TabsTrigger value="regras">Regras</TabsTrigger>
@@ -72,12 +75,23 @@ function Rule({ rule }: Readonly<{ rule: TaxRuleDto }>) {
           <li key={v.id} className="rounded-md border border-border p-3 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium">Versão {v.version}</span>
-              <ToneBadge label={labelOf(RULE_STATUS, v.status)} tone={toneOf(RULE_STATUS, v.status)} />
+              <ToneBadge label={labelOf(RULE_STATUS, v.status)} tone={toneOf(RULE_STATUS, v.status)} title="Situação técnica no motor de cálculo" />
+              <ToneBadge
+                label={labelOf(PROFESSIONAL_REVIEW, v.professionalReview)}
+                tone={toneOf(PROFESSIONAL_REVIEW, v.professionalReview)}
+                title="Revisão da interpretação por profissional tributário — estar em vigor no motor não é aprovação profissional"
+              />
               <span className="text-xs text-muted-foreground">
                 {formatIsoDate(v.validFrom)} até {v.validTo ? formatIsoDate(v.validTo) : "sem fim definido"} · prioridade {v.priority}
               </span>
             </div>
             {v.notes && <p className="mt-1 whitespace-pre-line text-muted-foreground">{v.notes}</p>}
+            {v.professionalReviewedBy && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Revisão tributária por {v.professionalReviewedBy}{v.professionalReviewedAt ? ` em ${formatDateTime(v.professionalReviewedAt)}` : ""}
+                {v.professionalReviewNotes ? `: ${v.professionalReviewNotes}` : ""}
+              </p>
+            )}
             <p className="mt-1 text-xs">Fonte: <SourceLinks codes={v.legalSourceCodes} /></p>
             <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">conteúdo {v.contentHash} · origem {v.origin} · {v.createdBy}{v.activatedAt ? ` · em vigor desde ${formatDateTime(v.activatedAt)}` : ""}</p>
             <details className="mt-2">
@@ -124,7 +138,11 @@ function Source({ s, active }: Readonly<{ s: TaxLegalSourceDto; active: boolean 
     <section id={`fonte-${s.code}`} className={cn("data-region scroll-mt-20 p-5", active && "ring-2 ring-primary/60")}>
       <div className="flex flex-wrap items-center gap-2">
         <code className="text-xs font-semibold">{s.code}</code>
-        <ToneBadge label={s.verification === "Verified" ? "Texto conferido" : "Texto não conferido"} tone={s.verification === "Verified" ? "success" : "warning"} />
+        <ToneBadge
+          label={labelOf(TEXT_VERIFICATION, s.textVerification)}
+          tone={toneOf(TEXT_VERIFICATION, s.textVerification)}
+          title="Confere só que o trecho reproduz o texto oficial; não é parecer jurídico"
+        />
       </div>
       <h3 className="section-heading mt-1">{s.title}</h3>
       <p className="text-sm text-muted-foreground">

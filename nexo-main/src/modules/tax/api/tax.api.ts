@@ -10,9 +10,11 @@ export type CreditTax = "Cbs" | "Ibs";
 export type TaxDirection = "Outbound" | "Inbound";
 export type TaxItemKind = "Good" | "Service";
 export type TaxTransactionSource = "Manual" | "Sale" | "Purchase" | "Service" | "FinancialEntry" | "FiscalDocument" | "External";
-export type ImpactNature = "DefinitiveSaving" | "Deferral" | "CashFlow" | "Credit" | "RiskAvoided";
+export type ImpactNature = "DefinitiveSaving" | "CalculatedTaxReduction" | "Deferral" | "CashFlow" | "Credit" | "RiskAvoided";
 export type OpportunityStatus = "Identified" | "InReview" | "Approved" | "Rejected" | "Blocked";
-export type OpportunityType = "TaxSaving" | "CreditOptimization" | "TaxDeferral" | "CashFlowOptimization" | "RefundOpportunity" | "RiskReduction";
+export type OpportunityType =
+  | "TaxSaving" | "CreditOptimization" | "TaxDeferral" | "CashFlowOptimization" | "RefundOpportunity" | "RiskReduction"
+  | "CalculatedTaxReduction";
 export type RiskLevel = "Low" | "Medium" | "High";
 export type ProhibitedStructure =
   | "Simulation" | "ArtificialTransaction" | "RevenueOmission" | "FalseExpense"
@@ -24,7 +26,12 @@ export type CreditMovement = "Appropriate" | "Use" | "Block" | "Unblock" | "Reve
 export type CreditEntryType = "Recognized" | "Appropriated" | "Used" | "Blocked" | "Unblocked" | "Expired" | "Reversed";
 export type SplitProcedure = "Standard" | "Simplified";
 export type SplitStatus = "Pending" | "Matched" | "Excess" | "Insufficient";
-export type LegalSourceVerification = "Verified" | "Unverified";
+/** Only whether the excerpt matches the official text — never a legal opinion. */
+export type TextVerificationStatus = "Verified" | "Unverified";
+/** A tax professional's review of a rule version — separate from its technical status. */
+export type ProfessionalReviewStatus = "Pending" | "Approved" | "ChangesRequired" | "Rejected";
+/** A declaration is not a verification; only VerifiedCompliant satisfies a rule that needs compliance. */
+export type AccessoryObligationsStatus = "Unknown" | "DeclaredCompliant" | "VerifiedCompliant" | "NonCompliant";
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 
@@ -41,6 +48,8 @@ export interface TaxOverviewDto {
   creditsNotAppropriated: number;
   openOpportunities: number;
   potentialSavings: number;
+  /** Lower IBS/CBS on the document — reported apart, never added to savings. */
+  potentialCalculatedTaxReductions: number;
   potentialDeferrals: number;
   potentialCashFlow: number;
   potentialCredits: number;
@@ -64,7 +73,8 @@ export interface TaxProfileVersionDto {
   secondaryCnaes: string[];
   specialRegimes: string[];
   benefits: string[];
-  accessoryObligationsCompliant: boolean | null;
+  accessoryObligations: AccessoryObligationsStatus;
+  accessoryObligationsEvidence: string | null;
   reason: string;
   createdByName: string;
   createdAt: string;
@@ -85,7 +95,8 @@ export interface CreateTaxProfileVersionRequest {
   secondaryCnaes: string[];
   specialRegimes: string[];
   benefits: string[];
-  accessoryObligationsCompliant: boolean | null;
+  accessoryObligations: AccessoryObligationsStatus;
+  accessoryObligationsEvidence: string | null;
   reason: string;
 }
 
@@ -211,16 +222,20 @@ export interface TaxCalculationDto {
   input: EngineInput;
   output: EngineOutput;
   opportunityIds: string[];
+  /** What the calculation says about the profile facts it used (e.g. compliance declared, not verified). */
+  profileAdvisories: string[];
 }
 
 export interface TaxVerificationDto {
   calculationId: string;
   reproducible: boolean;
+  /** False: the engine that made it is not in this build — nothing was re-run. */
+  engineAvailable: boolean;
   engineVersionMatches: boolean;
   storedEngineVersion: string;
   currentEngineVersion: string;
   storedOutputHash: string;
-  recomputedOutputHash: string;
+  recomputedOutputHash: string | null;
   differences: string[];
 }
 
@@ -321,6 +336,7 @@ export interface TaxDecisionDto {
   engineVersion: string;
   approvedByName: string;
   approvedAt: string;
+  selfApprovalJustification: string | null;
   dossierHash: string;
   dossier: unknown;
 }
@@ -328,14 +344,18 @@ export interface TaxDecisionDto {
 export interface TaxOpportunityDto extends TaxOpportunitySummaryDto {
   summary: string;
   detectorKey: string;
+  engineVersion: string;
   sourceCalculationId: string | null;
   legalSourceCodes: string[];
   caveats: string | null;
   blockedAs: ProhibitedStructure | null;
   blockReason: string | null;
   rejectionReason: string | null;
+  reviewStartedByName: string | null;
   reviewedByName: string | null;
   reviewedAt: string | null;
+  /** Some rule behind it still awaits a tax professional's review. */
+  professionalReviewPending: boolean;
   requirements: TaxRequirementDto[];
   evidence: TaxEvidenceDto[];
   current: ScenarioResult | null;
@@ -429,6 +449,10 @@ export interface TaxRuleVersionDto {
   activatedAt: string | null;
   legalSourceCodes: string[];
   createdAt: string;
+  professionalReview: ProfessionalReviewStatus;
+  professionalReviewedBy: string | null;
+  professionalReviewedAt: string | null;
+  professionalReviewNotes: string | null;
 }
 
 export interface TaxRuleDto { id: string; key: string; name: string; description: string; versions: TaxRuleVersionDto[] }
@@ -442,7 +466,7 @@ export interface TaxLegalSourceDto {
   url: string;
   excerpt: string;
   publishedOn: string | null;
-  verification: LegalSourceVerification;
+  textVerification: TextVerificationStatus;
   verifiedAt: string | null;
   verifiedBy: string | null;
   notes: string | null;
@@ -500,8 +524,11 @@ export const addOpportunityEvidence = (id: string, description: string, document
 export const blockOpportunity = (id: string, structure: ProhibitedStructure, reason: string) =>
   apiClient.post<TaxOpportunityDto>(`/tax/opportunities/${id}/block`, { structure, reason });
 export const rejectOpportunity = (id: string, reason: string) => apiClient.post<TaxOpportunityDto>(`/tax/opportunities/${id}/reject`, { reason });
-export const approveOpportunity = (id: string, acknowledgeHighRisk: boolean) =>
-  apiClient.post<TaxOpportunityDto>(`/tax/opportunities/${id}/approve`, { acknowledgeHighRisk });
+export const approveOpportunity = (id: string, acknowledgeHighRisk: boolean, selfApprovalJustification?: string | null) =>
+  apiClient.post<TaxOpportunityDto>(`/tax/opportunities/${id}/approve`, {
+    acknowledgeHighRisk,
+    selfApprovalJustification: selfApprovalJustification?.trim() || null,
+  });
 export const getTaxDecision = (id: string) => apiClient.get<TaxDecisionDto>(`/tax/decisions/${id}`);
 
 export const listTaxCredits = () => apiClient.get<TaxCreditDto[]>("/tax/credits");

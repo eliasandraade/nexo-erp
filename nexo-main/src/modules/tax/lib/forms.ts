@@ -1,7 +1,7 @@
 import { ApiError } from "@/services/api-client";
 import { onlyDigits } from "@/lib/fiscal-codes";
 import type {
-  CompareSuppliersRequest, CreateTaxProfileVersionRequest, CreditMovement, CreditMovementRequest, CreditTax, RegisterTaxCreditRequest, TaxDirection, TaxItemKind, TaxLineRequest, TaxOperationRequest,
+  AccessoryObligationsStatus, CompareSuppliersRequest, CreateTaxProfileVersionRequest, CreditMovement, CreditMovementRequest, CreditTax, RegisterTaxCreditRequest, TaxDirection, TaxItemKind, TaxLineRequest, TaxOperationRequest,
   TaxRegime, TaxScenarioRequest, TaxType,
 } from "../api/tax.api";
 
@@ -179,8 +179,6 @@ export function toOperationRequest(op: OperationDraft): TaxOperationRequest {
 
 // ── Profile version ──────────────────────────────────────────────────────────
 
-export type Compliance = "yes" | "no" | "unknown";
-
 export interface ProfileDraft {
   validFrom: string;
   regime: TaxRegime;
@@ -190,7 +188,10 @@ export interface ProfileDraft {
   secondaryCnaes: string;
   specialRegimes: string;
   benefits: string;
-  compliance: Compliance;
+  /** Unknown unless said; a declaration is not a verification. */
+  compliance: AccessoryObligationsStatus;
+  /** What was checked — required to mark compliance as verified. */
+  complianceEvidence: string;
   reason: string;
 }
 
@@ -201,6 +202,9 @@ export function profileDraftProblems(d: ProfileDraft): string[] {
   if (onlyDigits(d.cityIbgeCode).length !== 7) p.push("Código IBGE do município: 7 números.");
   if (onlyDigits(d.primaryCnae).length !== 7) p.push("CNAE principal: 7 números.");
   if (splitList(d.secondaryCnaes).some((c) => onlyDigits(c).length !== 7)) p.push("Cada CNAE secundário tem 7 números.");
+  if (d.compliance === "VerifiedCompliant" && !d.complianceEvidence.trim())
+    p.push("Para marcar como verificado, diga o que foi conferido.");
+  if (d.complianceEvidence.length > 1000) p.push("Evidência até 1000 caracteres.");
   if (!d.reason.trim()) p.push("Diga o motivo da nova versão.");
   if (d.reason.length > 500) p.push("Motivo até 500 caracteres.");
   return p;
@@ -216,7 +220,8 @@ export function toProfileVersionRequest(d: ProfileDraft): CreateTaxProfileVersio
     secondaryCnaes: splitList(d.secondaryCnaes).map(onlyDigits),
     specialRegimes: splitList(d.specialRegimes),
     benefits: splitList(d.benefits),
-    accessoryObligationsCompliant: d.compliance === "unknown" ? null : d.compliance === "yes",
+    accessoryObligations: d.compliance,
+    accessoryObligationsEvidence: d.complianceEvidence.trim() || null,
     reason: d.reason.trim(),
   };
 }

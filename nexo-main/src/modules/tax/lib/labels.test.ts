@@ -6,6 +6,8 @@ import {
 describe("tax labels", () => {
   it("names every impact nature in words and gives each its own tone", () => {
     expect(IMPACT_NATURES.DefinitiveSaving.label).toBe("Economia");
+    expect(IMPACT_NATURES.CalculatedTaxReduction.label).toBe("Redução do IBS/CBS calculado — não é economia");
+    expect(IMPACT_NATURES.CalculatedTaxReduction.tone).not.toBe(IMPACT_NATURES.DefinitiveSaving.tone);
     expect(IMPACT_NATURES.Deferral.label).toBe("Diferimento — não é economia");
     expect(IMPACT_NATURES.CashFlow.label).toBe("Fluxo de caixa");
     expect(IMPACT_NATURES.Credit.label).toBe("Crédito");

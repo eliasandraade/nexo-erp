@@ -19,7 +19,7 @@ globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {
 const overview = (over: Partial<TaxOverviewDto> = {}): TaxOverviewDto => ({
   profileConfigured: true, periodFrom: "2026-09-28", periodTo: "2026-10-27", calculations: 4, taxedBase: 12000, estimatedTax: 120,
   effectiveRatePercent: 1, creditsAvailable: 30, creditsBlocked: 0, creditsNotAppropriated: 5, openOpportunities: 3,
-  potentialSavings: 210.5, potentialDeferrals: 900, potentialCashFlow: 40, potentialCredits: 15, openHighRisk: 1,
+  potentialSavings: 210.5, potentialCalculatedTaxReductions: 0.5, potentialDeferrals: 900, potentialCashFlow: 40, potentialCredits: 15, openHighRisk: 1,
   blockedOpportunities: 1, splitDivergences: 0, activeRulesToday: 9, pendingRulesToday: 0, ...over,
 } as TaxOverviewDto);
 
@@ -34,7 +34,10 @@ describe("TaxOverviewPage", () => {
     expect(await screen.findByText("R$ 210,50")).toBeInTheDocument();
     expect(screen.getByText("R$ 900,00")).toBeInTheDocument();
     expect(screen.getByText("Diferimento — não é economia")).toBeInTheDocument();
+    expect(screen.getByText("Redução do IBS/CBS calculado — não é economia")).toBeInTheDocument();
+    expect(screen.getByText("R$ 0,50")).toBeInTheDocument();
     expect(screen.queryByText("R$ 1.165,50")).not.toBeInTheDocument();
+    expect(screen.queryByText("R$ 211,00")).not.toBeInTheDocument();
     expect(screen.getByText(/1 oportunidade de risco alto/)).toBeInTheDocument();
   });
 
@@ -56,7 +59,7 @@ describe("TaxOverviewPage", () => {
 
 const version = {
   id: "v2", versionNumber: 2, validFrom: "2026-07-01", regime: "LucroPresumido", state: "SP", cityIbgeCode: "3550308",
-  primaryCnae: "4781400", secondaryCnaes: [], specialRegimes: [], benefits: [], accessoryObligationsCompliant: true,
+  primaryCnae: "4781400", secondaryCnaes: [], specialRegimes: [], benefits: [], accessoryObligations: "VerifiedCompliant", accessoryObligationsEvidence: "Recibos conferidos",
   reason: "Saída do Simples", createdByName: "Diretora", createdAt: "2026-07-01T12:00:00Z",
 } as TaxProfileDto["versions"][number];
 

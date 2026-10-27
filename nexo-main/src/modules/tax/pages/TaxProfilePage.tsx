@@ -14,10 +14,13 @@ import { useAuth } from "@/modules/auth/context/AuthContext";
 import { TAX_REGIMES } from "@/modules/fiscal/api/fiscal.api";
 import { STATES } from "@/modules/fiscal/lib/validation";
 import { formatDateTime } from "@/lib/formatters";
-import { TAX_KEY, TAX_KEYS, addTaxProfileVersion, getTaxProfile, type TaxProfileDto, type TaxProfileVersionDto, type TaxRegime } from "../api/tax.api";
-import { regimeLabel } from "../lib/labels";
 import {
-  brazilTodayIso, errorMessage, formatIsoDate, profileDraftProblems, toProfileVersionRequest, type Compliance, type ProfileDraft,
+  TAX_KEY, TAX_KEYS, addTaxProfileVersion, getTaxProfile, type AccessoryObligationsStatus, type TaxProfileDto, type TaxProfileVersionDto,
+  type TaxRegime,
+} from "../api/tax.api";
+import { ACCESSORY_OBLIGATIONS, regimeLabel } from "../lib/labels";
+import {
+  brazilTodayIso, errorMessage, formatIsoDate, profileDraftProblems, toProfileVersionRequest, type ProfileDraft,
 } from "../lib/forms";
 import { Field, ProblemList, TaxNote, TaxSubNav } from "../components/TaxShell";
 
@@ -33,24 +36,13 @@ function initialDraft(p: TaxProfileDto): ProfileDraft {
     secondaryCnaes: c?.secondaryCnaes.join(", ") ?? "",
     specialRegimes: c?.specialRegimes.join(", ") ?? "",
     benefits: c?.benefits.join("\n") ?? "",
-    compliance: complianceOf(c?.accessoryObligationsCompliant ?? null),
+    compliance: c?.accessoryObligations ?? "Unknown",
+    complianceEvidence: c?.accessoryObligationsEvidence ?? "",
     reason: "",
   };
 }
 
-const COMPLIANCE: { value: Compliance; label: string }[] = [
-  { value: "yes", label: "Sim, entrega todas" },
-  { value: "no", label: "Não" },
-  { value: "unknown", label: "Não sei" },
-];
-
-function complianceOf(v: boolean | null): Compliance {
-  if (v === null) return "unknown";
-  return v ? "yes" : "no";
-}
-
-const COMPLIANCE_SHORT: Record<Compliance, string> = { yes: "Sim", no: "Não", unknown: "Não sei" };
-const complianceLabel = (v: boolean | null) => COMPLIANCE_SHORT[complianceOf(v)];
+const COMPLIANCE_OPTIONS = Object.entries(ACCESSORY_OBLIGATIONS) as [AccessoryObligationsStatus, { label: string; short: string }][];
 
 /** Perfil tributário: os fatos que decidem as regras. Cada mudança é uma nova versão, as anteriores ficam guardadas. */
 export default function TaxProfilePage() {
@@ -93,7 +85,10 @@ function CurrentVersion({ v }: Readonly<{ v: TaxProfileVersionDto }>) {
         <Item label="CNAE principal">{v.primaryCnae}</Item>
         <Item label="CNAEs secundários">{v.secondaryCnaes.join(", ") || "—"}</Item>
         <Item label="Regimes especiais">{v.specialRegimes.join(", ") || "—"}</Item>
-        <Item label="Entrega as obrigações acessórias">{complianceLabel(v.accessoryObligationsCompliant)}</Item>
+        <Item label="Obrigações acessórias">
+          {ACCESSORY_OBLIGATIONS[v.accessoryObligations].short}
+          {v.accessoryObligations === "VerifiedCompliant" && v.accessoryObligationsEvidence ? ` — ${v.accessoryObligationsEvidence}` : ""}
+        </Item>
         <Item label="Benefícios" className="sm:col-span-2 lg:col-span-3">{v.benefits.join("; ") || "—"}</Item>
       </dl>
     </SectionCard>
@@ -157,12 +152,22 @@ function VersionForm({ profile }: Readonly<{ profile: TaxProfileDto }>) {
         <Field id="tp-special" label="Regimes especiais" hint="Separe por vírgula. Deixe vazio se não houver." className="sm:col-span-2">
           <Input id="tp-special" {...text("specialRegimes")} />
         </Field>
-        <Field id="tp-comp" label="Entrega as obrigações acessórias?" hint="Em 2026 quem entrega fica dispensado de recolher a CBS/IBS de teste." className="sm:col-span-2">
-          <Select value={draft.compliance} onValueChange={(v) => setDraft({ ...draft, compliance: v as Compliance })}>
+        <Field
+          id="tp-comp"
+          label="Obrigações acessórias do IBS/CBS"
+          hint="Declarar não é verificar: só o cumprimento verificado conta para regras que dependem dele. Quais documentos comprovam ainda depende de revisão profissional."
+          className="sm:col-span-2"
+        >
+          <Select value={draft.compliance} onValueChange={(v) => setDraft({ ...draft, compliance: v as AccessoryObligationsStatus })}>
             <SelectTrigger id="tp-comp"><SelectValue /></SelectTrigger>
-            <SelectContent>{COMPLIANCE.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+            <SelectContent>{COMPLIANCE_OPTIONS.map(([value, l]) => <SelectItem key={value} value={value}>{l.label}</SelectItem>)}</SelectContent>
           </Select>
         </Field>
+        {draft.compliance === "VerifiedCompliant" && (
+          <Field id="tp-comp-evidence" label="O que foi conferido" hint="Ex.: recibos de entrega das declarações do período." className="sm:col-span-2 lg:col-span-4">
+            <Input id="tp-comp-evidence" maxLength={1000} {...text("complianceEvidence")} />
+          </Field>
+        )}
         <Field id="tp-benefits" label="Benefícios fiscais" hint="Um por linha." className="sm:col-span-2 lg:col-span-4">
           <Textarea id="tp-benefits" rows={2} {...text("benefits")} />
         </Field>
