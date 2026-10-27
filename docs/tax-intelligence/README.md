@@ -8,6 +8,7 @@ Domínio tributário próprio do ORKEN. Os módulos operacionais (vendas, compra
 | [rule-engine.md](rule-engine.md) | Vocabulário das regras, avaliação, versionamento temporal, como criar e testar uma regra |
 | [audit-model.md](audit-model.md) | Hashes, reprodução de cálculo histórico, trilha de auditoria, dossiê de decisão |
 | [legal-sources.md](legal-sources.md) | Fontes jurídicas usadas, o que foi conferido e como adicionar uma fonte |
+| [supported-operations.md](supported-operations.md) | Matriz de operações suportadas pela V1 (fail closed) |
 | [roadmap.md](roadmap.md) | Limitações atuais e próximos passos |
 | [adr-0001-versioned-isolated-tax-rules.md](adr-0001-versioned-isolated-tax-rules.md) | Decisão: regras tributárias versionadas e isoladas dos domínios operacionais |
 | [adr-0002-engine-versioning-and-review.md](adr-0002-engine-versioning-and-review.md) | Decisão: engine e forma canônica versionadas; texto conferido ≠ revisão profissional |
@@ -18,7 +19,11 @@ Domínio tributário próprio do ORKEN. Os módulos operacionais (vendas, compra
 - **Catálogo de regras versionado** (plataforma), com fontes jurídicas literais conferidas no texto oficial. Uma versão ativa nunca é editada.
 - **Engine determinística e versionada** (`orken-tax-engine/1.0.0`, forma canônica `orken-canonical/1`, congeladas): mesmo input + mesmas versões de regra = mesmo resultado, byte a byte. Cada cálculo guarda input, hashes, versões usadas e o rastro de cada regra.
 - **Cálculo oficial idempotente e verificável** (`POST /api/tax/calculations/{id}/verify` reexecuta **com a engine exata do cálculo** e compara o hash; se ela não estiver disponível, diz que não pode reproduzir).
-- **Revisão profissional separada da conferência de texto:** fontes têm o texto conferido; cada versão de regra tem a sua revisão tributária (todas `Pending` no catálogo V1).
+- **Revisão profissional separada da conferência de texto.** As fontes têm o texto conferido. Cada versão de regra tem a sua revisão tributária, com escopo, validade, premissas e ressalvas; todas estão `Pending` no catálogo V1.
+- **Recorte explícito (fail closed).** Operação fora do que a V1 modela não é calculada: o sistema recusa e diz por quê.
+- **Obrigações acessórias por período e escopo**, com estados de regularização e PNCT. Só a verificação conta para as regras.
+- **Cenário e execução separados.** A aprovação do cenário não declara documento futuro; a execução é verificada depois, com o documento fiscal.
+- **Créditos em ciclo de vida.** Um crédito potencial não é elegível, apropriado nem disponível.
 - **Simulação** de cenários (regime, data, linhas, descontos, hipóteses de alíquota, crédito) que **não grava nada oficial**.
 - **Oportunidades** com risco, confiança, requisitos, evidências, guardrails contra estruturas proibidas e workflow Identificada → Em análise → Aprovada/Rejeitada/Bloqueada. Nada é aplicado automaticamente.
 - **Dossiê de decisão** imutável na aprovação.

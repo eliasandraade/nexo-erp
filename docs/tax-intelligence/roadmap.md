@@ -11,26 +11,34 @@
 | Créditos | Ledger gerencial; elegibilidade declarada, não decidida; sem ligação automática com compras | depende de quem lança |
 | Split payment | Nenhum provedor integrado; retenção real registrada à mão | conciliação manual |
 | Evidências | Só descrição, referência e hash; nenhum arquivo | anexar documentos fica fora do sistema |
-| Segregação de funções | Quem fez a análise sozinho só aprova com justificativa registrada (dossiê e auditoria); configurável (`TaxIntelligence:Policy:RequireSeparateApprover`, ligado por padrão) | a justificativa é texto livre; não há segundo aprovador obrigatório |
+| Maker-checker | Por risco: baixo = auto-aprovação com justificativa; médio = outro revisor identificado; alto = aprovador independente. Acima de `MaterialityThreshold`, o aprovador independente é obrigatório. A justificativa nunca substitui a independência | o valor de materialidade é decisão do dono (sem valor configurado, não há regra de materialidade) |
 | Regras por tenant | Não há regras específicas de um tenant (benefício próprio, regime especial) | benefícios só como texto no perfil |
 | Engine | Registry por versão; V1 congelada. Uma V2 com outra forma canônica precisa decidir como ler o JSON de regras gravado | documentado em rule-engine.md |
 | Revisão jurídica | Catálogo e textos não passaram por profissional tributário; todo o catálogo V1 está `ProfessionalReview = Pending` | com a política de produção, **nenhuma oportunidade pode ser aprovada** até a revisão |
-| Obrigações acessórias | Estados `Unknown/DeclaredCompliant/VerifiedCompliant/NonCompliant`; só `VerifiedCompliant` conta para regras; a evidência é texto livre | quais documentos comprovam o cumprimento depende do profissional |
-| Nota da dispensa de 2026 | O texto da nota `IBSCBS.NOTE.2026-WAIVER` v1 diz "Perfil declara…", mas hoje só dispara com cumprimento **verificado** | trocar o texto exige nova versão da regra — a revisar com o profissional |
+| Obrigações acessórias | Avaliação histórica por período e escopo (`Unknown`, `Declared`, `Verified`, `InconsistencyIdentified`, `UnderRemediation`, `RemediationVerified`, `NonCompliant`, `NotApplicable`). Só `Verified` conta para regras. A participação no PNCT é registrada, mas não equivale a regularidade | quais documentos comprovam o cumprimento depende do profissional |
+| Recorte da V1 | Matriz fail-closed ([supported-operations.md](supported-operations.md)): 2026, fornecimento único, classificação suficiente, sem MEI/SIMEI nem Simples acima do sublimite | vendas do PDV recusadas até o cadastro do produto ter cClassTrib |
+| Evidências | Tipadas, vinculadas ao requisito e revisadas (aceita/recusada). Referência externa + hash; **nenhum arquivo** é guardado | upload privado é o próximo passo (storage com prefixo do tenant e URL assinada) |
+| Créditos | Ciclo de vida: potencial → requisitos em revisão → a apropriar → apropriado/usado/bloqueado/estornado/vencido; descartado. Potencial nunca é disponível | elegibilidade não é decidida pelo sistema |
+| Split payment | Expectativa gerencial; só uma liquidação registrada muda a conciliação | sem provedor integrado |
+| Retenção | Política pendente de definição legal; nenhum descarte automático; exportação pela API | ver [audit-model.md](audit-model.md#retenção) |
 | Produto | Empacotamento comercial (módulo pago? plano?) não decidido | decisão do dono |
 
 ## Política de produção
 
-`TaxIntelligence:Policy:RequireApprovedRulesForDecisions` — ligada por padrão fora de Development/Testing: uma oportunidade só é aprovada se **todas** as versões de regra que casaram no cálculo tiverem `ProfessionalReview = Approved` (senão 422 `tax_professional_review_pending`, nada é gravado). Em Development e Testing o padrão é desligado para o fluxo ser exercitável antes da revisão; configuração explícita sempre vence. Um teste de integração liga a política e prova a recusa. `RequireSeparateApprover = true` em todos os ambientes.
+`TaxIntelligence:Policy:RequireApprovedRulesForDecisions` — ligada por padrão fora de Development/Testing: uma oportunidade só é aprovada se **todas** as versões de regra que casaram no cálculo tiverem `ProfessionalReview = Approved` ou `ApprovedWithCaveats`, dentro da validade da revisão (senão 422 `tax_professional_review_pending`, nada é gravado). Em Development e Testing o padrão é desligado para o fluxo ser exercitável antes da revisão; configuração explícita sempre vence. Um teste de integração liga a política e prova a recusa. O maker-checker (`LowRisk`, `MediumRisk`, `HighRisk`, `MaterialityThreshold`) vale em todos os ambientes.
 
 ## O que depende do profissional tributário
 
-1. Aprovar, pedir ajuste ou rejeitar cada versão do catálogo V1 (todas `Pending`).
-2. Dizer quais documentos comprovam o cumprimento das obrigações acessórias de 2026 (o que justifica `VerifiedCompliant`).
+1. Registrar formalmente a revisão recebida (o "apto após ajustes") nas versões do catálogo, pelo endpoint de revisão profissional, com revisor, identificação, escopo, validade e ressalvas. O resultado será, no máximo, `ReviewReceived` ou `ChangesRequired`, conforme a regra. Nada foi marcado automaticamente.
+1. Aprovar, pedir ajuste ou rejeitar cada versão do catálogo V1 (todas `Pending`), incluindo `IBSCBS.NOTE.2026-WAIVER` v2.
+1. Definir quais códigos cClassTrib ficam dentro do recorte de regime geral da V1.
+1. Dizer como MEI/SIMEI, Simples acima do sublimite e a opção pelo regime regular do IBS/CBS (Resoluções CGSN 186 e 194/2026) devem ser tratados.
+1. Ler o Ato Conjunto RFB/CGIBS nº 5/2026 (PNCT) e dizer o que uma regularização verificada significa para as regras.
+2. Dizer quais documentos comprovam o cumprimento das obrigações acessórias de 2026 (o que justifica `Verified` numa avaliação).
 3. Validar os requisitos e as ressalvas do detector de desconto incondicional e se, em algum período, a redução calculada é economia.
 4. Revisar as decisões de interpretação listadas em [legal-sources.md](legal-sources.md#decisões-de-interpretação-para-revisão-profissional).
 5. Ler o inventário de fontes oficiais (LC 227/2026, Decreto 12.955/2026, Atos Conjuntos e Técnicos) e dizer o que muda no catálogo.
-6. Revisar o texto da nota da dispensa de 2026 (nova versão da regra, se for o caso).
+6. Revisar o texto da nota da dispensa de 2026 v2.
 7. Revisar os textos das telas.
 
 ## Próximos passos

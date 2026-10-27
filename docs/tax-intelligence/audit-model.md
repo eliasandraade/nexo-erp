@@ -61,15 +61,31 @@ Nenhuma tabela do módulo tem exclusão por API. FKs de cálculos para versões 
 
 Eventos vão para a tabela existente `audit_records` via `IAuditWriter`, na mesma transação da mudança (gravados juntos ou nenhum dos dois). Cada evento traz: quem (`actor_id`, `actor_name`, tipo `user` ou `platform`), quando, tenant, tipo e id da entidade (`Tax*`), descrição legível e metadados com `storeId`, `requestId` (o `X-Request-Id` da requisição, que liga ao log) e detalhes (antes/depois quando há mudança de estado).
 
-Ações (`TaxAuditActions`): `tax_profile_version_created`, `tax_calculation_created`, `tax_simulation_created`, `tax_opportunity_identified`, `tax_opportunity_review_started`, `tax_opportunity_requirement_answered`, `tax_opportunity_evidence_added`, `tax_opportunity_blocked`, `tax_opportunity_rejected`, `tax_opportunity_approved`, `tax_credit_registered`, `tax_credit_movement`, `tax_split_expectations_created`, `tax_split_settlement_recorded`, `tax_split_settlement_reversed`, `tax_legal_source_created`, `tax_legal_source_verified` (texto conferido), `tax_rule_created`, `tax_rule_version_created`, `tax_rule_version_status_changed`, `tax_rule_version_professional_review`.
+Ações (`TaxAuditActions`): `tax_compliance_assessment_recorded`, `tax_calculation_refused` (fora do recorte da V1, com os motivos), `tax_opportunity_evidence_reviewed`, `tax_opportunity_execution_verified`, `tax_credit_stage_changed`, `tax_profile_version_created`, `tax_calculation_created`, `tax_simulation_created`, `tax_opportunity_identified`, `tax_opportunity_review_started`, `tax_opportunity_requirement_answered`, `tax_opportunity_evidence_added`, `tax_opportunity_blocked`, `tax_opportunity_rejected`, `tax_opportunity_approved`, `tax_credit_registered`, `tax_credit_movement`, `tax_split_expectations_created`, `tax_split_settlement_recorded`, `tax_split_settlement_reversed`, `tax_legal_source_created`, `tax_legal_source_verified` (texto conferido), `tax_rule_created`, `tax_rule_version_created`, `tax_rule_version_status_changed`, `tax_rule_version_professional_review`.
 
 A aprovação registra também se houve **auto-aprovação** (quem aprovou fez a análise sozinho), a justificativa e as regras com revisão profissional pendente.
 
 ## Dossiê de decisão
 
-Na aprovação, `TaxDecision.dossier` congela:
+A oportunidade tem **dois marcos**, cada um com o seu registro selado:
+
+1. **Aprovação do cenário** (`TaxDecision`, `kind = scenario-approval`). Diz que a estrutura proposta é aceitável **antes** da operação. Pode se apoiar em proposta, pedido, contrato, aditivo ou minuta. Nunca declara que um documento fiscal futuro já existe: o dossiê registra `fiscalDocumentEvidence.status = pending-execution-verification` e `executionVerification.status = pending`.
+2. **Verificação da execução** (`TaxExecutionVerification`, `kind = execution-verification`). Depois da operação, confirma se ela aconteceu como aprovada:
+   - documento fiscal autorizado, protocolo e valores finais;
+   - requisitos da fase de execução, com a evidência exigida (`FiscalDocument`).
+
+   O resultado é `Verified` ou `Diverged` (este com o que divergiu). O dossiê da execução carrega o hash do dossiê da decisão, e a decisão nunca é reescrita.
+
+Na aprovação do cenário, `TaxDecision.dossier` congela:
 
 - estratégia e dados da oportunidade (tipo, natureza do impacto, impacto estimado, confiança, ressalvas, detector);
+- contribuinte (razão social, CNPJ, UF, município), estabelecimento (loja e versão do perfil), contraparte (regime, UF);
+- datas relevantes (padrão temporal, data da operação, do documento, do fornecimento, do pagamento, competência, execução);
+- classificação dos itens (NCM, NBS, cClassTrib, tratamento especial);
+- avaliação das obrigações acessórias em vigor, com período, escopo, quem avaliou, limitações e participação no PNCT;
+- evidência comercial (tipada e vinculada ao requisito, com status de revisão);
+- revisão profissional de cada regra (status, revisor, identificação profissional, escopo, validade, premissas, ressalvas);
+- pendências (execução, revisão profissional, obrigações sem verificação);
 - fatos: id do cálculo, data, hashes, versão da engine e o input completo;
 - cenário atual e cenário proposto (com os outputs da engine);
 - regras aplicadas (chave, versão, id, hash do conteúdo, fontes);
@@ -78,7 +94,14 @@ Na aprovação, `TaxDecision.dossier` congela:
 - requisitos como foram respondidos (quem, quando, nota);
 - evidências (descrição, referência do documento, hash, quem anexou);
 - risco, reconhecimento de risco alto, quem iniciou a análise, aprovador, data;
-- segregação de funções: se era exigida, se foi auto-aprovação e a justificativa;
+- maker-checker: o que a política exigia pelo risco e pela materialidade, se foi auto-aprovação e a justificativa;
 - versão da engine que produziu os cenários.
 
-`dossier_hash` = SHA-256 do texto do dossiê, na forma canônica da engine que produziu a oportunidade. A aprovação **não executa nada**: não muda venda, preço, nota, livro ou crédito. Executar a estratégia é decisão do negócio, fora do sistema.
+`dossier_hash` = SHA-256 do texto do dossiê, na forma canônica da engine que produziu a oportunidade. **O hash e a versão demonstram a integridade do registro — que ele não foi alterado — e não a veracidade material dos fatos declarados.** O próprio dossiê traz esse aviso (`integrityNotice`).
+
+## Retenção
+
+- **Política de retenção pendente de definição legal.** O prazo de guarda dos registros tributários (cálculos, dossiês, evidências, avaliações, razão de créditos) depende de definição jurídica e não foi presumido.
+- **Nenhum descarte automático.** Não existe job, rotina ou endpoint que apague dossiês ou registros tributários. Não há purge genérico de 5 anos. Um teste de regressão garante que nenhum código do módulo remove decisões, verificações de execução, razão de créditos, cálculos ou avaliações.
+- **Legal hold (preparação).** Como nada é apagado, todo registro já fica preservado na prática. Uma marcação explícita de legal hold será necessária quando houver política de descarte, e precisa vir antes de qualquer descarte.
+- **Exportação.** Dossiês, verificações de execução e cálculos continuam legíveis pela API (`GET /api/tax/decisions/{id}`, `GET /api/tax/opportunities/{id}`, `GET /api/tax/calculations/{id}`) e direto do banco. A aprovação **não executa nada**: não muda venda, preço, nota, livro ou crédito. Executar a estratégia é decisão do negócio, fora do sistema.

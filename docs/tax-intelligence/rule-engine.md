@@ -48,7 +48,13 @@ Cada regra examinada vira um `TaxRuleExecution`: chave, versão, hash do conteú
 - `TaxRule` = identidade estável (chave única, nunca reutilizada).
 - `TaxRuleVersion` = conteúdo (condições, resultado, vigência, prioridade) **fixo na criação**, com `content_hash` (SHA-256 da forma canônica). Depois disso só o status anda: `Draft/PendingRegulation/Unverified → Active → Superseded/Revoked`. Nada volta.
 - Ativar uma versão exige que **todas** as suas fontes tenham o texto conferido (`TextVerification = Verified`).
-- **Status técnico ≠ revisão profissional.** `Status` diz se a engine aplica a versão; `ProfessionalReview` (`Pending/Approved/ChangesRequired/Rejected`, com quem, quando e notas) diz se um profissional tributário aprovou a interpretação. Ativar não aprova; revisar não ativa. Todo o catálogo V1 está `Pending`. Registro: `POST /api/platform/tax/rule-versions/{id}/professional-review` (plataforma, auditado; pedir ajuste ou rejeitar exige nota).
+- **Status técnico ≠ revisão profissional.** `Status` diz se a engine aplica a versão. `ProfessionalReview` diz se um profissional tributário aprovou a interpretação. Valores: `Pending`, `ReviewReceived`, `Approved`, `ApprovedWithCaveats`, `ChangesRequired`, `Rejected`. Cada revisão registra:
+  - revisor e identificação profissional (opcional);
+  - data;
+  - escopo e validade (de/até);
+  - premissas, ressalvas e notas.
+
+  Uma revisão recebida (`ReviewReceived`) **não** é aprovação. Só `Approved` e `ApprovedWithCaveats`, dentro da validade e do escopo, sustentam decisões sob a política de produção. Ativar não aprova; revisar não ativa. Todo o catálogo V1 está `Pending`. Registro: `POST /api/platform/tax/rule-versions/{id}/professional-review` (plataforma, auditado; pedir ajuste ou rejeitar exige nota).
 - Versões ativas mais antigas totalmente cobertas pela nova viram `Superseded` — continuam no banco e podem ser recarregadas para reproduzir cálculos antigos.
 - Diferença entre os casos pedidos:
 
@@ -60,6 +66,18 @@ Cada regra examinada vira um `TaxRuleExecution`: chave, versão, hash do conteú
 | Hipótese de simulação | regra sintética `HYPOTHESIS.*`, só em memória, rotulada na saída (`isHypothesis`) |
 | Oportunidade | não é regra: proposta de detector, revisada por pessoas |
 | Regra ainda não regulamentada | versão `PendingRegulation` (ex.: CBS 2027–2033, que depende de resolução do Senado) |
+
+## Nota da dispensa de 2026 (v2)
+
+`IBSCBS.NOTE.2026-WAIVER` v1 dizia "Perfil declara obrigações acessórias em dia", mas a regra só dispara com obrigações **verificadas**.
+
+- A v2 (migration `TaxIntelligenceReviewDelta`, linhas literais) muda **só o texto**. Condições, vigência e prioridade são as mesmas da v1.
+- A v1 não foi editada. Só o status dela passou a `Superseded`, então os cálculos feitos com ela continuam reproduzíveis.
+- A v2 nasce com `ProfessionalReview = Pending`.
+
+## Matriz de operações suportadas
+
+Ver [supported-operations.md](supported-operations.md). Fora do recorte, nada é calculado.
 
 ## Como criar uma regra nova
 

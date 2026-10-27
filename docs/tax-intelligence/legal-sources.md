@@ -46,10 +46,48 @@ Fontes primárias localizadas em sites oficiais em 27/10/2026. **Nenhuma delas f
 | LC nº 214/2025 — texto compilado | <https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm> | trechos do catálogo V1 conferidos literalmente em 26/10/2026; interpretação **a revisar profissionalmente** |
 | LC nº 227, de 13/01/2026 | <https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp227.htm> (republicação e retificação em <https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/ret/lcp227-26-rep.doc> e <https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/ret/lcp227-26-ret.doc>) | não lida; alterações na LC 214 só entram pelo texto compilado acima; **a revisar profissionalmente** |
 | Decreto nº 12.955, de 29/04/2026 (regulamento da CBS) | <https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/decreto/d12955.htm> | não lido; alterado pelo Decreto nº 13.075/2026 (<https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/decreto/d13075.htm>); **a revisar profissionalmente** |
-| Atos Conjuntos RFB/CGIBS de 2026 | consulta oficial: <https://normas.receita.fazenda.gov.br/> e <https://www.cgibs.gov.br/>; ex.: Ato Conjunto nº 4, de 30/07/2026 (<https://www.cgibs.gov.br/upload/arquivos/202607/31091735-20260730-16h30-ato-conjunto-rfb-cgibs-na-c2-ba-4-260731-090909.pdf>) | não lidos; **a revisar profissionalmente** — em especial o que diz respeito às obrigações acessórias de 2026 (condição do art. 348, § 1º) |
-| Atos Técnicos Conjuntos | <https://www.cgibs.gov.br/atos-tecnicos-conjuntos> | não lidos; especificações técnicas (documentos fiscais, declarações); **a revisar profissionalmente** |
+| Atos Conjuntos RFB/CGIBS | índice oficial: <https://www.cgibs.gov.br/atos-conjuntos> (também <https://normas.receita.fazenda.gov.br/>) | ver a tabela abaixo |
+| Atos Técnicos Conjuntos RFB/CGIBS | índice oficial: <https://www.cgibs.gov.br/atos-tecnicos-conjuntos> | ver a tabela abaixo |
+| Resoluções do CGSN pertinentes a 2026 | Resolução CGSN nº 186/2026 (prazos e opção pelo regime regular do IBS/CBS para 2027) e nº 194/2026 (altera esses prazos) — consulta em <https://normas.receita.fazenda.gov.br/>; notícias oficiais: <https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/abril/cgsn-define-prazos-de-opcao-pelo-simples-nacional-e-pelo-regime-regular-do-ibs-e-da-cbs-para-2027> e <https://www.gov.br/receitafederal/pt-br/assuntos/noticias/2026/agosto/cgsn-atualiza-regras-do-simples-nacional-para-adequacao-a-reforma-tributaria-do-consumo> | não lidas; a V1 recusa MEI/SIMEI e Simples acima do sublimite (`RequiresProfessionalReview`) até a leitura profissional; **a revisar profissionalmente** |
+
+### Atos Conjuntos RFB/CGIBS (metadados conferidos no índice oficial em 27/10/2026)
+
+| Ato | Data | Publicação informada no índice | Arquivo oficial | Situação no Orken |
+|---|---|---|---|---|
+| nº 1 | 22/12/2025 | DOU de 23/12/2025 | <https://www.cgibs.gov.br/upload/arquivos/202609/09104120-ato-conjunto-rfb-cgibs-n-1-de-22-de-dezembro-de-2025.pdf> | não lido; possivelmente relevante às obrigações acessórias de 2026 — **a revisar profissionalmente** |
+| nº 2 | 27/05/2026 | site do CGIBS em 03/06/2026 | <https://www.cgibs.gov.br/upload/arquivos/202606/03111600-ato-conjunto-rfb-e-cibs-2827-05-29-assinado.pdf> | não lido (documentação técnica do split payment, segundo a notícia oficial). Manual e Swagger **não** são transação liquidada: o split segue gerencial |
+| nº 3 | 19/06/2026 | site do CGIBS em 22/06/2026 | <https://www.cgibs.gov.br/upload/arquivos/202606/22083423-ato-conjunto-nro-3-dere.pdf> | não lido — **a revisar profissionalmente** |
+| nº 4 | 30/07/2026 | site do CGIBS em 31/07/2026 | <https://www.cgibs.gov.br/upload/arquivos/202607/31091735-20260730-16h30-ato-conjunto-rfb-cgibs-na-c2-ba-4-260731-090909.pdf> | não lido — **a revisar profissionalmente** |
+| nº 5 | 12/08/2026 | site do CGIBS em 13/08/2026 | <https://www.cgibs.gov.br/upload/arquivos/202608/13065932-ato-conjunto-rfb-cgibs-n-c2-ba-5-2026-regulamenta-o-programa-nacional-de-conformidade-tributaria-docx-assinado.pdf> | **vinculado ao modelo de compliance como fonte relevante** (PNCT): a participação é registrada na avaliação das obrigações acessórias, nunca equivale a regularidade integral e não gera benefício automático. Conteúdo não lido — **a revisar profissionalmente** |
+| nº 6 | 28/08/2026 | site do CGIBS em 28/08/2026 | <https://www.cgibs.gov.br/upload/arquivos/202608/28193542-ade-rfb-cgibs-n-6-28-8-2026-com-paragrafo-unico-assinado.pdf> | não lido — **a revisar profissionalmente** |
+
+### Atos Técnicos Conjuntos RFB/CGIBS (índice oficial em 27/10/2026)
+
+O índice <https://www.cgibs.gov.br/atos-tecnicos-conjuntos> lista os nºs 1 a 9 de 2026:
+
+- nº 1, de 31/07;
+- nº 2, de 21/08;
+- nº 3, de 02/09;
+- nº 4, de 28/08;
+- nº 5, de 22/09;
+- nº 6, de 28/09;
+- nº 7, de 28/09;
+- nº 8, de 29/09;
+- nº 9, de 20/10.
+
+São especificações técnicas, como documentos fiscais eletrônicos e declarações. Nenhum foi lido nem usado por regra. Os de documentos fiscais tendem a importar para saber quais evidências comprovam a execução, mas essa avaliação cabe ao profissional (**a revisar profissionalmente**).
+
+Nenhuma fonte inventariada virou regra `Active`.
 
 Conferir sempre a versão vigente no Diário Oficial da União antes de usar qualquer uma.
+
+## Afirmações rejeitadas por conflito com a fonte oficial
+
+A revisão recebida trazia três afirmações que não foram implementadas. Testes de regressão (`TaxReviewDeltaTests`) impedem que voltem:
+
+1. **"IBS de 2026 compensa ICMS/ISS."** Rejeitada. O art. 348, I e II, trata da compensação do valor recolhido de IBS/CBS em 2026 com as contribuições do art. 195, I, *b*, e IV, e com o PIS do art. 239 — ou, sem débitos suficientes, com outro tributo federal ou por ressarcimento. A nota `IBSCBS.NOTE.2026-COMPENSATION` segue o texto literal. Nenhum texto do módulo diz que IBS/CBS de 2026 compensa ICMS ou ISS.
+2. **"cClassInt."** Rejeitada. O código de classificação do IBS/CBS usado no domínio é o **cClassTrib**; `cClassInt` não existe no código.
+3. **"Art. 48 disciplina de forma genérica o uso ou consumo pessoal."** Rejeitada. O trecho conferido do art. 47 remete ao **art. 57** para o uso ou consumo pessoal. Nenhuma regra ou texto do módulo atribui essa disciplina ao art. 48, e nenhuma regra de crédito foi criada sem a leitura dos dispositivos oficiais.
 
 ## Como adicionar uma fonte
 
