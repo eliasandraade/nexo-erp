@@ -439,7 +439,8 @@ export function toMovementRequest(m: MovementDraft): CreditMovementRequest {
   const use = m.movement === "Use";
   return {
     movement: m.movement,
-    amount: ["Expire", "StartRequirementsReview", "Discard"].includes(m.movement) && m.amount.trim() === "" ? null : parseDecimal(m.amount),
+    // Expiry always writes off the whole available balance: it never carries an amount.
+    amount: m.movement === "Expire" || (["StartRequirementsReview", "Discard"].includes(m.movement) && m.amount.trim() === "") ? null : parseDecimal(m.amount),
     reason: m.reason.trim() === "" ? null : m.reason.trim(),
     obligationTax: use ? m.obligationTax : null,
     obligationReference: use ? m.obligationReference.trim() : null,

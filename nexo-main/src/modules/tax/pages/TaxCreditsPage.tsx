@@ -234,8 +234,13 @@ function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | n
               <SelectContent>{(Object.keys(CREDIT_MOVEMENTS) as CreditMovement[]).map((k) => <SelectItem key={k} value={k}>{CREDIT_MOVEMENTS[k]}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
-          {m.movement !== "StartRequirementsReview" && m.movement !== "Discard" && (
-            <Field id="mv-amount" label={m.movement === "Expire" ? "Valor (vazio = todo o saldo)" : "Valor (R$)"}>
+          {m.movement === "Expire" && credit && (
+            <p className="text-xs text-warning">
+              O vencimento dá baixa em todo o saldo disponível ({formatCurrency(credit.balance.available)}). Não há vencimento parcial.
+            </p>
+          )}
+          {!["StartRequirementsReview", "Discard", "Expire"].includes(m.movement) && (
+            <Field id="mv-amount" label="Valor (R$)">
               <Input id="mv-amount" inputMode="decimal" value={m.amount} onChange={(e) => setM({ ...m, amount: e.target.value })} />
             </Field>
           )}

@@ -611,6 +611,10 @@ public class TaxIntelligenceTests
         var future = await Post(admin, $"/api/tax/credits/{id}/movements",
             new { movement = "Use", amount = 1m, obligationTax = "Cbs", obligationReference = "obr-fut", onDate = "2099-01-01" });
         (await Json(future, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString().Should().Be("tax_credit_future_date");
+        var partial = await Post(admin, $"/api/tax/credits/{id}/movements", new { movement = "Expire", amount = 2m });
+        (await Json(partial, HttpStatusCode.UnprocessableEntity)).GetProperty("code").GetString()
+            .Should().Be("tax_credit_expire_whole_balance", "a partial amount is never silently turned into a full write-off");
+        (await Json(await admin.GetAsync($"/api/tax/credits/{id}"))).GetProperty("balance").GetProperty("available").GetDecimal().Should().Be(10m);
         var expired = await Json(await Post(admin, $"/api/tax/credits/{id}/movements", new { movement = "Expire" }));
         expired.GetProperty("balance").GetProperty("available").GetDecimal().Should().Be(0m, "expiry is dated by the server, after the term");
     }
@@ -947,6 +951,27 @@ public class TaxIntelligenceTests
             status, periodFrom = from, periodTo = to, scope, obligationsChecked = checkedList ?? Array.Empty<string>(), evidence,
             assessedBy = "Contabilidade de teste", assessedAt = (string?)null, notes, limitations = "Amostra de documentos", pnctParticipation = pnct,
         });
+
+    [Fact]
+    public async Task A_scenario_on_another_date_uses_the_compliance_of_that_date()
+    {
+        var admin = await AdminWithProfileAsync();
+        await Json(await AssessAsync(admin, "Verified", "2026-09-01", "2026-09-30", checkedList: ["NF-e com IBS/CBS"], evidence: "Relatório de conferência 09/2026"));
+
+        var sim = await Json(await Post(admin, "/api/tax/simulations", new
+        {
+            name = Unique("Mudança de data"),
+            baseline = Operation(Unique("Setembro"), date: "2026-09-15"),
+            scenarios = new object[] { new { name = "Outubro", referenceDate = "2026-10-15", convertConditionalDiscounts = false, assumeCreditable = false } },
+        }));
+
+        var scenarios = sim.GetProperty("scenarios").EnumerateArray().ToList();
+        static IEnumerable<string?> Notes(JsonElement s) => s.GetProperty("output").GetProperty("notes").EnumerateArray().Select(n => n.GetProperty("code").GetString());
+        Notes(scenarios[0]).Should().Contain(TaxNoteCodes.Waiver2026, "September was verified");
+        scenarios[1].GetProperty("input").GetProperty("profile").GetProperty("accessoryObligationsCompliant").ValueKind
+            .Should().Be(JsonValueKind.Null, "no assessment covers October — September's never extends to it");
+        Notes(scenarios[1]).Should().NotContain(TaxNoteCodes.Waiver2026);
+    }
 
     [Fact]
     public async Task Compliance_counts_only_when_verified_for_the_period_and_scope()

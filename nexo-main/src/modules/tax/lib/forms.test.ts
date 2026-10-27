@@ -155,6 +155,8 @@ describe("credits", () => {
     expect(movementProblems({ ...base, movement: "Expire", amount: "" })).toEqual([]);
     expect(toMovementRequest({ ...base, obligationReference: "10/2026" })).toEqual({ movement: "Use", amount: 5, reason: null, obligationTax: "Cbs", obligationReference: "10/2026", onDate: null });
     expect(toMovementRequest({ ...base, movement: "Expire", amount: "" })).toMatchObject({ amount: null, obligationTax: null, obligationReference: null });
+    // Expiry writes off the whole balance: a leftover amount from another movement is never sent.
+    expect(toMovementRequest({ ...base, movement: "Expire", amount: "20" })).toMatchObject({ amount: null });
     expect(movementProblems({ ...base, movement: "StartRequirementsReview", amount: "" })).toEqual([]);
     expect(movementProblems({ ...base, movement: "ConfirmToBeAppropriated", amount: "5" })).toEqual(["Diga a base da confirmação dos requisitos."]);
     expect(movementProblems({ ...base, movement: "Discard", amount: "" })).toEqual(["Diga o motivo."]);

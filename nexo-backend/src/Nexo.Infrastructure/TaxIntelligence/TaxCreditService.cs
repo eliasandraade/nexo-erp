@@ -96,6 +96,9 @@ public sealed class TaxCreditService
 
         var before = credit.Balance();
         var stageBefore = credit.Stage;
+        // Expiry always writes off the whole available balance — a partial amount is never silently ignored.
+        if (r.Movement == TaxCreditMovement.Expire && r.Amount is not null)
+            throw new DomainException("O vencimento dá baixa em todo o saldo disponível; não informe valor.", "tax_credit_expire_whole_balance");
         var amount = r.Amount ?? 0m;
         var reason = r.Reason?.Trim() ?? string.Empty;
         if (r.Movement is TaxCreditMovement.StartRequirementsReview or TaxCreditMovement.Discard)

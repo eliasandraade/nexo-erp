@@ -8,7 +8,9 @@ public sealed record RateHypothesis(TaxType Tax, decimal RatePercent, string Lab
 
 /// <summary>
 /// What a scenario changes in the baseline. Anything left null keeps the baseline value. Lines, when
-/// given, replace the baseline lines (another supplier, another price, another discount).
+/// given, replace the baseline lines (another supplier, another price, another discount). A
+/// <see cref="Profile"/>, when given, replaces the baseline profile — the caller sets it when the
+/// scenario moves to a date whose compliance is not the baseline's.
 /// </summary>
 public sealed record TaxScenario(
     string Name,
@@ -19,7 +21,8 @@ public sealed record TaxScenario(
     IReadOnlyList<TaxEngineLine>? Lines = null,
     bool ConvertConditionalDiscounts = false,
     IReadOnlyList<RateHypothesis>? RateHypotheses = null,
-    bool AssumeCreditable = false);
+    bool AssumeCreditable = false,
+    TaxEngineProfile? Profile = null);
 
 /// <summary>
 /// The outcome of one scenario. <see cref="Charged"/> is what changes hands (price after discounts,
@@ -72,10 +75,11 @@ public static class TaxSimulator
         var lines = (s.Lines ?? baseline.Lines).Select(l => s.ConvertConditionalDiscounts
             ? l with { UnconditionalDiscount = l.UnconditionalDiscount + l.ConditionalDiscount, ConditionalDiscount = 0m }
             : l).ToList();
+        var profile = s.Profile ?? baseline.Profile;
         return baseline with
         {
             ReferenceDate = s.ReferenceDate ?? baseline.ReferenceDate,
-            Profile = s.Regime is null ? baseline.Profile : baseline.Profile with { Regime = s.Regime.Value },
+            Profile = s.Regime is null ? profile : profile with { Regime = s.Regime.Value },
             Direction = s.Direction ?? baseline.Direction,
             CounterpartyRegime = s.CounterpartyRegime ?? baseline.CounterpartyRegime,
             Lines = lines,

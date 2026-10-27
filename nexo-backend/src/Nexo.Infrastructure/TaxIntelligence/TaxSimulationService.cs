@@ -45,7 +45,18 @@ public sealed class TaxSimulationService
         var profile = await _profiles.GetInForceAsync(r.Baseline.OperationDate, ct);
         var compliance = await _compliance.InForceAsync(r.Baseline.OperationDate, ct);
         var baseline = TaxCalculationService.ToInput(r.Baseline, profile, compliance?.ForRules);
-        var scenarios = r.Scenarios.Select(ToScenario).ToList();
+        var scenarios = new List<TaxScenario>();
+        foreach (var s in r.Scenarios.Select(ToScenario))
+        {
+            // An assessment never extends past its period: a scenario on another date uses the
+            // compliance in force on that date (unknown when none covers it).
+            if (s.ReferenceDate is { } date && date != baseline.ReferenceDate)
+            {
+                var atDate = await _compliance.InForceAsync(date, ct);
+                scenarios.Add(s with { Profile = baseline.Profile with { AccessoryObligationsCompliant = atDate?.ForRules } });
+            }
+            else scenarios.Add(s);
+        }
         var engine = _engines.Current;
         var catalogue = await LoadCatalogueAsync(engine, baseline.ReferenceDate, scenarios, ct);
         var results = TaxSimulator.Compare(engine, baseline, scenarios, catalogue);
