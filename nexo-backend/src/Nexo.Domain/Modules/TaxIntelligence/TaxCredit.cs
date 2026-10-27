@@ -11,6 +11,9 @@ namespace Nexo.Domain.Modules.TaxIntelligence;
 /// </summary>
 public class TaxCredit : StoreEntity
 {
+    /// <summary>Error code of every refusal caused by an amount beyond what the balance allows.</summary>
+    public const string AmountErrorCode = "tax_credit_amount";
+
     private readonly List<TaxCreditLedgerEntry> _entries = [];
 
     private TaxCredit() { }   // EF Core
@@ -71,7 +74,7 @@ public class TaxCredit : StoreEntity
         if (SourceDocumentKey is null)
             throw new DomainException("Sem a chave do documento fiscal eletrônico o crédito não pode ser apropriado (LC 214/2025, art. 47, § 1º, II).", "tax_credit_document");
         if (amount > Balance().NotAppropriated)
-            throw new DomainException("O valor passa do que ainda pode ser apropriado.", "tax_credit_amount");
+            throw new DomainException("O valor passa do que ainda pode ser apropriado.", AmountErrorCode);
         return Append(TaxCreditEntryType.Appropriated, amount, null, reason, onDate, actorId, actorName);
     }
 
@@ -92,7 +95,7 @@ public class TaxCredit : StoreEntity
         if (_entries.Any(e => e.Type == TaxCreditEntryType.Used && e.ObligationReference == obligationReference.Trim()))
             throw new ConflictException("Este crédito já foi usado nesta obrigação.");
         if (amount > Balance().Available)
-            throw new DomainException("O valor passa do saldo disponível.", "tax_credit_amount");
+            throw new DomainException("O valor passa do saldo disponível.", AmountErrorCode);
         return Append(TaxCreditEntryType.Used, amount, obligationReference.Trim(), $"Usado na obrigação {obligationReference.Trim()}.", onDate, actorId, actorName);
     }
 
@@ -101,7 +104,7 @@ public class TaxCredit : StoreEntity
         Positive(amount);
         if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe por que o crédito está bloqueado.");
         if (amount > Balance().Available)
-            throw new DomainException("Só o saldo disponível pode ser bloqueado.", "tax_credit_amount");
+            throw new DomainException("Só o saldo disponível pode ser bloqueado.", AmountErrorCode);
         return Append(TaxCreditEntryType.Blocked, amount, null, reason, onDate, actorId, actorName);
     }
 
@@ -109,7 +112,7 @@ public class TaxCredit : StoreEntity
     {
         Positive(amount);
         if (amount > Balance().Blocked)
-            throw new DomainException("O valor passa do que está bloqueado.", "tax_credit_amount");
+            throw new DomainException("O valor passa do que está bloqueado.", AmountErrorCode);
         return Append(TaxCreditEntryType.Unblocked, amount, null, reason, onDate, actorId, actorName);
     }
 
@@ -118,7 +121,7 @@ public class TaxCredit : StoreEntity
         Positive(amount);
         if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe o motivo do estorno.");
         if (amount > Balance().Available)
-            throw new DomainException("Só o saldo disponível pode ser estornado.", "tax_credit_amount");
+            throw new DomainException("Só o saldo disponível pode ser estornado.", AmountErrorCode);
         return Append(TaxCreditEntryType.Reversed, amount, null, reason, onDate, actorId, actorName);
     }
 
@@ -128,7 +131,7 @@ public class TaxCredit : StoreEntity
         if (ExpiresOn is null || onDate <= ExpiresOn)
             throw new DomainException("O crédito ainda não venceu.", "tax_credit_not_expired");
         var available = Balance().Available;
-        if (available <= 0) throw new DomainException("Não há saldo disponível para baixar.", "tax_credit_amount");
+        if (available <= 0) throw new DomainException("Não há saldo disponível para baixar.", AmountErrorCode);
         return Append(TaxCreditEntryType.Expired, available, null, $"Prazo de uso encerrado em {ExpiresOn:dd/MM/yyyy}.", onDate, actorId, actorName);
     }
 

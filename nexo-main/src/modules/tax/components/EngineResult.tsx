@@ -67,7 +67,7 @@ export function EngineResult({ output, input }: Readonly<{ output: EngineOutput;
       )}
 
       {output.warnings.length > 0 && (
-        <div role="status" className="space-y-1 rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
+        <div className="space-y-1 rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
           <p className="flex items-center gap-2 font-medium text-warning"><AlertTriangle className="h-4 w-4" /> Atenção</p>
           <ul className="list-disc pl-5 text-foreground">{output.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
         </div>
@@ -191,18 +191,18 @@ export function TechnicalTrail({ output, hashes }: Readonly<{ output: EngineOutp
               <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> {verify.isPending ? "Verificando…" : "Verificar reprodução"}
             </Button>
             {verification && (
-              <div role="status" className={cn("rounded-md border p-2 text-xs", verification.reproducible ? "border-success/40 text-success" : "border-destructive/40 text-destructive")}>
-                <p className="font-medium">
+              <output className={cn("block rounded-md border p-2 text-xs", verification.reproducible ? "border-success/40 text-success" : "border-destructive/40 text-destructive")}>
+                <span className="block font-medium">
                   {verification.reproducible
                     ? "Reproduzido: as mesmas regras e a mesma entrada dão exatamente o mesmo resultado."
                     : "Não reproduziu: o resultado recalculado é diferente do guardado."}
-                </p>
+                </span>
                 {!verification.engineVersionMatches && (
-                  <p className="mt-1">Motor guardado {verification.storedEngineVersion}, motor atual {verification.currentEngineVersion}.</p>
+                  <span className="block mt-1">Motor guardado {verification.storedEngineVersion}, motor atual {verification.currentEngineVersion}.</span>
                 )}
-                <p className="mt-1 break-all font-mono text-muted-foreground">recalculado: {verification.recomputedOutputHash}</p>
+                <span className="block mt-1 break-all font-mono text-muted-foreground">recalculado: {verification.recomputedOutputHash}</span>
                 {verification.differences.length > 0 && <ul className="mt-1 list-disc pl-4">{verification.differences.map((d) => <li key={d}>{d}</li>)}</ul>}
-              </div>
+              </output>
             )}
           </div>
         )}

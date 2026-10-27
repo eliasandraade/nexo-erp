@@ -100,7 +100,7 @@ function SplitSection({ calculationId }: Readonly<{ calculationId: string }>) {
   return (
     <SectionCard title="Split payment" description="Quanto deve ser retido na liquidação do pagamento, para conferir depois com o que foi retido de fato.">
       <div className="space-y-3">
-        {expectations.data && expectations.data.length === 0 && (
+        {expectations.data?.length === 0 && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <Field id="split-proc" label="Procedimento" className="sm:w-56">
               <Select value={procedure} onValueChange={(v) => setProcedure(v as SplitProcedure)}>

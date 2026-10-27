@@ -73,7 +73,7 @@ export default function TaxCalculationsPage() {
       <SectionCard title="Cálculos guardados" description="Os 50 mais recentes." noPadding>
         {list.isLoading && <div className="p-5"><Skeleton className="h-32 w-full" /></div>}
         {list.isError && <ErrorState title="Não foi possível listar os cálculos" onRetry={() => void list.refetch()} compact />}
-        {list.data && list.data.length === 0 && <EmptyState icon={Calculator} title="Nenhum cálculo ainda" description="O primeiro aparece aqui assim que você calcular." compact />}
+        {list.data?.length === 0 && <EmptyState icon={Calculator} title="Nenhum cálculo ainda" description="O primeiro aparece aqui assim que você calcular." compact />}
         {list.data && list.data.length > 0 && (
           <div className="overflow-x-auto">
             <Table>

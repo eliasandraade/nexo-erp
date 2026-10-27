@@ -81,16 +81,28 @@ export function emptyLine(): LineDraft {
 
 /** Why the server would refuse this line — same rules, in words, before sending. */
 export function lineProblems(line: LineDraft, position: number): string[] {
-  const p: string[] = [];
   const at = `Linha ${position}:`;
+  const gross = parseDecimal(line.grossAmount);
+  return [...identityProblems(line, at), ...grossProblems(gross, at), ...amountProblems(line, gross, at)];
+}
+
+function identityProblems(line: LineDraft, at: string): string[] {
+  const p: string[] = [];
   if (!line.description.trim()) p.push(`${at} descreva o item.`);
   if (line.description.length > 300) p.push(`${at} descrição até 300 caracteres.`);
   if (line.ncm.trim() && onlyDigits(line.ncm).length !== 8) p.push(`${at} NCM tem 8 números.`);
   const qty = parseDecimal(line.quantity);
   if (qty === null || Number.isNaN(qty) || qty <= 0) p.push(`${at} quantidade maior que zero.`);
-  const gross = parseDecimal(line.grossAmount);
-  if (gross === null || Number.isNaN(gross) || gross < 0) p.push(`${at} informe o valor da linha.`);
-  else if (!isCents(gross)) p.push(`${at} valor em centavos (2 casas).`);
+  return p;
+}
+
+function grossProblems(gross: number | null, at: string): string[] {
+  if (gross === null || Number.isNaN(gross) || gross < 0) return [`${at} informe o valor da linha.`];
+  return isCents(gross) ? [] : [`${at} valor em centavos (2 casas).`];
+}
+
+function amountProblems(line: LineDraft, gross: number | null, at: string): string[] {
+  const p: string[] = [];
   const money: [string, string][] = [
     [line.unconditionalDiscount, "desconto incondicional"],
     [line.conditionalDiscount, "desconto condicional"],

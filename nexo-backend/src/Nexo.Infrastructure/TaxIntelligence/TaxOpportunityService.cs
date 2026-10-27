@@ -19,6 +19,7 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 public sealed class TaxOpportunityService
 {
     private const int MaxList = 200;
+    private const string AuditEntity = "Opportunity";
 
     private readonly NexoDbContext _db;
     private readonly ICurrentTenant _tenant;
@@ -48,7 +49,7 @@ public sealed class TaxOpportunityService
                     string.Join(",", c.LegalSourceCodes), c.Caveats);
                 foreach (var r in c.Requirements) o.AddRequirement(r.Code, r.Text, r.LegalSourceCode);
                 _db.TaxOpportunities.Add(o);
-                _audit.Record(TaxAuditActions.OpportunityIdentified, "Opportunity", o.Id,
+                _audit.Record(TaxAuditActions.OpportunityIdentified, AuditEntity, o.Id,
                     $"Oportunidade identificada: {c.Title} ({c.Type}, risco {c.Risk}).",
                     new { calculationId, detector = c.DetectorKey, impact = c.EstimatedImpact, nature = TaxOpportunity.NatureOf(c.Type).ToString() });
                 created.Add(o.Id);
@@ -89,7 +90,7 @@ public sealed class TaxOpportunityService
     public Task<TaxOpportunityDto> StartReviewAsync(Guid id, CancellationToken ct) => MutateAsync(id, o =>
     {
         o.StartReview(_audit.UserId, _audit.UserName, DateTime.UtcNow);
-        _audit.Record(TaxAuditActions.OpportunityReviewStarted, "Opportunity", o.Id, $"Análise iniciada: {o.Title}.");
+        _audit.Record(TaxAuditActions.OpportunityReviewStarted, AuditEntity, o.Id, $"Análise iniciada: {o.Title}.");
     }, ct);
 
     public Task<TaxOpportunityDto> AnswerRequirementAsync(Guid id, Guid requirementId, AnswerRequirementRequest r, CancellationToken ct) => MutateAsync(id, o =>
@@ -98,7 +99,7 @@ public sealed class TaxOpportunityService
         var before = requirement.Met;
         var met = r.Met ?? throw new DomainException("Diga se o requisito foi atendido.");
         o.AnswerRequirement(requirementId, met, r.Note, _audit.UserId, _audit.UserName, DateTime.UtcNow);
-        _audit.Record(TaxAuditActions.OpportunityRequirementAnswered, "Opportunity", o.Id,
+        _audit.Record(TaxAuditActions.OpportunityRequirementAnswered, AuditEntity, o.Id,
             $"Requisito \"{requirement.Text}\": {(met ? "atendido" : "não atendido")}.",
             new { requirementId, requirement.Code, before, after = met, r.Note });
 
@@ -106,7 +107,7 @@ public sealed class TaxOpportunityService
         if (violation is not null)
         {
             o.Block(violation.Structure, violation.Reason, _audit.UserId, _audit.UserName, DateTime.UtcNow);
-            _audit.Record(TaxAuditActions.OpportunityBlocked, "Opportunity", o.Id,
+            _audit.Record(TaxAuditActions.OpportunityBlocked, AuditEntity, o.Id,
                 $"Bloqueada como estrutura proibida ({violation.Structure}): {violation.Reason}",
                 new { structure = violation.Structure.ToString(), automatic = true }, AuditSeverity.Warning);
             _log.LogWarning("Tax opportunity {OpportunityId} blocked by guardrail as {Structure}", o.Id, violation.Structure);
@@ -118,14 +119,14 @@ public sealed class TaxOpportunityService
         var hash = TaxCanonical.Hash($"{r.Description.Trim()}\n{r.DocumentReference?.Trim()}");
         var e = o.AddEvidence(r.Description, r.DocumentReference, hash, _audit.UserId, _audit.UserName);
         _db.TaxOpportunityEvidence.Add(e);
-        _audit.Record(TaxAuditActions.OpportunityEvidenceAdded, "Opportunity", o.Id, "Evidência anexada.", new { evidenceId = e.Id, hash });
+        _audit.Record(TaxAuditActions.OpportunityEvidenceAdded, AuditEntity, o.Id, "Evidência anexada.", new { evidenceId = e.Id, hash });
     }, ct);
 
     public Task<TaxOpportunityDto> BlockAsync(Guid id, BlockOpportunityRequest r, CancellationToken ct) => MutateAsync(id, o =>
     {
         var before = o.Status;
         o.Block(r.Structure, r.Reason, _audit.UserId, _audit.UserName, DateTime.UtcNow);
-        _audit.Record(TaxAuditActions.OpportunityBlocked, "Opportunity", o.Id,
+        _audit.Record(TaxAuditActions.OpportunityBlocked, AuditEntity, o.Id,
             $"Bloqueada como estrutura proibida ({r.Structure}): {r.Reason}",
             new { before = before.ToString(), structure = r.Structure.ToString(), automatic = false }, AuditSeverity.Warning);
     }, ct);
@@ -134,7 +135,7 @@ public sealed class TaxOpportunityService
     {
         var before = o.Status;
         o.Reject(r.Reason, _audit.UserId, _audit.UserName, DateTime.UtcNow);
-        _audit.Record(TaxAuditActions.OpportunityRejected, "Opportunity", o.Id, $"Rejeitada: {r.Reason}", new { before = before.ToString() });
+        _audit.Record(TaxAuditActions.OpportunityRejected, AuditEntity, o.Id, $"Rejeitada: {r.Reason}", new { before = before.ToString() });
     }, ct);
 
     /// <summary>
@@ -178,7 +179,7 @@ public sealed class TaxOpportunityService
         var decision = TaxDecision.Create(_tenant.Id, o.Id, o.Title, dossierJson, TaxCanonical.Hash(dossierJson), o.Risk,
             r.AcknowledgeHighRisk, TaxEngine.Version, _audit.UserId, _audit.UserName, now);
         _db.TaxDecisions.Add(decision);
-        _audit.Record(TaxAuditActions.OpportunityApproved, "Opportunity", o.Id,
+        _audit.Record(TaxAuditActions.OpportunityApproved, AuditEntity, o.Id,
             $"Aprovada por {_audit.UserName}: {o.Title}. Dossiê {decision.DossierHash[..12]}.",
             new { decisionId = decision.Id, decision.DossierHash, risk = o.Risk.ToString(), r.AcknowledgeHighRisk }, AuditSeverity.Warning);
         await SaveAsync(ct);

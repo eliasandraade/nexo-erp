@@ -154,6 +154,14 @@ export default function TaxOpportunityDetailPage() {
   );
 }
 
+
+/** How a requirement looks for each answer: met, not met, not answered yet. */
+function answerLook(met: boolean | null) {
+  if (met === true) return { Icon: CheckCircle2, color: "text-success" };
+  if (met === false) return { Icon: XCircle, color: "text-destructive" };
+  return { Icon: CircleHelp, color: "text-muted-foreground" };
+}
+
 function Requirement({ opportunityId, r, editable, onUpdated }: Readonly<{ opportunityId: string; r: TaxRequirementDto; editable: boolean; onUpdated: (o: TaxOpportunityDto) => void }>) {
   const [note, setNote] = useState(r.note ?? "");
   const answer = useMutation({
@@ -161,8 +169,7 @@ function Requirement({ opportunityId, r, editable, onUpdated }: Readonly<{ oppor
     onSuccess: onUpdated,
     onError: (e) => toast.error(errorMessage(e)),
   });
-  const Icon = r.met === true ? CheckCircle2 : r.met === false ? XCircle : CircleHelp;
-  const color = r.met === true ? "text-success" : r.met === false ? "text-destructive" : "text-muted-foreground";
+  const { Icon, color } = answerLook(r.met);
 
   return (
     <li className="rounded-md border border-border p-3 text-sm">

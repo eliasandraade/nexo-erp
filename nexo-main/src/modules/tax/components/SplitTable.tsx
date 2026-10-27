@@ -154,7 +154,7 @@ function SettlementsDialog({ expectation, onClose }: Readonly<{ expectation: Spl
                   <p className="text-xs">
                     {formatDateTime(s.settledAt)}
                     {s.reversed && " · estornada"}
-                    {s.reversesSettlementId !== null && ` · estorno${s.reason ? `: ${s.reason}` : ""}`}
+                    {s.reversesSettlementId !== null && reversalNote(s.reason)}
                   </p>
                 </div>
                 {live && (
@@ -184,3 +184,5 @@ function SettlementsDialog({ expectation, onClose }: Readonly<{ expectation: Spl
     </Dialog>
   );
 }
+
+const reversalNote = (reason: string | null) => (reason ? ` · estorno: ${reason}` : " · estorno");

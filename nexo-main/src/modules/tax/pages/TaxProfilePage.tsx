@@ -33,7 +33,7 @@ function initialDraft(p: TaxProfileDto): ProfileDraft {
     secondaryCnaes: c?.secondaryCnaes.join(", ") ?? "",
     specialRegimes: c?.specialRegimes.join(", ") ?? "",
     benefits: c?.benefits.join("\n") ?? "",
-    compliance: c?.accessoryObligationsCompliant == null ? "unknown" : c.accessoryObligationsCompliant ? "yes" : "no",
+    compliance: complianceOf(c?.accessoryObligationsCompliant ?? null),
     reason: "",
   };
 }
@@ -44,7 +44,13 @@ const COMPLIANCE: { value: Compliance; label: string }[] = [
   { value: "unknown", label: "Não sei" },
 ];
 
-const complianceLabel = (v: boolean | null) => (v === null ? "Não sei" : v ? "Sim" : "Não");
+function complianceOf(v: boolean | null): Compliance {
+  if (v === null) return "unknown";
+  return v ? "yes" : "no";
+}
+
+const COMPLIANCE_SHORT: Record<Compliance, string> = { yes: "Sim", no: "Não", unknown: "Não sei" };
+const complianceLabel = (v: boolean | null) => COMPLIANCE_SHORT[complianceOf(v)];
 
 /** Perfil tributário: os fatos que decidem as regras. Cada mudança é uma nova versão, as anteriores ficam guardadas. */
 export default function TaxProfilePage() {

@@ -47,10 +47,10 @@ public sealed class TaxCatalogService
         var ids = rows.Select(x => x.v.Id).ToList();
         var codes = await _db.Set<TaxRuleVersionSource>().AsNoTracking()
             .Where(s => ids.Contains(s.RuleVersionId))
-            .Select(s => new { s.RuleVersionId, s.LegalSource!.Code })
+            .Select(s => new { s.RuleVersionId, s.LegalSource.Code })
             .ToListAsync(ct);
         var codesByVersion = codes.GroupBy(c => c.RuleVersionId)
-            .ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(c => c.Code).OrderBy(c => c, StringComparer.Ordinal).ToList());
+            .ToDictionary(g => g.Key, g => g.Select(c => c.Code).OrderBy(c => c, StringComparer.Ordinal).ToList());
 
         return rows.Select(x => new TaxEngineRule(
                 x.v.Id, x.Key, x.v.Version, x.v.Status, x.v.ValidFrom, x.v.ValidTo, x.v.Priority,
@@ -163,11 +163,9 @@ public sealed class TaxCatalogService
         var version = await _db.TaxRuleVersions.Include(v => v.Sources).ThenInclude(s => s.LegalSource)
             .FirstAsync(v => v.Id == versionId, ct);
 
-        if (r.Status == TaxRuleStatus.Active)
-        {
-            if (version.Sources.Count == 0 || version.Sources.Any(s => s.LegalSource is not { IsVerified: true }))
-                throw new DomainException("Só uma regra com todas as fontes jurídicas conferidas pode ser ativada.", "tax_rule_unverified_source");
-        }
+        if (r.Status == TaxRuleStatus.Active
+            && (version.Sources.Count == 0 || version.Sources.Any(s => s.LegalSource is not { IsVerified: true })))
+            throw new DomainException("Só uma regra com todas as fontes jurídicas conferidas pode ser ativada.", "tax_rule_unverified_source");
 
         var before = version.Status;
         var now = DateTime.UtcNow;

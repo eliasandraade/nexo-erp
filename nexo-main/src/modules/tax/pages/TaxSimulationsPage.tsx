@@ -54,7 +54,7 @@ export default function TaxSimulationsPage() {
       <SectionCard title="Simulações guardadas" noPadding>
         {list.isLoading && <div className="p-5"><Skeleton className="h-24 w-full" /></div>}
         {list.isError && <ErrorState title="Não foi possível listar as simulações" onRetry={() => void list.refetch()} compact />}
-        {list.data && list.data.length === 0 && <EmptyState icon={FlaskConical} title="Nenhuma simulação ainda" compact />}
+        {list.data?.length === 0 && <EmptyState icon={FlaskConical} title="Nenhuma simulação ainda" compact />}
         {list.data && list.data.length > 0 && (
           <ul className="divide-y divide-border">
             {list.data.map((s) => (

@@ -85,7 +85,17 @@ public static class TaxEngine
             notes, warnings.Distinct().ToList(), executions, notApplied);
     }
 
+    /// <summary>One line: the base rules (from the gross price), then the rates on the resulting base.</summary>
     private static LineResult RunLine(
+        TaxEngineInput input, TaxEngineLine line, IReadOnlyList<TaxEngineRule> active,
+        List<RuleExecution> executions, List<string> warnings)
+    {
+        var (lineBase, steps) = ApplyBaseRules(input, line, active, executions, warnings);
+        var components = ApplyRateRules(input, line, lineBase, active, executions, warnings);
+        return new LineResult(line.Index, line.Gross, lineBase, steps, components);
+    }
+
+    private static (decimal Base, List<BaseStep> Steps) ApplyBaseRules(
         TaxEngineInput input, TaxEngineLine line, IReadOnlyList<TaxEngineRule> active,
         List<RuleExecution> executions, List<string> warnings)
     {
@@ -117,8 +127,13 @@ public static class TaxEngine
             warnings.Add(FormattableString.Invariant($"Linha {line.Index}: a base ficou negativa e foi considerada zero."));
             lineBase = 0;
         }
-        lineBase = Money(lineBase);
+        return (Money(lineBase), steps);
+    }
 
+    private static List<ComponentResult> ApplyRateRules(
+        TaxEngineInput input, TaxEngineLine line, decimal lineBase, IReadOnlyList<TaxEngineRule> active,
+        List<RuleExecution> executions, List<string> warnings)
+    {
         var components = new List<ComponentResult>();
         foreach (var rule in active.Where(r => r.Result.Phase == TaxRulePhase.Rate))
         {
@@ -136,8 +151,7 @@ public static class TaxEngine
             }
             executions.Add(Execution(rule, line.Index, matched, traces, output));
         }
-
-        return new LineResult(line.Index, line.Gross, lineBase, steps, components);
+        return components;
     }
 
     /// <summary>Surcharges are added when included; discounts and taxes in the price are deducted when excluded.</summary>
@@ -176,17 +190,27 @@ public static class TaxConditionEvaluator
         SupplierRegimeNotIn c => Regime("supplier-regime-not-in", c.Regimes, SupplierRegime(input), shouldContain: false),
         DirectionIs c => new ConditionTrace("direction-is", c.Direction.ToString(), input.Direction.ToString(),
             input.Direction == c.Direction ? ConditionOutcome.Passed : ConditionOutcome.Failed),
-        ItemKindIn c => line is null
-            ? new ConditionTrace("item-kind-in", Join(c.Kinds), "regra da operação, sem linha", ConditionOutcome.Failed)
-            : new ConditionTrace("item-kind-in", Join(c.Kinds), line.Kind.ToString(),
-                c.Kinds.Contains(line.Kind) ? ConditionOutcome.Passed : ConditionOutcome.Failed),
+        ItemKindIn c => ItemKind(c, line),
         ProfileFlagIs c => Flag(c, input.Profile),
-        ItemGeneralRegime => line is null
-            ? new ConditionTrace("item-general-regime", "regime geral", "regra da operação, sem linha", ConditionOutcome.Failed)
-            : new ConditionTrace("item-general-regime", "regime geral", line.SpecialTreatment ?? "regime geral",
-                line.SpecialTreatment is null ? ConditionOutcome.Passed : ConditionOutcome.Failed),
+        ItemGeneralRegime => GeneralRegime(line),
         _ => throw new InvalidOperationException($"Unknown condition {condition.GetType().Name}."),
     };
+
+    private const string NoLine = "regra da operação, sem linha";
+
+    private static ConditionTrace ItemKind(ItemKindIn c, TaxEngineLine? line)
+    {
+        if (line is null) return new ConditionTrace("item-kind-in", Join(c.Kinds), NoLine, ConditionOutcome.Failed);
+        var outcome = c.Kinds.Contains(line.Kind) ? ConditionOutcome.Passed : ConditionOutcome.Failed;
+        return new ConditionTrace("item-kind-in", Join(c.Kinds), line.Kind.ToString(), outcome);
+    }
+
+    private static ConditionTrace GeneralRegime(TaxEngineLine? line)
+    {
+        if (line is null) return new ConditionTrace("item-general-regime", "regime geral", NoLine, ConditionOutcome.Failed);
+        var outcome = line.SpecialTreatment is null ? ConditionOutcome.Passed : ConditionOutcome.Failed;
+        return new ConditionTrace("item-general-regime", "regime geral", line.SpecialTreatment ?? "regime geral", outcome);
+    }
 
     /// <summary>Who supplies: the establishment when it sells, the counterparty when it buys.</summary>
     public static TaxRegime? SupplierRegime(TaxEngineInput input)

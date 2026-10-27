@@ -51,10 +51,10 @@ export default function TaxOverviewPage() {
         </SectionCard>
       )}
 
-      {o && o.profileConfigured && (
+      {o?.profileConfigured && (
         <>
           {overviewAttention(o).length > 0 && (
-            <div role="status" className="space-y-1 rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
+            <div className="space-y-1 rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
               <p className="flex items-center gap-2 font-medium text-warning"><AlertTriangle className="h-4 w-4" /> O que pede atenção</p>
               <ul className="list-disc pl-5">{overviewAttention(o).map((a) => <li key={a}>{a}</li>)}</ul>
             </div>

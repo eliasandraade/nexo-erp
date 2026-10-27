@@ -20,6 +20,14 @@ import { SourceLinks } from "../components/EngineResult";
 import { TaxNote, TaxSubNav } from "../components/TaxShell";
 
 /** Regras e fontes: o catálogo usado pelos cálculos (somente leitura — mantido pela plataforma) e o texto literal da lei. */
+
+/** " · conferida por X em data" — who compared the excerpt with the official text, and when. */
+function verificationText(verifiedAt: string | null, verifiedBy: string | null): string {
+  if (!verifiedAt) return "";
+  const by = verifiedBy ? `por ${verifiedBy} ` : "";
+  return ` · conferida ${by}em ${formatDateTime(verifiedAt)}`;
+}
+
 export default function TaxRulesPage() {
   const [params, setParams] = useSearchParams();
   const source = params.get("fonte");
@@ -121,7 +129,7 @@ function Source({ s, active }: Readonly<{ s: TaxLegalSourceDto; active: boolean 
       <h3 className="section-heading mt-1">{s.title}</h3>
       <p className="text-sm text-muted-foreground">
         {s.reference}{s.publishedOn ? ` · publicada em ${formatIsoDate(s.publishedOn)}` : ""}
-        {s.verifiedAt ? ` · conferida ${s.verifiedBy ? `por ${s.verifiedBy} ` : ""}em ${formatDateTime(s.verifiedAt)}` : ""}
+        {verificationText(s.verifiedAt, s.verifiedBy)}
       </p>
       <blockquote className="mt-3 max-h-80 overflow-auto whitespace-pre-wrap border-l-2 border-border pl-3 text-sm">{s.excerpt}</blockquote>
       {s.notes && <p className="mt-2 text-xs text-muted-foreground">{s.notes}</p>}

@@ -11,6 +11,7 @@ internal static class TaxValidation
     public const int MaxScenarios = 10;
 
     public const decimal MaxAmount = 10_000_000_000m;
+    public const string CentsMessage = "Valor em centavos.";
 
     public static bool Cents(decimal v) => decimal.Round(v, 2) == v;
     public static bool Digits(string? v, int length) => v is not null && v.Length == length && v.All(char.IsAsciiDigit);
@@ -24,10 +25,10 @@ public sealed class TaxLineRequestValidator : AbstractValidator<TaxLineRequest>
         RuleFor(x => x.Description).NotEmpty().MaximumLength(300);
         RuleFor(x => x.Ncm).Must(n => TaxValidation.Digits(n, 8)).When(x => !string.IsNullOrEmpty(x.Ncm)).WithMessage("NCM tem 8 dígitos.");
         RuleFor(x => x.Quantity).GreaterThan(0).LessThan(1_000_000_000m);
-        RuleFor(x => x.GrossAmount).GreaterThanOrEqualTo(0).LessThan(10_000_000_000m).Must(TaxValidation.Cents).WithMessage("Valor em centavos.");
-        RuleFor(x => x.UnconditionalDiscount).GreaterThanOrEqualTo(0).LessThan(TaxValidation.MaxAmount).Must(TaxValidation.Cents).WithMessage("Valor em centavos.");
-        RuleFor(x => x.ConditionalDiscount).GreaterThanOrEqualTo(0).LessThan(TaxValidation.MaxAmount).Must(TaxValidation.Cents).WithMessage("Valor em centavos.");
-        RuleFor(x => x.Surcharges).GreaterThanOrEqualTo(0).LessThan(TaxValidation.MaxAmount).Must(TaxValidation.Cents).WithMessage("Valor em centavos.");
+        RuleFor(x => x.GrossAmount).GreaterThanOrEqualTo(0).LessThan(10_000_000_000m).Must(TaxValidation.Cents).WithMessage(TaxValidation.CentsMessage);
+        RuleFor(x => x.UnconditionalDiscount).GreaterThanOrEqualTo(0).LessThan(TaxValidation.MaxAmount).Must(TaxValidation.Cents).WithMessage(TaxValidation.CentsMessage);
+        RuleFor(x => x.ConditionalDiscount).GreaterThanOrEqualTo(0).LessThan(TaxValidation.MaxAmount).Must(TaxValidation.Cents).WithMessage(TaxValidation.CentsMessage);
+        RuleFor(x => x.Surcharges).GreaterThanOrEqualTo(0).LessThan(TaxValidation.MaxAmount).Must(TaxValidation.Cents).WithMessage(TaxValidation.CentsMessage);
         RuleFor(x => x.ExcludedTaxes!.Value).GreaterThanOrEqualTo(0).LessThan(TaxValidation.MaxAmount).Must(TaxValidation.Cents).When(x => x.ExcludedTaxes is not null)
             .WithName("ExcludedTaxes");
         RuleFor(x => x).Must(x => x.UnconditionalDiscount + x.ConditionalDiscount <= x.GrossAmount)

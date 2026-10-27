@@ -88,7 +88,7 @@ function Credits() {
       >
         {credits.isLoading && <Skeleton className="h-32 w-full" />}
         {credits.isError && <ErrorState title="Não foi possível listar os créditos" onRetry={() => void credits.refetch()} compact />}
-        {credits.data && credits.data.length === 0 && <EmptyState icon={Wallet} title="Nenhum crédito registrado" description="Registre o crédito de uma nota de compra para acompanhar apropriação e uso." compact />}
+        {credits.data?.length === 0 && <EmptyState icon={Wallet} title="Nenhum crédito registrado" description="Registre o crédito de uma nota de compra para acompanhar apropriação e uso." compact />}
         <ul className="space-y-3">
           {credits.data?.map((c) => (
             <li key={c.id} className="rounded-md border border-border p-3 text-sm">
@@ -246,7 +246,7 @@ function SplitPayment() {
   return (
     <>
       {provider.data && (
-        <div role="status" className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
+        <div className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/5 p-3 text-sm">
           <PlugZap className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
           <div>
             <p className="font-medium">{provider.data.configured ? "Provedor de pagamento conectado" : "Nenhum provedor de pagamento integrado"}</p>
@@ -258,7 +258,7 @@ function SplitPayment() {
       <SectionCard title="Retido x esperado">
         {expectations.isLoading && <Skeleton className="h-32 w-full" />}
         {expectations.isError && <ErrorState title="Não foi possível ler as retenções" onRetry={() => void expectations.refetch()} compact />}
-        {expectations.data && expectations.data.length === 0 && <EmptyState icon={Wallet} title="Nenhuma retenção esperada" compact />}
+        {expectations.data?.length === 0 && <EmptyState icon={Wallet} title="Nenhuma retenção esperada" compact />}
         {expectations.data && expectations.data.length > 0 && <SplitTable items={expectations.data} showCalculation />}
       </SectionCard>
     </>

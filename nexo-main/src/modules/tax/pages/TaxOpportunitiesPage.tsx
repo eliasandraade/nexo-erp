@@ -58,7 +58,7 @@ export default function TaxOpportunitiesPage() {
       <SectionCard noPadding>
         {list.isLoading && <div className="p-5"><Skeleton className="h-40 w-full" /></div>}
         {list.isError && <ErrorState title="Não foi possível listar as oportunidades" onRetry={() => void list.refetch()} compact />}
-        {list.data && list.data.length === 0 && (
+        {list.data?.length === 0 && (
           <EmptyState icon={Lightbulb} title="Nenhuma oportunidade" description="Elas aparecem quando um cálculo encontra uma alternativa permitida." compact />
         )}
         {list.data && list.data.length > 0 && (
