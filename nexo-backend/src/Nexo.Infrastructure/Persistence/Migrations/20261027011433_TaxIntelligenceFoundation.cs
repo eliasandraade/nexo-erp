@@ -8,7 +8,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 {
     /// <summary>
     /// Tax Intelligence foundation: 21 new tables (catalogue + establishment data) and the first
-    /// catalogue content. Additive only — no existing table is touched. Down drops only these tables.
+    /// catalogue content. Additive only — no existing table is touched; Down drops only these tables.
+    /// Canonical documents are "json" (not jsonb) so the stored text is exactly what was hashed.
     /// </summary>
     public partial class TaxIntelligenceFoundation : Migration
     {
@@ -222,8 +223,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     valid_from = table.Column<DateOnly>(type: "date", nullable: false),
                     valid_to = table.Column<DateOnly>(type: "date", nullable: true),
                     priority = table.Column<int>(type: "integer", nullable: false),
-                    conditions = table.Column<string>(type: "jsonb", nullable: false),
-                    result = table.Column<string>(type: "jsonb", nullable: false),
+                    conditions = table.Column<string>(type: "json", nullable: false),
+                    result = table.Column<string>(type: "json", nullable: false),
                     content_hash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     origin = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
                     created_by = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
@@ -255,8 +256,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     scenario_index = table.Column<int>(type: "integer", nullable: false),
                     name = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     is_baseline = table.Column<bool>(type: "boolean", nullable: false),
-                    input = table.Column<string>(type: "jsonb", nullable: false),
-                    result = table.Column<string>(type: "jsonb", nullable: false),
+                    input = table.Column<string>(type: "json", nullable: false),
+                    result = table.Column<string>(type: "json", nullable: false),
                     total_tax = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
                     net_cost = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
@@ -350,11 +351,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     profile_version_id = table.Column<Guid>(type: "uuid", nullable: false),
                     reference_date = table.Column<DateOnly>(type: "date", nullable: false),
                     engine_version = table.Column<string>(type: "character varying(60)", maxLength: 60, nullable: false),
-                    input = table.Column<string>(type: "jsonb", nullable: false),
+                    input = table.Column<string>(type: "json", nullable: false),
                     input_hash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     rule_set_hash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     calculation_key = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
-                    output = table.Column<string>(type: "jsonb", nullable: false),
+                    output = table.Column<string>(type: "json", nullable: false),
                     output_hash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     total_base = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
                     total_tax = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
@@ -534,8 +535,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     summary = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
                     detector_key = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: false),
                     source_calculation_id = table.Column<Guid>(type: "uuid", nullable: true),
-                    current_scenario = table.Column<string>(type: "jsonb", nullable: false),
-                    proposed_scenario = table.Column<string>(type: "jsonb", nullable: false),
+                    current_scenario = table.Column<string>(type: "json", nullable: false),
+                    proposed_scenario = table.Column<string>(type: "json", nullable: false),
                     estimated_impact = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
                     risk = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
                     confidence = table.Column<int>(type: "integer", nullable: false),
@@ -591,7 +592,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     content_hash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     line_index = table.Column<int>(type: "integer", nullable: true),
                     matched = table.Column<bool>(type: "boolean", nullable: false),
-                    conditions = table.Column<string>(type: "jsonb", nullable: false),
+                    conditions = table.Column<string>(type: "json", nullable: false),
                     output = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     legal_source_codes = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
                     created_at = table.Column<DateTime>(type: "timestamptz", nullable: false),
@@ -725,7 +726,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     id = table.Column<Guid>(type: "uuid", nullable: false),
                     opportunity_id = table.Column<Guid>(type: "uuid", nullable: false),
                     strategy = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
-                    dossier = table.Column<string>(type: "jsonb", nullable: false),
+                    dossier = table.Column<string>(type: "json", nullable: false),
                     dossier_hash = table.Column<string>(type: "character varying(64)", maxLength: 64, nullable: false),
                     risk = table.Column<string>(type: "character varying(10)", maxLength: 10, nullable: false),
                     high_risk_acknowledged = table.Column<bool>(type: "boolean", nullable: false),

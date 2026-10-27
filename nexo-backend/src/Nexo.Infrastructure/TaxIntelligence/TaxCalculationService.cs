@@ -78,7 +78,9 @@ public sealed class TaxCalculationService
         var inputJson = TaxCanonical.Serialize(input);
         var inputHash = TaxCanonical.Hash(inputJson);
         var ruleSetHash = TaxEngine.RuleSetHash(TaxEngine.SelectActive(catalogue, op.OperationDate));
-        var key = TaxCanonical.Hash($"{TaxEngine.Version}|{inputHash}|{ruleSetHash}|{facts.Source}|{facts.SourceId}");
+        // Same facts (all of them, description included) + same rules + same engine = the same calculation.
+        var factsHash = TaxCanonical.HashOf(op);
+        var key = TaxCanonical.Hash($"{TaxEngine.Version}|{inputHash}|{ruleSetHash}|{facts.Source}|{facts.SourceId}|{factsHash}");
 
         var existing = await _db.TaxCalculations.AsNoTracking().FirstOrDefaultAsync(c => c.CalculationKey == key, ct);
         if (existing is not null) return await GetAsync(existing.Id, reused: true, ct);
@@ -87,7 +89,7 @@ public sealed class TaxCalculationService
         var outputJson = TaxCanonical.Serialize(output);
 
         var transaction = TaxTransaction.Create(_tenant.Id, facts.Source, facts.SourceId, op.Direction, op.OperationDate,
-            op.Description, op.CounterpartyRegime, op.CounterpartyState, TaxCanonical.HashOf(op), _audit.UserId);
+            op.Description, op.CounterpartyRegime, op.CounterpartyState, factsHash, _audit.UserId);
         foreach (var (l, i) in op.Lines.Select((l, i) => (l, i)))
             transaction.AddLine(i + 1, l.ItemKind, l.Description, l.Ncm, l.Quantity, l.GrossAmount, l.UnconditionalDiscount,
                 l.ConditionalDiscount, l.Surcharges, l.ExcludedTaxes ?? 0m, l.ExcludedTaxes is not null, l.SpecialTreatment);
@@ -201,8 +203,10 @@ public sealed class TaxCalculationService
         // As they were at the time: what ran was active, what was listed kept its status.
         var asThen = rules.Select(r => r with { Status = executedIds.Contains(r.VersionId) ? Domain.Modules.TaxIntelligence.TaxRuleStatus.Active : notApplied[r.VersionId] }).ToList();
         var input = TaxCanonical.Deserialize<TaxEngineInput>(calc.InputJson);
-        if (TaxCanonical.Hash(TaxCanonical.Serialize(input)) != calc.InputHash)
+        if (TaxCanonical.Hash(calc.InputJson) != calc.InputHash)
             differences.Add("O input armazenado não corresponde ao seu hash.");
+        if (TaxCanonical.Hash(calc.OutputJson) != calc.OutputHash)
+            differences.Add("O resultado armazenado não corresponde ao seu hash.");
 
         var engineMatches = calc.EngineVersion == TaxEngine.Version;
         if (!engineMatches) differences.Add($"O cálculo foi feito pela engine {calc.EngineVersion}; a atual é {TaxEngine.Version}.");

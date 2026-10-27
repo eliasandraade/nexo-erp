@@ -109,13 +109,13 @@ internal sealed class TaxCalculationConfiguration : IEntityTypeConfiguration<Tax
             .HasConstraintName("fk_tax_calculations_profile_versions").OnDelete(DeleteBehavior.Restrict);
         b.Property(x => x.ReferenceDate).HasColumnName("reference_date").IsRequired();
         b.Property(x => x.EngineVersion).HasColumnName("engine_version").HasMaxLength(60).IsRequired();
-        b.Property(x => x.InputJson).HasColumnName("input").HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.InputJson).HasColumnName("input").HasColumnType("json").IsRequired();
         b.Property(x => x.InputHash).HasColumnName("input_hash").HasMaxLength(64).IsRequired();
         b.Property(x => x.RuleSetHash).HasColumnName("rule_set_hash").HasMaxLength(64).IsRequired();
         b.Property(x => x.CalculationKey).HasColumnName("calculation_key").HasMaxLength(64).IsRequired();
         b.HasIndex(x => new { x.TenantId, x.StoreId, x.CalculationKey }).IsUnique().HasDatabaseName("ux_tax_calculations_key");
         b.HasIndex(x => new { x.TenantId, x.StoreId, x.CreatedAt }).HasDatabaseName("ix_tax_calculations_tenant_store_created");
-        b.Property(x => x.OutputJson).HasColumnName("output").HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.OutputJson).HasColumnName("output").HasColumnType("json").IsRequired();
         b.Property(x => x.OutputHash).HasColumnName("output_hash").HasMaxLength(64).IsRequired();
         b.Property(x => x.TotalBase).Money("total_base");
         b.Property(x => x.TotalTax).Money("total_tax");
@@ -164,7 +164,7 @@ internal sealed class TaxRuleExecutionConfiguration : IEntityTypeConfiguration<T
         b.Property(x => x.ContentHash).HasColumnName("content_hash").HasMaxLength(64).IsRequired();
         b.Property(x => x.LineIndex).HasColumnName("line_index");
         b.Property(x => x.Matched).HasColumnName("matched").IsRequired();
-        b.Property(x => x.ConditionsJson).HasColumnName("conditions").HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.ConditionsJson).HasColumnName("conditions").HasColumnType("json").IsRequired();
         b.Property(x => x.OutputJson).HasColumnName("output").HasMaxLength(500).IsRequired();
         b.Property(x => x.LegalSourceCodes).HasColumnName("legal_source_codes").HasMaxLength(500).IsRequired();
     }
@@ -195,8 +195,8 @@ internal sealed class TaxSimulationScenarioConfiguration : IEntityTypeConfigurat
         b.HasIndex(x => new { x.SimulationId, x.ScenarioIndex }).IsUnique().HasDatabaseName("ux_tax_simulation_scenarios_simulation_index");
         b.Property(x => x.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
         b.Property(x => x.IsBaseline).HasColumnName("is_baseline").IsRequired();
-        b.Property(x => x.InputJson).HasColumnName("input").HasColumnType("jsonb").IsRequired();
-        b.Property(x => x.ResultJson).HasColumnName("result").HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.InputJson).HasColumnName("input").HasColumnType("json").IsRequired();
+        b.Property(x => x.ResultJson).HasColumnName("result").HasColumnType("json").IsRequired();
         b.Property(x => x.TotalTax).Money("total_tax");
         b.Property(x => x.NetCost).Money("net_cost");
     }
@@ -219,8 +219,8 @@ internal sealed class TaxOpportunityConfiguration : IEntityTypeConfiguration<Tax
         // One opportunity per detector and calculation: running detection twice does not duplicate it.
         b.HasIndex(x => new { x.TenantId, x.StoreId, x.DetectorKey, x.SourceCalculationId }).IsUnique()
             .HasDatabaseName("ux_tax_opportunities_detector_calculation");
-        b.Property(x => x.CurrentScenarioJson).HasColumnName("current_scenario").HasColumnType("jsonb").IsRequired();
-        b.Property(x => x.ProposedScenarioJson).HasColumnName("proposed_scenario").HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.CurrentScenarioJson).HasColumnName("current_scenario").HasColumnType("json").IsRequired();
+        b.Property(x => x.ProposedScenarioJson).HasColumnName("proposed_scenario").HasColumnType("json").IsRequired();
         b.Property(x => x.EstimatedImpact).Money("estimated_impact");
         b.Property(x => x.Risk).HasColumnName("risk").HasConversion<string>().HasMaxLength(10).IsRequired();
         b.Property(x => x.Confidence).HasColumnName("confidence").IsRequired();
@@ -286,7 +286,7 @@ internal sealed class TaxDecisionConfiguration : IEntityTypeConfiguration<TaxDec
         b.HasOne<TaxOpportunity>().WithMany().HasForeignKey(x => x.OpportunityId)
             .HasConstraintName("fk_tax_decisions_opportunities").OnDelete(DeleteBehavior.Restrict);
         b.Property(x => x.Strategy).HasColumnName("strategy").HasMaxLength(200).IsRequired();
-        b.Property(x => x.DossierJson).HasColumnName("dossier").HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.DossierJson).HasColumnName("dossier").HasColumnType("json").IsRequired();
         b.Property(x => x.DossierHash).HasColumnName("dossier_hash").HasMaxLength(64).IsRequired();
         b.Property(x => x.Risk).HasColumnName("risk").HasConversion<string>().HasMaxLength(10).IsRequired();
         b.Property(x => x.HighRiskAcknowledged).HasColumnName("high_risk_acknowledged").IsRequired();

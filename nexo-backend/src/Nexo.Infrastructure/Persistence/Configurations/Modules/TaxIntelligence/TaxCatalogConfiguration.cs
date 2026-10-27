@@ -67,8 +67,8 @@ internal sealed class TaxRuleVersionConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.ValidTo).HasColumnName("valid_to");
         b.HasIndex(x => new { x.Status, x.ValidFrom }).HasDatabaseName("ix_tax_rule_versions_status_valid_from");
         b.Property(x => x.Priority).HasColumnName("priority").IsRequired();
-        b.Property(x => x.ConditionsJson).HasColumnName("conditions").HasColumnType("jsonb").IsRequired();
-        b.Property(x => x.ResultJson).HasColumnName("result").HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.ConditionsJson).HasColumnName("conditions").HasColumnType("json").IsRequired();
+        b.Property(x => x.ResultJson).HasColumnName("result").HasColumnType("json").IsRequired();
         b.Property(x => x.ContentHash).HasColumnName("content_hash").HasMaxLength(64).IsRequired();
         b.Property(x => x.Origin).HasColumnName("origin").HasMaxLength(60).IsRequired();
         b.Property(x => x.CreatedBy).HasColumnName("created_by").HasMaxLength(200).IsRequired();

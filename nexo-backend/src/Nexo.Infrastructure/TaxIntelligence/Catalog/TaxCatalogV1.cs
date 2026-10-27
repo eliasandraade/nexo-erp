@@ -190,7 +190,7 @@ public static class TaxCatalogV1
             mb.InsertData("tax_rule_versions",
                 ["id", "rule_id", "version", "status", "valid_from", "valid_to", "priority", "conditions", "result", "content_hash",
                  "origin", "created_by", "notes", "activated_at", "status_changed_at", "created_at", "updated_at"],
-                ["uuid", "uuid", "integer", "character varying(30)", "date", "date", "integer", "jsonb", "jsonb", "character varying(64)",
+                ["uuid", "uuid", "integer", "character varying(30)", "date", "date", "integer", "json", "json", "character varying(64)",
                  "character varying(60)", "character varying(200)", "character varying(2000)", "timestamptz", "timestamptz", "timestamptz", "timestamptz"],
                 [r.VersionId, r.RuleId, 1, r.Status.ToString(), r.ValidFrom, r.ValidTo, r.Priority,
                  TaxCanonical.Serialize(r.Conditions), TaxCanonical.Serialize(r.Result), r.ContentHash,

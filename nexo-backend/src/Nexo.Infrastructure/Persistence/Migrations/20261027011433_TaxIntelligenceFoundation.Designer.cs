@@ -13,7 +13,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nexo.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NexoDbContext))]
-    [Migration("20261027005648_TaxIntelligenceFoundation")]
+    [Migration("20261027011433_TaxIntelligenceFoundation")]
     partial class TaxIntelligenceFoundation
     {
         /// <inheritdoc />
@@ -7154,7 +7154,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("InputJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("input");
 
                     b.Property<string>("OutputHash")
@@ -7165,7 +7165,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("OutputJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("output");
 
                     b.Property<Guid>("ProfileVersionId")
@@ -7486,7 +7486,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("DossierJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("dossier");
 
                     b.Property<string>("EngineVersion")
@@ -7656,7 +7656,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("CurrentScenarioJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("current_scenario");
 
                     b.Property<string>("DetectorKey")
@@ -7677,7 +7677,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ProposedScenarioJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("proposed_scenario");
 
                     b.Property<string>("RejectionReason")
@@ -8107,7 +8107,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ConditionsJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("conditions");
 
                     b.Property<string>("ContentHash")
@@ -8195,7 +8195,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ConditionsJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("conditions");
 
                     b.Property<string>("ContentHash")
@@ -8231,7 +8231,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ResultJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("result");
 
                     b.Property<Guid>("RuleId")
@@ -8357,7 +8357,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("InputJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("input");
 
                     b.Property<bool>("IsBaseline")
@@ -8376,7 +8376,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ResultJson")
                         .IsRequired()
-                        .HasColumnType("jsonb")
+                        .HasColumnType("json")
                         .HasColumnName("result");
 
                     b.Property<int>("ScenarioIndex")
