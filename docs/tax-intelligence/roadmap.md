@@ -11,15 +11,31 @@
 | Créditos | Ledger gerencial; elegibilidade declarada, não decidida; sem ligação automática com compras | depende de quem lança |
 | Split payment | Nenhum provedor integrado; retenção real registrada à mão | conciliação manual |
 | Evidências | Só descrição, referência e hash; nenhum arquivo | anexar documentos fica fora do sistema |
-| Segregação de funções | O mesmo diretor pode revisar e aprovar | empresas pequenas têm um só diretor; avaliar exigir pessoas diferentes |
+| Segregação de funções | Quem fez a análise sozinho só aprova com justificativa registrada (dossiê e auditoria); configurável (`TaxIntelligence:Policy:RequireSeparateApprover`, ligado por padrão) | a justificativa é texto livre; não há segundo aprovador obrigatório |
 | Regras por tenant | Não há regras específicas de um tenant (benefício próprio, regime especial) | benefícios só como texto no perfil |
-| Engine | Uma versão de avaliador; mudança de semântica exige preservar a anterior | documentado em rule-engine.md |
-| Revisão jurídica | Catálogo e textos não passaram por profissional tributário | **necessária antes de produção** |
+| Engine | Registry por versão; V1 congelada. Uma V2 com outra forma canônica precisa decidir como ler o JSON de regras gravado | documentado em rule-engine.md |
+| Revisão jurídica | Catálogo e textos não passaram por profissional tributário; todo o catálogo V1 está `ProfessionalReview = Pending` | com a política de produção, **nenhuma oportunidade pode ser aprovada** até a revisão |
+| Obrigações acessórias | Estados `Unknown/DeclaredCompliant/VerifiedCompliant/NonCompliant`; só `VerifiedCompliant` conta para regras; a evidência é texto livre | quais documentos comprovam o cumprimento depende do profissional |
+| Nota da dispensa de 2026 | O texto da nota `IBSCBS.NOTE.2026-WAIVER` v1 diz "Perfil declara…", mas hoje só dispara com cumprimento **verificado** | trocar o texto exige nova versão da regra — a revisar com o profissional |
 | Produto | Empacotamento comercial (módulo pago? plano?) não decidido | decisão do dono |
+
+## Política de produção
+
+`TaxIntelligence:Policy:RequireApprovedRulesForDecisions` — ligada por padrão fora de Development/Testing: uma oportunidade só é aprovada se **todas** as versões de regra que casaram no cálculo tiverem `ProfessionalReview = Approved` (senão 422 `tax_professional_review_pending`, nada é gravado). Em Development e Testing o padrão é desligado para o fluxo ser exercitável antes da revisão; configuração explícita sempre vence. Um teste de integração liga a política e prova a recusa. `RequireSeparateApprover = true` em todos os ambientes.
+
+## O que depende do profissional tributário
+
+1. Aprovar, pedir ajuste ou rejeitar cada versão do catálogo V1 (todas `Pending`).
+2. Dizer quais documentos comprovam o cumprimento das obrigações acessórias de 2026 (o que justifica `VerifiedCompliant`).
+3. Validar os requisitos e as ressalvas do detector de desconto incondicional e se, em algum período, a redução calculada é economia.
+4. Revisar as decisões de interpretação listadas em [legal-sources.md](legal-sources.md#decisões-de-interpretação-para-revisão-profissional).
+5. Ler o inventário de fontes oficiais (LC 227/2026, Decreto 12.955/2026, Atos Conjuntos e Técnicos) e dizer o que muda no catálogo.
+6. Revisar o texto da nota da dispensa de 2026 (nova versão da regra, se for o caso).
+7. Revisar os textos das telas.
 
 ## Próximos passos
 
-1. **Revisão profissional** do catálogo v1, dos requisitos do detector e dos textos das telas.
+1. **Revisão profissional** — ver a lista acima.
 2. **Classificação fiscal de itens:** regime diferenciado/específico e NBS no cadastro de produto e serviço → condição por classificação.
 3. **Reduções do art. 348, III, a** (e anexos da LC 214) como regras parametrizáveis, por classificação.
 4. **Alíquotas de 2027+** assim que a resolução do Senado existir; ativar IBS 2027–2028 depois de verificar o Simples.

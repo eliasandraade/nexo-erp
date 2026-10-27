@@ -23,7 +23,7 @@ Todas da **Lei Complementar nº 214, de 16 de janeiro de 2025**, copiadas litera
 | `LC214-2025-ART348` | art. 348, I a III e §§ 1º e 2º — compensação, redução em regimes diferenciados, Simples fora, dispensa de recolhimento | alíquotas de 2026 e notas |
 | `LC214-2025-ART349` | art. 349, I e II — alíquotas de referência por resolução do Senado | `CBS.RATE.REFERENCE-2027-2033` (**PendingRegulation**) |
 
-"Verified" significa que o trecho confere com o texto oficial — **não é parecer jurídico**.
+`TextVerification = Verified` significa **só** que o trecho confere com o texto oficial — **não é parecer jurídico** e não aprova nenhuma regra. A interpretação de cada regra tem um estado separado, `ProfessionalReview`, e **todas as versões do catálogo V1 estão `Pending`**. Nenhuma foi marcada como aprovada.
 
 ## Decisões de interpretação (para revisão profissional)
 
@@ -37,9 +37,19 @@ Todas da **Lei Complementar nº 214, de 16 de janeiro de 2025**, copiadas litera
 | Crédito em compras (art. 47) | só estimado em simulação quando o usuário assume (`assumeCreditable`) | elegibilidade em 2026 não regulamentada para o caso geral |
 | Arredondamento | centavos, meio para longe do zero, por componente e linha | convenção de engenharia desta versão, não regra legal |
 
-## Não revisado
+## Inventário de fontes oficiais — a revisar profissionalmente
 
-O cabeçalho do texto compilado cita o **Decreto nº 12.955, de 2026**. Ele **não** foi lido nem usado; nenhuma regra depende dele. Antes de ampliar o catálogo, conferir esse decreto e os atos da Receita Federal e do Comitê Gestor do IBS.
+Fontes primárias localizadas em sites oficiais em 27/10/2026. **Nenhuma delas foi lida por inteiro, interpretada ou usada por regra do catálogo**; nada abaixo é resumo de conteúdo. Ficam listadas para o profissional tributário decidir o que muda no catálogo. Fora destes endereços (blogs, resumos, material de curso) nada é fonte.
+
+| Fonte | Endereço oficial | Situação |
+|---|---|---|
+| LC nº 214/2025 — texto compilado | <https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm> | trechos do catálogo V1 conferidos literalmente em 26/10/2026; interpretação **a revisar profissionalmente** |
+| LC nº 227, de 13/01/2026 | <https://www.planalto.gov.br/ccivil_03/leis/lcp/lcp227.htm> (republicação e retificação em <https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/ret/lcp227-26-rep.doc> e <https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/ret/lcp227-26-ret.doc>) | não lida; alterações na LC 214 só entram pelo texto compilado acima; **a revisar profissionalmente** |
+| Decreto nº 12.955, de 29/04/2026 (regulamento da CBS) | <https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/decreto/d12955.htm> | não lido; alterado pelo Decreto nº 13.075/2026 (<https://www.planalto.gov.br/ccivil_03/_ato2023-2026/2026/decreto/d13075.htm>); **a revisar profissionalmente** |
+| Atos Conjuntos RFB/CGIBS de 2026 | consulta oficial: <https://normas.receita.fazenda.gov.br/> e <https://www.cgibs.gov.br/>; ex.: Ato Conjunto nº 4, de 30/07/2026 (<https://www.cgibs.gov.br/upload/arquivos/202607/31091735-20260730-16h30-ato-conjunto-rfb-cgibs-na-c2-ba-4-260731-090909.pdf>) | não lidos; **a revisar profissionalmente** — em especial o que diz respeito às obrigações acessórias de 2026 (condição do art. 348, § 1º) |
+| Atos Técnicos Conjuntos | <https://www.cgibs.gov.br/atos-tecnicos-conjuntos> | não lidos; especificações técnicas (documentos fiscais, declarações); **a revisar profissionalmente** |
+
+Conferir sempre a versão vigente no Diário Oficial da União antes de usar qualquer uma.
 
 ## Como adicionar uma fonte
 

@@ -1,6 +1,6 @@
 # Engine de regras
 
-Código: `nexo-backend/src/Nexo.Application/Modules/TaxIntelligence/Engine/`. Versão: `TaxEngine.Version = "orken-tax-engine/1.0.0"`.
+Código: `nexo-backend/src/Nexo.Application/Modules/TaxIntelligence/Engine/`. Versões: `TaxEngineV1.VersionId = "orken-tax-engine/1.0.0"` com a forma canônica `TaxCanonicalV1` (`orken-canonical/1`), registradas no `TaxEngineRegistry`.
 
 ## Princípios
 
@@ -47,12 +47,15 @@ Cada regra examinada vira um `TaxRuleExecution`: chave, versão, hash do conteú
 
 - `TaxRule` = identidade estável (chave única, nunca reutilizada).
 - `TaxRuleVersion` = conteúdo (condições, resultado, vigência, prioridade) **fixo na criação**, com `content_hash` (SHA-256 da forma canônica). Depois disso só o status anda: `Draft/PendingRegulation/Unverified → Active → Superseded/Revoked`. Nada volta.
-- Ativar uma versão exige que **todas** as suas fontes estejam `Verified`. Versões ativas mais antigas totalmente cobertas pela nova viram `Superseded` — continuam no banco e podem ser recarregadas para reproduzir cálculos antigos.
+- Ativar uma versão exige que **todas** as suas fontes tenham o texto conferido (`TextVerification = Verified`).
+- **Status técnico ≠ revisão profissional.** `Status` diz se a engine aplica a versão; `ProfessionalReview` (`Pending/Approved/ChangesRequired/Rejected`, com quem, quando e notas) diz se um profissional tributário aprovou a interpretação. Ativar não aprova; revisar não ativa. Todo o catálogo V1 está `Pending`. Registro: `POST /api/platform/tax/rule-versions/{id}/professional-review` (plataforma, auditado; pedir ajuste ou rejeitar exige nota).
+- Versões ativas mais antigas totalmente cobertas pela nova viram `Superseded` — continuam no banco e podem ser recarregadas para reproduzir cálculos antigos.
 - Diferença entre os casos pedidos:
 
 | Caso | Como fica |
 |---|---|
-| Regra implementada e validada | versão `Active` com fontes `Verified` |
+| Regra aplicada pela engine | versão `Active` com fontes de texto conferido |
+| Regra validada por profissional | `ProfessionalReview = Approved` (independente do status) |
 | Regra parametrizável | nova versão com outros parâmetros (alíquota, vigência) |
 | Hipótese de simulação | regra sintética `HYPOTHESIS.*`, só em memória, rotulada na saída (`isHypothesis`) |
 | Oportunidade | não é regra: proposta de detector, revisada por pessoas |
@@ -84,10 +87,16 @@ No código (catálogo semeado): **nunca edite `TaxCatalogV1`**. Conteúdo novo e
 
 ## Como testar uma regra
 
-- **Unitário (engine):** monte um `TaxEngineInput` e a lista de `TaxEngineRule` e verifique `TaxEngine.Run` — veja `tests/Nexo.UnitTests/TaxIntelligence/TaxEngineTests.cs` (`TaxTestData.Catalogue()` dá o catálogo semeado como a engine o vê).
+- **Unitário (engine):** monte um `TaxEngineInput` e a lista de `TaxEngineRule` e verifique `TaxTestData.V1.Run` — veja `tests/Nexo.UnitTests/TaxIntelligence/TaxEngineTests.cs` (`TaxTestData.Catalogue()` dá o catálogo semeado como a engine o vê).
 - **Integração:** `tests/Nexo.IntegrationTests/TaxIntelligence/TaxIntelligenceTests.cs`, teste `A_new_rule_version_never_changes_a_past_calculation`, mostra o ciclo completo pela API da plataforma numa data isolada.
 - Toda regra nova deve ter ao menos: um caso em que casa, um em que não casa, e um em que o fato está faltando.
 
 ## Mudando a engine
 
-Qualquer mudança de semântica de avaliação ou da forma canônica **exige nova `TaxEngine.Version`**. A verificação (`/verify`) acusa quando a versão da engine do cálculo difere da atual. Para manter reprodutibilidade de cálculos antigos com engine nova, a versão antiga do avaliador deve ser preservada (estratégia por versão) — ainda não necessário na v1.
+`TaxEngineV1` (`orken-tax-engine/1.0.0`) e `TaxCanonicalV1` (`orken-canonical/1`) estão **congeladas**: nunca são editadas. Qualquer mudança de semântica de avaliação, arredondamento ou forma canônica é uma **nova implementação** de `ITaxEngine` (e, se for o caso, de `ITaxCanonicalizer`) com nova versão, registrada no `TaxEngineRegistry` **ao lado** da V1 — que continua registrada para reproduzir os cálculos que fez. O registry recusa versão duplicada e versão atual não registrada.
+
+- Cálculo novo: `registry.Current`.
+- Ler, re-detectar ou verificar cálculo gravado: a versão exata de `engine_version`. Se ela não existir na build: erro `tax_engine_unavailable` (leitura) ou `engineAvailable = false` (verificação). Nunca há fallback para a atual.
+- Simulações e oportunidades guardam a versão da engine que as produziu e são lidas com a forma canônica dela.
+- Conteúdo de regra é lido com a forma canônica da engine que vai executá-la. Uma V2 com outra forma canônica precisa saber ler o JSON de regras gravado (ou o catálogo ganha uma recodificação versionada) — decisão a tomar quando a V2 existir.
+- Prova: testes com uma engine V2 fictícia (outra versão, outra forma canônica) mostram que um cálculo V1 é verificado pela V1 e que a V2 nunca roda; sem a V1 registrada, a verificação responde "não pode reproduzir".
