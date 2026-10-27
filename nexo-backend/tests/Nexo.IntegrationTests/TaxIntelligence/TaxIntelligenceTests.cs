@@ -460,6 +460,17 @@ public class TaxIntelligenceTests
     }
 
     [Fact]
+    public async Task OpenApi_document_describes_the_tax_api()
+    {
+        var doc = await Json(await _factory.CreateApiClient().GetAsync("/swagger/v1/swagger.json"));
+
+        var paths = doc.GetProperty("paths").EnumerateObject().Select(p => p.Name).ToList();
+        paths.Should().Contain(["/api/tax/calculations", "/api/tax/calculations/{id}/verify", "/api/tax/simulations",
+            "/api/tax/opportunities/{id}/approve", "/api/tax/credits/{id}/movements", "/api/tax/rules", "/api/platform/tax/rules/{key}/versions"]);
+        doc.GetProperty("components").GetProperty("schemas").TryGetProperty("TaxCalculationDto", out _).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task Bad_input_is_refused_before_the_engine()
     {
         var admin = await AdminWithProfileAsync();
