@@ -64,6 +64,17 @@ public class TaxSimulationAndOpportunityTests
     }
 
     [Fact]
+    public void A_scenario_run_alone_keeps_an_unknown_supplier_regime_unknown()
+    {
+        var result = TaxSimulator.RunAlone(V1, Input(direction: TaxDirection.Inbound, counterparty: null),
+            new TaxScenario("Fornecedor sem regime", AssumeCreditable: true), Catalogue());
+
+        result.Input.CounterpartyRegime.Should().BeNull("nothing is inherited from another scenario");
+        result.IsBaseline.Should().BeFalse();
+        result.TaxDeltaVsBaseline.Should().Be(0m);
+    }
+
+    [Fact]
     public void Simples_supplier_gives_no_credit_estimate_even_when_assumed()
     {
         var results = TaxSimulator.Compare(V1, Input(direction: TaxDirection.Inbound, counterparty: TaxRegime.SimplesNacional),

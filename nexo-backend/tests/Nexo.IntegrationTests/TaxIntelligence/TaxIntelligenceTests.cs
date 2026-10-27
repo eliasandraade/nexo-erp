@@ -383,6 +383,36 @@ public class TaxIntelligenceTests
         offers[0].GetProperty("cheapest").GetBoolean().Should().BeTrue();
     }
 
+    [Fact]
+    public async Task An_offer_with_an_unknown_supplier_regime_never_inherits_another_offers_regime()
+    {
+        var admin = await AdminWithProfileAsync();
+        object Offer(string name, string? regime, decimal gross) => new
+        {
+            supplier = name, supplierRegime = regime,
+            lines = new[] { new { itemKind = "Good", description = "Insumo", ncm = (string?)null, quantity = 1m, grossAmount = gross,
+                unconditionalDiscount = 0m, conditionalDiscount = 0m, surcharges = 0m, excludedTaxes = (decimal?)0m, specialTreatment = (string?)null } },
+        };
+        async Task<List<JsonElement>> CompareAsync(params object[] offers) => (await Json(await Post(admin, "/api/tax/simulations/supplier-comparison", new
+        {
+            operationDate = "2027-06-15", offers,
+            rateHypotheses = new[] { new { tax = "Cbs", ratePercent = 10m, label = "hipótese" } }, assumeCreditable = true,
+        }))).EnumerateArray().ToList();
+
+        var knownFirst = await CompareAsync(Offer("Regular", "LucroReal", 98000m), Offer("Não sei", null, 90000m));
+        var unknown = knownFirst.Single(o => o.GetProperty("supplier").GetString() == "Não sei");
+        unknown.GetProperty("creditEstimate").GetDecimal().Should().Be(0m, "an unknown regime is never treated as the regular regime");
+        unknown.GetProperty("effectiveCost").GetDecimal().Should().Be(90000m);
+        unknown.GetProperty("warnings").EnumerateArray().Select(w => w.GetString())
+            .Should().Contain(w => w!.Contains("regime do fornecedor não informado"));
+        knownFirst.Single(o => o.GetProperty("supplier").GetString() == "Regular").GetProperty("cheapest").GetBoolean().Should().BeTrue();
+
+        var unknownFirst = await CompareAsync(Offer("Não sei", null, 90000m), Offer("Regular", "LucroReal", 98000m));
+        unknownFirst.Select(o => (o.GetProperty("supplier").GetString(), o.GetProperty("effectiveCost").GetDecimal()))
+            .Should().BeEquivalentTo(knownFirst.Select(o => (o.GetProperty("supplier").GetString(), o.GetProperty("effectiveCost").GetDecimal())),
+                "the result does not depend on the order of the offers");
+    }
+
     // ── credits and split ───────────────────────────────────────────────────────
 
     [Fact]

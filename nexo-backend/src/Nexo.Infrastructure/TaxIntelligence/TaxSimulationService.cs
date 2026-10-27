@@ -86,18 +86,17 @@ public sealed class TaxSimulationService
     {
         var profile = await _profiles.GetInForceAsync(r.OperationDate, ct);
         var compliance = await _compliance.InForceAsync(r.OperationDate, ct);
-        var first = r.Offers[0];
-        var baseline = TaxCalculationService.ToInput(
-            new TaxOperationRequest(r.OperationDate, TaxDirection.Inbound, first.SupplierRegime, null, first.Supplier, first.Lines), profile,
-            compliance?.ForRules);
         var hypotheses = r.RateHypotheses?.Select(h => new RateHypothesis(h.Tax, h.RatePercent, h.Label)).ToList();
-        var scenarios = r.Offers.Select(o => new TaxScenario(o.Supplier, CounterpartyRegime: o.SupplierRegime,
-            Lines: TaxCalculationService.ToLines(o.Lines), RateHypotheses: hypotheses, AssumeCreditable: r.AssumeCreditable)).ToList();
         var engine = _engines.Current;
-        var catalogue = await LoadCatalogueAsync(engine, r.OperationDate, scenarios, ct);
+        var catalogue = await LoadCatalogueAsync(engine, r.OperationDate, [], ct);
 
-        // The baseline only anchors the comparison; each offer is a scenario of its own.
-        var results = TaxSimulator.Compare(engine, baseline, scenarios, catalogue).Skip(1).ToList();
+        // Each offer runs on its own facts: a supplier whose regime is unknown stays unknown, never
+        // inheriting another offer's regime, and the result does not depend on the order of the offers.
+        var results = r.Offers.Select(o => TaxSimulator.RunAlone(engine,
+            TaxCalculationService.ToInput(
+                new TaxOperationRequest(r.OperationDate, TaxDirection.Inbound, o.SupplierRegime, null, o.Supplier, o.Lines), profile,
+                compliance?.ForRules),
+            new TaxScenario(o.Supplier, RateHypotheses: hypotheses, AssumeCreditable: r.AssumeCreditable), catalogue)).ToList();
         var cheapest = results.Min(x => x.EffectiveCost);
         return results.Select(x => new SupplierOfferResultDto(x.Name, x.Charged, x.TaxTotal, x.CreditEstimate, x.EffectiveCost,
             x.EffectiveCost == cheapest, x.Hypotheses, x.Output.Warnings)).ToList();

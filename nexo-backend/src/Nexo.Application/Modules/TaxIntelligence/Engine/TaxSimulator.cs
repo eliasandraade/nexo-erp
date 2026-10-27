@@ -60,6 +60,13 @@ public static class TaxSimulator
         return results;
     }
 
+    /// <summary>
+    /// Runs one scenario on its own facts, with no baseline to inherit from: a value the input leaves
+    /// unknown (the supplier regime, say) stays unknown. Deltas are zero.
+    /// </summary>
+    public static ScenarioResult RunAlone(ITaxEngine engine, TaxEngineInput input, TaxScenario s, IReadOnlyCollection<TaxEngineRule> catalogue)
+        => Run(engine, s.Name, isBaseline: false, Apply(input, s), s, catalogue, null);
+
     public static TaxEngineInput Apply(TaxEngineInput baseline, TaxScenario s)
     {
         var lines = (s.Lines ?? baseline.Lines).Select(l => s.ConvertConditionalDiscounts
