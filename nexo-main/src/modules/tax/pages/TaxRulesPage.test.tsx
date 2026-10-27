@@ -17,6 +17,8 @@ const rule: api.TaxRuleDto = {
     conditions: [], result: { kind: "rate" }, contentHash: "e2de5c9c", origin: "seed:tax-catalog-v1", createdBy: "Orken (catálogo inicial)",
     notes: null, activatedAt: "2026-10-26T00:00:00Z", legalSourceCodes: ["LC214-2025-ART346"], createdAt: "2026-10-26T00:00:00Z",
     professionalReview: "Pending", professionalReviewedBy: null, professionalReviewedAt: null, professionalReviewNotes: null,
+    professionalReference: null, professionalReviewScope: null, professionalReviewValidFrom: null, professionalReviewValidTo: null,
+    professionalReviewAssumptions: null, professionalReviewCaveats: null,
   }],
 };
 

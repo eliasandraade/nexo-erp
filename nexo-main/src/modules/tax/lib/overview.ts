@@ -46,6 +46,6 @@ export function overviewAttention(o: TaxOverviewDto): string[] {
   if (!o.profileConfigured) a.push("Cadastre o perfil tributário: sem ele nenhum cálculo é feito.");
   if (o.openHighRisk > 0) a.push(`${o.openHighRisk} ${o.openHighRisk === 1 ? "oportunidade de risco alto espera" : "oportunidades de risco alto esperam"} decisão da diretoria.`);
   if (o.splitDivergences > 0) a.push(`${o.splitDivergences} ${o.splitDivergences === 1 ? "retenção do split não confere" : "retenções do split não conferem"} com o esperado.`);
-  if (o.creditsNotAppropriated > 0) a.push("Há créditos reconhecidos que ainda não foram apropriados.");
+  if (o.creditsToBeAppropriated > 0) a.push("Há créditos com requisitos confirmados que ainda não foram apropriados.");
   return a;
 }

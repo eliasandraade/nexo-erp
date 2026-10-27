@@ -87,10 +87,18 @@ function Rule({ rule }: Readonly<{ rule: TaxRuleDto }>) {
             </div>
             {v.notes && <p className="mt-1 whitespace-pre-line text-muted-foreground">{v.notes}</p>}
             {v.professionalReviewedBy && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Revisão tributária por {v.professionalReviewedBy}{v.professionalReviewedAt ? ` em ${formatDateTime(v.professionalReviewedAt)}` : ""}
-                {v.professionalReviewNotes ? `: ${v.professionalReviewNotes}` : ""}
-              </p>
+              <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                <p>
+                  Revisão tributária por {v.professionalReviewedBy}{v.professionalReference ? ` (${v.professionalReference})` : ""}
+                  {v.professionalReviewedAt ? ` em ${formatDateTime(v.professionalReviewedAt)}` : ""}{v.professionalReviewNotes ? `: ${v.professionalReviewNotes}` : ""}
+                </p>
+                {v.professionalReviewScope && <p>Escopo da revisão: {v.professionalReviewScope}</p>}
+                {v.professionalReviewValidFrom && (
+                  <p>Vale de {formatIsoDate(v.professionalReviewValidFrom)}{v.professionalReviewValidTo ? ` a ${formatIsoDate(v.professionalReviewValidTo)}` : " sem fim definido"}</p>
+                )}
+                {v.professionalReviewAssumptions && <p>Premissas: {v.professionalReviewAssumptions}</p>}
+                {v.professionalReviewCaveats && <p className="text-warning">Ressalvas: {v.professionalReviewCaveats}</p>}
+              </div>
             )}
             <p className="mt-1 text-xs">Fonte: <SourceLinks codes={v.legalSourceCodes} /></p>
             <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">conteúdo {v.contentHash} · origem {v.origin} · {v.createdBy}{v.activatedAt ? ` · em vigor desde ${formatDateTime(v.activatedAt)}` : ""}</p>

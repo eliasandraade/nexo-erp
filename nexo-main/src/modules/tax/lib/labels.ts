@@ -1,6 +1,7 @@
 import { TAX_REGIMES } from "@/modules/fiscal/api/fiscal.api";
 import type {
-  AccessoryObligationsStatus, BaseComponent, ConditionOutcome, CreditEntryType, CreditMovement, CreditTax, ImpactNature, OpportunityStatus,
+  ApprovalRequirement, BaseComponent, ComplianceAssessmentStatus, ConditionOutcome, CoverageStatus, CreditLifecycle, EvidenceStatus, EvidenceType,
+  RequirementPhase, SupplyPattern, CreditEntryType, CreditMovement, CreditTax, ImpactNature, OpportunityStatus,
   OpportunityType, ProfessionalReviewStatus, ProhibitedStructure, RiskLevel, RuleStatus, SplitProcedure, SplitStatus, TaxDirection,
   TaxItemKind, TaxRegime, TaxTransactionSource, TaxType, TaxVerificationDto, TextVerificationStatus,
 } from "../api/tax.api";
@@ -13,7 +14,7 @@ export interface ToneLabel { label: string; tone: Tone }
 export const IMPACT_NATURES: Record<ImpactNature, ToneLabel & { hint: string }> = {
   DefinitiveSaving: { label: "Economia", tone: "saving", hint: "Imposto que deixa de ser pago de vez." },
   CalculatedTaxReduction: {
-    label: "Redução do IBS/CBS calculado — não é economia",
+    label: "Redução simulada do IBS/CBS calculado",
     tone: "reduction",
     hint: "O tributo calculado no documento diminui. Se isso vira economia depende do período (em 2026 é compensável ou dispensado) e de revisão profissional.",
   },
@@ -26,9 +27,11 @@ export const IMPACT_NATURES: Record<ImpactNature, ToneLabel & { hint: string }> 
 export const OPPORTUNITY_STATUS: Record<OpportunityStatus, ToneLabel> = {
   Identified: { label: "Identificada", tone: "neutral" },
   InReview: { label: "Em análise", tone: "warning" },
-  Approved: { label: "Aprovada", tone: "success" },
+  Approved: { label: "Cenário aprovado", tone: "success" },
   Rejected: { label: "Recusada", tone: "neutral" },
   Blocked: { label: "Bloqueada", tone: "danger" },
+  ExecutionVerified: { label: "Execução verificada", tone: "success" },
+  ExecutionDiverged: { label: "Execução divergente", tone: "danger" },
 };
 
 export const OPPORTUNITY_TYPES: Record<OpportunityType, string> = {
@@ -79,17 +82,88 @@ export const TEXT_VERIFICATION: Record<TextVerificationStatus, ToneLabel> = {
 /** A tax professional's review of the rule — technical activation is not professional approval. */
 export const PROFESSIONAL_REVIEW: Record<ProfessionalReviewStatus, ToneLabel> = {
   Pending: { label: "Revisão tributária pendente", tone: "warning" },
+  ReviewReceived: { label: "Revisão recebida — não é aprovação", tone: "warning" },
   Approved: { label: "Revisão tributária aprovada", tone: "success" },
+  ApprovedWithCaveats: { label: "Revisão aprovou com ressalvas", tone: "success" },
   ChangesRequired: { label: "Revisão tributária pediu ajustes", tone: "danger" },
   Rejected: { label: "Revisão tributária rejeitou", tone: "danger" },
 };
 
-/** A declaration is not a verification: only "verificado" satisfies a rule that depends on compliance. */
-export const ACCESSORY_OBLIGATIONS: Record<AccessoryObligationsStatus, { label: string; short: string }> = {
-  Unknown: { label: "Não sei / não informado", short: "Não informado" },
-  DeclaredCompliant: { label: "Declaro que entrega todas (sem verificação)", short: "Declarado, não verificado" },
-  VerifiedCompliant: { label: "Verificado — informe o que foi conferido", short: "Verificado" },
-  NonCompliant: { label: "Não entrega todas", short: "Não cumpre" },
+/**
+ * Ancillary-obligation assessments, per period and scope. Only "Verificado" satisfies a rule that
+ * depends on compliance — and even then the copy says "verified in the period and scope", never "compliant".
+ */
+export const COMPLIANCE_STATUS: Record<ComplianceAssessmentStatus, ToneLabel & { hint: string }> = {
+  Unknown: { label: "Não informado", tone: "neutral", hint: "Nenhuma conclusão é aplicada." },
+  Declared: { label: "Declarado, não verificado", tone: "warning", hint: "Declarar não é verificar: não satisfaz regras que dependem do cumprimento." },
+  Verified: { label: "Verificado no período e escopo", tone: "success", hint: "Obrigações verificadas no período e no escopo indicados." },
+  InconsistencyIdentified: { label: "Inconsistência identificada", tone: "danger", hint: "Não equivale a verificado." },
+  UnderRemediation: { label: "Em regularização", tone: "warning", hint: "Regularização em curso (ex.: PNCT) não equivale a verificado." },
+  RemediationVerified: { label: "Regularização verificada", tone: "warning", hint: "Não equivale automaticamente a verificado; depende de revisão profissional." },
+  NonCompliant: { label: "Não cumpre", tone: "danger", hint: "Regras que dependem do cumprimento não se aplicam." },
+  NotApplicable: { label: "Não aplicável", tone: "neutral", hint: "Nenhuma conclusão é aplicada." },
+};
+
+export const COMPLIANCE_VERIFIED_COPY = "Obrigações verificadas no período e no escopo indicados.";
+export const SYSTEM_CALCULATION_COPY = "Cálculo do sistema com as regras e os dados indicados.";
+export const SCENARIO_APPROVED_COPY = "Cenário aprovado no escopo indicado. Não executa alteração comercial ou fiscal.";
+export const SPLIT_EXPECTATION_COPY = "Expectativa gerencial de segregação. Não comprova retenção ou recolhimento.";
+export const POTENTIAL_CREDIT_COPY =
+  "Crédito potencial estimado. Não representa validação de elegibilidade, apropriação ou disponibilidade para utilização.";
+export const NOT_SUPPORTED_COPY = "Operação não suportada pela versão atual da engine.";
+
+export const COVERAGE_STATUS: Record<CoverageStatus, ToneLabel> = {
+  Supported: { label: "Suportada pela V1", tone: "success" },
+  Unsupported: { label: "Não suportada", tone: "danger" },
+  RequiresClassification: { label: "Falta classificação", tone: "warning" },
+  RequiresProfessionalReview: { label: "Precisa de revisão profissional", tone: "warning" },
+  PendingRegulation: { label: "Aguardando regulamentação", tone: "warning" },
+};
+
+export const SUPPLY_PATTERNS: Record<SupplyPattern, string> = {
+  SingleSupply: "Fornecimento único e imediato",
+  ContinuedSupply: "Fornecimento continuado ou fracionado",
+  AdvancePayment: "Pagamento antecipado",
+  FutureDelivery: "Entrega futura",
+  PublicProcurement: "Aquisição por órgão público",
+  Other: "Outro",
+};
+
+export const REQUIREMENT_PHASES: Record<RequirementPhase, string> = {
+  ScenarioApproval: "Antes da operação (cenário)",
+  ExecutionVerification: "Depois da operação (execução)",
+};
+
+export const EVIDENCE_TYPES: Record<EvidenceType, string> = {
+  CommercialInstrument: "Instrumento comercial (proposta, pedido, contrato, aditivo)",
+  FiscalDocument: "Documento fiscal autorizado",
+  FiscalDocumentEvent: "Evento do documento fiscal",
+  PaymentRecord: "Comprovante de pagamento",
+  Other: "Outro",
+};
+
+export const EVIDENCE_STATUS: Record<EvidenceStatus, ToneLabel> = {
+  Submitted: { label: "Enviada", tone: "neutral" },
+  Accepted: { label: "Aceita", tone: "success" },
+  Rejected: { label: "Recusada", tone: "danger" },
+};
+
+export const APPROVAL_REQUIREMENTS: Record<ApprovalRequirement, string> = {
+  SelfApprovalWithJustification: "Quem analisou pode aprovar, registrando justificativa",
+  IdentifiedReviewer: "Outra pessoa identificada precisa ter revisado",
+  IndependentApprover: "Aprovador independente: não pode ter participado da análise",
+};
+
+export const CREDIT_LIFECYCLE: Record<CreditLifecycle, ToneLabel> = {
+  PotentialIdentified: { label: "Potencial estimado", tone: "neutral" },
+  RequirementsUnderReview: { label: "Requisitos em revisão", tone: "warning" },
+  ToBeAppropriated: { label: "A apropriar", tone: "credit" },
+  Appropriated: { label: "Apropriado", tone: "success" },
+  Used: { label: "Utilizado", tone: "neutral" },
+  Blocked: { label: "Bloqueado", tone: "danger" },
+  Reversed: { label: "Estornado", tone: "neutral" },
+  Expired: { label: "Vencido", tone: "neutral" },
+  Discarded: { label: "Descartado", tone: "neutral" },
 };
 
 export const CONDITION_OUTCOMES: Record<ConditionOutcome, ToneLabel> = {
@@ -112,10 +186,13 @@ export const CREDIT_MOVEMENTS: Record<CreditMovement, string> = {
   Unblock: "Desbloquear",
   Reverse: "Estornar apropriação",
   Expire: "Dar como vencido",
+  StartRequirementsReview: "Iniciar revisão dos requisitos",
+  ConfirmToBeAppropriated: "Confirmar requisitos (a apropriar)",
+  Discard: "Descartar o crédito potencial",
 };
 
 export const CREDIT_ENTRY_TYPES: Record<CreditEntryType, string> = {
-  Recognized: "Reconhecido",
+  Recognized: "Requisitos confirmados (a apropriar)",
   Appropriated: "Apropriado",
   Used: "Usado",
   Blocked: "Bloqueado",

@@ -5,8 +5,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TAX_REGIMES } from "@/modules/fiscal/api/fiscal.api";
 import { STATES } from "@/modules/fiscal/lib/validation";
-import type { TaxDirection, TaxItemKind, TaxRegime } from "../api/tax.api";
-import { DIRECTIONS, ITEM_KINDS } from "../lib/labels";
+import type { SupplyPattern, TaxDirection, TaxItemKind, TaxRegime } from "../api/tax.api";
+import { DIRECTIONS, ITEM_KINDS, SUPPLY_PATTERNS } from "../lib/labels";
 import { emptyLine, type LineDraft, type OperationDraft } from "../lib/forms";
 import { Field } from "./TaxShell";
 
@@ -37,8 +37,17 @@ export function LinesEditor({ idPrefix, lines, onChange }: Readonly<{ idPrefix: 
                   <SelectContent>{(Object.keys(ITEM_KINDS) as TaxItemKind[]).map((k) => <SelectItem key={k} value={k}>{ITEM_KINDS[k]}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <Field id={`${id}-ncm`} label="NCM (opcional)">
-                <Input id={`${id}-ncm`} inputMode="numeric" placeholder="0000.00.00" {...text("ncm")} />
+              {line.itemKind === "Good" ? (
+                <Field id={`${id}-ncm`} label="NCM" hint="Mercadoria: sem NCM a V1 não calcula.">
+                  <Input id={`${id}-ncm`} inputMode="numeric" placeholder="0000.00.00" {...text("ncm")} />
+                </Field>
+              ) : (
+                <Field id={`${id}-nbs`} label="NBS" hint="Serviço: sem NBS a V1 não calcula.">
+                  <Input id={`${id}-nbs`} placeholder="1.0101.10.00" {...text("nbs")} />
+                </Field>
+              )}
+              <Field id={`${id}-cct`} label="cClassTrib" hint="Classificação do IBS/CBS. A V1 registra o código, não o interpreta; sem ele não calcula.">
+                <Input id={`${id}-cct`} maxLength={10} {...text("cClassTrib")} />
               </Field>
               <Field id={`${id}-qty`} label="Quantidade">
                 <Input id={`${id}-qty`} inputMode="decimal" {...text("quantity")} />
@@ -124,7 +133,13 @@ export function OperationEditor({ idPrefix, value, onChange }: Readonly<{ idPref
             </SelectContent>
           </Select>
         </Field>
-        <Field id={`${idPrefix}-desc`} label="Descrição (opcional)" className="sm:col-span-2 lg:col-span-4">
+        <Field id={`${idPrefix}-pattern`} label="Como o fornecimento acontece" hint="A V1 só calcula fornecimento único e imediato." className="sm:col-span-2">
+          <Select value={value.supplyPattern} onValueChange={(v) => onChange({ ...value, supplyPattern: v as SupplyPattern })}>
+            <SelectTrigger id={`${idPrefix}-pattern`}><SelectValue /></SelectTrigger>
+            <SelectContent>{(Object.keys(SUPPLY_PATTERNS) as SupplyPattern[]).map((k) => <SelectItem key={k} value={k}>{SUPPLY_PATTERNS[k]}</SelectItem>)}</SelectContent>
+          </Select>
+        </Field>
+        <Field id={`${idPrefix}-desc`} label="Descrição (opcional)" className="sm:col-span-2">
           <Input id={`${idPrefix}-desc`} maxLength={300} value={value.description} onChange={(e) => onChange({ ...value, description: e.target.value })} />
         </Field>
       </div>

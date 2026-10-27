@@ -20,7 +20,10 @@ import {
   TAX_KEY, TAX_KEYS, getSplitProvider, getTaxCreditTotals, listSplitExpectations, listTaxCredits, moveTaxCredit, registerTaxCredit,
   type CreditMovement, type CreditTax, type TaxCreditDto,
 } from "../api/tax.api";
-import { CREDIT_ENTRY_TYPES, CREDIT_MOVEMENTS, CREDIT_TAX_NAMES, labelOf } from "../lib/labels";
+import {
+  CREDIT_ENTRY_TYPES, CREDIT_LIFECYCLE, CREDIT_MOVEMENTS, CREDIT_TAX_NAMES, POTENTIAL_CREDIT_COPY, SPLIT_EXPECTATION_COPY, labelOf, toneOf,
+} from "../lib/labels";
+import { ToneBadge } from "../components/TaxBadges";
 import {
   creditProblems, emptyCredit, errorMessage, formatIsoDate, movementProblems, toCreditRequest, toMovementRequest,
   type CreditDraft, type MovementDraft,
@@ -69,12 +72,12 @@ function Credits() {
             <div key={t.tax} className="space-y-2">
               <h2 className="section-heading">{labelOf(CREDIT_TAX_NAMES, t.tax)}</h2>
               <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-                <MetricBlock label="Reconhecido" value={formatCurrency(t.eligible)} />
+                <MetricBlock label="Potencial estimado" value={formatCurrency(t.potential)} caption="não é crédito validado" />
+                <MetricBlock label="A apropriar" value={formatCurrency(t.toBeAppropriated)} caption="requisitos confirmados" />
                 <MetricBlock label="Apropriado" value={formatCurrency(t.appropriated)} />
                 <MetricBlock label="Usado" value={formatCurrency(t.used)} />
                 <MetricBlock label="Bloqueado" value={formatCurrency(t.blocked)} variant={t.blocked > 0 ? "warning" : "default"} />
                 <MetricBlock label="Disponível" value={formatCurrency(t.available)} variant={t.available > 0 ? "success" : "default"} />
-                <MetricBlock label="Não apropriado" value={formatCurrency(t.notAppropriated)} />
               </div>
             </div>
           ))}
@@ -83,7 +86,7 @@ function Credits() {
 
       <SectionCard
         title="Créditos registrados"
-        description="Crédito só é usado contra imposto devido do mesmo tributo, uma vez por obrigação."
+        description="Um crédito registrado começa como potencial. Só depois de confirmar os requisitos ele fica a apropriar; só o apropriado pode ser usado, contra imposto devido do mesmo tributo, uma vez por obrigação."
         actions={<Button size="sm" onClick={() => setRegistering(true)}><Plus className="mr-1.5 h-3.5 w-3.5" /> Registrar crédito</Button>}
       >
         {credits.isLoading && <Skeleton className="h-32 w-full" />}
@@ -96,17 +99,25 @@ function Credits() {
                 <div className="min-w-0">
                   <p className="font-medium">{labelOf(CREDIT_TAX_NAMES, c.tax)} · {c.sourceDocumentType} de {formatIsoDate(c.acquiredOn)}{c.expiresOn ? ` · vence ${formatIsoDate(c.expiresOn)}` : ""}</p>
                   {c.sourceDocumentKey && <p className="break-all font-mono text-xs text-muted-foreground">{c.sourceDocumentKey}</p>}
-                  <p className="break-words text-xs text-muted-foreground">{c.eligibilityBasis}</p>
+                  <p className="flex flex-wrap items-center gap-2 pt-1">
+                    <ToneBadge label={labelOf(CREDIT_LIFECYCLE, c.lifecycle)} tone={toneOf(CREDIT_LIFECYCLE, c.lifecycle)} />
+                  </p>
+                  {(c.stage === "PotentialIdentified" || c.stage === "RequirementsUnderReview") && (
+                    <p className="text-xs text-warning">{POTENTIAL_CREDIT_COPY}</p>
+                  )}
+                  <p className="break-words text-xs text-muted-foreground">Estimativa: {c.potentialBasis}</p>
+                  {c.recognitionBasis && <p className="break-words text-xs text-muted-foreground">Requisitos confirmados: {c.recognitionBasis}</p>}
+                  {c.discardReason && <p className="break-words text-xs text-muted-foreground">Descartado: {c.discardReason}</p>}
                 </div>
                 <Button size="sm" variant="outline" onClick={() => setMoving(c)}>Movimentar</Button>
               </div>
               <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
                 <Pair label="Destacado" value={c.originalAmount} />
-                <Pair label="Reconhecido" value={c.balance.eligible} />
+                <Pair label="Potencial" value={c.balance.potential} />
+                <Pair label="A apropriar" value={c.balance.toBeAppropriated} />
                 <Pair label="Disponível" value={c.balance.available} />
                 <Pair label="Usado" value={c.balance.used} />
                 <Pair label="Bloqueado" value={c.balance.blocked} />
-                <Pair label="Não apropriado" value={c.balance.notAppropriated} />
               </dl>
               {c.entries.length > 0 && (
                 <details className="mt-2">
@@ -127,7 +138,7 @@ function Credits() {
       </SectionCard>
 
       <RegisterDialog open={registering} onClose={() => setRegistering(false)} />
-      <MovementDialog credit={moving} onClose={() => setMoving(null)} />
+      <MovementDialog key={moving?.id ?? "none"} credit={moving} onClose={() => setMoving(null)} />
     </>
   );
 }
@@ -169,8 +180,9 @@ function RegisterDialog({ open, onClose }: Readonly<{ open: boolean; onClose: ()
           <Field id="cr-acq" label="Data da aquisição"><Input id="cr-acq" type="date" {...text("acquiredOn")} /></Field>
           <Field id="cr-exp" label="Vence em (opcional)"><Input id="cr-exp" type="date" {...text("expiresOn")} /></Field>
           <Field id="cr-orig" label="Imposto destacado (R$)"><Input id="cr-orig" inputMode="decimal" {...text("originalAmount")} /></Field>
-          <Field id="cr-elig" label="Pode virar crédito (R$)"><Input id="cr-elig" inputMode="decimal" {...text("eligibleAmount")} /></Field>
-          <Field id="cr-basis" label="Por que dá direito a crédito" className="sm:col-span-2"><Input id="cr-basis" maxLength={500} placeholder="Ex.: insumo usado na atividade" {...text("eligibilityBasis")} /></Field>
+          <Field id="cr-elig" label="Crédito potencial estimado (R$)"><Input id="cr-elig" inputMode="decimal" {...text("potentialAmount")} /></Field>
+          <Field id="cr-basis" label="De onde vem a estimativa" className="sm:col-span-2"><Input id="cr-basis" maxLength={500} placeholder="Ex.: insumo usado na atividade — a confirmar" {...text("potentialBasis")} /></Field>
+          <p className="text-xs text-warning sm:col-span-2">{POTENTIAL_CREDIT_COPY}</p>
           <div className="sm:col-span-2">{touched && <ProblemList problems={problems} />}</div>
         </form>
         <DialogFooter>
@@ -182,11 +194,23 @@ function RegisterDialog({ open, onClose }: Readonly<{ open: boolean; onClose: ()
   );
 }
 
-const EMPTY_MOVE: MovementDraft = { movement: "Appropriate", amount: "", reason: "", obligationTax: "Cbs", obligationReference: "", onDate: "" };
+function reasonLabel(movement: CreditMovement): string {
+  if (movement === "ConfirmToBeAppropriated") return "Base da confirmação dos requisitos";
+  return ["Block", "Reverse", "Discard"].includes(movement) ? "Motivo" : "Motivo (opcional)";
+}
+
+const EMPTY_MOVE: MovementDraft = { movement: "StartRequirementsReview", amount: "", reason: "", obligationTax: "Cbs", obligationReference: "", onDate: "" };
+
+/** The next step a credit usually takes: review its requirements, confirm them, then appropriate. */
+function defaultMovement(credit: TaxCreditDto | null): CreditMovement {
+  if (credit?.stage === "RequirementsUnderReview") return "ConfirmToBeAppropriated";
+  if (credit?.stage === "ToBeAppropriated") return "Appropriate";
+  return "StartRequirementsReview";
+}
 
 function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | null; onClose: () => void }>) {
   const qc = useQueryClient();
-  const [m, setM] = useState<MovementDraft>(EMPTY_MOVE);
+  const [m, setM] = useState<MovementDraft>(() => ({ ...EMPTY_MOVE, movement: defaultMovement(credit) }));
   const [touched, setTouched] = useState(false);
   const problems = movementProblems(m);
   const close = () => { setM(EMPTY_MOVE); setTouched(false); onClose(); };
@@ -201,7 +225,7 @@ function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | n
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Movimentar crédito</DialogTitle>
-          <DialogDescription>{credit && `${labelOf(CREDIT_TAX_NAMES, credit.tax)} · disponível ${formatCurrency(credit.balance.available)} · não apropriado ${formatCurrency(credit.balance.notAppropriated)}`}</DialogDescription>
+          <DialogDescription>{credit && `${labelOf(CREDIT_TAX_NAMES, credit.tax)} · ${labelOf(CREDIT_LIFECYCLE, credit.lifecycle)} · disponível ${formatCurrency(credit.balance.available)} · a apropriar ${formatCurrency(credit.balance.toBeAppropriated)}`}</DialogDescription>
         </DialogHeader>
         <form id="move-form" className="space-y-3" onSubmit={(e) => { e.preventDefault(); setTouched(true); if (problems.length === 0) save.mutate(); }}>
           <Field id="mv-kind" label="Movimento">
@@ -210,9 +234,11 @@ function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | n
               <SelectContent>{(Object.keys(CREDIT_MOVEMENTS) as CreditMovement[]).map((k) => <SelectItem key={k} value={k}>{CREDIT_MOVEMENTS[k]}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
-          <Field id="mv-amount" label={m.movement === "Expire" ? "Valor (vazio = todo o saldo)" : "Valor (R$)"}>
-            <Input id="mv-amount" inputMode="decimal" value={m.amount} onChange={(e) => setM({ ...m, amount: e.target.value })} />
-          </Field>
+          {m.movement !== "StartRequirementsReview" && m.movement !== "Discard" && (
+            <Field id="mv-amount" label={m.movement === "Expire" ? "Valor (vazio = todo o saldo)" : "Valor (R$)"}>
+              <Input id="mv-amount" inputMode="decimal" value={m.amount} onChange={(e) => setM({ ...m, amount: e.target.value })} />
+            </Field>
+          )}
           {m.movement === "Use" && (
             <div className="grid gap-3 sm:grid-cols-2">
               <Field id="mv-otax" label="Contra o imposto">
@@ -224,7 +250,7 @@ function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | n
               <Field id="mv-oref" label="Obrigação"><Input id="mv-oref" maxLength={100} placeholder="Apuração 10/2026" value={m.obligationReference} onChange={(e) => setM({ ...m, obligationReference: e.target.value })} /></Field>
             </div>
           )}
-          <Field id="mv-reason" label={m.movement === "Block" || m.movement === "Reverse" ? "Motivo" : "Motivo (opcional)"}>
+          <Field id="mv-reason" label={reasonLabel(m.movement)}>
             <Input id="mv-reason" maxLength={500} value={m.reason} onChange={(e) => setM({ ...m, reason: e.target.value })} />
           </Field>
           <Field id="mv-date" label="Data (vazio = hoje)"><Input id="mv-date" type="date" value={m.onDate} onChange={(e) => setM({ ...m, onDate: e.target.value })} /></Field>
@@ -254,7 +280,10 @@ function SplitPayment() {
           </div>
         </div>
       )}
-      <TaxNote>As retenções esperadas nascem de um cálculo (abra o cálculo e registre). O que foi retido de fato é lançado à mão aqui até haver integração.</TaxNote>
+      <TaxNote>
+        {SPLIT_EXPECTATION_COPY} As expectativas nascem de um cálculo (abra o cálculo e registre). Só uma liquidação registrada — o que foi retido de
+        fato, lançado à mão até haver integração — muda a conciliação; manual e Swagger de integração não são transação liquidada.
+      </TaxNote>
       <SectionCard title="Retido x esperado">
         {expectations.isLoading && <Skeleton className="h-32 w-full" />}
         {expectations.isError && <ErrorState title="Não foi possível ler as retenções" onRetry={() => void expectations.refetch()} compact />}

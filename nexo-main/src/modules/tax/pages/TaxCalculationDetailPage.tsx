@@ -13,10 +13,12 @@ import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import {
   TAX_KEY, TAX_KEYS, createSplitExpectations, getTaxCalculation, getTaxOpportunity, listSplitExpectations, type SplitProcedure,
 } from "../api/tax.api";
-import { DIRECTIONS, OPPORTUNITY_TYPES, SOURCES, SPLIT_PROCEDURES, labelOf } from "../lib/labels";
+import {
+  COVERAGE_STATUS, DIRECTIONS, OPPORTUNITY_TYPES, SOURCES, SPLIT_EXPECTATION_COPY, SPLIT_PROCEDURES, SYSTEM_CALCULATION_COPY, labelOf, toneOf,
+} from "../lib/labels";
 import { errorMessage, formatIsoDate } from "../lib/forms";
 import { EngineResult, TechnicalTrail } from "../components/EngineResult";
-import { ImpactBadge, OpportunityStatusBadge, RiskBadge } from "../components/TaxBadges";
+import { ImpactBadge, OpportunityStatusBadge, RiskBadge, ToneBadge } from "../components/TaxBadges";
 import { Field, TaxNote, TaxSubNav } from "../components/TaxShell";
 import { SplitTable } from "../components/SplitTable";
 
@@ -41,6 +43,21 @@ export default function TaxCalculationDetailPage() {
       {c && (
         <>
           {c.reused && <TaxNote>Esta mesma operação já tinha sido calculada com as mesmas regras: o resultado guardado foi reaproveitado.</TaxNote>}
+          <TaxNote>{SYSTEM_CALCULATION_COPY}</TaxNote>
+          <SectionCard title="Com quais dados e premissas">
+            <div className="space-y-2 text-sm">
+              <p className="flex flex-wrap items-center gap-2">
+                <ToneBadge label={labelOf(COVERAGE_STATUS, c.coverage.status)} tone={toneOf(COVERAGE_STATUS, c.coverage.status)} />
+                <span className="text-xs text-muted-foreground">matriz {c.coverage.policyVersion}</span>
+              </p>
+              {c.coverage.assumptions.length > 0 && (
+                <ul className="list-disc pl-5 text-muted-foreground">{c.coverage.assumptions.map((a) => <li key={a}>{a}</li>)}</ul>
+              )}
+              {c.advisories.length > 0 && (
+                <ul className="list-disc pl-5">{c.advisories.map((a) => <li key={a}>{a}</li>)}</ul>
+              )}
+            </div>
+          </SectionCard>
           <SectionCard title="Quanto custa e o que aconteceu">
             <EngineResult output={c.output} input={c.input} />
           </SectionCard>
@@ -93,12 +110,12 @@ function SplitSection({ calculationId }: Readonly<{ calculationId: string }>) {
   const expectations = useQuery({ queryKey: TAX_KEYS.splitExpectations(calculationId), queryFn: () => listSplitExpectations(calculationId) });
   const create = useMutation({
     mutationFn: () => createSplitExpectations(calculationId, procedure),
-    onSuccess: () => { toast.success("Retenções esperadas registradas."); void qc.invalidateQueries({ queryKey: [...TAX_KEY, "split"] }); void qc.invalidateQueries({ queryKey: TAX_KEYS.overview }); },
+    onSuccess: () => { toast.success("Expectativas gerenciais de segregação registradas."); void qc.invalidateQueries({ queryKey: [...TAX_KEY, "split"] }); void qc.invalidateQueries({ queryKey: TAX_KEYS.overview }); },
     onError: (e) => toast.error(errorMessage(e)),
   });
 
   return (
-    <SectionCard title="Split payment" description="Quanto deve ser retido na liquidação do pagamento, para conferir depois com o que foi retido de fato.">
+    <SectionCard title="Split payment" description={`${SPLIT_EXPECTATION_COPY} Serve para conferir depois com o que foi retido de fato, liquidação a liquidação.`}>
       <div className="space-y-3">
         {expectations.data?.length === 0 && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -109,7 +126,7 @@ function SplitSection({ calculationId }: Readonly<{ calculationId: string }>) {
               </Select>
             </Field>
             <Button type="button" variant="outline" disabled={create.isPending} onClick={() => create.mutate()}>
-              {create.isPending ? "Registrando…" : "Registrar retenções esperadas"}
+              {create.isPending ? "Registrando…" : "Registrar expectativa de segregação"}
             </Button>
           </div>
         )}

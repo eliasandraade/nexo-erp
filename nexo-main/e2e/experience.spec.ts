@@ -807,14 +807,15 @@ test('Configurações: só regras com efeito — descontos do PDV e alertas de e
 
 // ── Inteligência tributária (mocked) ─────────────────────────────────────────
 const taxOverview = { profileConfigured:true, periodFrom:'2026-09-27', periodTo:'2026-10-26', calculations:4, taxedBase:12000, estimatedTax:120, effectiveRatePercent:1,
-  creditsAvailable:30, creditsBlocked:0, creditsNotAppropriated:5, openOpportunities:3, potentialSavings:210.5, potentialCalculatedTaxReductions:0.5, potentialDeferrals:900, potentialCashFlow:40, potentialCredits:15,
+  creditsAvailable:30, creditsBlocked:0, creditsPotential:7, creditsToBeAppropriated:5, openOpportunities:3, potentialSavings:210.5, potentialCalculatedTaxReductions:0.5, potentialDeferrals:900, potentialCashFlow:40, potentialCredits:15,
   openHighRisk:1, blockedOpportunities:1, splitDivergences:0, activeRulesToday:6, pendingRulesToday:2 };
 const taxOpportunity = (patch: Record<string, unknown>) => ({ id:'qa-op', type:'TaxSaving', impactNature:'DefinitiveSaving', status:'InReview', title:'Desconto condicional pode virar incondicional',
   estimatedImpact:120, risk:'High', confidence:70, createdAt:'2026-10-20T10:00:00Z', summary:'O desconto depende de pagamento em dia e por isso entra na base.', detectorKey:'conditional-discount',
   engineVersion:'orken-tax-engine/1.0.0', professionalReviewPending:true, reviewStartedByName:null,
   sourceCalculationId:null, legalSourceCodes:['LC214-ART12'], caveats:null, blockedAs:null, blockReason:null, rejectionReason:null, reviewedByName:null, reviewedAt:null,
-  requirements:[{id:'qa-req',code:'R1',text:'O desconto consta da nota fiscal.',legalSourceCode:'LC214-ART12',met:true,note:null,answeredByName:'Revisão local',answeredAt:'2026-10-21T10:00:00Z'}],
-  evidence:[], current:null, proposed:null, decision:null, ...patch });
+  requirements:[{id:'qa-req',code:'R1',text:'O desconto consta da nota fiscal.',legalSourceCode:'LC214-ART12',met:true,note:null,answeredByName:'Revisão local',answeredAt:'2026-10-21T10:00:00Z',
+    phase:'ScenarioApproval',requiredEvidence:null,hasRequiredEvidence:true}],
+  evidence:[], current:null, proposed:null, decision:null, execution:null, requiredApproval:'IndependentApprover', ...patch });
 async function prepareTax(page: Page, opportunity: Record<string, unknown> = {}) {
   await prepare(page);
   await page.route('http://localhost:5000/api/tax/**', route => {
@@ -833,7 +834,7 @@ test('Tributos: visão geral separa as naturezas de impacto e cabe no celular', 
   await expect(page.getByText('R$ 210,50')).toBeVisible();
   await expect(page.getByText('R$ 900,00')).toBeVisible();
   await expect(page.getByText('R$ 1.165,50')).toHaveCount(0);
-  await expect(page.getByText('Redução do IBS/CBS calculado — não é economia').first()).toBeVisible();
+  await expect(page.getByText('Redução simulada do IBS/CBS calculado').first()).toBeVisible();
   await expect(page.getByText('R$ 211,00')).toHaveCount(0);
   await expect(page.getByText(/alíquotas de teste/)).toBeVisible();
   await noOverflow(page); expect(errors).toEqual([]);

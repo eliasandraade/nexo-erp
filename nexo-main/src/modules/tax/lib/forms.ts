@@ -1,7 +1,7 @@
 import { ApiError } from "@/services/api-client";
 import { onlyDigits } from "@/lib/fiscal-codes";
 import type {
-  AccessoryObligationsStatus, CompareSuppliersRequest, CreateTaxProfileVersionRequest, CreditMovement, CreditMovementRequest, CreditTax, RegisterTaxCreditRequest, TaxDirection, TaxItemKind, TaxLineRequest, TaxOperationRequest,
+  ComplianceAssessmentStatus, CompareSuppliersRequest, RecordComplianceAssessmentRequest, SupplyPattern, CreateTaxProfileVersionRequest, CreditMovement, CreditMovementRequest, CreditTax, RegisterTaxCreditRequest, TaxDirection, TaxItemKind, TaxLineRequest, TaxOperationRequest,
   TaxRegime, TaxScenarioRequest, TaxType,
 } from "../api/tax.api";
 
@@ -58,6 +58,10 @@ export interface LineDraft {
   itemKind: TaxItemKind;
   description: string;
   ncm: string;
+  /** Services: NBS. */
+  nbs: string;
+  /** Recorded, not interpreted by engine V1 — but without it V1 does not calculate (no presumed general regime). */
+  cClassTrib: string;
   quantity: string;
   grossAmount: string;
   unconditionalDiscount: string;
@@ -73,7 +77,7 @@ let lineSeq = 0;
 export function emptyLine(): LineDraft {
   lineSeq += 1;
   return {
-    key: `line-${lineSeq}`, itemKind: "Good", description: "", ncm: "", quantity: "1", grossAmount: "",
+    key: `line-${lineSeq}`, itemKind: "Good", description: "", ncm: "", nbs: "", cClassTrib: "", quantity: "1", grossAmount: "",
     unconditionalDiscount: "", conditionalDiscount: "", surcharges: "", excludedTaxes: "", excludedTaxesUnknown: true,
     specialTreatment: "",
   };
@@ -91,6 +95,7 @@ function identityProblems(line: LineDraft, at: string): string[] {
   if (!line.description.trim()) p.push(`${at} descreva o item.`);
   if (line.description.length > 300) p.push(`${at} descrição até 300 caracteres.`);
   if (line.ncm.trim() && onlyDigits(line.ncm).length !== 8) p.push(`${at} NCM tem 8 números.`);
+  if (line.cClassTrib.trim() && !/^[A-Za-z0-9]{1,10}$/.test(line.cClassTrib.trim())) p.push(`${at} cClassTrib: até 10 letras ou números.`);
   const qty = parseDecimal(line.quantity);
   if (qty === null || Number.isNaN(qty) || qty <= 0) p.push(`${at} quantidade maior que zero.`);
   return p;
@@ -135,6 +140,8 @@ export function toLineRequest(line: LineDraft): TaxLineRequest {
     itemKind: line.itemKind,
     description: line.description.trim(),
     ncm: ncm === "" ? null : ncm,
+    nbs: line.nbs.trim() === "" ? null : line.nbs.trim(),
+    cClassTrib: line.cClassTrib.trim() === "" ? null : line.cClassTrib.trim(),
     quantity: parseDecimal(line.quantity) ?? 1,
     grossAmount: money0(line.grossAmount),
     unconditionalDiscount: money0(line.unconditionalDiscount),
@@ -151,11 +158,16 @@ export interface OperationDraft {
   counterpartyRegime: TaxRegime | "";
   counterpartyState: string;
   description: string;
+  /** How the supply happens in time. V1 only calculates a single, immediate supply. */
+  supplyPattern: SupplyPattern;
   lines: LineDraft[];
 }
 
 export function emptyOperation(today = brazilTodayIso()): OperationDraft {
-  return { operationDate: today, direction: "Outbound", counterpartyRegime: "", counterpartyState: "", description: "", lines: [emptyLine()] };
+  return {
+    operationDate: today, direction: "Outbound", counterpartyRegime: "", counterpartyState: "", description: "", supplyPattern: "SingleSupply",
+    lines: [emptyLine()],
+  };
 }
 
 export function operationProblems(op: OperationDraft): string[] {
@@ -174,6 +186,7 @@ export function toOperationRequest(op: OperationDraft): TaxOperationRequest {
     counterpartyState: op.counterpartyState.trim() === "" ? null : op.counterpartyState.trim().toUpperCase(),
     description: op.description.trim() === "" ? null : op.description.trim(),
     lines: op.lines.map(toLineRequest),
+    timing: { supplyPattern: op.supplyPattern },
   };
 }
 
@@ -188,10 +201,6 @@ export interface ProfileDraft {
   secondaryCnaes: string;
   specialRegimes: string;
   benefits: string;
-  /** Unknown unless said; a declaration is not a verification. */
-  compliance: AccessoryObligationsStatus;
-  /** What was checked — required to mark compliance as verified. */
-  complianceEvidence: string;
   reason: string;
 }
 
@@ -202,9 +211,6 @@ export function profileDraftProblems(d: ProfileDraft): string[] {
   if (onlyDigits(d.cityIbgeCode).length !== 7) p.push("Código IBGE do município: 7 números.");
   if (onlyDigits(d.primaryCnae).length !== 7) p.push("CNAE principal: 7 números.");
   if (splitList(d.secondaryCnaes).some((c) => onlyDigits(c).length !== 7)) p.push("Cada CNAE secundário tem 7 números.");
-  if (d.compliance === "VerifiedCompliant" && !d.complianceEvidence.trim())
-    p.push("Para marcar como verificado, diga o que foi conferido.");
-  if (d.complianceEvidence.length > 1000) p.push("Evidência até 1000 caracteres.");
   if (!d.reason.trim()) p.push("Diga o motivo da nova versão.");
   if (d.reason.length > 500) p.push("Motivo até 500 caracteres.");
   return p;
@@ -220,9 +226,52 @@ export function toProfileVersionRequest(d: ProfileDraft): CreateTaxProfileVersio
     secondaryCnaes: splitList(d.secondaryCnaes).map(onlyDigits),
     specialRegimes: splitList(d.specialRegimes),
     benefits: splitList(d.benefits),
-    accessoryObligations: d.compliance,
-    accessoryObligationsEvidence: d.complianceEvidence.trim() || null,
     reason: d.reason.trim(),
+  };
+}
+
+// ── Ancillary-obligation assessment ──────────────────────────────────────────
+
+export interface ComplianceDraft {
+  status: ComplianceAssessmentStatus;
+  periodFrom: string;
+  periodTo: string;
+  scope: string;
+  /** One per line. */
+  obligationsChecked: string;
+  evidence: string;
+  assessedBy: string;
+  notes: string;
+  limitations: string;
+  pnctParticipation: boolean;
+}
+
+export const emptyCompliance = (): ComplianceDraft => ({
+  status: "Declared", periodFrom: "", periodTo: "", scope: "", obligationsChecked: "", evidence: "", assessedBy: "", notes: "",
+  limitations: "", pnctParticipation: false,
+});
+
+/** The same rules the server applies: a verification states period, scope, what was checked and the evidence. */
+export function complianceProblems(d: ComplianceDraft): string[] {
+  const p: string[] = [];
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  if (!iso.test(d.periodFrom) || !iso.test(d.periodTo)) p.push("Informe o período (início e fim).");
+  else if (d.periodTo < d.periodFrom) p.push("O fim do período é anterior ao início.");
+  if (d.status !== "Unknown" && !d.scope.trim()) p.push("Informe o escopo (o que a avaliação cobre).");
+  if (!d.assessedBy.trim()) p.push("Informe quem avaliou.");
+  if ((d.status === "Verified" || d.status === "RemediationVerified") && (splitList(d.obligationsChecked).length === 0 || !d.evidence.trim()))
+    p.push("Para verificar, diga quais obrigações foram conferidas e com qual evidência.");
+  if (["InconsistencyIdentified", "UnderRemediation", "NonCompliant"].includes(d.status) && !d.notes.trim())
+    p.push("Descreva a inconsistência ou o que está sendo regularizado.");
+  return p;
+}
+
+export function toComplianceRequest(d: ComplianceDraft): RecordComplianceAssessmentRequest {
+  const opt = (v: string) => (v.trim() === "" ? null : v.trim());
+  return {
+    status: d.status, periodFrom: d.periodFrom, periodTo: d.periodTo, scope: opt(d.scope), obligationsChecked: splitList(d.obligationsChecked),
+    evidence: opt(d.evidence), assessedBy: d.assessedBy.trim(), assessedAt: null, notes: opt(d.notes), limitations: opt(d.limitations),
+    pnctParticipation: d.pnctParticipation,
   };
 }
 
@@ -322,13 +371,14 @@ export interface CreditDraft {
   acquiredOn: string;
   expiresOn: string;
   originalAmount: string;
-  eligibleAmount: string;
-  eligibilityBasis: string;
+  /** An estimate — registering it validates nothing. */
+  potentialAmount: string;
+  potentialBasis: string;
 }
 
 export const emptyCredit = (today = brazilTodayIso()): CreditDraft => ({
   tax: "Cbs", sourceDocumentType: "NF-e", sourceDocumentKey: "", supplierDocument: "", acquiredOn: today, expiresOn: "",
-  originalAmount: "", eligibleAmount: "", eligibilityBasis: "",
+  originalAmount: "", potentialAmount: "", potentialBasis: "",
 });
 
 const validMoney = (n: number | null, allowZero: boolean) => n !== null && !Number.isNaN(n) && (allowZero ? n >= 0 : n > 0) && isCents(n);
@@ -342,11 +392,11 @@ export function creditProblems(d: CreditDraft): string[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.acquiredOn)) p.push("Informe a data de aquisição.");
   if (d.expiresOn && d.expiresOn < d.acquiredOn) p.push("O vencimento é anterior à aquisição.");
   const original = parseDecimal(d.originalAmount);
-  const eligible = parseDecimal(d.eligibleAmount);
+  const potential = parseDecimal(d.potentialAmount);
   if (!validMoney(original, false)) p.push("Valor do imposto destacado maior que zero.");
-  if (!validMoney(eligible, true)) p.push("Informe o valor que pode virar crédito.");
-  else if (validMoney(original, false) && eligible! > original!) p.push("O crédito não passa do imposto destacado.");
-  if (!d.eligibilityBasis.trim()) p.push("Diga por que o valor dá direito a crédito.");
+  if (!validMoney(potential, true)) p.push("Informe o valor estimado do crédito potencial.");
+  else if (validMoney(original, false) && potential! > original!) p.push("O crédito potencial não passa do imposto destacado.");
+  if (!d.potentialBasis.trim()) p.push("Diga de onde vem a estimativa.");
   return p;
 }
 
@@ -361,8 +411,8 @@ export function toCreditRequest(d: CreditDraft): RegisterTaxCreditRequest {
     acquiredOn: d.acquiredOn,
     expiresOn: d.expiresOn === "" ? null : d.expiresOn,
     originalAmount: parseDecimal(d.originalAmount) ?? 0,
-    eligibleAmount: parseDecimal(d.eligibleAmount) ?? 0,
-    eligibilityBasis: d.eligibilityBasis.trim(),
+    potentialAmount: parseDecimal(d.potentialAmount) ?? 0,
+    potentialBasis: d.potentialBasis.trim(),
   };
 }
 
@@ -377,8 +427,10 @@ export interface MovementDraft {
 
 export function movementProblems(m: MovementDraft): string[] {
   const p: string[] = [];
-  if (m.movement !== "Expire" && !validMoney(parseDecimal(m.amount), false)) p.push("Informe o valor (maior que zero).");
-  if ((m.movement === "Block" || m.movement === "Reverse") && !m.reason.trim()) p.push("Diga o motivo.");
+  const noAmount = m.movement === "Expire" || m.movement === "StartRequirementsReview" || m.movement === "Discard";
+  if (!noAmount && !validMoney(parseDecimal(m.amount), false)) p.push("Informe o valor (maior que zero).");
+  if (["Block", "Reverse", "Discard"].includes(m.movement) && !m.reason.trim()) p.push("Diga o motivo.");
+  if (m.movement === "ConfirmToBeAppropriated" && !m.reason.trim()) p.push("Diga a base da confirmação dos requisitos.");
   if (m.movement === "Use" && !m.obligationReference.trim()) p.push("Informe a obrigação (ex.: apuração 10/2026).");
   return p;
 }
@@ -387,7 +439,7 @@ export function toMovementRequest(m: MovementDraft): CreditMovementRequest {
   const use = m.movement === "Use";
   return {
     movement: m.movement,
-    amount: m.movement === "Expire" && m.amount.trim() === "" ? null : parseDecimal(m.amount),
+    amount: ["Expire", "StartRequirementsReview", "Discard"].includes(m.movement) && m.amount.trim() === "" ? null : parseDecimal(m.amount),
     reason: m.reason.trim() === "" ? null : m.reason.trim(),
     obligationTax: use ? m.obligationTax : null,
     obligationReference: use ? m.obligationReference.trim() : null,

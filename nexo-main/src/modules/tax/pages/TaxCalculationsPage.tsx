@@ -13,7 +13,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatCurrency } from "@/lib/formatters";
 import { TAX_KEY, TAX_KEYS, calculateSale, createTaxCalculation, listTaxCalculations, type TaxCalculationDto } from "../api/tax.api";
-import { DIRECTIONS, SOURCES, labelOf } from "../lib/labels";
+import { DIRECTIONS, NOT_SUPPORTED_COPY, SOURCES, labelOf } from "../lib/labels";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ApiError } from "@/services/api-client";
 import { emptyOperation, errorMessage, formatIsoDate, isProfileMissing, operationProblems, toOperationRequest, type OperationDraft } from "../lib/forms";
 import { OperationEditor } from "../components/OperationEditor";
 import { Field, ProblemList, ProfileMissingNotice, TaxSubNav } from "../components/TaxShell";
@@ -27,17 +29,20 @@ export default function TaxCalculationsPage() {
   const [draft, setDraft] = useState<OperationDraft>(() => emptyOperation());
   const [touched, setTouched] = useState(false);
   const [profileMissing, setProfileMissing] = useState(false);
+  const [notSupported, setNotSupported] = useState<string[] | null>(null);
   const [saleId, setSaleId] = useState("");
   const list = useQuery({ queryKey: TAX_KEYS.calculations, queryFn: () => listTaxCalculations(50) });
   const problems = operationProblems(draft);
 
   const done = (c: TaxCalculationDto) => {
+    setNotSupported(null);
     void qc.invalidateQueries({ queryKey: TAX_KEY });
     toast.success(c.reused ? "Mesma operação já calculada: resultado guardado reaproveitado." : "Cálculo feito.");
     navigate(`/tributos/calculos/${c.id}`);
   };
   const failed = (e: unknown) => {
     if (isProfileMissing(e)) setProfileMissing(true);
+    else if (e instanceof ApiError && e.code === "tax_operation_not_supported") setNotSupported(e.message.split(" | "));
     else toast.error(errorMessage(e));
   };
 
@@ -49,11 +54,20 @@ export default function TaxCalculationsPage() {
       <PageHeader
         eyebrow="Inteligência tributária"
         title="Cálculos"
-        description="Calcule a CBS e o IBS de uma operação. Cada cálculo guarda as regras, a versão do perfil e a fonte usadas — dá para reproduzir depois."
+        description="Cálculo do sistema com as regras e os dados indicados. Cada cálculo guarda as regras, a versão do perfil e a fonte usadas — dá para reproduzir depois. Fora do que a versão atual suporta, nada é calculado."
       />
       <TaxSubNav />
 
       {profileMissing && <ProfileMissingNotice />}
+      {notSupported && (
+        <Alert variant="destructive">
+          <AlertTitle>{NOT_SUPPORTED_COPY}</AlertTitle>
+          <AlertDescription>
+            <p>Nada foi calculado — o sistema não devolve zero para o que não modela. O motivo ficou registrado.</p>
+            <ul className="mt-1 list-disc pl-5">{notSupported.map((r) => <li key={r}>{r}</li>)}</ul>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <SectionCard title="Calcular uma operação" description="Informe o que foi vendido ou comprado. Nada é lançado em vendas, livros ou financeiro.">
         <form onSubmit={(e) => { e.preventDefault(); setTouched(true); if (problems.length === 0) calculate.mutate(); }} className="space-y-4">

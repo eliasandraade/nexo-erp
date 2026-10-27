@@ -15,10 +15,11 @@ import { TAX_REGIMES } from "@/modules/fiscal/api/fiscal.api";
 import { STATES } from "@/modules/fiscal/lib/validation";
 import { formatDateTime } from "@/lib/formatters";
 import {
-  TAX_KEY, TAX_KEYS, addTaxProfileVersion, getTaxProfile, type AccessoryObligationsStatus, type TaxProfileDto, type TaxProfileVersionDto,
+  TAX_KEY, TAX_KEYS, addTaxProfileVersion, getTaxProfile, type TaxProfileDto, type TaxProfileVersionDto,
   type TaxRegime,
 } from "../api/tax.api";
-import { ACCESSORY_OBLIGATIONS, regimeLabel } from "../lib/labels";
+import { regimeLabel } from "../lib/labels";
+import { ComplianceAssessments } from "../components/ComplianceAssessments";
 import {
   brazilTodayIso, errorMessage, formatIsoDate, profileDraftProblems, toProfileVersionRequest, type ProfileDraft,
 } from "../lib/forms";
@@ -36,13 +37,9 @@ function initialDraft(p: TaxProfileDto): ProfileDraft {
     secondaryCnaes: c?.secondaryCnaes.join(", ") ?? "",
     specialRegimes: c?.specialRegimes.join(", ") ?? "",
     benefits: c?.benefits.join("\n") ?? "",
-    compliance: c?.accessoryObligations ?? "Unknown",
-    complianceEvidence: c?.accessoryObligationsEvidence ?? "",
     reason: "",
   };
 }
-
-const COMPLIANCE_OPTIONS = Object.entries(ACCESSORY_OBLIGATIONS) as [AccessoryObligationsStatus, { label: string; short: string }][];
 
 /** Perfil tributário: os fatos que decidem as regras. Cada mudança é uma nova versão, as anteriores ficam guardadas. */
 export default function TaxProfilePage() {
@@ -69,6 +66,7 @@ export default function TaxProfilePage() {
           {isDirector
             ? <VersionForm key={profile.data.current?.id ?? "new"} profile={profile.data} />
             : <TaxNote>Só a diretoria registra uma nova versão do perfil tributário.</TaxNote>}
+          <ComplianceAssessments items={profile.data.complianceAssessments} canRecord={isDirector} />
           <VersionHistory versions={profile.data.versions} />
         </>
       )}
@@ -85,10 +83,6 @@ function CurrentVersion({ v }: Readonly<{ v: TaxProfileVersionDto }>) {
         <Item label="CNAE principal">{v.primaryCnae}</Item>
         <Item label="CNAEs secundários">{v.secondaryCnaes.join(", ") || "—"}</Item>
         <Item label="Regimes especiais">{v.specialRegimes.join(", ") || "—"}</Item>
-        <Item label="Obrigações acessórias">
-          {ACCESSORY_OBLIGATIONS[v.accessoryObligations].short}
-          {v.accessoryObligations === "VerifiedCompliant" && v.accessoryObligationsEvidence ? ` — ${v.accessoryObligationsEvidence}` : ""}
-        </Item>
         <Item label="Benefícios" className="sm:col-span-2 lg:col-span-3">{v.benefits.join("; ") || "—"}</Item>
       </dl>
     </SectionCard>
@@ -152,22 +146,6 @@ function VersionForm({ profile }: Readonly<{ profile: TaxProfileDto }>) {
         <Field id="tp-special" label="Regimes especiais" hint="Separe por vírgula. Deixe vazio se não houver." className="sm:col-span-2">
           <Input id="tp-special" {...text("specialRegimes")} />
         </Field>
-        <Field
-          id="tp-comp"
-          label="Obrigações acessórias do IBS/CBS"
-          hint="Declarar não é verificar: só o cumprimento verificado conta para regras que dependem dele. Quais documentos comprovam ainda depende de revisão profissional."
-          className="sm:col-span-2"
-        >
-          <Select value={draft.compliance} onValueChange={(v) => setDraft({ ...draft, compliance: v as AccessoryObligationsStatus })}>
-            <SelectTrigger id="tp-comp"><SelectValue /></SelectTrigger>
-            <SelectContent>{COMPLIANCE_OPTIONS.map(([value, l]) => <SelectItem key={value} value={value}>{l.label}</SelectItem>)}</SelectContent>
-          </Select>
-        </Field>
-        {draft.compliance === "VerifiedCompliant" && (
-          <Field id="tp-comp-evidence" label="O que foi conferido" hint="Ex.: recibos de entrega das declarações do período." className="sm:col-span-2 lg:col-span-4">
-            <Input id="tp-comp-evidence" maxLength={1000} {...text("complianceEvidence")} />
-          </Field>
-        )}
         <Field id="tp-benefits" label="Benefícios fiscais" hint="Um por linha." className="sm:col-span-2 lg:col-span-4">
           <Textarea id="tp-benefits" rows={2} {...text("benefits")} />
         </Field>
