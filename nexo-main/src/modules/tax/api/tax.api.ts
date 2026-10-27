@@ -297,7 +297,10 @@ export interface TaxCalculationDto {
   /** What the calculation says about the facts it used (e.g. obligations declared, not verified). */
   advisories: string[];
   coverage: TaxCoverageDecision;
+  /** The assessment the calculation used — its result is frozen with it. */
   complianceAssessment: TaxComplianceAssessmentDto | null;
+  /** The assessment in force today for the date, only when it is not the one used. */
+  currentComplianceAssessment: TaxComplianceAssessmentDto | null;
 }
 
 export interface TaxVerificationDto {

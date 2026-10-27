@@ -31,6 +31,9 @@ public sealed class TaxComplianceService
                 .OrderByDescending(a => a.PeriodFrom).ThenByDescending(a => a.CreatedAt).Take(MaxList).ToListAsync(ct))
             .Select(Map).ToList();
 
+    public async Task<TaxComplianceAssessment?> GetAsync(Guid? id, CancellationToken ct)
+        => id is null ? null : await _db.TaxComplianceAssessments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, ct);
+
     /// <summary>The assessment in force on a date, or null when none covers it.</summary>
     public async Task<TaxComplianceAssessment?> InForceAsync(DateOnly date, CancellationToken ct)
         => TaxComplianceAssessment.InForce(

@@ -48,6 +48,11 @@ public class TaxOpportunity : StoreEntity
     /// <summary>Who opened the analysis — with requirement answers and evidence, the people who analysed it.</summary>
     public Guid? ReviewStartedById { get; private set; }
     public string? ReviewStartedByName { get; private set; }
+    /// <summary>
+    /// Everyone who ever took part in the analysis (opened it, answered a requirement, added or reviewed
+    /// evidence). Only grows: a later answer or review never erases an earlier participant.
+    /// </summary>
+    public List<Guid> ParticipantIds { get; private set; } = [];
 
     public IReadOnlyCollection<TaxOpportunityRequirement> Requirements => _requirements.AsReadOnly();
     public IReadOnlyCollection<TaxOpportunityEvidence> Evidence => _evidence.AsReadOnly();
@@ -104,6 +109,7 @@ public class TaxOpportunity : StoreEntity
         if (Status != TaxOpportunityStatus.Identified)
             throw new DomainException("A oportunidade já está em análise.", "tax_opportunity_state");
         Status = TaxOpportunityStatus.InReview;
+        Participate(userId);
         ReviewStartedById = userId;
         ReviewStartedByName = userName;
         ReviewedById = userId;
@@ -125,6 +131,7 @@ public class TaxOpportunity : StoreEntity
         if (r.Phase == RequirementPhase.ExecutionVerification && Status != TaxOpportunityStatus.Approved)
             throw new DomainException("Requisitos da execução só depois que o cenário for aprovado e a operação acontecer.", "tax_opportunity_execution_state");
         r.Answer(met, note, userId, userName, atUtc);
+        Participate(userId);
         SetUpdatedAt();
     }
 
@@ -150,6 +157,7 @@ public class TaxOpportunity : StoreEntity
 
         var e = new TaxOpportunityEvidence(TenantId, Id, type, requirementId, description, documentReference, contentHash, notes, userId, userName);
         _evidence.Add(e);
+        Participate(userId);
         SetUpdatedAt();
         return e;
     }
@@ -163,6 +171,7 @@ public class TaxOpportunity : StoreEntity
         var e = _evidence.FirstOrDefault(x => x.Id == evidenceId) ?? throw new NotFoundException("Evidência", evidenceId);
         if (!accepted && string.IsNullOrWhiteSpace(notes)) throw new DomainException("Diga por que a evidência foi recusada.");
         e.Review(accepted, notes, userId, userName, atUtc);
+        Participate(userId);
         SetUpdatedAt();
     }
 
@@ -204,11 +213,17 @@ public class TaxOpportunity : StoreEntity
     /// People who took part in the analysis: who opened the review, answered requirements, added evidence
     /// or accepted/rejected evidence. None of them can be an independent approver.
     /// </summary>
-    public IReadOnlySet<Guid> Analysts => new[] { ReviewStartedById }
+    public IReadOnlySet<Guid> Analysts => ParticipantIds.Select(id => (Guid?)id)
+        .Append(ReviewStartedById)
         .Concat(_requirements.Select(r => r.AnsweredById))
         .Concat(_evidence.Select(e => (Guid?)e.AddedById))
         .Concat(_evidence.Select(e => e.ReviewedById))
         .Where(id => id is not null).Select(id => id!.Value).ToHashSet();
+
+    private void Participate(Guid userId)
+    {
+        if (!ParticipantIds.Contains(userId)) ParticipantIds.Add(userId);
+    }
 
     /// <summary>Whether this approver did the whole analysis alone (segregation of duties).</summary>
     public bool IsSoleAnalyst(Guid userId) => Analysts.Count > 0 && Analysts.All(a => a == userId);

@@ -116,7 +116,7 @@ public class TaxLedgerAndCatalogueTests
     {
         var s = SplitSettlement.Record(Guid.NewGuid(), Guid.NewGuid(), 100m, SplitSettlementSource.Manual, "psp-1", DateTime.UtcNow, Actor);
         var r = SplitSettlement.ReversalOf(s, "digitado errado", DateTime.UtcNow, Actor);
-        (r.ActualAmount, r.ReversesSettlementId, r.ExternalReference).Should().Be((-100m, s.Id, "estorno:psp-1"));
+        (r.ActualAmount, r.ReversesSettlementId, r.ExternalReference).Should().Be((-100m, s.Id, $"estorno:{s.Id:N}"));
         FluentActions.Invoking(() => SplitSettlement.ReversalOf(r, "x", DateTime.UtcNow, Actor)).Should().Throw<DomainException>();
     }
 

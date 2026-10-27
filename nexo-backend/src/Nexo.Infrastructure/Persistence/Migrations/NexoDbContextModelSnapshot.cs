@@ -7143,6 +7143,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("calculation_key");
 
+                    b.Property<Guid?>("ComplianceAssessmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("compliance_assessment_id");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
@@ -7218,6 +7222,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnName("updated_at");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ComplianceAssessmentId");
 
                     b.HasIndex("ProfileVersionId");
 
@@ -7912,6 +7918,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("legal_source_codes");
+
+                    b.Property<List<Guid>>("ParticipantIds")
+                        .IsRequired()
+                        .HasColumnType("uuid[]")
+                        .HasColumnName("participant_ids");
 
                     b.Property<string>("ProposedScenarioJson")
                         .IsRequired()
@@ -10932,6 +10943,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxCalculation", b =>
                 {
+                    b.HasOne("Nexo.Domain.Modules.TaxIntelligence.TaxComplianceAssessment", null)
+                        .WithMany()
+                        .HasForeignKey("ComplianceAssessmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_tax_calculations_compliance_assessments");
+
                     b.HasOne("Nexo.Domain.Modules.TaxIntelligence.TaxProfileVersion", null)
                         .WithMany()
                         .HasForeignKey("ProfileVersionId")

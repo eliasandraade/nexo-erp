@@ -294,6 +294,35 @@ public class TaxReviewDeltaTests
     }
 
     [Fact]
+    public void A_later_answer_or_review_never_erases_an_earlier_participant()
+    {
+        var o = DiscountOpportunity(TaxRiskLevel.High);
+        var ana = Guid.NewGuid();
+        var bia = Guid.NewGuid();
+        PrepareScenario(o, ana);
+        var evidence = o.Evidence.Single();
+        o.ReviewEvidence(evidence.Id, true, null, bia, "Bia", DateTime.UtcNow);
+        o.ReviewEvidence(evidence.Id, true, null, ana, "Ana", DateTime.UtcNow);   // Ana's review overwrites Bia's on the evidence
+        var requirement = Req(o, UnconditionalDiscountDetector.RequirementNoLaterEvent);
+        o.AnswerRequirement(requirement.Id, true, null, bia, "Bia", DateTime.UtcNow);
+        o.AnswerRequirement(requirement.Id, true, null, ana, "Ana", DateTime.UtcNow);
+
+        o.Analysts.Should().Contain(bia, "the participation history only grows");
+        o.Invoking(x => x.Approve(true, bia, "Bia", DateTime.UtcNow, ApprovalRequirement.IndependentApprover))
+            .Should().Throw<DomainException>().Which.Code.Should().Be("tax_approval_requires_independent_approver");
+    }
+
+    [Fact]
+    public void A_settlement_with_the_longest_reference_can_still_be_reversed()
+    {
+        var original = SplitSettlement.Record(Guid.NewGuid(), Guid.NewGuid(), 10m, SplitSettlementSource.Manual, new string('R', 100), DateTime.UtcNow, Guid.NewGuid());
+        var reversal = SplitSettlement.ReversalOf(original, "lançamento errado", DateTime.UtcNow, Guid.NewGuid());
+        reversal.ExternalReference.Length.Should().BeLessThanOrEqualTo(100);
+        reversal.ExternalReference.Should().Be($"estorno:{original.Id:N}");
+        reversal.ReversesSettlementId.Should().Be(original.Id);
+    }
+
+    [Fact]
     public void A_material_amount_requires_a_different_approver()
     {
         var policy = new TaxIntelligencePolicyOptions { MaterialityThreshold = 1000m };

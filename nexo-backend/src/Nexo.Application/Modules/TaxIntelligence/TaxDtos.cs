@@ -67,7 +67,7 @@ public sealed record TaxCalculationDto(
     string InputHash, string RuleSetHash, string OutputHash, decimal TotalBase, decimal TotalTax,
     bool Reused, DateTime CreatedAt, TaxEngineInput Input, TaxEngineOutput Output,
     IReadOnlyList<Guid> OpportunityIds, IReadOnlyList<string> Advisories, TaxCoverageDecision Coverage,
-    TaxComplianceAssessmentDto? ComplianceAssessment);
+    TaxComplianceAssessmentDto? ComplianceAssessment, TaxComplianceAssessmentDto? CurrentComplianceAssessment);
 
 /// <summary>
 /// Result of running a stored calculation again with exactly the engine version and rule versions it

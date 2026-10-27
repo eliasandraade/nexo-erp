@@ -940,6 +940,7 @@ public class TaxIntelligenceTests
 
         var verified = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Verificado"), gross: 1016m, date: "2026-12-05")));
         Notes(verified).Should().Contain(TaxNoteCodes.Waiver2026);
+        var verifiedId = verified.GetProperty("complianceAssessment").GetProperty("id").GetGuid();
         verified.GetProperty("advisories")[0].GetString().Should().StartWith("Obrigações verificadas no período e no escopo indicados")
             .And.NotContainEquivalentOf("empresa conforme");
         verified.GetProperty("complianceAssessment").GetProperty("scope").GetString().Should().Contain("estabelecimento");
@@ -948,6 +949,14 @@ public class TaxIntelligenceTests
         Notes(remediation).Should().NotContain(TaxNoteCodes.Waiver2026, "under remediation is not verified");
         remediation.GetProperty("advisories").EnumerateArray().Select(a => a.GetString())
             .Should().Contain(a => a!.Contains("não significa regularidade integral"), "PNCT participation is not full compliance");
+
+        // A later assessment of the same period never rewrites what an earlier calculation used.
+        await Json(await AssessAsync(admin, "InconsistencyIdentified", "2026-12-01", "2026-12-10", notes: "Revisão posterior encontrou NF-e sem campos"));
+        var reread = await Json(await admin.GetAsync($"/api/tax/calculations/{verified.GetProperty("id").GetGuid()}"));
+        reread.GetProperty("complianceAssessment").GetProperty("id").GetGuid().Should().Be(verifiedId, "the result is frozen with the assessment it used");
+        reread.GetProperty("advisories")[0].GetString().Should().StartWith("Obrigações verificadas no período");
+        reread.GetProperty("currentComplianceAssessment").GetProperty("status").GetString().Should().Be("InconsistencyIdentified",
+            "the assessment in force today is shown apart");
     }
 
     [Fact]

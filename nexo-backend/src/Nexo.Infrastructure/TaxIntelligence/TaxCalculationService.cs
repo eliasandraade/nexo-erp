@@ -120,6 +120,7 @@ public sealed class TaxCalculationService
 
         var calc = TaxCalculation.Create(_tenant.Id, transaction.Id, profile.Id, op.OperationDate, engine.Version,
             inputJson, inputHash, ruleSetHash, key, outputJson, canonical.Hash(outputJson), output.TotalBase, output.TotalTax, _audit.UserId);
+        calc.UsedComplianceAssessment(compliance?.Id);
         foreach (var line in output.Lines)
             foreach (var c in line.Components)
                 calc.AddComponent(line.Index, c.Tax, c.Base, c.RatePercent, c.Amount, c.RuleVersionId);
@@ -222,7 +223,9 @@ public sealed class TaxCalculationService
         var transaction = await _db.TaxTransactions.AsNoTracking().FirstAsync(t => t.Id == calc.TransactionId, ct);
         var profile = await _db.TaxProfileVersions.AsNoTracking()
             .Where(v => v.Id == calc.ProfileVersionId).Select(v => new { v.VersionNumber, v.Regime }).FirstAsync(ct);
-        var compliance = await _compliance.InForceAsync(calc.ReferenceDate, ct);
+        // The assessment the calculation used — never a later one (its input and output are frozen with it).
+        var compliance = await _compliance.GetAsync(calc.ComplianceAssessmentId, ct);
+        var current = await _compliance.InForceAsync(calc.ReferenceDate, ct);
         // A stored calculation was supported when it ran; the matrix is re-derived from its stored facts for display.
         coverage ??= TaxCoveragePolicyV1.Assess(await StoredOperationAsync(transaction, ct), profile.Regime);
         var opportunityIds = await _db.TaxOpportunities.AsNoTracking()
@@ -238,7 +241,8 @@ public sealed class TaxCalculationService
             opportunityIds,
             TaxComplianceAdvisories.For(compliance),
             coverage,
-            compliance is null ? null : TaxComplianceService.Map(compliance));
+            compliance is null ? null : TaxComplianceService.Map(compliance),
+            current is null || current.Id == compliance?.Id ? null : TaxComplianceService.Map(current));
     }
 
     private async Task<TaxOperationRequest> StoredOperationAsync(TaxTransaction t, CancellationToken ct)

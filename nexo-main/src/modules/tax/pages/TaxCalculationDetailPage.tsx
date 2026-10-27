@@ -14,7 +14,7 @@ import {
   TAX_KEY, TAX_KEYS, createSplitExpectations, getTaxCalculation, getTaxOpportunity, listSplitExpectations, type SplitProcedure,
 } from "../api/tax.api";
 import {
-  COVERAGE_STATUS, DIRECTIONS, OPPORTUNITY_TYPES, SOURCES, SPLIT_EXPECTATION_COPY, SPLIT_PROCEDURES, SYSTEM_CALCULATION_COPY, labelOf, toneOf,
+  COMPLIANCE_STATUS, COVERAGE_STATUS, DIRECTIONS, OPPORTUNITY_TYPES, SOURCES, SPLIT_EXPECTATION_COPY, SPLIT_PROCEDURES, SYSTEM_CALCULATION_COPY, labelOf, toneOf,
 } from "../lib/labels";
 import { errorMessage, formatIsoDate } from "../lib/forms";
 import { EngineResult, TechnicalTrail } from "../components/EngineResult";
@@ -55,6 +55,12 @@ export default function TaxCalculationDetailPage() {
               )}
               {c.advisories.length > 0 && (
                 <ul className="list-disc pl-5">{c.advisories.map((a) => <li key={a}>{a}</li>)}</ul>
+              )}
+              {c.currentComplianceAssessment && (
+                <p className="text-xs text-warning">
+                  Hoje está registrada outra avaliação das obrigações acessórias para esta data
+                  ({labelOf(COMPLIANCE_STATUS, c.currentComplianceAssessment.status)}). Este cálculo continua com a avaliação que usou.
+                </p>
               )}
             </div>
           </SectionCard>

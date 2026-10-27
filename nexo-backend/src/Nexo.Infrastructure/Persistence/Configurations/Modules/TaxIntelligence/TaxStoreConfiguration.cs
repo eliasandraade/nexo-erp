@@ -128,6 +128,9 @@ internal sealed class TaxCalculationConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.TotalBase).Money("total_base");
         b.Property(x => x.TotalTax).Money("total_tax");
         b.Property(x => x.CreatedById).HasColumnName("created_by_id").IsRequired();
+        b.Property(x => x.ComplianceAssessmentId).HasColumnName("compliance_assessment_id");
+        b.HasOne<TaxComplianceAssessment>().WithMany().HasForeignKey(x => x.ComplianceAssessmentId)
+            .HasConstraintName("fk_tax_calculations_compliance_assessments").OnDelete(DeleteBehavior.Restrict);
 
         b.HasMany(x => x.Components).WithOne().HasForeignKey(c => c.CalculationId)
             .HasConstraintName("fk_tax_components_calculations").OnDelete(DeleteBehavior.Cascade);
@@ -241,6 +244,7 @@ internal sealed class TaxOpportunityConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.ReviewedById).HasColumnName("reviewed_by_id");
         b.Property(x => x.ReviewStartedById).HasColumnName("review_started_by_id");
         b.Property(x => x.ReviewStartedByName).HasColumnName("review_started_by_name").HasMaxLength(200);
+        b.Property(x => x.ParticipantIds).HasColumnName("participant_ids").HasColumnType("uuid[]").IsRequired();
         b.Ignore(x => x.Analysts);
         b.Property(x => x.ReviewedByName).HasColumnName("reviewed_by_name").HasMaxLength(200);
         b.Property(x => x.ReviewedAt).HasColumnName("reviewed_at").HasColumnType("timestamptz");

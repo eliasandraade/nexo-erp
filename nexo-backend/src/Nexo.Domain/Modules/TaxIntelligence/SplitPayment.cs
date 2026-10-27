@@ -75,7 +75,8 @@ public class SplitSettlement : StoreEntity
             ExpectationId = original.ExpectationId,
             ActualAmount = -original.ActualAmount,
             Source = original.Source,
-            ExternalReference = $"estorno:{original.ExternalReference}",
+            // Bounded and unique whatever the original reference length; the link is ReversesSettlementId.
+            ExternalReference = $"estorno:{original.Id:N}",
             SettledAt = atUtc,
             RecordedById = recordedById,
             ReversesSettlementId = original.Id,

@@ -55,6 +55,11 @@ public class TaxCalculation : StoreEntity
             CreatedById = createdById,
         };
 
+    /// <summary>Ancillary-obligation assessment in force when the calculation ran (null = none covered the date).</summary>
+    public Guid? ComplianceAssessmentId { get; private set; }
+
+    public void UsedComplianceAssessment(Guid? assessmentId) => ComplianceAssessmentId = assessmentId;
+
     public void AddComponent(int lineIndex, TaxType tax, decimal baseAmount, decimal ratePercent, decimal amount, Guid ruleVersionId)
         => _components.Add(new TaxComponent(TenantId, Id, lineIndex, tax, baseAmount, ratePercent, amount, ruleVersionId));
 

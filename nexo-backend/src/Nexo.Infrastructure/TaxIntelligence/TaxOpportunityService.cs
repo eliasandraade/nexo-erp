@@ -221,7 +221,8 @@ public sealed class TaxOpportunityService
             : await _db.TaxTransactions.AsNoTracking().Include(t => t.Lines).FirstOrDefaultAsync(t => t.Id == calc.TransactionId, ct);
         var profile = calc is null ? null : await _db.TaxProfileVersions.AsNoTracking().FirstOrDefaultAsync(v => v.Id == calc.ProfileVersionId, ct);
         var fiscal = await _db.FiscalProfiles.AsNoTracking().FirstOrDefaultAsync(ct);
-        var compliance = await _compliance.InForceAsync(referenceDate, ct);
+        // The assessment the calculation used (its result is frozen with it), not whatever is in force today.
+        var compliance = calc is null ? await _compliance.InForceAsync(referenceDate, ct) : await _compliance.GetAsync(calc.ComplianceAssessmentId, ct);
 
         var commercial = o.Evidence.Where(x => x.Type == TaxEvidenceType.CommercialInstrument).ToList();
         var original = engine.Canonical.Deserialize<ScenarioResult>(o.CurrentScenarioJson);

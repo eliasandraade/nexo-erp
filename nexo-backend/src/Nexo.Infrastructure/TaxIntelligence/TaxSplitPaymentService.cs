@@ -141,7 +141,9 @@ public sealed class TaxSplitPaymentService
         {
             throw new ConflictException("Esta retenção já foi estornada.");
         }
-        return (await ListAsync(null, MaxList, ct)).First(e => e.Id == original.ExpectationId);
+        var expectation = await _db.TaxSplitExpectations.AsNoTracking().FirstAsync(e => e.Id == original.ExpectationId, ct);
+        var settlements = await _db.TaxSplitSettlements.AsNoTracking().Where(s => s.ExpectationId == expectation.Id).ToListAsync(ct);
+        return Map(expectation, settlements);
     }
 
     private static SplitExpectationDto Map(SplitExpectation e, IReadOnlyList<SplitSettlement> settlements)
