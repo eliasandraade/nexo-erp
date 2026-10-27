@@ -60,6 +60,15 @@ const ContasPagarPage       = lazy(() => import("@/modules/financial/pages/Conta
 const FluxoCaixaPage        = lazy(() => import("@/modules/financial/pages/FluxoCaixaPage"));
 const CoreRelatoriosPage    = lazy(() => import("@/modules/reports/pages/RelatoriosPage"));
 const FiscalPage            = lazy(() => import("@/modules/fiscal/pages/FiscalPage"));
+const TaxOverviewPage       = lazy(() => import("@/modules/tax/pages/TaxOverviewPage"));
+const TaxProfilePage        = lazy(() => import("@/modules/tax/pages/TaxProfilePage"));
+const TaxCalculationsPage   = lazy(() => import("@/modules/tax/pages/TaxCalculationsPage"));
+const TaxCalculationDetailPage = lazy(() => import("@/modules/tax/pages/TaxCalculationDetailPage"));
+const TaxSimulationsPage    = lazy(() => import("@/modules/tax/pages/TaxSimulationsPage"));
+const TaxOpportunitiesPage  = lazy(() => import("@/modules/tax/pages/TaxOpportunitiesPage"));
+const TaxOpportunityDetailPage = lazy(() => import("@/modules/tax/pages/TaxOpportunityDetailPage"));
+const TaxCreditsPage        = lazy(() => import("@/modules/tax/pages/TaxCreditsPage"));
+const TaxRulesPage          = lazy(() => import("@/modules/tax/pages/TaxRulesPage"));
 const ClientesPage          = lazy(() => import("@/modules/customers/pages/ClientesPage"));
 const CustomerFormPage      = lazy(() => import("@/modules/customers/pages/CustomerFormPage"));
 const FornecedoresPage      = lazy(() => import("@/modules/suppliers/pages/FornecedoresPage"));
@@ -285,6 +294,15 @@ export function AppRouter() {
                   <Route path="/financeiro/fluxo"   element={<FluxoCaixaPage />} />
                   <Route path="/relatorios"         element={<CoreRelatoriosPage />} />
                   <Route path="/fiscal"             element={<FiscalPage />} />
+                  <Route path="/tributos"                element={<TaxOverviewPage />} />
+                  <Route path="/tributos/perfil"         element={<TaxProfilePage />} />
+                  <Route path="/tributos/calculos"       element={<TaxCalculationsPage />} />
+                  <Route path="/tributos/calculos/:id"   element={<TaxCalculationDetailPage />} />
+                  <Route path="/tributos/simulacoes"     element={<TaxSimulationsPage />} />
+                  <Route path="/tributos/oportunidades"  element={<TaxOpportunitiesPage />} />
+                  <Route path="/tributos/oportunidades/:id" element={<TaxOpportunityDetailPage />} />
+                  <Route path="/tributos/creditos"       element={<TaxCreditsPage />} />
+                  <Route path="/tributos/regras"         element={<TaxRulesPage />} />
                   <Route path="/listas-de-preco" element={<ListasDePrecoPage />} />
                   <Route path="/configuracoes" element={<ConfiguracoesPage />} />
                   <Route path="/assinatura"   element={<AssinaturaPage />} />

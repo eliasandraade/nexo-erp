@@ -34,6 +34,7 @@ import {
   HandCoins,
   ChartColumnBig,
   ScrollText,
+  Scale,
   type LucideIcon,
 } from "lucide-react";
 import type { UserRole } from "@/modules/users/types";
@@ -91,6 +92,8 @@ export const appRoutes: AppRoute[] = [
   { path: "/financeiro/fluxo",   label: "Fluxo de caixa",   icon: ChartColumnBig, group: "core",    roles: MGMT },
   { path: "/relatorios",    label: "Relatórios",     icon: BarChart2,         group: "core",        roles: MGMT },
   { path: "/fiscal",        label: "Fiscal",         icon: ScrollText,        group: "core",        roles: MGMT },
+  // Tributos: one entry — its pages (perfil, cálculos, simulações, oportunidades, créditos, regras) are tabs.
+  { path: "/tributos",      label: "Tributos",       icon: Scale,             group: "core",        roles: MGMT },
 
   // ── Estoque — management + estoquista ────────────────────────────────────
   { path: "/produtos",      label: "Produtos",       icon: Package,           group: "inventario",  roles: [...MGMT, "estoquista"] },

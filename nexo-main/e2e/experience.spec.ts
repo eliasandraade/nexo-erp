@@ -804,3 +804,55 @@ test('Configurações: só regras com efeito — descontos do PDV e alertas de e
  expect(saved).toEqual({inventory:{enableLowStockAlerts:false,enableZeroStockAlerts:true},pos:{allowValueDiscount:false,allowPercentDiscount:true,requireManagerAuth:true,maxDiscountPercent:20}});
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+
+// ── Inteligência tributária (mocked) ─────────────────────────────────────────
+const taxOverview = { profileConfigured:true, periodFrom:'2026-09-27', periodTo:'2026-10-26', calculations:4, taxedBase:12000, estimatedTax:120, effectiveRatePercent:1,
+  creditsAvailable:30, creditsBlocked:0, creditsNotAppropriated:5, openOpportunities:3, potentialSavings:210.5, potentialDeferrals:900, potentialCashFlow:40, potentialCredits:15,
+  openHighRisk:1, blockedOpportunities:1, splitDivergences:0, activeRulesToday:6, pendingRulesToday:2 };
+const taxOpportunity = (patch: Record<string, unknown>) => ({ id:'qa-op', type:'TaxSaving', impactNature:'DefinitiveSaving', status:'InReview', title:'Desconto condicional pode virar incondicional',
+  estimatedImpact:120, risk:'High', confidence:70, createdAt:'2026-10-20T10:00:00Z', summary:'O desconto depende de pagamento em dia e por isso entra na base.', detectorKey:'conditional-discount',
+  sourceCalculationId:null, legalSourceCodes:['LC214-ART12'], caveats:null, blockedAs:null, blockReason:null, rejectionReason:null, reviewedByName:null, reviewedAt:null,
+  requirements:[{id:'qa-req',code:'R1',text:'O desconto consta da nota fiscal.',legalSourceCode:'LC214-ART12',met:true,note:null,answeredByName:'Revisão local',answeredAt:'2026-10-21T10:00:00Z'}],
+  evidence:[], current:null, proposed:null, decision:null, ...patch });
+async function prepareTax(page: Page, opportunity: Record<string, unknown> = {}) {
+  await prepare(page);
+  await page.route('http://localhost:5000/api/tax/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    let body: unknown = [];
+    if (path.endsWith('/tax/overview')) body = taxOverview;
+    else if (path.includes('/tax/opportunities/')) body = taxOpportunity(opportunity);
+    return route.fulfill({ status:200, contentType:'application/json', body:JSON.stringify(body) });
+  });
+}
+test('Tributos: visão geral separa as naturezas de impacto e cabe no celular', async ({ page }) => {
+  const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+  await page.setViewportSize({ width:390, height:844 }); await prepareTax(page); await page.goto('/tributos');
+  await expect(page.getByRole('heading', { name:'Tributos', exact:true })).toBeVisible();
+  await expect(page.getByText('Diferimento — não é economia').first()).toBeVisible();
+  await expect(page.getByText('R$ 210,50')).toBeVisible();
+  await expect(page.getByText('R$ 900,00')).toBeVisible();
+  await expect(page.getByText('R$ 1.165,50')).toHaveCount(0);
+  await expect(page.getByText(/alíquotas de teste/)).toBeVisible();
+  await noOverflow(page); expect(errors).toEqual([]);
+});
+test('Tributos: oportunidade bloqueada não mostra economia nem aprovação', async ({ page }) => {
+  await page.setViewportSize({ width:390, height:844 });
+  await prepareTax(page, { status:'Blocked', estimatedImpact:null, blockedAs:'FalseSupplier', blockReason:'Fornecedor sem operação real' });
+  await page.goto('/tributos/oportunidades/qa-op');
+  await expect(page.getByRole('alert').filter({ hasText:'Estrutura proibida' })).toContainText('Fornecedor de fachada — Fornecedor sem operação real');
+  await expect(page.getByRole('button', { name:'Aprovar' })).toHaveCount(0);
+  await expect(page.getByText('Quanto muda?')).toHaveCount(0);
+  await noOverflow(page);
+});
+test('Tributos: risco alto só aprova com a decisão assumida', async ({ page }) => {
+  await prepareTax(page);
+  let approved: Json = null;
+  await page.route('**/api/tax/opportunities/qa-op/approve', route => { approved = route.request().postDataJSON(); return route.fulfill({ status:200, contentType:'application/json', body:JSON.stringify(taxOpportunity({ status:'Approved' })) }); });
+  await page.goto('/tributos/oportunidades/qa-op');
+  await page.getByRole('button', { name:'Aprovar' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('button', { name:'Aprovar' })).toBeDisabled();
+  await dialog.getByText('Entendo o risco alto e assumo a decisão').click();
+  await dialog.getByRole('button', { name:'Aprovar' }).click();
+  await expect.poll(() => approved).toEqual({ acknowledgeHighRisk:true });
+});
