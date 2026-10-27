@@ -62,11 +62,14 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Build (obras, orçamentos, etapas, diário) | Management | Management | Management | Management | aprovar orçamento: Management |
 | Interpreter (lançamentos, anexos, vocabulário) | Management | Management | Management | Management | confirmar / estornar: Management |
 | Service (todas as telas) | Management (preset e settings: Todos) | Management | Management | Management | Management |
+| Tax Intelligence (cálculos, simulações, oportunidades, créditos, split) | Management | Management | — (versões imutáveis) | — | nova versão do perfil tributário e aprovação de oportunidade: Directors |
+| Tax Intelligence: catálogo de regras e fontes jurídicas | Management (leitura) | policy Platform | só status, policy Platform | — | ativar regra exige fontes conferidas: policy Platform |
 | Platform admin | policy Platform | policy Platform | policy Platform | policy Platform | policy Platform |
 | Público (cardápio, agendamento, login) | anônimo, com rate limit | anônimo, com rate limit | — | — | — |
 
 ### Decisões que merecem nota
 
+- **Tax Intelligence: o catálogo é da plataforma.** Regras e fontes jurídicas valem para todos os tenants e só o operador da plataforma as cria ou muda de status; um tenant nunca edita legislação. Aprovar uma oportunidade e criar versão do perfil (mudança de regime) é Diretoria; revisar, responder requisitos e anexar evidências é Management. Detalhes em `docs/tax-intelligence/architecture.md`.
 - **Cancelar comanda é Floor.** O domínio já impede cancelar uma comanda paga (`Closed`), e antes do
   pagamento ela não tem efeito financeiro. Cancelar **venda** (já paga, com efeito no caixa e no
   financeiro) exige Management. O estorno de comanda paga entra na política de reversões (PR 45).
