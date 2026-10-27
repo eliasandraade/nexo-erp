@@ -6,7 +6,10 @@ using Nexo.Infrastructure.TaxIntelligence;
 
 namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 
-/// <summary>Official, reproducible calculations.</summary>
+/// <summary>
+/// System calculations with the rules and the data indicated — reproducible, and refused (never zero)
+/// when the operation is outside what engine V1 supports.
+/// </summary>
 [ApiController]
 [Route("api/tax/calculations")]
 [Authorize(Roles = AppRoles.Management)]
@@ -21,7 +24,18 @@ public class TaxCalculationsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<TaxCalculationSummaryDto>>> List([FromQuery] int take = 50, CancellationToken ct = default)
         => Ok(await _service.ListAsync(take, ct));
 
-    /// <summary>Calculates an operation described by its facts (a proposal, a manual entry). Same facts + same rules = same calculation.</summary>
+    /// <summary>
+    /// Whether engine V1 supports the operation (supported-operation matrix), without calculating or
+    /// recording anything.
+    /// </summary>
+    [HttpPost("coverage")]
+    public async Task<ActionResult<TaxCoverageDecision>> Coverage([FromBody] TaxOperationRequest request, CancellationToken ct)
+        => Ok(await _service.CoverageAsync(request, ct));
+
+    /// <summary>
+    /// Calculates an operation described by its facts (a proposal, a manual entry). Same facts + same rules =
+    /// same calculation. Outside the V1 recorte: 422 tax_operation_not_supported with the reasons.
+    /// </summary>
     [HttpPost]
     public async Task<ActionResult<TaxCalculationDto>> Create([FromBody] TaxOperationRequest request, CancellationToken ct)
         => Ok(await _service.CalculateAsync(request, ct));

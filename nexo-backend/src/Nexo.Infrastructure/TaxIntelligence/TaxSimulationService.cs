@@ -21,17 +21,20 @@ public sealed class TaxSimulationService
     private readonly TaxEngineRegistry _engines;
     private readonly ICurrentTenant _tenant;
     private readonly TaxProfileService _profiles;
+    private readonly TaxComplianceService _compliance;
     private readonly TaxCatalogService _catalog;
     private readonly TaxAuditTrail _audit;
     private readonly ILogger<TaxSimulationService> _log;
 
-    public TaxSimulationService(NexoDbContext db, TaxEngineRegistry engines, ICurrentTenant tenant, TaxProfileService profiles, TaxCatalogService catalog,
+    public TaxSimulationService(NexoDbContext db, TaxEngineRegistry engines, ICurrentTenant tenant, TaxProfileService profiles,
+        TaxComplianceService compliance, TaxCatalogService catalog,
         TaxAuditTrail audit, ILogger<TaxSimulationService> log)
     {
         _db = db;
         _engines = engines;
         _tenant = tenant;
         _profiles = profiles;
+        _compliance = compliance;
         _catalog = catalog;
         _audit = audit;
         _log = log;
@@ -40,7 +43,8 @@ public sealed class TaxSimulationService
     public async Task<TaxSimulationDto> CreateAsync(CreateTaxSimulationRequest r, CancellationToken ct)
     {
         var profile = await _profiles.GetInForceAsync(r.Baseline.OperationDate, ct);
-        var baseline = TaxCalculationService.ToInput(r.Baseline, profile);
+        var compliance = await _compliance.InForceAsync(r.Baseline.OperationDate, ct);
+        var baseline = TaxCalculationService.ToInput(r.Baseline, profile, compliance?.ForRules);
         var scenarios = r.Scenarios.Select(ToScenario).ToList();
         var engine = _engines.Current;
         var catalogue = await LoadCatalogueAsync(engine, baseline.ReferenceDate, scenarios, ct);
@@ -81,9 +85,11 @@ public sealed class TaxSimulationService
     public async Task<IReadOnlyList<SupplierOfferResultDto>> CompareSuppliersAsync(CompareSuppliersRequest r, CancellationToken ct)
     {
         var profile = await _profiles.GetInForceAsync(r.OperationDate, ct);
+        var compliance = await _compliance.InForceAsync(r.OperationDate, ct);
         var first = r.Offers[0];
         var baseline = TaxCalculationService.ToInput(
-            new TaxOperationRequest(r.OperationDate, TaxDirection.Inbound, first.SupplierRegime, null, first.Supplier, first.Lines), profile);
+            new TaxOperationRequest(r.OperationDate, TaxDirection.Inbound, first.SupplierRegime, null, first.Supplier, first.Lines), profile,
+            compliance?.ForRules);
         var hypotheses = r.RateHypotheses?.Select(h => new RateHypothesis(h.Tax, h.RatePercent, h.Label)).ToList();
         var scenarios = r.Offers.Select(o => new TaxScenario(o.Supplier, CounterpartyRegime: o.SupplierRegime,
             Lines: TaxCalculationService.ToLines(o.Lines), RateHypotheses: hypotheses, AssumeCreditable: r.AssumeCreditable)).ToList();

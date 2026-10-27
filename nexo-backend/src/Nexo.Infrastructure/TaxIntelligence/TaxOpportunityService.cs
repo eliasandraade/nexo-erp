@@ -15,9 +15,11 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 /// Opportunities: detection after a calculation, then Identified → InReview → Approved/Rejected, with
 /// the guardrails able to block at any point before approval. Approval writes the decision dossier in
 /// the same transaction. Nothing here changes a sale, a price, a ledger or a document — an approved
-/// opportunity is a recorded decision, and carrying it out is up to the business. Approval follows the
-/// <see cref="TaxIntelligencePolicyOptions"/>: rules not yet approved by a tax professional block it
-/// when so configured (production), and whoever analysed alone must justify approving their own work.
+/// opportunity is a recorded scenario decision, and carrying it out is up to the business. Approval
+/// follows the <see cref="TaxIntelligencePolicyOptions"/>: rules not professionally approved block it
+/// when so configured (production), and the maker-checker requirement depends on risk and materiality.
+/// After the operation, an execution verification records whether it really happened as approved.
+/// Hashes and versions show the integrity of the records — not the material truth of the facts.
 /// </summary>
 public sealed class TaxOpportunityService
 {
@@ -27,18 +29,20 @@ public sealed class TaxOpportunityService
     private readonly NexoDbContext _db;
     private readonly TaxEngineRegistry _engines;
     private readonly TaxCatalogService _catalog;
+    private readonly TaxComplianceService _compliance;
     private readonly TaxIntelligencePolicyOptions _policy;
     private readonly ICurrentTenant _tenant;
     private readonly TaxAuditTrail _audit;
     private readonly ILogger<TaxOpportunityService> _log;
 
     public TaxOpportunityService(
-        NexoDbContext db, TaxEngineRegistry engines, TaxCatalogService catalog, IOptions<TaxIntelligencePolicyOptions> policy,
-        ICurrentTenant tenant, TaxAuditTrail audit, ILogger<TaxOpportunityService> log)
+        NexoDbContext db, TaxEngineRegistry engines, TaxCatalogService catalog, TaxComplianceService compliance,
+        IOptions<TaxIntelligencePolicyOptions> policy, ICurrentTenant tenant, TaxAuditTrail audit, ILogger<TaxOpportunityService> log)
     {
         _db = db;
         _engines = engines;
         _catalog = catalog;
+        _compliance = compliance;
         _policy = policy.Value;
         _tenant = tenant;
         _audit = audit;
@@ -62,7 +66,7 @@ public sealed class TaxOpportunityService
                 var o = TaxOpportunity.Create(_tenant.Id, c.Type, c.Title, c.Summary, c.DetectorKey, engine.Version, calculationId,
                     engine.Canonical.Serialize(c.Current), engine.Canonical.Serialize(c.Proposed), c.EstimatedImpact, c.Risk, c.Confidence,
                     string.Join(",", c.LegalSourceCodes), c.Caveats);
-                foreach (var r in c.Requirements) o.AddRequirement(r.Code, r.Text, r.LegalSourceCode);
+                foreach (var r in c.Requirements) o.AddRequirement(r.Code, r.Text, r.LegalSourceCode, r.Phase, r.RequiredEvidence);
                 _db.TaxOpportunities.Add(o);
                 _audit.Record(TaxAuditActions.OpportunityIdentified, AuditEntity, o.Id,
                     $"Oportunidade identificada: {c.Title} ({c.Type}, risco {c.Risk}).",
@@ -99,9 +103,15 @@ public sealed class TaxOpportunityService
         var o = await _db.TaxOpportunities.AsNoTracking().Include(x => x.Requirements).Include(x => x.Evidence)
             .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Oportunidade", id);
         var decision = await _db.TaxDecisions.AsNoTracking().FirstOrDefaultAsync(d => d.OpportunityId == id, ct);
-        var pending = await _catalog.PendingProfessionalReviewAsync(await RuleVersionsBehindAsync(o, ct), ct);
-        return Map(o, decision, pending.Count > 0);
+        var execution = await _db.TaxExecutionVerifications.AsNoTracking().FirstOrDefaultAsync(e => e.OpportunityId == id, ct);
+        var pending = await _catalog.PendingProfessionalReviewAsync(await RuleVersionsBehindAsync(o, ct), await ReferenceDateAsync(o, ct), ct);
+        return Map(o, decision, execution, pending.Count > 0);
     }
+
+    private async Task<DateOnly> ReferenceDateAsync(TaxOpportunity o, CancellationToken ct)
+        => o.SourceCalculationId is null
+            ? DateOnly.FromDateTime(o.CreatedAt)
+            : await _db.TaxCalculations.AsNoTracking().Where(c => c.Id == o.SourceCalculationId).Select(c => c.ReferenceDate).FirstAsync(ct);
 
     /// <summary>The catalogue rule versions an opportunity rests on: those that matched in its calculation.</summary>
     private async Task<IReadOnlyList<Guid>> RuleVersionsBehindAsync(TaxOpportunity o, CancellationToken ct)
@@ -141,10 +151,19 @@ public sealed class TaxOpportunityService
     public Task<TaxOpportunityDto> AddEvidenceAsync(Guid id, AddEvidenceRequest r, CancellationToken ct) => MutateAsync(id, o =>
     {
         // Same versioned hashing contract as the dossier: the canonical form of the opportunity's engine.
-        var hash = EngineOf(o).Canonical.Hash($"{r.Description.Trim()}\n{r.DocumentReference?.Trim()}");
-        var e = o.AddEvidence(r.Description, r.DocumentReference, hash, _audit.UserId, _audit.UserName);
+        var hash = EngineOf(o).Canonical.Hash(
+            $"{r.Type}\n{r.RequirementId}\n{r.Description.Trim()}\n{r.DocumentReference?.Trim()}\n{r.Notes?.Trim()}");
+        var e = o.AddEvidence(r.Type, r.RequirementId, r.Description, r.DocumentReference, hash, r.Notes, _audit.UserId, _audit.UserName);
         _db.TaxOpportunityEvidence.Add(e);
-        _audit.Record(TaxAuditActions.OpportunityEvidenceAdded, AuditEntity, o.Id, "Evidência anexada.", new { evidenceId = e.Id, hash });
+        _audit.Record(TaxAuditActions.OpportunityEvidenceAdded, AuditEntity, o.Id, "Evidência anexada.",
+            new { evidenceId = e.Id, type = r.Type.ToString(), r.RequirementId, hash });
+    }, ct);
+
+    public Task<TaxOpportunityDto> ReviewEvidenceAsync(Guid id, Guid evidenceId, ReviewEvidenceRequest r, CancellationToken ct) => MutateAsync(id, o =>
+    {
+        o.ReviewEvidence(evidenceId, r.Accepted, r.Notes, _audit.UserId, _audit.UserName, DateTime.UtcNow);
+        _audit.Record(TaxAuditActions.OpportunityEvidenceReviewed, AuditEntity, o.Id,
+            r.Accepted ? "Evidência aceita." : $"Evidência recusada: {r.Notes}", new { evidenceId, r.Accepted, r.Notes });
     }, ct);
 
     public Task<TaxOpportunityDto> BlockAsync(Guid id, BlockOpportunityRequest r, CancellationToken ct) => MutateAsync(id, o =>
@@ -173,12 +192,14 @@ public sealed class TaxOpportunityService
     {
         var o = await LoadForUpdateAsync(id, ct);
         var now = DateTime.UtcNow;
-        var selfApproval = _policy.RequireSeparateApprover && o.IsSoleAnalyst(_audit.UserId);
-        o.Approve(r.AcknowledgeHighRisk, _audit.UserId, _audit.UserName, now, _policy.RequireSeparateApprover, r.SelfApprovalJustification);
+        var approval = _policy.RequiredFor(o.Risk, o.EstimatedImpact);
+        var selfApproval = o.IsSoleAnalyst(_audit.UserId);
+        o.Approve(r.AcknowledgeHighRisk, _audit.UserId, _audit.UserName, now, approval, r.SelfApprovalJustification);
         var justification = selfApproval ? r.SelfApprovalJustification!.Trim() : null;
 
+        var referenceDate = await ReferenceDateAsync(o, ct);
         var ruleIds = await RuleVersionsBehindAsync(o, ct);
-        var pendingReview = await _catalog.PendingProfessionalReviewAsync(ruleIds, ct);
+        var pendingReview = await _catalog.PendingProfessionalReviewAsync(ruleIds, referenceDate, ct);
         if (_policy.RequireApprovedRulesForDecisions && pendingReview.Count > 0)
             throw new DomainException(
                 $"Regras ainda sem revisão tributária aprovada: {string.Join(", ", pendingReview)}. Ativação técnica não é aprovação profissional.",
@@ -193,27 +214,81 @@ public sealed class TaxOpportunityService
         var sources = await _db.TaxLegalSources.AsNoTracking().Where(s => codes.Contains(s.Code))
             .OrderBy(s => s.Code).Select(s => new { s.Code, s.Title, s.Reference, s.Url, s.Excerpt, textVerification = s.TextVerification.ToString() })
             .ToListAsync(ct);
+        var reviews = await _db.TaxRuleVersions.AsNoTracking().Where(v => ruleIds.Contains(v.Id))
+            .Join(_db.TaxRules.AsNoTracking(), v => v.RuleId, x => x.Id, (v, x) => new { x.Key, v })
+            .ToListAsync(ct);
+        var transaction = calc is null ? null
+            : await _db.TaxTransactions.AsNoTracking().Include(t => t.Lines).FirstOrDefaultAsync(t => t.Id == calc.TransactionId, ct);
+        var profile = calc is null ? null : await _db.TaxProfileVersions.AsNoTracking().FirstOrDefaultAsync(v => v.Id == calc.ProfileVersionId, ct);
+        var fiscal = await _db.FiscalProfiles.AsNoTracking().FirstOrDefaultAsync(ct);
+        var compliance = await _compliance.InForceAsync(referenceDate, ct);
+
+        var commercial = o.Evidence.Where(x => x.Type == TaxEvidenceType.CommercialInstrument).ToList();
+        var pendingIssues = new List<string> { "Verificação da execução pendente: o documento fiscal da operação ainda não foi conferido." };
+        if (pendingReview.Count > 0) pendingIssues.Add($"Revisão tributária pendente: {string.Join(", ", pendingReview)}.");
+        if (compliance?.Status != ComplianceAssessmentStatus.Verified)
+            pendingIssues.Add("Obrigações acessórias sem verificação no período e no escopo da operação.");
 
         var dossier = new
         {
+            kind = "scenario-approval",
+            integrityNotice = IntegrityNotice,
             strategy = o.Title,
             opportunity = new { o.Id, type = o.Type.ToString(), nature = o.ImpactNature.ToString(), o.Summary, o.DetectorKey, o.EstimatedImpact, o.Confidence, o.Caveats },
+            taxpayer = fiscal is null ? null : new { fiscal.LegalName, fiscal.Cnpj, fiscal.State, fiscal.CityIbgeCode },
+            establishment = profile is null ? null : new
+            {
+                storeId = profile.StoreId, profileVersionId = profile.Id, profile.VersionNumber, regime = profile.Regime.ToString(), profile.State,
+                profile.CityIbgeCode, profile.PrimaryCnae,
+            },
+            counterparty = transaction is null ? null : new { regime = transaction.CounterpartyRegime?.ToString(), state = transaction.CounterpartyState },
+            relevantDates = transaction is null ? null : new
+            {
+                transaction.OperationDate, supplyPattern = transaction.SupplyPattern.ToString(), transaction.DocumentDate, transaction.SupplyDate,
+                transaction.PaymentOrAdvanceDate, transaction.CompetencePeriod, transaction.ExecutionFrom, transaction.ExecutionTo,
+            },
+            classification = transaction?.Lines.OrderBy(l => l.LineIndex)
+                .Select(l => new { l.LineIndex, kind = l.ItemKind.ToString(), l.Ncm, l.Nbs, cClassTrib = l.CClassTrib, l.SpecialTreatment }).ToList(),
             facts = calc is null ? null : new { calc.Id, calc.ReferenceDate, calc.InputHash, calc.RuleSetHash, calc.OutputHash, calc.EngineVersion, input = TaxJson.Element(calc.InputJson) },
-            currentScenario = TaxJson.Element(o.CurrentScenarioJson),
+            originalScenario = TaxJson.Element(o.CurrentScenarioJson),
             proposedScenario = TaxJson.Element(o.ProposedScenarioJson),
             rules = calc?.Executions.Where(e => e.Matched).DistinctBy(e => e.RuleVersionId)
                 .Select(e => new { e.RuleKey, e.RuleVersion, e.RuleVersionId, e.ContentHash, e.LegalSourceCodes }).ToList(),
             legalSources = sources,
             // Text verification of a source says only that the excerpt matches the official text.
-            professionalReview = new { pendingRules = pendingReview, requiredByPolicy = _policy.RequireApprovedRulesForDecisions },
-            requirements = o.Requirements.OrderBy(x => x.Code).Select(x => new { x.Code, x.Text, x.LegalSourceCode, x.Met, x.Note, x.AnsweredByName, x.AnsweredAt }),
-            evidence = o.Evidence.OrderBy(x => x.CreatedAt).Select(x => new { x.Description, x.DocumentReference, x.ContentHash, x.AddedByName, x.CreatedAt }),
+            professionalReview = new
+            {
+                pendingRules = pendingReview,
+                requiredByPolicy = _policy.RequireApprovedRulesForDecisions,
+                reviews = reviews.OrderBy(x => x.Key).Select(x => new
+                {
+                    x.Key, x.v.Version, status = x.v.ProfessionalReview.ToString(), reviewer = x.v.ProfessionalReviewedBy, x.v.ProfessionalReference,
+                    scope = x.v.ProfessionalReviewScope, validFrom = x.v.ProfessionalReviewValidFrom, validTo = x.v.ProfessionalReviewValidTo,
+                    assumptions = x.v.ProfessionalReviewAssumptions, caveats = x.v.ProfessionalReviewCaveats,
+                }).ToList(),
+            },
+            complianceAssessment = compliance is null ? null : new
+            {
+                status = compliance.Status.ToString(), compliance.PeriodFrom, compliance.PeriodTo, compliance.Scope, compliance.ObligationsChecked,
+                compliance.AssessedBy, compliance.AssessedAt, compliance.Limitations, compliance.PnctParticipation,
+            },
+            requirements = o.Requirements.OrderBy(x => x.Phase).ThenBy(x => x.Code).Select(x => new
+            {
+                x.Code, phase = x.Phase.ToString(), x.Text, x.LegalSourceCode, x.Met, x.Note, x.AnsweredByName, x.AnsweredAt,
+                requiredEvidence = x.RequiredEvidence?.ToString(),
+            }),
+            commercialEvidence = commercial.OrderBy(x => x.CreatedAt).Select(EvidenceView),
+            evidence = o.Evidence.OrderBy(x => x.CreatedAt).Select(EvidenceView),
+            // A scenario approval never states that a future fiscal document exists.
+            fiscalDocumentEvidence = new { status = "pending-execution-verification" },
+            executionVerification = new { status = "pending" },
+            pendingIssues,
             risk = o.Risk.ToString(),
             highRiskAcknowledged = r.AcknowledgeHighRisk,
             reviewStartedBy = o.ReviewStartedByName,
             approvedBy = new { id = _audit.UserId, name = _audit.UserName },
             approvedAt = now,
-            segregationOfDuties = new { required = _policy.RequireSeparateApprover, selfApproval, justification },
+            makerChecker = new { required = approval.ToString(), materialityThreshold = _policy.MaterialityThreshold, selfApproval, justification },
             engineVersion = o.EngineVersion,
         };
         var dossierJson = System.Text.Json.JsonSerializer.Serialize(dossier, engine.Canonical.Options);
@@ -221,11 +296,69 @@ public sealed class TaxOpportunityService
             r.AcknowledgeHighRisk, o.EngineVersion, _audit.UserId, _audit.UserName, now, justification);
         _db.TaxDecisions.Add(decision);
         _audit.Record(TaxAuditActions.OpportunityApproved, AuditEntity, o.Id,
-            $"Aprovada por {_audit.UserName}: {o.Title}. Dossiê {decision.DossierHash[..12]}.",
-            new { decisionId = decision.Id, decision.DossierHash, risk = o.Risk.ToString(), r.AcknowledgeHighRisk, selfApproval, justification,
-                pendingProfessionalReview = pendingReview }, AuditSeverity.Warning);
+            $"Cenário aprovado por {_audit.UserName}: {o.Title}. Dossiê {decision.DossierHash[..12]}.",
+            new { decisionId = decision.Id, decision.DossierHash, risk = o.Risk.ToString(), r.AcknowledgeHighRisk, approval = approval.ToString(),
+                selfApproval, justification, pendingProfessionalReview = pendingReview }, AuditSeverity.Warning);
         await SaveAsync(ct);
         _log.LogInformation("Tax opportunity {OpportunityId} approved; decision {DecisionId}", o.Id, decision.Id);
+        return await GetAsync(id, ct);
+    }
+
+    /// <summary>Integrity, not truth: what the hashes in a dossier do and do not show.</summary>
+    public const string IntegrityNotice =
+        "O hash e a versão demonstram a integridade deste registro — que ele não foi alterado — e não a veracidade material dos fatos declarados.";
+
+    private static object EvidenceView(TaxOpportunityEvidence x) => new
+    {
+        type = x.Type.ToString(), x.RequirementId, x.Description, x.DocumentReference, x.ContentHash, status = x.Status.ToString(), x.Notes,
+        x.AddedByName, x.CreatedAt, x.ReviewedByName, x.ReviewedAt, x.ReviewNotes,
+    };
+
+    /// <summary>
+    /// Records whether the operation really happened as the scenario was approved, and seals it: the
+    /// dossier carries the decision's hash, the execution requirements as answered and the final
+    /// evidence (authorised fiscal document…). The decision itself is never changed.
+    /// </summary>
+    public async Task<TaxOpportunityDto> VerifyExecutionAsync(Guid id, VerifyExecutionRequest r, CancellationToken ct)
+    {
+        var o = await LoadForUpdateAsync(id, ct);
+        var now = DateTime.UtcNow;
+        var decision = await _db.TaxDecisions.AsNoTracking().FirstOrDefaultAsync(d => d.OpportunityId == id, ct)
+            ?? throw new DomainException("Sem cenário aprovado não há execução a verificar.", "tax_opportunity_execution_state");
+        o.VerifyExecution(r.Outcome, r.Notes, _audit.UserId, _audit.UserName, now);
+
+        var engine = EngineOf(o);
+        var executionRequirements = o.Requirements.Where(x => x.Phase == RequirementPhase.ExecutionVerification).ToList();
+        var ids = executionRequirements.Select(x => (Guid?)x.Id).ToHashSet();
+        var dossier = new
+        {
+            kind = "execution-verification",
+            integrityNotice = IntegrityNotice,
+            decision = new { decision.Id, decision.DossierHash, decision.ApprovedAt, decision.ApprovedByName },
+            outcome = r.Outcome.ToString(),
+            fiscalDocument = new { reference = r.FiscalDocumentReference?.Trim(), protocol = r.AuthorizationProtocol?.Trim() },
+            requirements = executionRequirements.OrderBy(x => x.Code).Select(x => new
+            {
+                x.Code, x.Text, x.Met, x.Note, x.AnsweredByName, x.AnsweredAt, requiredEvidence = x.RequiredEvidence?.ToString(),
+            }),
+            fiscalDocumentEvidence = o.Evidence.Where(x => ids.Contains(x.RequirementId)).OrderBy(x => x.CreatedAt).Select(EvidenceView),
+            notes = r.Notes?.Trim(),
+            verifiedBy = new { id = _audit.UserId, name = _audit.UserName },
+            verifiedAt = now,
+            engineVersion = o.EngineVersion,
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(dossier, engine.Canonical.Options);
+        var verification = TaxExecutionVerification.Create(_tenant.Id, o.Id, decision.Id, r.Outcome, r.FiscalDocumentReference,
+            r.AuthorizationProtocol, r.Notes, json, engine.Canonical.Hash(json), _audit.UserId, _audit.UserName, now);
+        _db.TaxExecutionVerifications.Add(verification);
+        _audit.Record(TaxAuditActions.OpportunityExecutionVerified, AuditEntity, o.Id,
+            r.Outcome == TaxExecutionOutcome.Verified
+                ? $"Execução verificada conforme o cenário aprovado. Dossiê {verification.DossierHash[..12]}."
+                : $"Execução divergiu do cenário aprovado: {r.Notes}",
+            new { verificationId = verification.Id, outcome = r.Outcome.ToString(), verification.DossierHash, decisionHash = decision.DossierHash },
+            AuditSeverity.Warning);
+        await SaveAsync(ct);
+        _log.LogInformation("Tax opportunity {OpportunityId} execution {Outcome}", o.Id, r.Outcome);
         return await GetAsync(id, ct);
     }
 
@@ -268,7 +401,7 @@ public sealed class TaxOpportunityService
                 $"Esta oportunidade foi produzida pela engine {o.EngineVersion}, que não está disponível nesta versão do Orken.",
                 "tax_engine_unavailable");
 
-    private TaxOpportunityDto Map(TaxOpportunity o, TaxDecision? d, bool professionalReviewPending)
+    private TaxOpportunityDto Map(TaxOpportunity o, TaxDecision? d, TaxExecutionVerification? x, bool professionalReviewPending)
     {
         var blocked = o.Status == TaxOpportunityStatus.Blocked;
         var canonical = EngineOf(o).Canonical;
@@ -277,13 +410,18 @@ public sealed class TaxOpportunityService
             o.SourceCalculationId, blocked ? null : o.EstimatedImpact, o.Risk, o.Confidence,
             o.LegalSourceCodes.Split(',', StringSplitOptions.RemoveEmptyEntries), o.Caveats, o.BlockedAs, o.BlockReason,
             o.RejectionReason, o.ReviewStartedByName, o.ReviewedByName, o.ReviewedAt, o.CreatedAt, professionalReviewPending,
-            o.Requirements.OrderBy(r => r.CreatedAt).ThenBy(r => r.Code)
-                .Select(r => new TaxOpportunityRequirementDto(r.Id, r.Code, r.Text, r.LegalSourceCode, r.Met, r.Note, r.AnsweredByName, r.AnsweredAt)).ToList(),
+            _policy.RequiredFor(o.Risk, o.EstimatedImpact),
+            o.Requirements.OrderBy(r => r.Phase).ThenBy(r => r.CreatedAt).ThenBy(r => r.Code)
+                .Select(r => new TaxOpportunityRequirementDto(r.Id, r.Code, r.Text, r.LegalSourceCode, r.Met, r.Note, r.AnsweredByName, r.AnsweredAt,
+                    r.Phase, r.RequiredEvidence, o.HasRequiredEvidence(r))).ToList(),
             o.Evidence.OrderBy(e => e.CreatedAt)
-                .Select(e => new TaxOpportunityEvidenceDto(e.Id, e.Description, e.DocumentReference, e.ContentHash, e.AddedByName, e.CreatedAt)).ToList(),
+                .Select(e => new TaxOpportunityEvidenceDto(e.Id, e.Type, e.RequirementId, e.Description, e.DocumentReference, e.ContentHash, e.Notes,
+                    e.Status, e.AddedByName, e.CreatedAt, e.ReviewedByName, e.ReviewedAt, e.ReviewNotes)).ToList(),
             canonical.Deserialize<ScenarioResult>(o.CurrentScenarioJson),
             blocked ? null : canonical.Deserialize<ScenarioResult>(o.ProposedScenarioJson),
-            d is null ? null : MapDecision(d));
+            d is null ? null : MapDecision(d),
+            x is null ? null : new TaxExecutionVerificationDto(x.Id, x.DecisionId, x.Outcome, x.FiscalDocumentReference, x.AuthorizationProtocol,
+                x.Notes, x.VerifiedByName, x.VerifiedAt, x.DossierHash, TaxJson.Element(x.DossierJson)));
     }
 
     /// <summary>The detector's summary states the saving; once blocked, only a neutral description is shown.</summary>

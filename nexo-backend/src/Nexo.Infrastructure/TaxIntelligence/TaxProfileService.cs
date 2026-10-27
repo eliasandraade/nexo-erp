@@ -17,12 +17,14 @@ public sealed class TaxProfileService
 {
     private readonly NexoDbContext _db;
     private readonly ICurrentTenant _tenant;
+    private readonly TaxComplianceService _compliance;
     private readonly TaxAuditTrail _audit;
 
-    public TaxProfileService(NexoDbContext db, ICurrentTenant tenant, TaxAuditTrail audit)
+    public TaxProfileService(NexoDbContext db, ICurrentTenant tenant, TaxComplianceService compliance, TaxAuditTrail audit)
     {
         _db = db;
         _tenant = tenant;
+        _compliance = compliance;
         _audit = audit;
     }
 
@@ -34,7 +36,8 @@ public sealed class TaxProfileService
         var current = versions.FirstOrDefault(v => v.ValidFrom <= today);
         var fiscal = await _db.FiscalProfiles.AsNoTracking().FirstOrDefaultAsync(ct);
         var suggestion = fiscal is null ? null : new TaxProfileSuggestionDto(fiscal.TaxRegime, fiscal.State, fiscal.CityIbgeCode);
-        return new TaxProfileDto(current is null ? null : Map(current), versions.Select(Map).ToList(), suggestion);
+        return new TaxProfileDto(current is null ? null : Map(current), versions.Select(Map).ToList(), suggestion,
+            await _compliance.ListAsync(ct));
     }
 
     /// <summary>The version in force on the date, or a coded 422 telling the user to create one.</summary>
@@ -59,15 +62,12 @@ public sealed class TaxProfileService
             }
             var version = profile.AddVersion(
                 r.ValidFrom, r.Regime, r.State.Trim(), r.CityIbgeCode.Trim(), r.PrimaryCnae.Trim(),
-                r.SecondaryCnaes ?? [], r.SpecialRegimes ?? [], r.Benefits ?? [],
-                r.AccessoryObligations ?? AccessoryObligationsStatus.Unknown, r.AccessoryObligationsEvidence,
-                r.Reason, _audit.UserId, _audit.UserName);
+                r.SecondaryCnaes ?? [], r.SpecialRegimes ?? [], r.Benefits ?? [], r.Reason, _audit.UserId, _audit.UserName);
             _db.TaxProfileVersions.Add(version);
 
             _audit.Record(TaxAuditActions.ProfileVersionCreated, "ProfileVersion", version.Id,
                 $"Perfil tributário v{version.VersionNumber}: {r.Regime} a partir de {r.ValidFrom:dd/MM/yyyy}.",
-                new { version.VersionNumber, validFrom = r.ValidFrom, regime = r.Regime.ToString(), r.State, r.CityIbgeCode, r.Reason,
-                    accessoryObligations = version.AccessoryObligations.ToString(), version.AccessoryObligationsEvidence },
+                new { version.VersionNumber, validFrom = r.ValidFrom, regime = r.Regime.ToString(), r.State, r.CityIbgeCode, r.Reason },
                 AuditSeverity.Warning);
             await _db.SaveChangesAsync(ct);
             return Map(version);
@@ -80,5 +80,5 @@ public sealed class TaxProfileService
 
     private static TaxProfileVersionDto Map(TaxProfileVersion v) => new(
         v.Id, v.VersionNumber, v.ValidFrom, v.Regime, v.State, v.CityIbgeCode, v.PrimaryCnae, v.SecondaryCnaes,
-        v.SpecialRegimes, v.Benefits, v.AccessoryObligations, v.AccessoryObligationsEvidence, v.Reason, v.CreatedByName, v.CreatedAt);
+        v.SpecialRegimes, v.Benefits, v.Reason, v.CreatedByName, v.CreatedAt);
 }

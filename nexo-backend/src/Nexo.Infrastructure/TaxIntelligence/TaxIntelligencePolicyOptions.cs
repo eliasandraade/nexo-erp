@@ -1,3 +1,5 @@
+using Nexo.Domain.Modules.TaxIntelligence;
+
 namespace Nexo.Infrastructure.TaxIntelligence;
 
 /// <summary>
@@ -16,9 +18,31 @@ public sealed class TaxIntelligencePolicyOptions
     /// </summary>
     public bool RequireApprovedRulesForDecisions { get; set; } = true;
 
+    /// <summary>Maker-checker for LOW risk. Default: whoever analysed alone may approve with a justification.</summary>
+    public ApprovalRequirement LowRisk { get; set; } = ApprovalRequirement.SelfApprovalWithJustification;
+
+    /// <summary>Maker-checker for MEDIUM risk. Default: another identified person must have reviewed.</summary>
+    public ApprovalRequirement MediumRisk { get; set; } = ApprovalRequirement.IdentifiedReviewer;
+
+    /// <summary>Maker-checker for HIGH risk. Default: an approver who took no part in the analysis.</summary>
+    public ApprovalRequirement HighRisk { get; set; } = ApprovalRequirement.IndependentApprover;
+
     /// <summary>
-    /// Segregation of duties: whoever did the whole analysis alone must justify approving it
-    /// (small teams can, on record) instead of being silently the sole approver. Default: on.
+    /// Estimated impact (R$) at or above which an independent approver is required whatever the risk.
+    /// Null = no materiality rule. The amount is a business decision of the owner.
     /// </summary>
-    public bool RequireSeparateApprover { get; set; } = true;
+    public decimal? MaterialityThreshold { get; set; }
+
+    /// <summary>The strictest approval the risk and the materiality of an opportunity require.</summary>
+    public ApprovalRequirement RequiredFor(TaxRiskLevel risk, decimal estimatedImpact)
+    {
+        var byRisk = risk switch
+        {
+            TaxRiskLevel.High => HighRisk,
+            TaxRiskLevel.Medium => MediumRisk,
+            _ => LowRisk,
+        };
+        var material = MaterialityThreshold is not null && estimatedImpact >= MaterialityThreshold;
+        return material && byRisk < ApprovalRequirement.IndependentApprover ? ApprovalRequirement.IndependentApprover : byRisk;
+    }
 }

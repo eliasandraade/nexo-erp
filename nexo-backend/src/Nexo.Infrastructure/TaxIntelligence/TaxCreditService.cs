@@ -12,8 +12,10 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 /// <summary>
 /// Credit Hunter foundation: a managerial ledger of IBS/CBS credits. Each movement is an appended
 /// entry, taken under a row lock on the credit, so concurrent uses cannot spend the same balance; the
-/// database also refuses a second use of a credit in the same obligation. Eligibility is recorded as
-/// declared — this version does not decide it automatically.
+/// database also refuses a second use of a credit in the same obligation. A registered credit is only
+/// <b>potential</b> — an estimate with no eligibility, appropriation or availability implied; its
+/// requirements are confirmed on record before it becomes "to be appropriated", and only then can it
+/// be appropriated and used. Nothing here decides eligibility automatically.
 /// </summary>
 public sealed class TaxCreditService
 {
@@ -47,8 +49,10 @@ public sealed class TaxCreditService
         return credits.GroupBy(c => c.Tax).OrderBy(g => g.Key).Select(g =>
         {
             var b = g.Select(c => c.Balance()).ToList();
-            return new TaxCreditTotalsDto(g.Key, b.Sum(x => x.Eligible), b.Sum(x => x.Appropriated), b.Sum(x => x.Used),
-                b.Sum(x => x.Blocked), b.Sum(x => x.Available), b.Sum(x => x.NotAppropriated));
+            var live = g.Where(c => c.Stage != TaxCreditStage.Discarded).ToList();
+            return new TaxCreditTotalsDto(g.Key,
+                live.Where(c => c.Stage is TaxCreditStage.PotentialIdentified or TaxCreditStage.RequirementsUnderReview).Sum(c => c.PotentialAmount),
+                b.Sum(x => x.ToBeAppropriated), b.Sum(x => x.Appropriated), b.Sum(x => x.Used), b.Sum(x => x.Blocked), b.Sum(x => x.Available));
         }).ToList();
     }
 
@@ -63,11 +67,11 @@ public sealed class TaxCreditService
             throw new ConflictException("Já existe um crédito deste tributo para este documento.");
         var credit = TaxCredit.Register(_tenant.Id, r.Tax, r.SourceDocumentType,
             key, r.SupplierDocument,
-            r.AcquiredOn, r.ExpiresOn, r.OriginalAmount, r.EligibleAmount, r.EligibilityBasis, null, _audit.UserId, _audit.UserName);
+            r.AcquiredOn, r.ExpiresOn, r.OriginalAmount, r.PotentialAmount, r.PotentialBasis, null);
         _db.TaxCredits.Add(credit);
         _audit.Record(TaxAuditActions.CreditRegistered, "Credit", credit.Id,
-            $"Crédito de {r.Tax} registrado: {r.EligibleAmount:N2} elegível de {r.OriginalAmount:N2} ({r.SourceDocumentType}).",
-            new { tax = r.Tax.ToString(), r.OriginalAmount, r.EligibleAmount, r.EligibilityBasis, hasDocumentKey = key is not null });
+            $"Crédito potencial de {r.Tax} registrado: {r.PotentialAmount:N2} estimado de {r.OriginalAmount:N2} ({r.SourceDocumentType}).",
+            new { tax = r.Tax.ToString(), r.OriginalAmount, r.PotentialAmount, r.PotentialBasis, hasDocumentKey = key is not null });
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -91,10 +95,22 @@ public sealed class TaxCreditService
             ?? throw new NotFoundException("Crédito", id);
 
         var before = credit.Balance();
+        var stageBefore = credit.Stage;
         var amount = r.Amount ?? 0m;
         var reason = r.Reason?.Trim() ?? string.Empty;
+        if (r.Movement is TaxCreditMovement.StartRequirementsReview or TaxCreditMovement.Discard)
+        {
+            if (r.Movement == TaxCreditMovement.StartRequirementsReview) credit.StartRequirementsReview();
+            else credit.Discard(reason);
+            _audit.Record(TaxAuditActions.CreditStageChanged, "Credit", credit.Id,
+                $"Crédito de {credit.Tax}: {stageBefore} → {credit.Stage}.", new { before = stageBefore.ToString(), after = credit.Stage.ToString(), reason });
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return Map(credit);
+        }
         var entry = r.Movement switch
         {
+            TaxCreditMovement.ConfirmToBeAppropriated => credit.ConfirmToBeAppropriated(amount, reason, today, _audit.UserId, _audit.UserName),
             TaxCreditMovement.Appropriate => credit.Appropriate(amount, reason.Length > 0 ? reason : "Apropriação.", today, _audit.UserId, _audit.UserName),
             TaxCreditMovement.Use => credit.Use(amount, r.ObligationTax ?? credit.Tax, r.ObligationReference ?? string.Empty,
                 onDate, _audit.UserId, _audit.UserName),
@@ -108,7 +124,8 @@ public sealed class TaxCreditService
         var after = credit.Balance();
         _audit.Record(TaxAuditActions.CreditMovement, "Credit", credit.Id,
             $"Crédito de {credit.Tax}: {entry.Type} de {entry.Amount:N2}.",
-            new { entryId = entry.Id, type = entry.Type.ToString(), entry.Amount, entry.ObligationReference, before, after });
+            new { entryId = entry.Id, type = entry.Type.ToString(), entry.Amount, entry.ObligationReference, before, after,
+                stageBefore = stageBefore.ToString(), stageAfter = credit.Stage.ToString() });
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -124,7 +141,7 @@ public sealed class TaxCreditService
 
     private static TaxCreditDto Map(TaxCredit c) => new(
         c.Id, c.Tax, c.SourceDocumentType, c.SourceDocumentKey, c.SupplierDocument, c.AcquiredOn, c.ExpiresOn, c.OriginalAmount,
-        c.EligibilityBasis, c.Balance(),
+        c.PotentialBasis, c.Balance(),
         c.Entries.OrderBy(e => e.CreatedAt).Select(e => new TaxCreditEntryDto(e.Id, e.Type, e.Amount, e.ObligationReference, e.Reason, e.OccurredOn, e.ActorName, e.CreatedAt)).ToList(),
-        c.CreatedAt);
+        c.CreatedAt, c.Stage, c.Lifecycle(), c.RecognitionBasis, c.DiscardReason);
 }

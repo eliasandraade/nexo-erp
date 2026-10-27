@@ -44,13 +44,18 @@ public sealed class TaxCatalogService
     public async Task<IReadOnlyList<TaxEngineRule>> LoadByIdsAsync(IReadOnlyCollection<Guid> versionIds, ITaxCanonicalizer canonical, CancellationToken ct)
         => await LoadAsync(_db.TaxRuleVersions.Where(v => versionIds.Contains(v.Id)), canonical, ct);
 
-    /// <summary>Whether every given rule version was approved by a tax professional.</summary>
-    public async Task<IReadOnlyList<string>> PendingProfessionalReviewAsync(IReadOnlyCollection<Guid> versionIds, CancellationToken ct)
-        => await _db.TaxRuleVersions.AsNoTracking()
-            .Where(v => versionIds.Contains(v.Id) && v.ProfessionalReview != ProfessionalReviewStatus.Approved)
-            .Join(_db.TaxRules.AsNoTracking(), v => v.RuleId, r => r.Id, (v, r) => r.Key + " v" + v.Version)
-            .OrderBy(k => k)
+    /// <summary>
+    /// Rule versions (key vN) not professionally approved for the date: anything but Approved or
+    /// ApprovedWithCaveats inside the review's validity — a received review is not an approval.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> PendingProfessionalReviewAsync(IReadOnlyCollection<Guid> versionIds, DateOnly date, CancellationToken ct)
+    {
+        var rows = await _db.TaxRuleVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id))
+            .Join(_db.TaxRules.AsNoTracking(), v => v.RuleId, r => r.Id, (v, r) => new { v, r.Key })
             .ToListAsync(ct);
+        return rows.Where(x => !x.v.IsProfessionallyApprovedOn(date)).Select(x => $"{x.Key} v{x.v.Version}")
+            .OrderBy(k => k, StringComparer.Ordinal).ToList();
+    }
 
     private async Task<IReadOnlyList<TaxEngineRule>> LoadAsync(IQueryable<TaxRuleVersion> versions, ITaxCanonicalizer canonical, CancellationToken ct)
     {
@@ -217,10 +222,12 @@ public sealed class TaxCatalogService
         var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
             ?? throw new NotFoundException("Versão de regra", versionId);
         var before = version.ProfessionalReview;
-        version.RecordProfessionalReview(r.Status, r.Reviewer, r.Notes, DateTime.UtcNow);
+        version.RecordProfessionalReview(new ProfessionalReviewInput(r.Status, r.Reviewer, r.ProfessionalReference, r.Scope, r.ValidFrom,
+            r.ValidTo, r.Assumptions, r.Caveats, r.Notes), DateTime.UtcNow);
         _audit.RecordPlatform(TaxAuditActions.RuleVersionProfessionalReview, "RuleVersion", version.Id,
             $"Revisão profissional da versão {version.Version}: {before} → {r.Status} ({r.Reviewer.Trim()}).",
-            new { before = before.ToString(), after = r.Status.ToString(), reviewer = r.Reviewer.Trim(), notes = r.Notes });
+            new { before = before.ToString(), after = r.Status.ToString(), reviewer = r.Reviewer.Trim(), r.ProfessionalReference, r.Scope,
+                r.ValidFrom, r.ValidTo, r.Assumptions, r.Caveats, notes = r.Notes });
         await _db.SaveChangesAsync(ct);
         _log.LogWarning("Tax rule version {VersionId} professional review {Before} -> {After}", version.Id, before, r.Status);
         return await GetVersionAsync(version.Id, ct);
@@ -246,7 +253,9 @@ public sealed class TaxCatalogService
         TaxJson.Element(v.ConditionsJson), TaxJson.Element(v.ResultJson),
         v.ContentHash, v.Origin, v.CreatedBy, v.Notes, v.ActivatedAt,
         v.Sources.Where(s => s.LegalSource is not null).Select(s => s.LegalSource!.Code).OrderBy(c => c, StringComparer.Ordinal).ToList(),
-        v.CreatedAt, v.ProfessionalReview, v.ProfessionalReviewedBy, v.ProfessionalReviewedAt, v.ProfessionalReviewNotes);
+        v.CreatedAt, v.ProfessionalReview, v.ProfessionalReviewedBy, v.ProfessionalReviewedAt, v.ProfessionalReviewNotes,
+        v.ProfessionalReference, v.ProfessionalReviewScope, v.ProfessionalReviewValidFrom, v.ProfessionalReviewValidTo,
+        v.ProfessionalReviewAssumptions, v.ProfessionalReviewCaveats);
 
     private static TaxLegalSourceDto MapSource(TaxLegalSource s) => new(
         s.Id, s.Code, s.Kind, s.Title, s.Reference, s.Url, s.Excerpt, s.PublishedOn, s.TextVerification, s.VerifiedAt, s.VerifiedBy, s.Notes);

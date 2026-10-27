@@ -288,6 +288,7 @@ public static class DependencyInjection
         });
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxAuditTrail>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxCatalogService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxComplianceService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxProfileService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.SaleTaxFactsReader>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxOpportunityService>();

@@ -7236,6 +7236,104 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("tax_calculations", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxComplianceAssessment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("AssessedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("assessed_at");
+
+                    b.Property<string>("AssessedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("assessed_by");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Evidence")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("evidence");
+
+                    b.Property<string>("Limitations")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("limitations");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<List<string>>("ObligationsChecked")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("obligations_checked");
+
+                    b.Property<DateOnly>("PeriodFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("period_from");
+
+                    b.Property<DateOnly>("PeriodTo")
+                        .HasColumnType("date")
+                        .HasColumnName("period_to");
+
+                    b.Property<bool>("PnctParticipation")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pnct_participation");
+
+                    b.Property<Guid>("RecordedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recorded_by_id");
+
+                    b.Property<string>("RecordedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("recorded_by_name");
+
+                    b.Property<string>("Scope")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("scope");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_tax_compliance_assessments_store_id");
+
+                    b.HasIndex("TenantId", "StoreId", "PeriodFrom", "PeriodTo")
+                        .HasDatabaseName("ix_tax_compliance_assessments_period");
+
+                    b.ToTable("tax_compliance_assessments", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxComponent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -7319,15 +7417,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
 
-                    b.Property<string>("EligibilityBasis")
-                        .IsRequired()
+                    b.Property<string>("DiscardReason")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
-                        .HasColumnName("eligibility_basis");
-
-                    b.Property<decimal>("EligibleAmount")
-                        .HasColumnType("numeric(18,2)")
-                        .HasColumnName("eligible_amount");
+                        .HasColumnName("discard_reason");
 
                     b.Property<DateOnly?>("ExpiresOn")
                         .HasColumnType("date")
@@ -7336,6 +7429,21 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("OriginalAmount")
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("original_amount");
+
+                    b.Property<decimal>("PotentialAmount")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("potential_amount");
+
+                    b.Property<string>("PotentialBasis")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("potential_basis");
+
+                    b.Property<string>("RecognitionBasis")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("recognition_basis");
 
                     b.Property<Guid?>("SourceCalculationId")
                         .HasColumnType("uuid")
@@ -7351,6 +7459,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
                         .HasColumnName("source_document_type");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("stage");
 
                     b.Property<Guid>("StoreId")
                         .HasColumnType("uuid")
@@ -7564,6 +7678,99 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.HasIndex("TenantId");
 
                     b.ToTable("tax_decisions", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxExecutionVerification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AuthorizationProtocol")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("authorization_protocol");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("DecisionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decision_id");
+
+                    b.Property<string>("DossierHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("dossier_hash");
+
+                    b.Property<string>("DossierJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("dossier");
+
+                    b.Property<string>("FiscalDocumentReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("fiscal_document_reference");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid>("OpportunityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("opportunity_id");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("outcome");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateTime>("VerifiedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("verified_at");
+
+                    b.Property<Guid>("VerifiedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("verified_by_id");
+
+                    b.Property<string>("VerifiedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("verified_by_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DecisionId");
+
+                    b.HasIndex("OpportunityId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_tax_execution_verifications_opportunity_id");
+
+                    b.HasIndex("StoreId")
+                        .HasDatabaseName("ix_tax_execution_verifications_store_id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("tax_execution_verifications", "nexo");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxLegalSource", b =>
@@ -7839,9 +8046,42 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("document_reference");
 
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("notes");
+
                     b.Property<Guid>("OpportunityId")
                         .HasColumnType("uuid")
                         .HasColumnName("opportunity_id");
+
+                    b.Property<Guid?>("RequirementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requirement_id");
+
+                    b.Property<string>("ReviewNotes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("review_notes");
+
+                    b.Property<DateTime?>("ReviewedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("reviewed_at");
+
+                    b.Property<Guid?>("ReviewedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reviewed_by_id");
+
+                    b.Property<string>("ReviewedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("reviewed_by_name");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
 
                     b.Property<Guid>("StoreId")
                         .HasColumnType("uuid")
@@ -7851,6 +8091,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("tenant_id");
 
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("type");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("updated_at");
@@ -7859,6 +8105,8 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OpportunityId")
                         .HasDatabaseName("ix_tax_opportunity_evidence_opportunity_id");
+
+                    b.HasIndex("RequirementId");
 
                     b.HasIndex("StoreId")
                         .HasDatabaseName("ix_tax_opportunity_evidence_store_id");
@@ -7915,6 +8163,17 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OpportunityId")
                         .HasColumnType("uuid")
                         .HasColumnName("opportunity_id");
+
+                    b.Property<string>("Phase")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("phase");
+
+                    b.Property<string>("RequiredEvidence")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("required_evidence");
 
                     b.Property<Guid>("StoreId")
                         .HasColumnType("uuid")
@@ -7989,17 +8248,6 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
-
-                    b.Property<string>("AccessoryObligations")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("accessory_obligations");
-
-                    b.Property<string>("AccessoryObligationsEvidence")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("accessory_obligations_evidence");
 
                     b.Property<List<string>>("Benefits")
                         .IsRequired()
@@ -8276,16 +8524,44 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("priority");
 
+                    b.Property<string>("ProfessionalReference")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("professional_reference");
+
                     b.Property<string>("ProfessionalReview")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("professional_review");
 
+                    b.Property<string>("ProfessionalReviewAssumptions")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("professional_review_assumptions");
+
+                    b.Property<string>("ProfessionalReviewCaveats")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("professional_review_caveats");
+
                     b.Property<string>("ProfessionalReviewNotes")
                         .HasMaxLength(4000)
                         .HasColumnType("character varying(4000)")
                         .HasColumnName("professional_review_notes");
+
+                    b.Property<string>("ProfessionalReviewScope")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("professional_review_scope");
+
+                    b.Property<DateOnly?>("ProfessionalReviewValidFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("professional_review_valid_from");
+
+                    b.Property<DateOnly?>("ProfessionalReviewValidTo")
+                        .HasColumnType("date")
+                        .HasColumnName("professional_review_valid_to");
 
                     b.Property<DateTime?>("ProfessionalReviewedAt")
                         .HasColumnType("timestamptz")
@@ -8491,6 +8767,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("CompetencePeriod")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("competence_period");
+
                     b.Property<string>("CounterpartyRegime")
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
@@ -8520,6 +8801,18 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("direction");
 
+                    b.Property<DateOnly?>("DocumentDate")
+                        .HasColumnType("date")
+                        .HasColumnName("document_date");
+
+                    b.Property<DateOnly?>("ExecutionFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("execution_from");
+
+                    b.Property<DateOnly?>("ExecutionTo")
+                        .HasColumnType("date")
+                        .HasColumnName("execution_to");
+
                     b.Property<string>("FactsHash")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -8529,6 +8822,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly>("OperationDate")
                         .HasColumnType("date")
                         .HasColumnName("operation_date");
+
+                    b.Property<DateOnly?>("PaymentOrAdvanceDate")
+                        .HasColumnType("date")
+                        .HasColumnName("payment_or_advance_date");
 
                     b.Property<string>("Source")
                         .IsRequired()
@@ -8543,6 +8840,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("StoreId")
                         .HasColumnType("uuid")
                         .HasColumnName("store_id");
+
+                    b.Property<DateOnly?>("SupplyDate")
+                        .HasColumnType("date")
+                        .HasColumnName("supply_date");
+
+                    b.Property<string>("SupplyPattern")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("supply_pattern");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid")
@@ -8572,6 +8879,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("CClassTrib")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("c_class_trib");
 
                     b.Property<decimal>("ConditionalDiscount")
                         .HasColumnType("numeric(18,2)")
@@ -8608,6 +8920,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<int>("LineIndex")
                         .HasColumnType("integer")
                         .HasColumnName("line_index");
+
+                    b.Property<string>("Nbs")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("nbs");
 
                     b.Property<string>("Ncm")
                         .HasMaxLength(8)
@@ -10644,6 +10961,23 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_tax_calculations_transactions");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxComplianceAssessment", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tax_compliance_assessments_stores");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_tax_compliance_assessments_tenants");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxComponent", b =>
                 {
                     b.HasOne("Nexo.Domain.Modules.TaxIntelligence.TaxCalculation", null)
@@ -10746,6 +11080,37 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_tax_decisions_tenants");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxExecutionVerification", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.TaxIntelligence.TaxDecision", null)
+                        .WithMany()
+                        .HasForeignKey("DecisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tax_execution_verifications_decisions");
+
+                    b.HasOne("Nexo.Domain.Modules.TaxIntelligence.TaxOpportunity", null)
+                        .WithMany()
+                        .HasForeignKey("OpportunityId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tax_execution_verifications_opportunities");
+
+                    b.HasOne("Nexo.Domain.Entities.Store", null)
+                        .WithMany()
+                        .HasForeignKey("StoreId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tax_execution_verifications_stores");
+
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_tax_execution_verifications_tenants");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxOpportunity", b =>
                 {
                     b.HasOne("Nexo.Domain.Modules.TaxIntelligence.TaxCalculation", null)
@@ -10777,6 +11142,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_tax_opportunity_evidence_opportunities");
+
+                    b.HasOne("Nexo.Domain.Modules.TaxIntelligence.TaxOpportunityRequirement", null)
+                        .WithMany()
+                        .HasForeignKey("RequirementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_tax_opportunity_evidence_requirements");
 
                     b.HasOne("Nexo.Domain.Entities.Store", null)
                         .WithMany()

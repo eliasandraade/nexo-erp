@@ -2,7 +2,13 @@ using Nexo.Domain.Modules.TaxIntelligence;
 
 namespace Nexo.Application.Modules.TaxIntelligence.Engine;
 
-public sealed record OpportunityRequirementSpec(string Code, string Text, string? LegalSourceCode);
+/// <summary>
+/// What must hold, when it is checked (before the operation or after it) and which evidence type must
+/// be linked to it, if any.
+/// </summary>
+public sealed record OpportunityRequirementSpec(
+    string Code, string Text, string? LegalSourceCode,
+    RequirementPhase Phase = RequirementPhase.ScenarioApproval, TaxEvidenceType? RequiredEvidence = null);
 
 /// <summary>An opportunity as a detector proposes it: both scenarios, the estimate, its risk and what must hold.</summary>
 public sealed record OpportunityCandidate(
@@ -47,16 +53,25 @@ public static class TaxOpportunityDetectors
 /// the document goes down. It is never presented as a definitive saving — in 2026 the amount is
 /// compensable or waived (art. 348), and whether it becomes an economic gain in any period is for a
 /// tax professional to assess, not for the detector.
+/// Requirements come in two phases. Before the operation (scenario approval): a commercial instrument
+/// supports the price, the removed condition is identified, the discount depends on no later event and
+/// the amount is not charged back if the old condition does not occur. After it (execution
+/// verification): the discount is on the authorised fiscal document and the price actually charged
+/// reflects it. Changing a label to "unconditional" is not enough.
 /// </summary>
 public sealed class UnconditionalDiscountDetector : ITaxOpportunityDetector
 {
-    /// <summary>v2: same logic and scenarios as v1; the impact is a calculated-tax reduction, not a saving.</summary>
-    public const string DetectorKey = "unconditional-discount@2";
-    /// <summary>Opportunities stored by v1 (classified as a saving) keep their key and their guardrails.</summary>
+    /// <summary>v3: same scenarios as v2; requirements split into scenario and execution phases, with evidence.</summary>
+    public const string DetectorKey = "unconditional-discount@3";
+    /// <summary>Opportunities stored by earlier versions keep their key and their guardrails.</summary>
     public const string DetectorKeyV1 = "unconditional-discount@1";
+    public const string DetectorKeyV2 = "unconditional-discount@2";
     public const string RequirementOnDocument = "on-document";
     public const string RequirementNoLaterEvent = "no-later-event";
     public const string RequirementCommercialTerms = "commercial-terms";
+    public const string RequirementConditionRemoved = "condition-removed";
+    public const string RequirementNoRecharge = "no-recharge";
+    public const string RequirementPriceReduced = "price-reduced";
 
     public string Key => DetectorKey;
 
@@ -96,9 +111,15 @@ public sealed class UnconditionalDiscountDetector : ITaxOpportunityDetector
             LegalSourceCodes: [TaxLegalCodes.Lc214Art12Base, TaxLegalCodes.Lc214Art12UnconditionalDiscount],
             Requirements:
             [
-                new(RequirementOnDocument, "O desconto consta do documento fiscal da operação.", TaxLegalCodes.Lc214Art12UnconditionalDiscount),
+                new(RequirementCommercialTerms, "Um instrumento comercial (proposta, pedido, contrato ou aditivo) sustenta o preço com o desconto sem condição.",
+                    null, RequirementPhase.ScenarioApproval, TaxEvidenceType.CommercialInstrument),
+                new(RequirementConditionRemoved, "A condição que deixa de existir está identificada (ex.: pagamento antecipado, meta de volume).", null),
                 new(RequirementNoLaterEvent, "O desconto não depende de evento posterior (pagamento antecipado, meta de volume, devolução…).", TaxLegalCodes.Lc214Art12UnconditionalDiscount),
-                new(RequirementCommercialTerms, "A proposta ou o contrato foi alterado: a condição comercial deixou de existir.", null),
+                new(RequirementNoRecharge, "O valor descontado não volta a ser cobrado se a antiga condição não ocorrer.", TaxLegalCodes.Lc214Art12UnconditionalDiscount),
+                new(RequirementOnDocument, "O desconto consta do documento fiscal autorizado da operação.", TaxLegalCodes.Lc214Art12UnconditionalDiscount,
+                    RequirementPhase.ExecutionVerification, TaxEvidenceType.FiscalDocument),
+                new(RequirementPriceReduced, "O preço efetivamente cobrado reflete a redução (valores finais conferidos).", null,
+                    RequirementPhase.ExecutionVerification),
             ],
             Caveats: string.Join(" ", caveats));
     }
@@ -117,7 +138,10 @@ public static class TaxGuardrails
         if (met) return null;
         return (detectorKey, requirementCode) switch
         {
-            (UnconditionalDiscountDetector.DetectorKey or UnconditionalDiscountDetector.DetectorKeyV1,
+            (UnconditionalDiscountDetector.DetectorKey, UnconditionalDiscountDetector.RequirementNoRecharge) => new Violation(
+                ProhibitedStructure.DocumentMismatch,
+                "O valor descontado pode voltar a ser cobrado: destacá-lo como incondicional faria o documento fiscal dizer algo diferente da operação real."),
+            (UnconditionalDiscountDetector.DetectorKey or UnconditionalDiscountDetector.DetectorKeyV2 or UnconditionalDiscountDetector.DetectorKeyV1,
                 UnconditionalDiscountDetector.RequirementNoLaterEvent) => new Violation(
                 ProhibitedStructure.DocumentMismatch,
                 "O desconto ainda depende de evento posterior: destacá-lo como incondicional faria o documento fiscal dizer algo diferente da operação real."),

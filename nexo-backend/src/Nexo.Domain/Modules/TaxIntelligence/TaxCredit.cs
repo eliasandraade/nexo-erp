@@ -4,10 +4,13 @@ using Nexo.Domain.Exceptions;
 namespace Nexo.Domain.Modules.TaxIntelligence;
 
 /// <summary>
-/// A tax credit that came from an acquisition document. The header holds the facts of its origin
-/// and never changes; everything that happens to the credit is a <see cref="TaxCreditLedgerEntry"/>
-/// (append-only), so the balance on any date and the reason for each movement can be rebuilt.
-/// IBS and CBS credits are separate credits — one never pays the other (LC 214/2025, art. 47, § 1º, I).
+/// A possible tax credit from an acquisition document. It starts as a <b>potential</b> credit — an
+/// estimate that implies no eligibility, appropriation or availability — and only after its
+/// requirements are confirmed on record does it become <b>to be appropriated</b>; only then may it be
+/// appropriated, and only an appropriated balance can be used. The header holds the facts of its origin;
+/// every movement is a <see cref="TaxCreditLedgerEntry"/> (append-only), so the balance on any date and
+/// the reason for each movement can be rebuilt. IBS and CBS credits are separate credits — one never
+/// pays the other (LC 214/2025, art. 47, § 1º, I).
 /// </summary>
 public class TaxCredit : StoreEntity
 {
@@ -29,25 +32,29 @@ public class TaxCredit : StoreEntity
     public DateOnly? ExpiresOn { get; private set; }
     /// <summary>Tax stated on the acquisition document.</summary>
     public decimal OriginalAmount { get; private set; }
-    /// <summary>Part of it that may become a credit.</summary>
-    public decimal EligibleAmount { get; private set; }
-    /// <summary>Rule that made it eligible (key@version), or why it is only a managerial estimate.</summary>
-    public string EligibilityBasis { get; private set; } = string.Empty;
+    /// <summary>Estimated part that might become a credit. An estimate — never a validated right.</summary>
+    public decimal PotentialAmount { get; private set; }
+    /// <summary>Why it was estimated (rule key@version, or that it is only a managerial estimate).</summary>
+    public string PotentialBasis { get; private set; } = string.Empty;
     public Guid? SourceCalculationId { get; private set; }
+    public TaxCreditStage Stage { get; private set; } = TaxCreditStage.PotentialIdentified;
+    /// <summary>Why the requirements were considered met (who confirmed and on what basis).</summary>
+    public string? RecognitionBasis { get; private set; }
+    public string? DiscardReason { get; private set; }
 
     public IReadOnlyCollection<TaxCreditLedgerEntry> Entries => _entries.AsReadOnly();
 
     public static TaxCredit Register(
         Guid tenantId, CreditTax tax, string sourceDocumentType, string? sourceDocumentKey, string? supplierDocument,
-        DateOnly acquiredOn, DateOnly? expiresOn, decimal originalAmount, decimal eligibleAmount, string eligibilityBasis,
-        Guid? sourceCalculationId, Guid actorId, string actorName)
+        DateOnly acquiredOn, DateOnly? expiresOn, decimal originalAmount, decimal potentialAmount, string potentialBasis,
+        Guid? sourceCalculationId)
     {
         if (originalAmount <= 0) throw new DomainException("O valor do crédito precisa ser positivo.");
-        if (eligibleAmount < 0 || eligibleAmount > originalAmount)
-            throw new DomainException("O valor elegível vai de zero ao valor destacado no documento.");
+        if (potentialAmount < 0 || potentialAmount > originalAmount)
+            throw new DomainException("O valor potencial vai de zero ao valor destacado no documento.");
         if (sourceDocumentKey is not null && (sourceDocumentKey.Length != 44 || !sourceDocumentKey.All(char.IsAsciiDigit)))
             throw new DomainException("A chave de acesso do documento tem 44 dígitos.");
-        if (string.IsNullOrWhiteSpace(eligibilityBasis)) throw new DomainException("Informe a base da elegibilidade.");
+        if (string.IsNullOrWhiteSpace(potentialBasis)) throw new DomainException("Informe de onde vem a estimativa.");
 
         var c = new TaxCredit(tenantId)
         {
@@ -58,22 +65,82 @@ public class TaxCredit : StoreEntity
             AcquiredOn = acquiredOn,
             ExpiresOn = expiresOn,
             OriginalAmount = originalAmount,
-            EligibleAmount = eligibleAmount,
-            EligibilityBasis = eligibilityBasis.Trim(),
+            PotentialAmount = potentialAmount,
+            PotentialBasis = potentialBasis.Trim(),
             SourceCalculationId = sourceCalculationId,
+            Stage = TaxCreditStage.PotentialIdentified,
         };
-        c.Append(TaxCreditEntryType.Recognized, eligibleAmount, null, "Crédito identificado no documento de aquisição.", acquiredOn, actorId, actorName);
+        // A potential credit writes nothing to the ledger: it is not a right yet.
         return c;
     }
 
-    public TaxCreditBalance Balance() => TaxCreditBalance.Of(EligibleAmount, _entries);
+    public TaxCreditBalance Balance() => TaxCreditBalance.Of(PotentialAmount, _entries);
+
+    /// <summary>Where the credit stands overall, from its stage and its ledger.</summary>
+    public TaxCreditLifecycle Lifecycle()
+    {
+        if (Stage != TaxCreditStage.ToBeAppropriated)
+            return Stage switch
+            {
+                TaxCreditStage.RequirementsUnderReview => TaxCreditLifecycle.RequirementsUnderReview,
+                TaxCreditStage.Discarded => TaxCreditLifecycle.Discarded,
+                _ => TaxCreditLifecycle.PotentialIdentified,
+            };
+        var b = Balance();
+        if (b.Available > 0) return TaxCreditLifecycle.Appropriated;
+        if (b.Blocked > 0) return TaxCreditLifecycle.Blocked;
+        if (b.ToBeAppropriated > 0) return TaxCreditLifecycle.ToBeAppropriated;
+        decimal Sum(TaxCreditEntryType t) => _entries.Where(e => e.Type == t).Sum(e => e.Amount);
+        if (Sum(TaxCreditEntryType.Expired) > 0) return TaxCreditLifecycle.Expired;
+        if (b.Used > 0) return TaxCreditLifecycle.Used;
+        if (Sum(TaxCreditEntryType.Reversed) > 0) return TaxCreditLifecycle.Reversed;
+        return TaxCreditLifecycle.ToBeAppropriated;
+    }
+
+    /// <summary>Opens the review of the requirements of a potential credit.</summary>
+    public void StartRequirementsReview()
+    {
+        if (Stage != TaxCreditStage.PotentialIdentified)
+            throw new DomainException("Só um crédito potencial entra em revisão de requisitos.", "tax_credit_stage");
+        Stage = TaxCreditStage.RequirementsUnderReview;
+        SetUpdatedAt();
+    }
+
+    /// <summary>
+    /// Records that the requirements were confirmed: the credit becomes "to be appropriated" for the
+    /// confirmed amount (up to the tax on the document), with the basis on record. Only from here may
+    /// it be appropriated.
+    /// </summary>
+    public TaxCreditLedgerEntry ConfirmToBeAppropriated(decimal amount, string basis, DateOnly onDate, Guid actorId, string actorName)
+    {
+        if (Stage != TaxCreditStage.RequirementsUnderReview)
+            throw new DomainException("Confirme os requisitos depois de abrir a revisão do crédito potencial.", "tax_credit_stage");
+        Positive(amount);
+        if (amount > OriginalAmount) throw new DomainException("O valor passa do tributo destacado no documento.", AmountErrorCode);
+        if (string.IsNullOrWhiteSpace(basis)) throw new DomainException("Informe a base da confirmação dos requisitos.");
+        Stage = TaxCreditStage.ToBeAppropriated;
+        RecognitionBasis = basis.Trim();
+        return Append(TaxCreditEntryType.Recognized, amount, null, $"Requisitos confirmados: {basis.Trim()}", onDate, actorId, actorName);
+    }
+
+    public void Discard(string reason)
+    {
+        if (Stage is TaxCreditStage.ToBeAppropriated or TaxCreditStage.Discarded)
+            throw new DomainException("Só um crédito potencial ou em revisão pode ser descartado.", "tax_credit_stage");
+        if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe por que o crédito foi descartado.");
+        Stage = TaxCreditStage.Discarded;
+        DiscardReason = reason.Trim();
+        SetUpdatedAt();
+    }
 
     public TaxCreditLedgerEntry Appropriate(decimal amount, string reason, DateOnly onDate, Guid actorId, string actorName)
     {
+        if (Stage != TaxCreditStage.ToBeAppropriated)
+            throw new DomainException("Um crédito potencial não é apropriado: confirme os requisitos antes.", "tax_credit_stage");
         Positive(amount);
         if (SourceDocumentKey is null)
             throw new DomainException("Sem a chave do documento fiscal eletrônico o crédito não pode ser apropriado (LC 214/2025, art. 47, § 1º, II).", "tax_credit_document");
-        if (amount > Balance().NotAppropriated)
+        if (amount > Balance().ToBeAppropriated)
             throw new DomainException("O valor passa do que ainda pode ser apropriado.", AmountErrorCode);
         return Append(TaxCreditEntryType.Appropriated, amount, null, reason, onDate, actorId, actorName);
     }
@@ -179,11 +246,15 @@ public class TaxCreditLedgerEntry : StoreEntity
     public string ActorName { get; private set; } = string.Empty;
 }
 
-/// <summary>Balance of a credit derived from its entries.</summary>
+/// <summary>
+/// Balance of a credit derived from its entries. <see cref="Potential"/> is the estimate (outside the
+/// ledger); <see cref="ToBeAppropriated"/> is what was confirmed and not yet appropriated; only
+/// <see cref="Available"/> (appropriated, not used, blocked, reversed or expired) can be used.
+/// </summary>
 public sealed record TaxCreditBalance(
-    decimal Eligible, decimal Appropriated, decimal Used, decimal Blocked, decimal Available, decimal NotAppropriated)
+    decimal Potential, decimal ToBeAppropriated, decimal Appropriated, decimal Used, decimal Blocked, decimal Available)
 {
-    public static TaxCreditBalance Of(decimal eligible, IEnumerable<TaxCreditLedgerEntry> entries)
+    public static TaxCreditBalance Of(decimal potential, IEnumerable<TaxCreditLedgerEntry> entries)
     {
         var list = entries as IReadOnlyCollection<TaxCreditLedgerEntry> ?? entries.ToList();
         decimal Sum(TaxCreditEntryType t) => list.Where(e => e.Type == t).Sum(e => e.Amount);
@@ -193,6 +264,7 @@ public sealed record TaxCreditBalance(
         var used = Sum(TaxCreditEntryType.Used);
         var blocked = Sum(TaxCreditEntryType.Blocked) - Sum(TaxCreditEntryType.Unblocked);
         var available = appropriated - used - blocked - Sum(TaxCreditEntryType.Expired);
-        return new TaxCreditBalance(eligible, appropriated, used, blocked, available, eligible - appropriatedGross);
+        var recognized = Sum(TaxCreditEntryType.Recognized);
+        return new TaxCreditBalance(potential, recognized - appropriatedGross, appropriated, used, blocked, available);
     }
 }

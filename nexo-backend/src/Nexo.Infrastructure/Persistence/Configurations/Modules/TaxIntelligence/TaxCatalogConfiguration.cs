@@ -79,6 +79,12 @@ internal sealed class TaxRuleVersionConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.ProfessionalReviewedBy).HasColumnName("professional_reviewed_by").HasMaxLength(200);
         b.Property(x => x.ProfessionalReviewedAt).HasColumnName("professional_reviewed_at").HasColumnType("timestamptz");
         b.Property(x => x.ProfessionalReviewNotes).HasColumnName("professional_review_notes").HasMaxLength(4000);
+        b.Property(x => x.ProfessionalReference).HasColumnName("professional_reference").HasMaxLength(100);
+        b.Property(x => x.ProfessionalReviewScope).HasColumnName("professional_review_scope").HasMaxLength(2000);
+        b.Property(x => x.ProfessionalReviewValidFrom).HasColumnName("professional_review_valid_from");
+        b.Property(x => x.ProfessionalReviewValidTo).HasColumnName("professional_review_valid_to");
+        b.Property(x => x.ProfessionalReviewAssumptions).HasColumnName("professional_review_assumptions").HasMaxLength(4000);
+        b.Property(x => x.ProfessionalReviewCaveats).HasColumnName("professional_review_caveats").HasMaxLength(4000);
         b.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         b.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 
