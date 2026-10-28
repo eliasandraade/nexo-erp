@@ -311,6 +311,51 @@ public partial class TaxIntelligenceTests
     }
 
     [Fact]
+    public async Task A_simulation_rests_on_the_same_approvals_as_a_calculation_on_every_date_it_runs()
+    {
+        var admin = await AdminWithProfileAsync();
+        await ReadyAsync(_factory, admin);
+        var platform = await PlatformAsync();
+        const string day = "2026-04-10";
+        var (key, versionId) = await NoteRuleAsync(platform, day);
+        var pilot = Pilot(admin);
+        object Simulation(string name) => new
+        {
+            name = Unique(name), baseline = Operation(Unique("Base"), gross: 1051m),
+            scenarios = new object[] { new { name = "Na data da nota", referenceDate = day, convertConditionalDiscounts = false, assumeCreditable = false } },
+        };
+        object Offer(string name, decimal gross) => new
+        {
+            supplier = name, supplierRegime = "LucroReal",
+            lines = new[] { new { itemKind = "Good", description = "Insumo", ncm = (string?)null, quantity = 1m, grossAmount = gross,
+                unconditionalDiscount = 0m, conditionalDiscount = 0m, surcharges = 0m, excludedTaxes = (decimal?)0m, specialTreatment = (string?)null } },
+        };
+        object Comparison() => new { operationDate = day, assumeCreditable = true, offers = new[] { Offer("A", 1000m), Offer("B", 1010m) } };
+
+        var missing = await Json(await Post(pilot, "/api/tax/simulations", Simulation("Sem aprovação")), HttpStatusCode.UnprocessableEntity);
+        Code(missing).Should().Be("tax_pilot_approval_missing", "a scenario on another date needs the approvals of that date");
+        missing.GetProperty("details").EnumerateArray().Select(d => d.GetString()).Should().Equal($"{key} v1");
+        Code(await Json(await Post(pilot, "/api/tax/simulations/supplier-comparison", Comparison()), HttpStatusCode.UnprocessableEntity))
+            .Should().Be("tax_pilot_approval_missing");
+
+        await ApproveAsync(platform, versionId, day, day, "DEC-SIMULATION");
+        await Json(await Post(pilot, "/api/tax/simulations", Simulation("Aprovada")));
+        await Json(await Post(pilot, "/api/tax/simulations/supplier-comparison", Comparison()));
+
+        await Json(await Post(platform, $"/api/platform/tax/rule-versions/{versionId}/pilot-approval/withdraw",
+            new { reason = "Critério de suspensão do teste" }));
+        Code(await Json(await Post(pilot, "/api/tax/simulations", Simulation("Retirada")), HttpStatusCode.UnprocessableEntity))
+            .Should().Be("tax_pilot_approval_missing", "a withdrawn approval stops simulations exactly as it stops calculations");
+        Code(await Json(await Post(pilot, "/api/tax/simulations/supplier-comparison", Comparison()), HttpStatusCode.UnprocessableEntity))
+            .Should().Be("tax_pilot_approval_missing");
+        (await AuditMetadataAsync("tax_simulation_refused")).Should().Contain(m => m.Contains($"{key} v1"), "every refused simulation is audited");
+
+        var definitive = HostWith(admin, host: Enforced("ProfessionalFinal"));
+        Code(await Json(await Post(definitive, "/api/tax/simulations", Simulation("Definitivo")), HttpStatusCode.UnprocessableEntity))
+            .Should().Be("tax_professional_review_pending", "the internal pilot approval is never a professional approval");
+    }
+
+    [Fact]
     public async Task The_pilot_is_a_shadow_mode_that_never_reaches_an_external_fiscal_effect()
     {
         var admin = await AdminWithProfileAsync();
