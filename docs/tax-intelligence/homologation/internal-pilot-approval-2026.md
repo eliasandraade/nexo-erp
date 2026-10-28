@@ -65,11 +65,11 @@ PENDING REGULATION:      BLOCKED
   2. modo configurado (`ControlledPilot`). Nenhum modo é usado como padrão;
   3. empresa e loja admitidas no escopo, dentro da validade do piloto;
   4. cada regra tecnicamente `Active` **agora**;
-  5. cada regra com aprovação interna válida para a data, não retirada. Numa simulação isso vale para a data base e para a data de cada cenário;
+  5. cada regra com aprovação interna válida para a data, não retirada. Numa simulação isso vale para a data base e para a data de cada cenário. Numa nova detecção sobre um cálculo, vale para as regras que ele executou;
   6. operação `Supported` na matriz de cobertura;
   7. para uma decisão, o cálculo de origem ainda reproduzível com a engine e as regras que usou.
 
-  Se qualquer uma falhar, a operação é recusada com 422 e a tentativa fica na auditoria (`tax_calculation_refused` / `tax_simulation_refused` / `tax_decision_refused`).
+  Se qualquer uma falhar, a operação é recusada com 422 e a tentativa fica na auditoria (`tax_calculation_refused` / `tax_simulation_refused` / `tax_detection_refused` / `tax_decision_refused`).
 - **Histórico preservado ≠ autorização atual.**
   - Uma versão revogada ou substituída mantém a aprovação registrada, mas não autoriza nada novo.
   - Um participante retirado, uma aprovação retirada, uma janela vencida ou o módulo desligado bloqueiam trabalho novo.

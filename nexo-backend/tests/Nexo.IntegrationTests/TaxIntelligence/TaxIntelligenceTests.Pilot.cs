@@ -233,6 +233,9 @@ public partial class TaxIntelligenceTests
         (await CountAsync(db => db.TaxDecisions.Where(d => d.OpportunityId == oppId))).Should().Be(0);
 
         var id = calc.GetProperty("id").GetGuid();
+        var detect = await Json(await Post(pilot, $"/api/tax/calculations/{id}/opportunities/detect", new { }), HttpStatusCode.UnprocessableEntity);
+        Code(detect).Should().Be("tax_pilot_approval_missing", "a revoked or superseded rule backs no new proposal either");
+        detect.GetProperty("details").EnumerateArray().Select(d => d.GetString()).Should().Contain([$"{revokedKey} v1", $"{supersededKey} v1"]);
         (await Json(await Post(pilot, $"/api/tax/calculations/{id}/verify", new { }))).GetProperty("reproducible").GetBoolean()
             .Should().BeTrue("the calculation that used them still reproduces");
         var stored = (await Json(await pilot.GetAsync($"/api/tax/calculations/{id}"))).GetProperty("governance").GetProperty("rules").EnumerateArray();
@@ -296,13 +299,21 @@ public partial class TaxIntelligenceTests
         missing.GetProperty("details").EnumerateArray().Select(d => d.GetString()).Should().Equal($"{key} v1");
 
         await ApproveAsync(platform, versionId, day, day, "DEC-WITHDRAW");
-        await Json(await Post(pilot, "/api/tax/calculations", Operation(Unique("Aprovada"), gross: 1046m, date: day)));
+        var approvedId = (await Json(await Post(pilot, "/api/tax/calculations", Operation(Unique("Aprovada"), gross: 1046m, date: day))))
+            .GetProperty("id").GetGuid();
         var withdrawn = await Json(await Post(platform, $"/api/platform/tax/rule-versions/{versionId}/pilot-approval/withdraw",
             new { reason = "Critério de suspensão do teste" }));
         withdrawn.GetProperty("internalApproval").GetProperty("status").GetString().Should().Be("Withdrawn");
         withdrawn.GetProperty("internalApproval").GetProperty("decisionReference").GetString().Should().Be("DEC-WITHDRAW", "the record is kept");
         Code(await Json(await Post(pilot, "/api/tax/calculations", Operation(Unique("Retirada"), gross: 1047m, date: day)), HttpStatusCode.UnprocessableEntity))
             .Should().Be("tax_pilot_approval_missing");
+
+        var detect = await Json(await Post(pilot, $"/api/tax/calculations/{approvedId}/opportunities/detect", new { }), HttpStatusCode.UnprocessableEntity);
+        Code(detect).Should().Be("tax_pilot_approval_missing", "new proposals from a stored calculation need its rules approved today");
+        detect.GetProperty("details").EnumerateArray().Select(d => d.GetString()).Should().Equal($"{key} v1");
+        (await AuditMetadataAsync("tax_detection_refused", approvedId.ToString())).Should().ContainSingle(m => m.Contains($"{key} v1"));
+        (await Json(await Post(pilot, $"/api/tax/calculations/{approvedId}/verify", new { }))).GetProperty("reproducible").GetBoolean()
+            .Should().BeTrue("a withdrawn approval never makes history unreadable");
 
         var definitive = HostWith(admin, host: Enforced("ProfessionalFinal"));
         var refused = await Json(await Post(definitive, "/api/tax/calculations", Operation(Unique("Definitivo"), gross: 1048m)), HttpStatusCode.UnprocessableEntity);

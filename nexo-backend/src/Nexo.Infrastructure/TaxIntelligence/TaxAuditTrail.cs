@@ -89,6 +89,7 @@ public static class TaxAuditActions
     public const string ComplianceAssessmentRecorded = "tax_compliance_assessment_recorded";
     public const string CalculationRefused = "tax_calculation_refused";
     public const string SimulationRefused = "tax_simulation_refused";
+    public const string DetectionRefused = "tax_detection_refused";
     public const string OpportunityEvidenceReviewed = "tax_opportunity_evidence_reviewed";
     public const string OpportunityExecutionVerified = "tax_opportunity_execution_verified";
     public const string CreditStageChanged = "tax_credit_stage_changed";

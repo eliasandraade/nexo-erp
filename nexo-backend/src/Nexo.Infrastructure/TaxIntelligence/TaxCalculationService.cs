@@ -199,20 +199,38 @@ public sealed class TaxCalculationService
         throw new DomainException(refusal.Message, refusal.Code, details ?? []);
     }
 
-    /// <summary>Runs the detectors again on a stored calculation (e.g. after a new detector ships). Idempotent.</summary>
+    /// <summary>
+    /// Runs the detectors again on a stored calculation (e.g. after a new detector ships). Idempotent.
+    /// New proposals are new work: the rules the calculation ran must still back it in the approval mode
+    /// today (active, approval neither withdrawn nor expired). Reading and reproducing it never needs this.
+    /// </summary>
     public async Task<IReadOnlyList<Guid>> DetectAgainAsync(Guid id, CancellationToken ct)
     {
-        if (await _approvals.AdmitCalculationAsync(ct) is { } refusal) throw new DomainException(refusal.Message, refusal.Code);
+        if (await _approvals.AdmitCalculationAsync(ct) is { } refusal) await RefuseDetectionAsync(id, refusal, ct);
         var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Cálculo", id);
+        var executed = calc.Executions.Select(e => e.RuleVersionId).ToList();
+        var governance = await _approvals.ForCalculationAsync(executed.Distinct().ToList(), calc.ReferenceDate, ct);
+        if (governance.Enforced && governance.NotApproved.Count > 0)
+            await RefuseDetectionAsync(id, TaxApprovalGate.NotApproved(governance), ct, governance.NotApproved);
         // Same engine and same rules as the calculation (and the dossier that may follow).
         var engine = EngineOf(calc);
         var input = engine.Canonical.Deserialize<TaxEngineInput>(calc.InputJson);
         var output = engine.Canonical.Deserialize<TaxEngineOutput>(calc.OutputJson);
-        var executed = calc.Executions.Select(e => e.RuleVersionId).ToList();
         var rules = await _catalog.LoadByIdsAsync(executed.Concat(output.NotApplied.Select(n => n.RuleVersionId)).Distinct().ToList(),
             engine.Canonical, ct);
         return await _opportunities.DetectAsync(calc.Id, engine, input, TaxReproduction.RulesAsThen(executed, output, rules), ct);
+    }
+
+    /// <summary>Records a refused detection with its reason, then answers 422. No opportunity is created.</summary>
+    private async Task RefuseDetectionAsync(Guid calculationId, TaxGateRefusal refusal, CancellationToken ct, IReadOnlyList<string>? details = null)
+    {
+        _audit.Record(TaxAuditActions.DetectionRefused, "Calculation", calculationId,
+            $"Nova detecção de oportunidades recusada ({refusal.Code}).",
+            new { refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Tax detection refused for calculation {CalculationId}: {Code}", calculationId, refusal.Code);
+        throw new DomainException(refusal.Message, refusal.Code, details ?? []);
     }
 
     /// <summary>The engine version that made the calculation; if this build no longer has it, nothing is guessed.</summary>
