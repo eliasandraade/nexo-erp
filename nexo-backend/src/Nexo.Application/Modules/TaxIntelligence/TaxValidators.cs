@@ -221,11 +221,29 @@ public sealed class ApproveRuleForPilotRequestValidator : AbstractValidator<Appr
 {
     public ApproveRuleForPilotRequestValidator()
     {
-        RuleFor(x => x.ApprovedBy).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Scope).NotEmpty().MaximumLength(2000);
         RuleFor(x => x.Caveats).NotEmpty().MaximumLength(4000).WithMessage("A aprovação interna registra as ressalvas aceitas.");
         RuleFor(x => x.DecisionReference).NotEmpty().MaximumLength(300);
     }
+}
+
+public sealed class ConfigurePilotScopeRequestValidator : AbstractValidator<ConfigurePilotScopeRequest>
+{
+    public ConfigurePilotScopeRequestValidator()
+    {
+        RuleFor(x => x.DecisionReference).NotEmpty().MaximumLength(300);
+        RuleFor(x => x.ValidTo).GreaterThanOrEqualTo(x => x.ValidFrom).When(x => x.ValidTo is not null);
+    }
+}
+
+public sealed class AddPilotParticipantRequestValidator : AbstractValidator<AddPilotParticipantRequest>
+{
+    public AddPilotParticipantRequestValidator() => RuleFor(x => x.TenantId).NotEmpty();
+}
+
+public sealed class RemovePilotParticipantRequestValidator : AbstractValidator<RemovePilotParticipantRequest>
+{
+    public RemovePilotParticipantRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(1000);
 }
 
 public sealed class WithdrawPilotApprovalRequestValidator : AbstractValidator<WithdrawPilotApprovalRequest>

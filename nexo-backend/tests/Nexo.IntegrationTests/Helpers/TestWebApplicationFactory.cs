@@ -117,9 +117,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("RateLimiting:PublicOrders:Enabled", "false");
         builder.UseSetting("RateLimiting:CredentialCheck:Enabled", "false");
 
-        // Approval enforcement (pilot or professional, per TaxIntelligence:Policy:Mode) is off in the shared
-        // host so tests can use rules created on the fly; TaxIntelligenceTests and TaxControlledPilotTests
-        // turn it on in derived hosts to prove what each mode accepts and refuses.
+        // Tax Intelligence is off unless configured (kill switch). The suite turns it on explicitly and relaxes
+        // only the approval enforcement — the Mode stays unconfigured (Disabled) — so tests can use rules created
+        // on the fly. TaxIntelligenceTests turns enforcement, the mode and the pilot scope on in derived hosts to
+        // prove what each configuration accepts and refuses.
+        builder.UseSetting("TaxIntelligence:Policy:Enabled", "true");
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "false");
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForCalculations", "false");
     }

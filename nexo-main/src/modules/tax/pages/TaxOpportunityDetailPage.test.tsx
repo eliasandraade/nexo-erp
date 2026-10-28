@@ -43,6 +43,8 @@ describe("TaxOpportunityDetailPage", () => {
     expect(screen.getByText("Piloto controlado")).toBeInTheDocument();
     expect(screen.getByText("Aprovado internamente para piloto controlado")).toBeInTheDocument();
     expect(screen.getByText(/Não é parecer jurídico, contábil ou tributário profissional/)).toBeInTheDocument();
+    expect(screen.getByText(/Não executa alteração fiscal, contábil ou financeira automaticamente/)).toBeInTheDocument();
+    expect(screen.getByText(/Decisões internas registradas: DEC-REGRA-1/)).toBeInTheDocument();
   });
 
   it("asks for a justification when whoever analysed alone approves, and sends it", async () => {

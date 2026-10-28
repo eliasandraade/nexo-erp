@@ -23,11 +23,12 @@ public sealed class TaxSimulationService
     private readonly TaxProfileService _profiles;
     private readonly TaxComplianceService _compliance;
     private readonly TaxCatalogService _catalog;
+    private readonly TaxApprovalGate _approvals;
     private readonly TaxAuditTrail _audit;
     private readonly ILogger<TaxSimulationService> _log;
 
     public TaxSimulationService(NexoDbContext db, TaxEngineRegistry engines, ICurrentTenant tenant, TaxProfileService profiles,
-        TaxComplianceService compliance, TaxCatalogService catalog,
+        TaxComplianceService compliance, TaxCatalogService catalog, TaxApprovalGate approvals,
         TaxAuditTrail audit, ILogger<TaxSimulationService> log)
     {
         _db = db;
@@ -36,12 +37,14 @@ public sealed class TaxSimulationService
         _profiles = profiles;
         _compliance = compliance;
         _catalog = catalog;
+        _approvals = approvals;
         _audit = audit;
         _log = log;
     }
 
     public async Task<TaxSimulationDto> CreateAsync(CreateTaxSimulationRequest r, CancellationToken ct)
     {
+        await AdmitAsync(ct);
         var profile = await _profiles.GetInForceAsync(r.Baseline.OperationDate, ct);
         var compliance = await _compliance.InForceAsync(r.Baseline.OperationDate, ct);
         var baseline = TaxCalculationService.ToInput(r.Baseline, profile, compliance?.ForRules);
@@ -95,6 +98,7 @@ public sealed class TaxSimulationService
     /// </summary>
     public async Task<IReadOnlyList<SupplierOfferResultDto>> CompareSuppliersAsync(CompareSuppliersRequest r, CancellationToken ct)
     {
+        await AdmitAsync(ct);
         var profile = await _profiles.GetInForceAsync(r.OperationDate, ct);
         var compliance = await _compliance.InForceAsync(r.OperationDate, ct);
         var hypotheses = r.RateHypotheses?.Select(h => new RateHypothesis(h.Tax, h.RatePercent, h.Label)).ToList();
@@ -111,6 +115,12 @@ public sealed class TaxSimulationService
         var cheapest = results.Min(x => x.EffectiveCost);
         return results.Select(x => new SupplierOfferResultDto(x.Name, x.Charged, x.TaxTotal, x.CreditEstimate, x.EffectiveCost,
             x.EffectiveCost == cheapest, x.Hypotheses, x.Output.Warnings)).ToList();
+    }
+
+    /// <summary>Kill switch, approval mode and pilot scope apply to simulations too (fail closed).</summary>
+    private async Task AdmitAsync(CancellationToken ct)
+    {
+        if (await _approvals.AdmitCalculationAsync(ct) is { } refusal) throw new DomainException(refusal.Message, refusal.Code);
     }
 
     private async Task<IReadOnlyCollection<TaxEngineRule>> LoadCatalogueAsync(

@@ -25,18 +25,26 @@
 
 ## Política de aprovação
 
+- **`TaxIntelligence:Policy:Enabled`** (kill switch, padrão `false`): desligado, nenhum cálculo, simulação, detecção, decisão ou verificação de execução roda; a consulta e a reprodução do que já foi registrado continuam.
 - **`TaxIntelligence:Policy:Mode`** escolhe que aprovação uma regra precisa:
-  - `ControlledPilot` (padrão; decisão do Product Owner de 27/10/2026): basta a aprovação interna para piloto controlado (`InternalApproval = ApprovedForControlledPilot`) ou uma aprovação profissional;
+  - `Disabled` (padrão): nenhuma aprovação vale, então nada roda onde a aprovação é exigida;
+  - `ControlledPilot`, só por configuração explícita: basta a aprovação interna válida (`InternalApproval = ApprovedForControlledPilot`) ou uma profissional, e a empresa ou loja precisa estar no escopo do piloto mantido pela plataforma;
   - `ProfessionalFinal` (produção definitiva): só `ProfessionalReview = Approved` ou `ApprovedWithCaveats`, dentro da validade.
+
+  Em todos os modos, a regra precisa estar tecnicamente `Active` agora.
 - **`RequireApprovedRulesForCalculations`**: um cálculo só roda se todas as regras ativas que a engine pode aplicar na data estiverem aprovadas para o modo. Caso contrário, é recusado com 422 e a recusa fica na auditoria.
 - **`RequireApprovedRulesForDecisions`**: uma oportunidade só é aprovada se todas as regras que casaram no cálculo estiverem aprovadas para o modo. Caso contrário, 422 e nada é gravado.
 
 Os códigos de recusa são:
 
+- `tax_intelligence_disabled` (kill switch);
+- `tax_approval_mode_disabled` (modo não configurado);
+- `tax_pilot_scope_disabled`, `tax_pilot_scope_expired`, `tax_pilot_scope_tenant` e `tax_pilot_scope_store` (escopo do piloto);
 - `tax_pilot_approval_missing` no piloto;
-- `tax_professional_review_pending` no modo definitivo.
+- `tax_professional_review_pending` no modo definitivo;
+- `tax_calculation_not_reproducible` (decisão sobre um cálculo que não reproduz mais).
 
-As duas políticas ficam ligadas por padrão fora de Development e Testing. Nesses dois ambientes ficam desligadas para o fluxo ser exercitável com qualquer catálogo, e configuração explícita sempre vence. Testes de integração ligam as políticas e provam o que cada modo aceita e recusa. O maker-checker (`LowRisk`, `MediumRisk`, `HighRisk`, `MaterialityThreshold`) vale em todos os ambientes.
+As duas políticas ficam ligadas por padrão fora de Development e Testing. Nesses dois ambientes, o código relaxa só a exigência de aprovação, nunca o `Enabled` nem o `Mode`, para o fluxo ser exercitável com qualquer catálogo. Configuração explícita sempre vence. Testes de integração ligam as políticas e provam o que cada modo aceita e recusa. O maker-checker (`LowRisk`, `MediumRisk`, `HighRisk`, `MaterialityThreshold`) vale em todos os ambientes.
 
 O registro da decisão do piloto, com as versões aprovadas, as ressalvas, os riscos aceitos e os critérios de suspensão, está em [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md).
 

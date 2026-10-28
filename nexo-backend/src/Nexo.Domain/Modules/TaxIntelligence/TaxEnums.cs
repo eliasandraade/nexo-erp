@@ -87,10 +87,13 @@ public enum InternalApprovalStatus
 /// <summary>
 /// Which approval a rule version needs to back a calculation or a decision. A controlled pilot accepts
 /// the internal pilot approval (or a professional one); the definitive production mode accepts only a
-/// professional approval. They are different modes, never merged.
+/// professional approval. They are different modes, never merged. The pilot is never a fallback: it has
+/// to be configured explicitly.
 /// </summary>
 public enum TaxApprovalMode
 {
+    /// <summary>The default when nothing is configured: no approval is accepted, so nothing runs where approval is enforced.</summary>
+    Disabled = 0,
     ControlledPilot = 1,
     ProfessionalFinal = 2,
 }

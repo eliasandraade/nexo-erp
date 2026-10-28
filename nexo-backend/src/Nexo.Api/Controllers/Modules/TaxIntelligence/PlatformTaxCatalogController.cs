@@ -63,6 +63,26 @@ public class PlatformTaxCatalogController : ControllerBase
     public async Task<ActionResult<TaxRuleVersionDto>> ApproveForPilot(Guid id, [FromBody] ApproveRuleForPilotRequest request, CancellationToken ct)
         => Ok(await _catalog.ApproveForPilotAsync(id, request, ct));
 
+    /// <summary>The controlled pilot scope: window, decision record and participants (tenants / stores).</summary>
+    [HttpGet("pilot")]
+    public async Task<ActionResult<TaxPilotScopeDto>> GetPilotScope(CancellationToken ct)
+        => Ok(await _catalog.GetPilotScopeAsync(ct));
+
+    /// <summary>Opens or changes the pilot window. Who and when come from the authenticated request. Audited.</summary>
+    [HttpPut("pilot")]
+    public async Task<ActionResult<TaxPilotScopeDto>> ConfigurePilotScope([FromBody] ConfigurePilotScopeRequest request, CancellationToken ct)
+        => Ok(await _catalog.ConfigurePilotScopeAsync(request, ct));
+
+    /// <summary>Adds a tenant (or one of its stores) to the pilot. No tenant takes part by default. Audited.</summary>
+    [HttpPost("pilot/participants")]
+    public async Task<ActionResult<TaxPilotScopeDto>> AddPilotParticipant([FromBody] AddPilotParticipantRequest request, CancellationToken ct)
+        => Ok(await _catalog.AddPilotParticipantAsync(request, ct));
+
+    /// <summary>Removes a participant: its new work is refused from then on; what it recorded stays readable. Audited.</summary>
+    [HttpPost("pilot/participants/{id:guid}/remove")]
+    public async Task<ActionResult<TaxPilotScopeDto>> RemovePilotParticipant(Guid id, [FromBody] RemovePilotParticipantRequest request, CancellationToken ct)
+        => Ok(await _catalog.RemovePilotParticipantAsync(id, request, ct));
+
     /// <summary>Withdraws the internal pilot approval of a version (e.g. a suspension criterion was met). Audited.</summary>
     [HttpPost("rule-versions/{id:guid}/pilot-approval/withdraw")]
     public async Task<ActionResult<TaxRuleVersionDto>> WithdrawPilotApproval(Guid id, [FromBody] WithdrawPilotApprovalRequest request, CancellationToken ct)

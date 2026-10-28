@@ -24,7 +24,8 @@ Domínio tributário próprio do ORKEN. Os módulos operacionais (vendas, compra
 - **Engine determinística e versionada** (`orken-tax-engine/1.0.0`, forma canônica `orken-canonical/1`, congeladas): mesmo input + mesmas versões de regra = mesmo resultado, byte a byte. Cada cálculo guarda input, hashes, versões usadas e o rastro de cada regra.
 - **Cálculo oficial idempotente e verificável** (`POST /api/tax/calculations/{id}/verify` reexecuta **com a engine exata do cálculo** e compara o hash; se ela não estiver disponível, diz que não pode reproduzir).
 - **Revisão profissional separada da conferência de texto.** As fontes têm o texto conferido. Cada versão de regra tem a sua revisão tributária, com escopo, validade, premissas e ressalvas; todas estão `Pending` no catálogo V1.
-- **Aprovação interna para piloto controlado separada da revisão profissional.** As nove versões ativas de 2026 estão `Approved for Controlled Pilot` (decisão interna de produto e governança, `orken-pilot-approval/1`) e continuam com a revisão profissional `Pending`. O modo `ControlledPilot` aceita essa aprovação; o modo `ProfessionalFinal` só aceita a profissional.
+- **Aprovação interna para piloto controlado separada da revisão profissional.** O Product Owner decidiu liberar as nove versões ativas de 2026 para o piloto. No sistema, essa decisão só se efetiva por ações explícitas e auditadas da plataforma: a migration não aprova nada. A revisão profissional continua `Pending`. O modo `ControlledPilot` aceita a aprovação interna; o modo `ProfessionalFinal` só aceita a profissional.
+- **Fail closed por padrão.** Sem configuração, o módulo fica desligado (`Enabled=false`) e sem modo de aprovação (`Mode=Disabled`). O piloto exige configuração explícita, um escopo de empresas e lojas mantido pela plataforma e regras tecnicamente ativas e aprovadas. É um modo sombra: nunca altera nada fiscal, contábil ou financeiro automaticamente.
 - **Recorte explícito (fail closed).** Operação fora do que a V1 modela não é calculada: o sistema recusa e diz por quê.
 - **Obrigações acessórias por período e escopo**, com estados de regularização e PNCT. Só a verificação conta para as regras.
 - **Cenário e execução separados.** A aprovação do cenário não declara documento futuro; a execução é verificada depois, com o documento fiscal.
@@ -43,13 +44,15 @@ Domínio tributário próprio do ORKEN. Os módulos operacionais (vendas, compra
 ## Estado
 
 ```
-INTERNAL PILOT APPROVAL: APPROVED
-PROFESSIONAL REVIEW:     PENDING
-CONTROLLED PILOT:        ENABLED
-UNSUPPORTED OPERATIONS:  FAIL CLOSED
-PENDING REGULATION:      BLOCKED
+INSTALAÇÃO SEM CONFIGURAÇÃO:  TAX INTELLIGENCE DISABLED · APPROVAL MODE Disabled · NOTHING RUNS
+PILOTO, APÓS ATIVAÇÃO EXPLÍCITA:
+  INTERNAL PILOT APPROVAL: APPROVED (versão a versão, por ação auditada da plataforma)
+  PROFESSIONAL REVIEW:     PENDING
+  CONTROLLED PILOT:        ENABLED (Enabled + Mode=ControlledPilot + escopo de participantes)
+  UNSUPPORTED OPERATIONS:  FAIL CLOSED
+  PENDING REGULATION:      BLOCKED
 ```
 
 ## Aviso
 
-O catálogo inicial reproduz literalmente dispositivos da LC 214/2025 conferidos no texto compilado do Planalto em 26/10/2026. **Isso não é parecer jurídico.** Nenhuma regra está marcada como aprovada por profissional. Em 27/10/2026 o Product Owner da Andrade Systems aprovou o recorte de 2026 para **piloto controlado** — uma *INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT*, registrada em [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md), que **não é parecer profissional**. Antes da produção definitiva (`ProfessionalFinal`), um profissional tributário deve revisar o catálogo, os requisitos do detector e os textos das telas — ver [roadmap.md](roadmap.md#o-que-depende-do-profissional-tributário).
+O catálogo inicial reproduz literalmente dispositivos da LC 214/2025 conferidos no texto compilado do Planalto em 26/10/2026. **Isso não é parecer jurídico.** Nenhuma regra está marcada como aprovada por profissional. Em 27/10/2026 o Product Owner da Andrade Systems aprovou o recorte de 2026 para **piloto controlado** — uma *INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT*, registrada em [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md), que **não é parecer profissional** e que só se efetiva pelas ações explícitas da plataforma descritas ali. Antes da produção definitiva (`ProfessionalFinal`), um profissional tributário deve revisar o catálogo, os requisitos do detector e os textos das telas — ver [roadmap.md](roadmap.md#o-que-depende-do-profissional-tributário).

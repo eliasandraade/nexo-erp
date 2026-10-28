@@ -232,7 +232,7 @@ public sealed record TaxRuleVersionDto(
 /// professional review, never in its place. It is not a professional tax opinion.
 /// </summary>
 public sealed record TaxInternalApprovalDto(
-    InternalApprovalStatus Status, string? Policy, string? ApprovedBy, DateTime? ApprovedAt, string? Scope,
+    InternalApprovalStatus Status, string? Policy, Guid? ApprovedById, string? ApprovedBy, string? ApprovedByRole, DateTime? ApprovedAt, string? Scope,
     DateOnly? ValidFrom, DateOnly? ValidTo, string? Caveats, string? DecisionReference, string? WithdrawalReason, DateTime? WithdrawnAt,
     string Nature);
 
@@ -258,12 +258,28 @@ public sealed record RecordProfessionalReviewRequest(
     DateOnly? ValidFrom = null, DateOnly? ValidTo = null, string? Assumptions = null, string? Caveats = null);
 
 /// <summary>
-/// Internal pilot approval of an active rule version by the product's governance (a role such as
-/// "Product Owner — Andrade Systems", never a professional identity). Scope, validity, caveats and where
-/// the decision is recorded are required; the policy is fixed by the server.
+/// Internal pilot approval of an active rule version. Who approves is never taken from the request: it is
+/// the authenticated platform user (id, display name, capability) and the server's clock. Scope, validity,
+/// caveats and where the decision is recorded are required; the policy is fixed by the server.
 /// </summary>
 public sealed record ApproveRuleForPilotRequest(
-    string ApprovedBy, string Scope, DateOnly ValidFrom, DateOnly? ValidTo, string Caveats, string DecisionReference);
+    string Scope, DateOnly ValidFrom, DateOnly? ValidTo, string Caveats, string DecisionReference);
+
+/// <summary>Opens (or changes) the controlled pilot window. Who and when come from the authenticated request.</summary>
+public sealed record ConfigurePilotScopeRequest(bool Enabled, DateOnly ValidFrom, DateOnly? ValidTo, string DecisionReference);
+
+/// <summary>A tenant (all its stores, or only <see cref="StoreId"/>) to take part in the pilot.</summary>
+public sealed record AddPilotParticipantRequest(Guid TenantId, Guid? StoreId);
+
+public sealed record RemovePilotParticipantRequest(string Reason);
+
+public sealed record TaxPilotParticipantDto(
+    Guid Id, Guid TenantId, Guid? StoreId, bool Active, string AddedByName, DateTime AddedAt,
+    DateTime? RemovedAt, string? RemovedByName, string? RemovalReason);
+
+public sealed record TaxPilotScopeDto(
+    Guid? Id, bool Enabled, DateOnly? ValidFrom, DateOnly? ValidTo, string? DecisionReference, string? ActivatedByName, DateTime? ActivatedAt,
+    IReadOnlyList<TaxPilotParticipantDto> Participants);
 
 public sealed record WithdrawPilotApprovalRequest(string Reason);
 

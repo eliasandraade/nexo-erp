@@ -579,14 +579,15 @@ public partial class TaxIntelligenceTests
             "/api/tax/opportunities/{id}/approve", "/api/tax/credits/{id}/movements", "/api/tax/rules", "/api/platform/tax/rules/{key}/versions",
             "/api/platform/tax/rule-versions/{id}/professional-review", "/api/tax/calculations/coverage", "/api/tax/compliance-assessments",
             "/api/tax/opportunities/{id}/execution", "/api/tax/opportunities/{id}/evidence/{evidenceId}/review",
-            "/api/platform/tax/rule-versions/{id}/pilot-approval", "/api/platform/tax/rule-versions/{id}/pilot-approval/withdraw"]);
+            "/api/platform/tax/rule-versions/{id}/pilot-approval", "/api/platform/tax/rule-versions/{id}/pilot-approval/withdraw",
+            "/api/platform/tax/pilot", "/api/platform/tax/pilot/participants", "/api/platform/tax/pilot/participants/{id}/remove", "/api/tax/governance"]);
         var schemas = doc.GetProperty("components").GetProperty("schemas");
         schemas.TryGetProperty("RecordProfessionalReviewRequest", out _).Should().BeTrue();
         schemas.TryGetProperty("ApproveRuleForPilotRequest", out _).Should().BeTrue();
         schemas.GetProperty("InternalApprovalStatus").GetProperty("enum").EnumerateArray().Select(e => e.GetString())
             .Should().Equal("NotApproved", "ApprovedForControlledPilot", "Withdrawn");
         schemas.GetProperty("TaxApprovalMode").GetProperty("enum").EnumerateArray().Select(e => e.GetString())
-            .Should().Equal("ControlledPilot", "ProfessionalFinal");
+            .Should().Equal("Disabled", "ControlledPilot", "ProfessionalFinal");
         schemas.GetProperty("TaxImpactNature").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).Should().Contain("CalculatedTaxReduction");
         doc.GetProperty("components").GetProperty("schemas").TryGetProperty("TaxCalculationDto", out _).Should().BeTrue();
     }

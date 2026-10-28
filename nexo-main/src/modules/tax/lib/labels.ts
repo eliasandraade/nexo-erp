@@ -100,6 +100,7 @@ export const INTERNAL_APPROVAL: Record<InternalApprovalStatus, ToneLabel> = {
 };
 
 export const APPROVAL_MODE: Record<TaxApprovalMode, ToneLabel> = {
+  Disabled: { label: "Nenhum modo de aprovação configurado", tone: "warning" },
   ControlledPilot: { label: "Piloto controlado", tone: "pilot" },
   ProfessionalFinal: { label: "Produção definitiva (só aprovação profissional)", tone: "neutral" },
 };

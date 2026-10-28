@@ -24,7 +24,11 @@ export function ApprovalGovernance({ governance }: Readonly<{ governance: TaxGov
           ? <ToneBadge label={PROFESSIONAL_REVIEW.Pending.label} tone={PROFESSIONAL_REVIEW.Pending.tone} />
           : rules.length > 0 && <ToneBadge label={PROFESSIONAL_REVIEW.Approved.label} tone={PROFESSIONAL_REVIEW.Approved.tone} />}
       </p>
+      {pilot && governance.effectsNotice && <p className="text-xs font-medium">{governance.effectsNotice}</p>}
       {pilot && <p className="text-xs text-muted-foreground">{INTERNAL_APPROVAL_NOTICE}</p>}
+      {governance.decisionReferences.length > 0 && (
+        <p className="text-xs text-muted-foreground">Decisões internas registradas: {governance.decisionReferences.join(" · ")}</p>
+      )}
       {governance.notApproved.length > 0 && (
         <p className="text-warning">Sem aprovação para este modo: {governance.notApproved.join(", ")}.</p>
       )}
@@ -39,6 +43,7 @@ export function ApprovalGovernance({ governance }: Readonly<{ governance: TaxGov
               <li key={r.ruleVersionId}>
                 <span className="font-mono">{r.key} v{r.version}</span>: {r.pilotCaveats}
                 {r.internalApproval !== "ApprovedForControlledPilot" && ` (${labelOf(INTERNAL_APPROVAL, r.internalApproval)})`}
+                {r.internalApprovalDecisionRef && <span className="block font-mono text-[11px]">decisão {r.internalApprovalDecisionRef}</span>}
               </li>
             ))}
           </ul>

@@ -13,18 +13,26 @@ Transformar `ProfessionalReview = Pending` em `Approved` seria falso. Desligar a
 
 1. **Nova dimensão por versão de regra: `InternalApproval`**, com os estados `NotApproved`, `ApprovedForControlledPilot` e `Withdrawn`. A aprovação registra:
    - a política (`orken-pilot-approval/1`);
-   - quem decidiu, como papel de governança;
+   - quem registrou: o usuário autenticado da plataforma (id, nome exibido, capacidade) e a hora do servidor, nunca um nome digitado;
    - escopo e validade (dentro da vigência da versão);
    - as ressalvas aceitas, que são obrigatórias;
    - onde a decisão está registrada.
 
    Ela não toca a `ProfessionalReview`, e as duas coexistem. Só uma versão `Active` pode ser aprovada: `PendingRegulation`, `Unverified`, `Draft`, `Superseded` e `Revoked` continuam bloqueadas.
 2. **Modo de aprovação** (`TaxIntelligence:Policy:Mode`):
-   - `ControlledPilot` (padrão) aceita a aprovação interna ou uma profissional;
+   - `Disabled` (padrão) não aceita nenhuma aprovação. O piloto nunca é o modo padrão;
+   - `ControlledPilot`, só por configuração explícita, aceita a aprovação interna ou uma profissional;
    - `ProfessionalFinal` aceita só a profissional.
 
    Piloto e produção definitiva são modos distintos e nunca se misturam.
-3. **Execução fail-closed** (`RequireApprovedRulesForCalculations`): um cálculo só roda se as regras ativas da data estiverem aprovadas para o modo. A aprovação de uma oportunidade (`RequireApprovedRulesForDecisions`) segue o mesmo critério.
+3. **Execução fail-closed.** Trabalho novo só roda se:
+   - o kill switch (`Enabled`, padrão `false`) estiver ligado;
+   - o modo estiver configurado;
+   - no piloto, a empresa ou loja estiver no escopo mantido pela plataforma (`TaxPilotScope`: janela, referência da decisão, quem ativou, participantes; vazio por padrão);
+   - cada regra estiver tecnicamente `Active` **agora** e aprovada para o modo;
+   - para uma decisão, o cálculo de origem ainda reproduzir.
+
+   Uma versão revogada ou substituída mantém o registro da aprovação, mas não autoriza nada novo. O histórico continua legível e reproduzível.
 4. **Registro por execução.** Cada cálculo grava, fora do input e do output com hash (que a engine V1 congelada não muda):
    - o modo;
    - a versão da política;
@@ -32,11 +40,18 @@ Transformar `ProfessionalReview = Pending` em `Approved` seria falso. Desligar a
    - por regra, as duas aprovações e as ressalvas.
 
    A auditoria e os dossiês carregam os mesmos dados.
-5. **Gravação da decisão.** A aprovação das nove versões ativas de 2026 foi gravada por uma migration autocontida, só para 2026. As versões de 2027 em diante e a waiver v1 substituída não foram tocadas. Aprovações e retiradas futuras são da plataforma e auditadas.
+5. **A decisão não vira migration.** A migration `TaxControlledPilotGovernance` só cria o schema: tudo começa `NotApproved` e o escopo começa vazio. A decisão do Product Owner se efetiva por ações explícitas e auditadas da plataforma:
+   - abrir o piloto;
+   - admitir participantes;
+   - aprovar versão a versão com a `DecisionReference`.
+
+   Cada dossiê congela a referência exata de cada versão.
+6. **Modo sombra.** O piloto não produz efeito fiscal externo. O módulo não depende de adaptador de documento fiscal, e o provedor de split só expõe status. Testes de arquitetura e de integração provam isso.
 
 ## Consequências
 
 - O piloto roda com as ressalvas de cada regra visíveis em telas, cálculos e dossiês. A revisão profissional pendente continua aparecendo.
+- Uma instalação nova ou atualizada não entra no piloto sozinha: fica desligada até a configuração e as ações explícitas.
 - Para a produção definitiva, basta passar o modo para `ProfessionalFinal`. Nesse modo, nada roda até haver revisão profissional registrada, o que é o comportamento desejado.
 - Retirar a aprovação interna de uma regra para imediatamente os cálculos e as decisões que dependem dela.
 - Nenhuma tese tributária foi criada ou alterada, e nenhum fato jurídico foi reescrito para eliminar ressalvas.

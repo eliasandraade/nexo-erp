@@ -193,6 +193,7 @@ public sealed class TaxOpportunityService
     /// </summary>
     public async Task<TaxOpportunityDto> ApproveAsync(Guid id, ApproveOpportunityRequest r, CancellationToken ct)
     {
+        var (governance, referenceDate, ruleIds) = await AdmitDecisionAsync(id, "aprovação do cenário", ct);
         var o = await LoadForUpdateAsync(id, ct);
         var now = DateTime.UtcNow;
         var approval = _policy.RequiredFor(o.Risk, o.EstimatedImpact);
@@ -200,13 +201,7 @@ public sealed class TaxOpportunityService
         o.Approve(r.AcknowledgeHighRisk, _audit.UserId, _audit.UserName, now, approval, r.SelfApprovalJustification);
         var justification = selfApproval ? r.SelfApprovalJustification!.Trim() : null;
 
-        var referenceDate = await ReferenceDateAsync(o, ct);
-        var ruleIds = await RuleVersionsBehindAsync(o, ct);
-        // Pilot: the internal pilot approval suffices. Definitive mode: only a professional approval.
-        var governance = await _approvals.ForDecisionAsync(ruleIds, referenceDate, ct);
         var pendingReview = governance.ProfessionalReviewPending;
-        if (governance.Enforced && governance.NotApproved.Count > 0)
-            throw new DomainException(TaxApprovalGate.NotApprovedMessage(governance), TaxApprovalGate.NotApprovedCode(governance));
 
         var engine = EngineOf(o);
         var calc = o.SourceCalculationId is null ? null
@@ -332,17 +327,74 @@ public sealed class TaxOpportunityService
     public const string IntegrityNotice =
         "O hash e a versão demonstram a integridade deste registro — que ele não foi alterado — e não a veracidade material dos fatos declarados.";
 
+    /// <summary>
+    /// The governance frozen into a dossier: mode, policy, pilot scope and, per rule, its own internal approval
+    /// (policy, actor, scope, validity, caveats and the exact decision reference) beside its professional review.
+    /// </summary>
     private static object GovernanceView(TaxGovernanceDto g) => new
     {
-        mode = g.Mode.ToString(), g.Policy, g.Enforced, g.Nature, g.Notice,
-        decisionRecord = g.Mode == TaxApprovalMode.ControlledPilot ? TaxGovernance.DecisionRecord : null,
+        mode = g.Mode.ToString(), g.Policy, g.Enforced, g.Nature, g.Notice, effects = g.EffectsNotice, pilotScope = g.PilotScope,
+        decisionReferences = g.DecisionReferences,
         rules = g.Rules.Select(x => new
         {
-            x.Key, x.Version, internalApproval = x.InternalApproval.ToString(), x.ApprovedForPilot, x.PilotCaveats,
-            professionalReview = x.ProfessionalReview.ToString(), x.ProfessionallyApproved, x.ProfessionalCaveats,
+            x.Key, x.Version, x.RuleVersionId, technicalStatus = x.TechnicalStatus.ToString(),
+            internalApproval = new
+            {
+                status = x.InternalApproval.ToString(), x.ApprovedForPilot, policy = x.InternalApprovalPolicy,
+                approvedById = x.InternalApprovedById, approvedBy = x.InternalApprovedBy, approvedByRole = x.InternalApprovedByRole,
+                approvedAt = x.InternalApprovedAt, scope = x.InternalApprovalScope, validFrom = x.InternalApprovalValidFrom,
+                validTo = x.InternalApprovalValidTo, caveats = x.PilotCaveats, decisionReference = x.InternalApprovalDecisionRef,
+            },
+            professionalReview = new
+            {
+                status = x.ProfessionalReview.ToString(), approved = x.ProfessionallyApproved, scope = x.ProfessionalReviewScope,
+                caveats = x.ProfessionalCaveats,
+            },
         }),
         professionalReviewPending = g.ProfessionalReviewPending,
     };
+
+    /// <summary>
+    /// Admits new decision work (scenario approval, execution verification) before anything is locked:
+    /// kill switch, approval mode, pilot scope, every rule behind it active and approved for the mode, and the
+    /// calculation behind it still reproducible. A refusal is audited and nothing else is written.
+    /// </summary>
+    private async Task<(TaxGovernanceDto Governance, DateOnly ReferenceDate, IReadOnlyList<Guid> RuleIds)> AdmitDecisionAsync(
+        Guid id, string what, CancellationToken ct)
+    {
+        var o = await _db.TaxOpportunities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Oportunidade", id);
+        if (await _approvals.AdmitDecisionAsync(ct) is { } admission) await RefuseDecisionAsync(o, what, admission, null, ct);
+
+        var referenceDate = await ReferenceDateAsync(o, ct);
+        var ruleIds = await RuleVersionsBehindAsync(o, ct);
+        // Pilot: the internal pilot approval suffices. Definitive mode: only a professional approval. Either way the rule must still be active.
+        var governance = await _approvals.ForDecisionAsync(ruleIds, referenceDate, ct);
+        if (governance.Enforced && governance.NotApproved.Count > 0)
+            await RefuseDecisionAsync(o, what, TaxApprovalGate.NotApproved(governance), governance.NotApproved, ct);
+        if (governance.Enforced && o.SourceCalculationId is { } calcId && !await ReproducesAsync(calcId, ct))
+            await RefuseDecisionAsync(o, what, new TaxGateRefusal("tax_calculation_not_reproducible",
+                "O cálculo por trás desta oportunidade não é mais reproduzível com a engine e as regras que usou: nenhuma decisão nova é registrada."), null, ct);
+        return (governance, referenceDate, ruleIds);
+    }
+
+    private async Task RefuseDecisionAsync(TaxOpportunity o, string what, TaxGateRefusal refusal, IReadOnlyList<string>? details, CancellationToken ct)
+    {
+        _audit.Record(TaxAuditActions.DecisionRefused, AuditEntity, o.Id, $"Recusada a {what} ({refusal.Code}): {o.Title}.",
+            new { refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Tax decision refused for opportunity {OpportunityId}: {Code}", o.Id, refusal.Code);
+        throw new DomainException(refusal.Message, refusal.Code, details ?? []);
+    }
+
+    /// <summary>Re-runs the calculation with the engine and rule versions it recorded (nothing is written).</summary>
+    private async Task<bool> ReproducesAsync(Guid calculationId, CancellationToken ct)
+    {
+        var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstAsync(c => c.Id == calculationId, ct);
+        var stored = new StoredCalculation(calc.EngineVersion, calc.InputJson, calc.InputHash, calc.OutputJson, calc.OutputHash,
+            calc.Executions.Select(e => new StoredRuleRun(e.RuleVersionId, e.RuleKey, e.RuleVersion, e.ContentHash)).ToList());
+        var result = await TaxReproduction.VerifyAsync(stored, _engines, (engine, ids) => _catalog.LoadByIdsAsync(ids, engine.Canonical, ct));
+        return result.Reproducible;
+    }
 
     private static object EvidenceView(TaxOpportunityEvidence x) => new
     {
@@ -357,6 +409,7 @@ public sealed class TaxOpportunityService
     /// </summary>
     public async Task<TaxOpportunityDto> VerifyExecutionAsync(Guid id, VerifyExecutionRequest r, CancellationToken ct)
     {
+        var (governance, _, _) = await AdmitDecisionAsync(id, "verificação da execução", ct);
         var o = await LoadForUpdateAsync(id, ct);
         var now = DateTime.UtcNow;
         var decision = await _db.TaxDecisions.AsNoTracking().FirstOrDefaultAsync(d => d.OpportunityId == id, ct)
@@ -366,7 +419,6 @@ public sealed class TaxOpportunityService
         var engine = EngineOf(o);
         var executionRequirements = o.Requirements.Where(x => x.Phase == RequirementPhase.ExecutionVerification).ToList();
         var ids = executionRequirements.Select(x => (Guid?)x.Id).ToHashSet();
-        var governance = await _approvals.ForDecisionAsync(await RuleVersionsBehindAsync(o, ct), await ReferenceDateAsync(o, ct), ct);
         var dossier = new
         {
             kind = "execution-verification",

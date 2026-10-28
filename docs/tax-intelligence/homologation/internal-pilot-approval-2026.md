@@ -9,51 +9,99 @@
 | Produto | ORKEN Tax Intelligence v1 |
 | Data da decisão | 27/10/2026 |
 | Escopo | Vertical slice IBS/CBS 2026: o recorte suportado pela v1 (matriz `orken-coverage/1`, engine `orken-tax-engine/1.0.0`, forma canônica `orken-canonical/1`) |
-| Decisão | **Approved for Controlled Pilot** (`InternalApproval = ApprovedForControlledPilot`) |
+| Decisão | **Approved for Controlled Pilot**: autoriza o uso, no piloto controlado, das versões listadas abaixo |
 | Política | `orken-pilot-approval/1` |
-| Responsável | Product Owner / Andrade Systems |
+| Responsável pela decisão | Product Owner / Andrade Systems |
+| Quem registra no sistema | O usuário autenticado da plataforma que executa cada ação (id, nome exibido, capacidade e hora do servidor), nunca um nome digitado |
 | ProfessionalReview | **Pending** para todas as regras |
 | Natureza | Decisão interna de produto e governança |
-| Aplicação | Exclusivamente ao recorte documentado. Operações não suportadas continuam fail-closed; períodos com regulação pendente continuam bloqueados |
+| Aplicação | Exclusivamente ao recorte documentado e aos participantes admitidos. Operações não suportadas continuam fail-closed; períodos com regulação pendente continuam bloqueados |
 
-## Estado resultante
+## Esta decisão não se efetiva sozinha
+
+A existência deste documento, um deploy ou uma migration **não autorizam nada**. A migration `TaxControlledPilotGovernance` só cria o schema:
+
+- todas as versões começam `InternalApproval = NotApproved`;
+- o escopo do piloto começa vazio;
+- o módulo começa desligado.
+
+Depois de qualquer deploy, o estado é:
 
 ```
-INTERNAL PILOT APPROVAL: APPROVED
+TAX INTELLIGENCE:        DISABLED (Enabled=false)
+APPROVAL MODE:           Disabled
+INTERNAL PILOT APPROVAL: NONE
+PILOT SCOPE:             EMPTY
+```
+
+Para o piloto existir, um operador da plataforma precisa fazer, explicitamente e nesta ordem:
+
+1. Ligar o módulo e escolher o modo na configuração da instalação: `TaxIntelligence:Policy:Enabled=true` e `TaxIntelligence:Policy:Mode=ControlledPilot`. Sem as duas, nada roda.
+2. Abrir a janela do piloto (`PUT /api/platform/tax/pilot`) com validade e `decisionReference` = este documento.
+3. Admitir cada empresa participante, ou só algumas lojas dela (`POST /api/platform/tax/pilot/participants`). Nenhuma empresa participa por padrão.
+4. Aprovar, uma a uma, as versões abaixo (`POST /api/platform/tax/rule-versions/{id}/pilot-approval`), com escopo, validade, ressalvas e `decisionReference`.
+
+Cada ação fica na auditoria com o usuário autenticado e a hora do servidor. Só então o piloto libera cálculos e decisões para os participantes.
+
+## Estado alvo, depois da ativação explícita
+
+```
+INTERNAL PILOT APPROVAL: APPROVED (por ação explícita, versão a versão)
 PROFESSIONAL REVIEW:     PENDING
-CONTROLLED PILOT:        ENABLED
+CONTROLLED PILOT:        ENABLED (configuração explícita + escopo de participantes)
 UNSUPPORTED OPERATIONS:  FAIL CLOSED
 PENDING REGULATION:      BLOCKED
 ```
 
-## Como a decisão está no sistema
+## Como o sistema aplica a decisão
 
 - **Duas dimensões separadas em cada versão de regra.**
-  - `InternalApproval`: `NotApproved`, `ApprovedForControlledPilot` ou `Withdrawn`. Registra política, quem decidiu (o papel de governança, nunca uma identidade profissional), escopo, validade, ressalvas aceitas e onde a decisão está registrada (este documento).
-  - `ProfessionalReview`: segue como estava, `Pending`. Nenhum revisor, registro ou assinatura foi criado.
+  - `InternalApproval` (`NotApproved` / `ApprovedForControlledPilot` / `Withdrawn`): política, usuário autenticado que registrou (id, nome, capacidade), hora do servidor, escopo, validade, ressalvas e a referência da decisão.
+  - `ProfessionalReview`: segue `Pending`. Nenhum revisor, registro ou assinatura foi criado.
 
-  Uma regra pode estar com `InternalApproval = ApprovedForControlledPilot` e `ProfessionalReview = Pending` ao mesmo tempo. Isso é esperado e correto.
-- **Modo de aprovação** (`TaxIntelligence:Policy:Mode`):
-  - `ControlledPilot` (padrão): a aprovação interna para o piloto, ou uma profissional, basta para executar a regra e para sustentar uma decisão;
-  - `ProfessionalFinal` (produção definitiva): só uma aprovação profissional registrada basta. A aprovação interna **nunca** vale como aprovação profissional.
-- **Execução fail-closed.** Com a política ligada (padrão fora de desenvolvimento e teste), um cálculo só roda se todas as regras ativas que a engine pode aplicar na data estiverem aprovadas para o modo. Caso contrário, é recusado (422 `tax_pilot_approval_missing`) e a recusa fica na auditoria. A decisão sobre uma oportunidade segue a mesma regra.
+  As duas coexistem.
+- **O gate falha fechado.** Para um cálculo, uma simulação, uma detecção, uma decisão ou uma verificação de execução, tudo isto precisa ser verdade:
+  1. módulo ligado (`Enabled`);
+  2. modo configurado (`ControlledPilot`). Nenhum modo é usado como padrão;
+  3. empresa e loja admitidas no escopo, dentro da validade do piloto;
+  4. cada regra tecnicamente `Active` **agora**;
+  5. cada regra com aprovação interna válida para a data, não retirada;
+  6. operação `Supported` na matriz de cobertura;
+  7. para uma decisão, o cálculo de origem ainda reproduzível com a engine e as regras que usou.
+
+  Se qualquer uma falhar, a operação é recusada com 422 e a tentativa fica na auditoria (`tax_calculation_refused` / `tax_decision_refused`).
+- **Histórico preservado ≠ autorização atual.**
+  - Uma versão revogada ou substituída mantém a aprovação registrada, mas não autoriza nada novo.
+  - Um participante retirado, uma aprovação retirada, uma janela vencida ou o módulo desligado bloqueiam trabalho novo.
+  - O que já foi registrado continua legível e reproduzível (`verify`).
+- **Modo de produção definitiva** (`ProfessionalFinal`): ignora a aprovação interna e só aceita revisão profissional registrada.
 - **Registro de cada execução.** Cada cálculo grava, fora do input e do output com hash:
-  - o modo (`ControlledPilot`);
-  - a versão da política (`orken-pilot-approval/1`);
-  - se a política estava ligada;
-  - por regra, a aprovação interna, as ressalvas aceitas e a revisão profissional vigente.
+  - modo, política e se a política estava ligada;
+  - o escopo do piloto (decisão, janela, quem ativou);
+  - por regra: status técnico, aprovação interna completa, com a referência **exata** da decisão daquela versão, e revisão profissional.
 
-  A auditoria (`tax_calculation_created`) carrega os mesmos dados, com data/hora, usuário e hashes.
-- **Dossiê.** O dossiê da decisão e o da execução trazem a seção `governance`, com as duas dimensões lado a lado e o link para este registro. O dossiê é o *registro auditável da decisão e das premissas utilizadas pelo motor*, não prova definitiva de conformidade fiscal.
-- **Gravação.** A aprovação das versões abaixo foi gravada pela migration autocontida `20261028021406_TaxControlledPilotApproval`. Aprovações futuras ou retiradas são feitas pela plataforma e auditadas:
-  - `POST /api/platform/tax/rule-versions/{id}/pilot-approval`;
-  - `POST /api/platform/tax/rule-versions/{id}/pilot-approval/withdraw`.
+  Os dossiês congelam o mesmo e listam todas as decisões distintas (`decisionReferences`). Uma reaprovação posterior não reescreve um dossiê antigo.
 
-## Versões aprovadas internamente para o piloto
+## Piloto controlado = modo sombra
 
-Validade da aprovação: 01/01/2026 a 31/12/2026. Ela não vai além da vigência de cada versão e cobre só 2026, mesmo quando a regra vale por mais tempo.
+O piloto controlado é um modo de avaliação. **Não executa alteração fiscal, contábil ou financeira automaticamente.**
 
-| Regra | Versão | Ressalvas aceitas (gravadas na versão) |
+| Permitido no piloto | Nunca feito automaticamente |
+|---|---|
+| cálculos, simulações, detectores, oportunidades, workflow interno, dossiês, verificação de execução, comparação, auditoria | alterar venda ou preço; emitir ou alterar documento fiscal; lançar obrigação tributária oficial; apropriar ou utilizar crédito; enviar declaração; comandar recolhimento; liquidar split com provedor |
+
+O módulo tributário não depende de nenhum adaptador de efeito fiscal, e o provedor de split só expõe status de configuração. Um teste de arquitetura garante essas duas coisas. Um teste de integração roda o fluxo do piloto e confirma:
+
+- que o adaptador de documento fiscal não é chamado;
+- que nenhum lançamento de crédito nem liquidação de split é criado.
+
+As telas mostram: "Piloto controlado — resultados para análise e validação. Não executa alteração fiscal, contábil ou financeira automaticamente."
+
+## Versões aprovadas pela decisão (a registrar uma a uma, por ação explícita)
+
+Validade a registrar: 01/01/2026 a 31/12/2026. Ela não vai além da vigência de cada versão e cobre só 2026, mesmo quando a regra vale por mais tempo. As ressalvas abaixo são as que devem acompanhar cada aprovação.
+
+| Regra | Versão | Ressalvas aceitas |
 |---|---|---|
 | `IBSCBS.BASE.SURCHARGES` | v1 | Acréscimos cobrados com o preço integram a base; o que é acréscimo depende dos fatos informados. Cálculo nominal não é recolhimento nem efeito financeiro. |
 | `IBSCBS.BASE.CONDITIONAL-DISCOUNT` | v1 | Desconto condicional permanece na base. Se um desconto é condicional ou incondicional depende da operação e da documentação, não do rótulo informado. |
@@ -141,17 +189,30 @@ Detalhes em [legal-sources.md](../legal-sources.md). Esta decisão não reescrev
 
 ## Critérios para suspensão do piloto
 
-O piloto, ou a aprovação de uma regra (`pilot-approval/withdraw`), deve ser suspenso quando:
+**Automáticos** (o gate recusa sozinho, sem depender de ninguém):
 
-1. um cálculo divergir da fonte jurídica documentada ou da reprodução histórica (`verify` não reproduzível);
-2. uma operação fora do recorte for calculada em vez de recusada;
-3. uma tela, um cálculo ou um dossiê apresentar a redução calculada como economia definitiva, ou o cumprimento interno como regularidade jurídica;
-4. uma revisão profissional recebida pedir mudança (`ChangesRequired`) ou rejeitar (`Rejected`) uma regra do recorte;
-5. uma nova norma ou regulamentação alterar o tratamento de 2026;
-6. houver indício de acesso entre tenants, falha de segregação maker-checker ou perda de trilha de auditoria;
-7. o Product Owner decidir encerrar ou rever o piloto.
+| Critério | Efeito |
+|---|---|
+| versão revogada, substituída ou não ativa | não autoriza cálculo nem decisão novos (`tax_pilot_approval_missing`) |
+| aprovação interna retirada (`pilot-approval/withdraw`) | idem |
+| aprovação interna fora da validade | idem |
+| janela do piloto vencida ou piloto inativo | `tax_pilot_scope_expired` / `tax_pilot_scope_disabled` |
+| empresa ou loja fora do escopo, ou retirada dele | `tax_pilot_scope_tenant` / `tax_pilot_scope_store` |
+| módulo desligado (kill switch) | `tax_intelligence_disabled` |
+| modo não configurado | `tax_approval_mode_disabled` |
+| operação fora da cobertura | `tax_operation_not_supported` |
+| cálculo de origem não reproduzível (verificação da engine quebrada) | nenhuma decisão nova (`tax_calculation_not_reproducible`) |
 
-Retirar a aprovação interna faz o sistema voltar a recusar os cálculos e as decisões que dependam da regra. O registro da aprovação e da retirada fica na auditoria.
+**Manuais** (dependem de julgamento; ao ocorrer, retirar a aprovação da regra, retirar o participante, fechar a janela ou desligar o módulo):
+
+1. um cálculo diverge da fonte jurídica documentada;
+2. uma tela, um cálculo ou um dossiê apresenta a redução calculada como economia definitiva, ou o cumprimento interno como regularidade jurídica;
+3. uma revisão profissional recebida pede mudança (`ChangesRequired`) ou rejeita (`Rejected`) uma regra do recorte;
+4. uma nova norma ou regulamentação altera o tratamento de 2026;
+5. indício de acesso entre tenants, falha de segregação maker-checker ou perda de trilha de auditoria;
+6. o Product Owner decide encerrar ou rever o piloto.
+
+O registro das aprovações, retiradas e mudanças de escopo fica na auditoria.
 
 ## O que esta decisão não é
 
@@ -159,5 +220,6 @@ Retirar a aprovação interna faz o sistema voltar a recusar os cálculos e as d
 - Não cria nem atribui nome, registro em conselho profissional, assinatura ou identificação profissional.
 - Não é aprovação por ferramenta de IA.
 - Não transforma `ProfessionalReview = Pending` em aprovação.
+- Não se efetiva por migration, seed ou pela existência deste arquivo: só por ações explícitas e auditadas da plataforma.
 - Não amplia o escopo tributário além do que a v1 implementa.
 - Não autoriza o modo `ProfessionalFinal`: para isso, cada regra precisa de revisão profissional efetivamente registrada.

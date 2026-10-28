@@ -61,7 +61,7 @@ Nenhuma tabela do módulo tem exclusão por API. FKs de cálculos para versões 
 
 Eventos vão para a tabela existente `audit_records` via `IAuditWriter`, na mesma transação da mudança (gravados juntos ou nenhum dos dois). Cada evento traz: quem (`actor_id`, `actor_name`, tipo `user` ou `platform`), quando, tenant, tipo e id da entidade (`Tax*`), descrição legível e metadados com `storeId`, `requestId` (o `X-Request-Id` da requisição, que liga ao log) e detalhes (antes/depois quando há mudança de estado).
 
-Ações (`TaxAuditActions`): `tax_compliance_assessment_recorded`, `tax_calculation_refused` (fora do recorte da V1, com os motivos), `tax_opportunity_evidence_reviewed`, `tax_opportunity_execution_verified`, `tax_credit_stage_changed`, `tax_profile_version_created`, `tax_calculation_created`, `tax_simulation_created`, `tax_opportunity_identified`, `tax_opportunity_review_started`, `tax_opportunity_requirement_answered`, `tax_opportunity_evidence_added`, `tax_opportunity_blocked`, `tax_opportunity_rejected`, `tax_opportunity_approved`, `tax_credit_registered`, `tax_credit_movement`, `tax_split_expectations_created`, `tax_split_settlement_recorded`, `tax_split_settlement_reversed`, `tax_legal_source_created`, `tax_legal_source_verified` (texto conferido), `tax_rule_created`, `tax_rule_version_created`, `tax_rule_version_status_changed`, `tax_rule_version_professional_review`, `tax_rule_version_pilot_approval`, `tax_rule_version_pilot_approval_withdrawn`.
+Ações (`TaxAuditActions`): `tax_compliance_assessment_recorded`, `tax_calculation_refused` (fora do recorte da V1, com os motivos), `tax_opportunity_evidence_reviewed`, `tax_opportunity_execution_verified`, `tax_credit_stage_changed`, `tax_profile_version_created`, `tax_calculation_created`, `tax_simulation_created`, `tax_opportunity_identified`, `tax_opportunity_review_started`, `tax_opportunity_requirement_answered`, `tax_opportunity_evidence_added`, `tax_opportunity_blocked`, `tax_opportunity_rejected`, `tax_opportunity_approved`, `tax_credit_registered`, `tax_credit_movement`, `tax_split_expectations_created`, `tax_split_settlement_recorded`, `tax_split_settlement_reversed`, `tax_legal_source_created`, `tax_legal_source_verified` (texto conferido), `tax_rule_created`, `tax_rule_version_created`, `tax_rule_version_status_changed`, `tax_rule_version_professional_review`, `tax_rule_version_pilot_approval`, `tax_rule_version_pilot_approval_withdrawn`, `tax_pilot_scope_configured`, `tax_pilot_participant_added`, `tax_pilot_participant_removed`, `tax_decision_refused` (decisão ou verificação de execução recusada pelo gate, com o motivo).
 
 `tax_calculation_created` registra também a governança da execução: o modo (`ControlledPilot` ou `ProfessionalFinal`), a versão da política de aprovação, se ela estava ligada e, por regra, a aprovação interna, a revisão profissional vigente e as ressalvas. O mesmo dado fica no cálculo (`tax_calculations.governance`), fora do input e do output com hash. `tax_calculation_refused` registra também as recusas por regra não aprovada para o modo.
 
@@ -93,7 +93,14 @@ Na aprovação do cenário, `TaxDecision.dossier` congela:
 - regras aplicadas (chave, versão, id, hash do conteúdo, fontes);
 - fontes jurídicas com **o texto literal**, a URL e a conferência de texto (`textVerification` — o trecho reproduz a lei; não é parecer);
 - revisão profissional: as regras ainda sem aprovação de profissional tributário e se a política exigia aprovação profissional;
-- governança (`governance`): modo, política, se estava ligada, natureza (*INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT* no piloto), aviso de que não é parecer profissional, registro da decisão e, por regra, a aprovação interna com as ressalvas aceitas ao lado da revisão profissional;
+- governança (`governance`):
+  - modo, política e se estava ligada;
+  - natureza (*INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT* no piloto), aviso de que não é parecer profissional e aviso de modo sombra;
+  - escopo do piloto (decisão, janela, quem ativou);
+  - todas as decisões distintas (`decisionReferences`);
+  - por regra: status técnico, aprovação interna completa (política, usuário, capacidade, hora, escopo, validade, ressalvas, **referência exata da decisão**) e revisão profissional.
+
+  Uma reaprovação posterior nunca reescreve um dossiê já congelado;
 - natureza do dossiê (`nature`): registro auditável da decisão e das premissas utilizadas pelo motor, não prova definitiva de conformidade fiscal;
 - requisitos como foram respondidos (quem, quando, nota);
 - evidências (descrição, referência do documento, hash, quem anexou);

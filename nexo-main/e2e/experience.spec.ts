@@ -809,6 +809,9 @@ test('Configurações: só regras com efeito — descontos do PDV e alertas de e
 const taxOverview = { profileConfigured:true, periodFrom:'2026-09-27', periodTo:'2026-10-26', calculations:4, taxedBase:12000, estimatedTax:120, effectiveRatePercent:1,
   creditsAvailable:30, creditsBlocked:0, creditsPotential:7, creditsToBeAppropriated:5, openOpportunities:3, potentialSavings:210.5, potentialCalculatedTaxReductions:0.5, potentialDeferrals:900, potentialCashFlow:40, potentialCredits:15,
   openHighRisk:1, blockedOpportunities:1, splitDivergences:0, activeRulesToday:6, pendingRulesToday:2 };
+const taxShadowNotice = 'Piloto controlado — resultados para análise e validação. Não executa alteração fiscal, contábil ou financeira automaticamente.';
+const taxGovernanceStatus = { enabled:true, mode:'ControlledPilot', policy:'orken-pilot-approval/1', admitted:true, refusalCode:null, refusalMessage:null,
+  effectsNotice:taxShadowNotice, pilotScope:null };
 const taxOpportunity = (patch: Record<string, unknown>) => ({ id:'qa-op', type:'TaxSaving', impactNature:'DefinitiveSaving', status:'InReview', title:'Desconto condicional pode virar incondicional',
   estimatedImpact:120, risk:'High', confidence:70, createdAt:'2026-10-20T10:00:00Z', summary:'O desconto depende de pagamento em dia e por isso entra na base.', detectorKey:'conditional-discount',
   engineVersion:'orken-tax-engine/1.0.0', professionalReviewPending:true, reviewStartedByName:null,
@@ -817,9 +820,13 @@ const taxOpportunity = (patch: Record<string, unknown>) => ({ id:'qa-op', type:'
     phase:'ScenarioApproval',requiredEvidence:null,hasRequiredEvidence:true}],
   evidence:[], current:null, proposed:null, decision:null, execution:null, requiredApproval:'IndependentApprover',
   governance:{ mode:'ControlledPilot', policy:'orken-pilot-approval/1', enforced:true, nature:'INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT',
-    notice:'Não constitui parecer profissional.', notApproved:[], professionalReviewPending:['IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1'],
-    rules:[{ ruleVersionId:'qa-v3', key:'IBSCBS.BASE.UNCONDITIONAL-DISCOUNT', version:1, internalApproval:'ApprovedForControlledPilot', approvedForPilot:true,
-      pilotCaveats:'Desconto escrito na NF não é automaticamente incondicional.', professionalReview:'Pending', professionallyApproved:false, professionalCaveats:null }] },
+    notice:'Não constitui parecer profissional.', effectsNotice:taxShadowNotice, pilotScope:null, decisionReferences:['DEC-QA'],
+    notApproved:[], professionalReviewPending:['IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1'],
+    rules:[{ ruleVersionId:'qa-v3', key:'IBSCBS.BASE.UNCONDITIONAL-DISCOUNT', version:1, technicalStatus:'Active', internalApproval:'ApprovedForControlledPilot',
+      approvedForPilot:true, internalApprovalPolicy:'orken-pilot-approval/1', internalApprovedById:'qa-u', internalApprovedBy:'Operador', internalApprovedByRole:'Platform',
+      internalApprovedAt:'2026-10-28T10:00:00Z', internalApprovalScope:'Recorte 2026', internalApprovalValidFrom:'2026-01-01', internalApprovalValidTo:'2026-12-31',
+      pilotCaveats:'Desconto escrito na NF não é automaticamente incondicional.', internalApprovalDecisionRef:'DEC-QA',
+      professionalReview:'Pending', professionallyApproved:false, professionalReviewScope:null, professionalCaveats:null }] },
   ...patch });
 async function prepareTax(page: Page, opportunity: Record<string, unknown> = {}) {
   await prepare(page);
@@ -827,6 +834,7 @@ async function prepareTax(page: Page, opportunity: Record<string, unknown> = {})
     const path = new URL(route.request().url()).pathname;
     let body: unknown = [];
     if (path.endsWith('/tax/overview')) body = taxOverview;
+    else if (path.endsWith('/tax/governance')) body = taxGovernanceStatus;
     else if (path.includes('/tax/opportunities/')) body = taxOpportunity(opportunity);
     return route.fulfill({ status:200, contentType:'application/json', body:JSON.stringify(body) });
   });
@@ -861,6 +869,8 @@ test('Tributos: risco alto só aprova com a decisão assumida', async ({ page })
   // Both approvals side by side: the internal pilot approval never reads as a professional one.
   await expect(page.getByText('Aprovado internamente para piloto controlado', { exact:true })).toBeVisible();
   await expect(page.getByText('Revisão profissional pendente', { exact:true })).toBeVisible();
+  // The shadow-mode banner: the pilot never changes anything fiscal by itself.
+  await expect(page.getByRole('status').filter({ hasText:'Piloto controlado' })).toContainText('Não executa alteração fiscal, contábil ou financeira automaticamente');
   await page.getByRole('button', { name:'Aprovar' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('button', { name:'Aprovar' })).toBeDisabled();

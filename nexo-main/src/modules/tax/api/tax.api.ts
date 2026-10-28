@@ -39,13 +39,16 @@ export type TextVerificationStatus = "Verified" | "Unverified";
 export type ProfessionalReviewStatus = "Pending" | "ReviewReceived" | "Approved" | "ApprovedWithCaveats" | "ChangesRequired" | "Rejected";
 /** Internal product/governance approval for the controlled pilot — never a professional review. */
 export type InternalApprovalStatus = "NotApproved" | "ApprovedForControlledPilot" | "Withdrawn";
-export type TaxApprovalMode = "ControlledPilot" | "ProfessionalFinal";
+/** Disabled is the default: no approval mode configured, so nothing runs where approval is enforced. */
+export type TaxApprovalMode = "Disabled" | "ControlledPilot" | "ProfessionalFinal";
 
 export interface TaxInternalApprovalDto {
   status: InternalApprovalStatus;
   policy: string | null;
-  /** The governance role that decided (e.g. "Product Owner — Andrade Systems"), not a professional identity. */
+  /** The authenticated user who recorded it — a governance actor, never a professional identity. */
+  approvedById: string | null;
   approvedBy: string | null;
+  approvedByRole: string | null;
   approvedAt: string | null;
   scope: string | null;
   validFrom: string | null;
@@ -57,17 +60,37 @@ export interface TaxInternalApprovalDto {
   nature: string;
 }
 
-/** Both approval dimensions of one rule version, side by side. */
+/** Both approval dimensions of one rule version, as they stood when recorded (frozen with the calculation or dossier). */
 export interface TaxRuleGovernanceDto {
   ruleVersionId: string;
   key: string;
   version: number;
+  technicalStatus: RuleStatus;
   internalApproval: InternalApprovalStatus;
   approvedForPilot: boolean;
+  internalApprovalPolicy: string | null;
+  internalApprovedById: string | null;
+  internalApprovedBy: string | null;
+  internalApprovedByRole: string | null;
+  internalApprovedAt: string | null;
+  internalApprovalScope: string | null;
+  internalApprovalValidFrom: string | null;
+  internalApprovalValidTo: string | null;
   pilotCaveats: string | null;
+  /** The exact decision record behind this version's internal approval. */
+  internalApprovalDecisionRef: string | null;
   professionalReview: ProfessionalReviewStatus;
   professionallyApproved: boolean;
+  professionalReviewScope: string | null;
   professionalCaveats: string | null;
+}
+
+export interface TaxPilotScopeSnapshotDto {
+  decisionReference: string;
+  validFrom: string;
+  validTo: string | null;
+  activatedByName: string;
+  activatedAt: string;
 }
 
 /** The approval governance a calculation or an opportunity runs under. */
@@ -77,9 +100,26 @@ export interface TaxGovernanceDto {
   enforced: boolean;
   nature: string;
   notice: string;
+  /** In the controlled pilot: it never acts on anything fiscal, accounting or financial by itself. */
+  effectsNotice: string | null;
+  pilotScope: TaxPilotScopeSnapshotDto | null;
   rules: TaxRuleGovernanceDto[];
   notApproved: string[];
   professionalReviewPending: string[];
+  /** Every distinct decision record behind the rules. */
+  decisionReferences: string[];
+}
+
+/** Where this company/store stands today: kill switch, mode, whether new work is admitted. */
+export interface TaxGovernanceStatusDto {
+  enabled: boolean;
+  mode: TaxApprovalMode;
+  policy: string;
+  admitted: boolean;
+  refusalCode: string | null;
+  refusalMessage: string | null;
+  effectsNotice: string | null;
+  pilotScope: TaxPilotScopeSnapshotDto | null;
 }
 /** Only "Verified" satisfies a rule that needs compliance; a declaration, a remediation or PNCT participation never does. */
 export type ComplianceAssessmentStatus =
@@ -652,6 +692,7 @@ export const TAX_KEYS = {
   credits: [...TAX_KEY, "credits"] as const,
   creditTotals: [...TAX_KEY, "credits", "totals"] as const,
   splitProvider: [...TAX_KEY, "split", "provider"] as const,
+  governance: [...TAX_KEY, "governance"] as const,
   splitExpectations: (calculationId: string) => [...TAX_KEY, "split", "expectations", calculationId] as const,
   rules: [...TAX_KEY, "rules"] as const,
   legalSources: [...TAX_KEY, "legal-sources"] as const,
@@ -727,4 +768,5 @@ export const reverseSplitSettlement = (settlementId: string, reason: string) =>
   apiClient.post<SplitExpectationDto>(`/tax/split/settlements/${settlementId}/reverse`, { reason });
 
 export const listTaxRules = () => apiClient.get<TaxRuleDto[]>("/tax/rules");
+export const getTaxGovernance = () => apiClient.get<TaxGovernanceStatusDto>("/tax/governance");
 export const listLegalSources = () => apiClient.get<TaxLegalSourceDto[]>("/tax/legal-sources");

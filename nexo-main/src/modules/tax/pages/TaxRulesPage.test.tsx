@@ -20,7 +20,8 @@ const rule: api.TaxRuleDto = {
     professionalReference: null, professionalReviewScope: null, professionalReviewValidFrom: null, professionalReviewValidTo: null,
     professionalReviewAssumptions: null, professionalReviewCaveats: null,
     internalApproval: {
-      status: "ApprovedForControlledPilot", policy: "orken-pilot-approval/1", approvedBy: "Product Owner — Andrade Systems",
+      status: "ApprovedForControlledPilot", policy: "orken-pilot-approval/1", approvedById: "u-platform", approvedBy: "Operador da plataforma",
+      approvedByRole: "Platform",
       approvedAt: "2026-10-27T12:00:00Z", scope: "Recorte 2026", validFrom: "2026-01-01", validTo: "2026-12-31",
       caveats: "Cálculo nominal não é recolhimento nem efeito financeiro.", decisionReference: "docs/decisao.md",
       withdrawalReason: null, withdrawnAt: null, nature: "INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT",

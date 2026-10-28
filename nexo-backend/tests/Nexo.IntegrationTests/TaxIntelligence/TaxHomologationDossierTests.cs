@@ -20,9 +20,11 @@ namespace Nexo.IntegrationTests.TaxIntelligence;
 /// the real system — profile, compliance assessment, calculation, detector, requirements, commercial
 /// evidence, scenario approval, final fiscal document, execution verification — on a tenant of its own.
 /// Every fact is a labelled TEST FIXTURE (company, CNPJ, documents): it proves the workflow, it asserts
-/// no legal fact. It runs as the controlled pilot runs — mode ControlledPilot with the approval policy
-/// enforced — so the dossier shows the internal pilot approval beside the still pending professional
-/// review. With TAX_HOMOLOGATION_OUT set, the resulting dossiers are written to that file.
+/// no legal fact. It runs as the controlled pilot runs — Tax Intelligence enabled, mode ControlledPilot with
+/// the approval policy enforced, the pilot opened, the company admitted and the 2026 versions approved, each
+/// by an explicit platform action — so the dossier shows the internal pilot approval (with its actor and
+/// decision reference) beside the still pending professional review. With TAX_HOMOLOGATION_OUT set, the
+/// resulting dossiers are written to that file.
 /// </summary>
 [Collection("Integration")]
 public class TaxHomologationDossierTests
@@ -46,10 +48,7 @@ public class TaxHomologationDossierTests
     /// <summary>The same session on a host configured as the controlled pilot, with the approval policy enforced.</summary>
     private HttpClient Pilot(HttpClient authenticated)
     {
-        var client = _factory.WithWebHostBuilder(b => b
-            .UseSetting("TaxIntelligence:Policy:Mode", "ControlledPilot")
-            .UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "true")
-            .UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForCalculations", "true")).CreateClient();
+        var client = _factory.WithWebHostBuilder(TaxPilotSetup.Enforced("ControlledPilot")).CreateClient();
         client.DefaultRequestHeaders.Authorization = authenticated.DefaultRequestHeaders.Authorization;
         return client;
     }
@@ -84,7 +83,10 @@ public class TaxHomologationDossierTests
     public async Task A_supported_operation_goes_through_the_whole_workflow_into_a_complete_dossier()
     {
         // 1. Company (fiscal issuer) and tax profile — test fixtures.
-        var director = Pilot(await NewCompanyAsync());
+        var company = await NewCompanyAsync();
+        // 0. The operator opens the pilot, admits this company and approves the 2026 versions — explicit, audited actions.
+        await TaxPilotSetup.ReadyAsync(_factory, company);
+        var director = Pilot(company);
         (await director.PutAsJsonAsync("/api/fiscal/profile", new
         {
             legalName = "Empresa de Teste Homologação Ltda", tradeName = "Loja Teste", cnpj = "11.222.333/0001-81", stateRegistration = "ISENTO",
@@ -199,7 +201,10 @@ public class TaxHomologationDossierTests
         governance.GetProperty("enforced").GetBoolean().Should().BeTrue();
         governance.GetProperty("nature").GetString().Should().Be("INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT");
         governance.GetProperty("rules").EnumerateArray().Should().OnlyContain(r =>
-            r.GetProperty("internalApproval").GetString() == "ApprovedForControlledPilot" && r.GetProperty("professionalReview").GetString() == "Pending");
+            r.GetProperty("internalApproval").GetProperty("status").GetString() == "ApprovedForControlledPilot"
+            && r.GetProperty("internalApproval").GetProperty("decisionReference").GetString() == TaxPilotSetup.DecisionRecord
+            && r.GetProperty("professionalReview").GetProperty("status").GetString() == "Pending");
+        governance.GetProperty("effects").GetString().Should().Contain("Não executa alteração fiscal, contábil ou financeira automaticamente");
         execution.GetProperty("dossier").GetProperty("governance").GetProperty("mode").GetString().Should().Be("ControlledPilot");
         scenario.GetProperty("complianceAssessment").GetProperty("status").GetString().Should().Be("Verified");
         scenario.GetProperty("complianceAssessment").GetProperty("scope").GetString().Should().Contain("Estabelecimento de teste");

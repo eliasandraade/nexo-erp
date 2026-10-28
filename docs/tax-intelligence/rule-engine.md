@@ -57,12 +57,12 @@ Cada regra examinada vira um `TaxRuleExecution`: chave, versão, hash do conteú
   Uma revisão recebida (`ReviewReceived`) **não** é aprovação. Só `Approved` e `ApprovedWithCaveats`, dentro da validade e do escopo, sustentam decisões sob a política de produção. Ativar não aprova; revisar não ativa. Todo o catálogo V1 está `Pending`. Registro: `POST /api/platform/tax/rule-versions/{id}/professional-review` (plataforma, auditado; pedir ajuste ou rejeitar exige nota).
 - **Aprovação interna para piloto ≠ revisão profissional.** `InternalApproval` (`NotApproved`, `ApprovedForControlledPilot`, `Withdrawn`) registra a decisão interna de produto e governança da Andrade Systems de usar a versão no piloto controlado. A aprovação traz:
   - política `orken-pilot-approval/1`;
-  - papel que decidiu;
+  - usuário autenticado que registrou (id, nome, capacidade) e hora do servidor;
   - escopo e validade, dentro da vigência da versão;
   - ressalvas aceitas, que são obrigatórias;
   - registro da decisão.
 
-  Não é parecer profissional e não muda a `ProfessionalReview`: as duas coexistem. Só uma versão `Active` pode ser aprovada. O modo `ControlledPilot` aceita essa aprovação; o modo `ProfessionalFinal` só aceita a profissional. As nove versões ativas de 2026 estão aprovadas para o piloto em 2026 (ver [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md)). Registro e retirada pela plataforma, auditados:
+  Não é parecer profissional e não muda a `ProfessionalReview`: as duas coexistem. Só uma versão `Active` pode ser aprovada. O modo `ControlledPilot` aceita essa aprovação; o modo `ProfessionalFinal` só aceita a profissional. Uma versão só autoriza trabalho novo enquanto estiver `Active`: revogada ou substituída, mantém o registro, mas não autoriza mais nada. Nenhuma migration aprova versões. A decisão do piloto ([homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md)) se efetiva versão a versão pela plataforma, com auditoria:
   - `POST /api/platform/tax/rule-versions/{id}/pilot-approval`;
   - `POST /api/platform/tax/rule-versions/{id}/pilot-approval/withdraw`.
 - Versões ativas mais antigas totalmente cobertas pela nova viram `Superseded` — continuam no banco e podem ser recarregadas para reproduzir cálculos antigos.

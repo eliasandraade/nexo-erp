@@ -92,6 +92,8 @@ public sealed class TaxCalculationService
     private async Task<TaxCalculationDto> RunAsync(TaxOperationFacts facts, CancellationToken ct)
     {
         var op = facts.Operation;
+        // Kill switch, approval mode and pilot scope come first: outside them nothing runs (fail closed).
+        if (await _approvals.AdmitCalculationAsync(ct) is { } admission) await RefuseAsync(facts, admission, ct);
         var (input, profile, compliance) = await BuildInputAsync(op, ct);
         var coverage = TaxCoveragePolicyV1.Assess(op, profile.Regime);
         if (!coverage.Supported) await RefuseAsync(facts, coverage, ct);
@@ -105,7 +107,8 @@ public sealed class TaxCalculationService
         var ruleSetHash = engine.RuleSetHash(active);
         // Every active rule the engine could apply must be approved for the mode (pilot or final): fail closed.
         var governance = await _approvals.ForCalculationAsync(active.Select(r => r.VersionId).ToList(), op.OperationDate, ct);
-        if (governance.Enforced && governance.NotApproved.Count > 0) await RefuseUnapprovedAsync(facts, governance, ct);
+        if (governance.Enforced && governance.NotApproved.Count > 0)
+            await RefuseAsync(facts, TaxApprovalGate.NotApproved(governance), ct, governance.NotApproved);
         // Same facts (all of them, description included) + same rules + same engine = the same calculation.
         var factsHash = canonical.HashOf(op);
         var key = canonical.Hash($"{engine.Version}|{inputHash}|{ruleSetHash}|{facts.Source}|{facts.SourceId}|{factsHash}");
@@ -182,22 +185,24 @@ public sealed class TaxCalculationService
     }
 
     /// <summary>
-    /// Refuses a calculation whose active rules are not approved for the mode: records the attempt with the
-    /// rules concerned, then answers 422. Nothing is calculated.
+    /// Refuses a calculation the gate does not admit (kill switch, mode, pilot scope, rules not approved for
+    /// the mode): records the attempt with its reason, then answers 422. Nothing is calculated.
     /// </summary>
-    private async Task RefuseUnapprovedAsync(TaxOperationFacts facts, TaxGovernanceDto governance, CancellationToken ct)
+    private async Task RefuseAsync(TaxOperationFacts facts, TaxGateRefusal refusal, CancellationToken ct, IReadOnlyList<string>? details = null)
     {
         var op = facts.Operation;
         _audit.Record(TaxAuditActions.CalculationRefused, "Calculation", Guid.NewGuid(),
-            $"Cálculo recusado (regras não aprovadas para {governance.Mode}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
-            new { source = facts.Source.ToString(), facts.SourceId, mode = governance.Mode.ToString(), governance.Policy, notApproved = governance.NotApproved });
+            $"Cálculo recusado ({refusal.Code}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
+            new { source = facts.Source.ToString(), facts.SourceId, refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
         await _db.SaveChangesAsync(ct);
-        throw new DomainException(TaxApprovalGate.NotApprovedMessage(governance), TaxApprovalGate.NotApprovedCode(governance), governance.NotApproved);
+        _log.LogInformation("Tax calculation refused from {Source}: {Code}", facts.Source, refusal.Code);
+        throw new DomainException(refusal.Message, refusal.Code, details ?? []);
     }
 
     /// <summary>Runs the detectors again on a stored calculation (e.g. after a new detector ships). Idempotent.</summary>
     public async Task<IReadOnlyList<Guid>> DetectAgainAsync(Guid id, CancellationToken ct)
     {
+        if (await _approvals.AdmitCalculationAsync(ct) is { } refusal) throw new DomainException(refusal.Message, refusal.Code);
         var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Cálculo", id);
         // Same engine and same rules as the calculation (and the dossier that may follow).

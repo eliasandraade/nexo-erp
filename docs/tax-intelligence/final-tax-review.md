@@ -6,7 +6,7 @@ A revisão tributária anterior concluiu **"APTO APÓS AJUSTES"**. Os ajustes fo
 
 Não existe, no repositório, parecer profissional assinado. Nenhuma regra foi marcada como profissionalmente aprovada. Toda versão do catálogo continua `ProfessionalReview = Pending` até o seu registro.
 
-**Piloto controlado (27/10/2026).** O Product Owner da Andrade Systems encerrou a homologação interna e aprovou as nove versões ativas de 2026 para **piloto controlado**. É uma decisão interna de produto e governança (*INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT*), registrada em [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md), e **não substitui esta homologação profissional**. No sistema, cada versão tem as duas dimensões lado a lado: `InternalApproval = ApprovedForControlledPilot` e `ProfessionalReview = Pending`. A produção definitiva (modo `ProfessionalFinal`) continua dependendo da revisão de cada regra abaixo.
+**Piloto controlado (27/10/2026).** O Product Owner da Andrade Systems encerrou a homologação interna e decidiu liberar as nove versões ativas de 2026 para **piloto controlado**. A decisão só se efetiva no sistema por ações explícitas e auditadas da plataforma, nunca por migration. É uma decisão interna de produto e governança (*INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT*), registrada em [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md), e **não substitui esta homologação profissional**. No sistema, cada versão tem as duas dimensões lado a lado: `InternalApproval = ApprovedForControlledPilot` e `ProfessionalReview = Pending`. A produção definitiva (modo `ProfessionalFinal`) continua dependendo da revisão de cada regra abaixo.
 
 - Exemplo real preenchido pelo sistema: [homologation/example-dossier.md](homologation/example-dossier.md); o JSON completo está em [homologation/example-dossier.json](homologation/example-dossier.json).
 - Recorte aceito: [supported-operations.md](supported-operations.md).
@@ -90,7 +90,7 @@ Avaliar o dossiê real preenchido ([example-dossier.md](homologation/example-dos
 ### 7. Revisão profissional por regra
 Para cada versão abaixo, registrar o resultado: `Approved`, `ApprovedWithCaveats`, `ChangesRequired` ou `Rejected`. Em cada uma, informar **escopo**, **vigência**, **premissas** e **ressalvas**.
 
-| Regra | Versão | Revisão profissional | Aprovação interna (piloto) |
+| Regra | Versão | Revisão profissional | Decisão de piloto (registrada por ação explícita) |
 |---|---|---|---|
 | `IBSCBS.BASE.SURCHARGES` | 1 | Pending | ApprovedForControlledPilot (2026) |
 | `IBSCBS.BASE.CONDITIONAL-DISCOUNT` | 1 | Pending | ApprovedForControlledPilot (2026) |
