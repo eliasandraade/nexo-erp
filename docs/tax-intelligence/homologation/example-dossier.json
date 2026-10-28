@@ -1,9 +1,9 @@
 {
-  "notice": "Exemplo de homologação gerado pelo próprio sistema (teste de integração TaxHomologationDossierTests) sobre dados controlados de teste: empresa, CNPJ, documentos e conferências são fictícios. Prova o fluxo; não afirma fato jurídico. Nenhuma regra está profissionalmente aprovada. O hash demonstra integridade, não veracidade material.",
+  "notice": "Exemplo de homologação gerado pelo próprio sistema (teste de integração TaxHomologationDossierTests) sobre dados controlados de teste: empresa, CNPJ, documentos e conferências são fictícios. Prova o fluxo; não afirma fato jurídico. Executado como piloto controlado: as regras têm aprovação interna de produto e governança para o piloto (INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT), que não é parecer profissional; a revisão profissional de todas continua pendente. O hash demonstra integridade, não veracidade material.",
   "calculation": {
-    "id": "48ede933-cad0-489c-928c-f208053c4fe6",
+    "id": "143b627c-7071-43a7-81c2-ce7150f5679b",
     "engineVersion": "orken-tax-engine/1.0.0",
-    "inputHash": "4baa643c5a46dcf5d198b7b5635b190634691abe3d485385df9ba1d40ce0c388",
+    "inputHash": "0a064e811f4129daeba45bc2318495efe4aebd798ad593ca259a34f151821272",
     "ruleSetHash": "2081c4a6802ddb811cbbd305efe1f8fb13a1fe8aada92d743efec03443518fe5",
     "outputHash": "42421c55fc626e31916b554d3908cc232bd64aa09b826777ca5d26786063d5f0",
     "totalBase": 9100.00,
@@ -17,6 +17,236 @@
         "Itens sem regime diferenciado ou específico, com a classificação informada; o cClassTrib é registrado, não interpretado pela V1."
       ],
       "supported": true
+    },
+    "governance": {
+      "mode": "ControlledPilot",
+      "policy": "orken-pilot-approval/1",
+      "enforced": true,
+      "nature": "INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT",
+      "notice": "Decisão interna de produto e governança da Andrade Systems para o piloto controlado. Não constitui parecer jurídico, contábil ou tributário profissional.",
+      "effectsNotice": "Piloto controlado — resultados para análise e validação. Não executa alteração fiscal, contábil ou financeira automaticamente.",
+      "pilotScope": {
+        "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+        "validFrom": "2026-01-01",
+        "validTo": null,
+        "activatedByName": "platform-test@nexo.test",
+        "activatedAt": "2026-10-28T05:57:24.870894Z"
+      },
+      "rules": [
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+          "key": "CBS.RATE.2026-TEST",
+          "version": 1,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.092731Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        },
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+          "key": "IBS.RATE.2026-TEST-STATE",
+          "version": 1,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.131544Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        },
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000002",
+          "key": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+          "version": 1,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.140451Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        },
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000001",
+          "key": "IBSCBS.BASE.SURCHARGES",
+          "version": 1,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.148358Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        },
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000004",
+          "key": "IBSCBS.BASE.TRANSITION-TAXES",
+          "version": 1,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.156004Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        },
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000003",
+          "key": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+          "version": 1,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.163192Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        },
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000008",
+          "key": "IBSCBS.NOTE.2026-COMPENSATION",
+          "version": 1,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.170718Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        },
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000007",
+          "key": "IBSCBS.NOTE.2026-SIMPLES",
+          "version": 1,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.183238Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        },
+        {
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000109",
+          "key": "IBSCBS.NOTE.2026-WAIVER",
+          "version": 2,
+          "technicalStatus": "Active",
+          "internalApproval": "ApprovedForControlledPilot",
+          "approvedForPilot": true,
+          "internalApprovalPolicy": "orken-pilot-approval/1",
+          "internalApprovedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+          "internalApprovedBy": "platform-test@nexo.test",
+          "internalApprovedByRole": "super_admin",
+          "internalApprovedAt": "2026-10-28T05:57:25.191016Z",
+          "internalApprovalScope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+          "internalApprovalValidFrom": "2026-01-01",
+          "internalApprovalValidTo": "2026-12-31",
+          "pilotCaveats": "Ressalvas aceitas na decisão interna (teste).",
+          "internalApprovalDecisionRef": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "professionalReview": "Pending",
+          "professionallyApproved": false,
+          "professionalReviewScope": null,
+          "professionalCaveats": null
+        }
+      ],
+      "notApproved": [],
+      "professionalReviewPending": [
+        "CBS.RATE.2026-TEST v1",
+        "IBS.RATE.2026-TEST-STATE v1",
+        "IBSCBS.BASE.CONDITIONAL-DISCOUNT v1",
+        "IBSCBS.BASE.SURCHARGES v1",
+        "IBSCBS.BASE.TRANSITION-TAXES v1",
+        "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1",
+        "IBSCBS.NOTE.2026-COMPENSATION v1",
+        "IBSCBS.NOTE.2026-SIMPLES v1",
+        "IBSCBS.NOTE.2026-WAIVER v2"
+      ],
+      "decisionReferences": [
+        "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+      ]
     },
     "advisories": [
       "Obrigações verificadas no período e no escopo indicados: 01/06/2026 a 30/06/2026, Estabelecimento de teste — NF-e de saída do período (avaliado por Contabilidade de teste); limitações: Dados controlados de teste; não representam uma conferência real.."
@@ -50,79 +280,79 @@
     "caveats": "Muda a condição comercial: o desconto deixa de depender de pagamento antecipado, meta ou outro evento futuro. É redução do IBS/CBS calculado sobre a operação, não economia definitiva: o efeito econômico depende do período e de revisão profissional. Em 2026 o IBS e a CBS calculados são compensáveis com PIS/Cofins ou dispensados para quem cumpre as obrigações acessórias (LC 214/2025, art. 348): a redução aparece no valor destacado, não no caixa do período.",
     "requirements": [
       {
-        "id": "1eb46e31-d8f3-49ac-8eff-c1e58bf17558",
+        "id": "7e80f6db-653f-4817-aefe-f72b72fd89ad",
         "code": "commercial-terms",
         "text": "Um instrumento comercial (proposta, pedido, contrato ou aditivo) sustenta o preço com o desconto sem condição.",
         "legalSourceCode": null,
         "met": true,
         "note": "Aditivo ADITIVO-TESTE-001 assinado antes do fato gerador (fixture).",
         "answeredByName": "Analista de Teste",
-        "answeredAt": "2026-10-27T09:10:54.841869Z",
+        "answeredAt": "2026-10-28T05:57:27.0552Z",
         "phase": "ScenarioApproval",
         "requiredEvidence": "CommercialInstrument",
         "hasRequiredEvidence": true
       },
       {
-        "id": "3a402594-8c5f-4768-bb87-b803e3f014d2",
+        "id": "0a5b42e6-263d-4272-810d-2889f037c28a",
         "code": "condition-removed",
         "text": "A condição que deixa de existir está identificada (ex.: pagamento antecipado, meta de volume).",
         "legalSourceCode": null,
         "met": true,
         "note": "Condição removida: desconto dependia de pagamento antecipado (fixture).",
         "answeredByName": "Analista de Teste",
-        "answeredAt": "2026-10-27T09:10:54.871214Z",
+        "answeredAt": "2026-10-28T05:57:27.078429Z",
         "phase": "ScenarioApproval",
         "requiredEvidence": null,
         "hasRequiredEvidence": true
       },
       {
-        "id": "c9b894b6-d368-4939-94d4-3dc3a9541cf7",
+        "id": "153d5491-a2b9-4c7f-9fa1-ea6e27757740",
         "code": "no-later-event",
         "text": "O desconto não depende de evento posterior (pagamento antecipado, meta de volume, devolução…).",
         "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
         "met": true,
         "note": "O desconto passa a constar do preço, sem depender de evento posterior (fixture).",
         "answeredByName": "Analista de Teste",
-        "answeredAt": "2026-10-27T09:10:54.88995Z",
+        "answeredAt": "2026-10-28T05:57:27.098867Z",
         "phase": "ScenarioApproval",
         "requiredEvidence": null,
         "hasRequiredEvidence": true
       },
       {
-        "id": "82ab76c1-d4f0-49c3-b772-794a876d463a",
+        "id": "f7c4d46f-5cbe-41ed-9125-6a2194957f5f",
         "code": "no-recharge",
         "text": "O valor descontado não volta a ser cobrado se a antiga condição não ocorrer.",
         "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
         "met": true,
         "note": "O aditivo não prevê cobrança do valor se a antiga condição não ocorrer (fixture).",
         "answeredByName": "Analista de Teste",
-        "answeredAt": "2026-10-27T09:10:54.906191Z",
+        "answeredAt": "2026-10-28T05:57:27.117092Z",
         "phase": "ScenarioApproval",
         "requiredEvidence": null,
         "hasRequiredEvidence": true
       },
       {
-        "id": "9532241f-4744-4328-be65-7457566ee82e",
+        "id": "95274331-150b-42ac-b23a-61629c80a558",
         "code": "on-document",
         "text": "O desconto consta do documento fiscal autorizado da operação.",
         "legalSourceCode": "LC214-2025-ART12-P2-III-P3",
         "met": true,
         "note": "Desconto destacado na NF-e NFE-TESTE-0001 (fixture).",
         "answeredByName": "Analista de Teste",
-        "answeredAt": "2026-10-27T09:10:55.114235Z",
+        "answeredAt": "2026-10-28T05:57:27.38812Z",
         "phase": "ExecutionVerification",
         "requiredEvidence": "FiscalDocument",
         "hasRequiredEvidence": true
       },
       {
-        "id": "17a5ebc0-73aa-4262-a916-9fe95907294d",
+        "id": "b0bc7fec-9900-4198-a274-51821331cd7a",
         "code": "price-reduced",
         "text": "O preço efetivamente cobrado reflete a redução (valores finais conferidos).",
         "legalSourceCode": null,
         "met": true,
         "note": "Valor cobrado conferido com o aditivo (fixture).",
         "answeredByName": "Analista de Teste",
-        "answeredAt": "2026-10-27T09:10:55.130678Z",
+        "answeredAt": "2026-10-28T05:57:27.415353Z",
         "phase": "ExecutionVerification",
         "requiredEvidence": null,
         "hasRequiredEvidence": true
@@ -130,31 +360,31 @@
     ],
     "evidence": [
       {
-        "id": "63d715d7-020d-4fcd-83a1-2001f59eded5",
+        "id": "963a72ba-e1e0-4af0-b308-98ca4e65da26",
         "type": "CommercialInstrument",
-        "requirementId": "1eb46e31-d8f3-49ac-8eff-c1e58bf17558",
+        "requirementId": "7e80f6db-653f-4817-aefe-f72b72fd89ad",
         "description": "Aditivo ao pedido PED-TESTE-001: preço com desconto fixo, sem condição de pagamento antecipado",
         "documentReference": "ADITIVO-TESTE-001",
-        "contentHash": "ba0341cd9ebf35f202a6f8d3e2ea36c09f5f63ae240585c01f2d1ef82e551c55",
+        "contentHash": "78f4632a4dc544f3b1e3181360aeffd1857f8a454879bc7b053a3e607824fc2f",
         "notes": "FIXTURE DE TESTE — dado controlado, não real",
         "status": "Submitted",
         "addedByName": "Analista de Teste",
-        "createdAt": "2026-10-27T09:10:54.778339Z",
+        "createdAt": "2026-10-28T05:57:26.973396Z",
         "reviewedByName": null,
         "reviewedAt": null,
         "reviewNotes": null
       },
       {
-        "id": "a1f5e4b0-f27d-4331-9d93-ae8181cb0543",
+        "id": "46bc464c-c589-45cd-ad2d-080085684c65",
         "type": "FiscalDocument",
-        "requirementId": "9532241f-4744-4328-be65-7457566ee82e",
+        "requirementId": "95274331-150b-42ac-b23a-61629c80a558",
         "description": "NF-e autorizada com o desconto destacado no documento",
         "documentReference": "NFE-TESTE-0001",
-        "contentHash": "51a50b662c16633711478026e573219b92d659235def53e2d715279e1968c6a6",
+        "contentHash": "c1ad8c0464a816ada0a334008b23ea7f69d349ec9891b641c05b609902be187b",
         "notes": "FIXTURE DE TESTE — dado controlado, não real",
         "status": "Submitted",
         "addedByName": "Analista de Teste",
-        "createdAt": "2026-10-27T09:10:55.095575Z",
+        "createdAt": "2026-10-28T05:57:27.348401Z",
         "reviewedByName": null,
         "reviewedAt": null,
         "reviewNotes": null
@@ -162,14 +392,15 @@
     ]
   },
   "scenarioDecision": {
-    "dossierHash": "cfe66bf42ffab8e1be28337163add65e31b47d64d8eb9768404ec7ec0ffbc2c4",
+    "dossierHash": "43ef260eb74b14dde0c9e9a4c93fdeab1970d3469b394637b7cece2e128c34b0",
     "approvedByName": "Empresa de Teste Homologação Ltda",
     "dossier": {
       "kind": "scenario-approval",
+      "nature": "Registro auditável da decisão e das premissas utilizadas pelo motor. Não é prova definitiva de conformidade fiscal.",
       "integrityNotice": "O hash e a versão demonstram a integridade deste registro — que ele não foi alterado — e não a veracidade material dos fatos declarados.",
       "strategy": "Conceder o desconto como incondicional",
       "opportunity": {
-        "id": "9c5fd6dd-b78a-4795-a7f8-df2cd1a21764",
+        "id": "1df5784d-f6a3-413f-94f7-f752731f548c",
         "type": "CalculatedTaxReduction",
         "nature": "CalculatedTaxReduction",
         "summary": "R$ 500.00 de desconto concedido sob condição integram a base do IBS e da CBS. Concedido sem condição e destacado no documento fiscal, sai da base: redução do IBS/CBS calculado de 5.00 nesta operação.",
@@ -185,8 +416,8 @@
         "cityIbgeCode": "3550308"
       },
       "establishment": {
-        "storeId": "b9876447-58f7-45bb-846c-49889daf2cb3",
-        "profileVersionId": "4845342e-d7ca-43e2-b8b6-f383faf82f55",
+        "storeId": "0edaee05-02d4-4926-ace0-5bb59e82d3b0",
+        "profileVersionId": "542e3848-f13c-4ad3-bea3-539607bebdf0",
         "versionNumber": 1,
         "regime": "LucroPresumido",
         "state": "SP",
@@ -218,16 +449,16 @@
         }
       ],
       "facts": {
-        "id": "48ede933-cad0-489c-928c-f208053c4fe6",
+        "id": "143b627c-7071-43a7-81c2-ce7150f5679b",
         "referenceDate": "2026-06-15",
-        "inputHash": "4baa643c5a46dcf5d198b7b5635b190634691abe3d485385df9ba1d40ce0c388",
+        "inputHash": "0a064e811f4129daeba45bc2318495efe4aebd798ad593ca259a34f151821272",
         "ruleSetHash": "2081c4a6802ddb811cbbd305efe1f8fb13a1fe8aada92d743efec03443518fe5",
         "outputHash": "42421c55fc626e31916b554d3908cc232bd64aa09b826777ca5d26786063d5f0",
         "engineVersion": "orken-tax-engine/1.0.0",
         "input": {
           "referenceDate": "2026-06-15",
           "profile": {
-            "profileVersionId": "4845342e-d7ca-43e2-b8b6-f383faf82f55",
+            "profileVersionId": "542e3848-f13c-4ad3-bea3-539607bebdf0",
             "regime": "LucroPresumido",
             "state": "SP",
             "cityIbgeCode": "3550308",
@@ -256,7 +487,7 @@
         "input": {
           "referenceDate": "2026-06-15",
           "profile": {
-            "profileVersionId": "4845342e-d7ca-43e2-b8b6-f383faf82f55",
+            "profileVersionId": "542e3848-f13c-4ad3-bea3-539607bebdf0",
             "regime": "LucroPresumido",
             "state": "SP",
             "cityIbgeCode": "3550308",
@@ -582,7 +813,7 @@
         "input": {
           "referenceDate": "2026-06-15",
           "profile": {
-            "profileVersionId": "4845342e-d7ca-43e2-b8b6-f383faf82f55",
+            "profileVersionId": "542e3848-f13c-4ad3-bea3-539607bebdf0",
             "regime": "LucroPresumido",
             "state": "SP",
             "cityIbgeCode": "3550308",
@@ -911,39 +1142,11 @@
       },
       "rules": [
         {
-          "ruleKey": "IBS.RATE.2026-TEST-STATE",
+          "ruleKey": "IBSCBS.BASE.TRANSITION-TAXES",
           "ruleVersion": 1,
-          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
-          "contentHash": "acfeedf5b258de43d760e27a6e9f945b0f8ff541678ced46e1309dbd23e7e76a",
-          "legalSourceCodes": "LC214-2025-ART343,LC214-2025-ART348"
-        },
-        {
-          "ruleKey": "CBS.RATE.2026-TEST",
-          "ruleVersion": 1,
-          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
-          "contentHash": "e2de5c9cde13f0cb9e4f1c8820d84e2401e08bd05ea727cb9994677252fa09c4",
-          "legalSourceCodes": "LC214-2025-ART346,LC214-2025-ART348"
-        },
-        {
-          "ruleKey": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
-          "ruleVersion": 1,
-          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000002",
-          "contentHash": "6ceb5f96f39abf737b5feccb3f516fefc53fc1de45dcd6db7819ebe30a22b47c",
-          "legalSourceCodes": "LC214-2025-ART12-CAPUT-P1"
-        },
-        {
-          "ruleKey": "IBSCBS.BASE.SURCHARGES",
-          "ruleVersion": 1,
-          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000001",
-          "contentHash": "a876b32b8467f4079ffd8bd892522c89c2415909660b43a326f45c7b157fbf48",
-          "legalSourceCodes": "LC214-2025-ART12-CAPUT-P1"
-        },
-        {
-          "ruleKey": "IBSCBS.NOTE.2026-WAIVER",
-          "ruleVersion": 2,
-          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000109",
-          "contentHash": "87345221b058670aee375166c8e97025a230c28793ad18639261a40a47e55121",
-          "legalSourceCodes": "LC214-2025-ART348"
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000004",
+          "contentHash": "8fe5f049b57aab0c71b0bf9bc466262a6ea4b23418e1e160e501e0d92b22ff93",
+          "legalSourceCodes": "LC214-2025-ART12-P2-V"
         },
         {
           "ruleKey": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
@@ -953,11 +1156,32 @@
           "legalSourceCodes": "LC214-2025-ART12-P2-III-P3"
         },
         {
-          "ruleKey": "IBSCBS.BASE.TRANSITION-TAXES",
+          "ruleKey": "CBS.RATE.2026-TEST",
           "ruleVersion": 1,
-          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000004",
-          "contentHash": "8fe5f049b57aab0c71b0bf9bc466262a6ea4b23418e1e160e501e0d92b22ff93",
-          "legalSourceCodes": "LC214-2025-ART12-P2-V"
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+          "contentHash": "e2de5c9cde13f0cb9e4f1c8820d84e2401e08bd05ea727cb9994677252fa09c4",
+          "legalSourceCodes": "LC214-2025-ART346,LC214-2025-ART348"
+        },
+        {
+          "ruleKey": "IBSCBS.NOTE.2026-WAIVER",
+          "ruleVersion": 2,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000109",
+          "contentHash": "87345221b058670aee375166c8e97025a230c28793ad18639261a40a47e55121",
+          "legalSourceCodes": "LC214-2025-ART348"
+        },
+        {
+          "ruleKey": "IBSCBS.BASE.SURCHARGES",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000001",
+          "contentHash": "a876b32b8467f4079ffd8bd892522c89c2415909660b43a326f45c7b157fbf48",
+          "legalSourceCodes": "LC214-2025-ART12-CAPUT-P1"
+        },
+        {
+          "ruleKey": "IBS.RATE.2026-TEST-STATE",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+          "contentHash": "acfeedf5b258de43d760e27a6e9f945b0f8ff541678ced46e1309dbd23e7e76a",
+          "legalSourceCodes": "LC214-2025-ART343,LC214-2025-ART348"
         },
         {
           "ruleKey": "IBSCBS.NOTE.2026-COMPENSATION",
@@ -965,6 +1189,13 @@
           "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000008",
           "contentHash": "d6130ea8c549084ba1e5cd517915b05c603564f96a2363057634a2c01034755b",
           "legalSourceCodes": "LC214-2025-ART348"
+        },
+        {
+          "ruleKey": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+          "ruleVersion": 1,
+          "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000002",
+          "contentHash": "6ceb5f96f39abf737b5feccb3f516fefc53fc1de45dcd6db7819ebe30a22b47c",
+          "legalSourceCodes": "LC214-2025-ART12-CAPUT-P1"
         }
       ],
       "legalSources": [
@@ -1128,6 +1359,244 @@
           }
         ]
       },
+      "governance": {
+        "mode": "ControlledPilot",
+        "policy": "orken-pilot-approval/1",
+        "enforced": true,
+        "nature": "INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT",
+        "notice": "Decisão interna de produto e governança da Andrade Systems para o piloto controlado. Não constitui parecer jurídico, contábil ou tributário profissional.",
+        "effects": "Piloto controlado — resultados para análise e validação. Não executa alteração fiscal, contábil ou financeira automaticamente.",
+        "pilotScope": {
+          "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "activatedByName": "platform-test@nexo.test",
+          "activatedAt": "2026-10-28T05:57:24.870894Z"
+        },
+        "decisionReferences": [
+          "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+        ],
+        "rules": [
+          {
+            "key": "CBS.RATE.2026-TEST",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.092731Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBS.RATE.2026-TEST-STATE",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.131544Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000002",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.140451Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.BASE.SURCHARGES",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000001",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.148358Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.BASE.TRANSITION-TAXES",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000004",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.156004Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000003",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.163192Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.NOTE.2026-COMPENSATION",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000008",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.170718Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.NOTE.2026-WAIVER",
+            "version": 2,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000109",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.191016Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          }
+        ],
+        "professionalReviewPending": [
+          "CBS.RATE.2026-TEST v1",
+          "IBS.RATE.2026-TEST-STATE v1",
+          "IBSCBS.BASE.CONDITIONAL-DISCOUNT v1",
+          "IBSCBS.BASE.SURCHARGES v1",
+          "IBSCBS.BASE.TRANSITION-TAXES v1",
+          "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1",
+          "IBSCBS.NOTE.2026-COMPENSATION v1",
+          "IBSCBS.NOTE.2026-WAIVER v2"
+        ]
+      },
       "complianceAssessment": {
         "status": "Verified",
         "periodFrom": "2026-06-01",
@@ -1137,7 +1606,7 @@
           "Emissão de NF-e com os campos de IBS/CBS preenchidos (fixture)"
         ],
         "assessedBy": "Contabilidade de teste",
-        "assessedAt": "2026-10-27T09:10:53.518144Z",
+        "assessedAt": "2026-10-28T05:57:25.560164Z",
         "limitations": "Dados controlados de teste; não representam uma conferência real.",
         "pnctParticipation": false
       },
@@ -1150,7 +1619,7 @@
           "met": true,
           "note": "Aditivo ADITIVO-TESTE-001 assinado antes do fato gerador (fixture).",
           "answeredByName": "Analista de Teste",
-          "answeredAt": "2026-10-27T09:10:54.841869Z",
+          "answeredAt": "2026-10-28T05:57:27.0552Z",
           "requiredEvidence": "CommercialInstrument"
         },
         {
@@ -1161,7 +1630,7 @@
           "met": true,
           "note": "Condição removida: desconto dependia de pagamento antecipado (fixture).",
           "answeredByName": "Analista de Teste",
-          "answeredAt": "2026-10-27T09:10:54.871214Z",
+          "answeredAt": "2026-10-28T05:57:27.078429Z",
           "requiredEvidence": null
         },
         {
@@ -1172,7 +1641,7 @@
           "met": true,
           "note": "O desconto passa a constar do preço, sem depender de evento posterior (fixture).",
           "answeredByName": "Analista de Teste",
-          "answeredAt": "2026-10-27T09:10:54.88995Z",
+          "answeredAt": "2026-10-28T05:57:27.098867Z",
           "requiredEvidence": null
         },
         {
@@ -1183,7 +1652,7 @@
           "met": true,
           "note": "O aditivo não prevê cobrança do valor se a antiga condição não ocorrer (fixture).",
           "answeredByName": "Analista de Teste",
-          "answeredAt": "2026-10-27T09:10:54.906191Z",
+          "answeredAt": "2026-10-28T05:57:27.117092Z",
           "requiredEvidence": null
         },
         {
@@ -1212,14 +1681,14 @@
       "commercialEvidence": [
         {
           "type": "CommercialInstrument",
-          "requirementId": "1eb46e31-d8f3-49ac-8eff-c1e58bf17558",
+          "requirementId": "7e80f6db-653f-4817-aefe-f72b72fd89ad",
           "description": "Aditivo ao pedido PED-TESTE-001: preço com desconto fixo, sem condição de pagamento antecipado",
           "documentReference": "ADITIVO-TESTE-001",
-          "contentHash": "ba0341cd9ebf35f202a6f8d3e2ea36c09f5f63ae240585c01f2d1ef82e551c55",
+          "contentHash": "78f4632a4dc544f3b1e3181360aeffd1857f8a454879bc7b053a3e607824fc2f",
           "status": "Submitted",
           "notes": "FIXTURE DE TESTE — dado controlado, não real",
           "addedByName": "Analista de Teste",
-          "createdAt": "2026-10-27T09:10:54.778339Z",
+          "createdAt": "2026-10-28T05:57:26.973396Z",
           "reviewedByName": null,
           "reviewedAt": null,
           "reviewNotes": null
@@ -1228,14 +1697,14 @@
       "evidence": [
         {
           "type": "CommercialInstrument",
-          "requirementId": "1eb46e31-d8f3-49ac-8eff-c1e58bf17558",
+          "requirementId": "7e80f6db-653f-4817-aefe-f72b72fd89ad",
           "description": "Aditivo ao pedido PED-TESTE-001: preço com desconto fixo, sem condição de pagamento antecipado",
           "documentReference": "ADITIVO-TESTE-001",
-          "contentHash": "ba0341cd9ebf35f202a6f8d3e2ea36c09f5f63ae240585c01f2d1ef82e551c55",
+          "contentHash": "78f4632a4dc544f3b1e3181360aeffd1857f8a454879bc7b053a3e607824fc2f",
           "status": "Submitted",
           "notes": "FIXTURE DE TESTE — dado controlado, não real",
           "addedByName": "Analista de Teste",
-          "createdAt": "2026-10-27T09:10:54.778339Z",
+          "createdAt": "2026-10-28T05:57:26.973396Z",
           "reviewedByName": null,
           "reviewedAt": null,
           "reviewNotes": null
@@ -1255,10 +1724,10 @@
       "highRiskAcknowledged": false,
       "reviewStartedBy": "Analista de Teste",
       "approvedBy": {
-        "id": "e9ec6386-9b74-4a84-b959-c33ad0eeaf60",
+        "id": "9b8b51f2-1003-4aaf-85d6-9b4d756d4cd4",
         "name": "Empresa de Teste Homologação Ltda"
       },
-      "approvedAt": "2026-10-27T09:10:54.9316304Z",
+      "approvedAt": "2026-10-28T05:57:27.1837507Z",
       "makerChecker": {
         "required": "SelfApprovalWithJustification",
         "materialityThreshold": null,
@@ -1271,14 +1740,15 @@
   },
   "executionVerification": {
     "outcome": "Verified",
-    "dossierHash": "31f2098e57d7fed259c7c6d963f7df2adab576ed8ae94698b1524ca50b33d5d4",
+    "dossierHash": "d81d6f0a52b50c487e0d5826562b99072fe19543c3c5f56963a26f5dc6ad0502",
     "dossier": {
       "kind": "execution-verification",
+      "nature": "Registro auditável da decisão e das premissas utilizadas pelo motor. Não é prova definitiva de conformidade fiscal.",
       "integrityNotice": "O hash e a versão demonstram a integridade deste registro — que ele não foi alterado — e não a veracidade material dos fatos declarados.",
       "decision": {
-        "id": "28cefbc4-11de-4eca-97db-a1e70a843e92",
-        "dossierHash": "cfe66bf42ffab8e1be28337163add65e31b47d64d8eb9768404ec7ec0ffbc2c4",
-        "approvedAt": "2026-10-27T09:10:54.93163Z",
+        "id": "c2a93a5c-023f-42ee-9462-9f5d1a2cc617",
+        "dossierHash": "43ef260eb74b14dde0c9e9a4c93fdeab1970d3469b394637b7cece2e128c34b0",
+        "approvedAt": "2026-10-28T05:57:27.18375Z",
         "approvedByName": "Empresa de Teste Homologação Ltda"
       },
       "outcome": "Verified",
@@ -1293,7 +1763,7 @@
           "met": true,
           "note": "Desconto destacado na NF-e NFE-TESTE-0001 (fixture).",
           "answeredByName": "Analista de Teste",
-          "answeredAt": "2026-10-27T09:10:55.114235Z",
+          "answeredAt": "2026-10-28T05:57:27.38812Z",
           "requiredEvidence": "FiscalDocument"
         },
         {
@@ -1302,21 +1772,21 @@
           "met": true,
           "note": "Valor cobrado conferido com o aditivo (fixture).",
           "answeredByName": "Analista de Teste",
-          "answeredAt": "2026-10-27T09:10:55.130678Z",
+          "answeredAt": "2026-10-28T05:57:27.415353Z",
           "requiredEvidence": null
         }
       ],
       "fiscalDocumentEvidence": [
         {
           "type": "FiscalDocument",
-          "requirementId": "9532241f-4744-4328-be65-7457566ee82e",
+          "requirementId": "95274331-150b-42ac-b23a-61629c80a558",
           "description": "NF-e autorizada com o desconto destacado no documento",
           "documentReference": "NFE-TESTE-0001",
-          "contentHash": "51a50b662c16633711478026e573219b92d659235def53e2d715279e1968c6a6",
+          "contentHash": "c1ad8c0464a816ada0a334008b23ea7f69d349ec9891b641c05b609902be187b",
           "status": "Submitted",
           "notes": "FIXTURE DE TESTE — dado controlado, não real",
           "addedByName": "Analista de Teste",
-          "createdAt": "2026-10-27T09:10:55.095575Z",
+          "createdAt": "2026-10-28T05:57:27.348401Z",
           "reviewedByName": null,
           "reviewedAt": null,
           "reviewNotes": null
@@ -1324,10 +1794,248 @@
       ],
       "notes": "Execução conferida com documentos de teste (FIXTURE DE TESTE — dado controlado, não real).",
       "verifiedBy": {
-        "id": "e9ec6386-9b74-4a84-b959-c33ad0eeaf60",
+        "id": "9b8b51f2-1003-4aaf-85d6-9b4d756d4cd4",
         "name": "Empresa de Teste Homologação Ltda"
       },
-      "verifiedAt": "2026-10-27T09:10:55.1621091Z",
+      "verifiedAt": "2026-10-28T05:57:27.4670313Z",
+      "governance": {
+        "mode": "ControlledPilot",
+        "policy": "orken-pilot-approval/1",
+        "enforced": true,
+        "nature": "INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT",
+        "notice": "Decisão interna de produto e governança da Andrade Systems para o piloto controlado. Não constitui parecer jurídico, contábil ou tributário profissional.",
+        "effects": "Piloto controlado — resultados para análise e validação. Não executa alteração fiscal, contábil ou financeira automaticamente.",
+        "pilotScope": {
+          "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md",
+          "validFrom": "2026-01-01",
+          "validTo": null,
+          "activatedByName": "platform-test@nexo.test",
+          "activatedAt": "2026-10-28T05:57:24.870894Z"
+        },
+        "decisionReferences": [
+          "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+        ],
+        "rules": [
+          {
+            "key": "CBS.RATE.2026-TEST",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000005",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.092731Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBS.RATE.2026-TEST-STATE",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000006",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.131544Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.BASE.CONDITIONAL-DISCOUNT",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000002",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.140451Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.BASE.SURCHARGES",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000001",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.148358Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.BASE.TRANSITION-TAXES",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000004",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.156004Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000003",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.163192Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.NOTE.2026-COMPENSATION",
+            "version": 1,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000008",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.170718Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          },
+          {
+            "key": "IBSCBS.NOTE.2026-WAIVER",
+            "version": 2,
+            "ruleVersionId": "7a9c3e00-0000-4000-8000-000000000109",
+            "technicalStatus": "Active",
+            "internalApproval": {
+              "status": "ApprovedForControlledPilot",
+              "approvedForPilot": true,
+              "policy": "orken-pilot-approval/1",
+              "approvedById": "a75e9663-3e2f-4215-a1bd-13d861fc1246",
+              "approvedBy": "platform-test@nexo.test",
+              "approvedByRole": "super_admin",
+              "approvedAt": "2026-10-28T05:57:25.191016Z",
+              "scope": "Recorte suportado da v1 em piloto controlado (teste de integração)",
+              "validFrom": "2026-01-01",
+              "validTo": "2026-12-31",
+              "caveats": "Ressalvas aceitas na decisão interna (teste).",
+              "decisionReference": "docs/tax-intelligence/homologation/internal-pilot-approval-2026.md"
+            },
+            "professionalReview": {
+              "status": "Pending",
+              "approved": false,
+              "scope": null,
+              "caveats": null
+            }
+          }
+        ],
+        "professionalReviewPending": [
+          "CBS.RATE.2026-TEST v1",
+          "IBS.RATE.2026-TEST-STATE v1",
+          "IBSCBS.BASE.CONDITIONAL-DISCOUNT v1",
+          "IBSCBS.BASE.SURCHARGES v1",
+          "IBSCBS.BASE.TRANSITION-TAXES v1",
+          "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1",
+          "IBSCBS.NOTE.2026-COMPENSATION v1",
+          "IBSCBS.NOTE.2026-WAIVER v2"
+        ]
+      },
       "engineVersion": "orken-tax-engine/1.0.0",
       "canonicalVersion": "orken-canonical/1"
     }

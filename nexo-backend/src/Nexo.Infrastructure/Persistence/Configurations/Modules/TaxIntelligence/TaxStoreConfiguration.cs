@@ -129,6 +129,10 @@ internal sealed class TaxCalculationConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.TotalTax).Money("total_tax");
         b.Property(x => x.CreatedById).HasColumnName("created_by_id").IsRequired();
         b.Property(x => x.ComplianceAssessmentId).HasColumnName("compliance_assessment_id");
+        b.Property(x => x.ApprovalMode).HasColumnName("approval_mode").HasConversion<string>().HasMaxLength(30);
+        b.Property(x => x.ApprovalPolicy).HasColumnName("approval_policy").HasMaxLength(60);
+        b.Property(x => x.ApprovalEnforced).HasColumnName("approval_enforced");
+        b.Property(x => x.GovernanceJson).HasColumnName("governance").HasColumnType("json");
         b.HasOne<TaxComplianceAssessment>().WithMany().HasForeignKey(x => x.ComplianceAssessmentId)
             .HasConstraintName("fk_tax_calculations_compliance_assessments").OnDelete(DeleteBehavior.Restrict);
 

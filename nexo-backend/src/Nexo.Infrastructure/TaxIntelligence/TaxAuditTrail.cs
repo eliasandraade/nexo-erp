@@ -25,6 +25,8 @@ public sealed class TaxAuditTrail
 
     public Guid UserId => _user.UserId;
     public string UserName => string.IsNullOrWhiteSpace(_user.Name) ? "usuário" : _user.Name;
+    /// <summary>The capability the authenticated user acts under (e.g. "Platform" for the platform operator).</summary>
+    public string UserRole => string.IsNullOrWhiteSpace(_user.Role) ? "desconhecido" : _user.Role;
 
     public void Record(string action, string entityType, Guid entityId, string description, object? details = null,
         string severity = AuditSeverity.Info)
@@ -78,8 +80,16 @@ public static class TaxAuditActions
     public const string RuleVersionCreated = "tax_rule_version_created";
     public const string RuleVersionStatusChanged = "tax_rule_version_status_changed";
     public const string RuleVersionProfessionalReview = "tax_rule_version_professional_review";
+    public const string RuleVersionPilotApproval = "tax_rule_version_pilot_approval";
+    public const string RuleVersionPilotApprovalWithdrawn = "tax_rule_version_pilot_approval_withdrawn";
+    public const string DecisionRefused = "tax_decision_refused";
+    public const string PilotScopeConfigured = "tax_pilot_scope_configured";
+    public const string PilotParticipantAdded = "tax_pilot_participant_added";
+    public const string PilotParticipantRemoved = "tax_pilot_participant_removed";
     public const string ComplianceAssessmentRecorded = "tax_compliance_assessment_recorded";
     public const string CalculationRefused = "tax_calculation_refused";
+    public const string SimulationRefused = "tax_simulation_refused";
+    public const string DetectionRefused = "tax_detection_refused";
     public const string OpportunityEvidenceReviewed = "tax_opportunity_evidence_reviewed";
     public const string OpportunityExecutionVerified = "tax_opportunity_execution_verified";
     public const string CreditStageChanged = "tax_credit_stage_changed";

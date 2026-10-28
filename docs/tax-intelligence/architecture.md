@@ -79,7 +79,7 @@ O ORKEN usa papéis, não permissões finas; as permissões pedidas foram mapead
 |---|---|
 | tax.read, tax.calculate, tax.simulate, tax.opportunities.read, tax.opportunities.review, tax.credits.manage | `Management` (Gerente, Diretoria) |
 | tax.opportunities.approve; nova versão do perfil (mudança de regime) | `Directors` (Diretoria) |
-| tax.rules.manage (regras e fontes jurídicas) | policy `Platform` (operador do SaaS) |
+| tax.rules.manage (regras e fontes jurídicas; revisão profissional; aprovação interna para piloto e sua retirada) | policy `Platform` (operador do SaaS) |
 
 Vendedor, Estoquista e Cozinha não acessam o módulo. O teste `RbacCoverageTests` garante que nenhum endpoint fica sem papel.
 

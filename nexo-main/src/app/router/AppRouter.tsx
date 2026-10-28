@@ -140,10 +140,18 @@ function PageLoader() {
   );
 }
 
-/** Redirects legacy /menu/:slug links to /:slug */
+/**
+ * Redirects legacy /menu/:slug links to /:slug. The slug is reduced to a single path segment (no slash or
+ * backslash), so a crafted link such as /menu/%5Cexample.com can never become a redirect to another origin.
+ */
 function MenuSlugRedirect() {
   const { slug } = useParams<{ slug: string }>();
-  return <Navigate to={`/${slug ?? ""}`} replace />;
+  return <Navigate to={legacyMenuTarget(slug)} replace />;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper, tested on its own
+export function legacyMenuTarget(slug: string | undefined): string {
+  return `/${(slug ?? "").replace(/[\\/]/g, "")}`;
 }
 
 /**

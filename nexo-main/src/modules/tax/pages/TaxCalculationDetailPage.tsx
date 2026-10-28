@@ -21,6 +21,7 @@ import { EngineResult, TechnicalTrail } from "../components/EngineResult";
 import { ImpactBadge, OpportunityStatusBadge, RiskBadge, ToneBadge } from "../components/TaxBadges";
 import { Field, TaxNote, TaxSubNav } from "../components/TaxShell";
 import { SplitTable } from "../components/SplitTable";
+import { ApprovalGovernance } from "../components/ApprovalGovernance";
 
 /** One calculation: what happened, how much it costs, the opportunities it found, split payment and the technical trail. */
 export default function TaxCalculationDetailPage() {
@@ -64,6 +65,11 @@ export default function TaxCalculationDetailPage() {
               )}
             </div>
           </SectionCard>
+          {c.governance && (
+            <SectionCard title="Com qual aprovação das regras" description="Registrado quando o cálculo rodou: o modo de aprovação e, lado a lado, a aprovação interna para o piloto e a revisão profissional de cada regra.">
+              <ApprovalGovernance governance={c.governance} />
+            </SectionCard>
+          )}
           <SectionCard title="Quanto custa e o que aconteceu">
             <EngineResult output={c.output} input={c.input} />
           </SectionCard>

@@ -14,8 +14,20 @@ namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 public class TaxCatalogController : ControllerBase
 {
     private readonly TaxCatalogService _catalog;
+    private readonly TaxApprovalGate _approvals;
 
-    public TaxCatalogController(TaxCatalogService catalog) => _catalog = catalog;
+    public TaxCatalogController(TaxCatalogService catalog, TaxApprovalGate approvals)
+    {
+        _catalog = catalog;
+        _approvals = approvals;
+    }
+
+    /// <summary>
+    /// Where this company/store stands today: kill switch, approval mode, whether new work is admitted (and
+    /// why not) and, in the controlled pilot, its shadow-mode notice and scope.
+    /// </summary>
+    [HttpGet("governance")]
+    public async Task<ActionResult<TaxGovernanceStatusDto>> Governance(CancellationToken ct) => Ok(await _approvals.StatusAsync(ct));
 
     /// <summary>Rule catalogue with every version, status and legal sources.</summary>
     [HttpGet("rules")]

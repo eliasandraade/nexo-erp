@@ -70,6 +70,35 @@ public enum ProfessionalReviewStatus
 }
 
 /// <summary>
+/// Internal product/governance approval of a rule version by Andrade Systems — an INTERNAL PRODUCT /
+/// GOVERNANCE APPROVAL FOR CONTROLLED PILOT, never a professional tax opinion. Independent of
+/// <see cref="ProfessionalReviewStatus"/>: a version may be <see cref="ApprovedForControlledPilot"/>
+/// while its professional review is still Pending, and that is expected.
+/// </summary>
+public enum InternalApprovalStatus
+{
+    NotApproved = 1,
+    /// <summary>Authorised for the controlled pilot, inside the documented recorte, with its caveats and accepted risks.</summary>
+    ApprovedForControlledPilot = 2,
+    /// <summary>A pilot approval that was withdrawn (e.g. a suspension criterion was met).</summary>
+    Withdrawn = 3,
+}
+
+/// <summary>
+/// Which approval a rule version needs to back a calculation or a decision. A controlled pilot accepts
+/// the internal pilot approval (or a professional one); the definitive production mode accepts only a
+/// professional approval. They are different modes, never merged. The pilot is never a fallback: it has
+/// to be configured explicitly.
+/// </summary>
+public enum TaxApprovalMode
+{
+    /// <summary>The default when nothing is configured: no approval is accepted, so nothing runs where approval is enforced.</summary>
+    Disabled = 0,
+    ControlledPilot = 1,
+    ProfessionalFinal = 2,
+}
+
+/// <summary>
 /// State of an assessment of the IBS/CBS ancillary obligations for a period and a scope (see
 /// <see cref="TaxComplianceAssessment"/>). Only <see cref="Verified"/> may satisfy a rule that depends
 /// on compliance: a declaration, an inconsistency being remediated (e.g. within the PNCT) or a

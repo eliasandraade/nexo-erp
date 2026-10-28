@@ -7137,6 +7137,20 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool?>("ApprovalEnforced")
+                        .HasColumnType("boolean")
+                        .HasColumnName("approval_enforced");
+
+                    b.Property<string>("ApprovalMode")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("approval_mode");
+
+                    b.Property<string>("ApprovalPolicy")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("approval_policy");
+
                     b.Property<string>("CalculationKey")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -7160,6 +7174,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)")
                         .HasColumnName("engine_version");
+
+                    b.Property<string>("GovernanceJson")
+                        .HasColumnType("json")
+                        .HasColumnName("governance");
 
                     b.Property<string>("InputHash")
                         .IsRequired()
@@ -8218,6 +8236,125 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("tax_opportunity_requirements", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxPilotParticipant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("added_at");
+
+                    b.Property<Guid>("AddedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("added_by_id");
+
+                    b.Property<string>("AddedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("added_by_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("RemovalReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("removal_reason");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("removed_at");
+
+                    b.Property<Guid?>("RemovedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("removed_by_id");
+
+                    b.Property<string>("RemovedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("removed_by_name");
+
+                    b.Property<Guid>("ScopeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("scope_id");
+
+                    b.Property<Guid?>("StoreId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("store_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ScopeId", "TenantId")
+                        .HasDatabaseName("ix_tax_pilot_participants_scope_tenant");
+
+                    b.ToTable("tax_pilot_participants", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxPilotScope", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("ActivatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("activated_at");
+
+                    b.Property<Guid>("ActivatedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("activated_by_id");
+
+                    b.Property<string>("ActivatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("activated_by_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DecisionReference")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("decision_reference");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateOnly>("ValidFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_from");
+
+                    b.Property<DateOnly?>("ValidTo")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_to");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("tax_pilot_scopes", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -8519,6 +8656,67 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("created_by");
+
+                    b.Property<string>("InternalApproval")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("internal_approval");
+
+                    b.Property<string>("InternalApprovalCaveats")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("internal_approval_caveats");
+
+                    b.Property<string>("InternalApprovalDecisionRef")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("internal_approval_decision_ref");
+
+                    b.Property<string>("InternalApprovalPolicy")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("internal_approval_policy");
+
+                    b.Property<string>("InternalApprovalScope")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("internal_approval_scope");
+
+                    b.Property<DateOnly?>("InternalApprovalValidFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("internal_approval_valid_from");
+
+                    b.Property<DateOnly?>("InternalApprovalValidTo")
+                        .HasColumnType("date")
+                        .HasColumnName("internal_approval_valid_to");
+
+                    b.Property<string>("InternalApprovalWithdrawalReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("internal_approval_withdrawal_reason");
+
+                    b.Property<DateTime?>("InternalApprovalWithdrawnAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("internal_approval_withdrawn_at");
+
+                    b.Property<DateTime?>("InternalApprovedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("internal_approved_at");
+
+                    b.Property<string>("InternalApprovedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("internal_approved_by");
+
+                    b.Property<Guid?>("InternalApprovedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("internal_approved_by_id");
+
+                    b.Property<string>("InternalApprovedByRole")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("internal_approved_by_role");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
@@ -11205,6 +11403,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_tax_opportunity_requirements_tenants");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxPilotParticipant", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.TaxIntelligence.TaxPilotScope", null)
+                        .WithMany("Participants")
+                        .HasForeignKey("ScopeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_tax_pilot_participants_scopes");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxProfile", b =>
                 {
                     b.HasOne("Nexo.Domain.Entities.Store", null)
@@ -11630,6 +11838,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Evidence");
 
                     b.Navigation("Requirements");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxPilotScope", b =>
+                {
+                    b.Navigation("Participants");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.TaxIntelligence.TaxProfile", b =>

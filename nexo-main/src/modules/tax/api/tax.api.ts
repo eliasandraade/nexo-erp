@@ -37,6 +37,90 @@ export type SplitStatus = "Pending" | "Matched" | "Excess" | "Insufficient";
 export type TextVerificationStatus = "Verified" | "Unverified";
 /** A tax professional's review of a rule version — separate from its technical status. */
 export type ProfessionalReviewStatus = "Pending" | "ReviewReceived" | "Approved" | "ApprovedWithCaveats" | "ChangesRequired" | "Rejected";
+/** Internal product/governance approval for the controlled pilot — never a professional review. */
+export type InternalApprovalStatus = "NotApproved" | "ApprovedForControlledPilot" | "Withdrawn";
+/** Disabled is the default: no approval mode configured, so nothing runs where approval is enforced. */
+export type TaxApprovalMode = "Disabled" | "ControlledPilot" | "ProfessionalFinal";
+
+export interface TaxInternalApprovalDto {
+  status: InternalApprovalStatus;
+  policy: string | null;
+  /** The authenticated user who recorded it — a governance actor, never a professional identity. */
+  approvedById: string | null;
+  approvedBy: string | null;
+  approvedByRole: string | null;
+  approvedAt: string | null;
+  scope: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  caveats: string | null;
+  decisionReference: string | null;
+  withdrawalReason: string | null;
+  withdrawnAt: string | null;
+  nature: string;
+}
+
+/** Both approval dimensions of one rule version, as they stood when recorded (frozen with the calculation or dossier). */
+export interface TaxRuleGovernanceDto {
+  ruleVersionId: string;
+  key: string;
+  version: number;
+  technicalStatus: RuleStatus;
+  internalApproval: InternalApprovalStatus;
+  approvedForPilot: boolean;
+  internalApprovalPolicy: string | null;
+  internalApprovedById: string | null;
+  internalApprovedBy: string | null;
+  internalApprovedByRole: string | null;
+  internalApprovedAt: string | null;
+  internalApprovalScope: string | null;
+  internalApprovalValidFrom: string | null;
+  internalApprovalValidTo: string | null;
+  pilotCaveats: string | null;
+  /** The exact decision record behind this version's internal approval. */
+  internalApprovalDecisionRef: string | null;
+  professionalReview: ProfessionalReviewStatus;
+  professionallyApproved: boolean;
+  professionalReviewScope: string | null;
+  professionalCaveats: string | null;
+}
+
+export interface TaxPilotScopeSnapshotDto {
+  decisionReference: string;
+  validFrom: string;
+  validTo: string | null;
+  activatedByName: string;
+  activatedAt: string;
+}
+
+/** The approval governance a calculation or an opportunity runs under. */
+export interface TaxGovernanceDto {
+  mode: TaxApprovalMode;
+  policy: string;
+  enforced: boolean;
+  nature: string;
+  notice: string;
+  /** In the controlled pilot: it never acts on anything fiscal, accounting or financial by itself. */
+  effectsNotice: string | null;
+  pilotScope: TaxPilotScopeSnapshotDto | null;
+  rules: TaxRuleGovernanceDto[];
+  notApproved: string[];
+  professionalReviewPending: string[];
+  /** Every distinct decision record behind the rules. */
+  decisionReferences: string[];
+}
+
+/** Where this company/store stands today: kill switch, mode, whether new work is admitted. */
+export interface TaxGovernanceStatusDto {
+  enabled: boolean;
+  mode: TaxApprovalMode;
+  policy: string;
+  admitted: boolean;
+  refusalCode: string | null;
+  refusalMessage: string | null;
+  effectsNotice: string | null;
+  pilotScope: TaxPilotScopeSnapshotDto | null;
+}
 /** Only "Verified" satisfies a rule that needs compliance; a declaration, a remediation or PNCT participation never does. */
 export type ComplianceAssessmentStatus =
   | "Unknown" | "Declared" | "Verified" | "InconsistencyIdentified" | "UnderRemediation" | "RemediationVerified" | "NonCompliant" | "NotApplicable";
@@ -301,6 +385,8 @@ export interface TaxCalculationDto {
   complianceAssessment: TaxComplianceAssessmentDto | null;
   /** The assessment in force today for the date, only when it is not the one used. */
   currentComplianceAssessment: TaxComplianceAssessmentDto | null;
+  /** Mode, policy and both approvals of each rule, recorded when the calculation ran (null for older ones). */
+  governance: TaxGovernanceDto | null;
 }
 
 export interface TaxVerificationDto {
@@ -465,6 +551,8 @@ export interface TaxOpportunityDto extends TaxOpportunitySummaryDto {
   execution: TaxExecutionVerificationDto | null;
   /** Who may approve, by risk and materiality (maker-checker). */
   requiredApproval: ApprovalRequirement;
+  /** The rules behind it under the configured approval mode: internal pilot approval beside the professional review. */
+  governance: TaxGovernanceDto;
 }
 
 // ── Credits and split payment ────────────────────────────────────────────────
@@ -569,6 +657,7 @@ export interface TaxRuleVersionDto {
   professionalReviewValidTo: string | null;
   professionalReviewAssumptions: string | null;
   professionalReviewCaveats: string | null;
+  internalApproval: TaxInternalApprovalDto;
 }
 
 export interface TaxRuleDto { id: string; key: string; name: string; description: string; versions: TaxRuleVersionDto[] }
@@ -603,6 +692,7 @@ export const TAX_KEYS = {
   credits: [...TAX_KEY, "credits"] as const,
   creditTotals: [...TAX_KEY, "credits", "totals"] as const,
   splitProvider: [...TAX_KEY, "split", "provider"] as const,
+  governance: [...TAX_KEY, "governance"] as const,
   splitExpectations: (calculationId: string) => [...TAX_KEY, "split", "expectations", calculationId] as const,
   rules: [...TAX_KEY, "rules"] as const,
   legalSources: [...TAX_KEY, "legal-sources"] as const,
@@ -678,4 +768,5 @@ export const reverseSplitSettlement = (settlementId: string, reason: string) =>
   apiClient.post<SplitExpectationDto>(`/tax/split/settlements/${settlementId}/reverse`, { reason });
 
 export const listTaxRules = () => apiClient.get<TaxRuleDto[]>("/tax/rules");
+export const getTaxGovernance = () => apiClient.get<TaxGovernanceStatusDto>("/tax/governance");
 export const listLegalSources = () => apiClient.get<TaxLegalSourceDto[]>("/tax/legal-sources");

@@ -85,6 +85,20 @@ internal sealed class TaxRuleVersionConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.ProfessionalReviewValidTo).HasColumnName("professional_review_valid_to");
         b.Property(x => x.ProfessionalReviewAssumptions).HasColumnName("professional_review_assumptions").HasMaxLength(4000);
         b.Property(x => x.ProfessionalReviewCaveats).HasColumnName("professional_review_caveats").HasMaxLength(4000);
+        // Internal pilot approval: a separate dimension, never a professional review.
+        b.Property(x => x.InternalApproval).HasColumnName("internal_approval").HasConversion<string>().HasMaxLength(40).IsRequired();
+        b.Property(x => x.InternalApprovalPolicy).HasColumnName("internal_approval_policy").HasMaxLength(60);
+        b.Property(x => x.InternalApprovedById).HasColumnName("internal_approved_by_id");
+        b.Property(x => x.InternalApprovedBy).HasColumnName("internal_approved_by").HasMaxLength(200);
+        b.Property(x => x.InternalApprovedByRole).HasColumnName("internal_approved_by_role").HasMaxLength(60);
+        b.Property(x => x.InternalApprovedAt).HasColumnName("internal_approved_at").HasColumnType("timestamptz");
+        b.Property(x => x.InternalApprovalScope).HasColumnName("internal_approval_scope").HasMaxLength(2000);
+        b.Property(x => x.InternalApprovalValidFrom).HasColumnName("internal_approval_valid_from");
+        b.Property(x => x.InternalApprovalValidTo).HasColumnName("internal_approval_valid_to");
+        b.Property(x => x.InternalApprovalCaveats).HasColumnName("internal_approval_caveats").HasMaxLength(4000);
+        b.Property(x => x.InternalApprovalDecisionRef).HasColumnName("internal_approval_decision_ref").HasMaxLength(300);
+        b.Property(x => x.InternalApprovalWithdrawalReason).HasColumnName("internal_approval_withdrawal_reason").HasMaxLength(2000);
+        b.Property(x => x.InternalApprovalWithdrawnAt).HasColumnName("internal_approval_withdrawn_at").HasColumnType("timestamptz");
         b.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         b.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 
@@ -105,5 +119,52 @@ internal sealed class TaxRuleVersionSourceConfiguration : IEntityTypeConfigurati
         b.HasOne(x => x.LegalSource).WithMany().HasForeignKey(x => x.LegalSourceId)
             .HasConstraintName("fk_tax_rule_version_sources_legal_sources").OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => x.LegalSourceId).HasDatabaseName("ix_tax_rule_version_sources_legal_source_id");
+    }
+}
+
+internal sealed class TaxPilotScopeConfiguration : IEntityTypeConfiguration<TaxPilotScope>
+{
+    public void Configure(EntityTypeBuilder<TaxPilotScope> b)
+    {
+        b.ToTable("tax_pilot_scopes", "nexo");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id");
+        b.Property(x => x.Enabled).HasColumnName("enabled").IsRequired();
+        b.Property(x => x.ValidFrom).HasColumnName("valid_from").IsRequired();
+        b.Property(x => x.ValidTo).HasColumnName("valid_to");
+        b.Property(x => x.DecisionReference).HasColumnName("decision_reference").HasMaxLength(300).IsRequired();
+        b.Property(x => x.ActivatedById).HasColumnName("activated_by_id").IsRequired();
+        b.Property(x => x.ActivatedByName).HasColumnName("activated_by_name").HasMaxLength(200).IsRequired();
+        b.Property(x => x.ActivatedAt).HasColumnName("activated_at").HasColumnType("timestamptz").IsRequired();
+        b.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
+        b.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
+
+        b.HasMany(x => x.Participants).WithOne().HasForeignKey(p => p.ScopeId)
+            .HasConstraintName("fk_tax_pilot_participants_scopes").OnDelete(DeleteBehavior.Restrict);
+        b.Navigation(x => x.Participants).UsePropertyAccessMode(PropertyAccessMode.Field);
+    }
+}
+
+internal sealed class TaxPilotParticipantConfiguration : IEntityTypeConfiguration<TaxPilotParticipant>
+{
+    public void Configure(EntityTypeBuilder<TaxPilotParticipant> b)
+    {
+        b.ToTable("tax_pilot_participants", "nexo");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id");
+        b.Property(x => x.ScopeId).HasColumnName("scope_id").IsRequired();
+        b.Property(x => x.TenantId).HasColumnName("tenant_id").IsRequired();
+        b.Property(x => x.StoreId).HasColumnName("store_id");
+        b.HasIndex(x => new { x.ScopeId, x.TenantId }).HasDatabaseName("ix_tax_pilot_participants_scope_tenant");
+        b.Property(x => x.AddedById).HasColumnName("added_by_id").IsRequired();
+        b.Property(x => x.AddedByName).HasColumnName("added_by_name").HasMaxLength(200).IsRequired();
+        b.Property(x => x.AddedAt).HasColumnName("added_at").HasColumnType("timestamptz").IsRequired();
+        b.Property(x => x.RemovedAt).HasColumnName("removed_at").HasColumnType("timestamptz");
+        b.Property(x => x.RemovedById).HasColumnName("removed_by_id");
+        b.Property(x => x.RemovedByName).HasColumnName("removed_by_name").HasMaxLength(200);
+        b.Property(x => x.RemovalReason).HasColumnName("removal_reason").HasMaxLength(1000);
+        b.Ignore(x => x.IsActive);
+        b.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
+        b.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
     }
 }

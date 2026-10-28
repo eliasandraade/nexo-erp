@@ -63,7 +63,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Interpreter (lançamentos, anexos, vocabulário) | Management | Management | Management | Management | confirmar / estornar: Management |
 | Service (todas as telas) | Management (preset e settings: Todos) | Management | Management | Management | Management |
 | Tax Intelligence (cálculos, simulações, oportunidades, créditos, split) | Management | Management | — (versões imutáveis) | — | nova versão do perfil tributário e aprovação de oportunidade: Directors |
-| Tax Intelligence: catálogo de regras e fontes jurídicas | Management (leitura) | policy Platform | só status, policy Platform | — | ativar regra exige fontes conferidas: policy Platform |
+| Tax Intelligence: catálogo de regras e fontes jurídicas | Management (leitura) | policy Platform | só status, policy Platform | — | ativar regra exige fontes conferidas; revisão profissional, aprovação interna para piloto e sua retirada, janela e participantes do piloto: policy Platform, auditadas |
 | Platform admin | policy Platform | policy Platform | policy Platform | policy Platform | policy Platform |
 | Público (cardápio, agendamento, login) | anônimo, com rate limit | anônimo, com rate limit | — | — | — |
 

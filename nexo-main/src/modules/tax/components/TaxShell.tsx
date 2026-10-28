@@ -1,6 +1,7 @@
 import { Link, NavLink } from "react-router-dom";
 import { Info, UserCog } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TaxGovernanceBanner } from "./TaxGovernanceBanner";
 
 const TABS = [
   { to: "/tributos", label: "Visão geral", end: true },
@@ -15,6 +16,7 @@ const TABS = [
 /** Links between the tax pages, scrollable on small screens (the page itself never scrolls sideways). */
 export function TaxSubNav() {
   return (
+    <>
     <nav aria-label="Inteligência tributária" className="-mx-1 overflow-x-auto">
       <ul className="flex min-w-max gap-1 border-b border-border px-1">
         {TABS.map((t) => (
@@ -33,6 +35,8 @@ export function TaxSubNav() {
         ))}
       </ul>
     </nav>
+    <TaxGovernanceBanner />
+    </>
   );
 }
 

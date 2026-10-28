@@ -30,6 +30,7 @@ public sealed class TaxCalculationService
     private readonly TaxProfileService _profiles;
     private readonly TaxComplianceService _compliance;
     private readonly TaxCatalogService _catalog;
+    private readonly TaxApprovalGate _approvals;
     private readonly TaxOpportunityService _opportunities;
     private readonly SaleTaxFactsReader _sales;
     private readonly TaxAuditTrail _audit;
@@ -37,7 +38,7 @@ public sealed class TaxCalculationService
 
     public TaxCalculationService(
         NexoDbContext db, TaxEngineRegistry engines, ICurrentTenant tenant, TaxProfileService profiles, TaxComplianceService compliance,
-        TaxCatalogService catalog,
+        TaxCatalogService catalog, TaxApprovalGate approvals,
         TaxOpportunityService opportunities, SaleTaxFactsReader sales, TaxAuditTrail audit, ILogger<TaxCalculationService> log)
     {
         _db = db;
@@ -46,6 +47,7 @@ public sealed class TaxCalculationService
         _profiles = profiles;
         _compliance = compliance;
         _catalog = catalog;
+        _approvals = approvals;
         _opportunities = opportunities;
         _sales = sales;
         _audit = audit;
@@ -90,6 +92,8 @@ public sealed class TaxCalculationService
     private async Task<TaxCalculationDto> RunAsync(TaxOperationFacts facts, CancellationToken ct)
     {
         var op = facts.Operation;
+        // Kill switch, approval mode and pilot scope come first: outside them nothing runs (fail closed).
+        if (await _approvals.AdmitCalculationAsync(ct) is { } admission) await RefuseAsync(facts, admission, ct);
         var (input, profile, compliance) = await BuildInputAsync(op, ct);
         var coverage = TaxCoveragePolicyV1.Assess(op, profile.Regime);
         if (!coverage.Supported) await RefuseAsync(facts, coverage, ct);
@@ -99,7 +103,12 @@ public sealed class TaxCalculationService
 
         var inputJson = canonical.Serialize(input);
         var inputHash = canonical.Hash(inputJson);
-        var ruleSetHash = engine.RuleSetHash(engine.SelectActive(catalogue, op.OperationDate));
+        var active = engine.SelectActive(catalogue, op.OperationDate);
+        var ruleSetHash = engine.RuleSetHash(active);
+        // Every active rule the engine could apply must be approved for the mode (pilot or final): fail closed.
+        var governance = await _approvals.ForCalculationAsync(active.Select(r => r.VersionId).ToList(), op.OperationDate, ct);
+        if (governance.Enforced && governance.NotApproved.Count > 0)
+            await RefuseAsync(facts, TaxApprovalGate.NotApproved(governance), ct, governance.NotApproved);
         // Same facts (all of them, description included) + same rules + same engine = the same calculation.
         var factsHash = canonical.HashOf(op);
         var key = canonical.Hash($"{engine.Version}|{inputHash}|{ruleSetHash}|{facts.Source}|{facts.SourceId}|{factsHash}");
@@ -121,6 +130,7 @@ public sealed class TaxCalculationService
         var calc = TaxCalculation.Create(_tenant.Id, transaction.Id, profile.Id, op.OperationDate, engine.Version,
             inputJson, inputHash, ruleSetHash, key, outputJson, canonical.Hash(outputJson), output.TotalBase, output.TotalTax, _audit.UserId);
         calc.UsedComplianceAssessment(compliance?.Id);
+        calc.RanUnderGovernance(governance.Mode, governance.Policy, governance.Enforced, canonical.Serialize(governance));
         foreach (var line in output.Lines)
             foreach (var c in line.Components)
                 calc.AddComponent(line.Index, c.Tax, c.Base, c.RatePercent, c.Amount, c.RuleVersionId);
@@ -133,7 +143,10 @@ public sealed class TaxCalculationService
         _audit.Record(TaxAuditActions.CalculationCreated, "Calculation", calc.Id,
             $"Cálculo de {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}: base {output.TotalBase:N2}, tributos {output.TotalTax:N2}.",
             new { source = facts.Source.ToString(), facts.SourceId, inputHash, ruleSetHash, engine = engine.Version, rules = output.Executions.Count,
-                coverage = coverage.PolicyVersion, complianceAssessmentId = compliance?.Id });
+                coverage = coverage.PolicyVersion, complianceAssessmentId = compliance?.Id,
+                governance = new { mode = governance.Mode.ToString(), governance.Policy, governance.Enforced, governance.Nature,
+                    rules = governance.Rules.Select(r => new { r.Key, r.Version, internalApproval = r.InternalApproval.ToString(),
+                        professionalReview = r.ProfessionalReview.ToString(), r.PilotCaveats }) } });
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -171,19 +184,53 @@ public sealed class TaxCalculationService
         throw new DomainException($"{TaxCoveragePolicyV1.NotSupportedMessage} ({coverage.Status})", "tax_operation_not_supported", reasons);
     }
 
-    /// <summary>Runs the detectors again on a stored calculation (e.g. after a new detector ships). Idempotent.</summary>
+    /// <summary>
+    /// Refuses a calculation the gate does not admit (kill switch, mode, pilot scope, rules not approved for
+    /// the mode): records the attempt with its reason, then answers 422. Nothing is calculated.
+    /// </summary>
+    private async Task RefuseAsync(TaxOperationFacts facts, TaxGateRefusal refusal, CancellationToken ct, IReadOnlyList<string>? details = null)
+    {
+        var op = facts.Operation;
+        _audit.Record(TaxAuditActions.CalculationRefused, "Calculation", Guid.NewGuid(),
+            $"Cálculo recusado ({refusal.Code}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
+            new { source = facts.Source.ToString(), facts.SourceId, refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Tax calculation refused from {Source}: {Code}", facts.Source, refusal.Code);
+        throw new DomainException(refusal.Message, refusal.Code, details ?? []);
+    }
+
+    /// <summary>
+    /// Runs the detectors again on a stored calculation (e.g. after a new detector ships). Idempotent.
+    /// New proposals are new work: the rules the calculation ran must still back it in the approval mode
+    /// today (active, approval neither withdrawn nor expired). Reading and reproducing it never needs this.
+    /// </summary>
     public async Task<IReadOnlyList<Guid>> DetectAgainAsync(Guid id, CancellationToken ct)
     {
+        if (await _approvals.AdmitCalculationAsync(ct) is { } refusal) await RefuseDetectionAsync(id, refusal, ct);
         var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Cálculo", id);
+        var executed = calc.Executions.Select(e => e.RuleVersionId).ToList();
+        var governance = await _approvals.ForCalculationAsync(executed.Distinct().ToList(), calc.ReferenceDate, ct);
+        if (governance.Enforced && governance.NotApproved.Count > 0)
+            await RefuseDetectionAsync(id, TaxApprovalGate.NotApproved(governance), ct, governance.NotApproved);
         // Same engine and same rules as the calculation (and the dossier that may follow).
         var engine = EngineOf(calc);
         var input = engine.Canonical.Deserialize<TaxEngineInput>(calc.InputJson);
         var output = engine.Canonical.Deserialize<TaxEngineOutput>(calc.OutputJson);
-        var executed = calc.Executions.Select(e => e.RuleVersionId).ToList();
         var rules = await _catalog.LoadByIdsAsync(executed.Concat(output.NotApplied.Select(n => n.RuleVersionId)).Distinct().ToList(),
             engine.Canonical, ct);
         return await _opportunities.DetectAsync(calc.Id, engine, input, TaxReproduction.RulesAsThen(executed, output, rules), ct);
+    }
+
+    /// <summary>Records a refused detection with its reason, then answers 422. No opportunity is created.</summary>
+    private async Task RefuseDetectionAsync(Guid calculationId, TaxGateRefusal refusal, CancellationToken ct, IReadOnlyList<string>? details = null)
+    {
+        _audit.Record(TaxAuditActions.DetectionRefused, "Calculation", calculationId,
+            $"Nova detecção de oportunidades recusada ({refusal.Code}).",
+            new { refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Tax detection refused for calculation {CalculationId}: {Code}", calculationId, refusal.Code);
+        throw new DomainException(refusal.Message, refusal.Code, details ?? []);
     }
 
     /// <summary>The engine version that made the calculation; if this build no longer has it, nothing is guessed.</summary>
@@ -242,7 +289,8 @@ public sealed class TaxCalculationService
             TaxComplianceAdvisories.For(compliance),
             coverage,
             compliance is null ? null : TaxComplianceService.Map(compliance),
-            current is null || current.Id == compliance?.Id ? null : TaxComplianceService.Map(current));
+            current is null || current.Id == compliance?.Id ? null : TaxComplianceService.Map(current),
+            calc.GovernanceJson is null ? null : canonical.Deserialize<TaxGovernanceDto>(calc.GovernanceJson));
     }
 
     private async Task<TaxOperationRequest> StoredOperationAsync(TaxTransaction t, CancellationToken ct)

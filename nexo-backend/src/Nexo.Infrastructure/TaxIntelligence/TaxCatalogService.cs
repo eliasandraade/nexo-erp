@@ -44,19 +44,6 @@ public sealed class TaxCatalogService
     public async Task<IReadOnlyList<TaxEngineRule>> LoadByIdsAsync(IReadOnlyCollection<Guid> versionIds, ITaxCanonicalizer canonical, CancellationToken ct)
         => await LoadAsync(_db.TaxRuleVersions.Where(v => versionIds.Contains(v.Id)), canonical, ct);
 
-    /// <summary>
-    /// Rule versions (key vN) not professionally approved for the date: anything but Approved or
-    /// ApprovedWithCaveats inside the review's validity — a received review is not an approval.
-    /// </summary>
-    public async Task<IReadOnlyList<string>> PendingProfessionalReviewAsync(IReadOnlyCollection<Guid> versionIds, DateOnly date, CancellationToken ct)
-    {
-        var rows = await _db.TaxRuleVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id))
-            .Join(_db.TaxRules.AsNoTracking(), v => v.RuleId, r => r.Id, (v, r) => new { v, r.Key })
-            .ToListAsync(ct);
-        return rows.Where(x => !x.v.IsProfessionallyApprovedOn(date)).Select(x => $"{x.Key} v{x.v.Version}")
-            .OrderBy(k => k, StringComparer.Ordinal).ToList();
-    }
-
     private async Task<IReadOnlyList<TaxEngineRule>> LoadAsync(IQueryable<TaxRuleVersion> versions, ITaxCanonicalizer canonical, CancellationToken ct)
     {
         var rows = await versions.AsNoTracking()
@@ -233,6 +220,107 @@ public sealed class TaxCatalogService
         return await GetVersionAsync(version.Id, ct);
     }
 
+    /// <summary>
+    /// Records the internal pilot approval of an active version — a governance decision of the product,
+    /// not a professional review, which it leaves untouched. Audited with who decided, scope, validity,
+    /// caveats and the decision record.
+    /// </summary>
+    public async Task<TaxRuleVersionDto> ApproveForPilotAsync(Guid versionId, ApproveRuleForPilotRequest r, CancellationToken ct)
+    {
+        var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
+            ?? throw new NotFoundException("Versão de regra", versionId);
+        var before = version.InternalApproval;
+        var previousReference = version.InternalApprovalDecisionRef;
+        // The actor is the authenticated platform user and the time is the server's — never taken from the request.
+        version.ApproveForControlledPilot(new InternalApprovalInput(TaxGovernance.PilotPolicy, _audit.UserId, _audit.UserName, _audit.UserRole,
+            r.Scope, r.ValidFrom, r.ValidTo, r.Caveats, r.DecisionReference), DateTime.UtcNow);
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionPilotApproval, "RuleVersion", version.Id,
+            $"Aprovação interna para piloto controlado da versão {version.Version}: {before} → {version.InternalApproval} ({_audit.UserName}). Não é parecer profissional.",
+            new { before = before.ToString(), after = version.InternalApproval.ToString(), policy = TaxGovernance.PilotPolicy, nature = TaxGovernance.PilotNature,
+                approvedById = _audit.UserId, approvedBy = _audit.UserName, approvedByRole = _audit.UserRole,
+                r.Scope, r.ValidFrom, r.ValidTo, r.Caveats, r.DecisionReference, previousDecisionReference = previousReference,
+                professionalReview = version.ProfessionalReview.ToString() });
+        await _db.SaveChangesAsync(ct);
+        _log.LogWarning("Tax rule version {VersionId} internal pilot approval {Before} -> {After}", version.Id, before, version.InternalApproval);
+        return await GetVersionAsync(version.Id, ct);
+    }
+
+    /// <summary>Withdraws an internal pilot approval (e.g. a suspension criterion was met). Audited with the reason.</summary>
+    public async Task<TaxRuleVersionDto> WithdrawPilotApprovalAsync(Guid versionId, WithdrawPilotApprovalRequest r, CancellationToken ct)
+    {
+        var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
+            ?? throw new NotFoundException("Versão de regra", versionId);
+        version.WithdrawPilotApproval(r.Reason, DateTime.UtcNow);
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionPilotApprovalWithdrawn, "RuleVersion", version.Id,
+            $"Aprovação interna para piloto da versão {version.Version} retirada: {r.Reason.Trim()}",
+            new { policy = version.InternalApprovalPolicy, reason = r.Reason.Trim() });
+        await _db.SaveChangesAsync(ct);
+        _log.LogWarning("Tax rule version {VersionId} internal pilot approval withdrawn", version.Id);
+        return await GetVersionAsync(version.Id, ct);
+    }
+
+    // ── Controlled pilot scope ──────────────────────────────────────────────────
+
+    public async Task<TaxPilotScopeDto> GetPilotScopeAsync(CancellationToken ct)
+        => MapScope(await _db.TaxPilotScopes.AsNoTracking().Include(s => s.Participants).OrderBy(s => s.CreatedAt).FirstOrDefaultAsync(ct));
+
+    /// <summary>Opens or changes the pilot window. No tenant takes part until it is added explicitly.</summary>
+    public async Task<TaxPilotScopeDto> ConfigurePilotScopeAsync(ConfigurePilotScopeRequest r, CancellationToken ct)
+    {
+        var scope = await LoadScopeForUpdateAsync(ct);
+        var before = new { scope.Enabled, scope.ValidFrom, scope.ValidTo, scope.DecisionReference };
+        scope.Configure(r.Enabled, r.ValidFrom, r.ValidTo, r.DecisionReference, _audit.UserId, _audit.UserName, DateTime.UtcNow);
+        _audit.RecordPlatform(TaxAuditActions.PilotScopeConfigured, "PilotScope", scope.Id,
+            $"Piloto controlado {(r.Enabled ? "ativo" : "inativo")} de {r.ValidFrom:dd/MM/yyyy}{(r.ValidTo is null ? "" : $" a {r.ValidTo:dd/MM/yyyy}")} ({_audit.UserName}).",
+            new { before, after = new { r.Enabled, r.ValidFrom, r.ValidTo, r.DecisionReference }, actorRole = _audit.UserRole });
+        await _db.SaveChangesAsync(ct);
+        _log.LogWarning("Tax pilot scope configured: enabled={Enabled} {From}..{To}", r.Enabled, r.ValidFrom, r.ValidTo);
+        return await GetPilotScopeAsync(ct);
+    }
+
+    public async Task<TaxPilotScopeDto> AddPilotParticipantAsync(AddPilotParticipantRequest r, CancellationToken ct)
+    {
+        if (!await _db.Tenants.AsNoTracking().AnyAsync(t => t.Id == r.TenantId, ct)) throw new NotFoundException("Tenant", r.TenantId);
+        if (r.StoreId is { } storeId
+            && !await _db.Stores.IgnoreQueryFilters().AsNoTracking().AnyAsync(s => s.Id == storeId && s.TenantId == r.TenantId, ct))
+            throw new NotFoundException("Loja do tenant", storeId);
+        var scope = await LoadScopeForUpdateAsync(ct);
+        var p = scope.AddParticipant(r.TenantId, r.StoreId, _audit.UserId, _audit.UserName, DateTime.UtcNow);
+        _db.TaxPilotParticipants.Add(p);
+        _audit.RecordPlatform(TaxAuditActions.PilotParticipantAdded, "PilotScope", scope.Id,
+            $"Participante incluído no piloto: tenant {r.TenantId}{(r.StoreId is null ? " (todas as lojas)" : $", loja {r.StoreId}")}.",
+            new { participantId = p.Id, r.TenantId, r.StoreId, actorRole = _audit.UserRole });
+        await _db.SaveChangesAsync(ct);
+        return await GetPilotScopeAsync(ct);
+    }
+
+    public async Task<TaxPilotScopeDto> RemovePilotParticipantAsync(Guid participantId, RemovePilotParticipantRequest r, CancellationToken ct)
+    {
+        var scope = await LoadScopeForUpdateAsync(ct);
+        var p = scope.RemoveParticipant(participantId, r.Reason, _audit.UserId, _audit.UserName, DateTime.UtcNow);
+        _audit.RecordPlatform(TaxAuditActions.PilotParticipantRemoved, "PilotScope", scope.Id,
+            $"Participante retirado do piloto: tenant {p.TenantId}{(p.StoreId is null ? "" : $", loja {p.StoreId}")}. {r.Reason.Trim()}",
+            new { participantId = p.Id, p.TenantId, p.StoreId, reason = r.Reason.Trim(), actorRole = _audit.UserRole });
+        await _db.SaveChangesAsync(ct);
+        return await GetPilotScopeAsync(ct);
+    }
+
+    /// <summary>The single pilot scope, created disabled the first time it is configured.</summary>
+    private async Task<TaxPilotScope> LoadScopeForUpdateAsync(CancellationToken ct)
+    {
+        var scope = await _db.TaxPilotScopes.Include(s => s.Participants).OrderBy(s => s.CreatedAt).FirstOrDefaultAsync(ct);
+        if (scope is not null) return scope;
+        scope = TaxPilotScope.Create();
+        _db.TaxPilotScopes.Add(scope);
+        return scope;
+    }
+
+    private static TaxPilotScopeDto MapScope(TaxPilotScope? s) => s is null
+        ? new TaxPilotScopeDto(null, false, null, null, null, null, null, [])
+        : new TaxPilotScopeDto(s.Id, s.Enabled, s.ValidFrom, s.ValidTo, s.DecisionReference, s.ActivatedByName, s.ActivatedAt,
+            s.Participants.OrderBy(p => p.AddedAt).Select(p => new TaxPilotParticipantDto(p.Id, p.TenantId, p.StoreId, p.IsActive, p.AddedByName,
+                p.AddedAt, p.RemovedAt, p.RemovedByName, p.RemovalReason)).ToList());
+
     private async Task<TaxRuleVersionDto> GetVersionAsync(Guid id, CancellationToken ct)
     {
         var v = await _db.TaxRuleVersions.AsNoTracking().Include(x => x.Sources).ThenInclude(s => s.LegalSource)
@@ -255,7 +343,11 @@ public sealed class TaxCatalogService
         v.Sources.Where(s => s.LegalSource is not null).Select(s => s.LegalSource!.Code).OrderBy(c => c, StringComparer.Ordinal).ToList(),
         v.CreatedAt, v.ProfessionalReview, v.ProfessionalReviewedBy, v.ProfessionalReviewedAt, v.ProfessionalReviewNotes,
         v.ProfessionalReference, v.ProfessionalReviewScope, v.ProfessionalReviewValidFrom, v.ProfessionalReviewValidTo,
-        v.ProfessionalReviewAssumptions, v.ProfessionalReviewCaveats);
+        v.ProfessionalReviewAssumptions, v.ProfessionalReviewCaveats,
+        new TaxInternalApprovalDto(v.InternalApproval, v.InternalApprovalPolicy, v.InternalApprovedById, v.InternalApprovedBy, v.InternalApprovedByRole,
+            v.InternalApprovedAt, v.InternalApprovalScope,
+            v.InternalApprovalValidFrom, v.InternalApprovalValidTo, v.InternalApprovalCaveats, v.InternalApprovalDecisionRef,
+            v.InternalApprovalWithdrawalReason, v.InternalApprovalWithdrawnAt, TaxGovernance.PilotNature));
 
     private static TaxLegalSourceDto MapSource(TaxLegalSource s) => new(
         s.Id, s.Code, s.Kind, s.Title, s.Reference, s.Url, s.Excerpt, s.PublishedOn, s.TextVerification, s.VerifiedAt, s.VerifiedBy, s.Notes);

@@ -53,4 +53,38 @@ public class PlatformTaxCatalogController : ControllerBase
     [HttpPost("rule-versions/{id:guid}/professional-review")]
     public async Task<ActionResult<TaxRuleVersionDto>> RecordProfessionalReview(Guid id, [FromBody] RecordProfessionalReviewRequest request, CancellationToken ct)
         => Ok(await _catalog.RecordProfessionalReviewAsync(id, request, ct));
+
+    /// <summary>
+    /// Records the internal product/governance approval of an active version for the controlled pilot.
+    /// It is not a professional review and never changes it; versions awaiting regulation or with an
+    /// unverified source cannot be approved. Audited.
+    /// </summary>
+    [HttpPost("rule-versions/{id:guid}/pilot-approval")]
+    public async Task<ActionResult<TaxRuleVersionDto>> ApproveForPilot(Guid id, [FromBody] ApproveRuleForPilotRequest request, CancellationToken ct)
+        => Ok(await _catalog.ApproveForPilotAsync(id, request, ct));
+
+    /// <summary>The controlled pilot scope: window, decision record and participants (tenants / stores).</summary>
+    [HttpGet("pilot")]
+    public async Task<ActionResult<TaxPilotScopeDto>> GetPilotScope(CancellationToken ct)
+        => Ok(await _catalog.GetPilotScopeAsync(ct));
+
+    /// <summary>Opens or changes the pilot window. Who and when come from the authenticated request. Audited.</summary>
+    [HttpPut("pilot")]
+    public async Task<ActionResult<TaxPilotScopeDto>> ConfigurePilotScope([FromBody] ConfigurePilotScopeRequest request, CancellationToken ct)
+        => Ok(await _catalog.ConfigurePilotScopeAsync(request, ct));
+
+    /// <summary>Adds a tenant (or one of its stores) to the pilot. No tenant takes part by default. Audited.</summary>
+    [HttpPost("pilot/participants")]
+    public async Task<ActionResult<TaxPilotScopeDto>> AddPilotParticipant([FromBody] AddPilotParticipantRequest request, CancellationToken ct)
+        => Ok(await _catalog.AddPilotParticipantAsync(request, ct));
+
+    /// <summary>Removes a participant: its new work is refused from then on; what it recorded stays readable. Audited.</summary>
+    [HttpPost("pilot/participants/{id:guid}/remove")]
+    public async Task<ActionResult<TaxPilotScopeDto>> RemovePilotParticipant(Guid id, [FromBody] RemovePilotParticipantRequest request, CancellationToken ct)
+        => Ok(await _catalog.RemovePilotParticipantAsync(id, request, ct));
+
+    /// <summary>Withdraws the internal pilot approval of a version (e.g. a suspension criterion was met). Audited.</summary>
+    [HttpPost("rule-versions/{id:guid}/pilot-approval/withdraw")]
+    public async Task<ActionResult<TaxRuleVersionDto>> WithdrawPilotApproval(Guid id, [FromBody] WithdrawPilotApprovalRequest request, CancellationToken ct)
+        => Ok(await _catalog.WithdrawPilotApprovalAsync(id, request, ct));
 }

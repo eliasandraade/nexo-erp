@@ -63,7 +63,8 @@ public class TaxOpportunitiesController : ControllerBase
     /// <summary>
     /// Approves the scenario and records the decision dossier — it does not execute any commercial or fiscal
     /// change. Diretoria only; high risk must be acknowledged; the maker-checker requirement follows risk and
-    /// materiality; with the production policy, every rule behind it must be professionally approved.
+    /// materiality; with the approval policy on, every rule behind it must be approved for the mode —
+    /// internally for the controlled pilot, professionally in the definitive mode.
     /// </summary>
     [HttpPost("opportunities/{id:guid}/approve")]
     [Authorize(Roles = AppRoles.Directors)]

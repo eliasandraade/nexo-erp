@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Features.Users;
@@ -19,7 +20,11 @@ namespace Nexo.IntegrationTests.TaxIntelligence;
 /// the real system — profile, compliance assessment, calculation, detector, requirements, commercial
 /// evidence, scenario approval, final fiscal document, execution verification — on a tenant of its own.
 /// Every fact is a labelled TEST FIXTURE (company, CNPJ, documents): it proves the workflow, it asserts
-/// no legal fact. With TAX_HOMOLOGATION_OUT set, the resulting dossiers are written to that file.
+/// no legal fact. It runs as the controlled pilot runs — Tax Intelligence enabled, mode ControlledPilot with
+/// the approval policy enforced, the pilot opened, the company admitted and the 2026 versions approved, each
+/// by an explicit platform action — so the dossier shows the internal pilot approval (with its actor and
+/// decision reference) beside the still pending professional review. With TAX_HOMOLOGATION_OUT set, the
+/// resulting dossiers are written to that file.
 /// </summary>
 [Collection("Integration")]
 public class TaxHomologationDossierTests
@@ -38,6 +43,14 @@ public class TaxHomologationDossierTests
         var text = await r.Content.ReadAsStringAsync();
         r.StatusCode.Should().Be(expected, text);
         return JsonDocument.Parse(text).RootElement.Clone();
+    }
+
+    /// <summary>The same session on a host configured as the controlled pilot, with the approval policy enforced.</summary>
+    private HttpClient Pilot(HttpClient authenticated)
+    {
+        var client = _factory.WithWebHostBuilder(TaxPilotSetup.Enforced("ControlledPilot")).CreateClient();
+        client.DefaultRequestHeaders.Authorization = authenticated.DefaultRequestHeaders.Authorization;
+        return client;
     }
 
     private async Task<HttpClient> NewCompanyAsync()
@@ -70,7 +83,10 @@ public class TaxHomologationDossierTests
     public async Task A_supported_operation_goes_through_the_whole_workflow_into_a_complete_dossier()
     {
         // 1. Company (fiscal issuer) and tax profile — test fixtures.
-        var director = await NewCompanyAsync();
+        var company = await NewCompanyAsync();
+        // 0. The operator opens the pilot, admits this company and approves the 2026 versions — explicit, audited actions.
+        await TaxPilotSetup.ReadyAsync(_factory, company);
+        var director = Pilot(company);
         (await director.PutAsJsonAsync("/api/fiscal/profile", new
         {
             legalName = "Empresa de Teste Homologação Ltda", tradeName = "Loja Teste", cnpj = "11.222.333/0001-81", stateRegistration = "ISENTO",
@@ -117,7 +133,7 @@ public class TaxHomologationDossierTests
         var oppId = calc.GetProperty("opportunityIds")[0].GetGuid();
 
         // 5–6. Analysis by a manager: requirements and the commercial instrument.
-        var analyst = await UserAsync(director, "gerente");
+        var analyst = Pilot(await UserAsync(director, "gerente"));
         await Json(await Post(analyst, $"/api/tax/opportunities/{oppId}/review", new { }));
         var opp = await Json(await analyst.GetAsync($"/api/tax/opportunities/{oppId}"));
         Guid Req(string code) => opp.GetProperty("requirements").EnumerateArray().Single(r => r.GetProperty("code").GetString() == code).GetProperty("id").GetGuid();
@@ -179,6 +195,17 @@ public class TaxHomologationDossierTests
         scenario.GetProperty("legalSources").EnumerateArray().Should().OnlyContain(s => s.GetProperty("textVerification").GetString() == "Verified");
         scenario.GetProperty("professionalReview").GetProperty("reviews").EnumerateArray()
             .Should().OnlyContain(r => r.GetProperty("status").GetString() == "Pending", "nothing is professionally approved");
+        scenario.GetProperty("nature").GetString().Should().StartWith("Registro auditável da decisão e das premissas utilizadas pelo motor");
+        var governance = scenario.GetProperty("governance");
+        governance.GetProperty("mode").GetString().Should().Be("ControlledPilot");
+        governance.GetProperty("enforced").GetBoolean().Should().BeTrue();
+        governance.GetProperty("nature").GetString().Should().Be("INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT");
+        governance.GetProperty("rules").EnumerateArray().Should().OnlyContain(r =>
+            r.GetProperty("internalApproval").GetProperty("status").GetString() == "ApprovedForControlledPilot"
+            && r.GetProperty("internalApproval").GetProperty("decisionReference").GetString() == TaxPilotSetup.DecisionRecord
+            && r.GetProperty("professionalReview").GetProperty("status").GetString() == "Pending");
+        governance.GetProperty("effects").GetString().Should().Contain("Não executa alteração fiscal, contábil ou financeira automaticamente");
+        execution.GetProperty("dossier").GetProperty("governance").GetProperty("mode").GetString().Should().Be("ControlledPilot");
         scenario.GetProperty("complianceAssessment").GetProperty("status").GetString().Should().Be("Verified");
         scenario.GetProperty("complianceAssessment").GetProperty("scope").GetString().Should().Contain("Estabelecimento de teste");
         var impact = scenario.GetProperty("impactAnalysis");
@@ -196,7 +223,9 @@ public class TaxHomologationDossierTests
         {
             ["notice"] = "Exemplo de homologação gerado pelo próprio sistema (teste de integração TaxHomologationDossierTests) sobre dados " +
                          "controlados de teste: empresa, CNPJ, documentos e conferências são fictícios. Prova o fluxo; não afirma fato jurídico. " +
-                         "Nenhuma regra está profissionalmente aprovada. O hash demonstra integridade, não veracidade material.",
+                         "Executado como piloto controlado: as regras têm aprovação interna de produto e governança para o piloto " +
+                         "(INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT), que não é parecer profissional; a revisão " +
+                         "profissional de todas continua pendente. O hash demonstra integridade, não veracidade material.",
             ["calculation"] = new JsonObject
             {
                 ["id"] = calcId.ToString(),
@@ -207,6 +236,7 @@ public class TaxHomologationDossierTests
                 ["totalBase"] = finalCalc.GetProperty("totalBase").GetDecimal(),
                 ["totalTax"] = finalCalc.GetProperty("totalTax").GetDecimal(),
                 ["coverage"] = JsonNode.Parse(finalCalc.GetProperty("coverage").GetRawText()),
+                ["governance"] = JsonNode.Parse(finalCalc.GetProperty("governance").GetRawText()),
                 ["advisories"] = JsonNode.Parse(finalCalc.GetProperty("advisories").GetRawText()),
                 ["notes"] = JsonNode.Parse(finalCalc.GetProperty("output").GetProperty("notes").GetRawText()),
                 ["warnings"] = JsonNode.Parse(finalCalc.GetProperty("output").GetProperty("warnings").GetRawText()),

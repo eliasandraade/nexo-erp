@@ -4,7 +4,9 @@
 
 A revisão tributária anterior concluiu **"APTO APÓS AJUSTES"**. Os ajustes foram implementados, e esta homologação é sobre a **implementação corrigida**.
 
-Não existe, no repositório, parecer profissional assinado. Nenhuma regra foi marcada como aprovada. Toda versão do catálogo continua `ProfessionalReview = Pending` até o seu registro.
+Não existe, no repositório, parecer profissional assinado. Nenhuma regra foi marcada como profissionalmente aprovada. Toda versão do catálogo continua `ProfessionalReview = Pending` até o seu registro.
+
+**Piloto controlado (27/10/2026).** O Product Owner da Andrade Systems encerrou a homologação interna e decidiu liberar as nove versões ativas de 2026 para **piloto controlado**. A decisão só se efetiva no sistema por ações explícitas e auditadas da plataforma, nunca por migration. É uma decisão interna de produto e governança (*INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT*), registrada em [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md), e **não substitui esta homologação profissional**. No sistema, cada versão tem as duas dimensões lado a lado: `InternalApproval = ApprovedForControlledPilot` e `ProfessionalReview = Pending`. A produção definitiva (modo `ProfessionalFinal`) continua dependendo da revisão de cada regra abaixo.
 
 - Exemplo real preenchido pelo sistema: [homologation/example-dossier.md](homologation/example-dossier.md); o JSON completo está em [homologation/example-dossier.json](homologation/example-dossier.json).
 - Recorte aceito: [supported-operations.md](supported-operations.md).
@@ -88,21 +90,21 @@ Avaliar o dossiê real preenchido ([example-dossier.md](homologation/example-dos
 ### 7. Revisão profissional por regra
 Para cada versão abaixo, registrar o resultado: `Approved`, `ApprovedWithCaveats`, `ChangesRequired` ou `Rejected`. Em cada uma, informar **escopo**, **vigência**, **premissas** e **ressalvas**.
 
-| Regra | Versão | Status atual |
-|---|---|---|
-| `IBSCBS.BASE.SURCHARGES` | 1 | Pending |
-| `IBSCBS.BASE.CONDITIONAL-DISCOUNT` | 1 | Pending |
-| `IBSCBS.BASE.UNCONDITIONAL-DISCOUNT` | 1 | Pending |
-| `IBSCBS.BASE.TRANSITION-TAXES` | 1 | Pending |
-| `CBS.RATE.2026-TEST` | 1 | Pending |
-| `IBS.RATE.2026-TEST-STATE` | 1 | Pending |
-| `IBSCBS.NOTE.2026-SIMPLES` | 1 | Pending |
-| `IBSCBS.NOTE.2026-COMPENSATION` | 1 | Pending |
-| `IBSCBS.NOTE.2026-WAIVER` | 1 | Pending (`Superseded` — preservada para reprodução) |
-| `IBSCBS.NOTE.2026-WAIVER` | 2 | Pending |
-| `CBS.RATE.REFERENCE-2027-2033` | 1 | Pending (`PendingRegulation`, não aplicada) |
-| `IBS.RATE.2027-2028-STATE` | 1 | Pending (`Unverified`, não aplicada) |
-| `IBS.RATE.2027-2028-MUNICIPAL` | 1 | Pending (`Unverified`, não aplicada) |
+| Regra | Versão | Revisão profissional | Decisão de piloto (registrada por ação explícita) |
+|---|---|---|---|
+| `IBSCBS.BASE.SURCHARGES` | 1 | Pending | ApprovedForControlledPilot (2026) |
+| `IBSCBS.BASE.CONDITIONAL-DISCOUNT` | 1 | Pending | ApprovedForControlledPilot (2026) |
+| `IBSCBS.BASE.UNCONDITIONAL-DISCOUNT` | 1 | Pending | ApprovedForControlledPilot (2026) |
+| `IBSCBS.BASE.TRANSITION-TAXES` | 1 | Pending | ApprovedForControlledPilot (2026) |
+| `CBS.RATE.2026-TEST` | 1 | Pending | ApprovedForControlledPilot (2026) |
+| `IBS.RATE.2026-TEST-STATE` | 1 | Pending | ApprovedForControlledPilot (2026) |
+| `IBSCBS.NOTE.2026-SIMPLES` | 1 | Pending | ApprovedForControlledPilot (2026) |
+| `IBSCBS.NOTE.2026-COMPENSATION` | 1 | Pending | ApprovedForControlledPilot (2026) |
+| `IBSCBS.NOTE.2026-WAIVER` | 1 | Pending (`Superseded` — preservada para reprodução) | NotApproved |
+| `IBSCBS.NOTE.2026-WAIVER` | 2 | Pending | ApprovedForControlledPilot (2026) |
+| `CBS.RATE.REFERENCE-2027-2033` | 1 | Pending (`PendingRegulation`, não aplicada) | NotApproved (bloqueada) |
+| `IBS.RATE.2027-2028-STATE` | 1 | Pending (`Unverified`, não aplicada) | NotApproved (bloqueada) |
+| `IBS.RATE.2027-2028-MUNICIPAL` | 1 | Pending (`Unverified`, não aplicada) | NotApproved (bloqueada) |
 
 Campos do registro de revisão: status, revisor, identificação profissional, escopo, vigência (de/até), premissas, ressalvas e notas. Ficam vazios até o profissional preencher.
 

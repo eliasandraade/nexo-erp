@@ -16,8 +16,9 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 /// the guardrails able to block at any point before approval. Approval writes the decision dossier in
 /// the same transaction. Nothing here changes a sale, a price, a ledger or a document — an approved
 /// opportunity is a recorded scenario decision, and carrying it out is up to the business. Approval
-/// follows the <see cref="TaxIntelligencePolicyOptions"/>: rules not professionally approved block it
-/// when so configured (production), and the maker-checker requirement depends on risk and materiality.
+/// follows the <see cref="TaxIntelligencePolicyOptions"/>: rules not approved for the mode block it when
+/// so configured — in the controlled pilot the internal pilot approval suffices, in the definitive mode
+/// only a professional one — and the maker-checker requirement depends on risk and materiality.
 /// After the operation, an execution verification records whether it really happened as approved.
 /// Hashes and versions show the integrity of the records — not the material truth of the facts.
 /// </summary>
@@ -30,19 +31,21 @@ public sealed class TaxOpportunityService
     private readonly TaxEngineRegistry _engines;
     private readonly TaxCatalogService _catalog;
     private readonly TaxComplianceService _compliance;
+    private readonly TaxApprovalGate _approvals;
     private readonly TaxIntelligencePolicyOptions _policy;
     private readonly ICurrentTenant _tenant;
     private readonly TaxAuditTrail _audit;
     private readonly ILogger<TaxOpportunityService> _log;
 
     public TaxOpportunityService(
-        NexoDbContext db, TaxEngineRegistry engines, TaxCatalogService catalog, TaxComplianceService compliance,
+        NexoDbContext db, TaxEngineRegistry engines, TaxCatalogService catalog, TaxComplianceService compliance, TaxApprovalGate approvals,
         IOptions<TaxIntelligencePolicyOptions> policy, ICurrentTenant tenant, TaxAuditTrail audit, ILogger<TaxOpportunityService> log)
     {
         _db = db;
         _engines = engines;
         _catalog = catalog;
         _compliance = compliance;
+        _approvals = approvals;
         _policy = policy.Value;
         _tenant = tenant;
         _audit = audit;
@@ -104,8 +107,8 @@ public sealed class TaxOpportunityService
             .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Oportunidade", id);
         var decision = await _db.TaxDecisions.AsNoTracking().FirstOrDefaultAsync(d => d.OpportunityId == id, ct);
         var execution = await _db.TaxExecutionVerifications.AsNoTracking().FirstOrDefaultAsync(e => e.OpportunityId == id, ct);
-        var pending = await _catalog.PendingProfessionalReviewAsync(await RuleVersionsBehindAsync(o, ct), await ReferenceDateAsync(o, ct), ct);
-        return Map(o, decision, execution, pending.Count > 0);
+        var governance = await _approvals.ForDecisionAsync(await RuleVersionsBehindAsync(o, ct), await ReferenceDateAsync(o, ct), ct);
+        return Map(o, decision, execution, governance);
     }
 
     private async Task<DateOnly> ReferenceDateAsync(TaxOpportunity o, CancellationToken ct)
@@ -190,6 +193,7 @@ public sealed class TaxOpportunityService
     /// </summary>
     public async Task<TaxOpportunityDto> ApproveAsync(Guid id, ApproveOpportunityRequest r, CancellationToken ct)
     {
+        var (governance, referenceDate, ruleIds) = await AdmitDecisionAsync(id, "aprovação do cenário", ct);
         var o = await LoadForUpdateAsync(id, ct);
         var now = DateTime.UtcNow;
         var approval = _policy.RequiredFor(o.Risk, o.EstimatedImpact);
@@ -197,13 +201,7 @@ public sealed class TaxOpportunityService
         o.Approve(r.AcknowledgeHighRisk, _audit.UserId, _audit.UserName, now, approval, r.SelfApprovalJustification);
         var justification = selfApproval ? r.SelfApprovalJustification!.Trim() : null;
 
-        var referenceDate = await ReferenceDateAsync(o, ct);
-        var ruleIds = await RuleVersionsBehindAsync(o, ct);
-        var pendingReview = await _catalog.PendingProfessionalReviewAsync(ruleIds, referenceDate, ct);
-        if (_policy.RequireApprovedRulesForDecisions && pendingReview.Count > 0)
-            throw new DomainException(
-                $"Regras ainda sem revisão tributária aprovada: {string.Join(", ", pendingReview)}. Ativação técnica não é aprovação profissional.",
-                "tax_professional_review_pending");
+        var pendingReview = governance.ProfessionalReviewPending;
 
         var engine = EngineOf(o);
         var calc = o.SourceCalculationId is null ? null
@@ -235,6 +233,7 @@ public sealed class TaxOpportunityService
         var dossier = new
         {
             kind = "scenario-approval",
+            nature = TaxGovernance.DossierNature,
             integrityNotice = IntegrityNotice,
             strategy = o.Title,
             opportunity = new { o.Id, type = o.Type.ToString(), nature = o.ImpactNature.ToString(), o.Summary, o.DetectorKey, o.EstimatedImpact, o.Confidence, o.Caveats },
@@ -271,7 +270,7 @@ public sealed class TaxOpportunityService
             professionalReview = new
             {
                 pendingRules = pendingReview,
-                requiredByPolicy = _policy.RequireApprovedRulesForDecisions,
+                requiredByPolicy = governance.Enforced && governance.Mode == TaxApprovalMode.ProfessionalFinal,
                 reviews = reviews.OrderBy(x => x.Key).Select(x => new
                 {
                     x.Key, x.v.Version, status = x.v.ProfessionalReview.ToString(), reviewer = x.v.ProfessionalReviewedBy, x.v.ProfessionalReference,
@@ -279,6 +278,8 @@ public sealed class TaxOpportunityService
                     assumptions = x.v.ProfessionalReviewAssumptions, caveats = x.v.ProfessionalReviewCaveats,
                 }).ToList(),
             },
+            // The internal pilot approval and the professional review, side by side — one never stands in for the other.
+            governance = GovernanceView(governance),
             complianceAssessment = compliance is null ? null : new
             {
                 status = compliance.Status.ToString(), compliance.PeriodFrom, compliance.PeriodTo, compliance.Scope, compliance.ObligationsChecked,
@@ -311,7 +312,8 @@ public sealed class TaxOpportunityService
         _audit.Record(TaxAuditActions.OpportunityApproved, AuditEntity, o.Id,
             $"Cenário aprovado por {_audit.UserName}: {o.Title}. Dossiê {decision.DossierHash[..12]}.",
             new { decisionId = decision.Id, decision.DossierHash, risk = o.Risk.ToString(), r.AcknowledgeHighRisk, approval = approval.ToString(),
-                selfApproval, justification, pendingProfessionalReview = pendingReview }, AuditSeverity.Warning);
+                selfApproval, justification, pendingProfessionalReview = pendingReview,
+                approvalMode = governance.Mode.ToString(), approvalPolicy = governance.Policy, approvalEnforced = governance.Enforced }, AuditSeverity.Warning);
         await SaveAsync(ct);
         _log.LogInformation("Tax opportunity {OpportunityId} approved; decision {DecisionId}", o.Id, decision.Id);
         return await GetAsync(id, ct);
@@ -324,6 +326,75 @@ public sealed class TaxOpportunityService
     /// <summary>Integrity, not truth: what the hashes in a dossier do and do not show.</summary>
     public const string IntegrityNotice =
         "O hash e a versão demonstram a integridade deste registro — que ele não foi alterado — e não a veracidade material dos fatos declarados.";
+
+    /// <summary>
+    /// The governance frozen into a dossier: mode, policy, pilot scope and, per rule, its own internal approval
+    /// (policy, actor, scope, validity, caveats and the exact decision reference) beside its professional review.
+    /// </summary>
+    private static object GovernanceView(TaxGovernanceDto g) => new
+    {
+        mode = g.Mode.ToString(), g.Policy, g.Enforced, g.Nature, g.Notice, effects = g.EffectsNotice, pilotScope = g.PilotScope,
+        decisionReferences = g.DecisionReferences,
+        rules = g.Rules.Select(x => new
+        {
+            x.Key, x.Version, x.RuleVersionId, technicalStatus = x.TechnicalStatus.ToString(),
+            internalApproval = new
+            {
+                status = x.InternalApproval.ToString(), x.ApprovedForPilot, policy = x.InternalApprovalPolicy,
+                approvedById = x.InternalApprovedById, approvedBy = x.InternalApprovedBy, approvedByRole = x.InternalApprovedByRole,
+                approvedAt = x.InternalApprovedAt, scope = x.InternalApprovalScope, validFrom = x.InternalApprovalValidFrom,
+                validTo = x.InternalApprovalValidTo, caveats = x.PilotCaveats, decisionReference = x.InternalApprovalDecisionRef,
+            },
+            professionalReview = new
+            {
+                status = x.ProfessionalReview.ToString(), approved = x.ProfessionallyApproved, scope = x.ProfessionalReviewScope,
+                caveats = x.ProfessionalCaveats,
+            },
+        }),
+        professionalReviewPending = g.ProfessionalReviewPending,
+    };
+
+    /// <summary>
+    /// Admits new decision work (scenario approval, execution verification) before anything is locked:
+    /// kill switch, approval mode, pilot scope, every rule behind it active and approved for the mode, and the
+    /// calculation behind it still reproducible. A refusal is audited and nothing else is written.
+    /// </summary>
+    private async Task<(TaxGovernanceDto Governance, DateOnly ReferenceDate, IReadOnlyList<Guid> RuleIds)> AdmitDecisionAsync(
+        Guid id, string what, CancellationToken ct)
+    {
+        var o = await _db.TaxOpportunities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Oportunidade", id);
+        if (await _approvals.AdmitDecisionAsync(ct) is { } admission) await RefuseDecisionAsync(o, what, admission, null, ct);
+
+        var referenceDate = await ReferenceDateAsync(o, ct);
+        var ruleIds = await RuleVersionsBehindAsync(o, ct);
+        // Pilot: the internal pilot approval suffices. Definitive mode: only a professional approval. Either way the rule must still be active.
+        var governance = await _approvals.ForDecisionAsync(ruleIds, referenceDate, ct);
+        if (governance.Enforced && governance.NotApproved.Count > 0)
+            await RefuseDecisionAsync(o, what, TaxApprovalGate.NotApproved(governance), governance.NotApproved, ct);
+        if (governance.Enforced && o.SourceCalculationId is { } calcId && !await ReproducesAsync(calcId, ct))
+            await RefuseDecisionAsync(o, what, new TaxGateRefusal("tax_calculation_not_reproducible",
+                "O cálculo por trás desta oportunidade não é mais reproduzível com a engine e as regras que usou: nenhuma decisão nova é registrada."), null, ct);
+        return (governance, referenceDate, ruleIds);
+    }
+
+    private async Task RefuseDecisionAsync(TaxOpportunity o, string what, TaxGateRefusal refusal, IReadOnlyList<string>? details, CancellationToken ct)
+    {
+        _audit.Record(TaxAuditActions.DecisionRefused, AuditEntity, o.Id, $"Recusada a {what} ({refusal.Code}): {o.Title}.",
+            new { refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
+        await _db.SaveChangesAsync(ct);
+        _log.LogInformation("Tax decision refused for opportunity {OpportunityId}: {Code}", o.Id, refusal.Code);
+        throw new DomainException(refusal.Message, refusal.Code, details ?? []);
+    }
+
+    /// <summary>Re-runs the calculation with the engine and rule versions it recorded (nothing is written).</summary>
+    private async Task<bool> ReproducesAsync(Guid calculationId, CancellationToken ct)
+    {
+        var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstAsync(c => c.Id == calculationId, ct);
+        var stored = new StoredCalculation(calc.EngineVersion, calc.InputJson, calc.InputHash, calc.OutputJson, calc.OutputHash,
+            calc.Executions.Select(e => new StoredRuleRun(e.RuleVersionId, e.RuleKey, e.RuleVersion, e.ContentHash)).ToList());
+        var result = await TaxReproduction.VerifyAsync(stored, _engines, (engine, ids) => _catalog.LoadByIdsAsync(ids, engine.Canonical, ct));
+        return result.Reproducible;
+    }
 
     private static object EvidenceView(TaxOpportunityEvidence x) => new
     {
@@ -338,6 +409,7 @@ public sealed class TaxOpportunityService
     /// </summary>
     public async Task<TaxOpportunityDto> VerifyExecutionAsync(Guid id, VerifyExecutionRequest r, CancellationToken ct)
     {
+        var (governance, _, _) = await AdmitDecisionAsync(id, "verificação da execução", ct);
         var o = await LoadForUpdateAsync(id, ct);
         var now = DateTime.UtcNow;
         var decision = await _db.TaxDecisions.AsNoTracking().FirstOrDefaultAsync(d => d.OpportunityId == id, ct)
@@ -350,6 +422,7 @@ public sealed class TaxOpportunityService
         var dossier = new
         {
             kind = "execution-verification",
+            nature = TaxGovernance.DossierNature,
             integrityNotice = IntegrityNotice,
             decision = new { decision.Id, decision.DossierHash, decision.ApprovedAt, decision.ApprovedByName },
             outcome = r.Outcome.ToString(),
@@ -362,6 +435,7 @@ public sealed class TaxOpportunityService
             notes = r.Notes?.Trim(),
             verifiedBy = new { id = _audit.UserId, name = _audit.UserName },
             verifiedAt = now,
+            governance = GovernanceView(governance),
             engineVersion = o.EngineVersion,
             canonicalVersion = engine.Canonical.Id,
         };
@@ -419,7 +493,7 @@ public sealed class TaxOpportunityService
                 $"Esta oportunidade foi produzida pela engine {o.EngineVersion}, que não está disponível nesta versão do Orken.",
                 "tax_engine_unavailable");
 
-    private TaxOpportunityDto Map(TaxOpportunity o, TaxDecision? d, TaxExecutionVerification? x, bool professionalReviewPending)
+    private TaxOpportunityDto Map(TaxOpportunity o, TaxDecision? d, TaxExecutionVerification? x, TaxGovernanceDto governance)
     {
         var blocked = o.Status == TaxOpportunityStatus.Blocked;
         var canonical = EngineOf(o).Canonical;
@@ -427,7 +501,7 @@ public sealed class TaxOpportunityService
             o.Id, o.Type, o.ImpactNature, o.Status, o.Title, blocked ? BlockedSummary : o.Summary, o.DetectorKey, o.EngineVersion,
             o.SourceCalculationId, blocked ? null : o.EstimatedImpact, o.Risk, o.Confidence,
             o.LegalSourceCodes.Split(',', StringSplitOptions.RemoveEmptyEntries), o.Caveats, o.BlockedAs, o.BlockReason,
-            o.RejectionReason, o.ReviewStartedByName, o.ReviewedByName, o.ReviewedAt, o.CreatedAt, professionalReviewPending,
+            o.RejectionReason, o.ReviewStartedByName, o.ReviewedByName, o.ReviewedAt, o.CreatedAt, governance.ProfessionalReviewPending.Count > 0,
             _policy.RequiredFor(o.Risk, o.EstimatedImpact),
             o.Requirements.OrderBy(r => r.Phase).ThenBy(r => r.CreatedAt).ThenBy(r => r.Code)
                 .Select(r => new TaxOpportunityRequirementDto(r.Id, r.Code, r.Text, r.LegalSourceCode, r.Met, r.Note, r.AnsweredByName, r.AnsweredAt,
@@ -439,7 +513,8 @@ public sealed class TaxOpportunityService
             blocked ? null : canonical.Deserialize<ScenarioResult>(o.ProposedScenarioJson),
             d is null ? null : MapDecision(d),
             x is null ? null : new TaxExecutionVerificationDto(x.Id, x.DecisionId, x.Outcome, x.FiscalDocumentReference, x.AuthorizationProtocol,
-                x.Notes, x.VerifiedByName, x.VerifiedAt, x.DossierHash, TaxJson.Element(x.DossierJson)));
+                x.Notes, x.VerifiedByName, x.VerifiedAt, x.DossierHash, TaxJson.Element(x.DossierJson)),
+            governance);
     }
 
     /// <summary>The detector's summary states the saving; once blocked, only a neutral description is shown.</summary>

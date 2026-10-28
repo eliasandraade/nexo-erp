@@ -147,6 +147,9 @@ public class NexoDbContext : DbContext
     public DbSet<TaxLegalSource>          TaxLegalSources          => Set<TaxLegalSource>();
     public DbSet<TaxRule>                 TaxRules                 => Set<TaxRule>();
     public DbSet<TaxRuleVersion>          TaxRuleVersions          => Set<TaxRuleVersion>();
+    // Controlled pilot scope (platform-wide): who takes part, kept by the platform.
+    public DbSet<TaxPilotScope>           TaxPilotScopes           => Set<TaxPilotScope>();
+    public DbSet<TaxPilotParticipant>     TaxPilotParticipants     => Set<TaxPilotParticipant>();
     // Establishment data (tenant + store filter).
     public DbSet<TaxProfile>              TaxProfiles              => Set<TaxProfile>();
     public DbSet<TaxProfileVersion>       TaxProfileVersions       => Set<TaxProfileVersion>();
