@@ -2,12 +2,12 @@ import { TAX_REGIMES } from "@/modules/fiscal/api/fiscal.api";
 import type {
   ApprovalRequirement, BaseComponent, ComplianceAssessmentStatus, ConditionOutcome, CoverageStatus, CreditLifecycle, EvidenceStatus, EvidenceType,
   RequirementPhase, SupplyPattern, CreditEntryType, CreditMovement, CreditTax, ImpactNature, OpportunityStatus,
-  OpportunityType, ProfessionalReviewStatus, ProhibitedStructure, RiskLevel, RuleStatus, SplitProcedure, SplitStatus, TaxDirection,
-  TaxItemKind, TaxRegime, TaxTransactionSource, TaxType, TaxVerificationDto, TextVerificationStatus,
+  InternalApprovalStatus, OpportunityType, ProfessionalReviewStatus, ProhibitedStructure, RiskLevel, RuleStatus, SplitProcedure, SplitStatus, TaxDirection,
+  TaxApprovalMode, TaxItemKind, TaxRegime, TaxTransactionSource, TaxType, TaxVerificationDto, TextVerificationStatus,
 } from "../api/tax.api";
 
 /** Visual tone of a badge: each impact nature has its own, so they are never read as the same thing. */
-export type Tone = "saving" | "reduction" | "deferral" | "cash" | "credit" | "risk" | "neutral" | "danger" | "warning" | "success";
+export type Tone = "saving" | "reduction" | "deferral" | "cash" | "credit" | "risk" | "neutral" | "danger" | "warning" | "success" | "pilot";
 
 export interface ToneLabel { label: string; tone: Tone }
 
@@ -81,13 +81,32 @@ export const TEXT_VERIFICATION: Record<TextVerificationStatus, ToneLabel> = {
 
 /** A tax professional's review of the rule — technical activation is not professional approval. */
 export const PROFESSIONAL_REVIEW: Record<ProfessionalReviewStatus, ToneLabel> = {
-  Pending: { label: "Revisão tributária pendente", tone: "warning" },
+  Pending: { label: "Revisão profissional pendente", tone: "warning" },
   ReviewReceived: { label: "Revisão recebida — não é aprovação", tone: "warning" },
-  Approved: { label: "Revisão tributária aprovada", tone: "success" },
-  ApprovedWithCaveats: { label: "Revisão aprovou com ressalvas", tone: "success" },
-  ChangesRequired: { label: "Revisão tributária pediu ajustes", tone: "danger" },
-  Rejected: { label: "Revisão tributária rejeitou", tone: "danger" },
+  Approved: { label: "Revisão profissional aprovada", tone: "success" },
+  ApprovedWithCaveats: { label: "Revisão profissional aprovou com ressalvas", tone: "success" },
+  ChangesRequired: { label: "Revisão profissional pediu ajustes", tone: "danger" },
+  Rejected: { label: "Revisão profissional rejeitou", tone: "danger" },
 };
+
+/**
+ * The internal product/governance approval for the controlled pilot. It sits beside the professional
+ * review — both can show at once — and never reads as a professional approval.
+ */
+export const INTERNAL_APPROVAL: Record<InternalApprovalStatus, ToneLabel> = {
+  ApprovedForControlledPilot: { label: "Aprovado internamente para piloto controlado", tone: "pilot" },
+  NotApproved: { label: "Sem aprovação para o piloto", tone: "neutral" },
+  Withdrawn: { label: "Aprovação para o piloto retirada", tone: "danger" },
+};
+
+export const APPROVAL_MODE: Record<TaxApprovalMode, ToneLabel> = {
+  ControlledPilot: { label: "Piloto controlado", tone: "pilot" },
+  ProfessionalFinal: { label: "Produção definitiva (só aprovação profissional)", tone: "neutral" },
+};
+
+/** Said wherever the internal approval shows: it is a governance decision, not a professional opinion. */
+export const INTERNAL_APPROVAL_NOTICE =
+  "Decisão interna de produto e governança da Andrade Systems para o piloto controlado. Não é parecer jurídico, contábil ou tributário profissional.";
 
 /**
  * Ancillary-obligation assessments, per period and scope. Only "Verificado" satisfies a rule that
@@ -252,6 +271,8 @@ export const TONE_CLASSES: Record<Tone, string> = {
   danger: "border-destructive/40 bg-destructive/10 text-destructive",
   warning: "border-warning/40 bg-warning/10 text-warning",
   success: "border-success/40 bg-success/10 text-success",
+  // The internal pilot approval: its own tone, never the green of a professional approval.
+  pilot: "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
 };
 
 /** What a verification proved, in plain words. The engine that made a calculation is the only one that re-runs it. */

@@ -117,10 +117,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("RateLimiting:PublicOrders:Enabled", "false");
         builder.UseSetting("RateLimiting:CredentialCheck:Enabled", "false");
 
-        // The catalogue V1 awaits professional review, so the production policy (only professionally
-        // approved rules support a decision) would refuse every approval. The suite runs the workflow
-        // with it off; TaxIntelligenceTests turns it on in a derived host to prove the refusal.
+        // Approval enforcement (pilot or professional, per TaxIntelligence:Policy:Mode) is off in the shared
+        // host so tests can use rules created on the fly; TaxIntelligenceTests and TaxControlledPilotTests
+        // turn it on in derived hosts to prove what each mode accepts and refuses.
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "false");
+        builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForCalculations", "false");
     }
 
     /// <summary>Creates an HttpClient pre-configured for the test server.</summary>

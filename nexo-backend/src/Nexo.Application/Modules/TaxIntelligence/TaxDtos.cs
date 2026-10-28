@@ -67,7 +67,8 @@ public sealed record TaxCalculationDto(
     string InputHash, string RuleSetHash, string OutputHash, decimal TotalBase, decimal TotalTax,
     bool Reused, DateTime CreatedAt, TaxEngineInput Input, TaxEngineOutput Output,
     IReadOnlyList<Guid> OpportunityIds, IReadOnlyList<string> Advisories, TaxCoverageDecision Coverage,
-    TaxComplianceAssessmentDto? ComplianceAssessment, TaxComplianceAssessmentDto? CurrentComplianceAssessment);
+    TaxComplianceAssessmentDto? ComplianceAssessment, TaxComplianceAssessmentDto? CurrentComplianceAssessment,
+    TaxGovernanceDto? Governance);
 
 /// <summary>
 /// Result of running a stored calculation again with exactly the engine version and rule versions it
@@ -127,7 +128,8 @@ public sealed record TaxDecisionDto(
 /// An opportunity. When it is blocked as a prohibited structure, <see cref="EstimatedImpact"/> and
 /// <see cref="Proposed"/> are null: no saving is offered for it. <see cref="ProfessionalReviewPending"/>
 /// says whether any rule behind it still awaits a tax professional's review (technical activation is not
-/// professional approval).
+/// professional approval). <see cref="Governance"/> shows, for each of those rules, the internal pilot
+/// approval beside the professional review, under the configured approval mode.
 /// </summary>
 public sealed record TaxOpportunityDto(
     Guid Id, TaxOpportunityType Type, TaxImpactNature ImpactNature, TaxOpportunityStatus Status, string Title, string Summary,
@@ -136,7 +138,8 @@ public sealed record TaxOpportunityDto(
     string? RejectionReason, string? ReviewStartedByName, string? ReviewedByName, DateTime? ReviewedAt, DateTime CreatedAt,
     bool ProfessionalReviewPending, ApprovalRequirement RequiredApproval,
     IReadOnlyList<TaxOpportunityRequirementDto> Requirements, IReadOnlyList<TaxOpportunityEvidenceDto> Evidence,
-    ScenarioResult? Current, ScenarioResult? Proposed, TaxDecisionDto? Decision, TaxExecutionVerificationDto? Execution);
+    ScenarioResult? Current, ScenarioResult? Proposed, TaxDecisionDto? Decision, TaxExecutionVerificationDto? Execution,
+    TaxGovernanceDto Governance);
 
 public sealed record TaxOpportunitySummaryDto(
     Guid Id, TaxOpportunityType Type, TaxImpactNature ImpactNature, TaxOpportunityStatus Status, string Title,
@@ -221,7 +224,17 @@ public sealed record TaxRuleVersionDto(
     DateTime? ActivatedAt, IReadOnlyList<string> LegalSourceCodes, DateTime CreatedAt,
     ProfessionalReviewStatus ProfessionalReview, string? ProfessionalReviewedBy, DateTime? ProfessionalReviewedAt,
     string? ProfessionalReviewNotes, string? ProfessionalReference, string? ProfessionalReviewScope, DateOnly? ProfessionalReviewValidFrom,
-    DateOnly? ProfessionalReviewValidTo, string? ProfessionalReviewAssumptions, string? ProfessionalReviewCaveats);
+    DateOnly? ProfessionalReviewValidTo, string? ProfessionalReviewAssumptions, string? ProfessionalReviewCaveats,
+    TaxInternalApprovalDto InternalApproval);
+
+/// <summary>
+/// The internal product/governance approval of a version for the controlled pilot — shown beside the
+/// professional review, never in its place. It is not a professional tax opinion.
+/// </summary>
+public sealed record TaxInternalApprovalDto(
+    InternalApprovalStatus Status, string? Policy, string? ApprovedBy, DateTime? ApprovedAt, string? Scope,
+    DateOnly? ValidFrom, DateOnly? ValidTo, string? Caveats, string? DecisionReference, string? WithdrawalReason, DateTime? WithdrawnAt,
+    string Nature);
 
 public sealed record TaxRuleDto(Guid Id, string Key, string Name, string Description, IReadOnlyList<TaxRuleVersionDto> Versions);
 
@@ -243,6 +256,16 @@ public sealed record ChangeTaxRuleVersionStatusRequest(TaxRuleStatus Status);
 public sealed record RecordProfessionalReviewRequest(
     ProfessionalReviewStatus Status, string Reviewer, string? Notes, string? ProfessionalReference = null, string? Scope = null,
     DateOnly? ValidFrom = null, DateOnly? ValidTo = null, string? Assumptions = null, string? Caveats = null);
+
+/// <summary>
+/// Internal pilot approval of an active rule version by the product's governance (a role such as
+/// "Product Owner — Andrade Systems", never a professional identity). Scope, validity, caveats and where
+/// the decision is recorded are required; the policy is fixed by the server.
+/// </summary>
+public sealed record ApproveRuleForPilotRequest(
+    string ApprovedBy, string Scope, DateOnly ValidFrom, DateOnly? ValidTo, string Caveats, string DecisionReference);
+
+public sealed record WithdrawPilotApprovalRequest(string Reason);
 
 // ── Overview ─────────────────────────────────────────────────────────────────
 

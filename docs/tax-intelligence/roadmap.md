@@ -23,9 +23,22 @@
 | Retenção | Política pendente de definição legal; nenhum descarte automático; exportação pela API | ver [audit-model.md](audit-model.md#retenção) |
 | Produto | Empacotamento comercial (módulo pago? plano?) não decidido | decisão do dono |
 
-## Política de produção
+## Política de aprovação
 
-`TaxIntelligence:Policy:RequireApprovedRulesForDecisions` — ligada por padrão fora de Development/Testing: uma oportunidade só é aprovada se **todas** as versões de regra que casaram no cálculo tiverem `ProfessionalReview = Approved` ou `ApprovedWithCaveats`, dentro da validade da revisão (senão 422 `tax_professional_review_pending`, nada é gravado). Em Development e Testing o padrão é desligado para o fluxo ser exercitável antes da revisão; configuração explícita sempre vence. Um teste de integração liga a política e prova a recusa. O maker-checker (`LowRisk`, `MediumRisk`, `HighRisk`, `MaterialityThreshold`) vale em todos os ambientes.
+- **`TaxIntelligence:Policy:Mode`** escolhe que aprovação uma regra precisa:
+  - `ControlledPilot` (padrão; decisão do Product Owner de 27/10/2026): basta a aprovação interna para piloto controlado (`InternalApproval = ApprovedForControlledPilot`) ou uma aprovação profissional;
+  - `ProfessionalFinal` (produção definitiva): só `ProfessionalReview = Approved` ou `ApprovedWithCaveats`, dentro da validade.
+- **`RequireApprovedRulesForCalculations`**: um cálculo só roda se todas as regras ativas que a engine pode aplicar na data estiverem aprovadas para o modo. Caso contrário, é recusado com 422 e a recusa fica na auditoria.
+- **`RequireApprovedRulesForDecisions`**: uma oportunidade só é aprovada se todas as regras que casaram no cálculo estiverem aprovadas para o modo. Caso contrário, 422 e nada é gravado.
+
+Os códigos de recusa são:
+
+- `tax_pilot_approval_missing` no piloto;
+- `tax_professional_review_pending` no modo definitivo.
+
+As duas políticas ficam ligadas por padrão fora de Development e Testing. Nesses dois ambientes ficam desligadas para o fluxo ser exercitável com qualquer catálogo, e configuração explícita sempre vence. Testes de integração ligam as políticas e provam o que cada modo aceita e recusa. O maker-checker (`LowRisk`, `MediumRisk`, `HighRisk`, `MaterialityThreshold`) vale em todos os ambientes.
+
+O registro da decisão do piloto, com as versões aprovadas, as ressalvas, os riscos aceitos e os critérios de suspensão, está em [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md).
 
 ## O que depende do profissional tributário
 

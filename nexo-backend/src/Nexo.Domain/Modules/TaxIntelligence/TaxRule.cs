@@ -79,6 +79,80 @@ public class TaxRuleVersion : BaseEntity
            && ProfessionalReviewValidFrom is not null && ProfessionalReviewValidFrom <= date
            && (ProfessionalReviewValidTo is null || date <= ProfessionalReviewValidTo);
 
+    /// <summary>
+    /// Internal product/governance approval for the controlled pilot — independent of
+    /// <see cref="ProfessionalReview"/>, which it never changes. It is not a professional tax opinion.
+    /// </summary>
+    public InternalApprovalStatus InternalApproval { get; private set; } = InternalApprovalStatus.NotApproved;
+    /// <summary>The internal approval policy it was granted under (e.g. "orken-pilot-approval/1").</summary>
+    public string? InternalApprovalPolicy { get; private set; }
+    /// <summary>The governance role that decided (e.g. "Product Owner — Andrade Systems"), never a professional identity.</summary>
+    public string? InternalApprovedBy { get; private set; }
+    public DateTime? InternalApprovedAt { get; private set; }
+    public string? InternalApprovalScope { get; private set; }
+    public DateOnly? InternalApprovalValidFrom { get; private set; }
+    public DateOnly? InternalApprovalValidTo { get; private set; }
+    /// <summary>The caveats accepted with the approval — they never disappear because of it.</summary>
+    public string? InternalApprovalCaveats { get; private set; }
+    /// <summary>Where the governance decision is recorded (document or ticket).</summary>
+    public string? InternalApprovalDecisionRef { get; private set; }
+    public string? InternalApprovalWithdrawalReason { get; private set; }
+    public DateTime? InternalApprovalWithdrawnAt { get; private set; }
+
+    /// <summary>Approved internally for the controlled pilot, for a date inside that approval's validity.</summary>
+    public bool IsApprovedForPilotOn(DateOnly date)
+        => InternalApproval == InternalApprovalStatus.ApprovedForControlledPilot
+           && InternalApprovalValidFrom is not null && InternalApprovalValidFrom <= date
+           && (InternalApprovalValidTo is null || date <= InternalApprovalValidTo);
+
+    /// <summary>
+    /// Records the internal pilot approval. Only an active version qualifies — one awaiting regulation,
+    /// with an unverified source, a draft or a finished one stays blocked. The approval states its policy,
+    /// who decided, scope, validity (inside the version's), caveats and where the decision is recorded.
+    /// The professional review is left exactly as it was.
+    /// </summary>
+    public void ApproveForControlledPilot(InternalApprovalInput r, DateTime atUtc)
+    {
+        if (Status != TaxRuleStatus.Active)
+            throw new DomainException(
+                $"Só uma versão ativa pode ser aprovada para o piloto; uma versão {Status} continua bloqueada.", "tax_pilot_approval_status");
+        if (string.IsNullOrWhiteSpace(r.Policy) || string.IsNullOrWhiteSpace(r.ApprovedBy) || string.IsNullOrWhiteSpace(r.Scope)
+            || string.IsNullOrWhiteSpace(r.DecisionReference))
+            throw new DomainException("A aprovação interna diz a política, quem decidiu, o escopo e onde a decisão está registrada.", "tax_pilot_approval_fields");
+        if (string.IsNullOrWhiteSpace(r.Caveats))
+            throw new DomainException("A aprovação interna registra as ressalvas aceitas.", "tax_pilot_approval_caveats");
+        if (r.ValidTo is not null && r.ValidTo < r.ValidFrom)
+            throw new DomainException("O fim da validade da aprovação é anterior ao início.", "tax_pilot_approval_validity");
+        if (r.ValidFrom < ValidFrom || (ValidTo is not null && (r.ValidTo is null || r.ValidTo > ValidTo)))
+            throw new DomainException("A aprovação interna não vai além da vigência da versão.", "tax_pilot_approval_validity");
+
+        InternalApproval = InternalApprovalStatus.ApprovedForControlledPilot;
+        InternalApprovalPolicy = r.Policy.Trim();
+        InternalApprovedBy = r.ApprovedBy.Trim();
+        InternalApprovedAt = atUtc;
+        InternalApprovalScope = r.Scope.Trim();
+        InternalApprovalValidFrom = r.ValidFrom;
+        InternalApprovalValidTo = r.ValidTo;
+        InternalApprovalCaveats = r.Caveats.Trim();
+        InternalApprovalDecisionRef = r.DecisionReference.Trim();
+        InternalApprovalWithdrawalReason = null;
+        InternalApprovalWithdrawnAt = null;
+        SetUpdatedAt();
+    }
+
+    /// <summary>Withdraws a pilot approval (e.g. a suspension criterion was met). The approval's record is kept.</summary>
+    public void WithdrawPilotApproval(string reason, DateTime atUtc)
+    {
+        if (InternalApproval != InternalApprovalStatus.ApprovedForControlledPilot)
+            throw new DomainException("Esta versão não está aprovada para o piloto.", "tax_pilot_approval_state");
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new DomainException("Diga por que a aprovação para o piloto foi retirada.", "tax_pilot_approval_reason");
+        InternalApproval = InternalApprovalStatus.Withdrawn;
+        InternalApprovalWithdrawalReason = reason.Trim();
+        InternalApprovalWithdrawnAt = atUtc;
+        SetUpdatedAt();
+    }
+
     public IReadOnlyCollection<TaxRuleVersionSource> Sources => _sources.AsReadOnly();
 
     public bool Covers(DateOnly date) => ValidFrom <= date && (ValidTo is null || date <= ValidTo);
@@ -175,6 +249,10 @@ public class TaxRuleVersion : BaseEntity
 public sealed record ProfessionalReviewInput(
     ProfessionalReviewStatus Status, string Reviewer, string? ProfessionalReference, string? Scope, DateOnly? ValidFrom,
     DateOnly? ValidTo, string? Assumptions, string? Caveats, string? Notes);
+
+/// <summary>An internal pilot approval as decided: policy, who decided (a governance role), scope, validity, caveats and where it is recorded.</summary>
+public sealed record InternalApprovalInput(
+    string Policy, string ApprovedBy, string Scope, DateOnly ValidFrom, DateOnly? ValidTo, string Caveats, string DecisionReference);
 
 /// <summary>Join between a rule version and a legal source (tax_rule_version_sources).</summary>
 public class TaxRuleVersionSource

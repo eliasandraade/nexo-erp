@@ -39,7 +39,10 @@ describe("TaxOpportunityDetailPage", () => {
     expect(screen.getAllByText("Redução simulada do IBS/CBS calculado").length).toBeGreaterThan(0);
     expect(screen.queryByText("Economia")).not.toBeInTheDocument();
     expect(screen.getByText("R$ 0,50")).toBeInTheDocument();
-    expect(screen.getByText(/Revisão tributária pendente: as regras usadas estão em vigor no motor/)).toBeInTheDocument();
+    expect(screen.getByText(/Revisão profissional pendente: as regras usadas estão em vigor no motor/)).toBeInTheDocument();
+    expect(screen.getByText("Piloto controlado")).toBeInTheDocument();
+    expect(screen.getByText("Aprovado internamente para piloto controlado")).toBeInTheDocument();
+    expect(screen.getByText(/Não é parecer jurídico, contábil ou tributário profissional/)).toBeInTheDocument();
   });
 
   it("asks for a justification when whoever analysed alone approves, and sends it", async () => {

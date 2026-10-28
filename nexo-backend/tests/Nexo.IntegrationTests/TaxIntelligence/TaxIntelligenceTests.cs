@@ -28,7 +28,7 @@ namespace Nexo.IntegrationTests.TaxIntelligence;
 /// the database never reuse each other's calculations.
 /// </summary>
 [Collection("Integration")]
-public class TaxIntelligenceTests
+public partial class TaxIntelligenceTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
     private readonly TestWebApplicationFactory _factory;
@@ -578,9 +578,15 @@ public class TaxIntelligenceTests
         paths.Should().Contain(["/api/tax/calculations", "/api/tax/calculations/{id}/verify", "/api/tax/simulations",
             "/api/tax/opportunities/{id}/approve", "/api/tax/credits/{id}/movements", "/api/tax/rules", "/api/platform/tax/rules/{key}/versions",
             "/api/platform/tax/rule-versions/{id}/professional-review", "/api/tax/calculations/coverage", "/api/tax/compliance-assessments",
-            "/api/tax/opportunities/{id}/execution", "/api/tax/opportunities/{id}/evidence/{evidenceId}/review"]);
+            "/api/tax/opportunities/{id}/execution", "/api/tax/opportunities/{id}/evidence/{evidenceId}/review",
+            "/api/platform/tax/rule-versions/{id}/pilot-approval", "/api/platform/tax/rule-versions/{id}/pilot-approval/withdraw"]);
         var schemas = doc.GetProperty("components").GetProperty("schemas");
         schemas.TryGetProperty("RecordProfessionalReviewRequest", out _).Should().BeTrue();
+        schemas.TryGetProperty("ApproveRuleForPilotRequest", out _).Should().BeTrue();
+        schemas.GetProperty("InternalApprovalStatus").GetProperty("enum").EnumerateArray().Select(e => e.GetString())
+            .Should().Equal("NotApproved", "ApprovedForControlledPilot", "Withdrawn");
+        schemas.GetProperty("TaxApprovalMode").GetProperty("enum").EnumerateArray().Select(e => e.GetString())
+            .Should().Equal("ControlledPilot", "ProfessionalFinal");
         schemas.GetProperty("TaxImpactNature").GetProperty("enum").EnumerateArray().Select(e => e.GetString()).Should().Contain("CalculatedTaxReduction");
         doc.GetProperty("components").GetProperty("schemas").TryGetProperty("TaxCalculationDto", out _).Should().BeTrue();
     }
@@ -889,7 +895,7 @@ public class TaxIntelligenceTests
     }
 
     [Fact]
-    public async Task With_the_production_policy_rules_awaiting_professional_review_cannot_back_a_decision()
+    public async Task In_the_definitive_professional_mode_rules_awaiting_professional_review_cannot_back_a_decision()
     {
         var admin = await AdminWithProfileAsync();
         var calc = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("Política"), gross: 1014m)));
@@ -898,7 +904,10 @@ public class TaxIntelligenceTests
         await Json(await Post(gerente, $"/api/tax/opportunities/{oppId}/review", new { }));
         await PrepareScenarioAsync(gerente, oppId, "PROP-POLITICA");
 
-        var production = HostWith(admin, host: b => b.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "true"));
+        // The definitive mode accepts only a professional approval: the internal pilot approval is not one.
+        var production = HostWith(admin, host: b => b
+            .UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "true")
+            .UseSetting("TaxIntelligence:Policy:Mode", "ProfessionalFinal"));
         var refused = await Json(await Post(production, $"/api/tax/opportunities/{oppId}/approve", new { acknowledgeHighRisk = false }),
             HttpStatusCode.UnprocessableEntity);
 

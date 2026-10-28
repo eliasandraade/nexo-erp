@@ -1,6 +1,6 @@
 # ADR 0002 — Engine e forma canônica versionadas; texto conferido não é revisão profissional
 
-- **Status:** proposta (PR de hardening empilhado sobre a #78; depende de revisão)
+- **Status:** proposta (PR de hardening empilhado sobre a #78; depende de revisão). O item 4 é complementado pela [ADR 0003](adr-0003-controlled-pilot-approval.md): no modo `ControlledPilot`, a aprovação interna para piloto também sustenta uma decisão; no modo `ProfessionalFinal`, vale o que está aqui.
 - **Data:** 27/10/2026
 
 ## Contexto

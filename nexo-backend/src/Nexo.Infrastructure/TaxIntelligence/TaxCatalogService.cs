@@ -44,19 +44,6 @@ public sealed class TaxCatalogService
     public async Task<IReadOnlyList<TaxEngineRule>> LoadByIdsAsync(IReadOnlyCollection<Guid> versionIds, ITaxCanonicalizer canonical, CancellationToken ct)
         => await LoadAsync(_db.TaxRuleVersions.Where(v => versionIds.Contains(v.Id)), canonical, ct);
 
-    /// <summary>
-    /// Rule versions (key vN) not professionally approved for the date: anything but Approved or
-    /// ApprovedWithCaveats inside the review's validity — a received review is not an approval.
-    /// </summary>
-    public async Task<IReadOnlyList<string>> PendingProfessionalReviewAsync(IReadOnlyCollection<Guid> versionIds, DateOnly date, CancellationToken ct)
-    {
-        var rows = await _db.TaxRuleVersions.AsNoTracking().Where(v => versionIds.Contains(v.Id))
-            .Join(_db.TaxRules.AsNoTracking(), v => v.RuleId, r => r.Id, (v, r) => new { v, r.Key })
-            .ToListAsync(ct);
-        return rows.Where(x => !x.v.IsProfessionallyApprovedOn(date)).Select(x => $"{x.Key} v{x.v.Version}")
-            .OrderBy(k => k, StringComparer.Ordinal).ToList();
-    }
-
     private async Task<IReadOnlyList<TaxEngineRule>> LoadAsync(IQueryable<TaxRuleVersion> versions, ITaxCanonicalizer canonical, CancellationToken ct)
     {
         var rows = await versions.AsNoTracking()
@@ -233,6 +220,42 @@ public sealed class TaxCatalogService
         return await GetVersionAsync(version.Id, ct);
     }
 
+    /// <summary>
+    /// Records the internal pilot approval of an active version — a governance decision of the product,
+    /// not a professional review, which it leaves untouched. Audited with who decided, scope, validity,
+    /// caveats and the decision record.
+    /// </summary>
+    public async Task<TaxRuleVersionDto> ApproveForPilotAsync(Guid versionId, ApproveRuleForPilotRequest r, CancellationToken ct)
+    {
+        var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
+            ?? throw new NotFoundException("Versão de regra", versionId);
+        var before = version.InternalApproval;
+        version.ApproveForControlledPilot(new InternalApprovalInput(TaxGovernance.PilotPolicy, r.ApprovedBy, r.Scope, r.ValidFrom, r.ValidTo,
+            r.Caveats, r.DecisionReference), DateTime.UtcNow);
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionPilotApproval, "RuleVersion", version.Id,
+            $"Aprovação interna para piloto controlado da versão {version.Version}: {before} → {version.InternalApproval} ({r.ApprovedBy.Trim()}). Não é parecer profissional.",
+            new { before = before.ToString(), after = version.InternalApproval.ToString(), policy = TaxGovernance.PilotPolicy, nature = TaxGovernance.PilotNature,
+                approvedBy = r.ApprovedBy.Trim(), r.Scope, r.ValidFrom, r.ValidTo, r.Caveats, r.DecisionReference,
+                professionalReview = version.ProfessionalReview.ToString() });
+        await _db.SaveChangesAsync(ct);
+        _log.LogWarning("Tax rule version {VersionId} internal pilot approval {Before} -> {After}", version.Id, before, version.InternalApproval);
+        return await GetVersionAsync(version.Id, ct);
+    }
+
+    /// <summary>Withdraws an internal pilot approval (e.g. a suspension criterion was met). Audited with the reason.</summary>
+    public async Task<TaxRuleVersionDto> WithdrawPilotApprovalAsync(Guid versionId, WithdrawPilotApprovalRequest r, CancellationToken ct)
+    {
+        var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
+            ?? throw new NotFoundException("Versão de regra", versionId);
+        version.WithdrawPilotApproval(r.Reason, DateTime.UtcNow);
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionPilotApprovalWithdrawn, "RuleVersion", version.Id,
+            $"Aprovação interna para piloto da versão {version.Version} retirada: {r.Reason.Trim()}",
+            new { policy = version.InternalApprovalPolicy, reason = r.Reason.Trim() });
+        await _db.SaveChangesAsync(ct);
+        _log.LogWarning("Tax rule version {VersionId} internal pilot approval withdrawn", version.Id);
+        return await GetVersionAsync(version.Id, ct);
+    }
+
     private async Task<TaxRuleVersionDto> GetVersionAsync(Guid id, CancellationToken ct)
     {
         var v = await _db.TaxRuleVersions.AsNoTracking().Include(x => x.Sources).ThenInclude(s => s.LegalSource)
@@ -255,7 +278,10 @@ public sealed class TaxCatalogService
         v.Sources.Where(s => s.LegalSource is not null).Select(s => s.LegalSource!.Code).OrderBy(c => c, StringComparer.Ordinal).ToList(),
         v.CreatedAt, v.ProfessionalReview, v.ProfessionalReviewedBy, v.ProfessionalReviewedAt, v.ProfessionalReviewNotes,
         v.ProfessionalReference, v.ProfessionalReviewScope, v.ProfessionalReviewValidFrom, v.ProfessionalReviewValidTo,
-        v.ProfessionalReviewAssumptions, v.ProfessionalReviewCaveats);
+        v.ProfessionalReviewAssumptions, v.ProfessionalReviewCaveats,
+        new TaxInternalApprovalDto(v.InternalApproval, v.InternalApprovalPolicy, v.InternalApprovedBy, v.InternalApprovedAt, v.InternalApprovalScope,
+            v.InternalApprovalValidFrom, v.InternalApprovalValidTo, v.InternalApprovalCaveats, v.InternalApprovalDecisionRef,
+            v.InternalApprovalWithdrawalReason, v.InternalApprovalWithdrawnAt, TaxGovernance.PilotNature));
 
     private static TaxLegalSourceDto MapSource(TaxLegalSource s) => new(
         s.Id, s.Code, s.Kind, s.Title, s.Reference, s.Url, s.Excerpt, s.PublishedOn, s.TextVerification, s.VerifiedAt, s.VerifiedBy, s.Notes);

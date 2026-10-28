@@ -85,6 +85,18 @@ internal sealed class TaxRuleVersionConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.ProfessionalReviewValidTo).HasColumnName("professional_review_valid_to");
         b.Property(x => x.ProfessionalReviewAssumptions).HasColumnName("professional_review_assumptions").HasMaxLength(4000);
         b.Property(x => x.ProfessionalReviewCaveats).HasColumnName("professional_review_caveats").HasMaxLength(4000);
+        // Internal pilot approval: a separate dimension, never a professional review.
+        b.Property(x => x.InternalApproval).HasColumnName("internal_approval").HasConversion<string>().HasMaxLength(40).IsRequired();
+        b.Property(x => x.InternalApprovalPolicy).HasColumnName("internal_approval_policy").HasMaxLength(60);
+        b.Property(x => x.InternalApprovedBy).HasColumnName("internal_approved_by").HasMaxLength(200);
+        b.Property(x => x.InternalApprovedAt).HasColumnName("internal_approved_at").HasColumnType("timestamptz");
+        b.Property(x => x.InternalApprovalScope).HasColumnName("internal_approval_scope").HasMaxLength(2000);
+        b.Property(x => x.InternalApprovalValidFrom).HasColumnName("internal_approval_valid_from");
+        b.Property(x => x.InternalApprovalValidTo).HasColumnName("internal_approval_valid_to");
+        b.Property(x => x.InternalApprovalCaveats).HasColumnName("internal_approval_caveats").HasMaxLength(4000);
+        b.Property(x => x.InternalApprovalDecisionRef).HasColumnName("internal_approval_decision_ref").HasMaxLength(300);
+        b.Property(x => x.InternalApprovalWithdrawalReason).HasColumnName("internal_approval_withdrawal_reason").HasMaxLength(2000);
+        b.Property(x => x.InternalApprovalWithdrawnAt).HasColumnName("internal_approval_withdrawn_at").HasColumnType("timestamptz");
         b.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         b.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 

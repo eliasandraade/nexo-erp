@@ -30,6 +30,7 @@ public sealed class TaxCalculationService
     private readonly TaxProfileService _profiles;
     private readonly TaxComplianceService _compliance;
     private readonly TaxCatalogService _catalog;
+    private readonly TaxApprovalGate _approvals;
     private readonly TaxOpportunityService _opportunities;
     private readonly SaleTaxFactsReader _sales;
     private readonly TaxAuditTrail _audit;
@@ -37,7 +38,7 @@ public sealed class TaxCalculationService
 
     public TaxCalculationService(
         NexoDbContext db, TaxEngineRegistry engines, ICurrentTenant tenant, TaxProfileService profiles, TaxComplianceService compliance,
-        TaxCatalogService catalog,
+        TaxCatalogService catalog, TaxApprovalGate approvals,
         TaxOpportunityService opportunities, SaleTaxFactsReader sales, TaxAuditTrail audit, ILogger<TaxCalculationService> log)
     {
         _db = db;
@@ -46,6 +47,7 @@ public sealed class TaxCalculationService
         _profiles = profiles;
         _compliance = compliance;
         _catalog = catalog;
+        _approvals = approvals;
         _opportunities = opportunities;
         _sales = sales;
         _audit = audit;
@@ -99,7 +101,11 @@ public sealed class TaxCalculationService
 
         var inputJson = canonical.Serialize(input);
         var inputHash = canonical.Hash(inputJson);
-        var ruleSetHash = engine.RuleSetHash(engine.SelectActive(catalogue, op.OperationDate));
+        var active = engine.SelectActive(catalogue, op.OperationDate);
+        var ruleSetHash = engine.RuleSetHash(active);
+        // Every active rule the engine could apply must be approved for the mode (pilot or final): fail closed.
+        var governance = await _approvals.ForCalculationAsync(active.Select(r => r.VersionId).ToList(), op.OperationDate, ct);
+        if (governance.Enforced && governance.NotApproved.Count > 0) await RefuseUnapprovedAsync(facts, governance, ct);
         // Same facts (all of them, description included) + same rules + same engine = the same calculation.
         var factsHash = canonical.HashOf(op);
         var key = canonical.Hash($"{engine.Version}|{inputHash}|{ruleSetHash}|{facts.Source}|{facts.SourceId}|{factsHash}");
@@ -121,6 +127,7 @@ public sealed class TaxCalculationService
         var calc = TaxCalculation.Create(_tenant.Id, transaction.Id, profile.Id, op.OperationDate, engine.Version,
             inputJson, inputHash, ruleSetHash, key, outputJson, canonical.Hash(outputJson), output.TotalBase, output.TotalTax, _audit.UserId);
         calc.UsedComplianceAssessment(compliance?.Id);
+        calc.RanUnderGovernance(governance.Mode, governance.Policy, governance.Enforced, canonical.Serialize(governance));
         foreach (var line in output.Lines)
             foreach (var c in line.Components)
                 calc.AddComponent(line.Index, c.Tax, c.Base, c.RatePercent, c.Amount, c.RuleVersionId);
@@ -133,7 +140,10 @@ public sealed class TaxCalculationService
         _audit.Record(TaxAuditActions.CalculationCreated, "Calculation", calc.Id,
             $"Cálculo de {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}: base {output.TotalBase:N2}, tributos {output.TotalTax:N2}.",
             new { source = facts.Source.ToString(), facts.SourceId, inputHash, ruleSetHash, engine = engine.Version, rules = output.Executions.Count,
-                coverage = coverage.PolicyVersion, complianceAssessmentId = compliance?.Id });
+                coverage = coverage.PolicyVersion, complianceAssessmentId = compliance?.Id,
+                governance = new { mode = governance.Mode.ToString(), governance.Policy, governance.Enforced, governance.Nature,
+                    rules = governance.Rules.Select(r => new { r.Key, r.Version, internalApproval = r.InternalApproval.ToString(),
+                        professionalReview = r.ProfessionalReview.ToString(), r.PilotCaveats }) } });
         try
         {
             await _db.SaveChangesAsync(ct);
@@ -169,6 +179,20 @@ public sealed class TaxCalculationService
         _log.LogInformation("Tax calculation refused from {Source}: {Status} ({Codes})", facts.Source, coverage.Status,
             string.Join(",", coverage.Findings.Select(f => f.Code)));
         throw new DomainException($"{TaxCoveragePolicyV1.NotSupportedMessage} ({coverage.Status})", "tax_operation_not_supported", reasons);
+    }
+
+    /// <summary>
+    /// Refuses a calculation whose active rules are not approved for the mode: records the attempt with the
+    /// rules concerned, then answers 422. Nothing is calculated.
+    /// </summary>
+    private async Task RefuseUnapprovedAsync(TaxOperationFacts facts, TaxGovernanceDto governance, CancellationToken ct)
+    {
+        var op = facts.Operation;
+        _audit.Record(TaxAuditActions.CalculationRefused, "Calculation", Guid.NewGuid(),
+            $"Cálculo recusado (regras não aprovadas para {governance.Mode}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
+            new { source = facts.Source.ToString(), facts.SourceId, mode = governance.Mode.ToString(), governance.Policy, notApproved = governance.NotApproved });
+        await _db.SaveChangesAsync(ct);
+        throw new DomainException(TaxApprovalGate.NotApprovedMessage(governance), TaxApprovalGate.NotApprovedCode(governance), governance.NotApproved);
     }
 
     /// <summary>Runs the detectors again on a stored calculation (e.g. after a new detector ships). Idempotent.</summary>
@@ -242,7 +266,8 @@ public sealed class TaxCalculationService
             TaxComplianceAdvisories.For(compliance),
             coverage,
             compliance is null ? null : TaxComplianceService.Map(compliance),
-            current is null || current.Id == compliance?.Id ? null : TaxComplianceService.Map(current));
+            current is null || current.Id == compliance?.Id ? null : TaxComplianceService.Map(current),
+            calc.GovernanceJson is null ? null : canonical.Deserialize<TaxGovernanceDto>(calc.GovernanceJson));
     }
 
     private async Task<TaxOperationRequest> StoredOperationAsync(TaxTransaction t, CancellationToken ct)

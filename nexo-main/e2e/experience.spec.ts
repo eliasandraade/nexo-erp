@@ -815,7 +815,12 @@ const taxOpportunity = (patch: Record<string, unknown>) => ({ id:'qa-op', type:'
   sourceCalculationId:null, legalSourceCodes:['LC214-ART12'], caveats:null, blockedAs:null, blockReason:null, rejectionReason:null, reviewedByName:null, reviewedAt:null,
   requirements:[{id:'qa-req',code:'R1',text:'O desconto consta da nota fiscal.',legalSourceCode:'LC214-ART12',met:true,note:null,answeredByName:'Revisão local',answeredAt:'2026-10-21T10:00:00Z',
     phase:'ScenarioApproval',requiredEvidence:null,hasRequiredEvidence:true}],
-  evidence:[], current:null, proposed:null, decision:null, execution:null, requiredApproval:'IndependentApprover', ...patch });
+  evidence:[], current:null, proposed:null, decision:null, execution:null, requiredApproval:'IndependentApprover',
+  governance:{ mode:'ControlledPilot', policy:'orken-pilot-approval/1', enforced:true, nature:'INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT',
+    notice:'Não constitui parecer profissional.', notApproved:[], professionalReviewPending:['IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1'],
+    rules:[{ ruleVersionId:'qa-v3', key:'IBSCBS.BASE.UNCONDITIONAL-DISCOUNT', version:1, internalApproval:'ApprovedForControlledPilot', approvedForPilot:true,
+      pilotCaveats:'Desconto escrito na NF não é automaticamente incondicional.', professionalReview:'Pending', professionallyApproved:false, professionalCaveats:null }] },
+  ...patch });
 async function prepareTax(page: Page, opportunity: Record<string, unknown> = {}) {
   await prepare(page);
   await page.route('http://localhost:5000/api/tax/**', route => {
@@ -853,6 +858,9 @@ test('Tributos: risco alto só aprova com a decisão assumida', async ({ page })
   let approved: Json = null;
   await page.route('**/api/tax/opportunities/qa-op/approve', route => { approved = route.request().postDataJSON(); return route.fulfill({ status:200, contentType:'application/json', body:JSON.stringify(taxOpportunity({ status:'Approved' })) }); });
   await page.goto('/tributos/oportunidades/qa-op');
+  // Both approvals side by side: the internal pilot approval never reads as a professional one.
+  await expect(page.getByText('Aprovado internamente para piloto controlado', { exact:true })).toBeVisible();
+  await expect(page.getByText('Revisão profissional pendente', { exact:true })).toBeVisible();
   await page.getByRole('button', { name:'Aprovar' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('button', { name:'Aprovar' })).toBeDisabled();

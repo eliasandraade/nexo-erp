@@ -19,6 +19,12 @@ const rule: api.TaxRuleDto = {
     professionalReview: "Pending", professionalReviewedBy: null, professionalReviewedAt: null, professionalReviewNotes: null,
     professionalReference: null, professionalReviewScope: null, professionalReviewValidFrom: null, professionalReviewValidTo: null,
     professionalReviewAssumptions: null, professionalReviewCaveats: null,
+    internalApproval: {
+      status: "ApprovedForControlledPilot", policy: "orken-pilot-approval/1", approvedBy: "Product Owner — Andrade Systems",
+      approvedAt: "2026-10-27T12:00:00Z", scope: "Recorte 2026", validFrom: "2026-01-01", validTo: "2026-12-31",
+      caveats: "Cálculo nominal não é recolhimento nem efeito financeiro.", decisionReference: "docs/decisao.md",
+      withdrawalReason: null, withdrawnAt: null, nature: "INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT",
+    },
   }],
 };
 
@@ -36,8 +42,30 @@ describe("TaxRulesPage", () => {
     renderTax(<TaxRulesPage />);
 
     expect(await screen.findByText("Em vigor")).toBeInTheDocument();
-    expect(screen.getByText("Revisão tributária pendente")).toBeInTheDocument();
-    expect(screen.queryByText("Revisão tributária aprovada")).not.toBeInTheDocument();
+    expect(screen.getByText("Revisão profissional pendente")).toBeInTheDocument();
+    expect(screen.queryByText("Revisão profissional aprovada")).not.toBeInTheDocument();
+  });
+
+  it("shows the internal pilot approval beside a still pending professional review, with its caveats", async () => {
+    vi.mocked(api.listTaxRules).mockResolvedValue([rule]);
+    renderTax(<TaxRulesPage />);
+
+    expect(await screen.findByText("Revisão profissional pendente")).toBeInTheDocument();
+    expect(screen.getByText("Aprovado internamente para piloto controlado")).toBeInTheDocument();
+    expect(screen.getByText(/Não é parecer jurídico, contábil ou tributário profissional/)).toBeInTheDocument();
+    expect(screen.getByText(/Ressalvas aceitas: Cálculo nominal não é recolhimento/)).toBeInTheDocument();
+    expect(screen.queryByText(/homologad/i)).not.toBeInTheDocument();
+  });
+
+  it("shows no pilot approval for a version that does not have one", async () => {
+    vi.mocked(api.listTaxRules).mockResolvedValue([{
+      ...rule, versions: [{ ...rule.versions[0], status: "PendingRegulation", internalApproval: { ...rule.versions[0].internalApproval, status: "NotApproved" } }],
+    }]);
+    renderTax(<TaxRulesPage />);
+
+    expect(await screen.findByText("Revisão profissional pendente")).toBeInTheDocument();
+    expect(screen.queryByText("Aprovado internamente para piloto controlado")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ressalvas aceitas/)).not.toBeInTheDocument();
   });
 
   it("shows who reviewed a rule and what they asked", async () => {
@@ -48,8 +76,8 @@ describe("TaxRulesPage", () => {
     }]);
     renderTax(<TaxRulesPage />);
 
-    expect(await screen.findByText("Revisão tributária pediu ajustes")).toBeInTheDocument();
-    expect(screen.getByText(/Revisão tributária por Contadora .*: Ajustar a vigência\./)).toBeInTheDocument();
+    expect(await screen.findByText("Revisão profissional pediu ajustes")).toBeInTheDocument();
+    expect(screen.getByText(/Revisão profissional por Contadora .*: Ajustar a vigência\./)).toBeInTheDocument();
   });
 
   it("says a verified excerpt is only the official text, not a professional approval", async () => {

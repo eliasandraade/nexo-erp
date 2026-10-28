@@ -217,6 +217,22 @@ public sealed class ApproveOpportunityRequestValidator : AbstractValidator<Appro
     public ApproveOpportunityRequestValidator() => RuleFor(x => x.SelfApprovalJustification).MaximumLength(1000);
 }
 
+public sealed class ApproveRuleForPilotRequestValidator : AbstractValidator<ApproveRuleForPilotRequest>
+{
+    public ApproveRuleForPilotRequestValidator()
+    {
+        RuleFor(x => x.ApprovedBy).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Scope).NotEmpty().MaximumLength(2000);
+        RuleFor(x => x.Caveats).NotEmpty().MaximumLength(4000).WithMessage("A aprovação interna registra as ressalvas aceitas.");
+        RuleFor(x => x.DecisionReference).NotEmpty().MaximumLength(300);
+    }
+}
+
+public sealed class WithdrawPilotApprovalRequestValidator : AbstractValidator<WithdrawPilotApprovalRequest>
+{
+    public WithdrawPilotApprovalRequestValidator() => RuleFor(x => x.Reason).NotEmpty().MaximumLength(2000);
+}
+
 public sealed class RecordProfessionalReviewRequestValidator : AbstractValidator<RecordProfessionalReviewRequest>
 {
     public RecordProfessionalReviewRequestValidator()

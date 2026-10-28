@@ -27,6 +27,14 @@ export function opportunity(over: Partial<TaxOpportunityDto> = {}): TaxOpportuni
     legalSourceCodes: ["LC214-2025-ART12-P2-III-P3"], caveats: "Muda a condição comercial.",
     blockedAs: null, blockReason: null, rejectionReason: null, reviewStartedByName: "Gerente", reviewedByName: "Gerente", reviewedAt: "2026-10-27T12:00:00Z",
     createdAt: "2026-10-27T11:00:00Z", professionalReviewPending: true, requiredApproval: "SelfApprovalWithJustification",
+    governance: {
+      mode: "ControlledPilot", policy: "orken-pilot-approval/1", enforced: true,
+      nature: "INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT", notice: "Não constitui parecer profissional.",
+      rules: [{ ruleVersionId: "v3", key: "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT", version: 1, internalApproval: "ApprovedForControlledPilot",
+        approvedForPilot: true, pilotCaveats: "Desconto escrito na NF não é automaticamente incondicional.",
+        professionalReview: "Pending", professionallyApproved: false, professionalCaveats: null }],
+      notApproved: [], professionalReviewPending: ["IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1"],
+    },
     requirements: [
       { id: "r1", code: "commercial-terms", text: "Um instrumento comercial sustenta o preço com o desconto sem condição.", legalSourceCode: null,
         met: true, note: null, answeredByName: "Gerente", answeredAt: "2026-10-27T12:00:00Z",

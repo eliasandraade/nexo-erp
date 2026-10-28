@@ -7137,6 +7137,20 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool?>("ApprovalEnforced")
+                        .HasColumnType("boolean")
+                        .HasColumnName("approval_enforced");
+
+                    b.Property<string>("ApprovalMode")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("approval_mode");
+
+                    b.Property<string>("ApprovalPolicy")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("approval_policy");
+
                     b.Property<string>("CalculationKey")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -7160,6 +7174,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)")
                         .HasColumnName("engine_version");
+
+                    b.Property<string>("GovernanceJson")
+                        .HasColumnType("json")
+                        .HasColumnName("governance");
 
                     b.Property<string>("InputHash")
                         .IsRequired()
@@ -8519,6 +8537,58 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("created_by");
+
+                    b.Property<string>("InternalApproval")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("internal_approval");
+
+                    b.Property<string>("InternalApprovalCaveats")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("internal_approval_caveats");
+
+                    b.Property<string>("InternalApprovalDecisionRef")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("internal_approval_decision_ref");
+
+                    b.Property<string>("InternalApprovalPolicy")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("internal_approval_policy");
+
+                    b.Property<string>("InternalApprovalScope")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("internal_approval_scope");
+
+                    b.Property<DateOnly?>("InternalApprovalValidFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("internal_approval_valid_from");
+
+                    b.Property<DateOnly?>("InternalApprovalValidTo")
+                        .HasColumnType("date")
+                        .HasColumnName("internal_approval_valid_to");
+
+                    b.Property<string>("InternalApprovalWithdrawalReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("internal_approval_withdrawal_reason");
+
+                    b.Property<DateTime?>("InternalApprovalWithdrawnAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("internal_approval_withdrawn_at");
+
+                    b.Property<DateTime?>("InternalApprovedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("internal_approved_at");
+
+                    b.Property<string>("InternalApprovedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("internal_approved_by");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)

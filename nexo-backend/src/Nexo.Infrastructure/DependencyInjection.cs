@@ -279,15 +279,18 @@ public static class DependencyInjection
         // Engine versions this build can run: new calculations use the current one; a stored calculation
         // is only ever reproduced by the exact version it records.
         services.AddSingleton(Nexo.Application.Modules.TaxIntelligence.Engine.TaxEngineRegistry.Default);
-        // Production stance unless configured: only professionally approved rules back a decision.
-        // Development and Testing default to off so the workflow can be exercised before the review.
+        // Stance unless configured: controlled pilot, and only rules approved for the mode (internally for
+        // the pilot, or professionally) back a calculation or a decision. Development and Testing default
+        // the enforcement off so the workflow can be exercised with any catalogue.
         services.Configure<Nexo.Infrastructure.TaxIntelligence.TaxIntelligencePolicyOptions>(o =>
         {
             o.RequireApprovedRulesForDecisions = !IsDevelopmentOrTesting(configuration);
+            o.RequireApprovedRulesForCalculations = !IsDevelopmentOrTesting(configuration);
             configuration.GetSection(Nexo.Infrastructure.TaxIntelligence.TaxIntelligencePolicyOptions.Section).Bind(o);
         });
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxAuditTrail>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxCatalogService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxApprovalGate>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxComplianceService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxProfileService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.SaleTaxFactsReader>();

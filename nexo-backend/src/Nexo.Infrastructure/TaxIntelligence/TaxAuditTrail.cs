@@ -78,6 +78,8 @@ public static class TaxAuditActions
     public const string RuleVersionCreated = "tax_rule_version_created";
     public const string RuleVersionStatusChanged = "tax_rule_version_status_changed";
     public const string RuleVersionProfessionalReview = "tax_rule_version_professional_review";
+    public const string RuleVersionPilotApproval = "tax_rule_version_pilot_approval";
+    public const string RuleVersionPilotApprovalWithdrawn = "tax_rule_version_pilot_approval_withdrawn";
     public const string ComplianceAssessmentRecorded = "tax_compliance_assessment_recorded";
     public const string CalculationRefused = "tax_calculation_refused";
     public const string OpportunityEvidenceReviewed = "tax_opportunity_evidence_reviewed";

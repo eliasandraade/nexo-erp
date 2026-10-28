@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatDateTime } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { TAX_KEYS, listLegalSources, listTaxRules, type TaxLegalSourceDto, type TaxRuleDto } from "../api/tax.api";
-import { PROFESSIONAL_REVIEW, RULE_STATUS, TEXT_VERIFICATION, labelOf, toneOf } from "../lib/labels";
+import { INTERNAL_APPROVAL, INTERNAL_APPROVAL_NOTICE, PROFESSIONAL_REVIEW, RULE_STATUS, TEXT_VERIFICATION, labelOf, toneOf } from "../lib/labels";
 import { formatIsoDate } from "../lib/forms";
 import { ToneBadge } from "../components/TaxBadges";
 import { SourceLinks } from "../components/EngineResult";
@@ -44,6 +44,8 @@ export default function TaxRulesPage() {
       <TaxNote>
         As regras são mantidas pela plataforma Orken e nunca editadas: uma mudança vira uma nova versão, e cada cálculo guarda a versão que usou.
         “Texto oficial conferido” quer dizer só que o trecho reproduz a lei; a revisão da interpretação por um profissional tributário é um estado à parte.
+        “Aprovado internamente para piloto controlado” é uma decisão de produto e governança da Andrade Systems, não um parecer profissional: as duas
+        aprovações aparecem lado a lado e uma não substitui a outra.
       </TaxNote>
       <Tabs value={tab} onValueChange={(v) => setParams(v === "fontes" ? { aba: "fontes" } : {})}>
         <TabsList>
@@ -81,6 +83,13 @@ function Rule({ rule }: Readonly<{ rule: TaxRuleDto }>) {
                 tone={toneOf(PROFESSIONAL_REVIEW, v.professionalReview)}
                 title="Revisão da interpretação por profissional tributário — estar em vigor no motor não é aprovação profissional"
               />
+              {v.internalApproval.status !== "NotApproved" && (
+                <ToneBadge
+                  label={labelOf(INTERNAL_APPROVAL, v.internalApproval.status)}
+                  tone={toneOf(INTERNAL_APPROVAL, v.internalApproval.status)}
+                  title={INTERNAL_APPROVAL_NOTICE}
+                />
+              )}
               <span className="text-xs text-muted-foreground">
                 {formatIsoDate(v.validFrom)} até {v.validTo ? formatIsoDate(v.validTo) : "sem fim definido"} · prioridade {v.priority}
               </span>
@@ -89,7 +98,7 @@ function Rule({ rule }: Readonly<{ rule: TaxRuleDto }>) {
             {v.professionalReviewedBy && (
               <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                 <p>
-                  Revisão tributária por {v.professionalReviewedBy}{v.professionalReference ? ` (${v.professionalReference})` : ""}
+                  Revisão profissional por {v.professionalReviewedBy}{v.professionalReference ? ` (${v.professionalReference})` : ""}
                   {v.professionalReviewedAt ? ` em ${formatDateTime(v.professionalReviewedAt)}` : ""}{v.professionalReviewNotes ? `: ${v.professionalReviewNotes}` : ""}
                 </p>
                 {v.professionalReviewScope && <p>Escopo da revisão: {v.professionalReviewScope}</p>}
@@ -98,6 +107,22 @@ function Rule({ rule }: Readonly<{ rule: TaxRuleDto }>) {
                 )}
                 {v.professionalReviewAssumptions && <p>Premissas: {v.professionalReviewAssumptions}</p>}
                 {v.professionalReviewCaveats && <p className="text-warning">Ressalvas: {v.professionalReviewCaveats}</p>}
+              </div>
+            )}
+            {v.internalApproval.status !== "NotApproved" && (
+              <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                <p>
+                  {labelOf(INTERNAL_APPROVAL, v.internalApproval.status)}
+                  {v.internalApproval.approvedBy ? ` por ${v.internalApproval.approvedBy}` : ""}
+                  {v.internalApproval.approvedAt ? ` em ${formatDateTime(v.internalApproval.approvedAt)}` : ""}
+                  {v.internalApproval.policy ? ` · política ${v.internalApproval.policy}` : ""}
+                </p>
+                <p>{INTERNAL_APPROVAL_NOTICE}</p>
+                {v.internalApproval.validFrom && (
+                  <p>Vale para o piloto de {formatIsoDate(v.internalApproval.validFrom)}{v.internalApproval.validTo ? ` a ${formatIsoDate(v.internalApproval.validTo)}` : " sem fim definido"}</p>
+                )}
+                {v.internalApproval.caveats && <p className="text-warning">Ressalvas aceitas: {v.internalApproval.caveats}</p>}
+                {v.internalApproval.withdrawalReason && <p className="text-destructive">Retirada: {v.internalApproval.withdrawalReason}</p>}
               </div>
             )}
             <p className="mt-1 text-xs">Fonte: <SourceLinks codes={v.legalSourceCodes} /></p>

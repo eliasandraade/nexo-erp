@@ -28,6 +28,7 @@ import {
 } from "../lib/labels";
 import { errorMessage } from "../lib/forms";
 import { ImpactBadge, OpportunityStatusBadge, RiskBadge, ToneBadge } from "../components/TaxBadges";
+import { ApprovalGovernance } from "../components/ApprovalGovernance";
 import { SourceLinks } from "../components/EngineResult";
 import { ScenarioCompare } from "../components/ScenarioCompare";
 import { Field, ProblemList, TaxSubNav } from "../components/TaxShell";
@@ -112,9 +113,10 @@ export default function TaxOpportunityDetailPage() {
               <p>Fonte: <SourceLinks codes={o.legalSourceCodes} /></p>
               {o.professionalReviewPending && (
                 <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-warning">
-                  Revisão tributária pendente: as regras usadas estão em vigor no motor, mas a interpretação ainda não foi aprovada por um profissional tributário.
+                  Revisão profissional pendente: as regras usadas estão em vigor no motor, mas a interpretação ainda não foi aprovada por um profissional tributário.
                 </p>
               )}
+              <ApprovalGovernance governance={o.governance} />
             </div>
           </SectionCard>
 
@@ -416,7 +418,11 @@ function ApproveDialog({ open, o, onClose, onUpdated }: Readonly<{ open: boolean
           <p className="text-xs text-muted-foreground">Quem pode aprovar: {APPROVAL_REQUIREMENTS[o.requiredApproval]}.</p>
           {pending > 0 && <p className="text-warning">{pending} {pending === 1 ? "condição ainda não está cumprida" : "condições ainda não estão cumpridas"}: o servidor vai recusar.</p>}
           {o.professionalReviewPending && (
-            <p className="text-warning">Revisão tributária pendente: em produção, a aprovação só é aceita depois que as regras forem revisadas por um profissional.</p>
+            <p className="text-warning">
+              {o.governance.mode === "ControlledPilot"
+                ? "Revisão profissional pendente. No piloto controlado, a aprovação se apoia na aprovação interna das regras — decisão de governança, não parecer profissional — e as ressalvas vão para o dossiê."
+                : "Revisão profissional pendente: neste modo, a aprovação só é aceita depois que as regras forem revisadas por um profissional."}
+            </p>
           )}
           {needsJustification && (
             <Field id="self-approval" label="Por que você aprova a própria análise?" hint="Fica registrado no dossiê e na auditoria. O ideal é outra pessoa revisar.">

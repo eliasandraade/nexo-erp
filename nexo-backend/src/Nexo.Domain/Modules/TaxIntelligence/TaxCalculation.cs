@@ -60,6 +60,26 @@ public class TaxCalculation : StoreEntity
 
     public void UsedComplianceAssessment(Guid? assessmentId) => ComplianceAssessmentId = assessmentId;
 
+    /// <summary>The approval mode the calculation ran under (ControlledPilot or ProfessionalFinal); null = before governance was recorded.</summary>
+    public TaxApprovalMode? ApprovalMode { get; private set; }
+    /// <summary>The approval policy version in force (e.g. "orken-pilot-approval/1").</summary>
+    public string? ApprovalPolicy { get; private set; }
+    /// <summary>Whether the mode's approval was enforced (off only in development and test environments).</summary>
+    public bool? ApprovalEnforced { get; private set; }
+    /// <summary>
+    /// Snapshot, at execution time, of each active rule version the engine could apply: its internal pilot
+    /// approval, its professional review and the caveats accepted with it. Outside the hashed input/output.
+    /// </summary>
+    public string? GovernanceJson { get; private set; }
+
+    public void RanUnderGovernance(TaxApprovalMode mode, string policy, bool enforced, string governanceJson)
+    {
+        ApprovalMode = mode;
+        ApprovalPolicy = policy;
+        ApprovalEnforced = enforced;
+        GovernanceJson = governanceJson;
+    }
+
     public void AddComponent(int lineIndex, TaxType tax, decimal baseAmount, decimal ratePercent, decimal amount, Guid ruleVersionId)
         => _components.Add(new TaxComponent(TenantId, Id, lineIndex, tax, baseAmount, ratePercent, amount, ruleVersionId));
 
