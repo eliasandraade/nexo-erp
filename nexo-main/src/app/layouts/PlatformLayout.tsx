@@ -7,7 +7,7 @@ import { useAuth } from "@/modules/auth/context/AuthContext";
 import { cn } from "@/lib/utils";
 
 const groups = [
-  { label: "Plataforma", links: [["/platform", "Visão geral"], ["/platform/tenants", "Empresas"], ["/platform/trial", "Períodos de teste"], ["/platform/activity", "Atividade"], ["/platform/system", "Sistema"]] },
+  { label: "Plataforma", links: [["/platform", "Visão geral"], ["/platform/tenants", "Empresas"], ["/platform/trial", "Períodos de teste"], ["/platform/activity", "Atividade"], ["/platform/system", "Sistema"], ["/platform/tributos", "Inteligência tributária"]] },
   { label: "Operações de IA", links: [["/platform/ai", "Visão geral de IA"], ["/platform/ai/playground", "Testar interpretação"], ["/platform/ai/providers", "Provedores"], ["/platform/ai/telemetry", "Telemetria"], ["/platform/ai/costs", "Custos"], ["/platform/ai/prompts", "Instruções"]] },
 ];
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {

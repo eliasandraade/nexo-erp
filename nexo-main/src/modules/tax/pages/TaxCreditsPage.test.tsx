@@ -14,7 +14,11 @@ vi.mock("../api/tax.api", async (importOriginal) => ({
   moveTaxCredit: vi.fn(),
   getSplitProvider: vi.fn(),
   listSplitExpectations: vi.fn(),
+  getEvidenceStorage: vi.fn(),
+  listEvidenceFiles: vi.fn(),
 }));
+const session = { role: "diretoria" as string };
+vi.mock("@/modules/auth/context/AuthContext", () => ({ useAuth: () => ({ session }) }));
 const toastError = vi.fn();
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: (m: string) => toastError(m) } }));
 
@@ -34,13 +38,20 @@ const credit: TaxCreditDto = {
   createdAt: "2026-06-01T12:00:00Z",
 } as TaxCreditDto;
 
+const page = <T,>(items: T[]) => ({ items, total: items.length, skip: 0, take: 25 });
+
 const show = (route = "/tributos/creditos") => renderTax(<TaxCreditsPage />, { path: "/tributos/creditos", route });
 
 describe("TaxCreditsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.getTaxCreditTotals).mockResolvedValue([{ tax: "Cbs", potential: 90, toBeAppropriated: 30, appropriated: 60, used: 20, blocked: 10, available: 30 }]);
-    vi.mocked(api.listTaxCredits).mockResolvedValue([credit]);
+    vi.mocked(api.listTaxCredits).mockResolvedValue(page([credit]));
+    vi.mocked(api.getEvidenceStorage).mockResolvedValue({
+      available: true, state: "ready", message: "Armazenamento privado disponível.", maxBytes: 20 * 1024 * 1024,
+      acceptedExtensions: [".pdf"], scannerConfigured: false,
+    });
+    vi.mocked(api.listEvidenceFiles).mockResolvedValue([]);
   });
   afterEach(cleanup);
 
@@ -82,7 +93,7 @@ describe("TaxCreditsPage", () => {
   });
 
   it("explains a second use of the same credit in the same obligation", async () => {
-    vi.mocked(api.moveTaxCredit).mockRejectedValue(new ApiError(409, "conflict"));
+    vi.mocked(api.moveTaxCredit).mockRejectedValue(new ApiError(409, "Este crédito já foi usado nesta obrigação.", "tax_credit_obligation_used"));
     show();
 
     fireEvent.click(await screen.findByRole("button", { name: "Movimentar" }));
@@ -96,7 +107,7 @@ describe("TaxCreditsPage", () => {
 
   it("says plainly that no payment provider is integrated for the split", async () => {
     vi.mocked(api.getSplitProvider).mockResolvedValue({ configured: false, message: "Nenhum provedor integrado; registre à mão." });
-    vi.mocked(api.listSplitExpectations).mockResolvedValue([]);
+    vi.mocked(api.listSplitExpectations).mockResolvedValue(page([]));
     show("/tributos/creditos?aba=split");
 
     expect(await screen.findByText("Nenhum provedor de pagamento integrado")).toBeInTheDocument();
@@ -106,14 +117,14 @@ describe("TaxCreditsPage", () => {
   });
 
   it("says a potential credit is only an estimate", async () => {
-    vi.mocked(api.listTaxCredits).mockResolvedValue([{ ...credit, stage: "PotentialIdentified", lifecycle: "PotentialIdentified", recognitionBasis: null, entries: [] }]);
+    vi.mocked(api.listTaxCredits).mockResolvedValue(page([{ ...credit, stage: "PotentialIdentified", lifecycle: "PotentialIdentified", recognitionBasis: null, entries: [] } as TaxCreditDto]));
     show();
     expect((await screen.findAllByText("Potencial estimado")).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Não representa validação de elegibilidade, apropriação ou disponibilidade para utilização/).length).toBeGreaterThan(0);
   });
 
   it("says so when there is no credit yet", async () => {
-    vi.mocked(api.listTaxCredits).mockResolvedValue([]);
+    vi.mocked(api.listTaxCredits).mockResolvedValue(page<TaxCreditDto>([]));
     show();
     expect(await screen.findByText("Nenhum crédito registrado")).toBeInTheDocument();
   });

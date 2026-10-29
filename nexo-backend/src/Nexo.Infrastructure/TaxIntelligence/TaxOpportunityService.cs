@@ -4,6 +4,7 @@ using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.TaxIntelligence;
 using Nexo.Application.Modules.TaxIntelligence.Engine;
+using Nexo.Domain.Enums;
 using Nexo.Domain.Exceptions;
 using Nexo.Domain.Modules.TaxIntelligence;
 using Nexo.Infrastructure.Persistence;
@@ -208,13 +209,27 @@ public sealed class TaxOpportunityService
         => EngineOf(o).Canonical.Hash($"{type}\n{requirementId}\n{description.Trim()}\n{reference?.Trim()}\n{notes?.Trim()}");
 
     /// <summary>Assigns the person responsible for moving the analysis forward — a work assignment, never an approval power.</summary>
-    public Task<TaxOpportunityDto> AssignAsync(Guid id, AssignOpportunityRequest r, CancellationToken ct) => MutateAsync(id, o =>
+    public async Task<TaxOpportunityDto> AssignAsync(Guid id, AssignOpportunityRequest r, CancellationToken ct)
+    {
+        // The name is the user's own record in this company — a client cannot assign a made-up person —
+        // and only someone who can analyse (management) can be made responsible for an analysis.
+        string? name = null;
+        if (r.UserId is { } userId)
+            name = await _db.Users.AsNoTracking()
+                       .Where(u => u.Id == userId && u.TenantId == _tenant.Id && u.Status == UserStatus.Active
+                                   && (u.Role == UserRole.Gerente || u.Role == UserRole.Diretoria))
+                       .Select(u => u.FullName).FirstOrDefaultAsync(ct)
+                   ?? throw new NotFoundException("Usuário", userId);
+        return await MutateAsync(id, o => Assign(o, r.UserId, name), ct);
+    }
+
+    private void Assign(TaxOpportunity o, Guid? userId, string? name)
     {
         var before = o.AssignedToName;
-        o.Assign(r.UserId, r.UserName, DateTime.UtcNow);
+        o.Assign(userId, name, DateTime.UtcNow);
         _audit.Record(TaxAuditActions.OpportunityAssigned, AuditEntity, o.Id,
-            r.UserId is null ? "Responsável retirado." : $"Responsável: {o.AssignedToName}.", new { before, after = o.AssignedToName, r.UserId });
-    }, ct);
+            userId is null ? "Responsável retirado." : $"Responsável: {o.AssignedToName}.", new { before, after = o.AssignedToName, userId });
+    }
 
     /// <summary>What happened to an opportunity, from the audit trail of this company (newest last).</summary>
     public async Task<IReadOnlyList<TaxTimelineEventDto>> TimelineAsync(Guid id, CancellationToken ct)

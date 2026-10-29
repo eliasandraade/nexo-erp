@@ -18,12 +18,12 @@ const base: api.TaxGovernanceStatusDto = {
 describe("TaxGovernanceBanner", () => {
   afterEach(cleanup);
 
-  it("says the pilot is a shadow mode and that the professional review is pending", async () => {
+  it("says the pilot is a shadow mode resting on an internal approval, not a professional review", async () => {
     vi.mocked(api.getTaxGovernance).mockResolvedValue(base);
     renderTax(<TaxGovernanceBanner />);
 
     expect(await screen.findByText(shadow)).toBeInTheDocument();
-    expect(screen.getByText(/Revisão profissional pendente\. .*Não é parecer jurídico, contábil ou tributário profissional/)).toBeInTheDocument();
+    expect(screen.getByText(/aprovação interna do piloto, não revisão profissional\. .*Não é parecer jurídico, contábil ou tributário profissional/)).toBeInTheDocument();
   });
 
   it("says why new work is refused for a company outside the pilot", async () => {
@@ -32,7 +32,18 @@ describe("TaxGovernanceBanner", () => {
     });
     renderTax(<TaxGovernanceBanner />);
 
-    expect(await screen.findByText("Esta empresa não participa do piloto controlado.")).toBeInTheDocument();
+    expect(await screen.findByText(/Esta empresa não participa do piloto controlado\./)).toBeInTheDocument();
+  });
+
+  it("says the module is suspended by the platform before anything else", async () => {
+    vi.mocked(api.getTaxGovernance).mockResolvedValue({
+      ...base, admitted: false, moduleStatus: "Suspended", refusalCode: "tax_module_suspended", refusalMessage: "Suspenso para manutenção.",
+    });
+    renderTax(<TaxGovernanceBanner />);
+
+    expect(await screen.findByText("Módulo suspenso pela plataforma")).toBeInTheDocument();
+    expect(screen.getByText("Suspenso para manutenção.")).toBeInTheDocument();
+    expect(screen.queryByText("Piloto controlado")).not.toBeInTheDocument();
   });
 
   it("says the module is off when the kill switch is off", async () => {

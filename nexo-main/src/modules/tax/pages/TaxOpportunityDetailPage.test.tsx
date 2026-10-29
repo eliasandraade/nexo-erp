@@ -5,7 +5,7 @@ import TaxOpportunityDetailPage from "./TaxOpportunityDetailPage";
 import * as api from "../api/tax.api";
 import { ApiError } from "@/services/api-client";
 
-const session = { role: "diretoria" as string };
+const session = { role: "diretoria" as string, userId: "u-dir" };
 vi.mock("@/modules/auth/context/AuthContext", () => ({ useAuth: () => ({ session }) }));
 
 vi.mock("../api/tax.api", async (importOriginal) => ({
@@ -15,7 +15,26 @@ vi.mock("../api/tax.api", async (importOriginal) => ({
   verifyOpportunityExecution: vi.fn(),
   reviewOpportunityEvidence: vi.fn(),
   answerRequirement: vi.fn(),
+  getEvidenceStorage: vi.fn(),
+  uploadOpportunityEvidence: vi.fn(),
+  addOpportunityEvidence: vi.fn(),
+  replaceOpportunityEvidence: vi.fn(),
+  revokeOpportunityEvidence: vi.fn(),
+  assignOpportunity: vi.fn(),
+  getOpportunityTimeline: vi.fn(),
 }));
+vi.mock("@/modules/users/api/users.api", () => ({
+  listUsers: vi.fn().mockResolvedValue([
+    { id: "u-ger", fullName: "Gerente Um", role: "gerente", status: "active" },
+    { id: "u-ven", fullName: "Vendedor Um", role: "vendedor", status: "active" },
+  ]),
+}));
+globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+// jsdom lacks what Radix selects use to scroll and capture the pointer.
+Element.prototype.scrollIntoView ??= () => {};
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.releasePointerCapture ??= () => {};
+
 
 const get = vi.mocked(api.getTaxOpportunity);
 const approve = vi.mocked(api.approveOpportunity);
@@ -26,7 +45,13 @@ function show(o = opportunity()) {
 }
 
 describe("TaxOpportunityDetailPage", () => {
-  beforeEach(() => { session.role = "diretoria"; vi.clearAllMocks(); });
+  beforeEach(() => {
+    session.role = "diretoria";
+    vi.clearAllMocks();
+    vi.mocked(api.getEvidenceStorage).mockResolvedValue({
+      available: true, state: "ready", message: "Armazenamento privado disponível.", maxBytes: 20 * 1024 * 1024, acceptedExtensions: [".pdf"], scannerConfigured: false,
+    });
+  });
   afterEach(cleanup);
 
   it("answers the business questions and shows a calculated-tax reduction, never as a saving", async () => {
@@ -36,7 +61,7 @@ describe("TaxOpportunityDetailPage", () => {
     expect(screen.getByText("Quanto muda?")).toBeInTheDocument();
     expect(screen.getByText("Qual o risco e qual a fonte?")).toBeInTheDocument();
     expect(screen.getByText("Quem precisa aprovar?")).toBeInTheDocument();
-    expect(screen.getAllByText("Redução simulada do IBS/CBS calculado").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Redução do IBS/CBS calculado — não é economia").length).toBeGreaterThan(0);
     expect(screen.queryByText("Economia")).not.toBeInTheDocument();
     expect(screen.getByText("R$ 0,50")).toBeInTheDocument();
     expect(screen.getByText(/Revisão profissional pendente: as regras usadas estão em vigor no motor/)).toBeInTheDocument();

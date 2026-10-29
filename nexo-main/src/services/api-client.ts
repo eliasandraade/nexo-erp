@@ -137,27 +137,7 @@ async function request<T>(
     throw new ApiError(401, message, reason);
   }
 
-  if (!res.ok) {
-    let message = res.statusText;
-    let code: string | undefined;
-    let requestId: string | undefined;
-    try {
-      const err = await res.json();
-      if (Array.isArray(err?.details) && err.details.length > 0) {
-        message = err.details.join(" | ");
-      } else {
-        message = err?.error ?? err?.message ?? message;
-      }
-      code = err?.code;
-      requestId = err?.requestId;
-    } catch {
-      // ignore parse failure
-    }
-    if (res.status === 429 && !message) message = "Muitas tentativas. Aguarde alguns minutos.";
-    // an unexpected error carries the id of its log lines: show it, so support can find them
-    if (res.status >= 500 && requestId) message = `${message} (código: ${requestId})`;
-    throw new ApiError(res.status, message, code, requestId);
-  }
+  if (!res.ok) throw await errorOf(res);
 
   if (res.status === 204) return undefined as unknown as T;
 
@@ -194,24 +174,41 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
     throw new ApiError(401, unauthorized);
   }
 
-  if (!res.ok) {
-    let message = res.statusText;
-    try {
-      const err = await res.json();
-      if (Array.isArray(err?.details) && err.details.length > 0) {
-        message = err.details.join(" | ");
-      } else {
-        message = err?.error ?? err?.message ?? message;
-      }
-    } catch {
-      // ignore parse failure
-    }
-    throw new ApiError(res.status, message);
-  }
+  if (!res.ok) throw await errorOf(res);
 
   if (res.status === 204) return undefined as unknown as T;
 
   return res.json() as Promise<T>;
+}
+
+/**
+ * The error of a failed response. The server's explanation ({ error }) is kept and its details (reasons, rules,
+ * fields) are added after it — never replacing it: "refused (code): rule A, rule B" loses nothing. A bare
+ * validation failure shows only its details. 5xx carry the request id, for support.
+ */
+export async function errorOf(res: Response): Promise<ApiError> {
+  let message = res.statusText;
+  let code: string | undefined;
+  let requestId: string | undefined;
+  let details: string[] = [];
+  try {
+    const err = await res.json();
+    details = Array.isArray(err?.details) ? err.details.filter((d: unknown): d is string => typeof d === "string") : [];
+    const explanation: string | undefined = err?.error ?? err?.message;
+    const generic = !explanation || explanation === "Validation failed.";
+    const extra = generic ? details : details.filter((d) => !explanation.includes(d));
+    message = generic
+      ? (details.join(" | ") || explanation || message)
+      : extra.length > 0 ? `${explanation} ${extra.join(" | ")}` : explanation;
+    code = err?.code ?? undefined;
+    requestId = err?.requestId;
+  } catch {
+    // empty or non-JSON body
+  }
+  if (res.status === 429 && !message) message = "Muitas tentativas. Aguarde alguns minutos.";
+  // an unexpected error carries the id of its log lines: show it, so support can find them
+  if (res.status >= 500 && requestId) message = `${message} (código: ${requestId})`;
+  return new ApiError(res.status, message, code, requestId, details);
 }
 
 // ── Public client ─────────────────────────────────────────────────────────────
@@ -234,7 +231,9 @@ export class ApiError extends Error {
     /** Machine-readable reason from the server body ({ code }), when it sends one. */
     public readonly code?: string,
     /** Id of the request in the server logs (X-Request-Id), for support. */
-    public readonly requestId?: string
+    public readonly requestId?: string,
+    /** The server's itemised reasons (refused rules, coverage findings, invalid fields), when it sends them. */
+    public readonly details: string[] = []
   ) {
     super(message);
     this.name = "ApiError";

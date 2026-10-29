@@ -1,10 +1,9 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Calculator, Coins, Gavel, Lock, Percent, Scale, ShieldAlert, Split, UserCog } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, Calculator, ClipboardCheck, Coins, Gavel, Lock, Percent, Scale, ShieldAlert, ShieldOff, Split, UserCog } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { MetricBlock } from "@/components/shared/MetricBlock";
-import { ErrorState } from "@/components/shared/ErrorState";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,9 +11,11 @@ import { formatCurrency } from "@/lib/formatters";
 import { TAX_KEYS, getTaxOverview } from "../api/tax.api";
 import { formatIsoDate, formatPercent } from "../lib/forms";
 import { overviewAttention, overviewImpacts } from "../lib/overview";
-import { POTENTIAL_CREDIT_COPY } from "../lib/labels";
+import { COMPLIANCE_STATUS, COVERAGE_STATUS, POTENTIAL_CREDIT_COPY, labelOf } from "../lib/labels";
+import type { CoverageStatus } from "../api/tax.api";
 import { TaxNote, TaxSubNav } from "../components/TaxShell";
-import { ImpactBadge } from "../components/TaxBadges";
+import { ImpactBadge, ToneBadge } from "../components/TaxBadges";
+import { TaxQueryError } from "../components/TaxCommon";
 
 /**
  * Inteligência tributária — visão geral: a carga estimada dos últimos 30 dias, créditos, oportunidades
@@ -39,7 +40,7 @@ export default function TaxOverviewPage() {
       </TaxNote>
 
       {overview.isLoading && <Skeleton className="h-64 w-full" />}
-      {overview.isError && <ErrorState title="Não foi possível carregar a visão tributária" onRetry={() => void overview.refetch()} />}
+      {overview.isError && <TaxQueryError error={overview.error} what="a visão tributária" onRetry={() => void overview.refetch()} />}
 
       {o && !o.profileConfigured && (
         <SectionCard>
@@ -62,7 +63,8 @@ export default function TaxOverviewPage() {
           )}
 
           <section className="space-y-3">
-            <h2 className="section-heading">Carga estimada · {formatIsoDate(o.periodFrom)} a {formatIsoDate(o.periodTo)}</h2>
+            <h2 className="section-heading">Imposto calculado · {formatIsoDate(o.periodFrom)} a {formatIsoDate(o.periodTo)}</h2>
+            <p className="text-xs text-muted-foreground">Saídas (operações da empresa) e entradas (imposto destacado pelos fornecedores) são coisas diferentes e não se somam.</p>
             {o.calculations === 0 ? (
               <SectionCard>
                 <EmptyState
@@ -75,9 +77,10 @@ export default function TaxOverviewPage() {
               </SectionCard>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <MetricBlock label="Carga estimada (30 dias)" value={formatCurrency(o.estimatedTax)} icon={Coins} caption={`${o.calculations} ${o.calculations === 1 ? "cálculo" : "cálculos"}`} />
-                <MetricBlock label="Base tributada" value={formatCurrency(o.taxedBase)} icon={Scale} />
-                <MetricBlock label="Taxa efetiva" value={formatPercent(o.effectiveRatePercent)} icon={Percent} caption="imposto ÷ base" />
+                <MetricBlock label="Imposto nas saídas" value={formatCurrency(o.outboundTax)} icon={Coins} caption={`${o.calculations} ${o.calculations === 1 ? "cálculo" : "cálculos"} no período`} />
+                <MetricBlock label="Base tributada nas saídas" value={formatCurrency(o.taxedBase)} icon={Scale} />
+                <MetricBlock label="Taxa efetiva nas saídas" value={formatPercent(o.effectiveRatePercent)} icon={Percent} caption="imposto ÷ base" />
+                <MetricBlock label="Imposto destacado nas entradas" value={formatCurrency(o.inboundTax)} icon={ArrowDownToLine} caption="base de crédito potencial — não é crédito" />
               </div>
             )}
           </section>
@@ -89,6 +92,8 @@ export default function TaxOverviewPage() {
               <MetricBlock label="A apropriar" value={formatCurrency(o.creditsToBeAppropriated)} caption="requisitos confirmados" />
               <MetricBlock label="Disponíveis" value={formatCurrency(o.creditsAvailable)} variant={o.creditsAvailable > 0 ? "success" : "default"} />
               <MetricBlock label="Bloqueados" value={formatCurrency(o.creditsBlocked)} icon={Lock} variant={o.creditsBlocked > 0 ? "warning" : "default"} />
+              <MetricBlock label="Apropriados" value={formatCurrency(o.creditsAppropriated)} caption="registrados no razão" />
+              <MetricBlock label="Utilizados" value={formatCurrency(o.creditsUsed)} caption="compensados ou ressarcidos" />
             </div>
             {o.creditsPotential > 0 && <p className="text-xs text-muted-foreground">{POTENTIAL_CREDIT_COPY}</p>}
           </section>
@@ -108,7 +113,8 @@ export default function TaxOverviewPage() {
                 </div>
               ))}
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricBlock label="Aprovadas aguardando execução" value={o.approvedAwaitingExecution} icon={ClipboardCheck} caption="cenário aprovado, execução não verificada" />
               <MetricBlock label="Risco alto em aberto" value={o.openHighRisk} icon={ShieldAlert} variant={o.openHighRisk > 0 ? "danger" : "default"} caption="precisam da diretoria" />
               <MetricBlock label="Bloqueadas" value={o.blockedOpportunities} icon={Gavel} caption="estruturas proibidas, sem economia" />
               <MetricBlock label="Divergências de split" value={o.splitDivergences} icon={Split} variant={o.splitDivergences > 0 ? "warning" : "default"} caption="retido ≠ esperado" />
@@ -120,10 +126,38 @@ export default function TaxOverviewPage() {
               <h2 className="section-heading">Regras para hoje</h2>
               <Link to="/tributos/regras" className="text-sm font-medium text-primary hover:underline">Ver regras e fontes</Link>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <MetricBlock label="Regras em vigor hoje" value={o.activeRulesToday} variant="success" />
               <MetricBlock label="Pendentes de regulamentação" value={o.pendingRulesToday} variant={o.pendingRulesToday > 0 ? "warning" : "default"} caption="existem na lei, ainda não aplicadas" />
+              <MetricBlock label="Sem revisão profissional" value={o.rulesPendingProfessionalReview} variant={o.rulesPendingProfessionalReview > 0 ? "warning" : "default"} caption="em vigor no motor, sem revisão de profissional" />
+              <MetricBlock label="Fonte não conferida" value={o.unverifiedRulesToday} variant={o.unverifiedRulesToday > 0 ? "warning" : "default"} caption="fonte oficial ainda não conferida" />
             </div>
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="section-heading">Obrigações e recusas</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="rounded-md border border-border bg-card p-4 text-sm">
+                <p className="text-xs text-muted-foreground">Obrigações acessórias em vigor</p>
+                {o.complianceInForce ? (
+                  <div className="mt-2 space-y-1">
+                    <ToneBadge label={labelOf(COMPLIANCE_STATUS, o.complianceInForce)} tone={COMPLIANCE_STATUS[o.complianceInForce].tone} />
+                    {o.complianceInForceTo && <p className="text-xs text-muted-foreground">até {formatIsoDate(o.complianceInForceTo)}</p>}
+                  </div>
+                ) : <p className="mt-2 font-medium">Nenhuma avaliação em vigor</p>}
+              </div>
+              <MetricBlock label="Fora do recorte" value={o.coverageRefusals} icon={ShieldOff} variant={o.coverageRefusals > 0 ? "warning" : "default"} caption="operações recusadas pela matriz de cobertura" />
+              <MetricBlock label="Recusadas pela governança" value={o.governanceRefusals} icon={ShieldAlert} caption="módulo desligado, fora do piloto ou regras sem aprovação" />
+            </div>
+            {o.coverageRefusalsByStatus && Object.keys(o.coverageRefusalsByStatus).length > 0 && (
+              <ul className="flex flex-wrap gap-3 text-xs">
+                {Object.entries(o.coverageRefusalsByStatus).map(([s, n]) => (
+                  <li key={s} className="flex items-center gap-1.5">
+                    <ToneBadge label={labelOf(COVERAGE_STATUS, s as CoverageStatus)} tone={COVERAGE_STATUS[s as CoverageStatus]?.tone ?? "neutral"} /> {n}
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
         </>
       )}

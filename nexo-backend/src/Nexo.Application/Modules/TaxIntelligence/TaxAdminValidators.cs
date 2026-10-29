@@ -138,7 +138,7 @@ public sealed class AssignOpportunityRequestValidator : AbstractValidator<Assign
 {
     public AssignOpportunityRequestValidator()
     {
-        RuleFor(x => x.UserName).NotEmpty().MaximumLength(200).When(x => x.UserId is not null);
+        RuleFor(x => x.UserId).NotEqual(Guid.Empty).When(x => x.UserId is not null);
     }
 }
 

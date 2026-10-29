@@ -38,7 +38,7 @@ function show() {
 describe("TaxCalculationsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(api.listTaxCalculations).mockResolvedValue([]);
+    vi.mocked(api.listTaxCalculations).mockResolvedValue({ items: [], total: 0, skip: 0, take: 25 });
   });
   afterEach(cleanup);
 
@@ -83,9 +83,9 @@ describe("TaxCalculationsPage", () => {
   });
 
   it("shows why an operation outside the engine's recorte was not calculated — never a zero", async () => {
-    vi.mocked(api.calculateSale).mockRejectedValue(new ApiError(422,
-      "Linha 1: Classificação insuficiente para o recorte: falta cClassTrib. | Linha 2: Classificação insuficiente para o recorte: falta cClassTrib.",
-      "tax_operation_not_supported"));
+    vi.mocked(api.calculateSale).mockRejectedValue(new ApiError(422, "Operação fora do recorte suportado.", "tax_operation_not_supported", undefined, [
+      "Linha 1: Classificação insuficiente para o recorte: falta cClassTrib.", "Linha 2: Classificação insuficiente para o recorte: falta cClassTrib.",
+    ]));
     show();
 
     fireEvent.change(screen.getByLabelText("Código da venda"), { target: { value: SALE } });
@@ -112,12 +112,12 @@ describe("TaxCalculationsPage", () => {
   });
 
   it("lists stored calculations with their source and open opportunities", async () => {
-    vi.mocked(api.listTaxCalculations).mockResolvedValue([
+    vi.mocked(api.listTaxCalculations).mockResolvedValue({ items: [
       { id: "c1", referenceDate: "2026-06-15", source: "Sale", sourceId: SALE, direction: "Outbound", description: "Venda #12",
         totalBase: 840, totalTax: 8.4, openOpportunities: 1, createdAt: "2026-06-15T12:00:00Z" },
       { id: "c2", referenceDate: "2026-06-16", source: "Manual", sourceId: null, direction: "Inbound", description: null,
         totalBase: 100, totalTax: 1, openOpportunities: 0, createdAt: "2026-06-16T12:00:00Z" },
-    ]);
+    ], total: 2, skip: 0, take: 25 });
     show();
 
     expect(await screen.findByRole("link", { name: "Venda #12" })).toHaveAttribute("href", "/tributos/calculos/c1");

@@ -153,7 +153,8 @@ public sealed record TaxPage<T>(IReadOnlyList<T> Items, int Total, int Skip, int
 
 public sealed record TaxTimelineEventDto(string Action, string Description, string ActorName, DateTime At, string Severity);
 
-public sealed record AssignOpportunityRequest(Guid? UserId, string? UserName);
+/// <summary>Who moves the analysis forward: a user of this company (the name comes from the user record, never from the client), or null to clear.</summary>
+public sealed record AssignOpportunityRequest(Guid? UserId);
 
 public sealed record ReplaceEvidenceRequest(string Description, string? DocumentReference, string? Notes);
 

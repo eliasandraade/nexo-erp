@@ -87,7 +87,12 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
         (await csv.Content.ReadAsStringAsync()).Should().Contain("imposto_calculado").And.NotContain("economia");
 
         var oppId = calc.GetProperty("opportunityIds")[0].GetGuid();
-        await Json(await Post(gerente, $"/api/tax/opportunities/{oppId}/assign", new { userId = Guid.NewGuid(), userName = "Analista" }));
+        (await Post(gerente, $"/api/tax/opportunities/{oppId}/assign", new { userId = Guid.NewGuid() })).StatusCode
+            .Should().Be(HttpStatusCode.NotFound, "only a user of this company can be made responsible");
+        var analyst = (await Json(await gerente.GetAsync("/api/users"))).EnumerateArray().First(u => u.GetProperty("role").GetString() == "gerente");
+        var assigned = await Json(await Post(gerente, $"/api/tax/opportunities/{oppId}/assign",
+            new { userId = analyst.GetProperty("id").GetGuid(), userName = "Nome inventado" }));
+        assigned.GetProperty("assignedToName").GetString().Should().Be(analyst.GetProperty("fullName").GetString(), "the name comes from the user record, not from the client");
         await PrepareScenarioAsync(gerente, oppId);
         var opp = await Json(await gerente.GetAsync($"/api/tax/opportunities/{oppId}"));
         var evidence = opp.GetProperty("evidence").EnumerateArray().Single(e => e.GetProperty("hashKind").GetString() == "sha256-file");

@@ -10,7 +10,9 @@ const TABS = [
   { to: "/tributos/simulacoes", label: "Simulações" },
   { to: "/tributos/oportunidades", label: "Oportunidades" },
   { to: "/tributos/creditos", label: "Créditos e split" },
+  { to: "/tributos/classificacao", label: "Classificação" },
   { to: "/tributos/regras", label: "Regras e fontes" },
+  { to: "/tributos/politicas", label: "Políticas" },
 ];
 
 /** Links between the tax pages, scrollable on small screens (the page itself never scrolls sideways). */

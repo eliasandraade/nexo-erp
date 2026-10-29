@@ -21,7 +21,7 @@ const expectation = (over: Partial<SplitExpectationDto> = {}): SplitExpectationD
   id: "e1", calculationId: "c1", tax: "Cbs", procedure: "Standard", expected: 7.56, actual: 8.56, difference: 1,
   status: "Excess",
   settlements: [settlement("s1", 7.56, "psp-1"), settlement("s2", 1, "psp-2")],
-  createdAt: "2026-10-27T11:00:00Z", ...over,
+  createdAt: "2026-10-27T11:00:00Z", operationDate: "2026-10-27", ageDays: null, ...over,
 });
 
 describe("SplitTable", () => {

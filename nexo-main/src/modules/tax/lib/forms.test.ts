@@ -5,6 +5,7 @@ import {
   emptyHypothesis, emptyOffer, emptyScenario, offersProblems, scenarioProblems, simulationProblems, toCompareRequest, toScenarioRequest,
   emptyLine, emptyOperation, formatIsoDate, isProfileMissing, lineProblems, linesProblems, operationProblems, parseDecimal,
   profileDraftProblems, splitList, toLineRequest, toOperationRequest, toProfileVersionRequest, type LineDraft, type ProfileDraft,
+  emptyResult, resultProblems, simplesSituationsFor,
 } from "./forms";
 
 const line = (patch: Partial<LineDraft> = {}): LineDraft => ({ ...emptyLine(), description: "Camiseta", grossAmount: "100,00", ...patch });
@@ -60,7 +61,7 @@ describe("operation lines", () => {
 describe("profile version", () => {
   const draft: ProfileDraft = {
     validFrom: "2026-01-01", regime: "LucroPresumido", state: "SP", cityIbgeCode: "3550308", primaryCnae: "4781-4/00",
-    secondaryCnaes: "4782-2/01; 4789-0/99", specialRegimes: "", benefits: "", reason: "Abertura",
+    secondaryCnaes: "4782-2/01; 4789-0/99", specialRegimes: "", benefits: "", reason: "Abertura", simplesSituation: "", regularOption: "",
   };
 
   it("validates and maps", () => {
@@ -68,10 +69,23 @@ describe("profile version", () => {
     expect(toProfileVersionRequest(draft)).toEqual({
       validFrom: "2026-01-01", regime: "LucroPresumido", state: "SP", cityIbgeCode: "3550308", primaryCnae: "4781400",
       secondaryCnaes: ["4782201", "4789099"], specialRegimes: [], benefits: [], reason: "Abertura",
+      simplesSituation: null, ibsCbsRegularRegimeOption: null,
     });
     expect(profileDraftProblems({ ...draft, cityIbgeCode: "355", primaryCnae: "47", secondaryCnaes: "1", reason: " " })).toEqual([
       "Código IBGE do município: 7 números.", "CNAE principal: 7 números.", "Cada CNAE secundário tem 7 números.", "Diga o motivo da nova versão.",
     ]);
+  });
+
+  it("only offers Simples situations that agree with the regime, and never guesses the IBS/CBS option", () => {
+    expect(simplesSituationsFor("SimplesNacional")).toEqual(["WithinSublimit", "Unknown"]);
+    expect(simplesSituationsFor("Mei")).toEqual(["Mei", "Simei", "Unknown"]);
+    expect(simplesSituationsFor("LucroReal")).toEqual(["NotOptant"]);
+    expect(profileDraftProblems({ ...draft, simplesSituation: "Mei" })).toEqual(["A situação no Simples não combina com o regime."]);
+    expect(profileDraftProblems({ ...draft, regularOption: "yes" })).toEqual(["A opção pelo regime regular do IBS/CBS só existe para optantes do Simples."]);
+    const mei: ProfileDraft = { ...draft, regime: "Mei", simplesSituation: "Simei", regularOption: "no" };
+    expect(profileDraftProblems(mei)).toEqual([]);
+    expect(toProfileVersionRequest(mei)).toMatchObject({ simplesSituation: "Simei", ibsCbsRegularRegimeOption: false });
+    expect(toProfileVersionRequest({ ...mei, regularOption: "" })).toMatchObject({ ibsCbsRegularRegimeOption: null });
   });
 
 });
@@ -81,7 +95,7 @@ describe("ancillary-obligation assessment", () => {
 
   it("asks for period and scope, and for what was checked before it counts as verified", () => {
     expect(complianceProblems({ ...base, status: "Declared" })).toEqual([]);
-    expect(complianceProblems({ ...base, status: "Verified" })).toEqual(["Para verificar, diga quais obrigações foram conferidas e com qual evidência."]);
+    expect(complianceProblems({ ...base, status: "Verified" })).toEqual(["Uma verificação lista cada obrigação conferida, com sua evidência — não só texto livre."]);
     expect(complianceProblems({ ...base, status: "Declared", scope: " ", periodTo: "2025-12-31" })).toEqual([
       "O fim do período é anterior ao início.", "Informe o escopo (o que a avaliação cobre).",
     ]);
@@ -89,8 +103,30 @@ describe("ancillary-obligation assessment", () => {
   });
 
   it("maps the checked obligations and keeps PNCT as a recorded fact", () => {
-    const req = toComplianceRequest({ ...base, status: "Verified", obligationsChecked: "NF-e com IBS/CBS\nNFC-e", evidence: " relatório ", pnctParticipation: true });
+    const results = [{ ...emptyResult("NFE", "NF-e com IBS/CBS"), status: "Verified" as const, evidenceReference: " R-1 " }, emptyResult("NFCE", "NFC-e")];
+    const req = toComplianceRequest({ ...base, status: "Verified", obligationsChecked: "NF-e com IBS/CBS\nNFC-e", evidence: " relatório ", pnctParticipation: true, results });
     expect(req).toMatchObject({ status: "Verified", obligationsChecked: ["NF-e com IBS/CBS", "NFC-e"], evidence: "relatório", pnctParticipation: true, notes: null });
+    expect(req.obligations).toEqual([{
+      obligationCode: "NFE", status: "Verified", evidenceReference: "R-1", evidenceFileId: null, remediation: null, remediationVerifiedOn: null,
+      remediationVerifiedBy: null, notes: null,
+    }]);
+  });
+
+  it("applies the server's rules per obligation and to the whole verification", () => {
+    const r = (status: Parameters<typeof resultProblems>[0]["status"], extra = {}) => ({ ...emptyResult("X", "Obrigação X"), status, ...extra });
+    expect(resultProblems(r("Verified"))).toEqual(["Obrigação X: verificada sem evidência."]);
+    expect(resultProblems(r("NonCompliant"))).toEqual(["Obrigação X: descreva a inconsistência."]);
+    expect(resultProblems(r("UnderRemediation"))).toEqual(["Obrigação X: descreva o que está sendo regularizado."]);
+    expect(resultProblems(r("RemediationVerified", { remediation: "Refeito", evidenceReference: "R" }))).toHaveLength(1);
+    expect(resultProblems(r("RemediationVerified", { remediation: "Refeito", evidenceReference: "R", remediationVerifiedOn: "2026-07-01", remediationVerifiedBy: "Contador" }))).toEqual([]);
+
+    const ok = r("Verified", { evidenceReference: "R" });
+    expect(complianceProblems({ ...base, status: "Verified", results: [ok] })).toEqual([]);
+    expect(complianceProblems({ ...base, status: "Verified", results: [r("NotApplicable")] })).toEqual(["Verificada só quando cada obrigação foi verificada (ou não se aplica)."]);
+    expect(complianceProblems({ ...base, status: "Verified", results: [ok, r("Declared")] })).toEqual(["Verificada só quando cada obrigação foi verificada (ou não se aplica)."]);
+    expect(complianceProblems({ ...base, status: "RemediationVerified", results: [ok] }))
+      .toEqual(["Regularização verificada exige ao menos uma regularização verificada e nenhuma obrigação em aberto."]);
+    expect(complianceProblems({ ...base, status: "Declared", results: [r(""), r("")] })).toEqual([]);
   });
 });
 
