@@ -80,7 +80,12 @@ public sealed class TaxCatalogService
     }
 
     public async Task<IReadOnlyList<TaxLegalSourceDto>> GetLegalSourcesAsync(CancellationToken ct)
-        => (await _db.TaxLegalSources.AsNoTracking().OrderBy(s => s.Code).ToListAsync(ct)).Select(MapSource).ToList();
+    {
+        var usage = await _db.Set<TaxRuleVersionSource>().AsNoTracking().GroupBy(s => s.LegalSourceId)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+        return (await _db.TaxLegalSources.AsNoTracking().OrderBy(s => s.Code).ToListAsync(ct))
+            .Select(s => MapSource(s) with { RulesUsing = usage.GetValueOrDefault(s.Id) }).ToList();
+    }
 
     // ── Platform administration ─────────────────────────────────────────────────
 
@@ -100,8 +105,11 @@ public sealed class TaxCatalogService
     {
         var source = await _db.TaxLegalSources.FirstOrDefaultAsync(s => s.Code == code.ToUpperInvariant(), ct)
             ?? throw new NotFoundException("Fonte jurídica", code);
-        source.MarkVerified(r.VerifiedBy, DateTime.UtcNow);
-        _audit.RecordPlatform(TaxAuditActions.LegalSourceVerified, "LegalSource", source.Id, $"Fonte {source.Code} conferida por {r.VerifiedBy}.");
+        // Who compared the text is as informed; who recorded it is the authenticated user. A verified source activates nothing.
+        source.MarkVerified(r.VerifiedBy, DateTime.UtcNow, _audit.UserId, _audit.UserName);
+        _audit.RecordPlatform(TaxAuditActions.LegalSourceVerified, "LegalSource", source.Id,
+            $"Fonte {source.Code} conferida por {r.VerifiedBy.Trim()} (registrado por {_audit.UserName}). Conferência do texto não ativa regra nem é parecer.",
+            new { comparedBy = r.VerifiedBy.Trim(), recordedBy = _audit.UserName, recordedById = _audit.UserId });
         await _db.SaveChangesAsync(ct);
         return MapSource(source);
     }
@@ -206,16 +214,27 @@ public sealed class TaxCatalogService
     /// </summary>
     public async Task<TaxRuleVersionDto> RecordProfessionalReviewAsync(Guid versionId, RecordProfessionalReviewRequest r, CancellationToken ct)
     {
-        var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
+        // Serialised per rule: two operators never interleave reviews of the same version.
+        var ruleId = await _db.TaxRuleVersions.AsNoTracking().Where(v => v.Id == versionId).Select(v => (Guid?)v.RuleId).FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException("Versão de regra", versionId);
+        await LockRuleAsync(ruleId, ct);
+        var version = await _db.TaxRuleVersions.FirstAsync(v => v.Id == versionId, ct);
+        if (r.SupportingDocumentId is { } docId && !await _db.TaxPlatformDocuments.AnyAsync(d => d.Id == docId
+                && d.Purpose == TaxPlatformDocument.ProfessionalReviewPurpose && d.Status == TaxFileStatus.Active, ct))
+            throw new DomainException("O documento de suporte não existe, não é de revisão profissional ou foi revogado.", "tax_review_document");
         var before = version.ProfessionalReview;
-        version.RecordProfessionalReview(new ProfessionalReviewInput(r.Status, r.Reviewer, r.ProfessionalReference, r.Scope, r.ValidFrom,
-            r.ValidTo, r.Assumptions, r.Caveats, r.Notes), DateTime.UtcNow);
+        // The professional is as informed; who records it is the authenticated user and the time is the server's.
+        var record = version.RecordProfessionalReview(new ProfessionalReviewInput(r.Status, r.Reviewer, r.ProfessionalReference, r.Scope, r.ValidFrom,
+            r.ValidTo, r.Assumptions, r.Caveats, r.Notes, (r.CoveredRegimes ?? []).Select(x => x.ToString()).ToList(), r.ReviewedOn,
+            r.SupportingDocumentId, _audit.UserId, _audit.UserName, _audit.UserRole), DateTime.UtcNow);
+        _db.TaxProfessionalReviewRecords.Add(record);
         _audit.RecordPlatform(TaxAuditActions.RuleVersionProfessionalReview, "RuleVersion", version.Id,
-            $"Revisão profissional da versão {version.Version}: {before} → {r.Status} ({r.Reviewer.Trim()}).",
-            new { before = before.ToString(), after = r.Status.ToString(), reviewer = r.Reviewer.Trim(), r.ProfessionalReference, r.Scope,
-                r.ValidFrom, r.ValidTo, r.Assumptions, r.Caveats, notes = r.Notes });
+            $"Revisão profissional da versão {version.Version}: {before} → {r.Status} (profissional informado: {r.Reviewer.Trim()}; registrado por {_audit.UserName}).",
+            new { recordId = record.Id, before = before.ToString(), after = r.Status.ToString(), reviewer = r.Reviewer.Trim(), r.ProfessionalReference, r.Scope,
+                r.ValidFrom, r.ValidTo, coveredRegimes = record.CoveredRegimes, r.ReviewedOn, r.Assumptions, r.Caveats, notes = r.Notes,
+                r.SupportingDocumentId, recordedBy = _audit.UserName, recordedById = _audit.UserId, recordedByRole = _audit.UserRole });
         await _db.SaveChangesAsync(ct);
+        await _db.Database.CommitTransactionAsync(ct);
         _log.LogWarning("Tax rule version {VersionId} professional review {Before} -> {After}", version.Id, before, r.Status);
         return await GetVersionAsync(version.Id, ct);
     }
@@ -347,8 +366,25 @@ public sealed class TaxCatalogService
         new TaxInternalApprovalDto(v.InternalApproval, v.InternalApprovalPolicy, v.InternalApprovedById, v.InternalApprovedBy, v.InternalApprovedByRole,
             v.InternalApprovedAt, v.InternalApprovalScope,
             v.InternalApprovalValidFrom, v.InternalApprovalValidTo, v.InternalApprovalCaveats, v.InternalApprovalDecisionRef,
-            v.InternalApprovalWithdrawalReason, v.InternalApprovalWithdrawnAt, TaxGovernance.PilotNature));
+            v.InternalApprovalWithdrawalReason, v.InternalApprovalWithdrawnAt, TaxGovernance.PilotNature),
+        v.ProfessionalReviewRegimes, v.ProfessionalReviewedOn, v.ProfessionalReviewRecordedBy, v.ProfessionalReviewRecordedByRole,
+        v.ProfessionalReviewDocumentId);
 
     private static TaxLegalSourceDto MapSource(TaxLegalSource s) => new(
-        s.Id, s.Code, s.Kind, s.Title, s.Reference, s.Url, s.Excerpt, s.PublishedOn, s.TextVerification, s.VerifiedAt, s.VerifiedBy, s.Notes);
+        s.Id, s.Code, s.Kind, s.Title, s.Reference, s.Url, s.Excerpt, s.PublishedOn, s.TextVerification, s.VerifiedAt, s.VerifiedBy, s.Notes,
+        s.VerificationRecordedBy);
+
+    /// <summary>Every professional review ever recorded for a version, newest first — a later one never erases an earlier one.</summary>
+    public async Task<IReadOnlyList<TaxProfessionalReviewRecordDto>> ReviewHistoryAsync(Guid versionId, CancellationToken ct)
+    {
+        if (!await _db.TaxRuleVersions.AnyAsync(v => v.Id == versionId, ct)) throw new NotFoundException("Versão de regra", versionId);
+        var records = await _db.TaxProfessionalReviewRecords.AsNoTracking().Where(r => r.RuleVersionId == versionId)
+            .OrderByDescending(r => r.CreatedAt).ToListAsync(ct);
+        var docIds = records.Where(r => r.SupportingDocumentId is not null).Select(r => r.SupportingDocumentId!.Value).ToList();
+        var docs = await _db.TaxPlatformDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, ct);
+        return records.Select(r => new TaxProfessionalReviewRecordDto(r.Id, r.RuleVersionId, r.Status, r.PreviousStatus, r.Reviewer,
+            r.ProfessionalReference, r.ReviewedOn, r.Scope, r.CoveredRegimes, r.ValidFrom, r.ValidTo, r.Assumptions, r.Caveats, r.Notes,
+            r.SupportingDocumentId is { } id && docs.TryGetValue(id, out var d) ? TaxDocumentService.Map(d) : null,
+            r.RecordedByName, r.RecordedByRole, r.CreatedAt)).ToList();
+    }
 }

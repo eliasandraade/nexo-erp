@@ -23,14 +23,19 @@ public sealed class SaleTaxFactsReader
     [
         "Descontos dados no PDV foram tratados como incondicionais: para isso precisam constar do documento fiscal (LC 214/2025, art. 12, § 3º).",
         "O desconto e os acréscimos da venda foram rateados entre os itens pelo valor líquido de cada um.",
-        "O cadastro do produto ainda não informa cClassTrib: sem ele a V1 não calcula a venda (classificação insuficiente), em vez de presumir o regime geral.",
+        "A classificação de cada item (tipo, NCM/NBS e cClassTrib) vem da classificação tributária do produto definida pela empresa; sem ela a V1 não calcula a venda (classificação insuficiente), em vez de presumir o regime geral.",
         "Venda no PDV é um fornecimento único e imediato: data da venda = data do fornecimento = data do documento.",
         "ICMS, ISS, PIS e Cofins embutidos no preço não são conhecidos na venda — a base pode estar maior do que a real.",
     ];
 
     private readonly NexoDbContext _db;
+    private readonly TaxClassificationService _classifications;
 
-    public SaleTaxFactsReader(NexoDbContext db) => _db = db;
+    public SaleTaxFactsReader(NexoDbContext db, TaxClassificationService classifications)
+    {
+        _db = db;
+        _classifications = classifications;
+    }
 
     public async Task<TaxOperationFacts> ReadAsync(Guid saleId, CancellationToken ct)
     {
@@ -47,10 +52,16 @@ public sealed class SaleTaxFactsReader
         var saleDiscount = Allocate(sale.DiscountAmount, net);
         var surcharges = Allocate(sale.SurchargesAmount, net);
 
-        var lines = items.Select((i, k) => new TaxLineRequest(
-            TaxItemKind.Good, i.Product?.Name ?? "Item", i.Product?.Ncm, i.Quantity, gross[k],
-            UnconditionalDiscount: i.DiscountAmount + saleDiscount[k], ConditionalDiscount: 0m, Surcharges: surcharges[k],
-            ExcludedTaxes: null, SpecialTreatment: null)).ToList();
+        var classified = await _classifications.ForProductsAsync(items.Select(i => i.ProductId), ct);
+        var lines = items.Select((i, k) =>
+        {
+            // The company's classification of the product, when set; otherwise only the product's NCM and no cClassTrib (refused).
+            var c = classified.GetValueOrDefault(i.ProductId);
+            return new TaxLineRequest(
+                c?.ItemKind ?? TaxItemKind.Good, i.Product?.Name ?? "Item", c?.Ncm ?? i.Product?.Ncm, i.Quantity, gross[k],
+                UnconditionalDiscount: i.DiscountAmount + saleDiscount[k], ConditionalDiscount: 0m, Surcharges: surcharges[k],
+                ExcludedTaxes: null, SpecialTreatment: null, Nbs: c?.Nbs, CClassTrib: c?.CClassTrib);
+        }).ToList();
 
         var date = DateOnly.FromDateTime(BusinessClock.ToBrazil(sale.ConfirmedAt.Value));
         return new TaxOperationFacts(TaxTransactionSource.Sale, sale.Id,

@@ -24,33 +24,34 @@ public sealed class TaxCalculationService
 {
     private const int MaxList = 200;
 
+    private const string AuditEntity = "Calculation";
+
+    private readonly TaxContext _ctx;
     private readonly NexoDbContext _db;
     private readonly TaxEngineRegistry _engines;
     private readonly ICurrentTenant _tenant;
-    private readonly TaxProfileService _profiles;
+    private readonly TaxInputBuilder _inputs;
     private readonly TaxComplianceService _compliance;
     private readonly TaxCatalogService _catalog;
     private readonly TaxApprovalGate _approvals;
     private readonly TaxOpportunityService _opportunities;
-    private readonly SaleTaxFactsReader _sales;
     private readonly TaxAuditTrail _audit;
     private readonly ILogger<TaxCalculationService> _log;
 
     public TaxCalculationService(
-        NexoDbContext db, TaxEngineRegistry engines, ICurrentTenant tenant, TaxProfileService profiles, TaxComplianceService compliance,
-        TaxCatalogService catalog, TaxApprovalGate approvals,
-        TaxOpportunityService opportunities, SaleTaxFactsReader sales, TaxAuditTrail audit, ILogger<TaxCalculationService> log)
+        TaxContext ctx, TaxEngineRegistry engines, TaxInputBuilder inputs, TaxCatalogService catalog, TaxApprovalGate approvals,
+        TaxOpportunityService opportunities, ILogger<TaxCalculationService> log)
     {
-        _db = db;
+        _ctx = ctx;
+        _db = ctx.Db;
         _engines = engines;
-        _tenant = tenant;
-        _profiles = profiles;
-        _compliance = compliance;
+        _tenant = ctx.Tenant;
+        _inputs = inputs;
+        _compliance = inputs.Compliance;
         _catalog = catalog;
         _approvals = approvals;
         _opportunities = opportunities;
-        _sales = sales;
-        _audit = audit;
+        _audit = ctx.Audit;
         _log = log;
     }
 
@@ -58,23 +59,21 @@ public sealed class TaxCalculationService
         => RunAsync(new TaxOperationFacts(TaxTransactionSource.Manual, null, request), ct);
 
     public async Task<TaxCalculationDto> CalculateSaleAsync(Guid saleId, CancellationToken ct)
-        => await RunAsync(await _sales.ReadAsync(saleId, ct), ct);
+        => await RunAsync(await _inputs.SaleAsync(saleId, ct), ct);
 
     /// <summary>
     /// Builds the engine input of an operation on its date: the facts, the profile version in force and
     /// the compliance fact of the ancillary-obligation assessment in force (only a verification counts).
     /// </summary>
-    public async Task<(TaxEngineInput Input, TaxProfileVersion Profile, TaxComplianceAssessment? Compliance)> BuildInputAsync(
-        TaxOperationRequest op, CancellationToken ct)
-    {
-        var profile = await _profiles.GetInForceAsync(op.OperationDate, ct);
-        var compliance = await _compliance.InForceAsync(op.OperationDate, ct);
-        return (ToInput(op, profile, compliance?.ForRules), profile, compliance);
-    }
+    public Task<(TaxEngineInput Input, TaxProfileVersion Profile, TaxComplianceAssessment? Compliance)> BuildInputAsync(
+        TaxOperationRequest op, CancellationToken ct) => _inputs.BuildAsync(op, ct);
 
     /// <summary>Preview of the supported-operation matrix for an operation, without calculating anything.</summary>
     public async Task<TaxCoverageDecision> CoverageAsync(TaxOperationRequest op, CancellationToken ct)
-        => TaxCoveragePolicyV1.Assess(op, (await _profiles.GetInForceAsync(op.OperationDate, ct)).Regime);
+    {
+        var profile = await _inputs.ProfileAsync(op.OperationDate, ct);
+        return TaxCoveragePolicyV1.Assess(op, await _inputs.CoverageContextAsync(op, profile, _approvals.Mode, ct));
+    }
 
     public static TaxEngineInput ToInput(TaxOperationRequest op, TaxProfileVersion profile, bool? complianceForRules) => new(
         op.OperationDate,
@@ -95,7 +94,7 @@ public sealed class TaxCalculationService
         // Kill switch, approval mode and pilot scope come first: outside them nothing runs (fail closed).
         if (await _approvals.AdmitCalculationAsync(ct) is { } admission) await RefuseAsync(facts, admission, ct);
         var (input, profile, compliance) = await BuildInputAsync(op, ct);
-        var coverage = TaxCoveragePolicyV1.Assess(op, profile.Regime);
+        var coverage = TaxCoveragePolicyV1.Assess(op, await _inputs.CoverageContextAsync(op, profile, _approvals.Mode, ct));
         if (!coverage.Supported) await RefuseAsync(facts, coverage, ct);
         var engine = _engines.Current;
         var canonical = engine.Canonical;
@@ -106,7 +105,7 @@ public sealed class TaxCalculationService
         var active = engine.SelectActive(catalogue, op.OperationDate);
         var ruleSetHash = engine.RuleSetHash(active);
         // Every active rule the engine could apply must be approved for the mode (pilot or final): fail closed.
-        var governance = await _approvals.ForCalculationAsync(active.Select(r => r.VersionId).ToList(), op.OperationDate, ct);
+        var governance = await _approvals.ForCalculationAsync(active.Select(r => r.VersionId).ToList(), op.OperationDate, ct, profile.Regime.ToString());
         if (governance.Enforced && governance.NotApproved.Count > 0)
             await RefuseAsync(facts, TaxApprovalGate.NotApproved(governance), ct, governance.NotApproved);
         // Same facts (all of them, description included) + same rules + same engine = the same calculation.
@@ -123,6 +122,7 @@ public sealed class TaxCalculationService
             op.Description, op.CounterpartyRegime, op.CounterpartyState, factsHash, _audit.UserId);
         var t = op.Timing!;   // a supported operation always states its timing
         transaction.SetTiming(t.SupplyPattern, t.DocumentDate, t.SupplyDate, t.PaymentOrAdvanceDate, t.CompetencePeriod, t.ExecutionFrom, t.ExecutionTo);
+        transaction.SetCounterpartySimples(op.CounterpartySimplesSituation, op.CounterpartyRegularRegimeOption);
         foreach (var (l, i) in op.Lines.Select((l, i) => (l, i)))
             transaction.AddLine(i + 1, l.ItemKind, l.Description, l.Ncm, l.Quantity, l.GrossAmount, l.UnconditionalDiscount,
                 l.ConditionalDiscount, l.Surcharges, l.ExcludedTaxes ?? 0m, l.ExcludedTaxes is not null, l.SpecialTreatment, l.Nbs, l.CClassTrib);
@@ -159,6 +159,7 @@ public sealed class TaxCalculationService
             return await GetAsync(stored.Id, reused: true, ct, coverage);
         }
 
+        _ctx.Metrics.Calculated(facts.Source.ToString());
         _log.LogInformation(
             "Tax calculation {CalculationId} from {Source}: {RuleCount} rule runs, {ComponentCount} components, engine {EngineVersion}, input {InputHash}",
             calc.Id, facts.Source, output.Executions.Count, calc.Components.Count, engine.Version, inputHash);
@@ -179,6 +180,7 @@ public sealed class TaxCalculationService
             $"Cálculo recusado ({coverage.Status}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
             new { source = facts.Source.ToString(), facts.SourceId, status = coverage.Status.ToString(), coverage.PolicyVersion, findings = coverage.Findings });
         await _db.SaveChangesAsync(ct);
+        _ctx.Metrics.CoverageRefused(coverage.Status.ToString());
         _log.LogInformation("Tax calculation refused from {Source}: {Status} ({Codes})", facts.Source, coverage.Status,
             string.Join(",", coverage.Findings.Select(f => f.Code)));
         throw new DomainException($"{TaxCoveragePolicyV1.NotSupportedMessage} ({coverage.Status})", "tax_operation_not_supported", reasons);
@@ -195,6 +197,7 @@ public sealed class TaxCalculationService
             $"Cálculo recusado ({refusal.Code}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
             new { source = facts.Source.ToString(), facts.SourceId, refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
         await _db.SaveChangesAsync(ct);
+        _ctx.Metrics.Refused("calculation", refusal.Code);
         _log.LogInformation("Tax calculation refused from {Source}: {Code}", facts.Source, refusal.Code);
         throw new DomainException(refusal.Message, refusal.Code, details ?? []);
     }
@@ -210,7 +213,8 @@ public sealed class TaxCalculationService
         var calc = await _db.TaxCalculations.AsNoTracking().Include(c => c.Executions).FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Cálculo", id);
         var executed = calc.Executions.Select(e => e.RuleVersionId).ToList();
-        var governance = await _approvals.ForCalculationAsync(executed.Distinct().ToList(), calc.ReferenceDate, ct);
+        var regime = await _db.TaxProfileVersions.AsNoTracking().Where(v => v.Id == calc.ProfileVersionId).Select(v => v.Regime).FirstAsync(ct);
+        var governance = await _approvals.ForCalculationAsync(executed.Distinct().ToList(), calc.ReferenceDate, ct, regime.ToString());
         if (governance.Enforced && governance.NotApproved.Count > 0)
             await RefuseDetectionAsync(id, TaxApprovalGate.NotApproved(governance), ct, governance.NotApproved);
         // Same engine and same rules as the calculation (and the dossier that may follow).
@@ -229,6 +233,7 @@ public sealed class TaxCalculationService
             $"Nova detecção de oportunidades recusada ({refusal.Code}).",
             new { refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
         await _db.SaveChangesAsync(ct);
+        _ctx.Metrics.Refused("detection", refusal.Code);
         _log.LogInformation("Tax detection refused for calculation {CalculationId}: {Code}", calculationId, refusal.Code);
         throw new DomainException(refusal.Message, refusal.Code, details ?? []);
     }
@@ -241,13 +246,22 @@ public sealed class TaxCalculationService
                 $"Este cálculo foi feito pela engine {calc.EngineVersion}, que não está disponível nesta versão do Orken.",
                 "tax_engine_unavailable");
 
-    public async Task<IReadOnlyList<TaxCalculationSummaryDto>> ListAsync(int take, CancellationToken ct)
+    public async Task<TaxPage<TaxCalculationSummaryDto>> ListAsync(TaxDirection? direction, TaxTransactionSource? source, DateOnly? from, DateOnly? to,
+        int skip, int take, CancellationToken ct)
     {
         take = Math.Clamp(take, 1, MaxList);
-        var rows = await _db.TaxCalculations.AsNoTracking()
-            .OrderByDescending(c => c.CreatedAt)
+        skip = Math.Max(0, skip);
+        var q = _db.TaxCalculations.AsNoTracking()
+            .Join(_db.TaxTransactions.AsNoTracking(), c => c.TransactionId, t => t.Id, (c, t) => new { c, t });
+        if (direction is not null) q = q.Where(x => x.t.Direction == direction);
+        if (source is not null) q = q.Where(x => x.t.Source == source);
+        if (from is not null) q = q.Where(x => x.c.ReferenceDate >= from);
+        if (to is not null) q = q.Where(x => x.c.ReferenceDate <= to);
+        var total = await q.CountAsync(ct);
+        var rows = await q
+            .OrderByDescending(x => x.c.CreatedAt)
+            .Skip(skip)
             .Take(take)
-            .Join(_db.TaxTransactions.AsNoTracking(), c => c.TransactionId, t => t.Id, (c, t) => new { c, t })
             .Select(x => new
             {
                 x.c.Id, x.c.ReferenceDate, x.t.Source, x.t.SourceId, x.t.Direction, x.t.Description, x.c.TotalBase, x.c.TotalTax, x.c.CreatedAt,
@@ -255,10 +269,10 @@ public sealed class TaxCalculationService
                     && (o.Status == TaxOpportunityStatus.Identified || o.Status == TaxOpportunityStatus.InReview)),
             })
             .ToListAsync(ct);
-        return rows.OrderByDescending(r => r.CreatedAt)
+        return new TaxPage<TaxCalculationSummaryDto>(rows.OrderByDescending(r => r.CreatedAt)
             .Select(r => new TaxCalculationSummaryDto(r.Id, r.ReferenceDate, r.Source, r.SourceId, r.Direction, r.Description,
                 r.TotalBase, r.TotalTax, r.Open, r.CreatedAt))
-            .ToList();
+            .ToList(), total, skip, take);
     }
 
     public Task<TaxCalculationDto> GetAsync(Guid id, CancellationToken ct) => GetAsync(id, reused: false, ct, null);
@@ -269,12 +283,15 @@ public sealed class TaxCalculationService
             ?? throw new NotFoundException("Cálculo", id);
         var transaction = await _db.TaxTransactions.AsNoTracking().FirstAsync(t => t.Id == calc.TransactionId, ct);
         var profile = await _db.TaxProfileVersions.AsNoTracking()
-            .Where(v => v.Id == calc.ProfileVersionId).Select(v => new { v.VersionNumber, v.Regime }).FirstAsync(ct);
+            .Where(v => v.Id == calc.ProfileVersionId)
+            .Select(v => new { v.VersionNumber, v.Regime, v.SimplesSituation, v.IbsCbsRegularRegimeOption }).FirstAsync(ct);
         // The assessment the calculation used — never a later one (its input and output are frozen with it).
         var compliance = await _compliance.GetAsync(calc.ComplianceAssessmentId, ct);
         var current = await _compliance.InForceAsync(calc.ReferenceDate, ct);
         // A stored calculation was supported when it ran; the matrix is re-derived from its stored facts for display.
-        coverage ??= TaxCoveragePolicyV1.Assess(await StoredOperationAsync(transaction, ct), profile.Regime);
+        // The catalogue is not consulted again: the codes were active when it ran (a later deactivation never rewrites it).
+        coverage ??= TaxCoveragePolicyV1.Assess(await StoredOperationAsync(transaction, ct),
+            new TaxCoverageContext(profile.Regime, profile.SimplesSituation, profile.IbsCbsRegularRegimeOption, null));
         var opportunityIds = await _db.TaxOpportunities.AsNoTracking()
             .Where(o => o.SourceCalculationId == id).OrderBy(o => o.CreatedAt).Select(o => o.Id).ToListAsync(ct);
 
@@ -299,7 +316,8 @@ public sealed class TaxCalculationService
         return new TaxOperationRequest(t.OperationDate, t.Direction, t.CounterpartyRegime, t.CounterpartyState, t.Description,
             lines.Select(l => new TaxLineRequest(l.ItemKind, l.Description, l.Ncm, l.Quantity, l.GrossAmount, l.UnconditionalDiscount,
                 l.ConditionalDiscount, l.Surcharges, l.ExcludedTaxesInformed ? l.ExcludedTaxes : null, l.SpecialTreatment, l.Nbs, l.CClassTrib)).ToList(),
-            new TaxOperationTiming(t.SupplyPattern, t.DocumentDate, t.SupplyDate, t.PaymentOrAdvanceDate, t.CompetencePeriod, t.ExecutionFrom, t.ExecutionTo));
+            new TaxOperationTiming(t.SupplyPattern, t.DocumentDate, t.SupplyDate, t.PaymentOrAdvanceDate, t.CompetencePeriod, t.ExecutionFrom, t.ExecutionTo),
+            t.CounterpartySimplesSituation, t.CounterpartyRegularRegimeOption);
     }
 
     /// <summary>
@@ -317,6 +335,7 @@ public sealed class TaxCalculationService
         var result = await TaxReproduction.VerifyAsync(stored, _engines,
             (engine, ids) => _catalog.LoadByIdsAsync(ids, engine.Canonical, ct));
 
+        _ctx.Metrics.EngineVerification(!result.EngineAvailable ? "engine_unavailable" : result.Reproducible ? "reproducible" : "not_reproducible");
         _log.LogInformation("Tax calculation {CalculationId} verification with engine {EngineVersion}: available={Available} reproducible={Reproducible}",
             id, calc.EngineVersion, result.EngineAvailable, result.Reproducible);
         return new TaxCalculationVerificationDto(id, result.Reproducible, result.EngineAvailable,

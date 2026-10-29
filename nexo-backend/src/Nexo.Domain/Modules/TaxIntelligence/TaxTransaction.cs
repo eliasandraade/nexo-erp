@@ -26,6 +26,16 @@ public class TaxTransaction : StoreEntity
     /// <summary>Regime of the other party, when known — decides the supplier regime of inbound operations.</summary>
     public TaxRegime? CounterpartyRegime { get; private set; }
     public string? CounterpartyState { get; private set; }
+    /// <summary>The supplier's Simples situation as informed (MEI, SIMEI, sub-limit…), when the counterparty is a Simples optant.</summary>
+    public TaxSimplesSituation? CounterpartySimplesSituation { get; private set; }
+    /// <summary>Whether the Simples supplier opted for the regular IBS/CBS regime, as informed (null = not informed).</summary>
+    public bool? CounterpartyRegularRegimeOption { get; private set; }
+
+    public void SetCounterpartySimples(TaxSimplesSituation? situation, bool? regularRegimeOption)
+    {
+        CounterpartySimplesSituation = situation;
+        CounterpartyRegularRegimeOption = regularRegimeOption;
+    }
     /// <summary>SHA-256 of the canonical facts; equal facts give an equal hash.</summary>
     public string FactsHash { get; private set; } = string.Empty;
     public Guid CreatedById { get; private set; }

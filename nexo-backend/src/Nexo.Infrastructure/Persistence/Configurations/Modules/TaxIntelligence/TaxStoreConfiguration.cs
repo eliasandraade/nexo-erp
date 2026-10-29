@@ -46,6 +46,8 @@ internal sealed class TaxProfileVersionConfiguration : IEntityTypeConfiguration<
         b.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500).IsRequired();
         b.Property(x => x.CreatedById).HasColumnName("created_by_id").IsRequired();
         b.Property(x => x.CreatedByName).HasColumnName("created_by_name").HasMaxLength(200).IsRequired();
+        b.Property(x => x.SimplesSituation).HasColumnName("simples_situation").HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.IbsCbsRegularRegimeOption).HasColumnName("ibs_cbs_regular_regime_option");
         b.Ignore(x => x.IsSimplesNacional);
     }
 }
@@ -63,6 +65,8 @@ internal sealed class TaxTransactionConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.Description).HasColumnName("description").HasMaxLength(300);
         b.Property(x => x.CounterpartyRegime).HasColumnName("counterparty_regime").HasConversion<string>().HasMaxLength(40);
         b.Property(x => x.CounterpartyState).HasColumnName("counterparty_state").HasMaxLength(2);
+        b.Property(x => x.CounterpartySimplesSituation).HasColumnName("counterparty_simples_situation").HasConversion<string>().HasMaxLength(20);
+        b.Property(x => x.CounterpartyRegularRegimeOption).HasColumnName("counterparty_regular_regime_option");
         b.Property(x => x.FactsHash).HasColumnName("facts_hash").HasMaxLength(64).IsRequired();
         b.HasIndex(x => new { x.TenantId, x.StoreId, x.FactsHash }).HasDatabaseName("ix_tax_transactions_facts_hash");
         b.Property(x => x.CreatedById).HasColumnName("created_by_id").IsRequired();
@@ -193,6 +197,10 @@ internal sealed class TaxSimulationConfiguration : IEntityTypeConfiguration<TaxS
         b.Property(x => x.Name).HasColumnName("name").HasMaxLength(200).IsRequired();
         b.Property(x => x.EngineVersion).HasColumnName("engine_version").HasMaxLength(60).IsRequired();
         b.Property(x => x.CreatedById).HasColumnName("created_by_id").IsRequired();
+        b.Property(x => x.CreatedByName).HasColumnName("created_by_name").HasMaxLength(200);
+        b.Property(x => x.Assumptions).HasColumnName("assumptions").HasMaxLength(4000);
+        b.Property(x => x.Caveats).HasColumnName("caveats").HasMaxLength(4000);
+        b.Property(x => x.GovernanceJson).HasColumnName("governance").HasColumnType("json");
         b.HasIndex(x => new { x.TenantId, x.StoreId, x.CreatedAt }).HasDatabaseName("ix_tax_simulations_tenant_store_created");
         b.HasMany(x => x.Scenarios).WithOne().HasForeignKey(s => s.SimulationId)
             .HasConstraintName("fk_tax_simulation_scenarios_simulations").OnDelete(DeleteBehavior.Cascade);
@@ -252,6 +260,9 @@ internal sealed class TaxOpportunityConfiguration : IEntityTypeConfiguration<Tax
         b.Ignore(x => x.Analysts);
         b.Property(x => x.ReviewedByName).HasColumnName("reviewed_by_name").HasMaxLength(200);
         b.Property(x => x.ReviewedAt).HasColumnName("reviewed_at").HasColumnType("timestamptz");
+        b.Property(x => x.AssignedToId).HasColumnName("assigned_to_id");
+        b.Property(x => x.AssignedToName).HasColumnName("assigned_to_name").HasMaxLength(200);
+        b.Property(x => x.AssignedAt).HasColumnName("assigned_at").HasColumnType("timestamptz");
         b.Ignore(x => x.ImpactNature);
 
         b.HasMany(x => x.Requirements).WithOne().HasForeignKey(r => r.OpportunityId)
@@ -305,6 +316,18 @@ internal sealed class TaxOpportunityEvidenceConfiguration : IEntityTypeConfigura
         b.Property(x => x.ReviewedByName).HasColumnName("reviewed_by_name").HasMaxLength(200);
         b.Property(x => x.ReviewedAt).HasColumnName("reviewed_at").HasColumnType("timestamptz");
         b.Property(x => x.ReviewNotes).HasColumnName("review_notes").HasMaxLength(1000);
+        b.Property(x => x.HashKind).HasColumnName("hash_kind").HasMaxLength(20).IsRequired();
+        b.Property(x => x.FileId).HasColumnName("file_id");
+        b.HasOne<TaxEvidenceFile>().WithMany().HasForeignKey(x => x.FileId)
+            .HasConstraintName("fk_tax_opportunity_evidence_files").OnDelete(DeleteBehavior.Restrict);
+        b.Property(x => x.Version).HasColumnName("version").IsRequired();
+        b.Property(x => x.SupersedesEvidenceId).HasColumnName("supersedes_evidence_id");
+        b.Property(x => x.SupersededByEvidenceId).HasColumnName("superseded_by_evidence_id");
+        b.Property(x => x.RevokedAt).HasColumnName("revoked_at").HasColumnType("timestamptz");
+        b.Property(x => x.RevokedByName).HasColumnName("revoked_by_name").HasMaxLength(200);
+        b.Property(x => x.RevocationReason).HasColumnName("revocation_reason").HasMaxLength(1000);
+        b.Ignore(x => x.InForce);
+        b.Ignore(x => x.Supports);
     }
 }
 
@@ -351,6 +374,10 @@ internal sealed class TaxComplianceAssessmentConfiguration : IEntityTypeConfigur
         b.Property(x => x.PnctParticipation).HasColumnName("pnct_participation").IsRequired();
         b.Property(x => x.RecordedById).HasColumnName("recorded_by_id").IsRequired();
         b.Property(x => x.RecordedByName).HasColumnName("recorded_by_name").HasMaxLength(200).IsRequired();
+        b.Property(x => x.SupersedesAssessmentId).HasColumnName("supersedes_assessment_id");
+        b.HasMany(x => x.Results).WithOne().HasForeignKey(r => r.AssessmentId)
+            .HasConstraintName("fk_tax_compliance_obligation_results_assessments").OnDelete(DeleteBehavior.Restrict);
+        b.Navigation(x => x.Results).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }
 
@@ -424,6 +451,9 @@ internal sealed class TaxCreditLedgerEntryConfiguration : IEntityTypeConfigurati
         b.Property(x => x.OccurredOn).HasColumnName("occurred_on").IsRequired();
         b.Property(x => x.ActorId).HasColumnName("actor_id").IsRequired();
         b.Property(x => x.ActorName).HasColumnName("actor_name").HasMaxLength(200).IsRequired();
+        b.Property(x => x.IdempotencyKey).HasColumnName("idempotency_key").HasMaxLength(80);
+        b.HasIndex(x => new { x.CreditId, x.IdempotencyKey }).IsUnique()
+            .HasFilter("idempotency_key IS NOT NULL").HasDatabaseName("ux_tax_credit_ledger_entries_credit_idempotency");
     }
 }
 

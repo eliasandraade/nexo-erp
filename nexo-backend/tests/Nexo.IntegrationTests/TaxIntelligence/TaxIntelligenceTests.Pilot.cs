@@ -315,6 +315,7 @@ public partial class TaxIntelligenceTests
         (await Json(await Post(pilot, $"/api/tax/calculations/{approvedId}/verify", new { }))).GetProperty("reproducible").GetBoolean()
             .Should().BeTrue("a withdrawn approval never makes history unreadable");
 
+        await ForceActivateAsync(_factory, Nexo.Domain.Modules.TaxIntelligence.TaxApprovalMode.ProfessionalFinal);
         var definitive = HostWith(admin, host: Enforced("ProfessionalFinal"));
         var refused = await Json(await Post(definitive, "/api/tax/calculations", Operation(Unique("Definitivo"), gross: 1048m)), HttpStatusCode.UnprocessableEntity);
         Code(refused).Should().Be("tax_professional_review_pending", "the internal pilot approval is never a professional approval");
@@ -361,6 +362,7 @@ public partial class TaxIntelligenceTests
             .Should().Be("tax_pilot_approval_missing");
         (await AuditMetadataAsync("tax_simulation_refused")).Should().Contain(m => m.Contains($"{key} v1"), "every refused simulation is audited");
 
+        await ForceActivateAsync(_factory, Nexo.Domain.Modules.TaxIntelligence.TaxApprovalMode.ProfessionalFinal);
         var definitive = HostWith(admin, host: Enforced("ProfessionalFinal"));
         Code(await Json(await Post(definitive, "/api/tax/simulations", Simulation("Definitivo")), HttpStatusCode.UnprocessableEntity))
             .Should().Be("tax_professional_review_pending", "the internal pilot approval is never a professional approval");

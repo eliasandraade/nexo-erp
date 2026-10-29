@@ -19,13 +19,27 @@ public class TaxSimulation : StoreEntity
     public string Name { get; private set; } = string.Empty;
     public string EngineVersion { get; private set; } = string.Empty;
     public Guid CreatedById { get; private set; }
+    public string? CreatedByName { get; private set; }
+    /// <summary>What the person who simulated took as given (prices, dates, supplier conditions…), as written.</summary>
+    public string? Assumptions { get; private set; }
+    /// <summary>Caveats the result travels with.</summary>
+    public string? Caveats { get; private set; }
+    /// <summary>The approval governance the simulation ran under, frozen (mode, policy, each rule's approvals).</summary>
+    public string? GovernanceJson { get; private set; }
 
     public IReadOnlyCollection<TaxSimulationScenario> Scenarios => _scenarios.AsReadOnly();
 
-    public static TaxSimulation Create(Guid tenantId, string name, string engineVersion, Guid createdById)
+    public static TaxSimulation Create(Guid tenantId, string name, string engineVersion, Guid createdById,
+        string? createdByName = null, string? assumptions = null, string? caveats = null, string? governanceJson = null)
     {
         if (string.IsNullOrWhiteSpace(name)) throw new DomainException("Dê um nome à simulação.");
-        return new TaxSimulation(tenantId) { Name = name.Trim(), EngineVersion = engineVersion, CreatedById = createdById };
+        return new TaxSimulation(tenantId)
+        {
+            Name = name.Trim(), EngineVersion = engineVersion, CreatedById = createdById, CreatedByName = createdByName,
+            Assumptions = string.IsNullOrWhiteSpace(assumptions) ? null : assumptions.Trim(),
+            Caveats = string.IsNullOrWhiteSpace(caveats) ? null : caveats.Trim(),
+            GovernanceJson = governanceJson,
+        };
     }
 
     public void AddScenario(int index, string name, bool isBaseline, string inputJson, string resultJson, decimal totalTax, decimal netCost)

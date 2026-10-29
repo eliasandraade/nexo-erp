@@ -479,7 +479,7 @@ public partial class TaxIntelligenceTests
             .StatusCode.Should().Be(HttpStatusCode.Conflict);
 
         // The wrong entry is reversed (append-only) and the reconciliation is right again.
-        var listed = (await Json(await admin.GetAsync($"/api/tax/split/expectations?calculationId={id}"))).EnumerateArray()
+        var listed = (await Json(await admin.GetAsync($"/api/tax/split/expectations?calculationId={id}"))).GetProperty("items").EnumerateArray()
             .Single(e => e.GetProperty("id").GetGuid() == cbsId);
         var wrong = listed.GetProperty("settlements").EnumerateArray().Single(s => s.GetProperty("externalReference").GetString() == "psp-2");
         var fixedUp = await Json(await Post(admin, $"/api/tax/split/settlements/{wrong.GetProperty("id").GetGuid()}/reverse", new { reason = "digitado em duplicidade" }));
@@ -523,9 +523,9 @@ public partial class TaxIntelligenceTests
         (await other.GetAsync($"/api/tax/opportunities/{oppId}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await Post(other, $"/api/tax/opportunities/{oppId}/review", new { })).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await other.GetAsync($"/api/tax/credits/{credit.GetProperty("id").GetGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await Json(await other.GetAsync("/api/tax/calculations"))).GetArrayLength().Should().Be(0);
-        (await Json(await other.GetAsync("/api/tax/opportunities"))).GetArrayLength().Should().Be(0);
-        (await Json(await other.GetAsync("/api/tax/credits"))).GetArrayLength().Should().Be(0);
+        (await Json(await other.GetAsync("/api/tax/calculations"))).GetProperty("items").GetArrayLength().Should().Be(0);
+        (await Json(await other.GetAsync("/api/tax/opportunities"))).GetProperty("items").GetArrayLength().Should().Be(0);
+        (await Json(await other.GetAsync("/api/tax/credits"))).GetProperty("items").GetArrayLength().Should().Be(0);
         (await Json(await other.GetAsync("/api/tax/profile"))).GetProperty("versions").GetArrayLength().Should().Be(0);
 
         var noProfile = await Post(other, "/api/tax/calculations", Operation(Unique("Sem perfil")));
@@ -690,17 +690,17 @@ public partial class TaxIntelligenceTests
         blocked.GetProperty("blockedAs").GetString().Should().Be("ArtificialTransaction");
         blocked.GetProperty("estimatedImpact").ValueKind.Should().Be(JsonValueKind.Null);
 
-        var rejectedList = (await Json(await admin.GetAsync("/api/tax/opportunities?status=Rejected&take=200"))).EnumerateArray().ToList();
+        var rejectedList = (await Json(await admin.GetAsync("/api/tax/opportunities?status=Rejected&take=200"))).GetProperty("items").EnumerateArray().ToList();
         rejectedList.Should().Contain(o => o.GetProperty("id").GetGuid() == rejectedId);
         rejectedList.Should().OnlyContain(o => o.GetProperty("status").GetString() == "Rejected");
-        var blockedRow = (await Json(await admin.GetAsync("/api/tax/opportunities?status=Blocked&take=200"))).EnumerateArray()
+        var blockedRow = (await Json(await admin.GetAsync("/api/tax/opportunities?status=Blocked&take=200"))).GetProperty("items").EnumerateArray()
             .Single(o => o.GetProperty("id").GetGuid() == blockedId);
         blockedRow.GetProperty("estimatedImpact").ValueKind.Should().Be(JsonValueKind.Null, "the list never shows a blocked saving either");
 
         // Running the detectors again finds the same opportunity and creates nothing new.
         var redetect = await Json(await Post(admin, $"/api/tax/calculations/{first.GetProperty("id").GetGuid()}/opportunities/detect", new { }));
         redetect.GetArrayLength().Should().Be(0);
-        var calcRow = (await Json(await admin.GetAsync("/api/tax/calculations?take=200"))).EnumerateArray()
+        var calcRow = (await Json(await admin.GetAsync("/api/tax/calculations?take=200"))).GetProperty("items").EnumerateArray()
             .Single(c => c.GetProperty("id").GetGuid() == first.GetProperty("id").GetGuid());
         calcRow.GetProperty("openOpportunities").GetInt32().Should().Be(0, "the only opportunity was rejected");
     }
@@ -775,7 +775,8 @@ public partial class TaxIntelligenceTests
             scenarios = new object[] { new { name = "Simples", regime = "SimplesNacional", convertConditionalDiscounts = false, assumeCreditable = false } },
         }));
 
-        var row = (await Json(await admin.GetAsync("/api/tax/simulations?take=100"))).EnumerateArray().Single(s => s.GetProperty("name").GetString() == name);
+        var row = (await Json(await admin.GetAsync($"/api/tax/simulations?take=100&search={Uri.EscapeDataString(name)}"))).GetProperty("items").EnumerateArray()
+            .Single(s => s.GetProperty("name").GetString() == name);
         row.GetProperty("scenarios").GetInt32().Should().Be(2, "baseline + one scenario");
         (await admin.GetAsync($"/api/tax/simulations/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await admin.GetAsync($"/api/tax/calculations/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -905,7 +906,9 @@ public partial class TaxIntelligenceTests
         await Json(await Post(gerente, $"/api/tax/opportunities/{oppId}/review", new { }));
         await PrepareScenarioAsync(gerente, oppId, "PROP-POLITICA");
 
-        // The definitive mode accepts only a professional approval: the internal pilot approval is not one.
+        // The definitive mode accepts only a professional approval: the internal pilot approval is not one. (The module is recorded as
+        // active in that mode — the per-rule check is what is under test.)
+        await TaxPilotSetup.ForceActivateAsync(_factory, Nexo.Domain.Modules.TaxIntelligence.TaxApprovalMode.ProfessionalFinal);
         var production = HostWith(admin, host: b => b
             .UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "true")
             .UseSetting("TaxIntelligence:Policy:Mode", "ProfessionalFinal"));
@@ -957,13 +960,38 @@ public partial class TaxIntelligenceTests
 
     // ── tax review delta ────────────────────────────────────────────────────────
 
-    private Task<HttpResponseMessage> AssessAsync(HttpClient c, string status, string from, string to, string? scope = "estabelecimento — NF-e emitidas",
+    /// <summary>
+    /// Records an assessment. A verification lists each obligation checked as a structured result (from the platform catalogue), with
+    /// the evidence given — never only free text.
+    /// </summary>
+    private async Task<HttpResponseMessage> AssessAsync(HttpClient c, string status, string from, string to, string? scope = "estabelecimento — NF-e emitidas",
         string[]? checkedList = null, string? evidence = null, string? notes = null, bool pnct = false)
-        => Post(c, "/api/tax/compliance-assessments", new
+    {
+        var verification = status is "Verified" or "RemediationVerified";
+        var obligations = new List<object>();
+        if (verification && checkedList is { Length: > 0 })
+        {
+            var platform = await TaxPilotSetup.PlatformAsync(_factory);
+            foreach (var name in checkedList)
+            {
+                var code = TaxPilotSetup.ObligationCode(name);
+                await TaxPilotSetup.EnsureObligationAsync(platform, code, name);
+                obligations.Add(new
+                {
+                    obligationCode = code, status, evidenceReference = evidence, evidenceFileId = (Guid?)null,
+                    remediation = status == "RemediationVerified" ? "Campos corrigidos e reemitidos" : null,
+                    remediationVerifiedOn = status == "RemediationVerified" ? "2026-09-15" : null,
+                    remediationVerifiedBy = status == "RemediationVerified" ? "Contabilidade de teste" : null, notes = (string?)null,
+                });
+            }
+        }
+        return await Post(c, "/api/tax/compliance-assessments", new
         {
             status, periodFrom = from, periodTo = to, scope, obligationsChecked = checkedList ?? Array.Empty<string>(), evidence,
             assessedBy = "Contabilidade de teste", assessedAt = (string?)null, notes, limitations = "Amostra de documentos", pnctParticipation = pnct,
+            obligations,
         });
+    }
 
     [Fact]
     public async Task A_scenario_on_another_date_uses_the_compliance_of_that_date()
@@ -1049,7 +1077,7 @@ public partial class TaxIntelligenceTests
 
         var preview = await Json(await Post(admin, "/api/tax/calculations/coverage", Operation(Unique("Prévia"), cClassTrib: null)));
         preview.GetProperty("status").GetString().Should().Be("RequiresClassification");
-        preview.GetProperty("policyVersion").GetString().Should().Be("orken-coverage/1");
+        preview.GetProperty("policyVersion").GetString().Should().Be("orken-coverage/2");
 
         (await CountAsync(db => db.TaxTransactions.IgnoreQueryFilters().Where(t => t.Description != null && t.Description.StartsWith("Continuado"))))
             .Should().Be(0);
@@ -1180,13 +1208,15 @@ public partial class TaxIntelligenceTests
 
         var received = await Json(await Post(platform, url, new { status = "ReviewReceived", reviewer = "Escritório de teste", notes = "Parecer recebido: apto após ajustes." }));
         received.GetProperty("professionalReview").GetString().Should().Be("ReviewReceived");
-        (await Post(platform, url, new { status = "ApprovedWithCaveats", reviewer = "Contadora", scope = "Operações de saída", validFrom = "2040-01-01" }))
+        (await Post(platform, url, new { status = "ApprovedWithCaveats", reviewer = "Contadora", scope = "Operações de saída", validFrom = "2040-01-01",
+                coveredRegimes = new[] { "LucroReal" } }))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest, "an approval with caveats states them");
 
         var approved = await Json(await Post(platform, url, new
         {
             status = "ApprovedWithCaveats", reviewer = "Contadora de teste", professionalReference = "CRC-XX 000000/O-0", scope = "Operações de saída no regime regular",
             validFrom = "2040-01-01", validTo = "2040-12-31", assumptions = "Desconto destacado na NF-e", caveats = "Não cobre regimes específicos", notes = "ok",
+            coveredRegimes = new[] { "LucroReal", "LucroPresumido" },
         }));
         approved.GetProperty("professionalReview").GetString().Should().Be("ApprovedWithCaveats");
         approved.GetProperty("professionalReviewScope").GetString().Should().Be("Operações de saída no regime regular");

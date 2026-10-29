@@ -56,7 +56,14 @@ public class ExceptionHandlingMiddleware
         catch (ConflictException ex)
         {
             _logger.LogDebug("Conflict: {Message}", ex.Message);
-            await WriteErrorAsync(ctx, 409, ex.Message);
+            await WriteErrorAsync(ctx, 409, ex.Message, code: ex.Code);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateConcurrencyException)
+        {
+            // Someone changed the same record in the meantime: nothing was written, the caller reloads and decides again.
+            _logger.LogInformation("Concurrency conflict.");
+            await WriteErrorAsync(ctx, 409, "Este registro foi alterado por outra pessoa enquanto você trabalhava. Recarregue e tente de novo.",
+                code: "concurrency_conflict");
         }
         catch (ForbiddenException ex)
         {

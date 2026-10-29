@@ -164,6 +164,10 @@ public enum TaxEvidenceStatus
     Submitted = 1,
     Accepted = 2,
     Rejected = 3,
+    /// <summary>Replaced by a newer version; kept for the audit trail and for any dossier that froze it.</summary>
+    Superseded = 4,
+    /// <summary>Withdrawn on record (wrong file, wrong operation…); it supports nothing from then on.</summary>
+    Revoked = 5,
 }
 
 public enum TaxExecutionOutcome
@@ -338,4 +342,80 @@ public enum SplitSettlementSource
 {
     Manual = 1,
     Provider = 2,
+}
+
+/// <summary>
+/// Runtime state of the module, kept by the platform on top of the installation configuration. New work runs
+/// only when the configuration allows it AND the platform activated the configured mode; a suspension stops
+/// everything at once without a deploy. The history is append-only.
+/// </summary>
+public enum TaxModuleStatus
+{
+    Inactive = 1,
+    Active = 2,
+    Suspended = 3,
+}
+
+/// <summary>What a stored tax file is attached to (tenant-side evidence).</summary>
+public enum TaxFileOwner
+{
+    OpportunityEvidence = 1,
+    Credit = 2,
+    ComplianceAssessment = 3,
+    SplitSettlement = 4,
+}
+
+/// <summary>A stored file never changes; a newer version replaces it, or it is revoked — both on record.</summary>
+public enum TaxFileStatus
+{
+    Active = 1,
+    Replaced = 2,
+    Revoked = 3,
+}
+
+/// <summary>Result of the content scanner hook. Without a scanner configured, files are recorded as not scanned.</summary>
+public enum TaxFileScanStatus
+{
+    NotScanned = 1,
+    Clean = 2,
+    Rejected = 3,
+}
+
+/// <summary>When a retention period starts counting.</summary>
+public enum TaxRetentionStart
+{
+    UploadDate = 1,
+    EndOfUploadYear = 2,
+}
+
+/// <summary>Kinds of tax classification codes kept in the catalogue.</summary>
+public enum TaxClassificationKind
+{
+    /// <summary>Código de classificação tributária do IBS/CBS.</summary>
+    CClassTrib = 1,
+    Ncm = 2,
+    Nbs = 3,
+}
+
+/// <summary>A code is used by the coverage matrix only while Active; Draft and Inactive codes fail closed.</summary>
+public enum TaxClassificationStatus
+{
+    Draft = 1,
+    Active = 2,
+    Inactive = 3,
+}
+
+/// <summary>
+/// Where an establishment (or a supplier) stands regarding the Simples Nacional, as declared. Kept apart from
+/// the general regime so MEI, SIMEI and "above the sub-limit" are never read as the common Simples, and an
+/// unknown situation is never read as the regular regime.
+/// </summary>
+public enum TaxSimplesSituation
+{
+    NotOptant = 1,
+    WithinSublimit = 2,
+    AboveSublimit = 3,
+    Mei = 4,
+    Simei = 5,
+    Unknown = 6,
 }

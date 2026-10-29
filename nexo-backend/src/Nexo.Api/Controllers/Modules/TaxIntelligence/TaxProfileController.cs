@@ -28,7 +28,7 @@ public class TaxProfileController : ControllerBase
 
     /// <summary>Adds a profile version (e.g. a change of regime from a date). Earlier versions never change.</summary>
     [HttpPost("profile/versions")]
-    [Authorize(Roles = AppRoles.Directors)]
+    [Authorize(Roles = TaxCapabilities.Policies)]
     public async Task<ActionResult<TaxProfileVersionDto>> AddProfileVersion([FromBody] CreateTaxProfileVersionRequest request, CancellationToken ct)
         => Ok(await _profiles.AddVersionAsync(request, ct));
 
@@ -42,8 +42,13 @@ public class TaxProfileController : ControllerBase
     /// compliance; a declaration, a remediation or PNCT participation never does. Earlier assessments stay.
     /// </summary>
     [HttpPost("compliance-assessments")]
-    [Authorize(Roles = AppRoles.Directors)]
+    [Authorize(Roles = TaxCapabilities.Policies)]
     public async Task<ActionResult<TaxComplianceAssessmentDto>> RecordComplianceAssessment(
         [FromBody] RecordComplianceAssessmentRequest request, CancellationToken ct)
         => Ok(await _compliance.RecordAsync(request, DateTime.UtcNow, ct));
+
+    /// <summary>The ancillary obligations the platform catalogue lets companies assess (active ones).</summary>
+    [HttpGet("obligations")]
+    public async Task<ActionResult<IReadOnlyList<TaxObligationDefinitionDto>>> Obligations(CancellationToken ct)
+        => Ok(await _compliance.ObligationsAsync(onlyActive: true, ct));
 }

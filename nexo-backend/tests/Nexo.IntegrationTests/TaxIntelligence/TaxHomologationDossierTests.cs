@@ -100,9 +100,20 @@ public class TaxHomologationDossierTests
             reason = $"Perfil do estabelecimento de teste ({Fixture})",
         }));
 
-        // 2. Ancillary-obligation assessment appropriate to the test scenario.
+        // 2. Ancillary-obligation assessment appropriate to the test scenario (each obligation as a structured result).
+        await TaxPilotSetup.EnsureObligationAsync(await TaxPilotSetup.PlatformAsync(_factory), "HOMOLOG-NFE-IBS-CBS",
+            "Emissão de NF-e com os campos de IBS/CBS preenchidos (fixture)");
         await Json(await Post(director, "/api/tax/compliance-assessments", new
         {
+            obligations = new[]
+            {
+                new
+                {
+                    obligationCode = "HOMOLOG-NFE-IBS-CBS", status = "Verified", evidenceReference = $"Relatório HOMOLOG-COMPL-001 ({Fixture})",
+                    evidenceFileId = (Guid?)null, remediation = (string?)null, remediationVerifiedOn = (string?)null,
+                    remediationVerifiedBy = (string?)null, notes = (string?)null,
+                },
+            },
             status = "Verified", periodFrom = "2026-06-01", periodTo = "2026-06-30",
             scope = "Estabelecimento de teste — NF-e de saída do período",
             obligationsChecked = new[] { "Emissão de NF-e com os campos de IBS/CBS preenchidos (fixture)" },

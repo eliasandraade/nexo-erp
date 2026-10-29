@@ -18,8 +18,13 @@ public class TaxSimulationsController : ControllerBase
     public TaxSimulationsController(TaxSimulationService service) => _service = service;
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<TaxSimulationSummaryDto>>> List([FromQuery] int take = 50, CancellationToken ct = default)
-        => Ok(await _service.ListAsync(take, ct));
+    public async Task<ActionResult<TaxPage<TaxSimulationSummaryDto>>> List([FromQuery] string? search, [FromQuery] int skip = 0,
+        [FromQuery] int take = 50, CancellationToken ct = default)
+        => Ok(await _service.ListAsync(search, skip, take, ct));
+
+    /// <summary>The scenarios as CSV (calculated figures under each scenario's assumptions — never a saving).</summary>
+    [HttpGet("{id:guid}/export")]
+    public async Task<IActionResult> Export(Guid id, CancellationToken ct) => this.Csv(await _service.ExportCsvAsync(id, ct));
 
     [HttpPost]
     public async Task<ActionResult<TaxSimulationDto>> Create([FromBody] CreateTaxSimulationRequest request, CancellationToken ct)

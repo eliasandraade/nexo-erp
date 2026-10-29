@@ -161,7 +161,7 @@ public class TaxCredit : StoreEntity
         if (ExpiresOn is not null && onDate > ExpiresOn)
             throw new DomainException("O crédito está vencido.", "tax_credit_expired");
         if (_entries.Any(e => e.Type == TaxCreditEntryType.Used && e.ObligationReference == obligationReference.Trim()))
-            throw new ConflictException("Este crédito já foi usado nesta obrigação.");
+            throw new ConflictException("Este crédito já foi usado nesta obrigação.", "tax_credit_obligation_used");
         if (amount > Balance().Available)
             throw new DomainException("O valor passa do saldo disponível.", AmountErrorCode);
         return Append(TaxCreditEntryType.Used, amount, obligationReference.Trim(), $"Usado na obrigação {obligationReference.Trim()}.", onDate, actorId, actorName);
@@ -245,6 +245,17 @@ public class TaxCreditLedgerEntry : StoreEntity
     public DateOnly OccurredOn { get; private set; }
     public Guid ActorId { get; private set; }
     public string ActorName { get; private set; } = string.Empty;
+    /// <summary>
+    /// Client key of the request that wrote the movement, unique per credit: a retried request (double click,
+    /// network retry) finds the movement already recorded instead of writing it twice.
+    /// </summary>
+    public string? IdempotencyKey { get; private set; }
+
+    public void KeyedBy(string idempotencyKey)
+    {
+        if (IdempotencyKey is not null) throw new InvalidOperationException("Idempotency key already set.");
+        IdempotencyKey = idempotencyKey;
+    }
 }
 
 /// <summary>

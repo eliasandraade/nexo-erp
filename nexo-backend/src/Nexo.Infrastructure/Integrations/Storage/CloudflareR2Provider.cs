@@ -9,7 +9,7 @@ using Nexo.Application.Integrations.Options;
 
 namespace Nexo.Infrastructure.Integrations.Storage;
 
-public sealed class CloudflareR2Provider : IStorageProvider
+public sealed class CloudflareR2Provider : IStorageProvider, IStorageObjectReader
 {
     private readonly Lazy<AmazonS3Client> _s3;
     private readonly StorageOptions  _opts;
@@ -92,6 +92,15 @@ public sealed class CloudflareR2Provider : IStorageProvider
             Expires    = DateTime.UtcNow.Add(ttl),
             Protocol   = Protocol.HTTPS,
         });
+
+    public async Task<Stream> OpenReadAsync(string key, CancellationToken ct = default)
+    {
+        using var response = await _s3.Value.GetObjectAsync(BucketFor(key), key, ct);
+        var buffer = new MemoryStream();
+        await response.ResponseStream.CopyToAsync(buffer, ct);
+        buffer.Position = 0;
+        return buffer;
+    }
 
     private string BucketFor(string key)
         => StorageKeys.IsPrivate(key) && !string.IsNullOrWhiteSpace(_opts.R2.PrivateBucketName)

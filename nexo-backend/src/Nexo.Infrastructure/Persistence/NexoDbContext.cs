@@ -169,6 +169,16 @@ public class NexoDbContext : DbContext
     public DbSet<TaxCreditLedgerEntry>    TaxCreditLedgerEntries   => Set<TaxCreditLedgerEntry>();
     public DbSet<SplitExpectation>        TaxSplitExpectations     => Set<SplitExpectation>();
     public DbSet<SplitSettlement>         TaxSplitSettlements      => Set<SplitSettlement>();
+    public DbSet<TaxModuleActivation>     TaxModuleActivations     => Set<TaxModuleActivation>();
+    public DbSet<TaxProfessionalReviewRecord> TaxProfessionalReviewRecords => Set<TaxProfessionalReviewRecord>();
+    public DbSet<TaxMaterialityPolicy>    TaxMaterialityPolicies   => Set<TaxMaterialityPolicy>();
+    public DbSet<TaxRetentionPolicy>      TaxRetentionPolicies     => Set<TaxRetentionPolicy>();
+    public DbSet<TaxEvidenceFile>         TaxEvidenceFiles         => Set<TaxEvidenceFile>();
+    public DbSet<TaxPlatformDocument>     TaxPlatformDocuments     => Set<TaxPlatformDocument>();
+    public DbSet<TaxClassificationCode>   TaxClassificationCodes   => Set<TaxClassificationCode>();
+    public DbSet<TaxItemClassification>   TaxItemClassifications   => Set<TaxItemClassification>();
+    public DbSet<TaxObligationDefinition> TaxObligationDefinitions => Set<TaxObligationDefinition>();
+    public DbSet<TaxComplianceObligationResult> TaxComplianceObligationResults => Set<TaxComplianceObligationResult>();
 
     // ── Operational Interpretation Engine ────────────────────────────────────
     public DbSet<FinancialMovement>        IntMovements         => Set<FinancialMovement>();
@@ -187,20 +197,20 @@ public class NexoDbContext : DbContext
     public DbSet<TenantAiLimit>           TenantAiLimits       => Set<TenantAiLimit>();
     public DbSet<StoredPromptVersion>     StoredPromptVersions => Set<StoredPromptVersion>();
 
-    protected override void OnModelCreating(ModelBuilder builder)
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        base.OnModelCreating(builder);
+        base.OnModelCreating(modelBuilder);
 
         // Apply all IEntityTypeConfiguration implementations in this assembly
-        builder.ApplyConfigurationsFromAssembly(typeof(NexoDbContext).Assembly);
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(NexoDbContext).Assembly);
 
         // Default schema
-        builder.HasDefaultSchema("nexo");
+        modelBuilder.HasDefaultSchema("nexo");
 
         // ── Global Query Filters ──────────────────────────────────────────────
         // Applied automatically to every TenantEntity subclass.
         // StoreEntity subclasses get an additional store_id filter.
-        ApplyTenantQueryFilters(builder);
+        ApplyTenantQueryFilters(modelBuilder);
     }
 
     /// <summary>

@@ -17,35 +17,38 @@ public sealed class TaxSimulationService
 {
     private const int MaxList = 100;
 
+    private const string AuditEntity = "Simulation";
+
+    private readonly TaxContext _ctx;
     private readonly NexoDbContext _db;
     private readonly TaxEngineRegistry _engines;
     private readonly ICurrentTenant _tenant;
-    private readonly TaxProfileService _profiles;
+    private readonly TaxInputBuilder _inputs;
     private readonly TaxComplianceService _compliance;
     private readonly TaxCatalogService _catalog;
     private readonly TaxApprovalGate _approvals;
     private readonly TaxAuditTrail _audit;
     private readonly ILogger<TaxSimulationService> _log;
 
-    public TaxSimulationService(NexoDbContext db, TaxEngineRegistry engines, ICurrentTenant tenant, TaxProfileService profiles,
-        TaxComplianceService compliance, TaxCatalogService catalog, TaxApprovalGate approvals,
-        TaxAuditTrail audit, ILogger<TaxSimulationService> log)
+    public TaxSimulationService(TaxContext ctx, TaxEngineRegistry engines, TaxInputBuilder inputs, TaxCatalogService catalog,
+        TaxApprovalGate approvals, ILogger<TaxSimulationService> log)
     {
-        _db = db;
+        _ctx = ctx;
+        _db = ctx.Db;
         _engines = engines;
-        _tenant = tenant;
-        _profiles = profiles;
-        _compliance = compliance;
+        _tenant = ctx.Tenant;
+        _inputs = inputs;
+        _compliance = inputs.Compliance;
         _catalog = catalog;
         _approvals = approvals;
-        _audit = audit;
+        _audit = ctx.Audit;
         _log = log;
     }
 
     public async Task<TaxSimulationDto> CreateAsync(CreateTaxSimulationRequest r, CancellationToken ct)
     {
         await AdmitAsync("Simulação", ct);
-        var profile = await _profiles.GetInForceAsync(r.Baseline.OperationDate, ct);
+        var profile = await _inputs.ProfileAsync(r.Baseline.OperationDate, ct);
         var compliance = await _compliance.InForceAsync(r.Baseline.OperationDate, ct);
         var baseline = TaxCalculationService.ToInput(r.Baseline, profile, compliance?.ForRules);
         var scenarios = new List<TaxScenario>();
@@ -61,10 +64,12 @@ public sealed class TaxSimulationService
             else scenarios.Add(s);
         }
         var engine = _engines.Current;
-        var catalogue = await LoadCatalogueAsync(engine, baseline.ReferenceDate, scenarios, "Simulação", ct);
+        var (catalogue, governance) = await LoadCatalogueAsync(engine, baseline.ReferenceDate, scenarios, "Simulação", profile.Regime.ToString(), ct);
         var results = TaxSimulator.Compare(engine, baseline, scenarios, catalogue);
 
-        var simulation = TaxSimulation.Create(_tenant.Id, r.Name, engine.Version, _audit.UserId);
+        // The governance it ran under is frozen with it; a later approval change never rewrites a stored simulation.
+        var simulation = TaxSimulation.Create(_tenant.Id, r.Name, engine.Version, _audit.UserId, _audit.UserName, r.Assumptions, r.Caveats,
+            engine.Canonical.Serialize(governance));
         foreach (var (res, i) in results.Select((x, i) => (x, i)))
             simulation.AddScenario(i, res.Name, res.IsBaseline, engine.Canonical.Serialize(res.Input), engine.Canonical.Serialize(res),
                 res.TaxTotal, res.EffectiveCost);
@@ -77,12 +82,44 @@ public sealed class TaxSimulationService
         return Map(simulation);
     }
 
-    public async Task<IReadOnlyList<TaxSimulationSummaryDto>> ListAsync(int take, CancellationToken ct)
+    public async Task<TaxPage<TaxSimulationSummaryDto>> ListAsync(string? search, int skip, int take, CancellationToken ct)
     {
         take = Math.Clamp(take, 1, MaxList);
-        return await _db.TaxSimulations.AsNoTracking().OrderByDescending(s => s.CreatedAt).Take(take)
-            .Select(s => new TaxSimulationSummaryDto(s.Id, s.Name, s.Scenarios.Count, s.CreatedAt))
+        skip = Math.Max(0, skip);
+        var q = _db.TaxSimulations.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(search)) q = q.Where(s => EF.Functions.ILike(s.Name, $"%{search.Trim()}%"));
+        var total = await q.CountAsync(ct);
+        var rows = await q.OrderByDescending(s => s.CreatedAt).Skip(skip).Take(take)
+            .Select(s => new TaxSimulationSummaryDto(s.Id, s.Name, s.Scenarios.Count, s.CreatedAt, s.CreatedByName))
             .ToListAsync(ct);
+        return new TaxPage<TaxSimulationSummaryDto>(rows, total, skip, take);
+    }
+
+    /// <summary>
+    /// The scenarios as CSV for spreadsheets (base, calculated tax, credit estimate, effective cost, hypotheses). Values are
+    /// calculated figures under the scenario's assumptions — never a saving. Audited.
+    /// </summary>
+    public async Task<(string FileName, byte[] Content)> ExportCsvAsync(Guid id, CancellationToken ct)
+    {
+        var s = await GetAsync(id, ct);
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("cenario;base;imposto_calculado;estimativa_credito;custo_efetivo;sem_efeito_caixa_no_periodo;hipoteses;premissas;ressalvas");
+        foreach (var x in s.Scenarios)
+            csv.AppendLine(string.Join(';', Csv(x.Name), x.Output.TotalBase.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                x.TaxTotal.ToString(System.Globalization.CultureInfo.InvariantCulture), x.CreditEstimate.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                x.EffectiveCost.ToString(System.Globalization.CultureInfo.InvariantCulture), x.NoCashEffectInPeriod ? "sim" : "nao",
+                Csv(string.Join(" | ", x.Hypotheses)), Csv(s.Assumptions ?? ""), Csv(s.Caveats ?? "")));
+        _audit.Record(TaxAuditActions.SimulationExported, AuditEntity, id, $"Simulação \"{s.Name}\" exportada (CSV).");
+        await _db.SaveChangesAsync(ct);
+        return ($"simulacao-{id:N}.csv", System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(csv.ToString())).ToArray());
+    }
+
+    /// <summary>A CSV cell: quoted, inner quotes doubled, and never starting with a formula character.</summary>
+    internal static string Csv(string value)
+    {
+        var v = value.Replace("\r", " ").Replace("\n", " ");
+        if (v.Length > 0 && "=+-@".Contains(v[0])) v = "'" + v;
+        return $"\"{v.Replace("\"", "\"\"")}\"";
     }
 
     public async Task<TaxSimulationDto> GetAsync(Guid id, CancellationToken ct)
@@ -99,11 +136,11 @@ public sealed class TaxSimulationService
     public async Task<IReadOnlyList<SupplierOfferResultDto>> CompareSuppliersAsync(CompareSuppliersRequest r, CancellationToken ct)
     {
         await AdmitAsync("Comparação de fornecedores", ct);
-        var profile = await _profiles.GetInForceAsync(r.OperationDate, ct);
+        var profile = await _inputs.ProfileAsync(r.OperationDate, ct);
         var compliance = await _compliance.InForceAsync(r.OperationDate, ct);
         var hypotheses = r.RateHypotheses?.Select(h => new RateHypothesis(h.Tax, h.RatePercent, h.Label)).ToList();
         var engine = _engines.Current;
-        var catalogue = await LoadCatalogueAsync(engine, r.OperationDate, [], "Comparação de fornecedores", ct);
+        var (catalogue, _) = await LoadCatalogueAsync(engine, r.OperationDate, [], "Comparação de fornecedores", profile.Regime.ToString(), ct);
 
         // Each offer runs on its own facts: a supplier whose regime is unknown stays unknown, never
         // inheriting another offer's regime, and the result does not depend on the order of the offers.
@@ -128,9 +165,10 @@ public sealed class TaxSimulationService
     /// that would run must back new work in the approval mode, exactly as for a calculation on that date:
     /// a simulation never produces totals or rankings from a rule whose approval is missing, expired or withdrawn.
     /// </summary>
-    private async Task<IReadOnlyCollection<TaxEngineRule>> LoadCatalogueAsync(
-        ITaxEngine engine, DateOnly baseDate, IEnumerable<TaxScenario> scenarios, string what, CancellationToken ct)
+    private async Task<(IReadOnlyCollection<TaxEngineRule> Rules, TaxGovernanceDto BaseGovernance)> LoadCatalogueAsync(
+        ITaxEngine engine, DateOnly baseDate, IEnumerable<TaxScenario> scenarios, string what, string regime, CancellationToken ct)
     {
+        TaxGovernanceDto? baseGovernance = null;
         var dates = scenarios.Select(s => s.ReferenceDate ?? baseDate).Append(baseDate).Distinct().Order().ToList();
         var rules = new Dictionary<Guid, TaxEngineRule>();
         TaxGovernanceDto? refused = null;
@@ -138,7 +176,8 @@ public sealed class TaxSimulationService
         foreach (var d in dates)
         {
             var atDate = await _catalog.LoadForDateAsync(d, engine.Canonical, ct);
-            var governance = await _approvals.ForCalculationAsync(engine.SelectActive(atDate, d).Select(x => x.VersionId).ToList(), d, ct);
+            var governance = await _approvals.ForCalculationAsync(engine.SelectActive(atDate, d).Select(x => x.VersionId).ToList(), d, ct, regime);
+            if (d == baseDate) baseGovernance = governance;
             if (governance.Enforced && governance.NotApproved.Count > 0)
             {
                 refused ??= governance;
@@ -153,7 +192,7 @@ public sealed class TaxSimulationService
             var all = refused with { Rules = notApproved.Values.OrderBy(x => x.Key, StringComparer.Ordinal).ThenBy(x => x.Version).ToList() };
             await RefuseAsync(what, TaxApprovalGate.NotApproved(all), ct, all.NotApproved);
         }
-        return rules.Values.ToList();
+        return (rules.Values.ToList(), baseGovernance!);
     }
 
     /// <summary>Records the refused attempt with its reason, then answers 422. Nothing is simulated or written.</summary>
@@ -163,6 +202,7 @@ public sealed class TaxSimulationService
             $"{what} recusada ({refusal.Code}).",
             new { what, refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
         await _db.SaveChangesAsync(ct);
+        _ctx.Metrics.Refused("simulation", refusal.Code);
         _log.LogInformation("Tax simulation refused: {Code}", refusal.Code);
         throw new DomainException(refusal.Message, refusal.Code, details ?? []);
     }
@@ -182,6 +222,8 @@ public sealed class TaxSimulationService
             : throw new DomainException(
                 $"Esta simulação foi feita pela engine {s.EngineVersion}, que não está disponível nesta versão do Orken.", "tax_engine_unavailable");
         return new TaxSimulationDto(s.Id, s.Name, s.EngineVersion, s.CreatedAt,
-            s.Scenarios.OrderBy(x => x.ScenarioIndex).Select(x => canonical.Deserialize<ScenarioResult>(x.ResultJson)).ToList());
+            s.Scenarios.OrderBy(x => x.ScenarioIndex).Select(x => canonical.Deserialize<ScenarioResult>(x.ResultJson)).ToList(),
+            s.Assumptions, s.Caveats, s.CreatedByName,
+            s.GovernanceJson is null ? null : canonical.Deserialize<TaxGovernanceDto>(s.GovernanceJson));
     }
 }

@@ -126,6 +126,9 @@ try
         // forget the check. Unauthenticated → 401; authenticated non-platform → 403.
         options.AddPolicy("Platform", policy =>
             policy.RequireAuthenticatedUser().RequireClaim("type", "platform"));
+        // Platform administrators only (super_admin): acts that change what tenants can do (activation, approvals, catalogues).
+        options.AddPolicy("PlatformAdmin", policy =>
+            policy.RequireAuthenticatedUser().RequireClaim("type", "platform").RequireRole("super_admin"));
     });
 
     // ── CORS ──────────────────────────────────────────────────────────────────
@@ -367,6 +370,7 @@ try
 
     // ─────────────────────────────────────────────────────────────────────────
     var app = builder.Build();
+    Nexo.Infrastructure.TaxIntelligence.TaxConfigurationStartupLog.Write(app.Services);
 
     // ── Run migrations and seed on startup ────────────────────────────────────
     // Skipped in "Testing" — the WebApplicationFactory.InitializeAsync handles

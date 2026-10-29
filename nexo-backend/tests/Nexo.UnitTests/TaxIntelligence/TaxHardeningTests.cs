@@ -323,7 +323,7 @@ public class TaxHardeningTests
         var at = new DateTime(2026, 11, 1, 12, 0, 0, DateTimeKind.Utc);
 
         static ProfessionalReviewInput Review(ProfessionalReviewStatus s, string reviewer, string? notes)
-            => new(s, reviewer, null, null, null, null, null, null, notes);
+            => new(s, reviewer, null, null, null, null, null, null, notes, [], null, null, Guid.NewGuid(), "operador", "Platform");
         version.Invoking(v => v.RecordProfessionalReview(Review(ProfessionalReviewStatus.Rejected, "Contadora", null), at)).Should().Throw<DomainException>();
         version.Invoking(v => v.RecordProfessionalReview(Review(ProfessionalReviewStatus.Approved, " ", null), at)).Should().Throw<DomainException>();
 
@@ -340,7 +340,17 @@ public class TaxHardeningTests
     internal static TaxComplianceAssessment Assessment(ComplianceAssessmentStatus status, string? scope = "estabelecimento",
         string? evidence = null, bool pnct = false, string? notes = null, IReadOnlyList<string>? checkedList = null)
         => TaxComplianceAssessment.Record(Guid.NewGuid(), status, new DateOnly(2026, 1, 1), new DateOnly(2026, 6, 30), scope,
-            checkedList ?? [], evidence, "Contabilidade", DateTime.UtcNow, notes, null, pnct, Guid.NewGuid(), "u");
+            checkedList ?? [], evidence, "Contabilidade", DateTime.UtcNow, notes, null, pnct, Guid.NewGuid(), "u", Results(status, evidence, checkedList));
+
+    /// <summary>A verification lists each obligation with its evidence (never only free text): one result per obligation checked.</summary>
+    internal static IReadOnlyList<TaxObligationResultInput>? Results(ComplianceAssessmentStatus status, string? evidence, IReadOnlyList<string>? checkedList)
+        => status is ComplianceAssessmentStatus.Verified or ComplianceAssessmentStatus.RemediationVerified && checkedList is { Count: > 0 }
+            ? checkedList.Select(c => new TaxObligationResultInput(c.ToUpperInvariant().Replace(' ', '-'), c, status,
+                string.IsNullOrWhiteSpace(evidence) ? null : evidence, null,
+                status == ComplianceAssessmentStatus.RemediationVerified ? "campos corrigidos" : null,
+                status == ComplianceAssessmentStatus.RemediationVerified ? new DateOnly(2026, 6, 1) : null,
+                status == ComplianceAssessmentStatus.RemediationVerified ? "Contabilidade" : null, null)).ToList()
+            : null;
 
     [Fact]
     public void A_declaration_of_compliance_is_not_a_verification()
@@ -377,8 +387,9 @@ public class TaxHardeningTests
     {
         FluentActions.Invoking(() => Assessment(ComplianceAssessmentStatus.Verified, evidence: " ", checkedList: ["NF-e"]))
             .Should().Throw<DomainException>().Which.Code.Should().Be("tax_compliance_evidence");
+        // Without the obligations checked, a verification is free text only: refused before any evidence is weighed.
         FluentActions.Invoking(() => Assessment(ComplianceAssessmentStatus.Verified, evidence: "recibos"))
-            .Should().Throw<DomainException>().Which.Code.Should().Be("tax_compliance_evidence");
+            .Should().Throw<DomainException>().Which.Code.Should().Be("tax_compliance_results");
     }
 
     // ── Calculated-tax reduction ────────────────────────────────────────────────

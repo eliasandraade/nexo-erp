@@ -5,6 +5,8 @@ using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Nexo.IntegrationTests.Common;
 
 namespace Nexo.IntegrationTests.Helpers;
@@ -42,9 +44,9 @@ public static class TaxPilotSetup
         return string.IsNullOrEmpty(text) ? default : JsonDocument.Parse(text).RootElement.Clone();
     }
 
-    public static async Task<HttpClient> PlatformAsync(TestWebApplicationFactory factory)
+    public static async Task<HttpClient> PlatformAsync(WebApplicationFactory<Program> factory)
     {
-        var client = factory.CreateApiClient();
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         var body = await Json(await client.PostAsJsonAsync("/api/platform/auth/login",
             new { email = TestCredentials.PlatformEmail, password = TestCredentials.PlatformPassword }));
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body.GetProperty("accessToken").GetString());
@@ -73,6 +75,19 @@ public static class TaxPilotSetup
         await Json(r);
     }
 
+    /// <summary>An ancillary obligation of the platform catalogue (created once; later calls reuse it).</summary>
+    public static async Task EnsureObligationAsync(HttpClient platform, string code, string name)
+    {
+        var r = await platform.PostAsJsonAsync("/api/platform/tax/obligations",
+            new { code, name, description = "Obrigação da suíte de testes.", reference = "Fixture de teste" }, Web);
+        if (r.StatusCode == HttpStatusCode.Conflict) return;
+        await Json(r);
+    }
+
+    /// <summary>The slug the suite uses as obligation code for a name.</summary>
+    public static string ObligationCode(string name)
+        => new string(name.ToUpperInvariant().Select(ch => char.IsAsciiLetterOrDigit(ch) ? ch : '-').ToArray()).Trim('-')[..Math.Min(40, name.Length)].Trim('-');
+
     /// <summary>Every rule version, by "key vN".</summary>
     public static async Task<Dictionary<string, JsonElement>> VersionsAsync(HttpClient platform)
         => (await Json(await platform.GetAsync("/api/platform/tax/rules"))).EnumerateArray()
@@ -96,13 +111,40 @@ public static class TaxPilotSetup
             await ApproveAsync(platform, versions[label].GetProperty("id").GetGuid(), "2026-01-01", "2026-12-31", reference);
     }
 
-    /// <summary>Pilot open, the client's tenant admitted and the 2026 catalogue approved.</summary>
+    /// <summary>Pilot open, the client's tenant admitted, the 2026 catalogue approved and the pilot activated by the platform.</summary>
     public static async Task ReadyAsync(TestWebApplicationFactory factory, HttpClient tenantClient)
     {
-        var platform = await PlatformAsync(factory);
+        var platform = await PlatformAsync(factory.WithWebHostBuilder(Enforced("ControlledPilot")));
         await OpenPilotAsync(platform);
         await AdmitAsync(platform, Identity(tenantClient).Tenant);
         await ApproveCatalogAsync(platform);
+        await ActivateAsync(platform);
+    }
+
+    /// <summary>Activates the configured mode the way an operator does: checklist satisfied, exact phrase, shadow mode acknowledged.</summary>
+    public static async Task<JsonElement> ActivateAsync(HttpClient platform, string mode = "ControlledPilot")
+        => await Json(await platform.PostAsJsonAsync("/api/platform/tax/module/activate", new
+        {
+            mode, decisionReference = DecisionRecord, reason = "Ativação pela suíte de integração.",
+            confirmation = mode == "ControlledPilot" ? "ATIVAR PILOTO CONTROLADO" : "ATIVAR MODO DEFINITIVO", acknowledgeShadowMode = true,
+        }, Web));
+
+    /// <summary>Back to inactive, so a test that suspended or activated leaves no state for the next one.</summary>
+    public static async Task DeactivateAsync(HttpClient platform)
+        => await Json(await platform.PostAsJsonAsync("/api/platform/tax/module/deactivate",
+            new { reason = "Fim do teste.", confirmation = "DESATIVAR" }, Web));
+
+    /// <summary>
+    /// Test fixture: records the module as active in a mode without going through the checklist — a definitive mode activated
+    /// earlier, before a rule lost (or never had) its professional review — so the per-rule gate itself is under test.
+    /// </summary>
+    public static async Task ForceActivateAsync(WebApplicationFactory<Program> factory, Nexo.Domain.Modules.TaxIntelligence.TaxApprovalMode mode)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<Nexo.Infrastructure.Persistence.NexoDbContext>();
+        db.TaxModuleActivations.Add(Nexo.Domain.Modules.TaxIntelligence.TaxModuleActivation.Activate(mode, DecisionRecord,
+            "Fixture da suíte de testes.", Guid.NewGuid(), "suite", "Platform"));
+        await db.SaveChangesAsync();
     }
 
     /// <summary>An active note rule on one day, with a verified source. Returns its key and version id.</summary>

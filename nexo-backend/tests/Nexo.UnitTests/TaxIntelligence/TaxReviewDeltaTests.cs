@@ -85,10 +85,16 @@ public class TaxReviewDeltaTests
         => new(date ?? Mid2026, direction, counterparty, null, "op", lines.Length == 0 ? [Good()] : lines,
             timing ?? new TaxOperationTiming(TaxSupplyPattern.SingleSupply));
 
+    /// <summary>The matrix for a regime, with the Simples option stated (not opted) and no catalogue check — the catalogue has its own tests.</summary>
+    private static TaxCoverageDecision Assess(TaxOperationRequest op, TaxRegime regime)
+        => TaxCoveragePolicyV1.Assess(op with { CounterpartyRegularRegimeOption = op.CounterpartyRegularRegimeOption ?? false },
+            new TaxCoverageContext(regime, TaxProfileVersion.SituationOf(regime),
+                TaxProfileVersion.SituationOf(regime) == TaxSimplesSituation.NotOptant ? null : false, null));
+
     [Fact]
     public void A_single_supply_classified_in_2026_is_supported_and_says_what_it_assumes()
     {
-        var d = TaxCoveragePolicyV1.Assess(Op(), TaxRegime.LucroPresumido);
+        var d = Assess(Op(), TaxRegime.LucroPresumido);
         d.Status.Should().Be(TaxCoverageStatus.Supported);
         d.Assumptions.Should().Contain(a => a.Contains("Fornecimento único")).And.Contain(a => a.Contains("não interpretado"));
     }
@@ -96,10 +102,10 @@ public class TaxReviewDeltaTests
     [Fact]
     public void Unsupported_operations_are_refused_never_calculated_as_zero()
     {
-        TaxCoveragePolicyV1.Assess(Op(lines: Good(special: "reducao-60")), TaxRegime.LucroPresumido).Status.Should().Be(TaxCoverageStatus.Unsupported);
-        TaxCoveragePolicyV1.Assess(Op(new DateOnly(2025, 12, 31)), TaxRegime.LucroPresumido).Status.Should().Be(TaxCoverageStatus.Unsupported);
-        TaxCoveragePolicyV1.Assess(Op(new DateOnly(2027, 1, 2)), TaxRegime.LucroPresumido).Status.Should().Be(TaxCoverageStatus.PendingRegulation);
-        TaxCoveragePolicyV1.Assess(Op(direction: TaxDirection.Inbound), TaxRegime.LucroPresumido).Status
+        Assess(Op(lines: Good(special: "reducao-60")), TaxRegime.LucroPresumido).Status.Should().Be(TaxCoverageStatus.Unsupported);
+        Assess(Op(new DateOnly(2025, 12, 31)), TaxRegime.LucroPresumido).Status.Should().Be(TaxCoverageStatus.Unsupported);
+        Assess(Op(new DateOnly(2027, 1, 2)), TaxRegime.LucroPresumido).Status.Should().Be(TaxCoverageStatus.PendingRegulation);
+        Assess(Op(direction: TaxDirection.Inbound), TaxRegime.LucroPresumido).Status
             .Should().Be(TaxCoverageStatus.Unsupported, "an inbound operation without the supplier's regime is not presumed");
         TaxCoveragePolicyV1.NotSupportedMessage.Should().Be("Operação não suportada pela versão atual da engine.");
     }
@@ -107,15 +113,15 @@ public class TaxReviewDeltaTests
     [Fact]
     public void Missing_required_classification_requires_classification()
     {
-        var noCClass = TaxCoveragePolicyV1.Assess(Op(lines: Good(cClassTrib: null)), TaxRegime.LucroPresumido);
+        var noCClass = Assess(Op(lines: Good(cClassTrib: null)), TaxRegime.LucroPresumido);
         noCClass.Status.Should().Be(TaxCoverageStatus.RequiresClassification);
         noCClass.Findings.Single().Message.Should().Contain("cClassTrib").And.Contain("não calcula presumindo o regime geral");
-        TaxCoveragePolicyV1.Assess(Op(lines: Good(ncm: null)), TaxRegime.LucroPresumido).Findings.Single().Message.Should().Contain("NCM");
+        Assess(Op(lines: Good(ncm: null)), TaxRegime.LucroPresumido).Findings.Single().Message.Should().Contain("NCM");
 
         var service = new TaxLineRequest(TaxItemKind.Service, "Serviço", null, 1m, 100m, 0m, 0m, 0m, 0m, null, null, "TEST01");
-        TaxCoveragePolicyV1.Assess(Op(lines: service), TaxRegime.LucroPresumido).Findings.Single().Message
+        Assess(Op(lines: service), TaxRegime.LucroPresumido).Findings.Single().Message
             .Should().Contain("NBS").And.NotContain("NCM", "a service is not asked for a goods code");
-        TaxCoveragePolicyV1.Assess(Op(lines: service with { Nbs = "1.0101.10.00" }), TaxRegime.LucroPresumido).Status
+        Assess(Op(lines: service with { Nbs = "1.0101.10.00" }), TaxRegime.LucroPresumido).Status
             .Should().Be(TaxCoverageStatus.Supported);
     }
 
@@ -126,18 +132,18 @@ public class TaxReviewDeltaTests
     [InlineData(TaxSupplyPattern.PublicProcurement, TaxCoverageStatus.Unsupported)]
     [InlineData(TaxSupplyPattern.Other, TaxCoverageStatus.RequiresProfessionalReview)]
     public void Temporal_patterns_V1_does_not_model_fail_closed(TaxSupplyPattern pattern, TaxCoverageStatus expected)
-        => TaxCoveragePolicyV1.Assess(Op(timing: new TaxOperationTiming(pattern)), TaxRegime.LucroPresumido).Status.Should().Be(expected);
+        => Assess(Op(timing: new TaxOperationTiming(pattern)), TaxRegime.LucroPresumido).Status.Should().Be(expected);
 
     [Fact]
     public void Dates_V1_cannot_reconcile_are_never_silently_assumed()
     {
-        TaxCoveragePolicyV1.Assess(new TaxOperationRequest(Mid2026, TaxDirection.Outbound, null, null, "op", [Good()]), TaxRegime.LucroPresumido)
+        Assess(new TaxOperationRequest(Mid2026, TaxDirection.Outbound, null, null, "op", [Good()]), TaxRegime.LucroPresumido)
             .Status.Should().Be(TaxCoverageStatus.RequiresProfessionalReview, "a missing timing is not presumed to be a single supply");
-        TaxCoveragePolicyV1.Assess(Op(timing: new(TaxSupplyPattern.SingleSupply, DocumentDate: Mid2026.AddDays(3))), TaxRegime.LucroPresumido)
+        Assess(Op(timing: new(TaxSupplyPattern.SingleSupply, DocumentDate: Mid2026.AddDays(3))), TaxRegime.LucroPresumido)
             .Status.Should().Be(TaxCoverageStatus.RequiresProfessionalReview);
-        TaxCoveragePolicyV1.Assess(Op(timing: new(TaxSupplyPattern.SingleSupply, PaymentOrAdvanceDate: Mid2026.AddDays(-10))), TaxRegime.LucroPresumido)
+        Assess(Op(timing: new(TaxSupplyPattern.SingleSupply, PaymentOrAdvanceDate: Mid2026.AddDays(-10))), TaxRegime.LucroPresumido)
             .Status.Should().Be(TaxCoverageStatus.Unsupported);
-        TaxCoveragePolicyV1.Assess(Op(timing: new(TaxSupplyPattern.SingleSupply, ExecutionFrom: Mid2026, ExecutionTo: Mid2026.AddMonths(1))),
+        Assess(Op(timing: new(TaxSupplyPattern.SingleSupply, ExecutionFrom: Mid2026, ExecutionTo: Mid2026.AddMonths(1))),
             TaxRegime.LucroPresumido).Status.Should().Be(TaxCoverageStatus.Unsupported);
     }
 
@@ -146,10 +152,10 @@ public class TaxReviewDeltaTests
     [InlineData(TaxRegime.SimplesNacionalExcessoSublimite)]
     public void MEI_and_Simples_above_the_sublimit_are_not_assumed_equal_to_the_Simples(TaxRegime regime)
     {
-        TaxCoveragePolicyV1.Assess(Op(), regime).Status.Should().Be(TaxCoverageStatus.RequiresProfessionalReview);
-        TaxCoveragePolicyV1.Assess(Op(direction: TaxDirection.Inbound, counterparty: regime), TaxRegime.LucroReal).Status
+        Assess(Op(), regime).Status.Should().Be(TaxCoverageStatus.RequiresProfessionalReview);
+        Assess(Op(direction: TaxDirection.Inbound, counterparty: regime), TaxRegime.LucroReal).Status
             .Should().Be(TaxCoverageStatus.RequiresProfessionalReview);
-        TaxCoveragePolicyV1.Assess(Op(), TaxRegime.SimplesNacional).Status.Should().Be(TaxCoverageStatus.Supported);
+        Assess(Op(), TaxRegime.SimplesNacional).Status.Should().Be(TaxCoverageStatus.Supported);
     }
 
     // ── scenario approval vs execution, evidence ────────────────────────────────
@@ -349,18 +355,22 @@ public class TaxReviewDeltaTests
 
     // ── professional review ─────────────────────────────────────────────────────
 
+    private static ProfessionalReviewInput In(ProfessionalReviewStatus s, string reviewer, string? reference, string? scope, DateOnly? from,
+        DateOnly? to, string? assumptions, string? caveats, string? notes)
+        => new(s, reviewer, reference, scope, from, to, assumptions, caveats, notes, ["LucroReal"], null, null, Guid.NewGuid(), "operador", "Platform");
+
     private static TaxRuleVersion Version() => TaxRuleVersion.Create(Guid.NewGuid(), 1, new DateOnly(2026, 1, 1), null, 1, "[]", "{}", "h", "platform", "a", null, []);
 
     [Fact]
     public void A_professional_review_keeps_scope_validity_assumptions_and_caveats()
     {
         var v = Version();
-        v.Invoking(x => x.RecordProfessionalReview(new(ProfessionalReviewStatus.ApprovedWithCaveats, "Contadora", null, "saídas", new DateOnly(2026, 1, 1),
+        v.Invoking(x => x.RecordProfessionalReview(In(ProfessionalReviewStatus.ApprovedWithCaveats, "Contadora", null, "saídas", new DateOnly(2026, 1, 1),
             null, null, null, null), DateTime.UtcNow)).Should().Throw<DomainException>().Which.Code.Should().Be("tax_review_caveats");
-        v.Invoking(x => x.RecordProfessionalReview(new(ProfessionalReviewStatus.Approved, "Contadora", null, null, null, null, null, null, null), DateTime.UtcNow))
+        v.Invoking(x => x.RecordProfessionalReview(In(ProfessionalReviewStatus.Approved, "Contadora", null, null, null, null, null, null, null), DateTime.UtcNow))
             .Should().Throw<DomainException>().Which.Code.Should().Be("tax_review_scope");
 
-        v.RecordProfessionalReview(new(ProfessionalReviewStatus.ApprovedWithCaveats, "Contadora", "CRC 0", "Saídas no regime regular",
+        v.RecordProfessionalReview(In(ProfessionalReviewStatus.ApprovedWithCaveats, "Contadora", "CRC 0", "Saídas no regime regular",
             new DateOnly(2026, 1, 1), new DateOnly(2026, 12, 31), "Desconto destacado", "Não cobre regimes específicos", null), DateTime.UtcNow);
         (v.ProfessionalReviewScope, v.ProfessionalReviewCaveats, v.ProfessionalReviewAssumptions, v.ProfessionalReference)
             .Should().Be(("Saídas no regime regular", "Não cobre regimes específicos", "Desconto destacado", "CRC 0"));
@@ -372,11 +382,11 @@ public class TaxReviewDeltaTests
     public void ReviewReceived_is_not_Approved()
     {
         var v = Version();
-        v.RecordProfessionalReview(new(ProfessionalReviewStatus.ReviewReceived, "Escritório", null, null, null, null, null, null, "apto após ajustes"),
+        v.RecordProfessionalReview(In(ProfessionalReviewStatus.ReviewReceived, "Escritório", null, null, null, null, null, null, "apto após ajustes"),
             DateTime.UtcNow);
         v.ProfessionalReview.Should().Be(ProfessionalReviewStatus.ReviewReceived);
         v.IsProfessionallyApprovedOn(new DateOnly(2026, 6, 1)).Should().BeFalse();
-        v.Invoking(x => x.RecordProfessionalReview(new(ProfessionalReviewStatus.Pending, "x", null, null, null, null, null, null, null), DateTime.UtcNow))
+        v.Invoking(x => x.RecordProfessionalReview(In(ProfessionalReviewStatus.Pending, "x", null, null, null, null, null, null, null), DateTime.UtcNow))
             .Should().Throw<DomainException>();
     }
 
