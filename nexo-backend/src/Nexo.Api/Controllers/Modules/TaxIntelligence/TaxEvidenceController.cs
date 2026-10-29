@@ -4,12 +4,24 @@ using Nexo.Api.Authorization;
 using Nexo.Application.Modules.TaxIntelligence;
 using Nexo.Domain.Modules.TaxIntelligence;
 using Nexo.Infrastructure.TaxIntelligence;
+using Nexo.Infrastructure.TaxIntelligence.Files;
 
 namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 
+/// <summary>A file sent with a piece of opportunity evidence, and what it is evidence of.</summary>
+public sealed class OpportunityEvidenceUploadForm
+{
+    public IFormFile File { get; set; } = null!;
+    public TaxEvidenceType Type { get; set; }
+    public Guid? RequirementId { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public string? DocumentReference { get; set; }
+    public string? Notes { get; set; }
+}
+
 /// <summary>
 /// Private evidence files of the company: uploaded (type checked by its bytes, SHA-256 of the bytes), downloaded only through this API
-/// with authorisation on every request, replaced by a newer version or revoked — never deleted, every act audited.
+/// with authorisation on every request, revoked or placed under legal hold — never deleted, every act audited.
 /// </summary>
 [ApiController]
 [Route("api/tax")]
@@ -17,59 +29,18 @@ namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 [Nexo.Api.Filters.ValidateBody]
 public class TaxEvidenceController : ControllerBase
 {
-    private const long MaxRequest = 26 * 1024 * 1024;
-
     private readonly TaxEvidenceService _evidence;
-    private readonly TaxOpportunityEvidenceService _opportunityEvidence;
 
-    public TaxEvidenceController(TaxEvidenceService evidence, TaxOpportunityEvidenceService opportunityEvidence)
-    {
-        _evidence = evidence;
-        _opportunityEvidence = opportunityEvidence;
-    }
+    public TaxEvidenceController(TaxEvidenceService evidence) => _evidence = evidence;
 
     /// <summary>Whether private storage is available, the size limit and the accepted file types.</summary>
     [HttpGet("evidence/storage")]
     public ActionResult<TaxFileStorageStatusDto> Storage() => Ok(_evidence.StorageStatus());
 
-    /// <summary>Evidence of an opportunity with its file (PDF, image or XML). The hash is the SHA-256 of the bytes received.</summary>
-    [HttpPost("opportunities/{id:guid}/evidence/files")]
-    [Authorize(Roles = TaxCapabilities.Analyze)]
-    [RequestSizeLimit(MaxRequest)]
-    [Consumes("multipart/form-data")]
-    public async Task<ActionResult<TaxOpportunityDto>> UploadOpportunityEvidence(Guid id, IFormFile file, [FromForm] TaxEvidenceType type,
-        [FromForm] Guid? requirementId, [FromForm] string description, [FromForm] string? documentReference, [FromForm] string? notes,
-        CancellationToken ct)
-    {
-        await using var stream = file.OpenReadStream();
-        return Ok(await _opportunityEvidence.UploadAsync(id, new TaxUploadMetadata(type, requirementId, description, documentReference, notes),
-            stream, file.FileName, ct));
-    }
-
-    /// <summary>A newer version of a piece of evidence (with a new file, or only new metadata). The old version stays on record.</summary>
-    [HttpPost("opportunities/{id:guid}/evidence/{evidenceId:guid}/replace")]
-    [Authorize(Roles = TaxCapabilities.Analyze)]
-    [RequestSizeLimit(MaxRequest)]
-    [Consumes("multipart/form-data")]
-    public async Task<ActionResult<TaxOpportunityDto>> ReplaceOpportunityEvidence(Guid id, Guid evidenceId, IFormFile? file,
-        [FromForm] string description, [FromForm] string? documentReference, [FromForm] string? notes, CancellationToken ct)
-    {
-        await using var stream = file?.OpenReadStream();
-        return Ok(await _opportunityEvidence.ReplaceAsync(id, evidenceId, new ReplaceEvidenceRequest(description, documentReference, notes),
-            stream, file?.FileName, ct));
-    }
-
-    /// <summary>Withdraws a piece of evidence on record; it supports nothing from then on, and a frozen dossier keeps it unchanged.</summary>
-    [HttpPost("opportunities/{id:guid}/evidence/{evidenceId:guid}/revoke")]
-    [Authorize(Roles = TaxCapabilities.Analyze)]
-    public async Task<ActionResult<TaxOpportunityDto>> RevokeOpportunityEvidence(Guid id, Guid evidenceId, [FromBody] RevokeEvidenceRequest request,
-        CancellationToken ct)
-        => Ok(await _opportunityEvidence.RevokeAsync(id, evidenceId, request, ct));
-
     /// <summary>A file for a credit, a compliance assessment or a split settlement of this company.</summary>
     [HttpPost("evidence-files")]
     [Authorize(Roles = TaxCapabilities.Analyze)]
-    [RequestSizeLimit(MaxRequest)]
+    [RequestSizeLimit(TaxFileOptions.MaxRequestBytes)]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<TaxEvidenceFileDto>> Upload(IFormFile file, [FromForm] TaxFileOwner owner, [FromForm] Guid ownerId,
         [FromForm] TaxEvidenceType type, [FromForm] string? description, CancellationToken ct)
@@ -99,45 +70,91 @@ public class TaxEvidenceController : ControllerBase
         => Ok(await _evidence.SetLegalHoldAsync(id, request, ct));
 }
 
-/// <summary>Company policies: materiality (versioned by date) and evidence retention (preview only — nothing is ever discarded automatically).</summary>
+/// <summary>Evidence of an opportunity: added with a file, replaced by a newer version, or revoked — the old versions stay on record.</summary>
 [ApiController]
-[Route("api/tax")]
-[Authorize(Roles = TaxCapabilities.View)]
+[Route("api/tax/opportunities/{id:guid}/evidence")]
+[Authorize(Roles = TaxCapabilities.Analyze)]
 [Nexo.Api.Filters.ValidateBody]
-public class TaxPoliciesController : ControllerBase
+public class TaxOpportunityEvidenceController : ControllerBase
 {
-    private readonly TaxMaterialityService _materiality;
-    private readonly TaxRetentionService _retention;
+    private readonly TaxOpportunityEvidenceService _evidence;
 
-    public TaxPoliciesController(TaxMaterialityService materiality, TaxRetentionService retention)
+    public TaxOpportunityEvidenceController(TaxOpportunityEvidenceService evidence) => _evidence = evidence;
+
+    /// <summary>Evidence of an opportunity with its file (PDF, image or XML). The hash is the SHA-256 of the bytes received.</summary>
+    [HttpPost("files")]
+    [RequestSizeLimit(TaxFileOptions.MaxRequestBytes)]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<TaxOpportunityDto>> Upload(Guid id, [FromForm] OpportunityEvidenceUploadForm form, CancellationToken ct)
     {
-        _materiality = materiality;
-        _retention = retention;
+        await using var stream = form.File.OpenReadStream();
+        return Ok(await _evidence.UploadAsync(id,
+            new TaxUploadMetadata(form.Type, form.RequirementId, form.Description, form.DocumentReference, form.Notes), stream, form.File.FileName, ct));
     }
 
-    [HttpGet("materiality")]
-    public async Task<ActionResult<TaxMaterialityDto>> Materiality(CancellationToken ct) => Ok(await _materiality.GetAsync(TaxToday.Brazil(), ct));
+    /// <summary>A newer version of a piece of evidence (with a new file, or only new metadata). The old version stays on record.</summary>
+    [HttpPost("{evidenceId:guid}/replace")]
+    [RequestSizeLimit(TaxFileOptions.MaxRequestBytes)]
+    [Consumes("multipart/form-data")]
+    public async Task<ActionResult<TaxOpportunityDto>> Replace(Guid id, Guid evidenceId, IFormFile? file,
+        [FromForm] string description, [FromForm] string? documentReference, [FromForm] string? notes, CancellationToken ct)
+    {
+        await using var stream = file?.OpenReadStream();
+        return Ok(await _evidence.ReplaceAsync(id, evidenceId, new ReplaceEvidenceRequest(description, documentReference, notes),
+            stream, file?.FileName, ct));
+    }
+
+    /// <summary>Withdraws a piece of evidence on record; it supports nothing from then on, and a frozen dossier keeps it unchanged.</summary>
+    [HttpPost("{evidenceId:guid}/revoke")]
+    public async Task<ActionResult<TaxOpportunityDto>> Revoke(Guid id, Guid evidenceId, [FromBody] RevokeEvidenceRequest request, CancellationToken ct)
+        => Ok(await _evidence.RevokeAsync(id, evidenceId, request, ct));
+}
+
+/// <summary>The company's materiality, versioned by date: above it, approving a scenario needs someone other than who analysed.</summary>
+[ApiController]
+[Route("api/tax/materiality")]
+[Authorize(Roles = TaxCapabilities.View)]
+[Nexo.Api.Filters.ValidateBody]
+public class TaxMaterialityController : ControllerBase
+{
+    private readonly TaxMaterialityService _materiality;
+
+    public TaxMaterialityController(TaxMaterialityService materiality) => _materiality = materiality;
+
+    [HttpGet]
+    public async Task<ActionResult<TaxMaterialityDto>> Get(CancellationToken ct) => Ok(await _materiality.GetAsync(TaxToday.Brazil(), ct));
 
     /// <summary>A new materiality version from a date (today or later). Past decisions keep the version they used.</summary>
-    [HttpPut("materiality")]
+    [HttpPut]
     [Authorize(Roles = TaxCapabilities.Policies)]
-    public async Task<ActionResult<TaxMaterialityDto>> ConfigureMateriality([FromBody] ConfigureMaterialityRequest request, CancellationToken ct)
+    public async Task<ActionResult<TaxMaterialityDto>> Configure([FromBody] ConfigureMaterialityRequest request, CancellationToken ct)
         => Ok(await _materiality.ConfigureAsync(request, TaxToday.Brazil(), ct));
+}
 
-    [HttpGet("retention-policies")]
-    public async Task<ActionResult<IReadOnlyList<TaxRetentionPolicyDto>>> RetentionPolicies(CancellationToken ct)
-        => Ok(await _retention.ListAsync(platform: false, ct));
+/// <summary>Evidence retention of the company: a preview only — nothing is ever discarded automatically, and legal holds always win.</summary>
+[ApiController]
+[Route("api/tax/retention-policies")]
+[Authorize(Roles = TaxCapabilities.View)]
+[Nexo.Api.Filters.ValidateBody]
+public class TaxRetentionController : ControllerBase
+{
+    private readonly TaxRetentionService _retention;
+
+    public TaxRetentionController(TaxRetentionService retention) => _retention = retention;
+
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<TaxRetentionPolicyDto>>> List(CancellationToken ct) => Ok(await _retention.ListAsync(platform: false, ct));
 
     /// <summary>The company's own period for a type, where the platform default allows it.</summary>
-    [HttpPut("retention-policies")]
+    [HttpPut]
     [Authorize(Roles = TaxCapabilities.Policies)]
-    public async Task<ActionResult<TaxRetentionPolicyDto>> ConfigureRetention([FromBody] ConfigureRetentionPolicyRequest request, CancellationToken ct)
+    public async Task<ActionResult<TaxRetentionPolicyDto>> Configure([FromBody] ConfigureRetentionPolicyRequest request, CancellationToken ct)
         => Ok(await _retention.ConfigureAsync(request, platform: false, ct));
 
     /// <summary>What a valid policy would make eligible for disposal — a preview: nothing is discarded, legal holds always win.</summary>
-    [HttpGet("retention-policies/preview")]
+    [HttpGet("preview")]
     [Authorize(Roles = TaxCapabilities.Policies)]
-    public async Task<ActionResult<TaxRetentionPreviewDto>> RetentionPreview([FromQuery] int take = 200, CancellationToken ct = default)
+    public async Task<ActionResult<TaxRetentionPreviewDto>> Preview([FromQuery] int take = 200, CancellationToken ct = default)
         => Ok(await _retention.PreviewAsync(TaxToday.Brazil(), take, ct));
 }
 

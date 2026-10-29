@@ -181,20 +181,18 @@ public class TaxComplianceObligationResult : StoreEntity
 {
     private TaxComplianceObligationResult() { }   // EF Core
 
-    internal TaxComplianceObligationResult(Guid tenantId, Guid assessmentId, string obligationCode, string obligationName,
-        ComplianceAssessmentStatus status, string? evidenceReference, Guid? evidenceFileId, string? remediation,
-        DateOnly? remediationVerifiedOn, string? remediationVerifiedBy, string? notes) : base(tenantId)
+    internal TaxComplianceObligationResult(Guid tenantId, Guid assessmentId, TaxObligationResultInput r) : base(tenantId)
     {
         AssessmentId = assessmentId;
-        ObligationCode = obligationCode;
-        ObligationName = obligationName;
-        Status = status;
-        EvidenceReference = Clean(evidenceReference);
-        EvidenceFileId = evidenceFileId;
-        Remediation = Clean(remediation);
-        RemediationVerifiedOn = remediationVerifiedOn;
-        RemediationVerifiedBy = Clean(remediationVerifiedBy);
-        Notes = Clean(notes);
+        ObligationCode = r.ObligationCode.Trim().ToUpperInvariant();
+        ObligationName = r.ObligationName.Trim();
+        Status = r.Status;
+        EvidenceReference = Clean(r.EvidenceReference);
+        EvidenceFileId = r.EvidenceFileId;
+        Remediation = Clean(r.Remediation);
+        RemediationVerifiedOn = r.RemediationVerifiedOn;
+        RemediationVerifiedBy = Clean(r.RemediationVerifiedBy);
+        Notes = Clean(r.Notes);
     }
 
     public Guid AssessmentId { get; private set; }

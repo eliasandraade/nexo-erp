@@ -61,8 +61,8 @@ public static class TaxConfigurationCheck
             problems.Add("Maker-checker: um risco maior não pode exigir menos que um risco menor (LowRisk ≤ MediumRisk ≤ HighRisk).");
         if (policy.MaterialityThreshold is <= 0)
             problems.Add("TaxIntelligence:Policy:MaterialityThreshold precisa ser positivo (ou ausente).");
-        if (files.MaxFileSizeMb is < 1 or > 25)
-            problems.Add("TaxIntelligence:Evidence:MaxFileSizeMb vai de 1 a 25.");
+        if (files.MaxFileSizeMb < 1 || files.MaxFileSizeMb > TaxFileOptions.MaxAllowedFileSizeMb)
+            problems.Add($"TaxIntelligence:Evidence:MaxFileSizeMb vai de 1 a {TaxFileOptions.MaxAllowedFileSizeMb}.");
         return problems;
     }
 }

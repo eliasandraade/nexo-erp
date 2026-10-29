@@ -18,6 +18,15 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 public sealed class TaxModuleService
 {
     public const string PilotPhrase = "ATIVAR PILOTO CONTROLADO";
+
+    private const string AreaConfiguration = "Configuração";
+    private const string AreaScope = "Escopo";
+    private const string AreaClassification = "Classificação";
+    private const string AreaEvidence = "Evidências";
+    private const string LabelReview = "Revisão profissional";
+    private const string LabelCClassTrib = "Catálogo cClassTrib";
+    private const string LabelStorage = "Armazenamento privado";
+    private const string KeyClassification = "classification";
     public const string FinalPhrase = "ATIVAR MODO DEFINITIVO";
     public const string SuspendPhrase = "SUSPENDER";
     public const string DeactivatePhrase = "DESATIVAR";
@@ -71,87 +80,103 @@ public sealed class TaxModuleService
     public async Task<TaxActivationChecklistDto> ChecklistAsync(TaxApprovalMode mode, CancellationToken ct)
     {
         if (mode == TaxApprovalMode.Disabled) throw new DomainException("Escolha o piloto controlado ou o modo definitivo.", "tax_module_mode");
-        var items = new List<TaxReadinessItemDto>();
-        var policy = _state.Policy;
         var today = Today;
-        items.Add(policy.Enabled
-            ? Ok("config.enabled", "Configuração", "Kill switch da instalação", "Ligado (TaxIntelligence:Policy:Enabled = true).")
-            : Block("config.enabled", "Configuração", "Kill switch da instalação",
-                "Desligado (TaxIntelligence:Policy:Enabled = false). Só quem opera a implantação liga; este painel não altera a configuração."));
-        items.Add(policy.Mode == mode
-            ? Ok("config.mode", "Configuração", "Modo configurado", $"A instalação está configurada para {mode}.")
-            : Block("config.mode", "Configuração", "Modo configurado",
-                $"A instalação está configurada para {policy.Mode} (TaxIntelligence:Policy:Mode); para ativar {mode} a configuração precisa ser {mode}."));
-        var problems = _state.ConfigurationProblems;
-        items.Add(problems.Count == 0
-            ? Ok("config.valid", "Configuração", "Configuração válida", "Nenhum problema encontrado.")
-            : Block("config.valid", "Configuração", "Configuração válida", string.Join(" ", problems)));
+        var items = ConfigurationItems(mode);
 
         var rules = await ActiveRulesAsync(today, ct);
-        var missing = mode == TaxApprovalMode.ControlledPilot
-            ? rules.Where(r => !r.Version.IsApprovedForPilotOn(today)).Select(r => r.Label).ToList()
-            : rules.Where(r => !r.Version.IsProfessionallyApprovedOn(today)).Select(r => r.Label).ToList();
-        items.Add(rules.Count == 0
-            ? Block("rules.active", "Regras", "Regras ativas hoje", "Nenhuma versão de regra está ativa para hoje.")
-            : missing.Count == 0
-                ? Ok("rules.approved", "Regras", mode == TaxApprovalMode.ControlledPilot ? "Aprovação interna" : "Revisão profissional",
-                    $"As {rules.Count} versões ativas hoje estão aprovadas para o modo.")
-                : Block("rules.approved", "Regras", mode == TaxApprovalMode.ControlledPilot ? "Aprovação interna" : "Revisão profissional",
-                    $"{missing.Count} de {rules.Count} versões ativas hoje sem a aprovação que o modo exige: {string.Join(", ", missing)}."));
+        var pilot = mode == TaxApprovalMode.ControlledPilot;
+        var missing = rules.Where(r => pilot ? !r.Version.IsApprovedForPilotOn(today) : !r.Version.IsProfessionallyApprovedOn(today))
+            .Select(r => r.Label).ToList();
+        items.Add(RulesItem(mode, rules.Count, missing));
 
-        if (mode == TaxApprovalMode.ControlledPilot) await PilotScopeItemsAsync(items, today, ct);
+        if (pilot) await PilotScopeItemsAsync(items, today, ct);
         else
-            items.Add(Info("pilot.notUsed", "Escopo", "Escopo do piloto",
+            items.Add(Info("pilot.notUsed", AreaScope, "Escopo do piloto",
                 "O modo definitivo não usa o escopo do piloto: todas as empresas com o módulo passam a ter cálculos novos."));
 
+        items.Add(await ClassificationItemAsync(mode, today, ct));
+        items.Add(StorageItem("Disponível.", " Evidências só por referência até ser configurado."));
+        if (pilot) items.AddRange(PilotNotes(rules.Count(r => !r.Version.IsProfessionallyApprovedOn(today))));
+
+        var caveats = rules
+            .Select(r => (r.Label, Text: pilot ? r.Version.InternalApprovalCaveats : r.Version.ProfessionalReviewCaveats))
+            .Where(x => x.Text is not null).Select(x => $"{x.Label}: {x.Text}").ToList();
+        var can = items.TrueForAll(i => i.Level != TaxReadinessLevel.Blocking);
+        return new TaxActivationChecklistDto(mode, can, pilot ? PilotPhrase : FinalPhrase, items, missing, caveats);
+    }
+
+    /// <summary>The installation's own switches: on, configured for this mode, and free of problems. Never changed from a screen.</summary>
+    private List<TaxReadinessItemDto> ConfigurationItems(TaxApprovalMode mode)
+    {
+        var policy = _state.Policy;
+        var problems = _state.ConfigurationProblems;
+        return
+        [
+            policy.Enabled
+                ? Ok("config.enabled", AreaConfiguration, "Kill switch da instalação", "Ligado (TaxIntelligence:Policy:Enabled = true).")
+                : Block("config.enabled", AreaConfiguration, "Kill switch da instalação",
+                    "Desligado (TaxIntelligence:Policy:Enabled = false). Só quem opera a implantação liga; este painel não altera a configuração."),
+            policy.Mode == mode
+                ? Ok("config.mode", AreaConfiguration, "Modo configurado", $"A instalação está configurada para {mode}.")
+                : Block("config.mode", AreaConfiguration, "Modo configurado",
+                    $"A instalação está configurada para {policy.Mode} (TaxIntelligence:Policy:Mode); para ativar {mode} a configuração precisa ser {mode}."),
+            problems.Count == 0
+                ? Ok("config.valid", AreaConfiguration, "Configuração válida", "Nenhum problema encontrado.")
+                : Block("config.valid", AreaConfiguration, "Configuração válida", string.Join(" ", problems)),
+        ];
+    }
+
+    /// <summary>Whether every rule active today carries the approval the mode requires — and which do not.</summary>
+    private static TaxReadinessItemDto RulesItem(TaxApprovalMode mode, int active, List<string> missing)
+    {
+        if (active == 0) return Block("rules.active", "Regras", "Regras ativas hoje", "Nenhuma versão de regra está ativa para hoje.");
+        var label = mode == TaxApprovalMode.ControlledPilot ? "Aprovação interna" : LabelReview;
+        return missing.Count == 0
+            ? Ok("rules.approved", "Regras", label, $"As {active} versões ativas hoje estão aprovadas para o modo.")
+            : Block("rules.approved", "Regras", label,
+                $"{missing.Count} de {active} versões ativas hoje sem a aprovação que o modo exige: {string.Join(", ", missing)}.");
+    }
+
+    /// <summary>Without a usable cClassTrib nothing would be calculated; in the definitive mode a code also needs a professional review.</summary>
+    private async Task<TaxReadinessItemDto> ClassificationItemAsync(TaxApprovalMode mode, DateOnly today, CancellationToken ct)
+    {
         var codes = await _ctx.Db.TaxClassificationCodes.AsNoTracking()
             .Where(c => c.Kind == TaxClassificationKind.CClassTrib && c.Status == TaxClassificationStatus.Active
                         && c.ValidFrom <= today && (c.ValidTo == null || c.ValidTo >= today))
             .Select(c => c.ProfessionalReview).ToListAsync(ct);
-        var usable = mode == TaxApprovalMode.ProfessionalFinal
+        var final = mode == TaxApprovalMode.ProfessionalFinal;
+        var usable = final
             ? codes.Count(s => s is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats)
             : codes.Count;
-        items.Add(usable > 0
-            ? Ok("classification", "Classificação", "Catálogo cClassTrib", $"{usable} código(s) utilizáveis hoje.")
-            : Block("classification", "Classificação", "Catálogo cClassTrib", mode == TaxApprovalMode.ProfessionalFinal
-                ? "Nenhum cClassTrib ativo com revisão profissional aprovada: nenhuma operação seria calculada."
-                : "Nenhum cClassTrib ativo no catálogo: nenhuma operação seria calculada. Importe e ative os códigos a partir de fonte documentada."));
+        if (usable > 0) return Ok(KeyClassification, AreaClassification, LabelCClassTrib, $"{usable} código(s) utilizáveis hoje.");
+        return Block(KeyClassification, AreaClassification, LabelCClassTrib, final
+            ? "Nenhum cClassTrib ativo com revisão profissional aprovada: nenhuma operação seria calculada."
+            : "Nenhum cClassTrib ativo no catálogo: nenhuma operação seria calculada. Importe e ative os códigos a partir de fonte documentada.");
+    }
 
-        items.Add(_files.State == TaxFileStorageState.Available
-            ? Ok("evidence.storage", "Evidências", "Armazenamento privado", "Disponível.")
-            : Warn("evidence.storage", "Evidências", "Armazenamento privado", TaxFileStore.UnavailableMessage(_files.State)
-                + " Evidências só por referência até ser configurado."));
-        var pendingReview = rules.Count(r => !r.Version.IsProfessionallyApprovedOn(today));
-        if (mode == TaxApprovalMode.ControlledPilot)
-        {
-            items.Add(Info("review.pending", "Revisão profissional", "Revisão profissional",
-                pendingReview == 0 ? "Todas as versões ativas têm revisão profissional." :
-                $"{pendingReview} versão(ões) com revisão profissional pendente — esperado no piloto; a aprovação interna não a substitui."));
-            items.Add(Info("shadow", "Modo sombra", "Modo sombra",
-                "O piloto não emite documento, não altera venda nem preço, não lança obrigação, não usa crédito, não recolhe e não liquida split."));
-        }
-
-        var caveats = mode == TaxApprovalMode.ControlledPilot
-            ? rules.Where(r => r.Version.InternalApprovalCaveats is not null).Select(r => $"{r.Label}: {r.Version.InternalApprovalCaveats}").ToList()
-            : rules.Where(r => r.Version.ProfessionalReviewCaveats is not null).Select(r => $"{r.Label}: {r.Version.ProfessionalReviewCaveats}").ToList();
-        var can = items.All(i => i.Level != TaxReadinessLevel.Blocking);
-        return new TaxActivationChecklistDto(mode, can, mode == TaxApprovalMode.ControlledPilot ? PilotPhrase : FinalPhrase, items, missing, caveats);
+    private static IEnumerable<TaxReadinessItemDto> PilotNotes(int pendingReview)
+    {
+        yield return Info("review.pending", LabelReview, LabelReview,
+            pendingReview == 0 ? "Todas as versões ativas têm revisão profissional." :
+            $"{pendingReview} versão(ões) com revisão profissional pendente — esperado no piloto; a aprovação interna não a substitui.");
+        yield return Info("shadow", "Modo sombra", "Modo sombra",
+            "O piloto não emite documento, não altera venda nem preço, não lança obrigação, não usa crédito, não recolhe e não liquida split.");
     }
 
     private async Task PilotScopeItemsAsync(List<TaxReadinessItemDto> items, DateOnly today, CancellationToken ct)
     {
         var scope = await _ctx.Db.TaxPilotScopes.AsNoTracking().Include(s => s.Participants).OrderBy(s => s.CreatedAt).FirstOrDefaultAsync(ct);
         if (scope is null || !scope.Enabled)
-            items.Add(Block("pilot.scope", "Escopo", "Janela do piloto", "O escopo do piloto não foi aberto (janela e referência da decisão)."));
+            items.Add(Block("pilot.scope", AreaScope, "Janela do piloto", "O escopo do piloto não foi aberto (janela e referência da decisão)."));
         else if (today < scope.ValidFrom || (scope.ValidTo is not null && today > scope.ValidTo))
-            items.Add(Block("pilot.scope", "Escopo", "Janela do piloto",
+            items.Add(Block("pilot.scope", AreaScope, "Janela do piloto",
                 $"Hoje está fora da janela do piloto ({scope.ValidFrom:dd/MM/yyyy} a {(scope.ValidTo is null ? "sem fim" : scope.ValidTo.Value.ToString("dd/MM/yyyy"))})."));
         else
-            items.Add(Ok("pilot.scope", "Escopo", "Janela do piloto", $"Aberta; decisão {scope.DecisionReference}."));
+            items.Add(Ok("pilot.scope", AreaScope, "Janela do piloto", $"Aberta; decisão {scope.DecisionReference}."));
         var active = scope?.Participants.Count(p => p.IsActive) ?? 0;
         items.Add(active > 0
-            ? Ok("pilot.participants", "Escopo", "Participantes", $"{active} participante(s) ativo(s).")
-            : Block("pilot.participants", "Escopo", "Participantes", "Nenhuma empresa participa: inclua explicitamente o tenant (e as lojas)."));
+            ? Ok("pilot.participants", AreaScope, "Participantes", $"{active} participante(s) ativo(s).")
+            : Block("pilot.participants", AreaScope, "Participantes", "Nenhuma empresa participa: inclua explicitamente o tenant (e as lojas)."));
     }
 
     private sealed record ActiveRule(string Label, TaxRuleVersion Version);
@@ -247,12 +272,12 @@ public sealed class TaxModuleService
     {
         var today = Today;
         var module = await GetStateAsync(ct);
-        var items = new List<TaxReadinessItemDto>();
-        items.Add(module.NewWorkRuns
-            ? Ok("module", "Módulo", "Trabalho novo", module.Summary)
-            : Info("module", "Módulo", "Trabalho novo", module.Summary));
+        var items = new List<TaxReadinessItemDto>
+        {
+            module.NewWorkRuns ? Ok("module", "Módulo", "Trabalho novo", module.Summary) : Info("module", "Módulo", "Trabalho novo", module.Summary),
+        };
         if (module.ConfigurationProblems.Count > 0)
-            items.Add(Block("config.valid", "Configuração", "Configuração válida", string.Join(" ", module.ConfigurationProblems)));
+            items.Add(Block("config.valid", AreaConfiguration, "Configuração válida", string.Join(" ", module.ConfigurationProblems)));
 
         var pendingMigrations = (await _ctx.Db.Database.GetPendingMigrationsAsync(ct)).ToList();
         items.Add(pendingMigrations.Count == 0
@@ -260,34 +285,62 @@ public sealed class TaxModuleService
             : Block("migrations", "Banco", "Migrations", $"Pendentes: {string.Join(", ", pendingMigrations)}."));
 
         var versions = await _ctx.Db.TaxRuleVersions.AsNoTracking()
-            .Join(_ctx.Db.TaxRules.AsNoTracking(), v => v.RuleId, r => r.Id, (v, r) => new { v, r.Key }).ToListAsync(ct);
-        var byStatus = versions.GroupBy(x => x.v.Status).ToDictionary(g => g.Key, g => g.Count());
-        items.Add(Info("catalog", "Catálogo", "Versões de regra",
-            string.Join(", ", byStatus.OrderBy(k => k.Key).Select(k => $"{k.Key}: {k.Value}")) + $" (total {versions.Count})."));
-        var activeToday = versions.Where(x => x.v.Status == TaxRuleStatus.Active && x.v.Covers(today)).ToList();
-        var professionallyApproved = activeToday.Count(x => x.v.IsProfessionallyApprovedOn(today));
-        items.Add(professionallyApproved == activeToday.Count && activeToday.Count > 0
-            ? Ok("review", "Revisão profissional", "Revisão profissional", $"Todas as {activeToday.Count} versões ativas hoje aprovadas.")
-            : Warn("review", "Revisão profissional", "Revisão profissional",
-                $"{activeToday.Count - professionallyApproved} de {activeToday.Count} versões ativas hoje sem revisão profissional aprovada — o modo definitivo fica bloqueado."));
-        var pilotApproved = activeToday.Count(x => x.v.IsApprovedForPilotOn(today));
-        items.Add(Info("internal", "Aprovação interna", "Aprovação interna (piloto)", $"{pilotApproved} de {activeToday.Count} versões ativas hoje aprovadas para o piloto."));
+            .Join(_ctx.Db.TaxRules.AsNoTracking(), v => v.RuleId, r => r.Id, (v, r) => new KeyedVersion(r.Key, v)).ToListAsync(ct);
+        var activeToday = versions.Where(x => x.V.Status == TaxRuleStatus.Active && x.V.Covers(today)).ToList();
+        items.AddRange(CatalogueItems(versions, activeToday, today));
+        items.Add(await SourcesItemAsync(ct));
+        await PilotScopeItemsAsync(items, today, ct);
+        var scanner = _files.ScannerConfigured ? "configurada" : "não configurada (arquivos ficam como não verificados)";
+        items.Add(StorageItem($"Disponível; limite {_files.MaxBytes / (1024 * 1024)} MB; verificação de conteúdo {scanner}.", ""));
+        items.AddRange(await PolicyAndCatalogueItemsAsync(today, ct));
 
+        var last = await _ctx.Db.AuditRecords.AsNoTracking().Where(a => a.ActionType.StartsWith("tax_"))
+            .OrderByDescending(a => a.CreatedAt).FirstOrDefaultAsync(ct);
+        var engine = _engines.Current;
+        bool Backed(KeyedVersion x) => x.V.IsApprovedForPilotOn(today) || x.V.IsProfessionallyApprovedOn(today);
+        return new TaxReadinessDto(DateTime.UtcNow, engine.Version, engine.Canonical.Id, TaxCoveragePolicyV1.Version, module, items,
+            activeToday.Where(Backed).Select(x => x.Label).Order().ToList(),
+            activeToday.Where(x => !Backed(x)).Select(x => x.Label).Order().ToList(),
+            versions.Where(x => x.V.Status == TaxRuleStatus.PendingRegulation).Select(x => x.Label).Order().ToList(),
+            last is null ? null : MapAudit(last));
+    }
+
+    private sealed record KeyedVersion(string Key, TaxRuleVersion V)
+    {
+        public string Label => $"{Key} v{V.Version}";
+    }
+
+    /// <summary>Versions by status, and how many of today's carry a professional review and an internal pilot approval.</summary>
+    private static IEnumerable<TaxReadinessItemDto> CatalogueItems(List<KeyedVersion> versions, List<KeyedVersion> activeToday, DateOnly today)
+    {
+        var byStatus = versions.GroupBy(x => x.V.Status).OrderBy(g => g.Key).Select(g => $"{g.Key}: {g.Count()}");
+        yield return Info("catalog", "Catálogo", "Versões de regra", string.Join(", ", byStatus) + $" (total {versions.Count}).");
+        var professionallyApproved = activeToday.Count(x => x.V.IsProfessionallyApprovedOn(today));
+        yield return professionallyApproved == activeToday.Count && activeToday.Count > 0
+            ? Ok("review", LabelReview, LabelReview, $"Todas as {activeToday.Count} versões ativas hoje aprovadas.")
+            : Warn("review", LabelReview, LabelReview,
+                $"{activeToday.Count - professionallyApproved} de {activeToday.Count} versões ativas hoje sem revisão profissional aprovada — o modo definitivo fica bloqueado.");
+        var pilotApproved = activeToday.Count(x => x.V.IsApprovedForPilotOn(today));
+        yield return Info("internal", "Aprovação interna", "Aprovação interna (piloto)", $"{pilotApproved} de {activeToday.Count} versões ativas hoje aprovadas para o piloto.");
+    }
+
+    private async Task<TaxReadinessItemDto> SourcesItemAsync(CancellationToken ct)
+    {
         var sources = await _ctx.Db.TaxLegalSources.AsNoTracking().Select(s => s.TextVerification).ToListAsync(ct);
         var unverified = sources.Count(s => s != TextVerificationStatus.Verified);
-        items.Add(unverified == 0
+        return unverified == 0
             ? Ok("sources", "Fontes", "Fontes jurídicas", $"{sources.Count} fonte(s), texto conferido em todas.")
-            : Warn("sources", "Fontes", "Fontes jurídicas", $"{unverified} de {sources.Count} fonte(s) sem texto conferido (não sustentam ativação de regra)."));
+            : Warn("sources", "Fontes", "Fontes jurídicas", $"{unverified} de {sources.Count} fonte(s) sem texto conferido (não sustentam ativação de regra).");
+    }
 
-        await PilotScopeItemsAsync(items, today, ct);
-        items.Add(_files.State == TaxFileStorageState.Available
-            ? Ok("evidence.storage", "Evidências", "Armazenamento privado",
-                $"Disponível; limite {_files.MaxBytes / (1024 * 1024)} MB; verificação de conteúdo {(_files.ScannerConfigured ? "configurada" : "não configurada (arquivos ficam como não verificados)")}.")
-            : Warn("evidence.storage", "Evidências", "Armazenamento privado", TaxFileStore.UnavailableMessage(_files.State)));
-
+    /// <summary>Materiality, retention, the cClassTrib catalogue and the obligation catalogue.</summary>
+    private async Task<List<TaxReadinessItemDto>> PolicyAndCatalogueItemsAsync(DateOnly today, CancellationToken ct)
+    {
+        var items = new List<TaxReadinessItemDto>();
         var materialityTenants = await _ctx.Db.TaxMaterialityPolicies.IgnoreQueryFilters().AsNoTracking().Select(m => m.TenantId).Distinct().CountAsync(ct);
+        var installationDefault = _state.Policy.MaterialityThreshold is { } threshold ? threshold.ToString("N2") : "nenhum";
         items.Add(Info("materiality", "Políticas", "Materialidade",
-            $"Padrão da instalação: {(_state.Policy.MaterialityThreshold is null ? "nenhum" : _state.Policy.MaterialityThreshold.Value.ToString("N2"))}; {materialityTenants} empresa(s) com política própria."));
+            $"Padrão da instalação: {installationDefault}; {materialityTenants} empresa(s) com política própria."));
         var retention = await _ctx.Db.TaxRetentionPolicies.AsNoTracking().Where(p => p.SupersededAt == null).ToListAsync(ct);
         items.Add(retention.Count == 0
             ? Info("retention", "Políticas", "Retenção", "Nenhuma política: nada é descartado (padrão conservador). O descarte automático não existe.")
@@ -295,23 +348,15 @@ public sealed class TaxModuleService
                 $"{retention.Count(p => p.TenantId == null)} política(s) padrão e {retention.Count(p => p.TenantId != null)} de empresas; descarte automático desligado."));
 
         var codes = await _ctx.Db.TaxClassificationCodes.AsNoTracking().Where(c => c.Kind == TaxClassificationKind.CClassTrib)
-            .Select(c => new { c.Status, c.ProfessionalReview, c.ValidFrom, c.ValidTo }).ToListAsync(ct);
+            .Select(c => new { c.Status, c.ValidFrom, c.ValidTo }).ToListAsync(ct);
         var activeCodes = codes.Count(c => c.Status == TaxClassificationStatus.Active && c.ValidFrom <= today && (c.ValidTo == null || c.ValidTo >= today));
         items.Add(activeCodes > 0
-            ? Ok("classification", "Classificação", "Catálogo cClassTrib", $"{activeCodes} ativo(s) hoje de {codes.Count} cadastrado(s).")
-            : Warn("classification", "Classificação", "Catálogo cClassTrib", $"Nenhum código ativo hoje ({codes.Count} cadastrado(s)): nenhuma operação é calculada."));
+            ? Ok(KeyClassification, AreaClassification, LabelCClassTrib, $"{activeCodes} ativo(s) hoje de {codes.Count} cadastrado(s).")
+            : Warn(KeyClassification, AreaClassification, LabelCClassTrib, $"Nenhum código ativo hoje ({codes.Count} cadastrado(s)): nenhuma operação é calculada."));
         var obligations = await _ctx.Db.TaxObligationDefinitions.AsNoTracking().CountAsync(o => o.Active, ct);
         items.Add(Info("obligations", "Obrigações", "Catálogo de obrigações acessórias",
             obligations == 0 ? "Vazio: avaliações verificadas exigem obrigações cadastradas." : $"{obligations} obrigação(ões) ativa(s)."));
-
-        var last = await _ctx.Db.AuditRecords.AsNoTracking().Where(a => a.ActionType.StartsWith("tax_"))
-            .OrderByDescending(a => a.CreatedAt).FirstOrDefaultAsync(ct);
-        var engine = _engines.Current;
-        return new TaxReadinessDto(DateTime.UtcNow, engine.Version, engine.Canonical.Id, TaxCoveragePolicyV1.Version, module, items,
-            activeToday.Where(x => x.v.IsApprovedForPilotOn(today) || x.v.IsProfessionallyApprovedOn(today)).Select(x => $"{x.Key} v{x.v.Version}").Order().ToList(),
-            activeToday.Where(x => !x.v.IsApprovedForPilotOn(today) && !x.v.IsProfessionallyApprovedOn(today)).Select(x => $"{x.Key} v{x.v.Version}").Order().ToList(),
-            versions.Where(x => x.v.Status == TaxRuleStatus.PendingRegulation).Select(x => $"{x.Key} v{x.v.Version}").Order().ToList(),
-            last is null ? null : MapAudit(last));
+        return items;
     }
 
     /// <summary>The latest refusals of new work across tenants (platform view).</summary>
@@ -346,6 +391,12 @@ public sealed class TaxModuleService
 
     private static TaxModuleActivationDto Map(TaxModuleActivation a)
         => new(a.Id, a.Status, a.Mode, a.DecisionReference, a.Reason, a.ActorName, a.ActorRole, a.CreatedAt);
+
+    /// <summary>The private file storage: available (with the given detail) or why not (a warning — evidence by reference still works).</summary>
+    private TaxReadinessItemDto StorageItem(string available, string unavailableSuffix)
+        => _files.State == TaxFileStorageState.Available
+            ? Ok("evidence.storage", AreaEvidence, LabelStorage, available)
+            : Warn("evidence.storage", AreaEvidence, LabelStorage, TaxFileStore.UnavailableMessage(_files.State) + unavailableSuffix);
 
     private static TaxReadinessItemDto Ok(string key, string area, string label, string detail) => new(key, area, label, TaxReadinessLevel.Ok, detail);
     private static TaxReadinessItemDto Info(string key, string area, string label, string detail) => new(key, area, label, TaxReadinessLevel.Info, detail);

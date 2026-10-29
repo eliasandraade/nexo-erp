@@ -34,7 +34,7 @@ Seção `TaxIntelligence` (variáveis de ambiente no Railway usam `__`, ex.: `Ta
 | `Policy:RequireApprovedRulesForDecisions` | `true` | Decisão exige regras aprovadas no modo |
 | `Policy:LowRisk` / `MediumRisk` / `HighRisk` | auto-aprovação justificada / revisor identificado / aprovador independente | Quem aprova cada risco |
 | `Policy:MaterialityThreshold` | ausente | Padrão da instalação; cada empresa pode ter versão própria |
-| `Evidence:MaxFileSizeMb` | `10` | Limite por arquivo privado |
+| `Evidence:MaxFileSizeMb` | `7` (1–7) | Limite por arquivo privado; a requisição inteira é limitada a 8 MB |
 | `Evidence:RequireScan` | `false` | `true` recusa upload enquanto não houver antivírus configurado |
 
 **Configuração inválida nunca derruba o ERP.** Valores fora do enum, materialidade não positiva ou combinações

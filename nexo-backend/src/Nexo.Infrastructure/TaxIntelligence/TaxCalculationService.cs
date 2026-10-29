@@ -140,7 +140,7 @@ public sealed class TaxCalculationService
 
         _db.TaxTransactions.Add(transaction);
         _db.TaxCalculations.Add(calc);
-        _audit.Record(TaxAuditActions.CalculationCreated, "Calculation", calc.Id,
+        _audit.Record(TaxAuditActions.CalculationCreated, AuditEntity, calc.Id,
             $"Cálculo de {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}: base {output.TotalBase:N2}, tributos {output.TotalTax:N2}.",
             new { source = facts.Source.ToString(), facts.SourceId, inputHash, ruleSetHash, engine = engine.Version, rules = output.Executions.Count,
                 coverage = coverage.PolicyVersion, complianceAssessmentId = compliance?.Id,
@@ -176,7 +176,7 @@ public sealed class TaxCalculationService
     {
         var op = facts.Operation;
         var reasons = coverage.Findings.Select(f => f.LineIndex is null ? f.Message : $"Linha {f.LineIndex}: {f.Message}").ToList();
-        _audit.Record(TaxAuditActions.CalculationRefused, "Calculation", Guid.NewGuid(),
+        _audit.Record(TaxAuditActions.CalculationRefused, AuditEntity, Guid.NewGuid(),
             $"Cálculo recusado ({coverage.Status}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
             new { source = facts.Source.ToString(), facts.SourceId, status = coverage.Status.ToString(), coverage.PolicyVersion, findings = coverage.Findings });
         await _db.SaveChangesAsync(ct);
@@ -193,7 +193,7 @@ public sealed class TaxCalculationService
     private async Task RefuseAsync(TaxOperationFacts facts, TaxGateRefusal refusal, CancellationToken ct, IReadOnlyList<string>? details = null)
     {
         var op = facts.Operation;
-        _audit.Record(TaxAuditActions.CalculationRefused, "Calculation", Guid.NewGuid(),
+        _audit.Record(TaxAuditActions.CalculationRefused, AuditEntity, Guid.NewGuid(),
             $"Cálculo recusado ({refusal.Code}): {op.Description ?? facts.Source.ToString()} em {op.OperationDate:dd/MM/yyyy}.",
             new { source = facts.Source.ToString(), facts.SourceId, refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
         await _db.SaveChangesAsync(ct);
@@ -229,7 +229,7 @@ public sealed class TaxCalculationService
     /// <summary>Records a refused detection with its reason, then answers 422. No opportunity is created.</summary>
     private async Task RefuseDetectionAsync(Guid calculationId, TaxGateRefusal refusal, CancellationToken ct, IReadOnlyList<string>? details = null)
     {
-        _audit.Record(TaxAuditActions.DetectionRefused, "Calculation", calculationId,
+        _audit.Record(TaxAuditActions.DetectionRefused, AuditEntity, calculationId,
             $"Nova detecção de oportunidades recusada ({refusal.Code}).",
             new { refusal.Code, mode = _approvals.Mode.ToString(), notApproved = details });
         await _db.SaveChangesAsync(ct);
@@ -335,7 +335,8 @@ public sealed class TaxCalculationService
         var result = await TaxReproduction.VerifyAsync(stored, _engines,
             (engine, ids) => _catalog.LoadByIdsAsync(ids, engine.Canonical, ct));
 
-        _ctx.Metrics.EngineVerification(!result.EngineAvailable ? "engine_unavailable" : result.Reproducible ? "reproducible" : "not_reproducible");
+        var outcome = result.Reproducible ? "reproducible" : "not_reproducible";
+        _ctx.Metrics.EngineVerification(result.EngineAvailable ? outcome : "engine_unavailable");
         _log.LogInformation("Tax calculation {CalculationId} verification with engine {EngineVersion}: available={Available} reproducible={Reproducible}",
             id, calc.EngineVersion, result.EngineAvailable, result.Reproducible);
         return new TaxCalculationVerificationDto(id, result.Reproducible, result.EngineAvailable,

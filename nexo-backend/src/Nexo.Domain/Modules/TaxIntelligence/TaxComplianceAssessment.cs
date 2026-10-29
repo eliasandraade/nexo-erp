@@ -84,9 +84,7 @@ public class TaxComplianceAssessment : StoreEntity
             SupersedesAssessmentId = supersedes,
         };
         foreach (var r in results)
-            assessment._results.Add(new TaxComplianceObligationResult(tenantId, assessment.Id, r.ObligationCode.Trim().ToUpperInvariant(),
-                r.ObligationName.Trim(), r.Status, r.EvidenceReference, r.EvidenceFileId, r.Remediation, r.RemediationVerifiedOn,
-                r.RemediationVerifiedBy, r.Notes));
+            assessment._results.Add(new TaxComplianceObligationResult(tenantId, assessment.Id, r));
         return assessment;
     }
 

@@ -191,26 +191,8 @@ public class TaxRuleVersion : BaseEntity
     /// </summary>
     public TaxProfessionalReviewRecord RecordProfessionalReview(ProfessionalReviewInput r, DateTime atUtc)
     {
-        if (r.Status == ProfessionalReviewStatus.Pending)
-            throw new DomainException("Pendente é o estado inicial; registre a revisão recebida.", "tax_review_status");
-        if (string.IsNullOrWhiteSpace(r.Reviewer)) throw new DomainException("Informe quem revisou.", "tax_review_reviewer");
-        if (r.RecordedById == Guid.Empty || string.IsNullOrWhiteSpace(r.RecordedByName))
-            throw new DomainException("O registro da revisão identifica quem o fez no sistema.", "tax_review_recorder");
-        if (r.ValidFrom is not null && r.ValidTo is not null && r.ValidTo < r.ValidFrom)
-            throw new DomainException("O fim da validade da revisão é anterior ao início.", "tax_review_validity");
-        if (r.ReviewedOn is { } on && DateOnly.FromDateTime(atUtc).AddDays(1) < on)
-            throw new DomainException("A data da revisão não pode ser futura.", "tax_review_date");
-        var approval = r.Status is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats;
-        if (approval && (string.IsNullOrWhiteSpace(r.Scope) || r.ValidFrom is null))
-            throw new DomainException("Uma aprovação diz o escopo e desde quando vale.", "tax_review_scope");
-        if (approval && !r.CoveredRegimes.Any(x => !string.IsNullOrWhiteSpace(x)))
-            throw new DomainException("Uma aprovação diz a quais regimes do estabelecimento se aplica.", "tax_review_regimes");
-        if (approval && (r.ValidFrom < ValidFrom || (ValidTo is not null && (r.ValidTo is null || r.ValidTo > ValidTo))))
-            throw new DomainException("A aprovação profissional não vai além da vigência da versão.", "tax_review_validity");
-        if (r.Status == ProfessionalReviewStatus.ApprovedWithCaveats && string.IsNullOrWhiteSpace(r.Caveats))
-            throw new DomainException("Aprovação com ressalvas precisa das ressalvas.", "tax_review_caveats");
-        if (r.Status is ProfessionalReviewStatus.ChangesRequired or ProfessionalReviewStatus.Rejected && string.IsNullOrWhiteSpace(r.Notes))
-            throw new DomainException("Uma revisão que pede mudança ou rejeita precisa dizer por quê.", "tax_review_notes");
+        CheckWhoAndWhen(r, atUtc);
+        CheckOutcome(r);
 
         var record = TaxProfessionalReviewRecord.From(Id, ProfessionalReview, r);
         ProfessionalReview = r.Status;
@@ -234,7 +216,43 @@ public class TaxRuleVersion : BaseEntity
         return record;
     }
 
-    private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    /// <summary>A review names the professional (as informed) and who recorded it, and its dates make sense.</summary>
+    private static void CheckWhoAndWhen(ProfessionalReviewInput r, DateTime atUtc)
+    {
+        if (r.Status == ProfessionalReviewStatus.Pending)
+            throw new DomainException("Pendente é o estado inicial; registre a revisão recebida.", "tax_review_status");
+        if (string.IsNullOrWhiteSpace(r.Reviewer)) throw new DomainException("Informe quem revisou.", "tax_review_reviewer");
+        if (r.RecordedById == Guid.Empty || string.IsNullOrWhiteSpace(r.RecordedByName))
+            throw new DomainException("O registro da revisão identifica quem o fez no sistema.", "tax_review_recorder");
+        if (r.ValidFrom is not null && r.ValidTo is not null && r.ValidTo < r.ValidFrom)
+            throw new DomainException("O fim da validade da revisão é anterior ao início.", "tax_review_validity");
+        if (r.ReviewedOn is { } on && DateOnly.FromDateTime(atUtc).AddDays(1) < on)
+            throw new DomainException("A data da revisão não pode ser futura.", "tax_review_date");
+    }
+
+    /// <summary>
+    /// What each outcome must state: an approval its scope, regimes and validity within this version's; caveats when approved with
+    /// caveats; the reason when changes are asked or the rule is rejected.
+    /// </summary>
+    private void CheckOutcome(ProfessionalReviewInput r)
+    {
+        if (r.Status is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats) CheckApproval(r);
+        if (r.Status == ProfessionalReviewStatus.ApprovedWithCaveats && string.IsNullOrWhiteSpace(r.Caveats))
+            throw new DomainException("Aprovação com ressalvas precisa das ressalvas.", "tax_review_caveats");
+        if (r.Status is ProfessionalReviewStatus.ChangesRequired or ProfessionalReviewStatus.Rejected && string.IsNullOrWhiteSpace(r.Notes))
+            throw new DomainException("Uma revisão que pede mudança ou rejeita precisa dizer por quê.", "tax_review_notes");
+    }
+
+    private void CheckApproval(ProfessionalReviewInput r)
+    {
+        if (string.IsNullOrWhiteSpace(r.Scope) || r.ValidFrom is null)
+            throw new DomainException("Uma aprovação diz o escopo e desde quando vale.", "tax_review_scope");
+        if (!r.CoveredRegimes.Any(x => !string.IsNullOrWhiteSpace(x)))
+            throw new DomainException("Uma aprovação diz a quais regimes do estabelecimento se aplica.", "tax_review_regimes");
+        var beyondEnd = ValidTo is not null && (r.ValidTo is null || r.ValidTo > ValidTo);
+        if (r.ValidFrom < ValidFrom || beyondEnd)
+            throw new DomainException("A aprovação profissional não vai além da vigência da versão.", "tax_review_validity");
+    }
 
     public static TaxRuleVersion Create(
         Guid ruleId, int version, DateOnly validFrom, DateOnly? validTo, int priority,

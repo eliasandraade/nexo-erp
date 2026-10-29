@@ -7,36 +7,21 @@ using Nexo.Infrastructure.TaxIntelligence;
 
 namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 
-/// <summary>
-/// Reference data kept by the platform: private documents (professional opinions, catalogue sources), the tax classification catalogue,
-/// the ancillary-obligation catalogue and the default retention policies. Operators read; administrators change.
-/// </summary>
+/// <summary>Private platform documents (professional reviews, catalogue sources): uploaded, listed, downloaded with authorisation, revoked — never deleted.</summary>
 [ApiController]
 [Route("api/platform/tax")]
 [Authorize(Policy = TaxCapabilities.PlatformRead)]
 [Nexo.Api.Filters.ValidateBody]
-public class PlatformTaxReferenceController : ControllerBase
+public class PlatformTaxDocumentsController : ControllerBase
 {
     private readonly TaxDocumentService _documents;
-    private readonly TaxClassificationService _classifications;
-    private readonly TaxComplianceService _compliance;
-    private readonly TaxRetentionService _retention;
 
-    public PlatformTaxReferenceController(TaxDocumentService documents, TaxClassificationService classifications, TaxComplianceService compliance,
-        TaxRetentionService retention)
-    {
-        _documents = documents;
-        _classifications = classifications;
-        _compliance = compliance;
-        _retention = retention;
-    }
-
-    // ── Documents ───────────────────────────────────────────────────────────────
+    public PlatformTaxDocumentsController(TaxDocumentService service) => _documents = service;
 
     /// <summary>Uploads a private document (PDF, image or XML). The hash is the SHA-256 of the bytes received.</summary>
     [HttpPost("documents")]
     [Authorize(Policy = TaxCapabilities.PlatformAdmin)]
-    [RequestSizeLimit(26 * 1024 * 1024)]
+    [RequestSizeLimit(Nexo.Infrastructure.TaxIntelligence.Files.TaxFileOptions.MaxRequestBytes)]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<TaxStoredFileDto>> UploadDocument(IFormFile file, [FromForm] string purpose, [FromForm] string? description,
         CancellationToken ct)
@@ -58,8 +43,18 @@ public class PlatformTaxReferenceController : ControllerBase
     [Authorize(Policy = TaxCapabilities.PlatformAdmin)]
     public async Task<ActionResult<TaxStoredFileDto>> RevokeDocument(Guid id, [FromBody] RevokeTaxFileRequest request, CancellationToken ct)
         => Ok(await _documents.RevokeAsync(id, request, ct));
+}
 
-    // ── Classification catalogue ────────────────────────────────────────────────
+/// <summary>The tax classification catalogue (cClassTrib): imported as drafts from a documented source, activated explicitly, reviewed apart.</summary>
+[ApiController]
+[Route("api/platform/tax")]
+[Authorize(Policy = TaxCapabilities.PlatformRead)]
+[Nexo.Api.Filters.ValidateBody]
+public class PlatformTaxClassificationsController : ControllerBase
+{
+    private readonly TaxClassificationService _classifications;
+
+    public PlatformTaxClassificationsController(TaxClassificationService service) => _classifications = service;
 
     [HttpGet("classifications")]
     public async Task<ActionResult<TaxPage<TaxClassificationCodeDto>>> Classifications([FromQuery] TaxClassificationKind? kind,
@@ -85,8 +80,18 @@ public class PlatformTaxReferenceController : ControllerBase
     public async Task<ActionResult<TaxClassificationCodeDto>> ClassificationReview(Guid id, [FromBody] RecordClassificationReviewRequest request,
         CancellationToken ct)
         => Ok(await _classifications.RecordReviewAsync(id, request, ct));
+}
 
-    // ── Obligation catalogue ────────────────────────────────────────────────────
+/// <summary>The ancillary-obligation catalogue companies assess against.</summary>
+[ApiController]
+[Route("api/platform/tax")]
+[Authorize(Policy = TaxCapabilities.PlatformRead)]
+[Nexo.Api.Filters.ValidateBody]
+public class PlatformTaxObligationsController : ControllerBase
+{
+    private readonly TaxComplianceService _compliance;
+
+    public PlatformTaxObligationsController(TaxComplianceService service) => _compliance = service;
 
     [HttpGet("obligations")]
     public async Task<ActionResult<IReadOnlyList<TaxObligationDefinitionDto>>> Obligations(CancellationToken ct)
@@ -102,8 +107,18 @@ public class PlatformTaxReferenceController : ControllerBase
     public async Task<ActionResult<TaxObligationDefinitionDto>> SetObligationActive(Guid id, [FromBody] SetObligationActiveRequest request,
         CancellationToken ct)
         => Ok(await _compliance.SetObligationActiveAsync(id, request, ct));
+}
 
-    // ── Retention defaults ──────────────────────────────────────────────────────
+/// <summary>Default retention policies of the platform — there is no automatic disposal.</summary>
+[ApiController]
+[Route("api/platform/tax")]
+[Authorize(Policy = TaxCapabilities.PlatformRead)]
+[Nexo.Api.Filters.ValidateBody]
+public class PlatformTaxRetentionController : ControllerBase
+{
+    private readonly TaxRetentionService _retention;
+
+    public PlatformTaxRetentionController(TaxRetentionService service) => _retention = service;
 
     [HttpGet("retention-policies")]
     public async Task<ActionResult<IReadOnlyList<TaxRetentionPolicyDto>>> RetentionPolicies(CancellationToken ct)
@@ -122,16 +137,16 @@ public static class TaxFileResults
     public static IActionResult PrivateFile(this ControllerBase controller, TaxFileDownload file)
     {
         var headers = controller.Response.Headers;
-        headers["X-Content-Type-Options"] = "nosniff";
-        headers["Cache-Control"] = "no-store";
-        headers["Content-Security-Policy"] = "default-src 'none'; sandbox";
+        headers.XContentTypeOptions = "nosniff";
+        headers.CacheControl = "no-store";
+        headers.ContentSecurityPolicy = "default-src 'none'; sandbox";
         headers["X-Content-SHA256"] = file.Sha256;
         return controller.File(file.Content, file.ContentType, file.FileName);
     }
 
     public static IActionResult Csv(this ControllerBase controller, (string FileName, byte[] Content) file)
     {
-        controller.Response.Headers["Cache-Control"] = "no-store";
+        controller.Response.Headers.CacheControl = "no-store";
         return controller.File(file.Content, "text/csv; charset=utf-8", file.FileName);
     }
 }

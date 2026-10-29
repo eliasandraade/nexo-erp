@@ -2,6 +2,8 @@ import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 const base = process.env.REVIEW_URL || 'http://127.0.0.1:5179';
 const phase = process.argv[2] ?? 'after';
+// The phase names a folder under docs/orken-experience/screenshots: a plain name only, never a path.
+if (!/^[a-z0-9-]{1,40}$/.test(phase)) throw new Error(`Invalid phase "${phase}": use letters, digits and hyphens only.`);
 const folder = `../docs/orken-experience/screenshots/${phase}`;
 fs.mkdirSync(folder, { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: "msedge" });

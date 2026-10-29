@@ -145,7 +145,7 @@ public sealed class TaxClassificationService
             .ToDictionaryAsync(x => x.Key, x => x.Status, ct);
         return new TaxPage<TaxItemClassificationDto>(rows.Select(r => new TaxItemClassificationDto(r.c?.Id, r.Id, r.Name, r.Ncm,
             r.c?.ItemKind, r.c?.Ncm, r.c?.Nbs, r.c?.CClassTrib,
-            r.c is null ? null : statusByCode.TryGetValue(r.c.CClassTrib, out var s) ? s : null,
+            CatalogStatusOf(r.c, statusByCode),
             r.c?.Notes, r.c?.SetByName, r.c?.UpdatedAt)).ToList(), total, skip, take);
     }
 
@@ -167,7 +167,16 @@ public sealed class TaxClassificationService
         await _db.SaveChangesAsync(ct);
         var entry = (await CatalogueForAsync([item.CClassTrib], today, ct)).GetValueOrDefault(item.CClassTrib);
         return new TaxItemClassificationDto(item.Id, product.Id, product.Name, product.Ncm, item.ItemKind, item.Ncm, item.Nbs, item.CClassTrib,
-            entry is null ? null : entry.Active ? TaxClassificationStatus.Active : TaxClassificationStatus.Inactive, item.Notes, item.SetByName, item.UpdatedAt);
+            StatusOf(entry), item.Notes, item.SetByName, item.UpdatedAt);
+    }
+
+    private static TaxClassificationStatus? CatalogStatusOf(TaxItemClassification? item, Dictionary<string, TaxClassificationStatus> statusByCode)
+        => item is not null && statusByCode.TryGetValue(item.CClassTrib, out var status) ? status : null;
+
+    private static TaxClassificationStatus? StatusOf(TaxClassificationEntry? entry)
+    {
+        if (entry is null) return null;
+        return entry.Active ? TaxClassificationStatus.Active : TaxClassificationStatus.Inactive;
     }
 
     /// <summary>Classifications of the given products, for the sales reader.</summary>

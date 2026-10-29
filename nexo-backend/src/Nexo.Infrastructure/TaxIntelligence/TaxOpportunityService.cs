@@ -31,6 +31,7 @@ public sealed record TaxOpportunityFilter(
 public sealed class TaxOpportunityService
 {
     private const int MaxList = 200;
+    private const string NotFoundName = "Oportunidade";
     private const string AuditEntity = "Opportunity";
 
     private readonly TaxContext _ctx;
@@ -121,7 +122,7 @@ public sealed class TaxOpportunityService
         var rows = await q.OrderByDescending(o => o.CreatedAt).Skip(skip).Take(take)
             .Select(o => new
             {
-                o, Total = o.Requirements.Count(), Met = o.Requirements.Count(r => r.Met == true),
+                o, Total = o.Requirements.Count, Met = o.Requirements.Count(r => r.Met == true),
             }).ToListAsync(ct);
         return new TaxPage<TaxOpportunitySummaryDto>(rows.Select(x => new TaxOpportunitySummaryDto(x.o.Id, x.o.Type, x.o.ImpactNature, x.o.Status,
             x.o.Title, x.o.Status == TaxOpportunityStatus.Blocked ? null : x.o.EstimatedImpact, x.o.Risk, x.o.Confidence, x.o.CreatedAt,
@@ -131,7 +132,7 @@ public sealed class TaxOpportunityService
     public async Task<TaxOpportunityDto> GetAsync(Guid id, CancellationToken ct)
     {
         var o = await _db.TaxOpportunities.AsNoTracking().Include(x => x.Requirements).Include(x => x.Evidence)
-            .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Oportunidade", id);
+            .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException(NotFoundName, id);
         var decision = await _db.TaxDecisions.AsNoTracking().FirstOrDefaultAsync(d => d.OpportunityId == id, ct);
         var execution = await _db.TaxExecutionVerifications.AsNoTracking().FirstOrDefaultAsync(e => e.OpportunityId == id, ct);
         var (date, regime) = await ReferenceAsync(o, ct);
@@ -234,7 +235,7 @@ public sealed class TaxOpportunityService
     /// <summary>What happened to an opportunity, from the audit trail of this company (newest last).</summary>
     public async Task<IReadOnlyList<TaxTimelineEventDto>> TimelineAsync(Guid id, CancellationToken ct)
     {
-        if (!await _db.TaxOpportunities.AnyAsync(o => o.Id == id, ct)) throw new NotFoundException("Oportunidade", id);
+        if (!await _db.TaxOpportunities.AnyAsync(o => o.Id == id, ct)) throw new NotFoundException(NotFoundName, id);
         var key = id.ToString();
         var tenant = _tenant.Id;
         return (await _db.AuditRecords.AsNoTracking()
@@ -458,7 +459,7 @@ public sealed class TaxOpportunityService
     private async Task<(TaxGovernanceDto Governance, DateOnly ReferenceDate, IReadOnlyList<Guid> RuleIds)> AdmitDecisionAsync(
         Guid id, string what, CancellationToken ct)
     {
-        var o = await _db.TaxOpportunities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException("Oportunidade", id);
+        var o = await _db.TaxOpportunities.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct) ?? throw new NotFoundException(NotFoundName, id);
         if (await _approvals.AdmitDecisionAsync(ct) is { } admission) await RefuseDecisionAsync(o, what, admission, null, ct);
 
         var (referenceDate, regime) = await ReferenceAsync(o, ct);
@@ -493,7 +494,7 @@ public sealed class TaxOpportunityService
         return result.Reproducible;
     }
 
-    private static object EvidenceView(TaxOpportunityEvidence x, IReadOnlyDictionary<Guid, TaxEvidenceFile> files) => new
+    private static object EvidenceView(TaxOpportunityEvidence x, Dictionary<Guid, TaxEvidenceFile> files) => new
     {
         x.Id, type = x.Type.ToString(), x.RequirementId, x.Description, x.DocumentReference, x.ContentHash, x.HashKind, x.Version,
         x.SupersedesEvidenceId, status = x.Status.ToString(), x.Notes, x.AddedByName, x.CreatedAt, x.ReviewedByName, x.ReviewedAt, x.ReviewNotes,
@@ -578,7 +579,7 @@ public sealed class TaxOpportunityService
             $"SELECT 1 FROM nexo.tax_opportunities WHERE id = {id} AND tenant_id = {_tenant.Id} FOR UPDATE", ct);
         return await _db.TaxOpportunities.Include(x => x.Requirements).Include(x => x.Evidence)
                    .AsSplitQuery().FirstOrDefaultAsync(x => x.Id == id, ct)
-               ?? throw new NotFoundException("Oportunidade", id);
+               ?? throw new NotFoundException(NotFoundName, id);
     }
 
     internal async Task SaveAsync(CancellationToken ct)
@@ -596,7 +597,7 @@ public sealed class TaxOpportunityService
                 "tax_engine_unavailable");
 
     private TaxOpportunityDto Map(TaxOpportunity o, TaxDecision? d, TaxExecutionVerification? x, TaxGovernanceDto governance,
-        IReadOnlyDictionary<Guid, TaxEvidenceFile> files, TaxMaterialityInForce materiality)
+        Dictionary<Guid, TaxEvidenceFile> files, TaxMaterialityInForce materiality)
     {
         var blocked = o.Status == TaxOpportunityStatus.Blocked;
         var canonical = EngineOf(o).Canonical;

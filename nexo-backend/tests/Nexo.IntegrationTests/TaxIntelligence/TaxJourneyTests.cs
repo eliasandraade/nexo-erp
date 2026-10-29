@@ -169,7 +169,7 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
             HttpStatusCode.UnprocessableEntity)).Should().Be("tax_file_active_content");
         Code(await UploadEvidenceAsync(gerente, oppId, Pdf("x"), "a.png", "Other", null, "x", HttpStatusCode.UnprocessableEntity))
             .Should().Be("tax_file_extension");
-        Code(await UploadEvidenceAsync(gerente, oppId, new byte[11 * 1024 * 1024], "grande.pdf", "Other", null, "x", HttpStatusCode.UnprocessableEntity))
+        Code(await UploadEvidenceAsync(gerente, oppId, new byte[7 * 1024 * 1024 + 1], "grande.pdf", "Other", null, "x", HttpStatusCode.UnprocessableEntity))
             .Should().BeOneOf("tax_file_too_large", "tax_file_type");
 
         var first = await UploadEvidenceAsync(gerente, oppId, Pdf("v1"), "../../etc/passwd.pdf", "Other", null, "Contrato v1");

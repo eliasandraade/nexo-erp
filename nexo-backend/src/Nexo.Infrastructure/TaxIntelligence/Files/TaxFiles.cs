@@ -15,13 +15,22 @@ public sealed class TaxFileOptions
 {
     public const string Section = "TaxIntelligence:Evidence";
 
-    /// <summary>Largest file accepted, in MB (1–25).</summary>
-    public int MaxFileSizeMb { get; set; } = 10;
+    /// <summary>Largest file the configuration may allow, in MB — keeps the whole multipart request under <see cref="MaxRequestBytes"/>.</summary>
+    public const int MaxAllowedFileSizeMb = 7;
+
+    /// <summary>
+    /// Ceiling of an upload request (file + form fields), enforced by Kestrel before anything is read. 8 MB is enough for fiscal
+    /// documents (NF-e XML, PDF, photos) and bounds what an authenticated caller can make the server buffer.
+    /// </summary>
+    public const long MaxRequestBytes = 8_000_000;
+
+    /// <summary>Largest file accepted, in MB (1–<see cref="MaxAllowedFileSizeMb"/>).</summary>
+    public int MaxFileSizeMb { get; set; } = MaxAllowedFileSizeMb;
 
     /// <summary>When on, a file is accepted only if a configured scanner says it is clean.</summary>
     public bool RequireScan { get; set; }
 
-    public long MaxBytes => Math.Clamp(MaxFileSizeMb, 1, 25) * 1024L * 1024L;
+    public long MaxBytes => Math.Clamp(MaxFileSizeMb, 1, MaxAllowedFileSizeMb) * 1024L * 1024L;
 }
 
 /// <summary>Whether private tax files can be stored and read right now.</summary>
@@ -65,9 +74,15 @@ public sealed class PrivateTaxFileStorage : ITaxFileStorage
     }
 
     public TaxFileStorageState State
-        => !_flags.StorageEnabled ? TaxFileStorageState.Disabled
-            : _env.IsProduction() && string.IsNullOrWhiteSpace(_options.R2.PrivateBucketName) ? TaxFileStorageState.PrivateBucketMissing
-            : TaxFileStorageState.Available;
+    {
+        get
+        {
+            if (!_flags.StorageEnabled) return TaxFileStorageState.Disabled;
+            // In production a missing private bucket would put tax files in the public one: refuse instead.
+            if (_env.IsProduction() && string.IsNullOrWhiteSpace(_options.R2.PrivateBucketName)) return TaxFileStorageState.PrivateBucketMissing;
+            return TaxFileStorageState.Available;
+        }
+    }
 
     public async Task SaveAsync(string key, Stream content, string contentType, long length, CancellationToken ct)
     {
@@ -240,7 +255,7 @@ public sealed class TaxFileStore
         {
             if (buffer.Length + read > _options.MaxBytes)
                 throw new DomainException($"O arquivo passa do limite de {_options.MaxBytes / (1024 * 1024)} MB.", "tax_file_too_large");
-            buffer.Write(chunk, 0, read);
+            await buffer.WriteAsync(chunk.AsMemory(0, read), ct);
         }
         return buffer.ToArray();
     }

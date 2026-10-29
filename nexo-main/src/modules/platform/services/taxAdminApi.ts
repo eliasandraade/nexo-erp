@@ -143,9 +143,12 @@ export interface ImportClassificationItem { code: string; description: string; v
 export function parseClassificationLines(raw: string): { items: ImportClassificationItem[]; errors: string[] } {
   const items: ImportClassificationItem[] = [];
   const errors: string[] = [];
-  raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).forEach((line, i) => {
-    const [code, description, validFrom, validTo] = line.split(";").map((x) => x?.trim() ?? "");
-    const iso = /^\d{4}-\d{2}-\d{2}$/;
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  raw.split(/\r?\n/).forEach((text, i) => {
+    const line = text.trim();
+    if (!line) return;
+    // "Linha N" counts every line as pasted, blank ones included.
+    const [code = "", description = "", validFrom = "", validTo = ""] = line.split(";").map((x) => x.trim());
     if (!code || !description || !iso.test(validFrom) || (validTo && !iso.test(validTo))) errors.push(`Linha ${i + 1}: use código;descrição;AAAA-MM-DD;AAAA-MM-DD(opcional).`);
     else items.push({ code, description, validFrom, validTo: validTo || null, notes: null });
   });

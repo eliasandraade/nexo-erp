@@ -120,8 +120,11 @@ public sealed class TaxDossierExportService
 
     private static string Markdown(TaxDecision d, JsonElement root, TaxExecutionVerification? x)
     {
-        string Get(JsonElement e, string name) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
-            ? v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : v.ToString() : "";
+        static string Get(JsonElement e, string name)
+        {
+            if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty(name, out var v)) return "";
+            return v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : v.ToString();
+        }
         var md = new StringBuilder();
         md.AppendLine($"# Dossiê de decisão — {d.Strategy}");
         md.AppendLine();

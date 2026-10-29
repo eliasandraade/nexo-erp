@@ -204,6 +204,12 @@ function ActivationWizard({ mode, onClose }: Readonly<{ mode: TaxApprovalMode; o
               <>
                 <ReadinessList items={c.items} />
                 {blocked && <TaxRefusal error={new Error("Há pré-condições bloqueando a ativação. Resolva-as e volte ao assistente.")} />}
+                {blocked && c.rulesMissingApproval.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="font-medium">{mode === "ProfessionalFinal" ? "Regras sem revisão profissional válida" : "Regras sem aprovação interna do piloto"}</p>
+                    <ul className="list-disc pl-5">{c.rulesMissingApproval.map((r) => <li key={r} className="font-mono text-xs">{r}</li>)}</ul>
+                  </div>
+                )}
               </>
             )}
             {name === "Regras sem aprovação" && (

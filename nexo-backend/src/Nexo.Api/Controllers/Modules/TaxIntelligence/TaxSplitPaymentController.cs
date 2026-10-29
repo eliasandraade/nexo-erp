@@ -7,6 +7,19 @@ using Nexo.Infrastructure.TaxIntelligence;
 
 namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 
+/// <summary>Filters of the split expectation list (query string).</summary>
+public sealed class SplitListQuery
+{
+    public Guid? CalculationId { get; set; }
+    public SplitReconciliationStatus? Status { get; set; }
+    public TaxType? Tax { get; set; }
+    public DateOnly? From { get; set; }
+    public DateOnly? To { get; set; }
+    public int? MinAgeDays { get; set; }
+    public int Skip { get; set; }
+    public int Take { get; set; } = 100;
+}
+
 /// <summary>Split payment expectations and reconciliation (no provider integrated).</summary>
 [ApiController]
 [Route("api/tax")]
@@ -28,10 +41,8 @@ public class TaxSplitPaymentController : ControllerBase
 
     /// <summary>Expectations with their reconciliation (computed in the database), filtered and paged. An expectation is not a retention.</summary>
     [HttpGet("split/expectations")]
-    public async Task<ActionResult<TaxPage<SplitExpectationDto>>> SplitExpectations(
-        [FromQuery] Guid? calculationId, [FromQuery] SplitReconciliationStatus? status, [FromQuery] TaxType? tax, [FromQuery] DateOnly? from,
-        [FromQuery] DateOnly? to, [FromQuery] int? minAgeDays, [FromQuery] int skip = 0, [FromQuery] int take = 100, CancellationToken ct = default)
-        => Ok(await _split.ListAsync(new SplitFilter(calculationId, status, tax, from, to, minAgeDays, skip, take), ct));
+    public async Task<ActionResult<TaxPage<SplitExpectationDto>>> SplitExpectations([FromQuery] SplitListQuery q, CancellationToken ct)
+        => Ok(await _split.ListAsync(new SplitFilter(q.CalculationId, q.Status, q.Tax, q.From, q.To, q.MinAgeDays, q.Skip, q.Take), ct));
 
     [HttpGet("split/expectations/export")]
     public async Task<IActionResult> ExportSplit([FromQuery] SplitReconciliationStatus? status, [FromQuery] TaxType? tax, [FromQuery] DateOnly? from,
