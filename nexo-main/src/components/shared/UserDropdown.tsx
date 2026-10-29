@@ -76,7 +76,7 @@ export function UserDropdown({ variant = "default" }: UserDropdownProps) {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={logout}
+          onClick={() => logout()}
           className="text-destructive focus:text-destructive cursor-pointer"
         >
           <LogOut className="h-4 w-4 mr-2" />

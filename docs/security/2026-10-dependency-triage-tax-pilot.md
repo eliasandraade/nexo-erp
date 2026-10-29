@@ -25,3 +25,23 @@ As atualizações de versão continuam no PR de dependências separado:
 - Testcontainers;
 - remoção ou atualização do `zod`;
 - React Router v7.
+
+## Atualização — 29/10/2026 (PR #85, issue #83)
+
+| Dependência | Ação | Resultado |
+|---|---|---|
+| `react-router-dom` / `react-router` | 6.30 → **7.18.5** | GHSA-wrjc-x8rr-h8h6 e GHSA-337j-9hxr-rhxg fora do alcance. A v7 navega dentro de uma transição: `logout(to)` passou a receber o destino (o motivo do login vinha numa segunda navegação, que perdia a corrida para o guard da página protegida), e os `onClick={logout}` viraram `() => logout()` |
+| `zod`, `@hookform/resolvers` | **removidos** | Nenhum import em `src`; elimina o único advisory HIGH de produção (GHSA-mrhx-c7xc-m3w5) |
+| `@tailwindcss/typography` | **removido** | Não estava registrado em `tailwind.config.ts` (`max-w-prose` é do core); leva junto o `postcss-selector-parser` 6.0.10 vulnerável |
+| `postcss-selector-parser` (via tailwindcss) | `npm audit fix` | 6.1.5 |
+| `Microsoft.Extensions.Caching.Memory` | fixado em **8.0.1** em `Nexo.Application` | GHSA-qj66-m88j-hmgj |
+| `Testcontainers.PostgreSql` / `SSH.NET` | 3.11.0 (inexistente; resolvia 4.0.0) → **4.16.0** / SSH.NET **2026.0.0** | GHSA-q939-rpr3-3284, GHSA-mggc-4xg6-vcxf (só testes); imagem `postgres:15.1` fixada |
+
+Verificação:
+
+- `dotnet list package --vulnerable --include-transitive`: nenhum pacote vulnerável em nenhum projeto.
+- `npm audit --omit=dev`: **0 vulnerabilidades**.
+- `npm audit` (com dev): restam `tinypool` (crítico), `@vitest/mocker` e `esbuild` (moderados), todos ferramentas de
+  teste/dev local — o runner do Vitest e o servidor de desenvolvimento do Vite, que não vão para o bundle nem para o
+  servidor. A correção exige major (Vitest 5, Vite 8); fica para uma PR de ferramentas, conforme a regra de evitar major
+  desnecessário. Nenhum advisory HIGH aplicável ao produto.

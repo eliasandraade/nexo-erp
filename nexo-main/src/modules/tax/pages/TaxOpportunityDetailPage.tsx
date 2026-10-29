@@ -162,7 +162,7 @@ export default function TaxOpportunityDetailPage() {
                     <DownloadButton path={decisionExportUrl(o.decision.id, true)} fileName={`dossie-${o.decision.id}-com-arquivos.zip`} label="Exportar com os arquivos" />
                   </div>
                 )}
-                {isDirector && <p className="text-xs text-muted-foreground">O ZIP traz o dossiê exatamente como foi congelado, as fontes, o índice das evidências e um manifesto SHA-256 de cada arquivo.</p>}
+                {isDirector && <p className="text-xs text-muted-foreground">O ZIP traz o dossiê exatamente como foi congelado, as fontes, o índice das evidências e um manifesto (`manifesto.json`) com o SHA-256 de cada arquivo.</p>}
                 <ExecutionPanel o={o} canVerify={isDirector && executing} onUpdated={updated} />
               </div>
             ) : (

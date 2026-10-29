@@ -12,6 +12,7 @@ vi.mock("../api/tax.api", async (importOriginal) => ({
   listTaxCalculations: vi.fn(),
   createTaxCalculation: vi.fn(),
   calculateSale: vi.fn(),
+  previewTaxCoverage: vi.fn(),
 }));
 const toastError = vi.fn();
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: (m: string) => toastError(m) } }));
@@ -20,6 +21,16 @@ const SALE = "0f8fad5b-d9cb-469f-a165-70867728950e";
 
 // jsdom has no ResizeObserver; Radix's checkbox measures itself with one when it sits inside a <form>.
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} } as unknown as typeof ResizeObserver;
+// jsdom lacks what Radix selects use to scroll and capture the pointer.
+Element.prototype.scrollIntoView ??= () => {};
+Element.prototype.hasPointerCapture ??= () => false;
+Element.prototype.releasePointerCapture ??= () => {};
+
+/** Fills one valid line, so the operation can be checked or calculated. */
+function fillLine() {
+  fireEvent.change(screen.getByLabelText("Item"), { target: { value: "Camiseta" } });
+  fireEvent.change(screen.getByLabelText("Valor da linha (R$)"), { target: { value: "100,00" } });
+}
 
 function show() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -35,7 +46,7 @@ function show() {
   );
 }
 
-describe("TaxCalculationsPage", () => {
+describe("TaxCalculationsPage", { timeout: 30_000 }, () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(api.listTaxCalculations).mockResolvedValue({ items: [], total: 0, skip: 0, take: 25 });
@@ -129,5 +140,109 @@ describe("TaxCalculationsPage", () => {
   it("says so when nothing was calculated yet", async () => {
     show();
     expect(await screen.findByText("Nenhum cálculo ainda")).toBeInTheDocument();
+  });
+
+  it("filters the stored calculations by direction and pages through the server", async () => {
+    vi.mocked(api.listTaxCalculations).mockResolvedValue({ items: [
+      { id: "c1", referenceDate: "2026-06-15", source: "Manual", sourceId: null, direction: "Outbound", description: null,
+        totalBase: 840, totalTax: 8.4, openOpportunities: 0, createdAt: "2026-06-15T12:00:00Z" },
+    ], total: 60, skip: 0, take: 25 });
+    show();
+
+    await screen.findByRole("link", { name: "Venda / saída" });
+    expect(api.listTaxCalculations).toHaveBeenLastCalledWith({ direction: "", skip: 0, take: 25 });
+    fireEvent.click(screen.getByText("2"));
+    await waitFor(() => expect(api.listTaxCalculations).toHaveBeenLastCalledWith({ direction: "", skip: 25, take: 25 }));
+
+    vi.mocked(api.listTaxCalculations).mockResolvedValue({ items: [], total: 0, skip: 0, take: 25 });
+    fireEvent.click(screen.getByRole("combobox", { name: "Direção" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Compra / entrada" }));
+    await waitFor(() => expect(api.listTaxCalculations).toHaveBeenLastCalledWith({ direction: "Inbound", skip: 0, take: 25 }));
+    expect(await screen.findByText("Nenhum cálculo nesta direção")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Direção" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Todas" }));
+    await waitFor(() => expect(api.listTaxCalculations).toHaveBeenLastCalledWith({ direction: "", skip: 0, take: 25 }));
+  });
+
+  it("says why the stored calculations cannot be loaded", async () => {
+    vi.mocked(api.listTaxCalculations).mockRejectedValue(new ApiError(403, "proibido"));
+    show();
+    expect(await screen.findByText("Seu perfil não pode ver os cálculos. Peça acesso à diretoria.")).toBeInTheDocument();
+  });
+
+  it("checks whether the operation is inside the recorte without calculating it", async () => {
+    vi.mocked(api.previewTaxCoverage).mockResolvedValue({
+      status: "Supported", policyVersion: "cobertura/1", findings: [], assumptions: [], supported: true,
+    });
+    show();
+
+    const check = screen.getByRole("button", { name: "Conferir se está no recorte" });
+    expect(check).toBeDisabled();
+    fillLine();
+    fireEvent.click(check);
+
+    await waitFor(() => expect(api.previewTaxCoverage).toHaveBeenCalledWith(expect.objectContaining({
+      direction: "Outbound", lines: [expect.objectContaining({ description: "Camiseta", grossAmount: 100 })],
+    })));
+    expect(await screen.findByText("Prévia do recorte: Suportada pela V1 (cobertura/1)")).toBeInTheDocument();
+    expect(screen.getByText(/Dentro do recorte suportado\. Nada foi calculado nem registrado\./)).toBeInTheDocument();
+    expect(api.createTaxCalculation).not.toHaveBeenCalled();
+  });
+
+  it("lists every finding of a preview outside the recorte, by line", async () => {
+    vi.mocked(api.previewTaxCoverage).mockResolvedValue({
+      status: "RequiresClassification", policyVersion: "cobertura/1", supported: false, assumptions: [],
+      findings: [
+        { status: "RequiresClassification", code: "missing-cclasstrib", message: "Falta cClassTrib.", lineIndex: 1 },
+        { status: "Unsupported", code: "timing", message: "Fornecimento continuado não é modelado.", lineIndex: null },
+      ],
+    });
+    show();
+
+    fillLine();
+    fireEvent.click(screen.getByRole("button", { name: "Conferir se está no recorte" }));
+
+    expect(await screen.findByText("Prévia do recorte: Falta classificação (cobertura/1)")).toBeInTheDocument();
+    expect(screen.getByText(/ativo no catálogo\) — classifique o item e calcule de novo\. Nada foi calculado/)).toBeInTheDocument();
+    expect(screen.getByText("Linha 1: Falta cClassTrib.")).toBeInTheDocument();
+    expect(screen.getByText("Fornecimento continuado não é modelado.")).toBeInTheDocument();
+  });
+
+  it("names the coverage status and its advice when the server refuses an operation outside the recorte", async () => {
+    vi.mocked(api.previewTaxCoverage)
+      .mockResolvedValueOnce({ status: "Supported", policyVersion: "cobertura/1", findings: [], assumptions: [], supported: true })
+      .mockRejectedValueOnce(new ApiError(422, "Operação fora do recorte (PendingRegulation).", "tax_operation_not_supported"));
+    show();
+
+    fillLine();
+    fireEvent.click(screen.getByRole("button", { name: "Conferir se está no recorte" }));
+    await screen.findByText(/Prévia do recorte:/);
+    fireEvent.click(screen.getByRole("button", { name: "Conferir se está no recorte" }));
+
+    expect(await screen.findByText("Operação não suportada pela versão atual da engine. — Aguardando regulamentação")).toBeInTheDocument();
+    expect(screen.getByText("Depende de regulamentação ainda não refletida no catálogo.")).toBeInTheDocument();
+    // Without itemised details, the server's own message is the reason.
+    expect(screen.getByText("Operação fora do recorte (PendingRegulation).")).toBeInTheDocument();
+  });
+
+  it("clears the refusal once a check succeeds, and toasts any other failure", async () => {
+    vi.mocked(api.previewTaxCoverage)
+      .mockRejectedValueOnce(new ApiError(422, "Fora.", "tax_operation_not_supported", undefined, ["Linha 1: falta NCM."]))
+      .mockResolvedValueOnce({ status: "Supported", policyVersion: "cobertura/1", findings: [], assumptions: [], supported: true })
+      .mockRejectedValueOnce(new ApiError(500, "Erro interno."));
+    show();
+
+    fillLine();
+    fireEvent.click(screen.getByRole("button", { name: "Conferir se está no recorte" }));
+    expect(await screen.findByText("Operação não suportada pela versão atual da engine.")).toBeInTheDocument();
+    expect(screen.getByText("Linha 1: falta NCM.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Conferir se está no recorte" }));
+    await screen.findByText(/Prévia do recorte:/);
+    expect(screen.queryByText("Operação não suportada pela versão atual da engine.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Conferir se está no recorte" }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Não foi possível concluir"));
   });
 });

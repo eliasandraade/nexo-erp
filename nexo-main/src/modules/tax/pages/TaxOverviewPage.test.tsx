@@ -70,6 +70,33 @@ describe("TaxOverviewPage", () => {
 
     expect(await screen.findByText("Nenhum cálculo nos últimos 30 dias")).toBeInTheDocument();
   });
+
+  it("shows the ancillary-obligation assessment in force and the coverage refusals by status", async () => {
+    vi.mocked(api.getTaxOverview).mockResolvedValue(overview({
+      complianceInForce: "Declared", complianceInForceTo: "2026-12-31", coverageRefusals: 5, governanceRefusals: 3,
+      coverageRefusalsByStatus: { RequiresClassification: 2, Unsupported: 2, SomethingNew: 1 } as TaxOverviewDto["coverageRefusalsByStatus"],
+    }));
+    renderTax(<TaxOverviewPage />);
+
+    expect(await screen.findByText("Declarado, não verificado")).toBeInTheDocument();
+    expect(screen.getByText("até 31/12/2026")).toBeInTheDocument();
+    expect(screen.queryByText("Nenhuma avaliação em vigor")).not.toBeInTheDocument();
+    expect(screen.getByText("Recusadas pela governança")).toBeInTheDocument();
+    expect(screen.getByText("Falta classificação").closest("li")).toHaveTextContent("2");
+    expect(screen.getByText("Não suportada").closest("li")).toHaveTextContent("2");
+    expect(screen.getByText("SomethingNew").closest("li")).toHaveTextContent("1");
+  });
+
+  it("shows a verified assessment without an end date and no breakdown when nothing was refused", async () => {
+    vi.mocked(api.getTaxOverview).mockResolvedValue(overview({
+      complianceInForce: "Verified", complianceInForceTo: null, coverageRefusals: 0, coverageRefusalsByStatus: {},
+    }));
+    renderTax(<TaxOverviewPage />);
+
+    expect(await screen.findByText("Verificado no período e escopo")).toBeInTheDocument();
+    expect(screen.queryByText(/^até /)).not.toBeInTheDocument();
+    expect(screen.queryByText("Falta classificação")).not.toBeInTheDocument();
+  });
 });
 
 const version = {

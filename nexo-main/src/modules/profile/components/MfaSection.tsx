@@ -65,7 +65,7 @@ export function MfaSection() {
             <Button size="sm" variant="outline" onClick={() => { void navigator.clipboard.writeText(recovery.join("\n")); toast.success("Códigos copiados."); }}>
               <Copy className="mr-2 h-4 w-4" /> Copiar
             </Button>
-            <Button size="sm" onClick={() => { setRecovery(null); logout(); navigate("/login?motivo=mfa", { replace: true }); }}>Já guardei — entrar de novo</Button>
+            <Button size="sm" onClick={() => { setRecovery(null); logout("/login?motivo=mfa"); }}>Já guardei — entrar de novo</Button>
           </div>
         </div>
       )}

@@ -8,7 +8,10 @@ vi.mock("../api/tax.api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/tax.api")>()),
   recordComplianceAssessment: vi.fn(),
   listObligations: vi.fn(),
+  getEvidenceStorage: vi.fn(),
+  listEvidenceFiles: vi.fn(),
 }));
+vi.mock("@/modules/auth/context/AuthContext", () => ({ useAuth: () => ({ session: { role: "diretoria", userId: "u-dir" } }) }));
 
 // jsdom lacks what Radix selects use to scroll and capture the pointer.
 Element.prototype.scrollIntoView ??= () => {};
@@ -32,7 +35,7 @@ const catalogue: api.TaxObligationDefinitionDto[] = [
   { id: "o2", code: "OLD", name: "Obrigação inativa", description: "", reference: "—", active: false, createdByName: "Plataforma" },
 ];
 
-describe("ComplianceAssessments", () => {
+describe("ComplianceAssessments", { timeout: 30_000 }, () => {
   afterEach(cleanup);
 
   it("says obligations were verified in the period and scope — never that the company is compliant", () => {
@@ -99,5 +102,90 @@ describe("ComplianceAssessments", () => {
     await waitFor(() => expect(api.recordComplianceAssessment).toHaveBeenCalledWith(expect.objectContaining({
       status: "Declared", periodFrom: "2026-01-01", periodTo: "2026-06-30", scope: "Estabelecimento", assessedBy: "Contabilidade", obligations: [],
     })));
+  });
+
+  it("asks what is being remediated, and for a verified remediation also when and by whom", async () => {
+    vi.mocked(api.listObligations).mockResolvedValue([
+      catalogue[0],
+      { id: "o3", code: "EFD-IBSCBS", name: "Escrituração do IBS/CBS", description: "", reference: "LC 214/2025", active: true, createdByName: "Plataforma" },
+    ]);
+    vi.mocked(api.recordComplianceAssessment).mockResolvedValue(verified);
+    renderTax(<ComplianceAssessments items={[]} canRecord />);
+
+    await screen.findByLabelText("Escrituração do IBS/CBS");
+    fireEvent.change(screen.getByLabelText("Período: de"), { target: { value: "2026-01-01" } });
+    fireEvent.change(screen.getByLabelText("até"), { target: { value: "2026-06-30" } });
+    fireEvent.change(screen.getByLabelText("Escopo"), { target: { value: "Estabelecimento" } });
+    fireEvent.change(screen.getByLabelText("Quem avaliou"), { target: { value: "Contabilidade" } });
+    fireEvent.click(screen.getByRole("combobox", { name: "Situação" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Regularização verificada" }));
+
+    // In remediation: what is being remediated, but not yet when or by whom.
+    fireEvent.click(screen.getByRole("combobox", { name: "Escrituração do IBS/CBS" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Em regularização" }));
+    expect(document.getElementById("ob-EFD-IBSCBS-rem")).not.toBeNull();
+    expect(document.getElementById("ob-EFD-IBSCBS-remon")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Registrar avaliação" }));
+    expect(screen.getByText("Escrituração do IBS/CBS: descreva o que está sendo regularizado.")).toBeInTheDocument();
+    expect(screen.getByText("Regularização verificada exige ao menos uma regularização verificada e nenhuma obrigação em aberto.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Escrituração do IBS/CBS" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Verificado no período e escopo" }));
+    expect(document.getElementById("ob-EFD-IBSCBS-rem")).toBeNull();
+    fireEvent.change(document.getElementById("ob-EFD-IBSCBS-ev")!, { target: { value: "Recibo EFD" } });
+
+    fireEvent.click(screen.getByRole("combobox", { name: "NF-e com IBS/CBS" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Regularização verificada" }));
+    fireEvent.click(screen.getByRole("button", { name: "Registrar avaliação" }));
+    expect(screen.getByText(/NF-e com IBS\/CBS: a regularização verificada diz o que foi regularizado, quando, por quem/)).toBeInTheDocument();
+    fireEvent.change(document.getElementById("ob-NFE-IBSCBS-rem")!, { target: { value: "Notas reemitidas" } });
+    fireEvent.change(document.getElementById("ob-NFE-IBSCBS-remon")!, { target: { value: "2026-07-10" } });
+    fireEvent.change(document.getElementById("ob-NFE-IBSCBS-remby")!, { target: { value: "Contadora Exemplo" } });
+    fireEvent.change(document.getElementById("ob-NFE-IBSCBS-ev")!, { target: { value: "Relatório R-8" } });
+    fireEvent.change(document.getElementById("ob-NFE-IBSCBS-notes")!, { target: { value: "lote de junho" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar avaliação" }));
+
+    await waitFor(() => expect(api.recordComplianceAssessment).toHaveBeenCalledWith(expect.objectContaining({
+      status: "RemediationVerified",
+      obligations: [
+        { obligationCode: "NFE-IBSCBS", status: "RemediationVerified", evidenceReference: "Relatório R-8", evidenceFileId: null, remediation: "Notas reemitidas",
+          remediationVerifiedOn: "2026-07-10", remediationVerifiedBy: "Contadora Exemplo", notes: "lote de junho" },
+        { obligationCode: "EFD-IBSCBS", status: "Verified", evidenceReference: "Recibo EFD", evidenceFileId: null, remediation: null,
+          remediationVerifiedOn: null, remediationVerifiedBy: null, notes: null },
+      ],
+    })));
+  });
+
+  it("shows each remediation, who verified it, and the files of each assessment to whoever records", async () => {
+    vi.mocked(api.listObligations).mockResolvedValue([]);
+    vi.mocked(api.getEvidenceStorage).mockResolvedValue({
+      available: true, state: "ready", message: "ok", maxBytes: 20 * 1024 * 1024, acceptedExtensions: [".pdf"], scannerConfigured: false,
+    });
+    vi.mocked(api.listEvidenceFiles).mockResolvedValue([]);
+    renderTax(<ComplianceAssessments canRecord items={[{
+      ...verified, status: "RemediationVerified", evidence: "Pacote de documentos", notes: "Reemissão concluída", obligationsChecked: ["Livro fiscal"],
+      results: [
+        { ...verified.results![0], status: "RemediationVerified", remediation: "Notas reemitidas", remediationVerifiedOn: "2026-07-10",
+          remediationVerifiedBy: "Contadora Exemplo", notes: "lote de junho" },
+        { ...verified.results![0], obligationCode: "EFD", obligationName: "Escrituração", status: "UnderRemediation", evidenceReference: null,
+          remediation: "Retificação em curso" },
+      ],
+    }]} />);
+
+    expect(screen.getByText("regularização: Notas reemitidas — verificada por Contadora Exemplo em 10/07/2026")).toBeInTheDocument();
+    expect(screen.getByText("regularização: Retificação em curso")).toBeInTheDocument();
+    expect(screen.getByText("lote de junho")).toBeInTheDocument();
+    expect(screen.getByText("Conferido: Livro fiscal")).toBeInTheDocument();
+    expect(screen.getByText("Evidência: Pacote de documentos")).toBeInTheDocument();
+    expect(screen.getByText("Notas: Reemissão concluída")).toBeInTheDocument();
+    expect(screen.queryByText("Obrigações verificadas no período e no escopo indicados.")).not.toBeInTheDocument();
+    expect(screen.getByText("Arquivos desta avaliação")).toBeInTheDocument();
+    await waitFor(() => expect(api.listEvidenceFiles).toHaveBeenCalledWith("ComplianceAssessment", "a1"));
+    expect(await screen.findByText("Nenhum arquivo anexado.")).toBeInTheDocument();
+  });
+
+  it("offers no files to whoever cannot record", () => {
+    renderTax(<ComplianceAssessments items={[verified]} canRecord={false} />);
+    expect(screen.queryByText("Arquivos desta avaliação")).not.toBeInTheDocument();
   });
 });

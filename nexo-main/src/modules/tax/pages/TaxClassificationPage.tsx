@@ -123,7 +123,8 @@ function ClassifyDialog({ item, onClose }: Readonly<{ item: TaxItemClassificatio
   ];
   const save = useMutation({
     mutationFn: () => setItemClassification(item.productId, {
-      itemKind: kind, ncm: ncm.trim() || null, nbs: nbs.trim() || null, cClassTrib: code.trim(), notes: notes.trim() || null,
+      // Only the code of the chosen kind is sent: a hidden field never carries a stale value into the record.
+      itemKind: kind, ncm: kind === "Good" ? ncm.trim() || null : null, nbs: kind === "Service" ? nbs.trim() || null : null, cClassTrib: code.trim(), notes: notes.trim() || null,
     }),
     onSuccess: (r) => {
       toast.success(r.catalogStatus === "Active" ? "Classificação registrada." : "Classificação registrada — mas o código não está ativo no catálogo: a operação continua fora do recorte.");
