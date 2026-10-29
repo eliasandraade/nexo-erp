@@ -19,6 +19,16 @@ public static class Totp
     /// <summary>A new 160-bit secret (the size RFC 4226 recommends for SHA-1).</summary>
     public static byte[] NewSecret() => RandomNumberGenerator.GetBytes(20);
 
+    /// <summary>
+    /// Whether what the user typed is shaped like an authenticator code: only digits (spaces and
+    /// dashes allowed as separators) and exactly <see cref="Digits"/> of them. Anything with a letter
+    /// is a recovery code — they mix letters and digits, and one with six digits must not be read as TOTP.
+    /// </summary>
+    public static bool LooksLikeCode(string? input)
+        => !string.IsNullOrWhiteSpace(input)
+           && input.All(c => char.IsAsciiDigit(c) || c is ' ' or '-')
+           && input.Count(char.IsAsciiDigit) == Digits;
+
     public static long StepAt(DateTime utc) => new DateTimeOffset(utc, TimeSpan.Zero).ToUnixTimeSeconds() / (long)Step.TotalSeconds;
 
     public static string Code(byte[] secret, long step)

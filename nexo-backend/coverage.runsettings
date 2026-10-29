@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Code coverage of the backend tests (Microsoft Code Coverage, shipped with Microsoft.NET.Test.Sdk —
+  no extra package). Measures the product assemblies only, never the test assemblies, and writes the
+  Visual Studio XML format that SonarCloud imports for C# (sonar.cs.vscoveragexml.reportsPaths).
+  Used by .github/workflows/backend-tests.yml and sonarcloud.yml, passing this file as the test
+  settings and collecting "Code Coverage".
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="Code Coverage">
+        <Configuration>
+          <Format>xml</Format>
+          <CodeCoverage>
+            <ModulePaths>
+              <Include>
+                <ModulePath>.*Nexo\.Api\.dll$</ModulePath>
+                <ModulePath>.*Nexo\.Application\.dll$</ModulePath>
+                <ModulePath>.*Nexo\.Domain\.dll$</ModulePath>
+                <ModulePath>.*Nexo\.Infrastructure\.dll$</ModulePath>
+                <ModulePath>.*Nexo\.Shared\.dll$</ModulePath>
+              </Include>
+            </ModulePaths>
+            <Attributes>
+              <Exclude>
+                <Attribute>^System\.CodeDom\.Compiler\.GeneratedCodeAttribute$</Attribute>
+                <Attribute>^System\.Diagnostics\.CodeAnalysis\.ExcludeFromCodeCoverageAttribute$</Attribute>
+              </Exclude>
+            </Attributes>
+            <Sources>
+              <Exclude>
+                <!-- EF migrations are generated schema scripts, not product logic. -->
+                <Source>.*[\\/]Persistence[\\/]Migrations[\\/].*</Source>
+              </Exclude>
+            </Sources>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

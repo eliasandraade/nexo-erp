@@ -1,0 +1,58 @@
+# ORKEN Tax Intelligence
+
+Domínio tributário próprio do ORKEN. Os módulos operacionais (vendas, compras, serviços, financeiro) fornecem **fatos**; o Tax Intelligence responde **qual é o tratamento tributário** daquela operação, para aquele estabelecimento, naquela data, com as regras vigentes — e guarda tudo o que é preciso para reconstruir essa resposta anos depois.
+
+| Documento | Conteúdo |
+|---|---|
+| [architecture.md](architecture.md) | Camadas, entidades, fluxo, multi-tenancy, permissões, segurança |
+| [rule-engine.md](rule-engine.md) | Vocabulário das regras, avaliação, versionamento temporal, como criar e testar uma regra |
+| [audit-model.md](audit-model.md) | Hashes, reprodução de cálculo histórico, trilha de auditoria, dossiê de decisão |
+| [legal-sources.md](legal-sources.md) | Fontes jurídicas usadas, o que foi conferido e como adicionar uma fonte |
+| [final-tax-review.md](final-tax-review.md) | **Homologação final** — o que mudou após a revisão e o que o profissional precisa confirmar |
+| [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md) | **Aprovação interna para piloto controlado** (decisão de produto e governança, não parecer profissional): versões aprovadas, ressalvas, riscos aceitos, critérios de suspensão |
+| [homologation/example-dossier.md](homologation/example-dossier.md) | Dossiê real de exemplo gerado pelo sistema (dados de teste), executado como piloto controlado |
+| [supported-operations.md](supported-operations.md) | Matriz de operações suportadas pela V1 (fail closed) |
+| [roadmap.md](roadmap.md) | Limitações atuais e próximos passos |
+| [adr-0001-versioned-isolated-tax-rules.md](adr-0001-versioned-isolated-tax-rules.md) | Decisão: regras tributárias versionadas e isoladas dos domínios operacionais |
+| [adr-0002-engine-versioning-and-review.md](adr-0002-engine-versioning-and-review.md) | Decisão: engine e forma canônica versionadas; texto conferido ≠ revisão profissional |
+| [adr-0003-controlled-pilot-approval.md](adr-0003-controlled-pilot-approval.md) | Decisão: aprovação interna para piloto controlado como dimensão separada da revisão profissional |
+
+## O que existe na v1
+
+- **Perfil tributário versionado por estabelecimento** (regime, UF, município, CNAEs, regimes especiais, benefícios, obrigações acessórias). Mudar de regime cria uma nova versão; nada é apagado.
+- **Catálogo de regras versionado** (plataforma), com fontes jurídicas literais conferidas no texto oficial. Uma versão ativa nunca é editada.
+- **Engine determinística e versionada** (`orken-tax-engine/1.0.0`, forma canônica `orken-canonical/1`, congeladas): mesmo input + mesmas versões de regra = mesmo resultado, byte a byte. Cada cálculo guarda input, hashes, versões usadas e o rastro de cada regra.
+- **Cálculo oficial idempotente e verificável** (`POST /api/tax/calculations/{id}/verify` reexecuta **com a engine exata do cálculo** e compara o hash; se ela não estiver disponível, diz que não pode reproduzir).
+- **Revisão profissional separada da conferência de texto.** As fontes têm o texto conferido. Cada versão de regra tem a sua revisão tributária, com escopo, validade, premissas e ressalvas; todas estão `Pending` no catálogo V1.
+- **Aprovação interna para piloto controlado separada da revisão profissional.** O Product Owner decidiu liberar as nove versões ativas de 2026 para o piloto. No sistema, essa decisão só se efetiva por ações explícitas e auditadas da plataforma: a migration não aprova nada. A revisão profissional continua `Pending`. O modo `ControlledPilot` aceita a aprovação interna; o modo `ProfessionalFinal` só aceita a profissional.
+- **Fail closed por padrão.** Sem configuração, o módulo fica desligado (`Enabled=false`) e sem modo de aprovação (`Mode=Disabled`). O piloto exige configuração explícita, um escopo de empresas e lojas mantido pela plataforma e regras tecnicamente ativas e aprovadas. É um modo sombra: nunca altera nada fiscal, contábil ou financeiro automaticamente.
+- **Recorte explícito (fail closed).** Operação fora do que a V1 modela não é calculada: o sistema recusa e diz por quê.
+- **Obrigações acessórias por período e escopo**, com estados de regularização e PNCT. Só a verificação conta para as regras.
+- **Cenário e execução separados.** A aprovação do cenário não declara documento futuro; a execução é verificada depois, com o documento fiscal.
+- **Créditos em ciclo de vida.** Um crédito potencial não é elegível, apropriado nem disponível.
+- **Simulação** de cenários (regime, data, linhas, descontos, hipóteses de alíquota, crédito) que **não grava nada oficial**.
+- **Oportunidades** com risco, confiança, requisitos, evidências, guardrails contra estruturas proibidas e workflow Identificada → Em análise → Aprovada/Rejeitada/Bloqueada. Nada é aplicado automaticamente.
+- **Dossiê de decisão** imutável na aprovação.
+- **Credit Hunter (fundação):** ledger de créditos IBS/CBS só de lançamentos, segregado por tributo.
+- **Split payment (fundação):** retenção esperada a partir do cálculo, registro manual da retenção real e conciliação. Nenhum provedor integrado.
+- **Telas** em `/tributos` (visão geral, perfil, cálculos, simulações, oportunidades, créditos, regras e fontes).
+
+## Primeiro vertical slice
+
+**Desconto condicional × incondicional no IBS/CBS de 2026** (LC 214/2025, art. 12, § 1º, III; § 2º, III; § 3º; arts. 343, 346 e 348). Uma proposta com desconto sob condição é calculada; o detector propõe concedê-lo sem condição e destacado na nota; a simulação mostra a diferença; os requisitos legais viram checklist; a resposta "o desconto ainda depende de evento posterior" bloqueia a oportunidade como divergência entre documento e operação; a aprovação (Diretoria) grava o dossiê. Detalhes em [architecture.md](architecture.md#vertical-slice).
+
+## Estado
+
+```
+INSTALAÇÃO SEM CONFIGURAÇÃO:  TAX INTELLIGENCE DISABLED · APPROVAL MODE Disabled · NOTHING RUNS
+PILOTO, APÓS ATIVAÇÃO EXPLÍCITA:
+  INTERNAL PILOT APPROVAL: APPROVED (versão a versão, por ação auditada da plataforma)
+  PROFESSIONAL REVIEW:     PENDING
+  CONTROLLED PILOT:        ENABLED (Enabled + Mode=ControlledPilot + escopo de participantes)
+  UNSUPPORTED OPERATIONS:  FAIL CLOSED
+  PENDING REGULATION:      BLOCKED
+```
+
+## Aviso
+
+O catálogo inicial reproduz literalmente dispositivos da LC 214/2025 conferidos no texto compilado do Planalto em 26/10/2026. **Isso não é parecer jurídico.** Nenhuma regra está marcada como aprovada por profissional. Em 27/10/2026 o Product Owner da Andrade Systems aprovou o recorte de 2026 para **piloto controlado** — uma *INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT*, registrada em [homologation/internal-pilot-approval-2026.md](homologation/internal-pilot-approval-2026.md), que **não é parecer profissional** e que só se efetiva pelas ações explícitas da plataforma descritas ali. Antes da produção definitiva (`ProfessionalFinal`), um profissional tributário deve revisar o catálogo, os requisitos do detector e os textos das telas — ver [roadmap.md](roadmap.md#o-que-depende-do-profissional-tributário).

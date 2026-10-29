@@ -1,0 +1,61 @@
+import type { ReactElement } from "react";
+import { render } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { TaxOpportunityDto } from "../api/tax.api";
+import { ENGINE_SCENARIOS } from "./engineFixture";
+
+/** Renders inside the providers the tax screens rely on (router links, React Query). */
+export function renderTax(ui: ReactElement, { path = "/", route = "/" }: { path?: string; route?: string } = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[route]}>
+        <Routes><Route path={path} element={ui} /></Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+/** An opportunity as the API returns it, built on the real engine scenarios. */
+export function opportunity(over: Partial<TaxOpportunityDto> = {}): TaxOpportunityDto {
+  return {
+    id: "op-1", type: "CalculatedTaxReduction", impactNature: "CalculatedTaxReduction", status: "InReview",
+    title: "Conceder o desconto como incondicional",
+    summary: "R$ 50.00 de desconto concedido sob condição integram a base do IBS e da CBS.",
+    detectorKey: "unconditional-discount@3", engineVersion: "orken-tax-engine/1.0.0", sourceCalculationId: "calc-1", estimatedImpact: 0.5, risk: "Low", confidence: 90,
+    legalSourceCodes: ["LC214-2025-ART12-P2-III-P3"], caveats: "Muda a condição comercial.",
+    blockedAs: null, blockReason: null, rejectionReason: null, reviewStartedByName: "Gerente", reviewedByName: "Gerente", reviewedAt: "2026-10-27T12:00:00Z",
+    createdAt: "2026-10-27T11:00:00Z", professionalReviewPending: true, requiredApproval: "SelfApprovalWithJustification",
+    governance: {
+      mode: "ControlledPilot", policy: "orken-pilot-approval/1", enforced: true,
+      nature: "INTERNAL PRODUCT / GOVERNANCE APPROVAL FOR CONTROLLED PILOT", notice: "Não constitui parecer profissional.",
+      effectsNotice: "Piloto controlado — resultados para análise e validação. Não executa alteração fiscal, contábil ou financeira automaticamente.",
+      pilotScope: { decisionReference: "DEC-PILOTO", validFrom: "2026-01-01", validTo: null, activatedByName: "Operador", activatedAt: "2026-10-28T10:00:00Z" },
+      rules: [{ ruleVersionId: "v3", key: "IBSCBS.BASE.UNCONDITIONAL-DISCOUNT", version: 1, technicalStatus: "Active",
+        internalApproval: "ApprovedForControlledPilot", approvedForPilot: true, internalApprovalPolicy: "orken-pilot-approval/1",
+        internalApprovedById: "u-platform", internalApprovedBy: "Operador", internalApprovedByRole: "Platform",
+        internalApprovedAt: "2026-10-28T10:00:00Z", internalApprovalScope: "Recorte 2026", internalApprovalValidFrom: "2026-01-01",
+        internalApprovalValidTo: "2026-12-31", pilotCaveats: "Desconto escrito na NF não é automaticamente incondicional.",
+        internalApprovalDecisionRef: "DEC-REGRA-1",
+        professionalReview: "Pending", professionallyApproved: false, professionalReviewScope: null, professionalCaveats: null }],
+      notApproved: [], professionalReviewPending: ["IBSCBS.BASE.UNCONDITIONAL-DISCOUNT v1"], decisionReferences: ["DEC-REGRA-1"],
+    },
+    requirements: [
+      { id: "r1", code: "commercial-terms", text: "Um instrumento comercial sustenta o preço com o desconto sem condição.", legalSourceCode: null,
+        met: true, note: null, answeredByName: "Gerente", answeredAt: "2026-10-27T12:00:00Z",
+        phase: "ScenarioApproval", requiredEvidence: "CommercialInstrument", hasRequiredEvidence: true },
+      { id: "r2", code: "no-later-event", text: "O desconto não depende de evento posterior.", legalSourceCode: "LC214-2025-ART12-P2-III-P3",
+        met: null, note: null, answeredByName: null, answeredAt: null, phase: "ScenarioApproval", requiredEvidence: null, hasRequiredEvidence: true },
+      { id: "r3", code: "on-document", text: "O desconto consta do documento fiscal autorizado da operação.", legalSourceCode: "LC214-2025-ART12-P2-III-P3",
+        met: null, note: null, answeredByName: null, answeredAt: null, phase: "ExecutionVerification", requiredEvidence: "FiscalDocument", hasRequiredEvidence: false },
+    ],
+    evidence: [
+      { id: "e1", type: "CommercialInstrument", requirementId: "r1", description: "Pedido com o preço já reduzido", documentReference: "PED-1",
+        contentHash: "ab", notes: null, status: "Submitted", addedByName: "Gerente", createdAt: "2026-10-27T12:00:00Z",
+        reviewedByName: null, reviewedAt: null, reviewNotes: null },
+    ],
+    current: ENGINE_SCENARIOS[0], proposed: ENGINE_SCENARIOS[1], decision: null, execution: null,
+    ...over,
+  } as TaxOpportunityDto;
+}

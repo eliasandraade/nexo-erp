@@ -58,4 +58,17 @@ public class TotpTests
         protector.Unprotect("v1:" + Convert.ToBase64String(raw), owner).Should().BeNull("tampered");
         protector.HashRecoveryCode("abcdefghjk").Should().HaveLength(64).And.NotBe(protector.HashRecoveryCode("abcdefghjm"));
     }
+
+    [Theory]
+    [InlineData("123456", true)]
+    [InlineData("123 456", true)]
+    [InlineData("123-456", true)]
+    [InlineData("12345", false)]
+    [InlineData("1234567", false)]
+    [InlineData("2a345-67b89", false)]   // a recovery code with exactly six digits is still a recovery code
+    [InlineData("abcde-fghjk", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void An_authenticator_code_is_six_digits_and_nothing_else(string? input, bool expected)
+        => Totp.LooksLikeCode(input).Should().Be(expected);
 }

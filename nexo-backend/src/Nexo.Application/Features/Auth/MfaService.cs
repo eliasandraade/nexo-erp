@@ -135,8 +135,9 @@ public sealed class MfaService : IMfaChallengeService
     /// </summary>
     public async Task<bool> CheckCodeAsync(User user, string? code, string? recoveryCode, CancellationToken ct = default)
     {
-        var digits = new string((code ?? string.Empty).Where(char.IsAsciiDigit).ToArray());
-        if (string.IsNullOrWhiteSpace(recoveryCode) && !string.IsNullOrWhiteSpace(code) && digits.Length != Totp.Digits)
+        // A recovery code typed in the code field: decided by shape, not by counting digits — a recovery
+        // code with exactly six digits used to be taken for an authenticator code and refused.
+        if (string.IsNullOrWhiteSpace(recoveryCode) && !string.IsNullOrWhiteSpace(code) && !Totp.LooksLikeCode(code))
             recoveryCode = code;
 
         if (!string.IsNullOrWhiteSpace(recoveryCode))

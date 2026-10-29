@@ -62,8 +62,9 @@ public class CurrentUserService : ICurrentUser
         }
     }
 
+    /// <summary>Display name; a platform operator's token has no name, so its login e-mail identifies it.</summary>
     public string Name
-        => Principal?.FindFirstValue("name") ?? "Unknown";
+        => Principal?.FindFirstValue("name") ?? Principal?.FindFirstValue(ClaimTypes.Email) ?? Principal?.FindFirstValue("email") ?? "Unknown";
 
     public string Role
         => Principal?.FindFirstValue("role")

@@ -32,10 +32,13 @@ jobs:
       - name: Build
         run: dotnet build Nexo.sln --no-restore
 
+      # Coverage: Microsoft Code Coverage (comes with the test SDK), product assemblies only,
+      # VS XML format — the format SonarCloud imports for C#. See coverage.runsettings.
       - name: Unit tests
         run: >-
           dotnet test tests/Nexo.UnitTests/Nexo.UnitTests.csproj
           --no-build --logger "console;verbosity=normal"
+          --settings coverage.runsettings --collect "Code Coverage" --results-directory TestResults/unit
 
       # Integration tests spin up a real PostgreSQL via Testcontainers — the ubuntu-latest
       # runner has Docker available.
@@ -43,3 +46,21 @@ jobs:
         run: >-
           dotnet test tests/Nexo.IntegrationTests/Nexo.IntegrationTests.csproj
           --no-build --logger "console;verbosity=normal"
+          --settings coverage.runsettings --collect "Code Coverage" --results-directory TestResults/integration
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          reports=$(find TestResults -name '*.xml' -print)
+          if [ -n "$reports" ]; then
+            { echo "### Backend line coverage (unit + integration)"; echo; python3 tools/coverage_summary.py $reports; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: nexo-backend/TestResults/**/*.xml
+          if-no-files-found: ignore
+          retention-days: 14

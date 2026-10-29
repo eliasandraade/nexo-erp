@@ -44,8 +44,18 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Unit tests
-        run: npm test
+      # Same Vitest run, with coverage: lcov for SonarCloud and a text summary in the log.
+      - name: Unit tests (with coverage)
+        run: npm run test:coverage
+
+      - name: Coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: nexo-main/coverage/lcov.info
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Build
         run: npm run build

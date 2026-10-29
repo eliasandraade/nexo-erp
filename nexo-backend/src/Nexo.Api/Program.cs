@@ -336,6 +336,10 @@ try
             Description = "Backend for Nexo ERP — Gestão inteligente para empresas reais.",
         });
 
+        // Nested request records (e.g. PlatformController.ResetPasswordRequest) clashed with top-level
+        // types of the same name and broke the whole document; nested types are now qualified.
+        opts.CustomSchemaIds(Nexo.Api.OpenApiSchemaIds.For);
+
         // Enable Bearer token in Swagger UI
         opts.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
         {

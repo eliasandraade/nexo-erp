@@ -1,0 +1,107 @@
+name: sonarcloud
+
+# CI-based SonarCloud analysis WITH test coverage (backend: Microsoft Code Coverage XML;
+# frontend: Vitest lcov). SonarCloud's Automatic Analysis — what runs today — cannot import
+# coverage, which is why new code always showed 0.0%.
+#
+# Inert until the owner switches the project to CI-based analysis (docs/engineering/SONARCLOUD_COVERAGE.md):
+#   1. SonarCloud → project → Administration → Analysis Method → turn OFF Automatic Analysis;
+#   2. GitHub → repository → Settings → Secrets → Actions → add SONAR_TOKEN.
+# Without SONAR_TOKEN every step below is skipped and the job passes, so nothing changes until then.
+# (With the token but Automatic Analysis still on, SonarCloud rejects the CI analysis — do step 1 first.)
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: sonarcloud-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sonarcloud:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - name: Is CI-based analysis configured?
+        id: gate
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::notice::SONAR_TOKEN not set — SonarCloud stays on Automatic Analysis (no coverage). See docs/engineering/SONARCLOUD_COVERAGE.md."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          fetch-depth: 0   # full history: SonarCloud needs it to tell new code from old
+
+      - uses: actions/setup-java@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-dotnet@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: nexo-main/package-lock.json
+
+      - name: Frontend tests with coverage (lcov)
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: nexo-main
+        run: |
+          npm ci --no-audit --no-fund --ignore-scripts
+          npm run test:coverage
+          # Vitest writes paths relative to nexo-main (SF:src/...); the analysis runs from the
+          # repository root, so without the prefix SonarCloud drops every frontend file.
+          sed -i 's#^SF:src/#SF:nexo-main/src/#' coverage/lcov.info
+
+      - name: Install SonarScanner for .NET
+        if: steps.gate.outputs.enabled == 'true'
+        run: dotnet tool install --global dotnet-sonarscanner --version 11.3.0
+
+      # sonar.qualitygate.wait: "end" waits for SonarCloud to compute the Quality Gate and fails this
+      # job when the gate is red — so a red gate means a red `sonarcloud` check, and green means green.
+      - name: Begin analysis
+        if: steps.gate.outputs.enabled == 'true'
+        run: >-
+          dotnet sonarscanner begin
+          /k:"eliasandraade_nexo-erp" /o:"eliasandraade"
+          /d:sonar.host.url="https://sonarcloud.io"
+          /d:sonar.token="${SONAR_TOKEN}"
+          /d:sonar.projectBaseDir="${GITHUB_WORKSPACE}"
+          /d:sonar.cs.vscoveragexml.reportsPaths="nexo-backend/TestResults/**/*.xml"
+          /d:sonar.javascript.lcov.reportPaths="nexo-main/coverage/lcov.info"
+          /d:sonar.coverage.exclusions="**/Persistence/Migrations/**,nexo-main/e2e/**,**/*.test.ts,**/*.test.tsx,nexo-main/src/**/test/**,nexo-backend/tools/**"
+          /d:sonar.cpd.exclusions="**/Persistence/Migrations/**"
+          /d:sonar.qualitygate.wait=true
+          /d:sonar.qualitygate.timeout=300
+
+      - name: Build backend
+        if: steps.gate.outputs.enabled == 'true'
+        run: dotnet build nexo-backend/Nexo.sln
+
+      - name: Backend tests with coverage (unit + integration)
+        if: steps.gate.outputs.enabled == 'true'
+        working-directory: nexo-backend
+        run: |
+          dotnet test tests/Nexo.UnitTests/Nexo.UnitTests.csproj --no-build \
+            --settings coverage.runsettings --collect "Code Coverage" --results-directory TestResults/unit
+          dotnet test tests/Nexo.IntegrationTests/Nexo.IntegrationTests.csproj --no-build \
+            --settings coverage.runsettings --collect "Code Coverage" --results-directory TestResults/integration
+
+      - name: End analysis (upload to SonarCloud)
+        if: steps.gate.outputs.enabled == 'true'
+        run: dotnet sonarscanner end /d:sonar.token="${SONAR_TOKEN}"

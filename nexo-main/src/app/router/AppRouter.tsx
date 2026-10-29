@@ -60,6 +60,15 @@ const ContasPagarPage       = lazy(() => import("@/modules/financial/pages/Conta
 const FluxoCaixaPage        = lazy(() => import("@/modules/financial/pages/FluxoCaixaPage"));
 const CoreRelatoriosPage    = lazy(() => import("@/modules/reports/pages/RelatoriosPage"));
 const FiscalPage            = lazy(() => import("@/modules/fiscal/pages/FiscalPage"));
+const TaxOverviewPage       = lazy(() => import("@/modules/tax/pages/TaxOverviewPage"));
+const TaxProfilePage        = lazy(() => import("@/modules/tax/pages/TaxProfilePage"));
+const TaxCalculationsPage   = lazy(() => import("@/modules/tax/pages/TaxCalculationsPage"));
+const TaxCalculationDetailPage = lazy(() => import("@/modules/tax/pages/TaxCalculationDetailPage"));
+const TaxSimulationsPage    = lazy(() => import("@/modules/tax/pages/TaxSimulationsPage"));
+const TaxOpportunitiesPage  = lazy(() => import("@/modules/tax/pages/TaxOpportunitiesPage"));
+const TaxOpportunityDetailPage = lazy(() => import("@/modules/tax/pages/TaxOpportunityDetailPage"));
+const TaxCreditsPage        = lazy(() => import("@/modules/tax/pages/TaxCreditsPage"));
+const TaxRulesPage          = lazy(() => import("@/modules/tax/pages/TaxRulesPage"));
 const ClientesPage          = lazy(() => import("@/modules/customers/pages/ClientesPage"));
 const CustomerFormPage      = lazy(() => import("@/modules/customers/pages/CustomerFormPage"));
 const FornecedoresPage      = lazy(() => import("@/modules/suppliers/pages/FornecedoresPage"));
@@ -131,10 +140,18 @@ function PageLoader() {
   );
 }
 
-/** Redirects legacy /menu/:slug links to /:slug */
+/**
+ * Redirects legacy /menu/:slug links to /:slug. The slug is reduced to a single path segment (no slash or
+ * backslash), so a crafted link such as /menu/%5Cexample.com can never become a redirect to another origin.
+ */
 function MenuSlugRedirect() {
   const { slug } = useParams<{ slug: string }>();
-  return <Navigate to={`/${slug ?? ""}`} replace />;
+  return <Navigate to={legacyMenuTarget(slug)} replace />;
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper, tested on its own
+export function legacyMenuTarget(slug: string | undefined): string {
+  return `/${(slug ?? "").replace(/[\\/]/g, "")}`;
 }
 
 /**
@@ -285,6 +302,15 @@ export function AppRouter() {
                   <Route path="/financeiro/fluxo"   element={<FluxoCaixaPage />} />
                   <Route path="/relatorios"         element={<CoreRelatoriosPage />} />
                   <Route path="/fiscal"             element={<FiscalPage />} />
+                  <Route path="/tributos"                element={<TaxOverviewPage />} />
+                  <Route path="/tributos/perfil"         element={<TaxProfilePage />} />
+                  <Route path="/tributos/calculos"       element={<TaxCalculationsPage />} />
+                  <Route path="/tributos/calculos/:id"   element={<TaxCalculationDetailPage />} />
+                  <Route path="/tributos/simulacoes"     element={<TaxSimulationsPage />} />
+                  <Route path="/tributos/oportunidades"  element={<TaxOpportunitiesPage />} />
+                  <Route path="/tributos/oportunidades/:id" element={<TaxOpportunityDetailPage />} />
+                  <Route path="/tributos/creditos"       element={<TaxCreditsPage />} />
+                  <Route path="/tributos/regras"         element={<TaxRulesPage />} />
                   <Route path="/listas-de-preco" element={<ListasDePrecoPage />} />
                   <Route path="/configuracoes" element={<ConfiguracoesPage />} />
                   <Route path="/assinatura"   element={<AssinaturaPage />} />
