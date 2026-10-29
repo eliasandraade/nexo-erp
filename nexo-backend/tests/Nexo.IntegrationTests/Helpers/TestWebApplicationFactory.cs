@@ -69,6 +69,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
     /// <summary>The private file store of the suite (shared by every host built from this factory).</summary>
     public InMemoryTaxFileStorage TaxFiles { get; } = new();
 
+    /// <summary>SELECTs on the tax tables, shared by every host derived from this factory (N+1 checks).</summary>
+    public TaxQueryCounter TaxQueries { get; } = new();
+
     public new async Task DisposeAsync()
     {
         await _postgres.StopAsync();
@@ -96,7 +99,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
                 });
 
                 var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
-                opts.AddInterceptors(interceptor);
+                opts.AddInterceptors(interceptor, TaxQueries);
             });
 
             // Replace the cache with a faithful in-memory implementation.

@@ -63,6 +63,13 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Interpreter (lançamentos, anexos, vocabulário) | Management | Management | Management | Management | confirmar / estornar: Management |
 | Service (todas as telas) | Management (preset e settings: Todos) | Management | Management | Management | Management |
 | Tax Intelligence (cálculos, simulações, oportunidades, créditos, split) | Management | Management | — (versões imutáveis) | — | nova versão do perfil tributário e aprovação de oportunidade: Directors |
+| Tax Intelligence: evidências privadas (arquivos) | Management (arquivo revogado: Directors) | Management | substituir/revogar: Management | nunca apaga | retenção legal: Directors; download sempre autorizado por requisição, nunca URL |
+| Tax Intelligence: políticas (materialidade, retenção) | Management | Directors (nova versão) | — (versões) | — | prévia de retenção: Directors; nenhum descarte automático |
+| Tax Intelligence: classificação de produtos | Management | Management | Management | — | — |
+| Tax Intelligence: responsável pela análise | Management | Management (o nome vem do cadastro; só Gerente/Diretoria ativos da empresa) | — | — | — |
+| Tax Intelligence: exportação (dossiê ZIP, CSV de split e de simulação) | — | — | — | — | dossiê: Directors; CSVs: Management |
+| Tax Intelligence: módulo na plataforma (estado, prontidão, recusas, auditoria) | policy Platform | — | ativar/desativar: policy PlatformAdmin (super_admin) | — | suspender: qualquer operador da plataforma (freio de emergência), com frase |
+| Tax Intelligence: catálogos da plataforma (cClassTrib, obrigações, retenção padrão, documentos) | policy Platform | policy PlatformAdmin | policy PlatformAdmin | revogar documento: PlatformAdmin | revisão profissional registrada: PlatformAdmin, separada de quem registra |
 | Tax Intelligence: catálogo de regras e fontes jurídicas | Management (leitura) | policy Platform | só status, policy Platform | — | ativar regra exige fontes conferidas; revisão profissional, aprovação interna para piloto e sua retirada, janela e participantes do piloto: policy Platform, auditadas |
 | Platform admin | policy Platform | policy Platform | policy Platform | policy Platform | policy Platform |
 | Público (cardápio, agendamento, login) | anônimo, com rate limit | anônimo, com rate limit | — | — | — |

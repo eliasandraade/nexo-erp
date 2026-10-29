@@ -85,7 +85,7 @@ public sealed class TaxCreditService
     {
         var key = string.IsNullOrWhiteSpace(r.SourceDocumentKey) ? null : r.SourceDocumentKey.Trim();
         if (key is not null && await _db.TaxCredits.AnyAsync(c => c.Tax == r.Tax && c.SourceDocumentKey == key, ct))
-            throw new ConflictException("Já existe um crédito deste tributo para este documento.");
+            throw new ConflictException("Já existe um crédito deste tributo para este documento.", "tax_credit_duplicate_document");
         var credit = TaxCredit.Register(_tenant.Id, r.Tax, r.SourceDocumentType,
             key, r.SupplierDocument,
             r.AcquiredOn, r.ExpiresOn, r.OriginalAmount, r.PotentialAmount, r.PotentialBasis, null);
@@ -99,7 +99,7 @@ public sealed class TaxCreditService
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            throw new ConflictException("Já existe um crédito deste tributo para este documento.");
+            throw new ConflictException("Já existe um crédito deste tributo para este documento.", "tax_credit_duplicate_document");
         }
         return Map(credit);
     }

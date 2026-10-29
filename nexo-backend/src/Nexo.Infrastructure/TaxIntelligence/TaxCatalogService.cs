@@ -93,7 +93,7 @@ public sealed class TaxCatalogService
     {
         var code = r.Code.Trim().ToUpperInvariant();
         if (await _db.TaxLegalSources.AnyAsync(s => s.Code == code, ct))
-            throw new ConflictException($"Já existe a fonte {code}.");
+            throw new ConflictException($"Já existe a fonte {code}.", "tax_legal_source_duplicate");
         var source = TaxLegalSource.Create(code, r.Kind, r.Title, r.Reference, r.Url, r.Excerpt, r.PublishedOn, r.Notes);
         _db.TaxLegalSources.Add(source);
         _audit.RecordPlatform(TaxAuditActions.LegalSourceCreated, "LegalSource", source.Id, $"Fonte {code} cadastrada ({r.Reference}).");
@@ -120,7 +120,7 @@ public sealed class TaxCatalogService
         if (key.StartsWith(TaxSimulator.HypothesisKeyPrefix, StringComparison.Ordinal))
             throw new DomainException("Chaves HYPOTHESIS.* são reservadas às simulações.");
         if (await _db.TaxRules.AnyAsync(x => x.Key == key, ct))
-            throw new ConflictException($"Já existe a regra {key}.");
+            throw new ConflictException($"Já existe a regra {key}.", "tax_rule_duplicate");
         var rule = TaxRule.Create(key, r.Name, r.Description);
         _db.TaxRules.Add(rule);
         _audit.RecordPlatform(TaxAuditActions.RuleCreated, "Rule", rule.Id, $"Regra {key} criada.");

@@ -13,6 +13,8 @@ Domínio tributário próprio do ORKEN. Os módulos operacionais (vendas, compra
 | [homologation/example-dossier.md](homologation/example-dossier.md) | Dossiê real de exemplo gerado pelo sistema (dados de teste), executado como piloto controlado |
 | [supported-operations.md](supported-operations.md) | Matriz de operações suportadas pela V1 (fail closed) |
 | [roadmap.md](roadmap.md) | Limitações atuais e próximos passos |
+| [production-runbook.md](production-runbook.md) | **Operação em produção**: configuração fail-closed, ordem de ativação, freio de emergência, diagnóstico, backup e recuperação |
+| [release-checklist.md](release-checklist.md) | Checklist de cada release (código, deploy desligado, piloto, modo definitivo) |
 | [adr-0001-versioned-isolated-tax-rules.md](adr-0001-versioned-isolated-tax-rules.md) | Decisão: regras tributárias versionadas e isoladas dos domínios operacionais |
 | [adr-0002-engine-versioning-and-review.md](adr-0002-engine-versioning-and-review.md) | Decisão: engine e forma canônica versionadas; texto conferido ≠ revisão profissional |
 | [adr-0003-controlled-pilot-approval.md](adr-0003-controlled-pilot-approval.md) | Decisão: aprovação interna para piloto controlado como dimensão separada da revisão profissional |
@@ -35,7 +37,7 @@ Domínio tributário próprio do ORKEN. Os módulos operacionais (vendas, compra
 - **Dossiê de decisão** imutável na aprovação.
 - **Credit Hunter (fundação):** ledger de créditos IBS/CBS só de lançamentos, segregado por tributo.
 - **Split payment (fundação):** retenção esperada a partir do cálculo, registro manual da retenção real e conciliação. Nenhum provedor integrado.
-- **Telas** em `/tributos` (visão geral, perfil, cálculos, simulações, oportunidades, créditos, regras e fontes).
+- **Telas** em `/tributos` (visão geral, perfil, cálculos, simulações, oportunidades, créditos e split, classificação, regras e fontes, políticas) e, na plataforma, `/platform/tributos` (estado e ativação com assistente, piloto, regras e revisões, fontes, catálogos, retenção, documentos, recusas e auditoria).
 
 ## Primeiro vertical slice
 
