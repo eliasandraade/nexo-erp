@@ -25,7 +25,8 @@ namespace Nexo.IntegrationTests.Helpers;
 /// </summary>
 public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
+    // The image the 3.x/4.0 builder defaulted to — pinned so the upgrade does not change the database under test.
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:15.1")
         .WithDatabase("nexo_test")
         .WithUsername("nexo_test")
         .WithPassword("nexo_test")
