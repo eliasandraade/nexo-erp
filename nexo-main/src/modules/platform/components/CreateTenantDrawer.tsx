@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCreateTenant } from "../hooks/usePlatformTenants";
+import { platformErrorMessage } from "../services/platformErrors";
 import type { CreateTenantInput } from "../types";
 
 const AVAILABLE_MODULES = [
@@ -77,7 +78,7 @@ export function CreateTenantDrawer({ open, onClose, onCreated }: Props) {
         adminPassword: "", adminEmail: "",
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao criar tenant.";
+      const msg = platformErrorMessage(err, "Erro ao criar tenant.");
       setErrors(e => ({ ...e, email: msg }));
     }
   };

@@ -20,6 +20,8 @@ import {
 } from "@/modules/users/types";
 import { profileService } from "../services/profileService";
 import { formatDate, formatDateTime } from "@/lib/formatters";
+import { isImpersonating } from "@/services/api-client";
+import { describeAgent } from "@/lib/userAgent";
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -96,6 +98,8 @@ function PerfilSkeleton() {
 export default function PerfilPage() {
   const { session, logout } = useAuth();
   const mustChange = !!session?.requirePasswordChange;
+  // A platform administrator acting as this user cannot change the password, the two-step verification or the sessions.
+  const platformAccess = isImpersonating();
   const navigate = useNavigate();
   const sessionsQ = useQuery({ queryKey: ["auth", "sessions"], queryFn: fetchMySessions });
   const [confirmAll, setConfirmAll] = useState(false);
@@ -275,13 +279,21 @@ export default function PerfilPage() {
       </div>
 
       {/* ── Segurança ───────────────────────────────────────────────────── */}
-      {mustChange && (
+      {mustChange && !platformAccess && (
         <div role="alert" className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-[13px] text-foreground">
           <p className="font-semibold">Crie sua própria senha para continuar.</p>
           <p className="mt-0.5 text-muted-foreground">A senha atual foi definida pelo gestor. Troque-a abaixo — depois você entra de novo com a nova.</p>
         </div>
       )}
 
+      {platformAccess ? (
+        <SectionCard title="Segurança" description="Indisponível no acesso da plataforma.">
+          <p className="text-[13px] text-muted-foreground">
+            Senha, verificação em duas etapas e sessões só podem ser alteradas pelo próprio usuário.
+          </p>
+        </SectionCard>
+      ) : (
+      <>
       <SectionCard
         title="Segurança"
         description="Altere sua senha de acesso ao sistema."
@@ -420,6 +432,8 @@ export default function PerfilPage() {
       </SectionCard>
 
       <MfaSection />
+      </>
+      )}
 
       <SectionCard title="Sessões ativas" description="Aparelhos conectados à sua conta. Trocar a senha também encerra todas.">
         {sessionsQ.isLoading ? (
@@ -440,7 +454,7 @@ export default function PerfilPage() {
             {(sessionsQ.data ?? []).length === 0 && <li className="text-[13px] text-muted-foreground">Nenhuma sessão registrada.</li>}
           </ul>
         )}
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+        {!platformAccess && <div className="mt-4 flex flex-wrap items-center gap-2">
           {confirmAll ? (
             <>
               <Button size="sm" variant="destructive" disabled={revokeAll.isPending} onClick={() => revokeAll.mutate()}>
@@ -452,19 +466,8 @@ export default function PerfilPage() {
           ) : (
             <Button size="sm" variant="outline" onClick={() => setConfirmAll(true)}>Sair de todos os dispositivos</Button>
           )}
-        </div>
+        </div>}
       </SectionCard>
     </div>
   );
-}
-
-const BROWSERS: [string, string][] = [["Edg/", "Edge"], ["Chrome/", "Chrome"], ["Firefox/", "Firefox"], ["Safari/", "Safari"]];
-const SYSTEMS: [string, string][] = [["Android", "Android"], ["iPhone", "iPhone/iPad"], ["iPad", "iPhone/iPad"], ["Windows", "Windows"], ["Mac OS X", "macOS"], ["Linux", "Linux"]];
-
-/** A readable device name from the browser's user agent (best effort; first match wins). */
-function describeAgent(ua: string | null): string {
-  if (!ua) return "Aparelho desconhecido";
-  const browser = BROWSERS.find(([part]) => ua.includes(part))?.[1] ?? "Navegador";
-  const os = SYSTEMS.find(([part]) => ua.includes(part))?.[1];
-  return os ? `${browser} · ${os}` : browser;
 }

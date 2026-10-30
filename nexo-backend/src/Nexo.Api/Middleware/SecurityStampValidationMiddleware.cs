@@ -21,7 +21,10 @@ namespace Nexo.Api.Middleware;
 ///   5. If mismatch → 401 Session invalidated.
 ///
 /// Must run AFTER UseAuthentication() and TenantResolutionMiddleware.
-/// Platform tokens ("type" == "platform") are skipped.
+///
+/// Platform tokens ("type" == "platform") are checked against their session instead (claim "sid" + stamp, read from
+/// the database on every request: revocation and logout apply at once), and they only reach the platform API and the
+/// few auth endpoints a platform session needs — never a tenant endpoint.
 /// </summary>
 public class SecurityStampValidationMiddleware
 {
@@ -44,10 +47,36 @@ public class SecurityStampValidationMiddleware
             return;
         }
 
-        // Platform tokens don't have SecurityStamp — skip
         if (context.User.FindFirstValue("type") == "platform")
         {
+            if (!PlatformMayCall(context.Request.Path))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new { error = "Sessão da plataforma não acessa a área das empresas.", code = "platform_token_scope" }, context.RequestAborted);
+                return;
+            }
+            var platform = context.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>();
+            if (!Guid.TryParse(context.User.FindFirstValue("platformUserId"), out var platformUserId)
+                || !Guid.TryParse(context.User.FindFirstValue("sid"), out var sessionId)
+                || context.User.FindFirstValue("security_stamp") is not { } platformStamp
+                || !await platform.IsSessionActiveAsync(platformUserId, sessionId, platformStamp, context.RequestAborted))
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await context.Response.WriteAsJsonAsync(new { error = "Sessão da plataforma encerrada. Entre de novo.", code = "platform_session_ended" }, context.RequestAborted);
+                return;
+            }
             await _next(context);
+            return;
+        }
+
+        // An impersonation the administrator already left is refused at once, not only when the token expires.
+        if (Nexo.Api.Filters.DenyDuringImpersonationAttribute.IsImpersonation(context.User)
+            && context.User.FindFirstValue("jti") is { } impJti
+            && await context.RequestServices.GetRequiredService<ICacheService>()
+                .GetAsync<Nexo.Api.Controllers.AuthController.EndedImpersonation>($"impersonation:ended:{impJti}", context.RequestAborted) is not null)
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(new { error = "O acesso da plataforma a esta empresa terminou.", code = "impersonation_ended" }, context.RequestAborted);
             return;
         }
 
@@ -104,6 +133,12 @@ public class SecurityStampValidationMiddleware
 
         await _next(context);
     }
+
+    /// <summary>The platform API, and the auth endpoints a platform session uses (who am I, sign out).</summary>
+    internal static bool PlatformMayCall(PathString path)
+        => path.StartsWithSegments("/api/platform", StringComparison.OrdinalIgnoreCase)
+           || path.Equals("/api/auth/me", StringComparison.OrdinalIgnoreCase)
+           || path.Equals("/api/auth/logout", StringComparison.OrdinalIgnoreCase);
 }
 
 internal record StampCacheEntry(string Stamp);

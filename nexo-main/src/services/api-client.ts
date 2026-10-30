@@ -3,6 +3,13 @@
  *
  * Token storage keys are shared with authService so both modules read/write
  * the same values without circular imports.
+ *
+ * Two storage modes:
+ *  - normal: tokens + session live in localStorage (shared by every tab of the signed-in user);
+ *  - impersonation (a platform administrator acting as a tenant, tab-scoped): the tab carries the
+ *    `orken:impersonation` marker in sessionStorage and then reads/writes its access token and session ONLY
+ *    in sessionStorage. It never refreshes (the impersonation token has no refresh token) and never reads,
+ *    overwrites or clears the administrator's own localStorage session.
  */
 
 export const TOKEN_KEYS = {
@@ -11,68 +18,199 @@ export const TOKEN_KEYS = {
   session: "nexo:session",
 } as const;
 
+/** Tab-scoped (sessionStorage) marker of an impersonation tab. */
+export const IMPERSONATION_KEY = "orken:impersonation";
+
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
 
-// ── Token helpers ─────────────────────────────────────────────────────────────
+// ── Impersonation mode ────────────────────────────────────────────────────────
 
-// Keep access token in memory to survive the tab session without localStorage XSS risk.
-// localStorage is the fallback so a hard reload doesn't immediately log the user out.
-let _accessToken: string | null = null;
-
-export function getAccessToken(): string | null {
-  return _accessToken ?? localStorage.getItem(TOKEN_KEYS.access);
+export interface ImpersonationInfo {
+  /** Company the administrator is acting in. */
+  tenant: string;
+  /** User the administrator acts as. */
+  user: string;
+  /** When the impersonation token expires (ISO), when the server said. */
+  expiresAt: string | null;
+  /** The access ended in this tab: tokens are gone, and the tab never falls back to the admin's own session. */
+  ended?: boolean;
 }
 
-export function setTokens(access: string, refresh: string): void {
-  if (access) {
-    _accessToken = access;
-    localStorage.setItem(TOKEN_KEYS.access, access);
+export function getImpersonation(): ImpersonationInfo | null {
+  try {
+    const raw = sessionStorage.getItem(IMPERSONATION_KEY);
+    return raw ? (JSON.parse(raw) as ImpersonationInfo) : null;
+  } catch {
+    return null;
   }
-  if (refresh) {
-    localStorage.setItem(TOKEN_KEYS.refresh, refresh);
-  }
+}
+
+/** True in a tab opened by a platform administrator to act as a tenant (even after that access ended). */
+export function isImpersonating(): boolean {
+  return getImpersonation() !== null;
+}
+
+/** Where this tab keeps its access token and session. */
+function tokenStore(): Storage {
+  return isImpersonating() ? sessionStorage : localStorage;
+}
+
+/** Turns this tab into an impersonation tab: the token and the session stay in this tab only. */
+export function beginImpersonation(accessToken: string, sessionJson: string, info: Omit<ImpersonationInfo, "ended">): void {
+  sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ ...info, ended: false }));
+  sessionStorage.setItem(TOKEN_KEYS.access, accessToken);
+  sessionStorage.setItem(TOKEN_KEYS.session, sessionJson);
+}
+
+/** Leaves the (ended) impersonation mode, so this tab can go back to the administrator's own session. */
+export function leaveImpersonation(): void {
+  sessionStorage.removeItem(IMPERSONATION_KEY);
+  sessionStorage.removeItem(TOKEN_KEYS.access);
+  sessionStorage.removeItem(TOKEN_KEYS.refresh);
+  sessionStorage.removeItem(TOKEN_KEYS.session);
+}
+
+// ── Session-ended notifications ───────────────────────────────────────────────
+
+/**
+ * Why the client dropped the session on its own:
+ *  - platform_session_ended: the platform session was revoked/logged out (sign in again);
+ *  - impersonation_ended: the tenant access of this tab expired or was ended elsewhere;
+ *  - impersonation_left: the administrator left the tenant access ("Sair do acesso").
+ */
+export type SessionEndReason = "platform_session_ended" | "impersonation_ended" | "impersonation_left";
+
+const SESSION_ENDED_EVENT = "orken:session-ended";
+
+function emitSessionEnded(reason: SessionEndReason): void {
+  globalThis.dispatchEvent(new CustomEvent<SessionEndReason>(SESSION_ENDED_EVENT, { detail: reason }));
+}
+
+/** Subscribes to the session drops above; returns the unsubscribe function. */
+export function onSessionEnded(handler: (reason: SessionEndReason) => void): () => void {
+  const listener = (e: Event) => handler((e as CustomEvent<SessionEndReason>).detail);
+  globalThis.addEventListener(SESSION_ENDED_EVENT, listener);
+  return () => globalThis.removeEventListener(SESSION_ENDED_EVENT, listener);
+}
+
+/** Ends the impersonation in this tab only (the admin's own session is untouched) and tells the app. */
+export function endImpersonationSession(reason: "impersonation_ended" | "impersonation_left" = "impersonation_ended"): void {
+  clearTokens();
+  emitSessionEnded(reason);
+}
+
+// ── Token helpers ─────────────────────────────────────────────────────────────
+
+// The storage is the source of truth (no in-memory copy): when another tab renews the shared session,
+// this tab must use the new token at once.
+export function getAccessToken(): string | null {
+  return tokenStore().getItem(TOKEN_KEYS.access);
+}
+
+/** The refresh token of the signed-in user; never one in an impersonation tab. */
+export function getRefreshToken(): string | null {
+  return isImpersonating() ? null : localStorage.getItem(TOKEN_KEYS.refresh);
+}
+
+export function getStoredSession(): string | null {
+  return tokenStore().getItem(TOKEN_KEYS.session);
+}
+
+export function setStoredSession(sessionJson: string): void {
+  tokenStore().setItem(TOKEN_KEYS.session, sessionJson);
+}
+
+export function setTokens(access: string, refresh: string | null | undefined): void {
+  if (access) tokenStore().setItem(TOKEN_KEYS.access, access);
+  // an impersonation tab never keeps a refresh token
+  if (refresh && !isImpersonating()) localStorage.setItem(TOKEN_KEYS.refresh, refresh);
 }
 
 export function clearTokens(): void {
-  _accessToken = null;
+  const impersonation = getImpersonation();
+  if (impersonation) {
+    // only this tab's keys: the administrator's own localStorage session stays as it is
+    sessionStorage.removeItem(TOKEN_KEYS.access);
+    sessionStorage.removeItem(TOKEN_KEYS.refresh);
+    sessionStorage.removeItem(TOKEN_KEYS.session);
+    sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ ...impersonation, ended: true }));
+    return;
+  }
   localStorage.removeItem(TOKEN_KEYS.access);
   localStorage.removeItem(TOKEN_KEYS.refresh);
   localStorage.removeItem(TOKEN_KEYS.session);
 }
 
-// ── Core request ─────────────────────────────────────────────────────────────
+// ── Refresh ───────────────────────────────────────────────────────────────────
 
-let refreshPromise: Promise<boolean> | null = null;
+type RefreshOutcome = "ok" | "failed" | "platform_ended";
 
-async function attemptRefresh(): Promise<boolean> {
+/** Refresh tokens of platform administrators start with "p." (rotated on every refresh). */
+const isPlatformRefreshToken = (token: string) => token.startsWith("p.");
+
+/** How long a tab that lost the refresh race waits for the winner tab to store the new pair. */
+export const ROTATION_WAIT_MS = 3000;
+
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+async function waitForRotatedToken(sent: string): Promise<boolean> {
+  const deadline = Date.now() + ROTATION_WAIT_MS;
+  for (;;) {
+    const current = localStorage.getItem(TOKEN_KEYS.refresh);
+    if (current && current !== sent) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(100);
+  }
+}
+
+interface ErrorBody {
+  error?: string;
+  message?: string;
+  code?: string;
+  requestId?: string;
+  details?: unknown[];
+}
+
+async function readErrorBody(res: Response): Promise<ErrorBody | null> {
+  try {
+    return (await res.json()) as ErrorBody;
+  } catch {
+    return null; // empty or non-JSON body
+  }
+}
+
+let refreshPromise: Promise<RefreshOutcome> | null = null;
+
+async function attemptRefresh(): Promise<RefreshOutcome> {
+  if (isImpersonating()) return "failed";   // the impersonation token is never renewed
   if (refreshPromise) return refreshPromise;
 
-  refreshPromise = (async () => {
+  refreshPromise = (async (): Promise<RefreshOutcome> => {
+    const sent = localStorage.getItem(TOKEN_KEYS.refresh);
+    if (!sent) return "failed";
     try {
-      const refreshToken = localStorage.getItem(TOKEN_KEYS.refresh);
-      if (!refreshToken) return false;
-
       const res = await fetch(`${BASE_URL}/auth/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({ refreshToken: sent }),
       });
 
-      if (!res.ok) {
-        clearTokens();
-        return false;
+      if (res.ok) {
+        const data = await res.json();
+        if (data.accessToken) setTokens(data.accessToken, data.refreshToken ?? "");
+        return "ok";
       }
 
-      const data = await res.json();
-      if (data.accessToken) {
-        setTokens(data.accessToken, data.refreshToken ?? "");
-      }
-      return true;
+      const err = await readErrorBody(res);
+      // Another tab renewed the same session a moment ago and stores the new pair in localStorage: use it.
+      if (res.status === 409 && err?.code === "refresh_already_rotated" && await waitForRotatedToken(sent)) return "ok";
+      clearTokens();
+      return isPlatformRefreshToken(sent) ? "platform_ended" : "failed";
     } catch (error) {
       console.error("Token refresh failed:", error);
       clearTokens();
-      return false;
+      return "failed";
     } finally {
       refreshPromise = null;
     }
@@ -80,6 +218,37 @@ async function attemptRefresh(): Promise<boolean> {
 
   return refreshPromise;
 }
+
+/**
+ * A 401 on an authenticated call. True when the request may be sent again (once) with a renewed token;
+ * otherwise the local session is already dropped (and the app told, when it must leave the page).
+ */
+async function recoverFromUnauthorized(usedToken: string | null, code: string | undefined, isRetry: boolean): Promise<boolean> {
+  if (isImpersonating()) {
+    endImpersonationSession("impersonation_ended");
+    return false;
+  }
+  if (code === "platform_session_ended") {
+    clearTokens();
+    emitSessionEnded("platform_session_ended");
+    return false;
+  }
+  if (!isRetry) {
+    // another tab may have renewed the shared session already
+    const current = getAccessToken();
+    if (current && current !== usedToken) return true;
+    const outcome = await attemptRefresh();
+    if (outcome === "ok") return true;
+    if (outcome === "platform_ended") {
+      emitSessionEnded("platform_session_ended");
+      return false;
+    }
+  }
+  clearTokens();
+  return false;
+}
+
+// ── Core request ─────────────────────────────────────────────────────────────
 
 async function request<T>(
   method: string,
@@ -102,65 +271,34 @@ async function request<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // sign-in calls answer 401 for wrong credentials/codes: no token refresh for those
-  const anonymousAuth = path.startsWith("/auth/login") || path.startsWith("/auth/mfa/verify");
-  if (res.status === 401 && !isRetry && !anonymousAuth) {
-    const refreshed = await attemptRefresh();
-    if (refreshed) {
+  if (res.status === 401) {
+    // keep the server's explanation (wrong code, unverified e-mail, blocked account, session ended…)
+    const err = await readErrorBody(res);
+    const message = err?.error ?? err?.message ?? "Unauthorized";
+    // sign-in calls answer 401 for wrong credentials/codes: no token refresh (and no session drop) for those
+    const anonymousAuth = path.startsWith("/auth/login") || path.startsWith("/auth/mfa/verify");
+    if (!anonymousAuth && await recoverFromUnauthorized(token, err?.code, isRetry)) {
       return request<T>(method, path, body, true);
     }
-    clearTokens();
-    // keep the server's explanation (wrong code, unverified e-mail, blocked account…)
-    let unauthorized = "Unauthorized";
-    let reason: string | undefined;
-    try {
-      const err = await res.json();
-      unauthorized = err?.error ?? err?.message ?? unauthorized;
-      reason = err?.code;
-    } catch {
-      // empty or non-JSON body
-    }
-    throw new ApiError(401, unauthorized, reason);
-  }
-
-  if (res.status === 401) {
-    let message = "Unauthorized";
-    let reason: string | undefined;
-    try {
-      const err = await res.json();
-      message = err?.error ?? err?.message ?? message;
-      reason = err?.code;
-    } catch {
-      // empty or non-JSON body
-    }
-    if (!anonymousAuth) clearTokens();
-    throw new ApiError(401, message, reason);
+    throw new ApiError(401, message, err?.code);
   }
 
   if (!res.ok) {
     let message = res.statusText;
-    let code: string | undefined;
-    let requestId: string | undefined;
     let details: string[] | undefined;
-    let serverMessage: string | undefined;
-    try {
-      const err = await res.json();
-      if (Array.isArray(err?.details) && err.details.length > 0) {
-        message = err.details.join(" | ");
-        details = err.details.map(String);
-      } else {
-        message = err?.error ?? err?.message ?? message;
-      }
-      serverMessage = err?.error ?? err?.message ?? undefined;
-      code = err?.code;
-      requestId = err?.requestId;
-    } catch {
-      // ignore parse failure
+    const err = await readErrorBody(res);
+    if (Array.isArray(err?.details) && err.details.length > 0) {
+      details = err.details.map(String);
+      message = details.join(" | ");
+    } else {
+      message = err?.error ?? err?.message ?? message;
     }
+    const serverMessage = err?.error ?? err?.message ?? undefined;
+    const requestId = err?.requestId;
     if (res.status === 429 && !message) message = "Muitas tentativas. Aguarde alguns minutos.";
     // an unexpected error carries the id of its log lines: show it, so support can find them
     if (res.status >= 500 && requestId) message = `${message} (código: ${requestId})`;
-    throw new ApiError(res.status, message, code, requestId, details, serverMessage);
+    throw new ApiError(res.status, message, err?.code, requestId, details, serverMessage);
   }
 
   if (res.status === 204) return undefined as unknown as T;
@@ -168,7 +306,7 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
-async function requestForm<T>(path: string, form: FormData): Promise<T> {
+async function requestForm<T>(path: string, form: FormData, isRetry = false): Promise<T> {
   const url = `${BASE_URL}${path}`;
 
   const headers: Record<string, string> = {};
@@ -182,35 +320,22 @@ async function requestForm<T>(path: string, form: FormData): Promise<T> {
   });
 
   if (res.status === 401) {
-    const refreshed = await attemptRefresh();
-    if (refreshed) {
-      return requestForm<T>(path, form);
+    const err = await readErrorBody(res);
+    if (await recoverFromUnauthorized(token, err?.code, isRetry)) {
+      return requestForm<T>(path, form, true);
     }
-    clearTokens();
-    // keep the server's explanation (wrong code, unverified e-mail, blocked account…)
-    let unauthorized = "Unauthorized";
-    try {
-      const err = await res.json();
-      unauthorized = err?.error ?? err?.message ?? unauthorized;
-    } catch {
-      // empty or non-JSON body
-    }
-    throw new ApiError(401, unauthorized);
+    throw new ApiError(401, err?.error ?? err?.message ?? "Unauthorized", err?.code);
   }
 
   if (!res.ok) {
     let message = res.statusText;
-    try {
-      const err = await res.json();
-      if (Array.isArray(err?.details) && err.details.length > 0) {
-        message = err.details.join(" | ");
-      } else {
-        message = err?.error ?? err?.message ?? message;
-      }
-    } catch {
-      // ignore parse failure
+    const err = await readErrorBody(res);
+    if (Array.isArray(err?.details) && err.details.length > 0) {
+      message = err.details.join(" | ");
+    } else {
+      message = err?.error ?? err?.message ?? message;
     }
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, err?.code);
   }
 
   if (res.status === 204) return undefined as unknown as T;

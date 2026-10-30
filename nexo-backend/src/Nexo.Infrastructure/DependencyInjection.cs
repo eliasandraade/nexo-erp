@@ -264,6 +264,7 @@ public static class DependencyInjection
         services.AddScoped<RegistrationService>();
         services.AddScoped<AccountSecurityService>();
         services.AddSingleton<IMfaSecretProtector, MfaSecretProtector>();
+        services.AddScoped<Nexo.Infrastructure.Auth.PlatformAuthService>();
         services.AddScoped<IUserSessionRevoker>(sp => sp.GetRequiredService<AccountSecurityService>());
         services.AddScoped<IUserInviter>(sp => sp.GetRequiredService<AccountSecurityService>());
 

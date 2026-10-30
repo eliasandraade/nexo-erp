@@ -75,6 +75,12 @@ public class ExceptionHandlingMiddleware
             _logger.LogWarning("Domain rule violation: {Message}", ex.Message);
             await WriteErrorAsync(ctx, 422, ex.Message, ex.Details.Count > 0 ? ex.Details.ToArray() : null, ex.Code);
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
+        {
+            // Two requests creating the same thing (a duplicate document, module, login…): a conflict, not a bug.
+            _logger.LogInformation("Unique constraint hit: {Constraint}.", ((Npgsql.PostgresException)ex.InnerException).ConstraintName);
+            await WriteErrorAsync(ctx, 409, "Já existe um registro com estes dados.", null, "duplicate");
+        }
         catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
         {
             // the caller went away (closed tab, timeout): nothing failed, nobody to answer

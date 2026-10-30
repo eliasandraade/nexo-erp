@@ -10,17 +10,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { useMyStores } from "@/modules/stores/hooks/useMyStores";
+import { isImpersonating } from "@/services/api-client";
 
 export function StoreSwitcher() {
   const { session, switchStore } = useAuth();
   const { data: stores, isLoading } = useMyStores();
   const [switching, setSwitching] = useState(false);
+  // the platform access is tied to one store: the server refuses switching there
+  const locked = isImpersonating();
 
   const activeStore = stores?.find((s) => s.id === session?.storeId);
   const displayName = activeStore?.name ?? session?.companyName ?? "Selecionar loja";
 
   async function handleSwitch(storeId: string) {
-    if (storeId === session?.storeId || switching) return;
+    if (locked || storeId === session?.storeId || switching) return;
     setSwitching(true);
     try {
       await switchStore(storeId);
@@ -48,6 +51,9 @@ export function StoreSwitcher() {
 
       <DropdownMenuContent align="start" className="w-56">
         <DropdownMenuLabel>Lojas</DropdownMenuLabel>
+        {locked && (
+          <p className="px-2 pb-1.5 text-xs text-muted-foreground">Troca de loja indisponível no acesso da plataforma.</p>
+        )}
         <DropdownMenuSeparator />
         {isLoading && (
           <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
@@ -59,6 +65,7 @@ export function StoreSwitcher() {
           <DropdownMenuItem
             key={store.id}
             onClick={() => handleSwitch(store.id)}
+            disabled={locked && store.id !== session?.storeId}
             className="cursor-pointer"
           >
             <div className="flex items-center justify-between w-full">

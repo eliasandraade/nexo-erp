@@ -9,6 +9,10 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { newHandoffNonce, offerImpersonation } from "@/services/impersonation-handoff";
+import { ImpersonationReasonDialog } from "../components/ImpersonationReasonDialog";
+import { ResetPasswordDialog } from "../components/ResetPasswordDialog";
+import { platformErrorMessage } from "../services/platformErrors";
 
 import {
   usePlatformTenant,
@@ -81,8 +85,8 @@ export default function PlatformTenantDetailPage() {
 
   // User action state
   const [resetTarget, setResetTarget]   = useState<{ id: string; name: string } | null>(null);
-  const [newPassword, setNewPassword]   = useState("");
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [impersonateOpen, setImpersonateOpen] = useState(false);
 
   // Confirm dialog state
   const [confirm, setConfirm] = useState<{
@@ -122,18 +126,29 @@ export default function PlatformTenantDetailPage() {
     setEditing(false);
   };
 
-  const handleImpersonate = async () => {
-    try {
-      const result = await impersonateMut.mutateAsync(tenantId!);
-      // Store impersonation data in localStorage for the new tab
-      localStorage.setItem("nexo:impersonate:token",   result.accessToken);
-      localStorage.setItem("nexo:impersonate:refresh",  result.refreshToken);
-      localStorage.setItem("nexo:impersonate:session",  JSON.stringify(result.session));
-      window.open("/impersonate", "_blank");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao impersonar";
-      toast.error(msg);
+  /**
+   * Runs inside the click: the new tab opens BEFORE any await (no pop-up blocking). The token then goes to that
+   * tab only, over a BroadcastChannel answered for its nonce — never through localStorage.
+   */
+  const startImpersonation = (reason: string) => {
+    const nonce = newHandoffNonce();
+    const tab = window.open(`/impersonate?k=${nonce}`, "_blank");
+    if (!tab) {
+      toast.error("O navegador bloqueou a nova aba. Permita pop-ups deste site e tente de novo.");
+      return;
     }
+    tab.opener = null;
+    const grant = impersonateMut
+      .mutateAsync({ tenantId: tenantId!, reason })
+      .then(r => ({ accessToken: r.accessToken, expiresAt: r.expiresAt, session: r.session }));
+    offerImpersonation(nonce, grant);
+    grant.then(
+      () => setImpersonateOpen(false),
+      (err: unknown) => {
+        tab.close();
+        toast.error(platformErrorMessage(err, "Não foi possível entrar na empresa."));
+      }
+    );
   };
 
   const activeModuleKeys = tenant.subscriptions
@@ -154,6 +169,23 @@ export default function PlatformTenantDetailPage() {
         variant={confirm.variant}
         onConfirm={() => { closeConfirm(); confirm.onConfirm(); }}
         onCancel={closeConfirm}
+      />
+      <ImpersonationReasonDialog
+        open={impersonateOpen}
+        tenantName={tenant.tradeName ?? tenant.companyName}
+        targetName={impersonationTarget?.name}
+        pending={impersonateMut.isPending}
+        onConfirm={startImpersonation}
+        onCancel={() => setImpersonateOpen(false)}
+      />
+      <ResetPasswordDialog
+        user={resetTarget}
+        pending={resetPwMut.isPending}
+        onConfirm={newPassword => {
+          if (!resetTarget) return;
+          resetPwMut.mutate({ userId: resetTarget.id, newPassword }, { onSuccess: () => setResetTarget(null) });
+        }}
+        onCancel={() => setResetTarget(null)}
       />
 
       {/* Header */}
@@ -207,16 +239,7 @@ export default function PlatformTenantDetailPage() {
 
           {/* Impersonate */}
           <button
-            onClick={() => openConfirm({
-              title: "Entrar como cliente (impersonation)",
-              description:
-                `Você vai acessar a conta de "${tenant.tradeName ?? tenant.companyName}"` +
-                `${impersonationTarget ? ` como ${impersonationTarget.name} (Diretoria)` : ""}. ` +
-                `Você verá e poderá agir como esse usuário no sistema dele. ` +
-                `Esta ação é registrada na auditoria. Continuar?`,
-              variant: "danger",
-              onConfirm: handleImpersonate,
-            })}
+            onClick={() => setImpersonateOpen(true)}
             disabled={impersonateMut.isPending}
             className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
@@ -437,46 +460,6 @@ export default function PlatformTenantDetailPage() {
       {/* ── Tab: Usuários ────────────────────────────────────────────────────── */}
       {tab === "Usuários" && (
         <div className="space-y-3">
-          {/* Reset password inline panel */}
-          {resetTarget && (
-            <div className="bg-amber-500/5 border border-amber-500/30 rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-foreground">
-                  Redefinir senha — <span className="text-muted-foreground font-normal">{resetTarget.name}</span>
-                </p>
-                <button
-                  onClick={() => { setResetTarget(null); setNewPassword(""); }}
-                  className="p-1 rounded hover:bg-muted transition-colors"
-                >
-                  <X className="h-3.5 w-3.5 text-muted-foreground" />
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="password"
-                  placeholder="Nova senha..."
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  className="flex-1 h-8 px-3 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-                <button
-                  disabled={!newPassword || resetPwMut.isPending}
-                  onClick={async () => {
-                    await resetPwMut.mutateAsync({ userId: resetTarget.id, newPassword });
-                    setResetTarget(null);
-                    setNewPassword("");
-                  }}
-                  className="h-8 px-3 rounded-md bg-amber-500 text-white text-xs font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
-                >
-                  {resetPwMut.isPending ? "Salvando..." : "Confirmar"}
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                O usuário será obrigado a trocar a senha no próximo login.
-              </p>
-            </div>
-          )}
-
           <div className="bg-card border border-border rounded-lg overflow-hidden">
             <div className="px-4 py-3 border-b border-border flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -531,7 +514,7 @@ export default function PlatformTenantDetailPage() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             title="Redefinir senha"
-                            onClick={() => { setResetTarget({ id: u.id, name: u.name }); setNewPassword(""); }}
+                            onClick={() => setResetTarget({ id: u.id, name: u.name })}
                             className="flex items-center gap-1 h-7 px-2 rounded-md border border-amber-500/40 text-amber-600 text-xs hover:bg-amber-500/10 transition-colors"
                           >
                             <KeyRound className="h-3 w-3" /> Senha

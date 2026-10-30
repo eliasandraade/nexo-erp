@@ -64,6 +64,8 @@ async function prepare(page: Page, options: { failClaude?: boolean } = {}): Prom
     const path = new URL(req.url()).pathname.replace(/^\/api/, '');
     const method = req.method();
     if (path === '/auth/me') return json(route, session);
+    if (path === '/platform/auth/security')
+      return json(route, { mfa: { enabled: true, setupPending: false, recoveryCodesLeft: 8 }, currentSessionMfaVerified: true, sessions: [] });
 
     if (path === '/platform/interpreter/providers' && method === 'GET') {
       const available = fake.providers.filter(p => p.status === 'available')

@@ -46,6 +46,7 @@ public class NexoDbContext : DbContext
     // ── Platform (no tenant_id) ───────────────────────────────────────────────
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<PlatformUser> PlatformUsers => Set<PlatformUser>();
+    public DbSet<PlatformSession> PlatformSessions => Set<PlatformSession>();
     public DbSet<ModuleDefinition> ModuleDefinitions => Set<ModuleDefinition>();
     public DbSet<ModuleSubscription> ModuleSubscriptions => Set<ModuleSubscription>();
     public DbSet<ModuleSubscriptionEvent> ModuleSubscriptionEvents => Set<ModuleSubscriptionEvent>();

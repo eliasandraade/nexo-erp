@@ -23,6 +23,7 @@ public class RbacCoverageTests
     {
         // Own session / account (GetById and ChangePassword enforce "self or management" in the action)
         "Auth.Me", "Auth.SwitchStore", "Auth.Logout",
+        "Auth.EndImpersonation",   // the session a platform administrator opened ends itself (rejected for any other session)
         "Auth.Sessions", "Auth.RevokeAllSessions",   // own sessions only (any role)
         "Auth.MfaStatus", "Auth.MfaSetup", "Auth.MfaEnable", "Auth.MfaDisable",   // own two-step verification (any role)
         "Users.GetById", "Users.ChangePassword",
