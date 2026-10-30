@@ -19,7 +19,7 @@ export function filterBindRequest(stageId: string, versionId: string, category: 
 /** First day of the slider: the obra's start, else the earliest planned stage start, else the version's upload. */
 export function timelineStart(project: Pick<BuildProjectDetailsDto, "startDate" | "stages" | "createdAt">, fallback: string): string {
   if (project.startDate) return project.startDate.slice(0, 10);
-  const planned = project.stages.map((s) => s.plannedStartDate).filter((d): d is string => !!d).sort();
+  const planned = project.stages.map((s) => s.plannedStartDate).filter((d): d is string => !!d).sort((a, b) => a.localeCompare(b));
   if (planned[0]) return planned[0].slice(0, 10);
   return (project.createdAt || fallback).slice(0, 10);
 }

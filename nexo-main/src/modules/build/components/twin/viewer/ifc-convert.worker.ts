@@ -16,7 +16,7 @@ interface WorkerScope {
 }
 const ctx = self as unknown as WorkerScope;
 
-ctx.onmessage = async (e) => {
+async function handle(e: MessageEvent<WorkerRequest>): Promise<void> {
   const api = new IfcAPI();
   try {
     // the hashed asset URL from Vite; single thread: no SharedArrayBuffer / COOP-COEP needed
@@ -37,4 +37,6 @@ ctx.onmessage = async (e) => {
   } finally {
     try { api.Dispose(); } catch { /* already gone */ }
   }
-};
+}
+
+ctx.onmessage = (e) => { void handle(e); };

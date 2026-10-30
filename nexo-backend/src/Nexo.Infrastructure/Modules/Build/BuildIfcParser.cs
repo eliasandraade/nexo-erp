@@ -185,24 +185,26 @@ public static class BuildIfcParser
         return values;
     }
 
+    /// <summary>Output key → quantity names in order of preference (net first, gross as fallback).</summary>
+    private static readonly (string Key, string[] Sources)[] QuantityPicks =
+    [
+        ("netVolume", ["netVolume", "grossVolume"]),
+        ("netArea", ["netArea", "grossArea"]),
+        ("length", ["length"]),
+        ("count", ["count"]),
+    ];
+
     /// <summary>Selected quantities as compact JSON (net preferred, gross as fallback), or null.</summary>
     private static string? Properties(Dictionary<string, double>? q)
     {
         if (q is null || q.Count == 0) return null;
         var bag = new Dictionary<string, double>();
-        void Put(string key, params string[] from)
+        foreach (var (key, sources) in QuantityPicks)
         {
-            foreach (var f in from)
-                if (q.TryGetValue(f, out var v) && double.IsFinite(v))
-                {
-                    bag[key] = Math.Round(v, 4);
-                    return;
-                }
+            var value = sources.Select(f => q.TryGetValue(f, out var v) && double.IsFinite(v) ? v : (double?)null)
+                .FirstOrDefault(v => v.HasValue);
+            if (value is { } found) bag[key] = Math.Round(found, 4);
         }
-        Put("netVolume", "netVolume", "grossVolume");
-        Put("netArea", "netArea", "grossArea");
-        Put("length", "length");
-        Put("count", "count");
         if (bag.Count == 0) return null;
         var json = JsonSerializer.Serialize(bag, Json);
         return json.Length <= BuildModelElement.MaxPropertiesJson ? json : null;

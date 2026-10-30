@@ -54,6 +54,12 @@ export function SheetMapper({ projectId, sheets, zones }: Props) {
     setError(null);
   };
 
+  /** Keyboard: Backspace/Delete removes the last point, Escape clears the outline (points themselves need a pointer). */
+  const onCanvasKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); setPoints(points.slice(0, -1)); }
+    else if (e.key === "Escape") setPoints([]);
+  };
+
   const submit = () => {
     const problem = validateOutline(points) ?? (name.trim() ? null : "Informe o nome da zona.");
     if (problem) { setError(problem); return; }
@@ -92,7 +98,8 @@ export function SheetMapper({ projectId, sheets, zones }: Props) {
 
       {local && !local.pdf && (
         <div className="space-y-2">
-          <div ref={boxRef} onClick={addPoint} className="relative w-full cursor-crosshair select-none overflow-hidden rounded-md border border-border"
+          <div ref={boxRef} onClick={addPoint} onKeyDown={onCanvasKey} tabIndex={0} role="application"
+            aria-label="Planta: clique para adicionar pontos; Backspace desfaz o último, Esc limpa" className="relative w-full cursor-crosshair select-none overflow-hidden rounded-md border border-border"
             data-testid="sheet-canvas">
             <img src={local.url} alt="Planta da obra" className="block h-auto w-full" draggable={false} />
             <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
