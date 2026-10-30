@@ -1,68 +1,116 @@
-# Minha Obra: contrato temporário e integração pendente
+# Minha Obra: frontend público integrado ao Orken Build (contrato v1.6)
 
-O contrato `client-portal-contract.md` ainda não foi publicado. Confirmado pelo usuário em 30/10/2026. Este documento NÃO é um contrato aprovado do backend.
+O portal do cliente (`/{companySlug}/{projectSlug}`, ex.: `www.orken.com.br/solutie/shoppingeusebio`) fala só com a API
+pública do Orken Build descrita em `docs/build/client-portal-contract.md` (branch `feat/build-complete`, PR #90). Não há
+contrato provisório, gateway "indisponível" nem dados simulados em produção: os fixtures de `dev/Review.tsx` só existem em
+DEV com `VITE_BUILD_PORTAL_REVIEW=1`.
 
 ## Arquitetura
 
-`nexo-main/src/modules/build-portal/types/index.ts` contém somente o modelo de apresentação marcado TEMPORARY CONTRACT. `api/gateway.ts` é a porta de integração. O adapter real deve validar/mapear respostas do OpenAPI para esse modelo, sem expor DTOs administrativos. Componentes não conhecem endpoints, tokens ou o formato de serialização do backend.
+```
+API pública (OpenAPI v1.6) → api/generated/portal-types.ts → api/http-gateway.ts + api/adapter.ts
+                           → types/index.ts (modelo de apresentação) → componentes
+```
 
-Ponto exato de substituição: `nexo-main/src/modules/build-portal/api/gateway.ts`, implementação `unavailableGateway` da interface `PortalGateway`. A injeção ocorre em `nexo-main/src/modules/build-portal/PortalPage.tsx`. Ainda não há diretório `hooks/`: os hooks de carregamento, cancelamento e sessão estão em `PortalSession`, nesse mesmo arquivo. O contrato provisório permanece inalterado até o alinhamento com o backend.
+- `api/generated/portal-types.ts` é cópia literal de `docs/build/portal-types.ts`, gerado da API em execução
+  (`BuildPortalOpenApiTests`). Atualize copiando o arquivo; não edite à mão.
+- `api/http-gateway.ts` é o único lugar que conhece rotas, headers e códigos. Componentes não veem DTOs nem tokens.
+- `credentials: "omit"`, nunca `Authorization`; sessão só em memória, no header `X-Build-Portal-Session`.
+- `PortalPage.tsx` injeta `createHttpGateway()`; trocar de slug destrói a sessão anterior.
 
-`route.ts` é o único resolvedor do caminho desejado `/{companySlug}/{projectSlug}`. Namespaces existentes são reservados. A superfície é montada fora de AuthProvider e WorkspaceProvider: login administrativo não autoriza o cliente público e não o redireciona para a plataforma. Mudança de slug destrói a sessão visual anterior; respostas atrasadas/abortadas são ignoradas.
+## Comportamento por resposta
 
-Produção usa `unavailableGateway`, sem chamadas a endpoints inventados e sem dados simulados. Implementar o adapter real é requisito para lançamento. Nenhuma alteração de backend nesta branch.
+| Resposta | O que o portal faz |
+|---|---|
+| 401 `portal_password_required` | tela de senha (sem dados da obra) |
+| 401 `portal_password_invalid` | "Não foi possível acessar com essa senha." |
+| 401 sessão expirada/revogada | volta à senha, descarta os dados carregados |
+| 404 | "Não encontramos este acompanhamento." — igual para empresa ou obra inexistente |
+| 409 | mensagem do servidor + "O registro foi atualizado com a situação atual."; recarrega o estado real |
+| 413 / 422 | mensagem do servidor junto ao formulário; nada é mostrado como enviado |
+| 429 + `Retry-After` | contagem regressiva; nenhuma requisição até o fim; formulário de senha oculto |
+| seção falhou | só aquela seção mostra o erro, com "Tentar carregar novamente"; as outras seguem |
 
-## Contratos necessários ao backend
+Ações (escolha, aditivo, aceite, chamado, fotos, avaliação) só atualizam a tela depois da resposta de sucesso, recarregando o
+estado do servidor. O resultado aparece junto do formulário que o enviou. Uploads mostram "Enviando foto N de M…".
 
-- Resolver publicação/acesso por ambos os slugs, de forma indistinguível para tenants/projetos incorretos. Identidade de tela privada somente se explicitamente segura para exposição pré-auth.
-- Autenticação específica do portal, expiração, revogação, logout, política de CSRF/cookies/CORS, rate limit com Retry-After. Nunca reutilizar JWT administrativo. Senhas não persistidas no navegador.
-- Payload autorizado contendo branding, progresso nullable, previsão/publicação, etapas, eventos passados e previstos, resumo semanal, documentos e URLs assinadas. Progresso ausente é desconhecido, nunca zero.
-- Financeiro: nível explícito e dados filtrados no servidor. O adapter deve remover finance quando nível zero; a UI não solicita/transita por dados administrativos para decidir autorização.
-- Decisões: ID/versionamento, opções, valores e impacto de prazo nullable; endpoint de confirmação com idempotência e conflito de versão. Histórico/estado de confirmação vem do servidor.
-- Assistência: categorias autorizadas, solicitação, anexos com limites/MIME/tamanho e upload autorizado, disponibilidade, protocolo e status. Não há upload fictício em produção.
-- GLB/GLTF autorizado, versão do modelo, IDs estáveis e binding explícito de ID para nó GLTF; pavimento/etapa/categoria; status por elemento. Snapshot tem estados completos por data; elementos ausentes permanecem desconhecidos. Definir formatos de compressão, URLs de recursos, limites e expiração.
-- Reality capture: projeção panorâmica, URLs autorizadas, data, pavimento/zona e hotspots com destino e coordenadas. Clima: previsão e impactos já analisados/autorizados pelo backend. Nenhuma análise textual no cliente.
-- Política SEO: indexação por portal e headers HTTP no servidor. O frontend usa noindex conservador, não publica título/metadata do projeto pré-auth. Proteção real requer autorização no backend e headers Cache-Control/no-store + X-Robots-Tag.
+## URLs assinadas
+
+- Nunca são guardadas como identificador. O portal recarrega os dados 30 s antes da primeira expirar, no máximo a cada
+  14 min e no mínimo a cada 1 min (`refreshDelay`), e também ao voltar o foco para a janela.
+- Relógio do aparelho adiantado em relação ao servidor não gera loop: links que parecem já vencidos mantêm a janela de
+  14 min. Expiração da sessão adiantada pelo mesmo motivo é decidida só pelo servidor (401).
+- Imagem ou vídeo que falha (link vencido) renova os links uma vez, sem a pessoa perceber (`media.ts`), no máximo uma
+  vez por minuto. Link de documento vencido é renovado em vez de aberto ("Toque novamente para abrir").
+- Datas de garantia (`expiresAt`) não são confundidas com expiração de link.
+
+## Gêmeo digital
+
+- O GLB é baixado uma vez. Datas usam `GET /twin/state?date=` com `If-None-Match`; a resposta 304 reaproveita o estado.
+- Etapa, categoria e pavimento de cada elemento vêm de `elementIndex` (v1.6): vínculos reais da construtora, classe IFC
+  gravada e zona. Nada é deduzido de nome de nó. Sem índice, os filtros não aparecem.
+- Pavimento = zona `Storey` acima do elemento; em modelos sem pavimentos IFC, a zona do elemento.
+- Classes IFC conhecidas têm nome em português ("Paredes", "Lajes e pisos"…); as demais aparecem como gravadas.
+- Sem WebGL: aviso e lista textual de elementos e estados.
+
+## Diferenças contrato/UI que permanecem (regras reais do backend)
+
+- Escolha e aditivo são registros separados: a escolha fica "Enviada, aguardando a construtora". Quando muda preço ou
+  prazo, a construtora gera um aditivo, que o cliente decide.
+- O aditivo gerado de uma escolha traz o prazo de fornecimento na descrição e "Impacto no prazo: Sem alteração". O backend
+  não converte o prazo de fornecimento em atraso de obra.
+- Nome é obrigatório no aceite e na decisão. Nome só com espaços é recusado pelo servidor (400) e mostrado no formulário.
+- Assistência aceita só fotos (JPEG, PNG, WebP; até 8 MB; até 6 por chamado), conferidas pelo conteúdo no servidor.
+- Valor de aditivo e de medição só aparece com `financialSummary` ligado; sem ele, o portal não mostra valor.
+- Hotspots 360° e nuvem de pontos: o contrato não publica coordenadas. Nuvem de pontos é só download.
+- O histórico do chamado mostra os status registrados; agendamento aparece como "Atendimento: data", não como etapa.
+
+## Testes
+
+- Unidade: `npx vitest run src/modules/build-portal` (gateway, adapter, mídia, índice do gêmeo, relógio, upload).
+- Visual com fixtures (DEV): `npx playwright test --config playwright.build-portal.config.ts`.
+- Integração real (API real, CORS real, PostgreSQL descartável, Docker):
+
+  ```bash
+  BUILD_BACKEND_ROOT=<checkout de feat/build-complete>/nexo-backend npx playwright test --config playwright.build-portal.integration.config.ts
+  ```
+
+  O Playwright sobe `e2e/backend-host` (controllers, serviços e política CORS reais sobre Testcontainers, sem nenhuma
+  rota simulada da API) e o Vite em outra origem. A única rota interceptada é o armazenamento por trás das URLs
+  assinadas (`storage.test`): ela serve os bytes que a API gravou e recusa assinaturas revogadas, como um link S3
+  vencido.
+
+Cobertura da suíte de integração (19 cenários):
+- portal público (390, 430 e 1440 px) e privado;
+- senha errada, bloqueio com `Retry-After`;
+- sessão revogada, sessão expirada no servidor, sessão expirada no navegador;
+- financeiro oculto, linha do tempo, fotos, documentos;
+- renovação de URL por timer e por falha de imagem;
+- aditivo: nome exigido, impacto de prazo, conflito 409;
+- escolha → confirmação → aditivo gerado;
+- aceite de entrega;
+- assistência: tipos permitidos, 413 e 422, evidência, protocolo, histórico;
+- avaliação única;
+- gêmeo digital: GLB real, modos, filtros do índice, corte, seleção, datas, ETag e 304, GLB baixado uma vez;
+- sem WebGL;
+- captura de realidade;
+- isolamento entre empresas e obras.
 
 ## Direção visual
 
-Cliente abre o link no WhatsApp, em um celular sob luz ambiente, procurando tranquilidade sobre a obra. Superfície clara, tipografia legível e fotografia real em destaque; nome/identidade da construtora à frente, Orken só no rodapé. Hierarquia narrativa: progresso e previsão, publicação da semana, etapas, modelo, atualizações, imagens, escolhas, documentos, cuidado pós-entrega. Ausência de fotos não gera fotografia falsa. Acento de marca não compromete a legibilidade de botões.
+Cliente abre o link no WhatsApp, em um celular sob luz ambiente, procurando tranquilidade sobre a obra. Superfície clara,
+tipografia legível e fotografia real em destaque; nome/identidade da construtora à frente, Orken só no rodapé. Hierarquia
+narrativa: progresso e previsão, publicação da semana, etapas, modelo, atualizações, imagens, escolhas, documentos,
+cuidado pós-entrega. Ausência de fotos não gera fotografia falsa.
 
 ## Viewer: escolha técnica
 
-Three.js direto, carregado em chunk lazy somente após ação do usuário. Backend converte IFC; o browser não precisa processar IFC nem inferir bindings. GLTFLoader suporta configuração de decodificadores quando o formato real for conhecido. Rendering sob demanda, DPR limitado, disposal no unmount e fallback de erro/context loss. Não é comprovação de desempenho em GPU móvel ou modelos grandes.
+Three.js direto, em chunk lazy carregado só após ação do usuário. O backend processa IFC; o navegador não infere
+vínculos. Renderização sob demanda, DPR limitado, descarte no unmount, fallback de erro/perda de contexto. Busca de
+elementos por mapa (modelos com milhares de nós).
 
-Referências primárias consultadas: [GLTFLoader](https://threejs.org/docs/pages/GLTFLoader), [R3F performance](https://r3f.docs.pmnd.rs/advanced/scaling-performance), [xeokit viewer](https://github.com/xeolabs/xeokit-viewer/blob/master/README.md). R3F oferece integração declarativa, mas não é necessário para este canvas isolado. xeokit agrega formato/conversão e condições de distribuição que precisam ser avaliadas antes de adoção. Decisão: começar com GLTF renderizado por Three, adaptar quando houver modelo real.
+## Pendências antes de publicar
 
-## Revisão e execução
-
-`VITE_BUILD_PORTAL_REVIEW=1` no servidor Vite de desenvolvimento habilita `/__review/minha-obra`. Nunca habilita em build de produção. Dados sintéticos estão exclusivamente em `dev/Review.tsx`, identificados na tela; testes usam callbacks locais de revisão, não chamadas reais.
-
-- `npx vitest run src/modules/build-portal/portal.test.tsx`
-- `npx playwright test --config playwright.build-portal.config.ts`
-- `npm run typecheck`
-- `npm run build -- --outDir node_modules/.build-portal-review`
-
-Requer QA com backend real antes de publicação. Os testes de fixtures não certificam autenticação, autorização, confirmação financeira, entrega de anexos, TLS, cache ou exposição de dados no servidor.
-
-## Estado da implementação em 30/10/2026
-
-Branch dedicada, worktree isolado de origin/master 7dfe843. Frontend preparado para integração, não liberado para produção.
-
-Implementado: shell público separado do ERP, rota customizada com namespaces reservados, estados de acesso, white label, home/progresso/previsão, etapas, publicações e resumo semanal, galeria foto/vídeo com filtros e comparação, financeiro por nível recebido, decisões com confirmação de impactos, documentos, entrega e garantias, assistência com formulário/anexos pela porta de integração, clima fornecido pelo adapter, visita panorâmica condicional e viewer GLTF.
-
-Viewer: órbita/pan/zoom, reset/tela cheia, filtros de pavimento/etapa/categoria, corte horizontal, Projeto/Agora/Comparar, snapshots por seletor e controle temporal, seleção por raycast, evidências opcionais e lista textual equivalente. Trocar data/modo não baixa novamente o modelo. Bindings são explícitos por nome de nó no modelo de apresentação; o adapter real precisa transformar IDs estáveis do conversor nesse binding, sem inferência por nomes ou texto do diário.
-
-Validação: 318 testes Vitest na suíte inteira (incluindo testes novos do portal); 11 testes Playwright em Edge, larguras 360/390/430/768/1440; typecheck estrito; ESLint dos arquivos alterados sem erros/avisos; build Vite. Um problema de ordem de inicialização de lazy no router foi encontrado no primeiro ciclo de navegador e corrigido antes da rodada aprovada. Modelo usado no teste de renderização é um triângulo GLTF sintético, não BIM real. Capturas mostram cenários de revisão identificados na tela.
-
-Limites concretos para lançamento:
-- O gateway de produção permanece indisponível até publicação e alinhamento do contrato real. Nenhum pagamento, decisão, autenticação de cliente ou anexo foi enviado a servidor neste trabalho.
-- Rate limiting, revogação, isolamento por tenant/projeto e autorização de arquivos precisam ser exercitados contra o backend. A interface não substitui esses controles.
-- Modelo real, elementos com hierarquia/instâncias, compressão Draco/Meshopt, chunks/progressive streaming, modelos grandes e GPU móvel exigem fixtures do conversor e profiling. Falhas atuais levam ao fallback; não há alegação de suporte a todo IFC/GLTF possível.
-- Capturas 360 assumem panorama equiretangular. Hotspots aparecem como navegação acessível entre locais; coordenadas e overlay espacial dependem do contrato de captura.
-- Não foi feita validação em iPhone/Android físico nem leitor de tela falado. Core Web Vitals de produção ainda precisam de medição.
-- SEO privado é conservador no frontend; headers, cache, URLs assinadas e proteção do HTML/arquivos exigem servidor.
-
-Sem merge, deploy ou alteração de backend. Não usar os callbacks de dev como implementação HTTP. A documentação do backend deve entrar em client-portal-contract.md; este arquivo tem nome distinto para não ser confundido com contrato aprovado.
-
-Os logs de revisão preservam os resultados da execução; caminhos locais foram normalizados para referências relativas ao repositório.
+- Medir modelos grandes (milhares de elementos, Draco/Meshopt) e GPU móvel em aparelho físico.
+- Validar em iPhone/Android físicos e com leitor de tela falado; medir Core Web Vitals em produção.
+- O site público precisa estar em `Cors:AllowedOrigins` se não for `www.orken.com.br` ou `app.orken.com.br` (já fixos).

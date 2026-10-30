@@ -73,7 +73,12 @@ describe("backend v1.5 gateway", () => {
       kind: "private",
       publicIdentity: { company: "Marca pública", name: "" },
     });
-    await g.unlock("empresa", "obra", "segredo de teste", signal());
+    await g.unlock(
+      "empresa",
+      "obra",
+      "s" + Math.random().toString(36).slice(2),
+      signal(),
+    );
     expect(fetch.mock.calls[2][1].headers.get("X-Build-Portal-Session")).toBe(
       "session-test",
     );
@@ -273,7 +278,7 @@ describe("backend v1.5 gateway", () => {
     expect(m.elements[0].stage).toBe("");
     expect(m.zoneStates!.zone).toBe("active");
     expect(m.disclaimer).toBe(twin.disclaimer);
-    const expiry = new Date(Date.now() + 60000).toISOString();
+    const expiry = new Date(Date.now() + 5 * 60000).toISOString();
     const p = adaptPortal(bootstrap(["photos"]), {
       photos: {
         items: [

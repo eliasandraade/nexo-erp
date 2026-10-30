@@ -16,7 +16,7 @@ export class PortalHttpError extends Error {
 }
 export function actionError(error: unknown): string {
   return error instanceof PortalHttpError
-    ? `${error.message}${error.status === 409 ? " Atualize o registro antes de continuar." : ""}${error.retryAt ? ` Tente após ${new Date(error.retryAt).toLocaleTimeString("pt-BR")}.` : ""}`
+    ? `${error.message}${error.status === 409 ? " O registro foi atualizado com a situação atual." : ""}${error.retryAt ? ` Tente após ${new Date(error.retryAt).toLocaleTimeString("pt-BR")}.` : ""}`
     : "Não foi possível concluir. Confira sua conexão e tente novamente.";
 }
 function accessError(e: unknown): Access {
@@ -279,13 +279,19 @@ export function createHttpGateway(
   };
   const actions = (tenant: string, project: string): PortalActions => {
     const base = path(tenant, project);
-    const upload = async (id: string, files: File[]) => {
+    const upload = async (
+      id: string,
+      files: File[],
+      onProgress?: (sent: number, total: number) => void,
+    ) => {
       validateFiles(files);
-      for (const file of files) {
+      for (const [index, file] of files.entries()) {
+        onProgress?.(index, files.length);
         const form = new FormData();
         form.append("file", file);
         await write(base, `/assistance/${encodeURIComponent(id)}/photos`, form);
       }
+      onProgress?.(files.length, files.length);
     };
     return {
       decide: (id, option) =>
@@ -311,7 +317,7 @@ export function createHttpGateway(
             comment,
           } satisfies D.PublicBuildHandoverAcceptRequest),
         ),
-      requestAssistance: (input) =>
+      requestAssistance: (input, onProgress) =>
         notifyMutation(async () => {
           validateFiles(input.files);
           const ticket = await write<D.PublicBuildAssistanceDto>(
@@ -325,7 +331,7 @@ export function createHttpGateway(
             } satisfies D.PublicBuildAssistanceOpenRequest,
           );
           try {
-            await upload(ticket.id, input.files);
+            await upload(ticket.id, input.files, onProgress);
           } catch (e) {
             emit("changed");
             throw new PortalHttpError(
@@ -335,10 +341,10 @@ export function createHttpGateway(
             );
           }
         }),
-      uploadEvidence: (id, files) =>
+      uploadEvidence: (id, files, onProgress) =>
         notifyMutation(async () => {
           try {
-            await upload(id, files);
+            await upload(id, files, onProgress);
           } catch (e) {
             emit("changed");
             throw e;
@@ -436,7 +442,10 @@ export function createHttpGateway(
         ).json()) as D.PublicBuildSessionDto;
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
         token = session.token;
-        expiresAt = Date.parse(session.expiresAt);
+        // A device clock ahead of the server's would see a fresh session as already expired: then the server (401)
+        // is the only judge of expiry.
+        const remaining = Date.parse(session.expiresAt) - Date.now();
+        expiresAt = remaining > 60000 ? Date.now() + remaining : Infinity;
         return load(tenant, project, signal);
       } catch (e) {
         if (signal.aborted) throw e;

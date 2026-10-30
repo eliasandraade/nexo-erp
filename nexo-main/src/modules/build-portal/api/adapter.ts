@@ -40,6 +40,83 @@ export function adaptState(s: D.PublicBuildTwinStateDto): TwinSnapshot {
     zoneStates: flatten(s.zoneStates),
   };
 }
+// Display names for IFC classes. Unknown classes keep their recorded name.
+const categories: Record<string, string> = {
+  IfcWall: "Paredes",
+  IfcWallStandardCase: "Paredes",
+  IfcCurtainWall: "Fachada",
+  IfcSlab: "Lajes e pisos",
+  IfcRoof: "Cobertura",
+  IfcBeam: "Vigas",
+  IfcColumn: "Pilares",
+  IfcFooting: "Fundações",
+  IfcPile: "Fundações",
+  IfcDoor: "Portas",
+  IfcWindow: "Janelas",
+  IfcStair: "Escadas",
+  IfcStairFlight: "Escadas",
+  IfcRamp: "Rampas",
+  IfcRailing: "Guarda-corpos",
+  IfcCovering: "Revestimentos",
+  IfcPlate: "Placas",
+  IfcMember: "Perfis",
+  IfcFurnishingElement: "Mobiliário",
+  IfcBuildingElementProxy: "Outros elementos",
+  Mesh: "Elementos do modelo",
+};
+export const categoryLabel = (c: string) => categories[c] ?? c;
+/**
+ * Element metadata comes only from elementIndex (v1.6): the company's stage bindings, the recorded IFC class and the zone
+ * the element sits in. Floor = the storey above that zone, by the zone tree. Nothing is read from node names.
+ */
+function twinElements(d: D.PublicBuildTwinDto, snapshot: TwinSnapshot) {
+  const index = d.elementIndex;
+  const stageOf = new Map<string, string>();
+  const categoryOf = new Map<string, string>();
+  const zoneOf = new Map<string, string>();
+  index?.stages.forEach((g) =>
+    g.elementIds.forEach((id) => stageOf.set(id, g.name)),
+  );
+  index?.categories.forEach((g) =>
+    g.elementIds.forEach((id) => categoryOf.set(id, g.name)),
+  );
+  Object.entries(index?.zones ?? {}).forEach(([zone, ids]) =>
+    ids.forEach((id) => zoneOf.set(id, zone)),
+  );
+  const zones = new Map(d.zones.map((z) => [z.id, z]));
+  // The viewer's floor filter lists storeys when the model has them, else every zone bound to a node.
+  const hasStoreys = d.zones.some((z) => z.kind === "Storey");
+  const storeyOf = (zoneId?: string) => {
+    let zone = zoneId ? zones.get(zoneId) : undefined;
+    if (!hasStoreys) return zone?.externalId ?? "";
+    for (let depth = 0; zone && depth < 32; depth++) {
+      if (zone.kind === "Storey") return zone.externalId ?? "";
+      zone = zone.parentId ? zones.get(zone.parentId) : undefined;
+    }
+    return "";
+  };
+  const ids = [
+    ...new Set([
+      ...stageOf.keys(),
+      ...categoryOf.keys(),
+      ...Object.keys(snapshot.states),
+    ]),
+  ];
+  return ids.map((id) => {
+    const category = categoryOf.get(id);
+    return {
+      id,
+      node: id,
+      name: category
+        ? `${categoryLabel(category)} · ${id.slice(-6)}`
+        : `Elemento ${id.slice(-6)}`,
+      floor: storeyOf(zoneOf.get(id)),
+      stage: stageOf.get(id) ?? "",
+      category: category ? categoryLabel(category) : undefined,
+      status: snapshot.states[id] ?? ("unknown" as Phase),
+    };
+  });
+}
 export function adaptTwin(d: D.PublicBuildTwinDto): TwinModel {
   const snapshot = adaptState(d.state);
   return {
@@ -74,16 +151,20 @@ export function adaptTwin(d: D.PublicBuildTwinDto): TwinModel {
       box: z.simplifiedBox ?? undefined,
     })),
     // externalId is the published GLTF node binding. Never infer from diary or name.
-    elements: Object.entries(snapshot.states).map(([id, status]) => ({
-      id,
-      node: id,
-      name: id,
-      floor: "",
-      stage: "",
-      status,
-    })),
+    elements: twinElements(d, snapshot),
     snapshots: [snapshot],
   };
+}
+const MAX_REFRESH = 14 * 60000;
+/**
+ * When to fetch the signed URLs again: 30 s before the first one expires, at most every 14 minutes and never sooner than a
+ * minute. They were all signed just now for ~15 minutes by the server's clock, so a link that looks already expired means
+ * the device clock is ahead of the server's: the usual window is kept instead of refreshing in a loop. A failed image
+ * still renews itself (media.ts).
+ */
+export function refreshDelay(expires: number[], now = Date.now()): number {
+  const delay = Math.min(MAX_REFRESH, ...expires.map((e) => e - now - 30000));
+  return delay <= 0 ? MAX_REFRESH : Math.max(delay, 60000);
 }
 export function adaptPortal(
   b: D.PublicBuildBootstrapDto,
@@ -110,8 +191,10 @@ export function adaptPortal(
   const collect = (value: unknown) => {
     if (!value || typeof value !== "object") return;
     for (const [key, item] of Object.entries(value)) {
+      // Only signed-URL expiries (urlExpiresAt, photoUrlsExpireAt, viewerExpiresAt…). A warranty's expiresAt is a date of
+      // the property, not of a link: an expired warranty must never schedule a refresh.
       if (
-        /expire(s)?at$/i.test(key) &&
+        /(url|urls|viewer)expires?at$/i.test(key) &&
         typeof item === "string" &&
         Number.isFinite(Date.parse(item))
       )
@@ -150,12 +233,7 @@ export function adaptPortal(
   const p: Portal = {
     sections: [...b.sections],
     sectionErrors: errors,
-    refreshAt: new Date(
-      Math.max(
-        Date.now() + 5000,
-        Math.min(Date.now() + 14 * 60000, ...expires) - 30000,
-      ),
-    ).toISOString(),
+    refreshAt: new Date(Date.now() + refreshDelay(expires)).toISOString(),
     visibility: b.portal.access === "Public" ? "public" : "private",
     indexable: false,
     title: b.portal.title ?? undefined,

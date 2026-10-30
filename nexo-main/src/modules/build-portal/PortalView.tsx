@@ -3,6 +3,7 @@ import { actionError } from "./api/http-gateway";
 import type { PortalActions } from "./api/gateway";
 import { lazy, Suspense, useState, type CSSProperties } from "react";
 import { type Portal, type Photo, date, percent, safeUrl } from "./types";
+import { useSignedMedia } from "./media";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +43,7 @@ export function PortalView({
   const [decision, setDecision] = useState<{ id: string; option: string }>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const media = useSignedMedia(actions, p.refreshAt);
   const has = (section: string) => !p.sections || p.sections.includes(section);
   const hasTimeline = [
     "clientUpdates",
@@ -392,6 +394,7 @@ export function PortalView({
                             loading="lazy"
                             src={safeUrl(item.thumbnail) || safeUrl(item.url)}
                             alt={item.caption}
+                            onError={media.onError}
                           />
                         )}
                         <span>{item.caption}</span>
@@ -417,7 +420,12 @@ export function PortalView({
             {p.downloads?.map((d, i) => (
               <p key={i}>
                 {safeUrl(d.url) ? (
-                  <a href={safeUrl(d.url)} target="_blank" rel="noreferrer">
+                  <a
+                    href={safeUrl(d.url)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={media.guardLink}
+                  >
                     Baixar captura: {d.name}
                   </a>
                 ) : (
@@ -459,6 +467,7 @@ export function PortalView({
                               src={safeUrl(o.image)}
                               alt={o.name}
                               loading="lazy"
+                              onError={media.onError}
                             />
                           )}
                           <p>{o.description}</p>
@@ -553,7 +562,12 @@ export function PortalView({
                   <h3>{doc.name}</h3>
                 </div>
                 {safeUrl(doc.url) && (
-                  <a href={safeUrl(doc.url)} target="_blank" rel="noreferrer">
+                  <a
+                    href={safeUrl(doc.url)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={media.guardLink}
+                  >
                     Abrir documento ↗
                   </a>
                 )}
@@ -561,7 +575,12 @@ export function PortalView({
             ))}
           </section>
         )}
-        <PortalOperations portal={p} actions={actions} />
+        {media.notice && (
+          <p role="status" className="mb-section">
+            {media.notice}
+          </p>
+        )}
+        <PortalOperations portal={p} actions={actions} media={media} />
         {!p.sections && p.lifecycle === "handover" && (
           <section className="mb-section">
             <h2>Cuidado que continua</h2>
@@ -685,6 +704,7 @@ export function PortalView({
                   className="max-h-[65dvh] w-full"
                   src={safeUrl(photo.url)}
                   aria-label={photo.caption}
+                  onError={media.onError}
                 />
               ) : (
                 <>
@@ -716,6 +736,7 @@ export function PortalView({
                       className="max-h-[65dvh] w-full object-contain"
                       src={safeUrl(photo.url)}
                       alt={photo.caption}
+                      onError={media.onError}
                     />
                     {compare && (
                       <img
@@ -726,6 +747,7 @@ export function PortalView({
                         alt={
                           p.photos.find((item) => item.id === compare)?.caption
                         }
+                        onError={media.onError}
                       />
                     )}
                   </div>

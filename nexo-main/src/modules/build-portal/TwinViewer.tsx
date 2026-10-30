@@ -201,19 +201,27 @@ export default function TwinViewer({
             new THREE.Vector3(0, -1, 0),
             bounds.max.y - ((bounds.max.y - bounds.min.y) * config.cut) / 100,
           );
+          // Lookup maps: a model may hold thousands of nodes and elements.
+          const byNode = new Map(model.elements.map((e) => [e.node, e]));
+          const zoneByName = new Map<
+            string,
+            NonNullable<TwinModel["zones"]>[number]
+          >();
+          model.zones?.forEach((z) => {
+            zoneByName.set(z.id, z);
+            if (z.node) zoneByName.set(z.node, z);
+          });
           root!.traverse((object) => {
             if (!(object instanceof THREE.Mesh)) return;
             let ancestor: THREE.Object3D | null = object;
-            let element = model.elements.find((e) => e.node === object.name);
+            let element = byNode.get(object.name);
             let inFloor = !config.floor;
             while (ancestor) {
-              element ??= model.elements.find((e) => e.node === ancestor!.name);
+              element ??= byNode.get(ancestor.name);
               if (ancestor.name === config.floor) inFloor = true;
               ancestor = ancestor.parent;
             }
-            const zone = model.zones?.find(
-              (z) => z.id === object.name || z.node === object.name,
-            );
+            const zone = zoneByName.get(object.name);
             object.userData.portalId = element?.id;
             const status = element
               ? historical
@@ -252,7 +260,9 @@ export default function TwinViewer({
                               : 0x9aa59e,
                   );
                 material.transparent =
-                  status === undefined || status === "waiting";
+                  status === undefined ||
+                  status === "waiting" ||
+                  status === "unknown";
                 material.opacity = material.transparent ? 0.18 : 1;
                 material.depthWrite = !material.transparent;
               }
@@ -467,13 +477,18 @@ export default function TwinViewer({
         Pavimento
         <select value={floor} onChange={(e) => setFloor(e.target.value)}>
           <option value="">Todos</option>
-          {[...new Set(model.elements.map((e) => e.floor).filter(Boolean))].map(
-            (f) => (
+          {[...new Set(model.elements.map((e) => e.floor).filter(Boolean))]
+            .filter((f) => !model.zones?.some((z) => z.node === f))
+            .map((f) => (
               <option key={f}>{f}</option>
-            ),
-          )}
+            ))}
           {model.zones
-            ?.filter((z) => z.node)
+            ?.filter(
+              (z) =>
+                z.node &&
+                (z.kind === "Storey" ||
+                  !model.zones?.some((other) => other.kind === "Storey")),
+            )
             .map((z) => (
               <option key={z.id} value={z.node}>
                 {z.name}
@@ -486,7 +501,9 @@ export default function TwinViewer({
           Etapa
           <select value={stage} onChange={(e) => setStage(e.target.value)}>
             <option value="">Todas</option>
-            {[...new Set(model.elements.map((e) => e.stage))].map((value) => (
+            {[
+              ...new Set(model.elements.map((e) => e.stage).filter(Boolean)),
+            ].map((value) => (
               <option key={value}>{value}</option>
             ))}
           </select>

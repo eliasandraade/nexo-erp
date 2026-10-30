@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
-import type { PortalActions } from "./api/gateway";
+import type { PortalActions, UploadProgress } from "./api/gateway";
+import type { SignedMedia } from "./media";
 import { actionError, PortalHttpError } from "./api/http-gateway";
 import { date, percent, safeUrl, type Portal } from "./types";
 const status: Record<string, string> = {
@@ -164,34 +165,56 @@ export function ProgressDetails({ portal: p }: { portal: Portal }) {
 export function PortalOperations({
   portal: p,
   actions,
+  media,
 }: {
   portal: Portal;
   actions: PortalActions;
+  media?: SignedMedia;
 }) {
-  const [busy, setBusy] = useState(false),
-    [notice, setNotice] = useState("");
+  // One action at a time; its outcome is shown next to the form that sent it, and only after the server answered.
+  const [busy, setBusy] = useState(""),
+    [progress, setProgress] = useState(""),
+    [notice, setNotice] = useState<{
+      form: string;
+      text: string;
+      error: boolean;
+    }>();
   const submit = async (
+    key: string,
     e: FormEvent<HTMLFormElement>,
-    work: (data: FormData) => Promise<void>,
+    done: string,
+    work: (data: FormData, onProgress: UploadProgress) => Promise<void>,
   ) => {
     e.preventDefault();
     if (busy) return;
     const form = e.currentTarget;
     const data = new FormData(form);
-    setBusy(true);
-    setNotice("");
+    setBusy(key);
+    setProgress("");
+    setNotice(undefined);
     try {
-      await work(data);
-      setNotice("Solicitação registrada. O registro está sendo atualizado.");
+      await work(data, (sent, total) =>
+        setProgress(
+          sent < total ? `Enviando foto ${sent + 1} de ${total}…` : "",
+        ),
+      );
+      setNotice({ form: key, text: done, error: false });
       form.reset();
     } catch (error) {
       if (error instanceof PortalHttpError && error.code === "partial_upload")
         form.reset();
-      setNotice(actionError(error));
+      setNotice({ form: key, text: actionError(error), error: true });
     } finally {
-      setBusy(false);
+      setBusy("");
+      setProgress("");
     }
   };
+  const outcome = (key: string) =>
+    busy === key && progress ? (
+      <p role="status">{progress}</p>
+    ) : notice?.form === key ? (
+      <p role={notice.error ? "alert" : "status"}>{notice.text}</p>
+    ) : null;
   const text = (d: FormData, k: string) => String(d.get(k) ?? "");
   const files = (d: FormData) =>
     d.getAll("files").filter((f): f is File => f instanceof File && f.size > 0);
@@ -235,13 +258,17 @@ export function PortalOperations({
               {o.canDecide && actions.changeOrder && (
                 <form
                   onSubmit={(e) =>
-                    void submit(e, (d) =>
-                      actions.changeOrder!(
-                        o.id,
-                        text(d, "decision") as "approve" | "reject",
-                        text(d, "signer"),
-                        text(d, "comment"),
-                      ),
+                    void submit(
+                      `order-${o.id}`,
+                      e,
+                      "Decisão registrada.",
+                      (d) =>
+                        actions.changeOrder!(
+                          o.id,
+                          text(d, "decision") as "approve" | "reject",
+                          text(d, "signer"),
+                          text(d, "comment"),
+                        ),
                     )
                   }
                 >
@@ -261,9 +288,14 @@ export function PortalOperations({
                     Li os itens e os impactos informados e confirmo esta
                     decisão.
                   </label>
-                  <button disabled={busy}>Registrar decisão do aditivo</button>
+                  <button disabled={!!busy}>
+                    {busy === `order-${o.id}`
+                      ? "Registrando…"
+                      : "Registrar decisão do aditivo"}
+                  </button>
                 </form>
               )}
+              {outcome(`order-${o.id}`)}
             </article>
           ))}
         </section>
@@ -295,7 +327,12 @@ export function PortalOperations({
           {p.handover.documents.map((d, i) => (
             <p key={i}>
               {safeUrl(d.url) ? (
-                <a href={safeUrl(d.url)} target="_blank" rel="noreferrer">
+                <a
+                  href={safeUrl(d.url)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={media?.guardLink}
+                >
                   {d.name} ↗
                 </a>
               ) : (
@@ -310,7 +347,7 @@ export function PortalOperations({
             actions.acceptHandover && (
               <form
                 onSubmit={(e) =>
-                  void submit(e, (d) =>
+                  void submit("handover", e, "Aceite registrado.", (d) =>
                     actions.acceptHandover!(
                       text(d, "signer"),
                       text(d, "comment"),
@@ -323,10 +360,15 @@ export function PortalOperations({
                   <input type="checkbox" required />
                   Revisei a vistoria e confirmo o aceite da entrega.
                 </label>
-                <button disabled={busy}>Registrar aceite da entrega</button>
+                <button disabled={!!busy}>
+                  {busy === "handover"
+                    ? "Registrando…"
+                    : "Registrar aceite da entrega"}
+                </button>
               </form>
             )
           )}
+          {outcome("handover")}
         </section>
       )}
       {p.sections?.includes("postConstruction") && (
@@ -372,6 +414,7 @@ export function PortalOperations({
                           src={safeUrl(url)}
                           alt={`Evidência ${i + 1} do chamado ${t.number}`}
                           loading="lazy"
+                          onError={media?.onError}
                         />
                       </a>
                     ))}
@@ -379,8 +422,12 @@ export function PortalOperations({
                   {t.canAddPhotos && actions.uploadEvidence && (
                     <form
                       onSubmit={(e) =>
-                        void submit(e, (d) =>
-                          actions.uploadEvidence!(t.id, files(d)),
+                        void submit(
+                          `photos-${t.id}`,
+                          e,
+                          "Fotos recebidas pela construtora.",
+                          (d, onProgress) =>
+                            actions.uploadEvidence!(t.id, files(d), onProgress),
                         )
                       }
                     >
@@ -398,21 +445,30 @@ export function PortalOperations({
                         JPEG, PNG ou WebP. Até 8 MB por foto, 6 fotos por
                         chamado.
                       </p>
-                      <button disabled={busy}>Enviar fotos</button>
+                      <button disabled={!!busy}>
+                        {busy === `photos-${t.id}`
+                          ? "Enviando…"
+                          : "Enviar fotos"}
+                      </button>
                     </form>
                   )}
+                  {outcome(`photos-${t.id}`)}
                   {t.rating !== undefined && (
                     <p>Sua avaliação: {t.rating} de 5</p>
                   )}
                   {t.canGiveFeedback && actions.feedback && (
                     <form
                       onSubmit={(e) =>
-                        void submit(e, (d) =>
-                          actions.feedback!(
-                            t.id,
-                            Number(d.get("rating")),
-                            text(d, "comment"),
-                          ),
+                        void submit(
+                          `rating-${t.id}`,
+                          e,
+                          "Avaliação enviada.",
+                          (d) =>
+                            actions.feedback!(
+                              t.id,
+                              Number(d.get("rating")),
+                              text(d, "comment"),
+                            ),
                         )
                       }
                     >
@@ -433,22 +489,34 @@ export function PortalOperations({
                         Comentário
                         <textarea name="comment" maxLength={2000} />
                       </label>
-                      <button disabled={busy}>Enviar avaliação</button>
+                      <button disabled={!!busy}>
+                        {busy === `rating-${t.id}`
+                          ? "Enviando…"
+                          : "Enviar avaliação"}
+                      </button>
                     </form>
                   )}
+                  {outcome(`rating-${t.id}`)}
                 </article>
               ))}
               {p.assistance.canOpen && actions.requestAssistance && (
                 <form
                   onSubmit={(e) =>
-                    void submit(e, (d) =>
-                      actions.requestAssistance!({
-                        category: text(d, "category"),
-                        title: text(d, "title"),
-                        description: text(d, "description"),
-                        location: text(d, "location"),
-                        files: files(d),
-                      }),
+                    void submit(
+                      "assistance",
+                      e,
+                      "Chamado aberto. Ele aparece acima com o número do protocolo.",
+                      (d, onProgress) =>
+                        actions.requestAssistance!(
+                          {
+                            category: text(d, "category"),
+                            title: text(d, "title"),
+                            description: text(d, "description"),
+                            location: text(d, "location"),
+                            files: files(d),
+                          },
+                          onProgress,
+                        ),
                     )
                   }
                 >
@@ -483,19 +551,17 @@ export function PortalOperations({
                     />
                   </label>
                   <p>Até 6 fotos JPEG, PNG ou WebP, de até 8 MB cada.</p>
-                  <button disabled={busy}>
-                    {busy ? "Enviando…" : "Solicitar atendimento"}
+                  <button disabled={!!busy}>
+                    {busy === "assistance"
+                      ? "Enviando…"
+                      : "Solicitar atendimento"}
                   </button>
+                  {outcome("assistance")}
                 </form>
               )}
             </>
           )}
         </section>
-      )}
-      {notice && (
-        <p role="status" className="mb-section">
-          {notice}
-        </p>
       )}
     </>
   );
