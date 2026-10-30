@@ -1,5 +1,6 @@
 import { AlertCircle } from "lucide-react";
 import { ApiError } from "@/services/api-client";
+import { platformErrorMessage } from "../../services/platformErrors";
 import type { AiProviderStatus } from "../../types/aiOperations";
 
 // ── Provider status ───────────────────────────────────────────────────────────
@@ -69,14 +70,12 @@ export function reasonLabel(reason: string): string {
 
 /** Any thrown value as text for a toast: the backend's own message when there is one. */
 export function errorText(e: unknown, fallback = "Falha na comunicação com o backend."): string {
-  if (e instanceof ApiError) return e.serverMessage ?? e.message ?? fallback;
-  if (e instanceof Error && e.message) return e.message;
-  return fallback;
+  return platformErrorMessage(e, fallback);
 }
 
 const ERROR_TITLE: Record<number, string> = {
   400: "Requisição inválida",
-  403: "Sem permissão — só super_admin pode fazer isto",
+  403: "Sem permissão — exige super administrador com verificação em duas etapas",
   404: "Não encontrado",
   422: "Não foi possível executar",
   503: "O provedor falhou",

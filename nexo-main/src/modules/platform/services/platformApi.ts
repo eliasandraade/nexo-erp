@@ -58,8 +58,9 @@ export async function revokeModule(tenantId: string, moduleKey: string): Promise
 
 // ─── Impersonation ────────────────────────────────────────────────────────────
 
-export async function impersonateTenant(tenantId: string): Promise<ImpersonateResult> {
-  return apiClient.post<ImpersonateResult>(`/platform/tenants/${tenantId}/impersonate`, {});
+/** `reason` (10 to 300 characters) goes to the audit log. */
+export async function impersonateTenant(tenantId: string, reason: string): Promise<ImpersonateResult> {
+  return apiClient.post<ImpersonateResult>(`/platform/tenants/${tenantId}/impersonate`, { reason });
 }
 
 // ─── Audit log ───────────────────────────────────────────────────────────────
@@ -256,4 +257,10 @@ export interface PlatformErrorEvent {
 
 export async function fetchPlatformErrors(days: number): Promise<PlatformErrorEvent[]> {
   return apiClient.get<PlatformErrorEvent[]>(`/platform/errors?days=${days}`);
+}
+
+/** A route listed by /platform/system/endpoints ("/api/…") as apiClient takes it (its base URL already ends in /api). */
+export function clientPath(path: string): string {
+  if (path === "/api") return "/";
+  return path.startsWith("/api/") ? path.slice(4) : path;
 }

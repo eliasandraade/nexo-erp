@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { isImpersonating } from "@/services/api-client";
 
 /**
  * Wraps all authenticated routes.
@@ -27,7 +28,8 @@ export function ProtectedRoute() {
   if (!session) return isReady ? <Navigate to="/login" replace /> : null;
 
   // A temporary password (set by a manager) is replaced before anything else.
-  if (session.requirePasswordChange && !location.pathname.startsWith("/perfil")) {
+  // (Not in a platform access: the administrator cannot change the user's password there.)
+  if (session.requirePasswordChange && !isImpersonating() && !location.pathname.startsWith("/perfil")) {
     return <Navigate to="/perfil?trocar-senha=1" replace />;
   }
 

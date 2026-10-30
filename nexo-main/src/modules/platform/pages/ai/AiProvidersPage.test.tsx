@@ -160,7 +160,8 @@ describe("AiProvidersPage", () => {
     renderAi(<AiProvidersPage />);
     fireEvent.click(await within(await screen.findByRole("region", { name: "Provedor Claude" })).findByRole("switch", { name: "Ativar Claude" }));
     await waitFor(() => expect(api.updateAiProvider).toHaveBeenCalledWith("p-claude", { isEnabled: false }));
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Forbidden"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      "Esta ação exige um super administrador conectado com verificação em duas etapas."));
   });
 
   it("sends only the changed settings and validates them first", async () => {

@@ -37,6 +37,7 @@ const ServiceBookingPage = lazy(() => import("@/modules/service-portal/pages/Boo
 const ServiceManageBookingPage = lazy(() => import("@/modules/service-portal/pages/ManageBookingPage"));
 
 const ImpersonatePage       = lazy(() => import("@/pages/ImpersonatePage"));
+const ImpersonationEndedPage = lazy(() => import("@/pages/ImpersonationEndedPage"));
 const PerfilPage            = lazy(() => import("@/modules/profile/pages/PerfilPage"));
 const ModuleSelectionPage   = lazy(() => import("@/modules/workspace/pages/ModuleSelectionPage"));
 
@@ -123,6 +124,7 @@ const PlatformTenantDetailPage = lazy(() => import("@/modules/platform/pages/Pla
 const PlatformSystemPage       = lazy(() => import("@/modules/platform/pages/PlatformSystemPage"));
 const PlatformActivityPage     = lazy(() => import("@/modules/platform/pages/PlatformActivityPage"));
 const PlatformTrialPage        = lazy(() => import("@/modules/platform/pages/PlatformTrialPage"));
+const PlatformSecurityPage     = lazy(() => import("@/modules/platform/pages/PlatformSecurityPage"));
 const AiDashboardPage          = lazy(() => import("@/modules/platform/pages/ai/AiDashboardPage"));
 const AiPlaygroundPage         = lazy(() => import("@/modules/platform/pages/ai/AiPlaygroundPage"));
 const AiProvidersPage          = lazy(() => import("@/modules/platform/pages/ai/AiProvidersPage"));
@@ -187,6 +189,7 @@ export function AppRouter() {
 
             {/* Public: impersonation entry (opened in new tab by platform admin) */}
             <Route path="/impersonate" element={<ImpersonatePage />} />
+            <Route path="/acesso-encerrado" element={<ImpersonationEndedPage />} />
 
             {/* Public: auth pages */}
             <Route element={<AuthLayout />}>
@@ -370,6 +373,7 @@ export function AppRouter() {
                 <Route path="/platform/trial"                    element={<PlatformTrialPage />} />
                 <Route path="/platform/activity"                 element={<PlatformActivityPage />} />
                 <Route path="/platform/system"                   element={<PlatformSystemPage />} />
+                <Route path="/platform/seguranca"                element={<PlatformSecurityPage />} />
                 {/* AI Operations */}
                 <Route path="/platform/ai"                       element={<AiDashboardPage />} />
                 <Route path="/platform/ai/playground"            element={<AiPlaygroundPage />} />

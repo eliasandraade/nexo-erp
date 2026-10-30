@@ -2,19 +2,12 @@ import { useNavigate } from "react-router-dom";
 import { Building2, Store, Users, Package, Zap, ChevronRight, Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { usePlatformStats, usePlatformHealth } from "../hooks/usePlatformSystem";
 import { useMrr, useChurn } from "../hooks/usePlatformTenants";
+import { HealthCheckRow, StatusDot } from "../components/HealthCheckRow";
 
 const MODULE_LABELS: Record<string, string> = {
   varejo:      "Varejo",
   restaurante: "Restaurante",
 };
-
-function StatusDot({ status }: { status: string }) {
-  const color =
-    status === "healthy"   ? "bg-green-500" :
-    status === "degraded"  ? "bg-amber-500" :
-    "bg-red-500";
-  return <span className={`inline-block w-2 h-2 rounded-full ${color} shrink-0`} />;
-}
 
 function fmt(n: number) {
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -42,11 +35,9 @@ export default function PlatformDashboardPage() {
           <div className="flex items-center gap-2 text-sm">
             <StatusDot status={health.status} />
             <span className={
-              health.status === "healthy" ? "text-green-600" :
-              health.status === "degraded" ? "text-amber-600" : "text-red-600"
+              health.status === "healthy" ? "text-green-600" : "text-amber-600"
             }>
-              {health.status === "healthy" ? "Sistema operacional" :
-               health.status === "degraded" ? "Degradado" : "Instável"}
+              {health.status === "healthy" ? "Sistema operacional" : "Degradado"}
             </span>
             <button
               onClick={() => navigate("/platform/system")}
@@ -172,17 +163,7 @@ export default function PlatformDashboardPage() {
             <p className="text-xs text-muted-foreground">{healthError ? "Não foi possível verificar o sistema." : "Verificando…"}</p>
           ) : (
             <div className="space-y-3">
-              {health.checks.map((c) => (
-                <div key={c.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <StatusDot status={c.status} />
-                    <span className="text-sm text-foreground capitalize">{c.name}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {c.latencyMs > 1 ? `${c.latencyMs}ms` : c.latencyMs === 1 ? "< 1ms" : "—"}
-                  </span>
-                </div>
-              ))}
+              {health.checks.map((c) => <HealthCheckRow key={c.name} check={c} />)}
               <button
                 onClick={() => navigate("/platform/system")}
                 className="mt-2 text-xs text-primary hover:underline"
