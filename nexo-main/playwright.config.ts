@@ -1,7 +1,7 @@
 import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: "experience.spec.ts",
+  testMatch: ["experience.spec.ts", "platform-ai.spec.ts"],
   timeout: 30000,
   fullyParallel: false,
   retries: process.env.CI ? 1 : 0,   // CI only: one retry, so a slow runner does not fail an unrelated PR
