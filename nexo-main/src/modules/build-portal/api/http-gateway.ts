@@ -48,7 +48,10 @@ function accessError(e: unknown): Access {
 export function portalApiRoot(
   base = import.meta.env.VITE_API_BASE_URL ?? "/api",
 ): string {
-  return `${base.replace(/\/+$/, "").replace(/\/api$/, "")}/api/public/build`;
+  let root = base;
+  while (root.endsWith("/")) root = root.slice(0, -1);
+  if (root.endsWith("/api")) root = root.slice(0, -"/api".length);
+  return `${root}/api/public/build`;
 }
 
 export function createHttpGateway(
@@ -187,7 +190,7 @@ export function createHttpGateway(
     try {
       const b = await get<D.PublicBuildBootstrapDto>(base, "", signal);
       if (b.contractVersion.split(".")[0] !== "1" || !Array.isArray(b.sections))
-        throw Error("Unsupported portal contract");
+        throw new Error("Unsupported portal contract");
       const next: PortalResources = {};
       const failures: typeof errors = [];
       const tasks: [keyof PortalResources, string, string][] = [
@@ -410,8 +413,9 @@ export function createHttpGateway(
           portal: adaptPortal(bootstrap, resources, errors),
         });
       },
-      refresh: async () => {
+      refresh: () => {
         emit("changed");
+        return Promise.resolve();
       },
       logout: async () => {
         try {

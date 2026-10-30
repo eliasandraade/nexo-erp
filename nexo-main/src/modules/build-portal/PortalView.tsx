@@ -326,7 +326,7 @@ export function PortalView({
             ) : (
               <>
                 <label>
-                  Filtrar por etapa
+                  <span>Filtrar por etapa</span>
                   <select
                     value={filter}
                     onChange={(e) => setFilter(e.target.value)}
@@ -342,7 +342,7 @@ export function PortalView({
                   </select>
                 </label>
                 <label>
-                  Data das imagens
+                  <span>Data das imagens</span>
                   <input
                     type="date"
                     value={photoDate}
@@ -350,7 +350,7 @@ export function PortalView({
                   />
                 </label>
                 <label>
-                  Ambiente
+                  <span>Ambiente</span>
                   <select
                     value={zone}
                     onChange={(e) => setZone(e.target.value)}
@@ -631,7 +631,7 @@ export function PortalView({
                     }}
                   >
                     <label>
-                      Categoria
+                      <span>Categoria</span>
                       <select name="category" required>
                         {p.assistance.categories.map((c) => (
                           <option key={c}>{c}</option>
@@ -639,15 +639,15 @@ export function PortalView({
                       </select>
                     </label>
                     <label>
-                      Como podemos ajudar?
+                      <span>Como podemos ajudar?</span>
                       <textarea name="description" required maxLength={4000} />
                     </label>
                     <label>
-                      Disponibilidade
+                      <span>Disponibilidade</span>
                       <input name="availability" required />
                     </label>
                     <label>
-                      Fotos ou vídeos
+                      <span>Fotos ou vídeos</span>
                       <input
                         name="files"
                         type="file"
@@ -655,7 +655,7 @@ export function PortalView({
                         accept="image/*,video/*"
                       />
                     </label>
-                    <button disabled={busy}>
+                    <button type="submit" disabled={busy}>
                       {busy ? "Enviando…" : "Solicitar atendimento"}
                     </button>
                   </form>
@@ -705,11 +705,13 @@ export function PortalView({
                   src={safeUrl(photo.url)}
                   aria-label={photo.caption}
                   onError={media.onError}
-                />
+                >
+                  <track kind="captions" />
+                </video>
               ) : (
                 <>
                   <label>
-                    Comparar com
+                    <span>Comparar com</span>
                     <select
                       value={compare}
                       onChange={(e) => setCompare(e.target.value)}

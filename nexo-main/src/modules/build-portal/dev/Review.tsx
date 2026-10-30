@@ -88,16 +88,20 @@ if (scenario === "model")
     ],
   };
 const gateway: PortalGateway = {
-  load: async () =>
-    scenario === "private"
-      ? { kind: "private" }
-      : scenario === "missing"
-        ? { kind: "not-found" }
-        : { kind: "ready", portal },
-  unlock: async (_t, _p, password) =>
-    password === "review-only"
-      ? { kind: "ready", portal }
-      : { kind: "wrong-password" },
+  load: () =>
+    Promise.resolve(
+      scenario === "private"
+        ? { kind: "private" }
+        : scenario === "missing"
+          ? { kind: "not-found" }
+          : { kind: "ready", portal },
+    ),
+  unlock: (_t, _p, password) =>
+    Promise.resolve(
+      password === "review-only"
+        ? { kind: "ready", portal }
+        : { kind: "wrong-password" },
+    ),
   actions: () => ({
     decide: async () => {},
     requestAssistance: async () => {},

@@ -42,11 +42,11 @@ export function ChecklistItemsEditor({ items, onChange, idPrefix }: Props) {
             <div className="flex flex-wrap gap-4 pl-6 text-xs">
               <label className="flex items-center gap-1.5">
                 <input type="checkbox" checked={it.required} onChange={(e) => patch(i, { required: e.target.checked })} />
-                Obrigatório
+                <span>Obrigatório</span>
               </label>
               <label className="flex items-center gap-1.5">
                 <input type="checkbox" checked={it.requiresPhoto} onChange={(e) => patch(i, { requiresPhoto: e.target.checked })} />
-                Exige foto
+                <span>Exige foto</span>
               </label>
             </div>
           </li>

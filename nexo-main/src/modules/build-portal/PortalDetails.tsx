@@ -221,11 +221,11 @@ export function PortalOperations({
   const signer = (
     <>
       <label>
-        Seu nome completo
+        <span>Seu nome completo</span>
         <input name="signer" required maxLength={200} autoComplete="name" />
       </label>
       <label>
-        Comentário (opcional)
+        <span>Comentário (opcional)</span>
         <textarea name="comment" maxLength={2000} />
       </label>
     </>
@@ -274,7 +274,7 @@ export function PortalOperations({
                 >
                   {signer}
                   <label>
-                    Decisão
+                    <span>Decisão</span>
                     <select name="decision" required defaultValue="">
                       <option value="" disabled>
                         Selecione
@@ -285,10 +285,10 @@ export function PortalOperations({
                   </label>
                   <label className="mb-check">
                     <input type="checkbox" required />
-                    Li os itens e os impactos informados e confirmo esta
-                    decisão.
+                    <span>Li os itens e os impactos informados e confirmo esta
+                    decisão.</span>
                   </label>
-                  <button disabled={!!busy}>
+                  <button type="submit" disabled={!!busy}>
                     {busy === `order-${o.id}`
                       ? "Registrando…"
                       : "Registrar decisão do aditivo"}
@@ -358,9 +358,9 @@ export function PortalOperations({
                 {signer}
                 <label className="mb-check">
                   <input type="checkbox" required />
-                  Revisei a vistoria e confirmo o aceite da entrega.
+                  <span>Revisei a vistoria e confirmo o aceite da entrega.</span>
                 </label>
-                <button disabled={!!busy}>
+                <button type="submit" disabled={!!busy}>
                   {busy === "handover"
                     ? "Registrando…"
                     : "Registrar aceite da entrega"}
@@ -432,7 +432,7 @@ export function PortalOperations({
                       }
                     >
                       <label>
-                        Adicionar fotos ao chamado
+                        <span>Adicionar fotos ao chamado</span>
                         <input
                           type="file"
                           name="files"
@@ -445,7 +445,7 @@ export function PortalOperations({
                         JPEG, PNG ou WebP. Até 8 MB por foto, 6 fotos por
                         chamado.
                       </p>
-                      <button disabled={!!busy}>
+                      <button type="submit" disabled={!!busy}>
                         {busy === `photos-${t.id}`
                           ? "Enviando…"
                           : "Enviar fotos"}
@@ -473,7 +473,7 @@ export function PortalOperations({
                       }
                     >
                       <label>
-                        Avalie o atendimento
+                        <span>Avalie o atendimento</span>
                         <select name="rating" defaultValue="" required>
                           <option value="" disabled>
                             Selecione uma nota
@@ -486,10 +486,10 @@ export function PortalOperations({
                         </select>
                       </label>
                       <label>
-                        Comentário
+                        <span>Comentário</span>
                         <textarea name="comment" maxLength={2000} />
                       </label>
-                      <button disabled={!!busy}>
+                      <button type="submit" disabled={!!busy}>
                         {busy === `rating-${t.id}`
                           ? "Enviando…"
                           : "Enviar avaliação"}
@@ -522,7 +522,7 @@ export function PortalOperations({
                 >
                   <h3>Solicitar atendimento</h3>
                   <label>
-                    Categoria
+                    <span>Categoria</span>
                     <select name="category" required>
                       {p.assistance.categories.map((c) => (
                         <option key={c}>{c}</option>
@@ -530,19 +530,19 @@ export function PortalOperations({
                     </select>
                   </label>
                   <label>
-                    Título do chamado
+                    <span>Título do chamado</span>
                     <input name="title" required maxLength={200} />
                   </label>
                   <label>
-                    Como podemos ajudar?
+                    <span>Como podemos ajudar?</span>
                     <textarea name="description" required maxLength={4000} />
                   </label>
                   <label>
-                    Local no imóvel
+                    <span>Local no imóvel</span>
                     <input name="location" maxLength={200} />
                   </label>
                   <label>
-                    Fotos (opcional)
+                    <span>Fotos (opcional)</span>
                     <input
                       name="files"
                       type="file"
@@ -551,7 +551,7 @@ export function PortalOperations({
                     />
                   </label>
                   <p>Até 6 fotos JPEG, PNG ou WebP, de até 8 MB cada.</p>
-                  <button disabled={!!busy}>
+                  <button type="submit" disabled={!!busy}>
                     {busy === "assistance"
                       ? "Enviando…"
                       : "Solicitar atendimento"}

@@ -27,6 +27,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -144,6 +151,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -256,6 +270,13 @@
             "name": "projectSlug",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -426,6 +447,13 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -593,6 +621,13 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -750,6 +785,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -875,6 +917,13 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -1034,6 +1083,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1151,6 +1207,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1265,6 +1328,13 @@
             "name": "projectSlug",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1426,6 +1496,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1559,6 +1636,13 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1673,6 +1757,13 @@
             "name": "projectSlug",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -1809,6 +1900,13 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -1923,6 +2021,13 @@
             "name": "projectSlug",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -2051,6 +2156,13 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -2210,6 +2322,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -2366,6 +2485,13 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2492,6 +2618,13 @@
               "type": "integer",
               "format": "int32"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2606,6 +2739,13 @@
             "name": "projectSlug",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
             "schema": {
               "type": "string"
             }
@@ -2734,6 +2874,13 @@
               "type": "string",
               "format": "date"
             }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2851,6 +2998,13 @@
             "name": "projectSlug",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Build-Portal-Session",
+            "in": "header",
             "schema": {
               "type": "string"
             }

@@ -209,7 +209,7 @@ function CaptureCard({ projectId, capture: c, stages, zones, stageName, zoneName
             <span className="absolute inset-0 grid place-items-center bg-black/30 text-sm font-medium text-white"><span className="flex items-center gap-1"><Orbit className="h-4 w-4" />Abrir 360°</span></span>
           </button>
         ) : c.url && isVideo ? (
-          <video src={c.url} controls preload="metadata" className="aspect-video w-full bg-black" />
+          <video src={c.url} controls preload="metadata" className="aspect-video w-full bg-black"><track kind="captions" /></video>
         ) : c.url && isImage ? (
           <img src={c.url} alt={c.title} className="aspect-video w-full object-cover" loading="lazy" />
         ) : (

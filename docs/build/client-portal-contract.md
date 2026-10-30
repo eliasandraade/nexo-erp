@@ -784,6 +784,8 @@ Só acréscimos; nada da v1–v1.5 mudou de significado.
   filtros do visualizador. Nomes de etapa só quando o portal já mostra etapas.
 - CORS: `ETag` passa a ser exposto ao navegador de outra origem (antes só `Retry-After`), para a revalidação de
   `/twin/state` com `If-None-Match` funcionar no site.
+- `openapi-portal.json` passa a declarar o header opcional `X-Build-Portal-Session` em cada operação (o comportamento
+  é o mesmo de antes; só ficou documentado no OpenAPI).
 
 ### v1.5 — revisão de segurança do portal
 

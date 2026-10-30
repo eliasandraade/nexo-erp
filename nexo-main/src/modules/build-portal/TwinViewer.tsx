@@ -125,7 +125,7 @@ export default function TwinViewer({
         !safeUrl(model.url) &&
         model.geometrySource !== "SimplifiedRepresentation"
       )
-        throw Error("Modelo indisponível");
+        throw new Error("Modelo indisponível");
       renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
       renderer.localClippingEnabled = true;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -370,7 +370,7 @@ export default function TwinViewer({
       )}
       {loadState && model.minDate && model.maxDate && (
         <label>
-          Consultar data da obra
+          <span>Consultar data da obra</span>
           <input
             type="date"
             min={model.minDate}
@@ -382,7 +382,7 @@ export default function TwinViewer({
       )}
       {loadState && model.minDate && model.maxDate && (
         <label>
-          Percorrer evolução por data
+          <span>Percorrer evolução por data</span>
           <input
             type="range"
             min={Date.parse(model.minDate)}
@@ -433,7 +433,7 @@ export default function TwinViewer({
       </div>
       {!loadState && model.snapshots.length > 0 && (
         <label>
-          Percorrer evolução
+          <span>Percorrer evolução</span>
           <input
             type="range"
             min="0"
@@ -459,7 +459,7 @@ export default function TwinViewer({
       )}
       {!loadState && (
         <label>
-          Registro no tempo
+          <span>Registro no tempo</span>
           <select
             value={snapshot}
             onChange={(e) => setSnapshot(e.target.value)}
@@ -474,7 +474,7 @@ export default function TwinViewer({
         </label>
       )}
       <label>
-        Pavimento
+        <span>Pavimento</span>
         <select value={floor} onChange={(e) => setFloor(e.target.value)}>
           <option value="">Todos</option>
           {[...new Set(model.elements.map((e) => e.floor).filter(Boolean))]
@@ -498,7 +498,7 @@ export default function TwinViewer({
       </label>
       {model.elements.some((e) => e.stage) && (
         <label>
-          Etapa
+          <span>Etapa</span>
           <select value={stage} onChange={(e) => setStage(e.target.value)}>
             <option value="">Todas</option>
             {[
@@ -521,7 +521,7 @@ export default function TwinViewer({
       </label>
       {model.elements.some((e) => e.category) && (
         <label>
-          Categoria
+          <span>Categoria</span>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}

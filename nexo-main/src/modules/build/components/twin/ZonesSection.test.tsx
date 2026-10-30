@@ -259,13 +259,13 @@ describe("SheetMapper", () => {
     expect(container.querySelectorAll("polygon")).toHaveLength(1);
 
     const canvas = screen.getByTestId("sheet-canvas");
-    fireEvent.click(canvas, { clientX: 0, clientY: 0 });
-    fireEvent.click(canvas, { clientX: 100, clientY: 0 });
+    fireEvent.click(canvas, { detail: 1, clientX: 0, clientY: 0 });
+    fireEvent.click(canvas, { detail: 1, clientX: 100, clientY: 0 });
     expect(screen.getByText("2 ponto(s)")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Salvar zona" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Desenhe pelo menos 3 pontos.");
 
-    fireEvent.click(canvas, { clientX: 100, clientY: 50 });
+    fireEvent.click(canvas, { detail: 1, clientX: 100, clientY: 50 });
     expect(container.querySelectorAll("circle")).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: "Salvar zona" }));
     expect(screen.getByRole("alert")).toHaveTextContent("Informe o nome da zona.");
@@ -286,7 +286,7 @@ describe("SheetMapper", () => {
     wrap(<SheetMapper projectId="p1" sheets={sheets} zones={[]} />);
     openImage();
     const canvas = screen.getByTestId("sheet-canvas");
-    for (let i = 0; i < 4; i++) fireEvent.click(canvas, { clientX: i * 10, clientY: 10 });
+    for (let i = 0; i < 4; i++) fireEvent.click(canvas, { detail: 1, clientX: i * 10, clientY: 10 });
     expect(screen.getByText("4 ponto(s)")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Desfazer ponto/ }));
     expect(screen.getByText("3 ponto(s)")).toBeInTheDocument();
@@ -294,10 +294,22 @@ describe("SheetMapper", () => {
     expect(screen.getByText("2 ponto(s)")).toBeInTheDocument();
     fireEvent.keyDown(canvas, { key: "Escape" });
     expect(screen.getByText("0 ponto(s)")).toBeInTheDocument();
-    fireEvent.click(canvas, { clientX: 5, clientY: 5 });
+    fireEvent.click(canvas, { detail: 1, clientX: 5, clientY: 5 });
     fireEvent.click(screen.getByRole("button", { name: /Limpar/ }));
     expect(screen.getByText("0 ponto(s)")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Limpar/ })).toBeDisabled();
+  });
+
+  it("is a focusable control, and Enter/Space never add a point without a pointer position", () => {
+    wrap(<SheetMapper projectId="p1" sheets={sheets} zones={[]} />);
+    openImage();
+    const canvas = screen.getByRole("button", { name: /Planta: clique para adicionar pontos/ });
+    canvas.focus();
+    expect(canvas).toHaveFocus();
+    fireEvent.click(canvas, { detail: 0 }); // what a keyboard activation dispatches
+    expect(screen.getByText("0 ponto(s)")).toBeInTheDocument();
+    fireEvent.click(canvas, { detail: 1, clientX: 5, clientY: 5 });
+    expect(screen.getByText("1 ponto(s)")).toBeInTheDocument();
   });
 
   it("a save error is shown; switching the sheet clears the points", async () => {
@@ -305,7 +317,7 @@ describe("SheetMapper", () => {
     wrap(<SheetMapper projectId="p1" sheets={sheets} zones={[]} />);
     openImage();
     const canvas = screen.getByTestId("sheet-canvas");
-    for (let i = 0; i < 3; i++) fireEvent.click(canvas, { clientX: i * 50, clientY: i * 20 });
+    for (let i = 0; i < 3; i++) fireEvent.click(canvas, { detail: 1, clientX: i * 50, clientY: i * 20 });
     fireEvent.change(screen.getByLabelText("Nome da zona"), { target: { value: "Sala" } });
     fireEvent.click(screen.getByRole("button", { name: "Salvar zona" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Armazenamento de arquivos indisponível");

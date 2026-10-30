@@ -32,7 +32,7 @@ export function SheetMapper({ projectId, sheets, zones }: Props) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<BuildManualZoneKind>("Room");
   const [error, setError] = useState<string | null>(null);
-  const boxRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLButtonElement>(null);
   const save = useSaveZone(projectId);
   const { data: state } = useTwinState(sheetId || null, localToday());
   const zoneStates = useMemo(() => zoneStateIndex(state), [state]);
@@ -46,8 +46,9 @@ export function SheetMapper({ projectId, sheets, zones }: Props) {
     setPoints([]);
   };
 
-  const addPoint = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!boxRef.current || local?.pdf) return;
+  const addPoint = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Enter/Space also "click" a button, with no position: points need a pointer.
+    if (!boxRef.current || local?.pdf || e.detail === 0) return;
     if (points.length >= MAX_OUTLINE_POINTS) { setError(`No máximo ${MAX_OUTLINE_POINTS} pontos por zona.`); return; }
     const r = boxRef.current.getBoundingClientRect();
     setPoints([...points, normalizePoint(e.clientX - r.left, e.clientY - r.top, r.width, r.height)]);
@@ -55,7 +56,7 @@ export function SheetMapper({ projectId, sheets, zones }: Props) {
   };
 
   /** Keyboard: Backspace/Delete removes the last point, Escape clears the outline (points themselves need a pointer). */
-  const onCanvasKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+  const onCanvasKey = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === "Backspace" || e.key === "Delete") { e.preventDefault(); setPoints(points.slice(0, -1)); }
     else if (e.key === "Escape") setPoints([]);
   };
@@ -98,11 +99,11 @@ export function SheetMapper({ projectId, sheets, zones }: Props) {
 
       {local && !local.pdf && (
         <div className="space-y-2">
-          <div ref={boxRef} onClick={addPoint} onKeyDown={onCanvasKey} tabIndex={0} role="application"
-            aria-label="Planta: clique para adicionar pontos; Backspace desfaz o último, Esc limpa" className="relative w-full cursor-crosshair select-none overflow-hidden rounded-md border border-border"
+          <button type="button" ref={boxRef} onClick={addPoint} onKeyDown={onCanvasKey}
+            aria-label="Planta: clique para adicionar pontos; Backspace desfaz o último, Esc limpa" className="relative block w-full cursor-crosshair select-none overflow-hidden rounded-md border border-border"
             data-testid="sheet-canvas">
             <img src={local.url} alt="Planta da obra" className="block h-auto w-full" draggable={false} />
-            <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full">
+            <svg viewBox="0 0 1000 1000" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
               {outlined.map((z) => {
                 const c = stateColor(zoneStates.get(z.id) ?? null);
                 return <polygon key={z.id} points={toPoints(z.outline!)} fill={c.color} fillOpacity={c.transparent ? 0.2 : 0.45} stroke={c.color} strokeWidth={3} />;
@@ -112,7 +113,7 @@ export function SheetMapper({ projectId, sheets, zones }: Props) {
               )}
               {points.map((p, i) => <circle key={i} cx={p.x * 1000} cy={p.y * 1000} r={6} fill="#0ea5e9" />)}
             </svg>
-          </div>
+          </button>
           <div className="flex flex-wrap items-end gap-2">
             <span className="text-xs text-muted-foreground">{points.length} ponto(s)</span>
             <Button type="button" size="sm" variant="outline" disabled={points.length === 0} onClick={() => setPoints(points.slice(0, -1))}><Undo2 className="mr-1 h-3.5 w-3.5" />Desfazer ponto</Button>

@@ -24,7 +24,7 @@ export default function Panorama({
     let observer: ResizeObserver | undefined;
     setError(false);
     try {
-      if (!safeUrl(capture.url)) throw Error();
+      if (!safeUrl(capture.url)) throw new Error("Imagem 360° indisponível");
       renderer = new THREE.WebGLRenderer({ antialias: false });
       renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
       target.append(renderer.domElement);
@@ -85,7 +85,7 @@ export default function Panorama({
   return (
     <div>
       <label>
-        Local e data da visita
+        <span>Local e data da visita</span>
         <select value={id} onChange={(e) => setId(e.target.value)}>
           {captures.map((c) => (
             <option key={c.id} value={c.id}>

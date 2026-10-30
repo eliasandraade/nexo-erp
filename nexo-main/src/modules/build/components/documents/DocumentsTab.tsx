@@ -82,7 +82,7 @@ function UploadForm({ projectId, onDone }: { projectId: string; onDone: () => vo
         </div>
         <label className="flex items-center gap-2 self-end text-sm">
           <input type="checkbox" className="h-4 w-4 accent-primary" checked={clientVisible} onChange={(e) => setClientVisible(e.target.checked)} />
-          Visível no portal do cliente
+          <span>Visível no portal do cliente</span>
         </label>
       </div>
       {problem && <p role="alert" className="text-xs text-destructive">{problem}</p>}
@@ -207,7 +207,7 @@ function DocumentRow({ projectId, doc, visionEnabled, aiEnabled, onEdit, onDelet
               onSuccess: (d) => toast.success(d?.clientVisible ? "Documento visível no portal." : "Documento oculto do portal."),
               onError:   (err) => toast.error(aiErrorMessage(err, "Não foi possível alterar a visibilidade.")),
             })} />
-          Visível ao cliente
+          <span>Visível ao cliente</span>
         </label>
       </div>
 

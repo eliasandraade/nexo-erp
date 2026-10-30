@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { adaptPortal, adaptTwin, refreshDelay } from "./adapter";
-import { createHttpGateway } from "./http-gateway";
+import { createHttpGateway, portalApiRoot } from "./http-gateway";
 import { useSignedMedia } from "../media";
 import type {
   PublicBuildBootstrapDto,
@@ -209,5 +209,13 @@ describe("signed media in the page", () => {
     } as unknown as Parameters<typeof result.current.guardLink>[0]);
     expect(preventDefault).not.toHaveBeenCalled();
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("public API root", () => {
+  it("accepts the API base with or without /api and trailing slashes", () => {
+    for (const base of ["https://api.test", "https://api.test/", "https://api.test/api", "https://api.test/api//"])
+      expect(portalApiRoot(base)).toBe("https://api.test/api/public/build");
+    expect(portalApiRoot("/api")).toBe("/api/public/build");
   });
 });

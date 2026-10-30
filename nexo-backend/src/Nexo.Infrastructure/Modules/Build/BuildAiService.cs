@@ -258,7 +258,7 @@ public sealed partial class BuildAiService
             int read;
             while ((read = await stream.ReadAsync(buffer, ct)) > 0)
             {
-                ms.Write(buffer, 0, read);
+                await ms.WriteAsync(buffer.AsMemory(0, read), ct);
                 if (ms.Length > max) throw new DomainException($"Arquivo grande demais para a IA (até {max / (1024 * 1024)} MB).", tooLargeCode);
             }
             return ms.ToArray();

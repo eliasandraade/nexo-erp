@@ -106,7 +106,7 @@ export function ZonesSection({ projectId, models, stages }: Props) {
             </div>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={form.withBox} onChange={(e) => setForm({ ...form, withBox: e.target.checked })} />
-              Representar como caixa simplificada (medidas em metros)
+              <span>Representar como caixa simplificada (medidas em metros)</span>
             </label>
             {form.withBox && (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

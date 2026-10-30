@@ -46,7 +46,9 @@ public class PublicBuildPortalController : ControllerBase
         _clientIp = clientIp;
     }
 
-    private string? SessionToken => Request.Headers[PublicBuildPortal.SessionHeader].FirstOrDefault();
+    /// <summary>The opaque session of a password portal (absent on a public portal or before unlocking).</summary>
+    [FromHeader(Name = PublicBuildPortal.SessionHeader)]
+    public string? SessionToken { get; set; }
 
     /// <summary>Everything the portal home needs, limited to the sections the company enabled.</summary>
     [HttpGet]
@@ -283,7 +285,9 @@ public class PublicBuildPortalController : ControllerBase
                 ValueLengthLimit = 4 * 1024,
                 MultipartHeadersLengthLimit = 16 * 1024,
             }, ct);
-            return form.Files.GetFile("file");
+            // Deliberately not IFormFile binding: [DisableFormValueModelBinding] keeps an anonymous body unread until the
+            // portal session is authorized, and these limits answer 413 file_too_large instead of a binding 400.
+            return form.Files.GetFile("file"); // NOSONAR — csharpsquid:S6932, read after authorization on purpose
         }
         catch (InvalidDataException)
         {

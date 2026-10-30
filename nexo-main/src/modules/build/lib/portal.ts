@@ -8,7 +8,7 @@ export function slugify(raw: string): string {
   const base = raw.normalize("NFD").toLowerCase();
   let out = "";
   for (const ch of base) {
-    const code = ch.charCodeAt(0);
+    const code = ch.codePointAt(0) ?? 0;
     if (code >= 0x300 && code <= 0x36f) continue;   // combining accent marks (no regex: Sonar hotspot)
     const c = ch === " " || ch === "_" ? "-" : ch;
     if (!SLUG_CHARS.includes(c)) continue;

@@ -135,7 +135,7 @@ export function PortalSession({
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <button disabled={busy || retrySeconds > 0 || !password.trim()}>
+            <button type="submit" disabled={busy || retrySeconds > 0 || !password.trim()}>
               Acessar minha obra
             </button>
           </form>

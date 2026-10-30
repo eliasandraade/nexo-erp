@@ -46,7 +46,7 @@ export function NonConformitiesSection({ projectId }: { projectId: string }) {
           <label className="flex items-center gap-1.5 text-xs">
             <input type="checkbox" checked={!!filters.overdue}
               onChange={(e) => setFilters((f) => ({ ...f, overdue: e.target.checked || undefined }))} />
-            Só vencidas
+            <span>Só vencidas</span>
           </label>
         </div>
         <Button size="sm" onClick={() => setEditing(null)}><Plus className="mr-1 h-3.5 w-3.5" /> Nova NC</Button>

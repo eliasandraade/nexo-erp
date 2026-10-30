@@ -67,7 +67,7 @@ export function MaterialsTab({ projectId }: { projectId: string }) {
           <label className="flex items-center gap-1.5 text-sm">
             <input type="checkbox" checked={!!filters.late}
               onChange={(e) => setFilters((f) => ({ ...f, late: e.target.checked || undefined }))} />
-            Só atrasados
+            <span>Só atrasados</span>
           </label>
         </div>
         <Button size="sm" onClick={() => setEditing(null)}><Plus className="mr-1 h-3.5 w-3.5" /> Solicitar material</Button>

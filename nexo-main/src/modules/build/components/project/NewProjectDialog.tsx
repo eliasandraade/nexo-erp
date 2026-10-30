@@ -55,7 +55,7 @@ export function NewProjectDialog({ open, onClose }: Props) {
       clientName:      client.trim(),
       location:        location.trim() || undefined,
       type:            typeVal,
-      budgetEstimated: budget ? parseFloat(budget) : undefined,
+      budgetEstimated: budget ? Number.parseFloat(budget) : undefined,
       startDate:       startDate || undefined,
       trackingMode:    tracking,
       latitude:        latitude ?? undefined,
