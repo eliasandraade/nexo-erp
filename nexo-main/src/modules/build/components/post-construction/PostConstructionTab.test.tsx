@@ -62,7 +62,7 @@ describe("PostConstructionTab", () => {
     renderTab(<PostConstructionTab projectId="p1" />);
 
     expect(await screen.findByText("Vistoria concluída")).toBeInTheDocument();
-    expect(screen.getByText("Manual do proprietário")).toHaveAttribute("href", "https://signed/m.pdf");
+    expect(await screen.findByText("Manual do proprietário")).toHaveAttribute("href", "https://signed/m.pdf");
     expect(screen.getByText(/1 não conformidade\(s\) crítica\(s\) aberta\(s\): resolva antes/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Entregar imóvel/ }));
