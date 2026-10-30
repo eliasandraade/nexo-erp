@@ -38,6 +38,14 @@ const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boole
       { flag: "financialCategories",   label: "Gastos por categoria", soon: true },
       { flag: "financialTransactions", label: "Lançamentos", soon: true },
       { flag: "receipts",              label: "Comprovantes", soon: true },
+      { flag: "measurements",          label: "Medições aprovadas", hint: "Período e % medido por etapa. Os valores só aparecem com o resumo financeiro ligado." },
+    ],
+  },
+  {
+    title: "Comercial",
+    items: [
+      { flag: "changeOrders", label: "Aditivos", hint: "Aditivos enviados ao cliente e decididos. O cliente só aprova ou recusa em portal com senha." },
+      { flag: "selections",   label: "Escolhas do cliente", hint: "Escolhas marcadas como visíveis. O cliente só escolhe em portal com senha." },
     ],
   },
   {

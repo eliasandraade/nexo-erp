@@ -11,6 +11,7 @@ using Nexo.Application.Modules.Build;
 using Nexo.Domain.Modules.Build;
 using Nexo.Domain.Modules.Interpreter;
 using Nexo.Infrastructure.Persistence;
+using Npgsql;
 
 namespace Nexo.Infrastructure.Modules.Build;
 
@@ -43,11 +44,13 @@ public sealed class BuildPublicPortalService
     private readonly IConfiguration _config;
     private readonly BuildAuditTrail _audit;
     private readonly ILogger<BuildPublicPortalService> _logger;
+    private readonly BuildChangeOrderEffects _effects;
 
     public BuildPublicPortalService(NexoDbContext db, BuildProgressEngine engine, IPasswordHasher hasher,
         BuildPortalMedia media, IWeatherProvider weather, IIntegrationFeatureFlags flags, IConfiguration config,
-        BuildAuditTrail audit, ILogger<BuildPublicPortalService> logger)
+        BuildAuditTrail audit, ILogger<BuildPublicPortalService> logger, BuildChangeOrderEffects effects)
     {
+        _effects = effects;
         _db = db;
         _engine = engine;
         _hasher = hasher;
@@ -295,6 +298,286 @@ public sealed class BuildPublicPortalService
         };
     }
 
+    // ── Change orders (v1.1) ──────────────────────────────────────────────────
+
+    private static readonly BuildChangeOrderStatus[] ClientChangeOrderStatuses =
+        [BuildChangeOrderStatus.SentToClient, BuildChangeOrderStatus.Approved, BuildChangeOrderStatus.Rejected];
+
+    /// <summary>Change orders sent to the client (pending) and decided ones; drafts and cancelled never appear.</summary>
+    public async Task<PublicBuildChangeOrdersDto> GetChangeOrdersAsync(string companySlug, string projectSlug, string? token,
+        CancellationToken ct)
+    {
+        var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
+        await EnsureAccessAsync(ctx, token, ct);
+        if (!ctx.Visibility.ChangeOrders) throw BuildPortalAccessException.SectionDisabled();
+        var tid = ctx.TenantId;
+        var pid = ctx.Project.Id;
+        var list = await _db.BldChangeOrders.IgnoreQueryFilters().AsNoTracking()
+            .Where(c => c.TenantId == tid && c.ProjectId == pid && ClientChangeOrderStatuses.Contains(c.Status))
+            .OrderByDescending(c => c.Number)
+            .ToListAsync(ct);
+        return new PublicBuildChangeOrdersDto(await MapChangeOrdersAsync(ctx, list, ct));
+    }
+
+    /// <summary>
+    /// The client approves or rejects a pending change order. Only on a password portal with a valid session (a
+    /// public portal → 403 portal_decision_requires_password); a decided order → 409. On approval the contract
+    /// value, the affected stage's planned end and (with a baseline) a schedule revision are updated.
+    /// </summary>
+    public async Task<PublicBuildChangeOrderDto> DecideChangeOrderAsync(string companySlug, string projectSlug, string? token,
+        Guid publicId, PublicBuildChangeOrderDecisionRequest? request, CancellationToken ct)
+    {
+        var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
+        if (!ctx.Visibility.ChangeOrders) throw BuildPortalAccessException.SectionDisabled();
+        EnsureDecisionPortal(ctx);
+        await EnsureAccessAsync(ctx, token, ct);
+
+        var decision = request?.Decision?.Trim().ToLowerInvariant();
+        if (decision is not ("approve" or "reject"))
+            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidDecision, "Informe a decisão: approve ou reject.");
+        var signer = request!.SignerName?.Trim();
+        if (string.IsNullOrEmpty(signer))
+            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeSignerRequired, "Informe o nome de quem está decidindo.");
+
+        var tid = ctx.TenantId;
+        var pid = ctx.Project.Id;
+        var co = await _db.BldChangeOrders.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(c => c.TenantId == tid && c.ProjectId == pid && c.PublicId == publicId
+                                   && ClientChangeOrderStatuses.Contains(c.Status), ct)
+            ?? throw ItemNotFound();
+        if (co.IsDecided)
+            throw new BuildPortalAccessException(409, PublicBuildPortal.CodeAlreadyDecided, "Este aditivo já foi decidido.");
+
+        var now = DateTime.UtcNow;
+        var scheduleChanged = false;
+        if (decision == "approve")
+        {
+            co.Approve(BuildDecisionChannel.Portal, BuildChangeOrder.PortalDecider, null, request.Comment, signer, now);
+            scheduleChanged = await _effects.ApplyApprovalAsync(co, Guid.Empty, $"{BuildChangeOrder.PortalDecider}: {signer}", ct);
+        }
+        else
+        {
+            co.Reject(BuildDecisionChannel.Portal, BuildChangeOrder.PortalDecider, null, request.Comment, signer, now);
+        }
+        _audit.RecordPortalClient(decision == "approve" ? AuditActions.BuildChangeOrderApproved : AuditActions.BuildChangeOrderRejected,
+            tid, "ChangeOrder", co.Id,
+            $"Aditivo #{co.Number} {(decision == "approve" ? "aprovado" : "recusado")} pelo cliente no portal.", signer,
+            new { co.CostImpact, co.ScheduleImpactDays, co.AppliedToBudget });
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex is DbUpdateConcurrencyException
+            || ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        {
+            throw new BuildPortalAccessException(409, PublicBuildPortal.CodeAlreadyDecided, "Este aditivo já foi decidido.");
+        }
+        if (scheduleChanged) await _effects.RefreshSnapshotAsync(tid, pid, ct);
+        return (await MapChangeOrdersAsync(ctx, [co], ct))[0];
+    }
+
+    private async Task<IReadOnlyList<PublicBuildChangeOrderDto>> MapChangeOrdersAsync(Ctx ctx, IReadOnlyList<BuildChangeOrder> list,
+        CancellationToken ct)
+    {
+        var tid = ctx.TenantId;
+        var ids = list.Select(c => c.Id).ToList();
+        var stageIds = list.Where(c => c.StageId.HasValue).Select(c => c.StageId!.Value).Distinct().ToList();
+        var items = (await _db.BldChangeOrderItems.IgnoreQueryFilters().AsNoTracking()
+                .Where(i => i.TenantId == tid && ids.Contains(i.ChangeOrderId)).ToListAsync(ct))
+            .ToLookup(i => i.ChangeOrderId);
+        var stages = await _db.BldStages.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.TenantId == tid && s.ProjectId == ctx.Project.Id && stageIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var canDecide = ctx.Portal.Access == BuildPortalAccess.Password;
+        return list.Select(c => new PublicBuildChangeOrderDto
+        {
+            Id = c.PublicId,
+            Number = c.Number,
+            Title = c.Title,
+            Description = c.Description,
+            Reason = c.Reason.ToString(),
+            CostImpact = c.CostImpact,
+            ScheduleImpactDays = c.ScheduleImpactDays,
+            StageName = c.StageId is { } sid ? stages.GetValueOrDefault(sid) : null,
+            Status = c.Status == BuildChangeOrderStatus.SentToClient ? "Pending" : c.Status.ToString(),
+            CanDecide = canDecide && c.Status == BuildChangeOrderStatus.SentToClient,
+            SentAt = c.SentAt is { } sent ? Utc(sent) : null,
+            DecidedAt = c.DecidedAt is { } d ? Utc(d) : null,
+            DecisionChannel = c.DecisionChannel?.ToString(),
+            ClientComment = c.ClientComment,
+            SignerName = c.SignerName,
+            Items = items[c.Id].OrderBy(i => i.Order)
+                .Select(i => new PublicBuildChangeOrderItemDto(i.Name, i.Kind.ToString(), i.Quantity, i.Unit, i.UnitCost, i.TotalCost))
+                .ToList(),
+        }).ToList();
+    }
+
+    // ── Selections (v1.1) ─────────────────────────────────────────────────────
+
+    public async Task<PublicBuildSelectionsDto> GetSelectionsAsync(string companySlug, string projectSlug, string? token,
+        CancellationToken ct)
+    {
+        var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
+        await EnsureAccessAsync(ctx, token, ct);
+        if (!ctx.Visibility.Selections) throw BuildPortalAccessException.SectionDisabled();
+        var tid = ctx.TenantId;
+        var pid = ctx.Project.Id;
+        var list = await ClientSelections(tid, pid).AsNoTracking()
+            .OrderBy(s => s.Deadline == null).ThenBy(s => s.Deadline).ThenBy(s => s.CreatedAt)
+            .ToListAsync(ct);
+        return new PublicBuildSelectionsDto(await MapSelectionsAsync(ctx, list, ct));
+    }
+
+    /// <summary>
+    /// The client's choice of an option: password portal with a valid session (else 403), selection still Open
+    /// (else 409 selection_closed) and not past its deadline (422 selection_deadline_passed).
+    /// </summary>
+    public async Task<PublicBuildSelectionDto> ChooseSelectionAsync(string companySlug, string projectSlug, string? token,
+        Guid publicId, PublicBuildSelectionChoiceRequest? request, CancellationToken ct)
+    {
+        var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
+        if (!ctx.Visibility.Selections) throw BuildPortalAccessException.SectionDisabled();
+        EnsureDecisionPortal(ctx);
+        await EnsureAccessAsync(ctx, token, ct);
+
+        var tid = ctx.TenantId;
+        var pid = ctx.Project.Id;
+        var selection = await ClientSelections(tid, pid).FirstOrDefaultAsync(s => s.PublicId == publicId, ct)
+            ?? throw ItemNotFound();
+        var option = request?.OptionId is { } oid
+            ? await _db.BldSelectionOptions.IgnoreQueryFilters()
+                .FirstOrDefaultAsync(o => o.TenantId == tid && o.SelectionId == selection.Id && o.PublicId == oid, ct)
+            : null;
+        if (option is null)
+            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidOption, "Escolha uma das opções desta seleção.");
+        if (selection.Status != BuildSelectionStatus.Open)
+            throw new BuildPortalAccessException(409, PublicBuildPortal.CodeSelectionClosed, "Esta escolha já foi feita ou encerrada.");
+        var today = BusinessClock.Today();
+        if (selection.IsDeadlinePassed(today))
+            throw new BuildPortalAccessException(422, PublicBuildPortal.CodeSelectionDeadlinePassed,
+                $"O prazo desta escolha terminou em {selection.Deadline:dd/MM/yyyy}.");
+
+        selection.Choose(option.Id, request!.Comment, today, DateTime.UtcNow, BuildDecisionChannel.Portal);
+        _audit.RecordPortalClient(AuditActions.BuildSelectionChosen, tid, "Selection", selection.Id,
+            $"Cliente escolheu {option.Name} em {selection.Title} pelo portal.", null, new { optionId = option.Id, option.PriceDelta });
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BuildPortalAccessException(409, PublicBuildPortal.CodeSelectionClosed, "Esta escolha já foi feita ou encerrada.");
+        }
+        return (await MapSelectionsAsync(ctx, [selection], ct))[0];
+    }
+
+    private IQueryable<BuildSelection> ClientSelections(Guid tid, Guid pid)
+        => _db.BldSelections.IgnoreQueryFilters()
+            .Where(s => s.TenantId == tid && s.ProjectId == pid && s.ClientVisible && s.Status != BuildSelectionStatus.Cancelled);
+
+    private async Task<IReadOnlyList<PublicBuildSelectionDto>> MapSelectionsAsync(Ctx ctx, IReadOnlyList<BuildSelection> list,
+        CancellationToken ct)
+    {
+        var tid = ctx.TenantId;
+        var ids = list.Select(s => s.Id).ToList();
+        var stageIds = list.Where(s => s.StageId.HasValue).Select(s => s.StageId!.Value).Distinct().ToList();
+        var options = (await _db.BldSelectionOptions.IgnoreQueryFilters().AsNoTracking()
+                .Where(o => o.TenantId == tid && ids.Contains(o.SelectionId)).ToListAsync(ct))
+            .ToLookup(o => o.SelectionId);
+        var stages = await _db.BldStages.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.TenantId == tid && s.ProjectId == ctx.Project.Id && stageIds.Contains(s.Id))
+            .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+        var today = BusinessClock.Today();
+        var password = ctx.Portal.Access == BuildPortalAccess.Password;
+        var expires = DateTimeOffset.UtcNow.Add(BuildPortalMedia.SignedUrlTtl);
+        return list.Select(s =>
+        {
+            var opts = options[s.Id].OrderBy(o => o.Order).ThenBy(o => o.CreatedAt).ToList();
+            var chosen = opts.FirstOrDefault(o => o.Id == s.ChosenOptionId);
+            return new PublicBuildSelectionDto
+            {
+                Id = s.PublicId,
+                Title = s.Title,
+                Description = s.Description,
+                StageName = s.StageId is { } sid ? stages.GetValueOrDefault(sid) : null,
+                Deadline = s.Deadline,
+                DeadlinePassed = s.IsDeadlinePassed(today),
+                Status = s.Status.ToString(),
+                CanChoose = password && s.Status == BuildSelectionStatus.Open && !s.IsDeadlinePassed(today),
+                ChosenOptionId = chosen?.PublicId,
+                ClientComment = s.ClientComment,
+                DecidedAt = s.DecidedAt is { } d ? Utc(d) : null,
+                Options = opts.Select(o => new PublicBuildSelectionOptionDto
+                {
+                    Id = o.PublicId,
+                    Name = o.Name,
+                    Description = o.Description,
+                    PriceDelta = o.PriceDelta,
+                    IsStandard = o.IsStandard,
+                    // only selections the company marked visible reach here; the image stays private, signed per request
+                    ImageUrl = _media.SignedUrl(o.ImageKey, tid),
+                    LeadTimeDays = o.LeadTimeDays,
+                }).ToList(),
+                ImageUrlsExpireAt = opts.Any(o => o.ImageKey is not null) ? expires : null,
+            };
+        }).ToList();
+    }
+
+    // ── Measurements (v1.1) ───────────────────────────────────────────────────
+
+    /// <summary>Approved measurements (flag measurements); values only when the financial summary is enabled too.</summary>
+    public async Task<PublicBuildMeasurementsDto> GetMeasurementsAsync(string companySlug, string projectSlug, string? token,
+        CancellationToken ct)
+    {
+        var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
+        await EnsureAccessAsync(ctx, token, ct);
+        if (!ctx.Visibility.Measurements) throw BuildPortalAccessException.SectionDisabled();
+        var tid = ctx.TenantId;
+        var pid = ctx.Project.Id;
+        var money = ctx.Visibility.FinancialSummary;
+        var list = await _db.BldMeasurements.IgnoreQueryFilters().AsNoTracking()
+            .Where(m => m.TenantId == tid && m.ProjectId == pid && m.Status == BuildMeasurementStatus.Approved)
+            .OrderByDescending(m => m.Number)
+            .ToListAsync(ct);
+        var ids = list.Select(m => m.Id).ToList();
+        var items = (await _db.BldMeasurementItems.IgnoreQueryFilters().AsNoTracking()
+                .Where(i => i.TenantId == tid && ids.Contains(i.MeasurementId)).ToListAsync(ct))
+            .ToLookup(i => i.MeasurementId);
+        var stages = await _db.BldStages.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.TenantId == tid && s.ProjectId == pid)
+            .ToDictionaryAsync(s => s.Id, s => new { s.Name, s.Order }, ct);
+        return new PublicBuildMeasurementsDto(list.Select(m =>
+        {
+            var lines = items[m.Id].Where(i => stages.ContainsKey(i.StageId))
+                .OrderBy(i => stages[i.StageId].Order).ToList();
+            return new PublicBuildMeasurementDto
+            {
+                Number = m.Number,
+                PeriodStart = m.PeriodStart,
+                PeriodEnd = m.PeriodEnd,
+                ApprovedAt = m.ApprovedAt is { } a ? Utc(a) : null,
+                TotalAmount = money ? lines.Sum(i => i.Amount ?? 0m) : null,
+                Items = lines.Select(i => new PublicBuildMeasurementItemDto
+                {
+                    StageName = stages[i.StageId].Name,
+                    PreviousPercent = i.PreviousPercent,
+                    MeasuredPercent = i.MeasuredPercent,
+                    Amount = money ? i.Amount : null,
+                }).ToList(),
+            };
+        }).ToList());
+    }
+
+    private static void EnsureDecisionPortal(Ctx ctx)
+    {
+        if (ctx.Portal.Access != BuildPortalAccess.Password)
+            throw new BuildPortalAccessException(403, PublicBuildPortal.CodeDecisionRequiresPassword,
+                "Decisões pelo portal exigem um portal com senha. Fale com a construtora.");
+    }
+
+    private static BuildPortalAccessException ItemNotFound()
+        => new(404, PublicBuildPortal.CodeItemNotFound, "Item não encontrado neste portal.");
+
     // ── Resolution and access ─────────────────────────────────────────────────
 
     private async Task<Ctx> ResolveAsync(string companySlug, string projectSlug, bool tracking, CancellationToken ct)
@@ -357,6 +640,9 @@ public sealed class BuildPublicPortalService
         if (v.FinancialSummary) list.Add("financialSummary");
         if (v.ClientUpdates) list.Add("clientUpdates");
         if (v.Contact) list.Add("contact");
+        if (v.ChangeOrders) list.Add("changeOrders");
+        if (v.Selections) list.Add("selections");
+        if (v.Measurements) list.Add("measurements");
         return list;
     }
 

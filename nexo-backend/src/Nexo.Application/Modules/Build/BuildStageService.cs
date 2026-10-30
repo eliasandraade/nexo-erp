@@ -111,9 +111,9 @@ public class BuildStageService
         var stage = await _stages.GetByIdAsync(stageId, ct)
             ?? throw new NotFoundException("BuildStage", stageId);
 
-        var previous  = stage.ProgressPercent;
         var effective = request.EffectiveDate ?? BusinessClock.Today();
-        stage.UpdateProgress(request.ProgressPercent, effective);
+        BuildStageProgressApplier.Apply(_progress, stage, request.ProgressPercent, effective, BuildProgressSource.Manual,
+            _currentUser.UserId, _currentUser.Name, request.Note);
 
         // Optional explicit status override (e.g. mark InProgress without 100%)
         if (!string.IsNullOrWhiteSpace(request.Status))
@@ -122,19 +122,6 @@ public class BuildStageService
                 throw new DomainException($"Invalid stage status: '{request.Status}'.");
             stage.UpdateStatus(s);
         }
-
-        if (previous != stage.ProgressPercent || !string.IsNullOrWhiteSpace(request.Note))
-            _progress.Stage(BuildStageProgressEvent.Record(
-                tenantId:        stage.TenantId,
-                projectId:       stage.ProjectId,
-                stageId:         stage.Id,
-                previousPercent: previous,
-                percent:         stage.ProgressPercent,
-                source:          BuildProgressSource.Manual,
-                effectiveDate:   effective,
-                recordedBy:      _currentUser.UserId,
-                recordedByName:  _currentUser.Name,
-                note:            request.Note));
 
         _stages.Update(stage);
         await _stages.SaveChangesAsync(ct);

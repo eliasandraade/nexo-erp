@@ -74,6 +74,23 @@ describe("BuildPortalTab", () => {
     expect(req).not.toHaveProperty("password");
   });
 
+  it("Wave 2 flags: aditivos and escolhas on by default, medições off; turning medições on is saved", async () => {
+    vi.mocked(portalApi.updateProjectPortal).mockImplementation(async (_id, req) => ({ ...portal, ...req }));
+    renderTab(<BuildPortalTab projectId="p1" />);
+
+    const changeOrders = await screen.findByRole("switch", { name: /^Aditivos/ });
+    expect(changeOrders).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: /^Escolhas do cliente/ })).toHaveAttribute("aria-checked", "true");
+    const measurements = screen.getByRole("switch", { name: /^Medições aprovadas/ });
+    expect(measurements).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.click(measurements);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar portal" }));
+    await waitFor(() => expect(portalApi.updateProjectPortal).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(portalApi.updateProjectPortal).mock.calls[0][1].visibility)
+      .toMatchObject({ changeOrders: true, selections: true, measurements: true });
+  });
+
   it("publish shows the backend's reason when it refuses", async () => {
     vi.mocked(portalApi.publishProjectPortal).mockRejectedValue(
       new ApiError(422, "Defina o endereço da empresa no portal do cliente antes de publicar.", "portal_company_missing"));

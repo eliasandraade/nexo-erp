@@ -3,7 +3,8 @@ namespace Nexo.Domain.Modules.Build;
 /// <summary>
 /// What the client portal of a project shows. Every section is off unless its flag is on. Safe defaults:
 /// progress, stages, schedule, photos, client updates, contact and weather on; anything financial,
-/// documents, the internal daily log, forecasts, risks, team and 3D off. A flag missing from stored JSON
+/// documents, the internal daily log, forecasts, risks, team, 3D and measurements off; change orders and
+/// selections on (Wave 2). A flag missing from stored JSON
 /// takes its default (properties with initializers).
 /// </summary>
 public sealed record BuildPortalVisibility
@@ -27,6 +28,13 @@ public sealed record BuildPortalVisibility
     public bool Risks                 { get; init; }
     public bool Team                  { get; init; }
     public bool Contact               { get; init; } = true;
+    // Wave 2 (contract v1.1)
+    /// <summary>Change orders sent to the client, approved or rejected; deciding needs a password portal.</summary>
+    public bool ChangeOrders          { get; init; } = true;
+    /// <summary>The client's selections (options, choice); choosing needs a password portal.</summary>
+    public bool Selections            { get; init; } = true;
+    /// <summary>Approved measurements (values only together with <see cref="FinancialSummary"/>).</summary>
+    public bool Measurements          { get; init; }
 
     public static BuildPortalVisibility Defaults { get; } = new();
 }

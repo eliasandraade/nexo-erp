@@ -8,7 +8,7 @@ using Nexo.Infrastructure.Modules.Build;
 namespace Nexo.Api.Controllers.Public;
 
 /// <summary>
-/// Public client portal of Orken Build (no login) — contract v1, docs/build/client-portal-contract.md.
+/// Public client portal of Orken Build (no login) — contract v1.1, docs/build/client-portal-contract.md.
 /// Address: <c>/api/public/build/{companySlug}/{projectSlug}</c>. Unknown and unpublished portals answer
 /// the same 404. A password portal needs the <c>X-Build-Portal-Session</c> header (token from POST …/session).
 /// Responses are never cached (they may carry signed media URLs).
@@ -81,6 +81,55 @@ public class PublicBuildPortalController : ControllerBase
     {
         NoStore();
         return Ok(await _portal.GetProgressAsync(companySlug, projectSlug, SessionToken, ct));
+    }
+
+    // ── v1.1: change orders, selections, measurements ─────────────────────────
+
+    /// <summary>Change orders sent to the client (pending) and decided ones (flag changeOrders).</summary>
+    [HttpGet("change-orders")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildChangeOrdersDto>> ChangeOrders(string companySlug, string projectSlug, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetChangeOrdersAsync(companySlug, projectSlug, SessionToken, ct));
+    }
+
+    /// <summary>The client approves/rejects a pending change order — password portal with a session only.</summary>
+    [HttpPost("change-orders/{publicId:guid}/decision")]
+    [EnableRateLimiting("build-portal-decision")]
+    public async Task<ActionResult<PublicBuildChangeOrderDto>> DecideChangeOrder(string companySlug, string projectSlug, Guid publicId,
+        [FromBody] PublicBuildChangeOrderDecisionRequest? request, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.DecideChangeOrderAsync(companySlug, projectSlug, SessionToken, publicId, request, ct));
+    }
+
+    /// <summary>The client's selections and their options (flag selections).</summary>
+    [HttpGet("selections")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildSelectionsDto>> Selections(string companySlug, string projectSlug, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetSelectionsAsync(companySlug, projectSlug, SessionToken, ct));
+    }
+
+    /// <summary>The client chooses an option — password portal with a session, selection open, before the deadline.</summary>
+    [HttpPost("selections/{publicId:guid}/choice")]
+    [EnableRateLimiting("build-portal-decision")]
+    public async Task<ActionResult<PublicBuildSelectionDto>> ChooseSelection(string companySlug, string projectSlug, Guid publicId,
+        [FromBody] PublicBuildSelectionChoiceRequest? request, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.ChooseSelectionAsync(companySlug, projectSlug, SessionToken, publicId, request, ct));
+    }
+
+    /// <summary>Approved measurements (flag measurements; values only with financialSummary).</summary>
+    [HttpGet("measurements")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildMeasurementsDto>> Measurements(string companySlug, string projectSlug, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetMeasurementsAsync(companySlug, projectSlug, SessionToken, ct));
     }
 
     private void NoStore() => Response.Headers.CacheControl = "no-store";

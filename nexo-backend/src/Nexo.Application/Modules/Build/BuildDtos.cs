@@ -77,7 +77,25 @@ public record BuildBudgetDto(
     decimal                       FinalPrice,
     IReadOnlyList<BuildBudgetItemDto> Items,
     DateTimeOffset                CreatedAt,
-    DateTimeOffset                UpdatedAt);
+    DateTimeOffset                UpdatedAt,
+    // ── Wave 2 (additive) ──
+    DateOnly?                     ValidUntil       = null,
+    bool                          IsExpired        = false,
+    string?                       Notes            = null,
+    string?                       InternalNotes    = null,
+    decimal?                      AreaM2           = null,
+    decimal?                      CostPerM2        = null,   // TotalCost / AreaM2
+    decimal?                      PricePerM2       = null,   // FinalPrice / AreaM2
+    int                           Version          = 1,
+    Guid?                         ParentBudgetId   = null,
+    Guid?                         RootBudgetId     = null,   // version family (first budget's id)
+    Guid?                         SourceTemplateId = null,
+    BuildBudgetTotalsDto?         Totals           = null,
+    DateTimeOffset?               ApprovedAt       = null,
+    string?                       ApprovedByName   = null,
+    DateTimeOffset?               RejectedAt       = null,
+    string?                       RejectedByName   = null,
+    string?                       RejectionReason  = null);
 
 public record BuildBudgetItemDto(
     Guid           Id,
@@ -90,7 +108,9 @@ public record BuildBudgetItemDto(
     decimal        UnitCost,
     decimal        TotalCost,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string         Kind      = "Other",   // BuildCostKind
+    string?        StageName = null);
 
 public record BuildDailyLogDto(
     Guid                             Id,
@@ -122,7 +142,11 @@ public record BuildProjectFinancialSummaryDto(
     int      MovementCount,
     DateOnly? LastMovementDate,
     decimal  VarianceAmount,
-    decimal  VariancePercent);
+    decimal  VariancePercent,
+    // Wave 2: Σ cost impact of approved change orders, and the contract total = approved budget (which already
+    // includes the change orders approved while it existed) + approved change orders not yet in it.
+    decimal  ApprovedChangeOrdersTotal = 0m,
+    decimal? ContractTotal             = null);
 
 // ═══════════════════════════════════════════════════════════════════════
 // DASHBOARD
@@ -224,9 +248,13 @@ public record StageOrderEntry(Guid StageId, int Order);
 // ── Budgets ───────────────────────────────────────────────────────────
 
 public record CreateBuildBudgetRequest(
-    string   Name,
-    Guid?    ProjectId     = null,
-    decimal  MarginPercent = 0m);
+    string    Name,
+    Guid?     ProjectId     = null,
+    decimal   MarginPercent = 0m,
+    DateOnly? ValidUntil    = null,
+    string?   Notes         = null,
+    string?   InternalNotes = null,
+    decimal?  AreaM2        = null);
 
 public record AddBuildBudgetItemRequest(
     string   Name,
@@ -234,7 +262,9 @@ public record AddBuildBudgetItemRequest(
     decimal  Quantity,
     string   Unit,
     decimal  UnitCost,
-    Guid?    StageId = null);
+    Guid?    StageId   = null,
+    string?  Kind      = null,    // BuildCostKind name; default Other
+    string?  StageName = null);
 
 public record UpdateBuildBudgetItemRequest(
     string   Name,
@@ -242,7 +272,9 @@ public record UpdateBuildBudgetItemRequest(
     decimal  Quantity,
     string   Unit,
     decimal  UnitCost,
-    Guid?    StageId);
+    Guid?    StageId,
+    string?  Kind      = null,    // null keeps the current kind
+    string?  StageName = null);   // null keeps; "" clears
 
 public record SetBudgetMarginRequest(decimal MarginPercent);
 

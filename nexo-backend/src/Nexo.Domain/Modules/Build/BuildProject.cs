@@ -186,6 +186,22 @@ public class BuildProject : TenantEntity
         SetUpdatedAt();
     }
 
+    /// <summary>
+    /// An approved change order adds its cost impact (may be negative) to the approved budget — only when the
+    /// project has one. Returns whether it was applied (false: no approved budget yet; the change order still
+    /// counts in the contract total).
+    /// </summary>
+    public bool ApplyChangeOrderCost(decimal costImpact)
+    {
+        if (BudgetApproved is not { } current) return false;
+        var next = current + costImpact;
+        if (next < 0)
+            throw new DomainException("O aditivo deixaria o valor do contrato negativo.", "change_order_negative_contract");
+        BudgetApproved = Math.Round(next, 2, MidpointRounding.AwayFromZero);
+        SetUpdatedAt();
+        return true;
+    }
+
     // ── Guards ────────────────────────────────────────────────────────────────
 
     public bool IsActive    => Status is BuildProjectStatus.Planning or BuildProjectStatus.InProgress or BuildProjectStatus.Paused;

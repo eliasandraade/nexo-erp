@@ -82,3 +82,10 @@ autorização (o merge na `master` publica em produção).
   referência único: convertido, senão o último aprovado); portal (empresa, obra, visibilidade, senha BCrypt, sessão opaca, lockout,
   rate limit, 404 indistinguível), atualizações ao cliente, visibilidade do diário/fotos; telas internas (Progresso, Portal do
   cliente, custo por etapa, criação com escolha do acompanhamento). Contrato: `docs/build/client-portal-contract.md`.
+- **Wave 2 — concluída (backend).** Migration `BuildWave2Commercial` (aditiva). Orçamento com tipos de item, validade
+  (vencido não aprova), observações (cliente/interna), área e R$/m², versões (família, pai), duplicar, modelos (por m² ou
+  fixo), PDF com marca (preço já com margem, sem custo/margem/nota interna), conversão cria etapas pelos nomes dos itens;
+  aditivos (empresa ou cliente pelo portal com senha → contrato, fim da etapa, revisão do cronograma); escolhas do cliente
+  (confirmação gera aditivo em rascunho); materiais (cotação, pedido, entregas parciais, atraso, vínculo a lançamento da
+  obra); medições (aprovação move o progresso pelo mesmo caminho do avanço manual, origem `Measurement`). Portal v1.1:
+  flags `changeOrders`, `selections`, `measurements`. Docs: `internal-api.md`, `client-portal-contract.md` (v1.1).

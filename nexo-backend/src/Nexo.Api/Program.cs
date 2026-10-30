@@ -348,6 +348,8 @@ try
 
         AddIpPolicy("build-portal", "BuildPortal", 120, 60);
         AddIpPolicy("build-portal-auth", "BuildPortalAuth", 10, 300);
+        // client decisions (change orders, selections): writes, so tighter than reads
+        AddIpPolicy("build-portal-decision", "BuildPortalDecision", 30, 300);
     });
 
     // ── Controllers ───────────────────────────────────────────────────────────

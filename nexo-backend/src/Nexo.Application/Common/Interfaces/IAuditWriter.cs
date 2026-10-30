@@ -98,6 +98,30 @@ public static class AuditActions
     public const string BuildClientUpdateEdited      = "build_client_update_edited";
     public const string BuildClientUpdatePublished   = "build_client_update_published";
     public const string BuildClientUpdateArchived    = "build_client_update_archived";
+    // Orken Build — Wave 2 commercial
+    public const string BuildBudgetTermsSet          = "build_budget_terms_set";
+    public const string BuildBudgetDuplicated        = "build_budget_duplicated";
+    public const string BuildBudgetVersionCreated    = "build_budget_version_created";
+    public const string BuildBudgetTemplateSaved     = "build_budget_template_saved";
+    public const string BuildBudgetTemplateDeleted   = "build_budget_template_deleted";
+    public const string BuildBudgetFromTemplate      = "build_budget_from_template";
+    public const string BuildChangeOrderSaved        = "build_change_order_saved";
+    public const string BuildChangeOrderSent         = "build_change_order_sent";
+    public const string BuildChangeOrderApproved     = "build_change_order_approved";
+    public const string BuildChangeOrderRejected     = "build_change_order_rejected";
+    public const string BuildChangeOrderCancelled    = "build_change_order_cancelled";
+    public const string BuildSelectionSaved          = "build_selection_saved";
+    public const string BuildSelectionChosen         = "build_selection_chosen";
+    public const string BuildSelectionConfirmed      = "build_selection_confirmed";
+    public const string BuildSelectionCancelled      = "build_selection_cancelled";
+    public const string BuildMaterialSaved           = "build_material_saved";
+    public const string BuildMaterialStatusChanged   = "build_material_status_changed";
+    public const string BuildMaterialDelivered       = "build_material_delivered";
+    public const string BuildMaterialMovementLinked  = "build_material_movement_linked";
+    public const string BuildMeasurementSaved        = "build_measurement_saved";
+    public const string BuildMeasurementSubmitted    = "build_measurement_submitted";
+    public const string BuildMeasurementApproved     = "build_measurement_approved";
+    public const string BuildMeasurementRejected     = "build_measurement_rejected";
 
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";

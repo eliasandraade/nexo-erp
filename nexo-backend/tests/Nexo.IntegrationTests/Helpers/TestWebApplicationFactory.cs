@@ -127,6 +127,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("RateLimiting:PublicOrders:Enabled", "false");
         builder.UseSetting("RateLimiting:BuildPortal:Enabled", "false");
         builder.UseSetting("RateLimiting:BuildPortalAuth:Enabled", "false");
+        builder.UseSetting("RateLimiting:BuildPortalDecision:Enabled", "false");
         builder.UseSetting("RateLimiting:CredentialCheck:Enabled", "false");
 
         // Tax Intelligence is off unless configured (kill switch). The suite turns it on explicitly and relaxes

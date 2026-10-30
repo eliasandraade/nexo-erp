@@ -55,6 +55,30 @@ public sealed class BuildCostService
         return new BuildMovementStageDto(movement.Id, projectId, movement.StageId, stageName);
     }
 
+    /// <summary>
+    /// Budgeted amount per stage id (null key = items without stage) from ONE reference budget of the project —
+    /// never the sum of several: the converted one wins, then the latest approved. Also used by measurements
+    /// to suggest the measured value (delta % × stage budget).
+    /// </summary>
+    public async Task<IReadOnlyList<(Guid? StageId, decimal Total)>> BudgetedByStageAsync(Guid projectId, CancellationToken ct)
+    {
+        var referenceBudgetId = await _db.BldBudgets.AsNoTracking()
+            .Where(b => b.TenantId == _tenant.Id && b.ProjectId == projectId
+                     && (b.Status == BuildBudgetStatus.Approved || b.Status == BuildBudgetStatus.Converted))
+            .OrderByDescending(b => b.Status == BuildBudgetStatus.Converted)
+            .ThenByDescending(b => b.UpdatedAt).ThenByDescending(b => b.CreatedAt)
+            .Select(b => (Guid?)b.Id)
+            .FirstOrDefaultAsync(ct);
+        if (referenceBudgetId is null) return [];
+
+        var rows = await _db.BldBudgetItems.AsNoTracking()
+            .Where(i => i.TenantId == _tenant.Id && i.BudgetId == referenceBudgetId)
+            .GroupBy(i => i.StageId)
+            .Select(g => new { StageId = g.Key, Total = g.Sum(x => x.TotalCost) })
+            .ToListAsync(ct);
+        return rows.Select(r => (r.StageId, r.Total)).ToList();
+    }
+
     public async Task<BuildCostByStageDto> GetCostByStageAsync(Guid projectId, CancellationToken ct)
     {
         if (!await _db.BldProjects.AnyAsync(p => p.TenantId == _tenant.Id && p.Id == projectId, ct))
@@ -67,20 +91,7 @@ public sealed class BuildCostService
             .ToListAsync(ct);
         var stageIds = stages.Select(s => s.Id).ToHashSet();
 
-        // one reference budget, never the sum of several: the converted one wins, then the latest approved
-        var referenceBudgetId = await _db.BldBudgets.AsNoTracking()
-            .Where(b => b.TenantId == _tenant.Id && b.ProjectId == projectId
-                     && (b.Status == BuildBudgetStatus.Approved || b.Status == BuildBudgetStatus.Converted))
-            .OrderByDescending(b => b.Status == BuildBudgetStatus.Converted)
-            .ThenByDescending(b => b.UpdatedAt).ThenByDescending(b => b.CreatedAt)
-            .Select(b => (Guid?)b.Id)
-            .FirstOrDefaultAsync(ct);
-
-        var budgeted = await _db.BldBudgetItems.AsNoTracking()
-            .Where(i => i.TenantId == _tenant.Id && i.BudgetId == referenceBudgetId)
-            .GroupBy(i => i.StageId)
-            .Select(g => new { StageId = g.Key, Total = g.Sum(x => x.TotalCost) })
-            .ToListAsync(ct);
+        var budgeted = await BudgetedByStageAsync(projectId, ct);
 
         var realized = await _db.IntMovements.AsNoTracking()
             .Where(m => m.TenantId == _tenant.Id

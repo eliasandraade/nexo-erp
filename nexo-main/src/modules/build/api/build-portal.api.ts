@@ -29,6 +29,12 @@ export interface BuildPortalVisibility {
   risks:                 boolean;
   team:                  boolean;
   contact:               boolean;
+  /** Wave 2: change orders sent/decided (deciding needs a password portal). */
+  changeOrders:          boolean;
+  /** Wave 2: the client's selections (choosing needs a password portal). */
+  selections:            boolean;
+  /** Wave 2: approved measurements (values only together with financialSummary). */
+  measurements:          boolean;
 }
 
 /** Mirrors the server's safe defaults (BuildPortalVisibility.Defaults). */
@@ -37,6 +43,7 @@ export const DEFAULT_PORTAL_VISIBILITY: BuildPortalVisibility = {
   dailyLogs: false, photos: true, videos: false, documents: false, weather: true,
   financialSummary: false, financialCategories: false, financialTransactions: false, receipts: false,
   model3d: false, realityCapture: false, clientUpdates: true, risks: false, team: false, contact: true,
+  changeOrders: true, selections: true, measurements: false,
 };
 
 export interface BuildPortalCompanyDto {

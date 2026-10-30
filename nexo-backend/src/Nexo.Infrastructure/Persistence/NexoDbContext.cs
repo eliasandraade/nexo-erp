@@ -130,6 +130,16 @@ public class NexoDbContext : DbContext
     public DbSet<BuildProjectPortal>      BldProjectPortals      => Set<BuildProjectPortal>();
     public DbSet<BuildPortalSession>      BldPortalSessions      => Set<BuildPortalSession>();
     public DbSet<BuildClientUpdate>       BldClientUpdates       => Set<BuildClientUpdate>();
+    public DbSet<BuildBudgetTemplate>     BldBudgetTemplates     => Set<BuildBudgetTemplate>();
+    public DbSet<BuildBudgetTemplateItem> BldBudgetTemplateItems => Set<BuildBudgetTemplateItem>();
+    public DbSet<BuildChangeOrder>        BldChangeOrders        => Set<BuildChangeOrder>();
+    public DbSet<BuildChangeOrderItem>    BldChangeOrderItems    => Set<BuildChangeOrderItem>();
+    public DbSet<BuildSelection>          BldSelections          => Set<BuildSelection>();
+    public DbSet<BuildSelectionOption>    BldSelectionOptions    => Set<BuildSelectionOption>();
+    public DbSet<BuildMaterialRequest>    BldMaterialRequests    => Set<BuildMaterialRequest>();
+    public DbSet<BuildMaterialDelivery>   BldMaterialDeliveries  => Set<BuildMaterialDelivery>();
+    public DbSet<BuildMeasurement>        BldMeasurements        => Set<BuildMeasurement>();
+    public DbSet<BuildMeasurementItem>    BldMeasurementItems    => Set<BuildMeasurementItem>();
 
     // ── Service module (Orken Service — motor de serviços) ───────────────────
     public DbSet<SvcProfessional>     SvcProfessionals => Set<SvcProfessional>();

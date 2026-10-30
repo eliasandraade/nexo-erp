@@ -253,8 +253,8 @@ export function useApproveBudget(projectId?: string) {
 export function useRejectBudget(projectId?: string) {
   const { invalidate } = useBudgetMutation(projectId);
   return useMutation({
-    mutationFn: (id: string) => rejectBudget(id),
-    onSuccess:  (_, id)      => invalidate(id),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => rejectBudget(id, reason),
+    onSuccess:  (_, { id })  => invalidate(id),
   });
 }
 

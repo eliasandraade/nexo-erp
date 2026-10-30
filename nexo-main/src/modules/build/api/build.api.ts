@@ -24,6 +24,9 @@ export type BuildStageStatus =
 /** How the construtora follows the project: standard tracking, or 3D (model onboarding arrives later). */
 export type BuildTrackingMode = "Standard" | "ThreeD";
 
+/** Kind of a budget / change-order line (BuildCostKind). Old items come as "Other". */
+export type BuildCostKind = "Material" | "Labor" | "Service" | "Equipment" | "Other";
+
 export type BuildBudgetStatus =
   | "Draft"
   | "Sent"
@@ -82,6 +85,26 @@ export interface BuildBudgetItemDto {
   unit:      string;
   unitCost:  number;
   totalCost: number;
+  /** Wave 2 — absent on old servers (treat as "Other"). */
+  kind?:      BuildCostKind;
+  /** Stage name for budgets without an obra (or from a template). */
+  stageName?: string | null;
+}
+
+/** Totals per kind, margin applied, per m² when the area is known (Wave 2). */
+export interface BuildBudgetTotalsDto {
+  material:      number;
+  labor:         number;
+  service:       number;
+  equipment:     number;
+  other:         number;
+  subtotal:      number;
+  marginPercent: number;
+  marginValue:   number;
+  total:         number;
+  areaM2:        number | null;
+  costPerM2:     number | null;
+  totalPerM2:    number | null;
 }
 
 export interface BuildBudgetDto {
@@ -95,6 +118,27 @@ export interface BuildBudgetDto {
   createdAt:     string;
   updatedAt:     string;
   items:         BuildBudgetItemDto[];
+  // ── Wave 2 (additive) ──
+  validUntil?:       string | null;
+  /** Sent with validUntil before today (Brazil) — approving answers 422 budget_expired. */
+  isExpired?:        boolean;
+  /** Goes to the client / PDF. */
+  notes?:            string | null;
+  /** Never leaves the company. */
+  internalNotes?:    string | null;
+  areaM2?:           number | null;
+  costPerM2?:        number | null;
+  pricePerM2?:       number | null;
+  version?:          number;
+  parentBudgetId?:   string | null;
+  rootBudgetId?:     string | null;
+  sourceTemplateId?: string | null;
+  totals?:           BuildBudgetTotalsDto | null;
+  approvedAt?:       string | null;
+  approvedByName?:   string | null;
+  rejectedAt?:       string | null;
+  rejectedByName?:   string | null;
+  rejectionReason?:  string | null;
 }
 
 export interface BuildDailyLogPhotoDto {
@@ -136,6 +180,10 @@ export interface BuildProjectFinancialSummaryDto {
   lastMovementDate:      string | null;
   varianceAmount:        number;
   variancePercent:       number;
+  /** Wave 2: Σ cost impact of the approved change orders. */
+  approvedChangeOrdersTotal?: number;
+  /** Wave 2: approved budget (with the change orders applied) + approved change orders not in it; null without either. */
+  contractTotal?:             number | null;
 }
 
 export interface BuildPagedResult<T> {
@@ -234,9 +282,13 @@ export interface ReorderBuildStagesRequest {
 }
 
 export interface CreateBuildBudgetRequest {
-  name:          string;
-  projectId?:    string;
+  name:           string;
+  projectId?:     string;
   marginPercent?: number;
+  validUntil?:    string;
+  notes?:         string;
+  internalNotes?: string;
+  areaM2?:        number;
 }
 
 export interface AddBuildBudgetItemRequest {
@@ -246,6 +298,8 @@ export interface AddBuildBudgetItemRequest {
   unit:      string;
   unitCost:  number;
   stageId?:  string;
+  kind?:     BuildCostKind;
+  stageName?: string;
 }
 
 export interface UpdateBuildBudgetItemRequest {
@@ -255,6 +309,10 @@ export interface UpdateBuildBudgetItemRequest {
   unit:     string;
   unitCost: number;
   stageId?: string;
+  /** null/omitted keeps the current kind. */
+  kind?:     BuildCostKind;
+  /** omitted keeps; "" clears. */
+  stageName?: string;
 }
 
 export interface SetBudgetMarginRequest {
@@ -372,8 +430,9 @@ export const sendBudget     = (id: string): Promise<BuildBudgetDto> =>
   apiClient.post(`/v1/build/budgets/${id}/send`);
 export const approveBudget  = (id: string): Promise<BuildBudgetDto> =>
   apiClient.post(`/v1/build/budgets/${id}/approve`);
-export const rejectBudget   = (id: string): Promise<BuildBudgetDto> =>
-  apiClient.post(`/v1/build/budgets/${id}/reject`);
+/** Optional reason (Wave 2), recorded with who/when. */
+export const rejectBudget   = (id: string, reason?: string): Promise<BuildBudgetDto> =>
+  apiClient.post(`/v1/build/budgets/${id}/reject`, reason ? { reason } : undefined);
 export const convertBudget  = (id: string, req: ConvertBudgetToProjectRequest): Promise<BuildBudgetDto> =>
   apiClient.post(`/v1/build/budgets/${id}/convert`, req);
 export const setBudgetMargin = (id: string, req: SetBudgetMarginRequest): Promise<BuildBudgetDto> =>

@@ -39,6 +39,23 @@ public sealed class BuildAuditTrail
             actorName: UserName,
             metadata: new { requestId = _http.HttpContext?.TraceIdentifier, details });
 
+    /// <summary>
+    /// A decision taken by the client through a password portal session (change order, selection): the actor is
+    /// the name the client typed, the tenant is the portal's.
+    /// </summary>
+    public void RecordPortalClient(string action, Guid tenantId, string entityType, Guid entityId, string description,
+        string? signerName, object? details = null)
+        => _audit.Stage(
+            actionType: action,
+            severity: AuditSeverity.Info,
+            entityType: EntityPrefix + entityType,
+            entityId: entityId.ToString(),
+            description: description,
+            tenantId: tenantId,
+            actorName: string.IsNullOrWhiteSpace(signerName) ? "Cliente (portal)" : $"Cliente (portal): {signerName.Trim()}",
+            actorType: "portal_client",
+            metadata: new { requestId = _http.HttpContext?.TraceIdentifier, details });
+
     /// <summary>An event caused by the anonymous portal visitor (e.g. the portal locking after wrong passwords).</summary>
     public void RecordPortalVisitor(string action, Guid tenantId, Guid portalId, string description)
         => _audit.Stage(

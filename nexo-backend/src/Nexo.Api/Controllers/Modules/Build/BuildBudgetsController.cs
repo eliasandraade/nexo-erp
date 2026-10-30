@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Nexo.Infrastructure.Modules.Build;
 using Nexo.Api.Filters;
 using Nexo.Application.Modules.Build;
 using Nexo.Domain.Modules.Build;
@@ -33,8 +35,13 @@ namespace Nexo.Api.Controllers.Modules.Build;
 public class BuildBudgetsController : ControllerBase
 {
     private readonly BuildBudgetService _budgets;
+    private readonly BuildBudgetCommercialService _commercial;
 
-    public BuildBudgetsController(BuildBudgetService budgets) => _budgets = budgets;
+    public BuildBudgetsController(BuildBudgetService budgets, BuildBudgetCommercialService commercial)
+    {
+        _budgets = budgets;
+        _commercial = commercial;
+    }
 
     // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -88,10 +95,57 @@ public class BuildBudgetsController : ControllerBase
     public async Task<ActionResult<BuildBudgetDto>> Approve(Guid id, CancellationToken ct)
         => Ok(await _budgets.ApproveBudgetAsync(id, ct));
 
-    /// <summary>Rejeita o orçamento (Draft | Sent → Rejected).</summary>
+    /// <summary>Rejeita o orçamento (Draft | Sent → Rejected). Corpo opcional: { reason }.</summary>
     [HttpPost("budgets/{id:guid}/reject")]
-    public async Task<ActionResult<BuildBudgetDto>> Reject(Guid id, CancellationToken ct)
-        => Ok(await _budgets.RejectBudgetAsync(id, ct));
+    public async Task<ActionResult<BuildBudgetDto>> Reject(
+        Guid id,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] RejectBuildBudgetRequest? request,
+        CancellationToken ct)
+        => Ok(await _budgets.RejectBudgetAsync(id, request?.Reason, ct));
+
+    // ── Wave 2: terms, duplicate, versions, PDF, save as template ────────────
+
+    /// <summary>Validade, observações (cliente), observações internas e área (Draft | Sent).</summary>
+    [HttpPut("budgets/{id:guid}/terms")]
+    public async Task<ActionResult<BuildBudgetDto>> SetTerms(Guid id, [FromBody] SetBuildBudgetTermsRequest request, CancellationToken ct)
+        => Ok(await _commercial.SetTermsAsync(id, request, ct));
+
+    /// <summary>Novo rascunho com os mesmos itens (não entra na família de versões).</summary>
+    [HttpPost("budgets/{id:guid}/duplicate")]
+    public async Task<ActionResult<BuildBudgetDto>> Duplicate(
+        Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] DuplicateBuildBudgetRequest? request, CancellationToken ct)
+    {
+        var dto = await _commercial.DuplicateAsync(id, request?.Name, ct);
+        return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
+    }
+
+    /// <summary>Nova versão de um orçamento enviado, aprovado ou recusado (Version+1, o anterior fica intacto).</summary>
+    [HttpPost("budgets/{id:guid}/versions")]
+    public async Task<ActionResult<BuildBudgetDto>> NewVersion(Guid id, CancellationToken ct)
+    {
+        var dto = await _commercial.NewVersionAsync(id, ct);
+        return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
+    }
+
+    /// <summary>Todas as versões da família do orçamento.</summary>
+    [HttpGet("budgets/{id:guid}/versions")]
+    public async Task<ActionResult<IReadOnlyList<BuildBudgetVersionDto>>> Versions(Guid id, CancellationToken ct)
+        => Ok(await _commercial.GetVersionsAsync(id, ct));
+
+    /// <summary>PDF do orçamento para o cliente (preços com margem; sem custos, margem nem observações internas).</summary>
+    [HttpGet("budgets/{id:guid}/pdf")]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        var pdf = await _commercial.RenderPdfAsync(id, ct);
+        Response.Headers.CacheControl = "no-store";
+        return File(pdf.Bytes, "application/pdf", pdf.FileName);
+    }
+
+    /// <summary>Salva os itens do orçamento como modelo (quantidade fixa ou por m²).</summary>
+    [HttpPost("budgets/{id:guid}/save-as-template")]
+    public async Task<ActionResult<BuildBudgetTemplateDto>> SaveAsTemplate(
+        Guid id, [FromBody] SaveBudgetAsTemplateRequest request, CancellationToken ct)
+        => Ok(await _commercial.SaveAsTemplateAsync(id, request, ct));
 
     /// <summary>
     /// Converte orçamento aprovado em projeto (Approved → Converted).

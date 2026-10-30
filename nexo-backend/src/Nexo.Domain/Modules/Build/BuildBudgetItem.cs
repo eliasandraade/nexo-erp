@@ -21,6 +21,13 @@ public class BuildBudgetItem : TenantEntity
     public string  Unit     { get; private set; } = string.Empty; // "m²", "un", "kg", "h"
     public decimal UnitCost { get; private set; }
     public decimal TotalCost { get; private set; }
+    /// <summary>Material / labor / service / equipment / other. Legacy rows default to Other.</summary>
+    public BuildCostKind Kind { get; private set; } = BuildCostKind.Other;
+    /// <summary>
+    /// Stage name for budgets not yet linked to a project (or coming from a template). On conversion, a project
+    /// without stages gets one stage per distinct name.
+    /// </summary>
+    public string? StageName { get; private set; }
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
@@ -32,7 +39,9 @@ public class BuildBudgetItem : TenantEntity
         decimal quantity,
         string  unit,
         decimal unitCost,
-        Guid?   stageId = null)
+        Guid?   stageId = null,
+        BuildCostKind kind = BuildCostKind.Other,
+        string? stageName = null)
     {
         if (budgetId == Guid.Empty)              throw new DomainException("BudgetId is required.");
         if (string.IsNullOrWhiteSpace(name))     throw new DomainException("Item name is required.");
@@ -50,11 +59,25 @@ public class BuildBudgetItem : TenantEntity
             Quantity  = quantity,
             Unit      = unit.Trim(),
             UnitCost  = unitCost,
-            TotalCost = quantity * unitCost,
+            TotalCost = BuildMoney.Round(quantity * unitCost),
+            Kind      = BuildMoney.Kind(kind),
+            StageName = BuildMoney.Clean(stageName, 200, "O nome da etapa"),
         };
     }
 
+    /// <summary>The same line in another budget (duplicate / new version / save as template round trip).</summary>
+    public BuildBudgetItem CopyTo(Guid budgetId)
+        => Create(TenantId, budgetId, Name, Category, Quantity, Unit, UnitCost, StageId, Kind, StageName);
+
     // ── Mutations ─────────────────────────────────────────────────────────────
+
+    /// <summary>On conversion, a line with a stage name is linked to the project stage created from that name.</summary>
+    public void LinkStage(Guid stageId)
+    {
+        if (stageId == Guid.Empty) throw new DomainException("Etapa inválida.");
+        StageId = stageId;
+        SetUpdatedAt();
+    }
 
     public void Update(
         string  name,
@@ -62,7 +85,9 @@ public class BuildBudgetItem : TenantEntity
         decimal quantity,
         string  unit,
         decimal unitCost,
-        Guid?   stageId)
+        Guid?   stageId,
+        BuildCostKind? kind = null,
+        string? stageName = null)
     {
         if (string.IsNullOrWhiteSpace(name))     throw new DomainException("Item name is required.");
         if (string.IsNullOrWhiteSpace(category)) throw new DomainException("Category is required.");
@@ -75,8 +100,11 @@ public class BuildBudgetItem : TenantEntity
         Quantity  = quantity;
         Unit      = unit.Trim();
         UnitCost  = unitCost;
-        TotalCost = quantity * unitCost;
+        TotalCost = BuildMoney.Round(quantity * unitCost);
         StageId   = stageId;
+        if (kind is { } k) Kind = BuildMoney.Kind(k);
+        // null keeps the stage name (older clients do not send it); an empty string clears it
+        if (stageName is not null) StageName = BuildMoney.Clean(stageName, 200, "O nome da etapa");
         SetUpdatedAt();
     }
 }

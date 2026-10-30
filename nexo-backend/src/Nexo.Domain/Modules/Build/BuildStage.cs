@@ -118,6 +118,21 @@ public class BuildStage : TenantEntity
         SetUpdatedAt();
     }
 
+    /// <summary>
+    /// Moves the planned end by <paramref name="days"/> (an approved change order's schedule impact). Only this
+    /// stage moves — later stages are not shifted. Returns false when the stage has no planned end.
+    /// </summary>
+    public bool ShiftPlannedEnd(int days)
+    {
+        if (days == 0 || PlannedEndDate is not { } end) return false;
+        var next = end.AddDays(days);
+        if (PlannedStartDate is { } start && next < start)
+            throw new DomainException($"O prazo deixaria a etapa {Name} terminando antes de começar.", "stage_end_before_start");
+        PlannedEndDate = next;
+        SetUpdatedAt();
+        return true;
+    }
+
     public void Reorder(int newOrder)
     {
         if (newOrder < 0) throw new DomainException("Order cannot be negative.");

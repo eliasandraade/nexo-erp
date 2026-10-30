@@ -22,4 +22,6 @@ public sealed record BuildFinancialSnapshot(
     decimal? EstimatedBudget,
     decimal? ApprovedBudget,
     decimal  VarianceAmount,      // ApprovedBudget - TotalRealizedExpenses (null-safe; 0 when budgets absent)
-    decimal  VariancePercent);    // VarianceAmount / ApprovedBudget * 100 (0 when budget = 0)
+    decimal  VariancePercent,     // VarianceAmount / ApprovedBudget * 100 (0 when budget = 0)
+    decimal  ApprovedChangeOrdersTotal  = 0m,   // Σ cost impact of approved change orders
+    decimal  UnappliedChangeOrdersTotal = 0m);  // approved while the project had no approved budget

@@ -170,6 +170,14 @@ public static class DependencyInjection
         services.AddScoped<BuildCostService>();
         services.AddScoped<BuildPortalAdminService>();
         services.AddScoped<BuildPublicPortalService>();
+        // Wave 2 — commercial (templates, versions, PDF, change orders, selections, materials, measurements)
+        services.AddScoped<BuildBudgetCommercialService>();
+        services.AddHttpClient(BuildBudgetCommercialService.LogoHttpClient, c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddScoped<BuildChangeOrderEffects>();
+        services.AddScoped<BuildChangeOrderService>();
+        services.AddScoped<BuildSelectionService>();
+        services.AddScoped<BuildMaterialService>();
+        services.AddScoped<BuildMeasurementService>();
 
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();

@@ -132,10 +132,101 @@ public sealed record PublicBuildSessionDto(string Token, DateTimeOffset ExpiresA
 /// <summary>What a locked (password) portal shows before the password: name, logo and title only.</summary>
 public sealed record PublicBuildPortalTeaserDto(string Name, string? LogoUrl, string? Title);
 
+// ── Wave 2 (contract v1.1): change orders, selections, measurements ─────────
+
+public sealed record PublicBuildChangeOrderItemDto(string Name, string Kind, decimal Quantity, string Unit, decimal UnitPrice, decimal Total);
+
+/// <summary>
+/// A change order shown to the client. <c>id</c> is an opaque public id. <c>status</c>: "Pending" (waiting for
+/// the client) | "Approved" | "Rejected". <c>canDecide</c> is true only for a pending order on a password portal.
+/// </summary>
+public sealed record PublicBuildChangeOrderDto
+{
+    public Guid Id { get; init; }
+    public int Number { get; init; }
+    public string Title { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Description { get; init; }
+    public string Reason { get; init; } = string.Empty;
+    public decimal CostImpact { get; init; }
+    public int ScheduleImpactDays { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? StageName { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public bool CanDecide { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? SentAt { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? DecidedAt { get; init; }
+    /// <summary>"Portal" (the client) or "Internal" (recorded by the company).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? DecisionChannel { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ClientComment { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? SignerName { get; init; }
+    public IReadOnlyList<PublicBuildChangeOrderItemDto> Items { get; init; } = [];
+}
+
+public sealed record PublicBuildChangeOrdersDto(IReadOnlyList<PublicBuildChangeOrderDto> Items);
+
+/// <summary><c>decision</c>: "approve" | "reject". <c>signerName</c> is required (who is deciding).</summary>
+public sealed record PublicBuildChangeOrderDecisionRequest(string? Decision, string? Comment, string? SignerName);
+
+public sealed record PublicBuildSelectionOptionDto
+{
+    public Guid Id { get; init; }
+    public string Name { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Description { get; init; }
+    public decimal PriceDelta { get; init; }
+    public bool IsStandard { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ImageUrl { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public int? LeadTimeDays { get; init; }
+}
+
+/// <summary>
+/// A selection shown to the client. <c>status</c>: "Open" | "Submitted" | "Confirmed". <c>canChoose</c>: open,
+/// before the deadline, on a password portal.
+/// </summary>
+public sealed record PublicBuildSelectionDto
+{
+    public Guid Id { get; init; }
+    public string Title { get; init; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Description { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? StageName { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateOnly? Deadline { get; init; }
+    public bool DeadlinePassed { get; init; }
+    public string Status { get; init; } = string.Empty;
+    public bool CanChoose { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public Guid? ChosenOptionId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ClientComment { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? DecidedAt { get; init; }
+    public IReadOnlyList<PublicBuildSelectionOptionDto> Options { get; init; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? ImageUrlsExpireAt { get; init; }
+}
+
+public sealed record PublicBuildSelectionsDto(IReadOnlyList<PublicBuildSelectionDto> Items);
+
+public sealed record PublicBuildSelectionChoiceRequest(Guid? OptionId, string? Comment);
+
+public sealed record PublicBuildMeasurementItemDto
+{
+    public string StageName { get; init; } = string.Empty;
+    public int PreviousPercent { get; init; }
+    public int MeasuredPercent { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? Amount { get; init; }
+}
+
+/// <summary>An approved measurement. Amounts only when the financial summary is enabled too.</summary>
+public sealed record PublicBuildMeasurementDto
+{
+    public int Number { get; init; }
+    public DateOnly PeriodStart { get; init; }
+    public DateOnly PeriodEnd { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DateTimeOffset? ApprovedAt { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? TotalAmount { get; init; }
+    public IReadOnlyList<PublicBuildMeasurementItemDto> Items { get; init; } = [];
+}
+
+public sealed record PublicBuildMeasurementsDto(IReadOnlyList<PublicBuildMeasurementDto> Items);
+
 /// <summary>Constants of the public portal contract.</summary>
 public static class PublicBuildPortal
 {
-    public const string ContractVersion = "1";
+    public const string ContractVersion = "1.1";
     public const string SessionHeader   = "X-Build-Portal-Session";
 
     public const string CodeNotFound         = "portal_not_found";
@@ -145,6 +236,16 @@ public static class PublicBuildPortal
     public const string CodeLocked           = "portal_locked";
     public const string CodeSectionDisabled  = "portal_section_disabled";
     public const string CodePasswordNotNeeded = "portal_password_not_required";
+
+    // Wave 2 (v1.1)
+    public const string CodeDecisionRequiresPassword = "portal_decision_requires_password";
+    public const string CodeItemNotFound             = "portal_item_not_found";
+    public const string CodeAlreadyDecided           = "change_order_already_decided";
+    public const string CodeInvalidDecision          = "invalid_decision";
+    public const string CodeSignerRequired           = "signer_name_required";
+    public const string CodeSelectionClosed          = "selection_closed";
+    public const string CodeSelectionDeadlinePassed  = "selection_deadline_passed";
+    public const string CodeInvalidOption            = "invalid_option";
 }
 
 /// <summary>

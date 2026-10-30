@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Trash2, Pencil, Undo2,
+  ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Pencil, Undo2,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
   MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2, Globe,
+  FilePlus2, ListChecks, Package, Ruler,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -15,14 +16,10 @@ import { toast } from "sonner";
 import {
   useProjectDetails, useProjectFinancial, useStages,
   useStartProject, usePauseProject, useCompleteProject, useCancelProject,
-  useBudgets, useBudget, useCreateBudget,
-  useSendBudget, useApproveBudget, useRejectBudget,
-  useAddBudgetItem, useUpdateBudgetItem, useRemoveBudgetItem, useSetBudgetMargin,
   useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto, useRemoveDailyLogPhoto,
 } from "../hooks/use-build";
 import { useProjectMovements, useVoidMovement } from "../hooks/use-interpreter";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
-import { BudgetStatusBadge } from "../components/BudgetStatusBadge";
 import { BuildExpenseDialog } from "../components/BuildExpenseDialog";
 import { EditProjectDialog } from "../components/EditProjectDialog";
 import { BuildStagesTab } from "../components/stages/BuildStagesTab";
@@ -31,9 +28,14 @@ import { BuildProgressTab } from "../components/progress/BuildProgressTab";
 import { CostByStageSection } from "../components/finance/CostByStageSection";
 import { MovementStageSelect } from "../components/finance/MovementStageSelect";
 import { BuildPortalTab } from "../components/portal/BuildPortalTab";
+import { BuildBudgetTab } from "../components/budget/BuildBudgetTab";
+import { ChangeOrdersTab } from "../components/change-orders/ChangeOrdersTab";
+import { SelectionsTab } from "../components/selections/SelectionsTab";
+import { MaterialsTab } from "../components/materials/MaterialsTab";
+import { MeasurementsTab } from "../components/measurements/MeasurementsTab";
 import { DailyLogClientVisibility, PhotoClientVisibilityToggle } from "../components/diary/DailyLogClientVisibility";
 import type {
-  BuildProjectDetailsDto, BuildBudgetDto, BuildDailyLogDto,
+  BuildProjectDetailsDto, BuildDailyLogDto,
 } from "../api/build.api";
 import {
   getWeatherCurrent, getWeatherHistory,
@@ -62,7 +64,9 @@ function fmtPct(v: number) {
   return `${v.toFixed(1)}%`;
 }
 
-type Tab = "geral" | "etapas" | "progresso" | "orcamento" | "diario" | "financeiro" | "portal";
+type Tab =
+  | "geral" | "etapas" | "progresso" | "orcamento" | "aditivos" | "escolhas" | "materiais" | "medicoes"
+  | "diario" | "financeiro" | "portal";
 
 // ── Tab selector ──────────────────────────────────────────────────────────────
 
@@ -72,6 +76,10 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
     { key: "etapas",     label: "Etapas",      icon: CheckCircle },
     { key: "progresso",  label: "Progresso",   icon: TrendingUp },
     { key: "orcamento",  label: "Orçamento",   icon: FileText },
+    { key: "aditivos",   label: "Aditivos",    icon: FilePlus2 },
+    { key: "escolhas",   label: "Escolhas do cliente", icon: ListChecks },
+    { key: "materiais",  label: "Materiais",   icon: Package },
+    { key: "medicoes",   label: "Medições",    icon: Ruler },
     { key: "diario",     label: "Diário",      icon: BookOpen },
     { key: "financeiro", label: "Financeiro",  icon: BarChart2 },
     { key: "portal",     label: "Portal do cliente", icon: Globe },
@@ -249,387 +257,6 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
       )}
 
       <EditProjectDialog project={project} open={editOpen} onClose={() => setEditOpen(false)} />
-    </div>
-  );
-}
-
-// ── Tab: Orçamento ────────────────────────────────────────────────────────────
-
-function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
-  const { data: budgets, isLoading } = useBudgets(project.id);
-  const createBudgetMut = useCreateBudget();
-  const sendMut    = useSendBudget(project.id);
-  const approveMut = useApproveBudget(project.id);
-  const rejectMut  = useRejectBudget(project.id);
-
-  const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
-  const [addingBudget, setAddingBudget] = useState(false);
-  const [budgetName, setBudgetName]     = useState("");
-  const [budgetMargin, setBudgetMargin] = useState("15");
-
-  // Item form (shared between add + edit)
-  const [addingItem, setAddingItem]     = useState(false);
-  const [editingItemId, setEditingItemId]           = useState<string | null>(null);
-  const [editingItemStageId, setEditingItemStageId] = useState<string | undefined>(undefined);
-  const [itemName, setItemName]         = useState("");
-  const [itemCat, setItemCat]           = useState("Materiais");
-  const [itemQty, setItemQty]           = useState("1");
-  const [itemUnit, setItemUnit]         = useState("un");
-  const [itemCost, setItemCost]         = useState("");
-
-  // Margin edit
-  const [editingMargin, setEditingMargin] = useState(false);
-  const [marginInput, setMarginInput]     = useState("");
-
-  const items = budgets?.items ?? [];
-  const selectedBudget = items.find((b) => b.id === selectedBudgetId) ?? items[0];
-
-  const { data: budgetDetail } = useBudget(selectedBudget?.id ?? "");
-  const budget = budgetDetail ?? selectedBudget;
-
-  const addItemMut    = useAddBudgetItem(budget?.id ?? "");
-  const updateItemMut = useUpdateBudgetItem(budget?.id ?? "");
-  const removeItemMut = useRemoveBudgetItem(budget?.id ?? "");
-  const setMarginMut  = useSetBudgetMargin();
-
-  const handleCreateBudget = () => {
-    if (!budgetName.trim()) return;
-    createBudgetMut.mutate({
-      name:          budgetName.trim(),
-      projectId:     project.id,
-      marginPercent: parseFloat(budgetMargin) || 15,
-    }, {
-      onSuccess: (dto) => {
-        setAddingBudget(false); setBudgetName(""); setBudgetMargin("15");
-        setSelectedBudgetId(dto.id);
-        toast.success("Orçamento criado!");
-      },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao criar orçamento."),
-    });
-  };
-
-  const resetItemForm = () => {
-    setAddingItem(false); setEditingItemId(null); setEditingItemStageId(undefined);
-    setItemName(""); setItemCat("Materiais"); setItemQty("1"); setItemUnit("un"); setItemCost("");
-  };
-
-  const handleSaveItem = () => {
-    if (!itemName.trim() || !itemCost) return;
-    const req = {
-      name:     itemName.trim(),
-      category: itemCat,
-      quantity: parseFloat(itemQty) || 1,
-      unit:     itemUnit,
-      unitCost: parseFloat(itemCost) || 0,
-    };
-    if (editingItemId) {
-      updateItemMut.mutate({ id: editingItemId, req: { ...req, stageId: editingItemStageId } }, {
-        onSuccess: () => { resetItemForm(); toast.success("Item atualizado!"); },
-        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar item."),
-      });
-    } else {
-      addItemMut.mutate(req, {
-        onSuccess: () => { resetItemForm(); toast.success("Item adicionado!"); },
-        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar item."),
-      });
-    }
-  };
-
-  const startEditItem = (item: BuildBudgetDto["items"][number]) => {
-    setEditingItemId(item.id);
-    setEditingItemStageId(item.stageId ?? undefined);
-    setItemName(item.name); setItemCat(item.category);
-    setItemQty(String(item.quantity)); setItemUnit(item.unit);
-    setItemCost(String(item.unitCost));
-    setAddingItem(true);
-  };
-
-  const handleRemoveItem = (itemId: string) => {
-    if (!confirm("Remover este item do orçamento?")) return;
-    removeItemMut.mutate(itemId, {
-      onSuccess: () => toast.success("Item removido."),
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao remover item."),
-    });
-  };
-
-  const handleSaveMargin = () => {
-    if (!budget) return;
-    const m = parseFloat(marginInput);
-    if (isNaN(m) || m < 0) { toast.error("Margem inválida."); return; }
-    setMarginMut.mutate({ id: budget.id, req: { marginPercent: m } }, {
-      onSuccess: () => { setEditingMargin(false); toast.success("Margem atualizada!"); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar margem."),
-    });
-  };
-
-  const handleTransition = (
-    mut: ReturnType<typeof useSendBudget>,
-    id: string,
-    label: string,
-  ) => {
-    mut.mutate(id, {
-      onSuccess: () => toast.success(`Orçamento ${label}!`),
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro."),
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      {isLoading ? (
-        <div className="h-20 rounded-md bg-muted animate-pulse" />
-      ) : items.length === 0 && !addingBudget ? (
-        <div className="rounded-md border border-dashed border-border p-8 text-center">
-          <FileText className="h-8 w-8 mx-auto text-muted-foreground opacity-40 mb-2" />
-          <p className="text-sm text-muted-foreground">Nenhum orçamento criado.</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => setAddingBudget(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Criar orçamento
-          </Button>
-        </div>
-      ) : (
-        <>
-          {/* Budget selector */}
-          <div className="flex items-center justify-between">
-            <div className="flex gap-1.5 flex-wrap">
-              {items.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => setSelectedBudgetId(b.id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
-                    (selectedBudget?.id === b.id)
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {b.name}
-                </button>
-              ))}
-            </div>
-            {!addingBudget && (
-              <Button size="sm" variant="outline" onClick={() => setAddingBudget(true)}>
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-
-          {/* Budget summary */}
-          {budget && (
-            <div className="rounded-md border border-border bg-card p-4 space-y-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-sm">{budget.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Margem {fmtPct(budget.marginPercent)}
-                  </p>
-                </div>
-                <BudgetStatusBadge status={budget.status} />
-              </div>
-
-              {/* KPIs */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Custo total</p>
-                  <p className="text-sm font-bold tabular-nums">{fmt(budget.totalCost)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margem</p>
-                  {editingMargin ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Input value={marginInput} onChange={(e) => setMarginInput(e.target.value)}
-                        type="number" min={0} className="h-7 w-16 text-sm" autoFocus />
-                      <button onClick={handleSaveMargin} disabled={setMarginMut.isPending}
-                        className="text-primary disabled:opacity-40"><Check className="h-4 w-4" /></button>
-                      <button onClick={() => setEditingMargin(false)}
-                        className="text-muted-foreground"><X className="h-4 w-4" /></button>
-                    </div>
-                  ) : (
-                    <p className="text-sm font-bold tabular-nums flex items-center gap-1">
-                      {fmtPct(budget.marginPercent)}
-                      {(budget.status === "Draft" || budget.status === "Sent") && (
-                        <button onClick={() => { setMarginInput(String(budget.marginPercent)); setEditingMargin(true); }}
-                          className="text-muted-foreground hover:text-foreground">
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                      )}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Preço final</p>
-                  <p className="text-sm font-bold tabular-nums text-primary">{fmt(budget.finalPrice)}</p>
-                </div>
-              </div>
-
-              {/* Actions */}
-              {budget.status !== "Rejected" && budget.status !== "Converted" && (
-                <div className="flex gap-2 flex-wrap">
-                  {budget.status === "Draft" && (
-                    <Button size="sm" variant="outline"
-                      onClick={() => handleTransition(sendMut, budget.id, "enviado")}
-                      disabled={sendMut.isPending}>
-                      Marcar como enviado
-                    </Button>
-                  )}
-                  {(budget.status === "Draft" || budget.status === "Sent") && (
-                    <>
-                      <Button size="sm" variant="outline"
-                        className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-800"
-                        onClick={() => handleTransition(approveMut, budget.id, "aprovado")}
-                        disabled={approveMut.isPending}>
-                        <Check className="h-3.5 w-3.5 mr-1" /> Aprovar
-                      </Button>
-                      <Button size="sm" variant="outline"
-                        className="text-destructive border-destructive/30 hover:bg-destructive/5"
-                        onClick={() => handleTransition(rejectMut, budget.id, "rejeitado")}
-                        disabled={rejectMut.isPending}>
-                        <X className="h-3.5 w-3.5 mr-1" /> Rejeitar
-                      </Button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Items */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Itens</p>
-                  {(budget.status === "Draft" || budget.status === "Sent") && !addingItem && (
-                    <button onClick={() => { resetItemForm(); setAddingItem(true); }}
-                      className="text-xs text-primary hover:underline">
-                      + Adicionar item
-                    </button>
-                  )}
-                </div>
-
-                {addingItem && (
-                  <div className="p-3 rounded-md border border-dashed border-primary/40 space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs">Descrição</Label>
-                        <Input value={itemName} onChange={(e) => setItemName(e.target.value)}
-                          placeholder="Ex: Cimento CP II" className="h-8 text-sm mt-0.5" autoFocus />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Categoria</Label>
-                        <Input value={itemCat} onChange={(e) => setItemCat(e.target.value)}
-                          placeholder="Materiais" className="h-8 text-sm mt-0.5" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-xs">Qtd</Label>
-                        <Input value={itemQty} onChange={(e) => setItemQty(e.target.value)}
-                          type="number" min={0} className="h-8 text-sm mt-0.5" />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Unidade</Label>
-                        <Input value={itemUnit} onChange={(e) => setItemUnit(e.target.value)}
-                          placeholder="m³, kg, un…" className="h-8 text-sm mt-0.5" />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Custo unit.</Label>
-                        <div className="relative mt-0.5">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
-                          <Input value={itemCost} onChange={(e) => setItemCost(e.target.value)}
-                            type="number" min={0} className="h-8 text-sm pl-6" placeholder="0,00" />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5 justify-end">
-                      <button onClick={handleSaveItem}
-                        disabled={!itemName.trim() || !itemCost || addItemMut.isPending || updateItemMut.isPending}
-                        className="text-primary disabled:opacity-40">
-                        <Check className="h-4 w-4" />
-                      </button>
-                      <button onClick={resetItemForm}
-                        className="text-muted-foreground">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {budget.items.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2 text-center">
-                    Nenhum item no orçamento.
-                  </p>
-                ) : (
-                  <div className="rounded-md border border-border overflow-hidden">
-                    <table className="w-full text-sm min-w-[480px]">
-                      <thead className="bg-muted/40 border-b border-border">
-                        <tr>
-                          <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2">Descrição</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Qtd</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Unit.</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Total</th>
-                          <th className="px-3 py-2" />
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {budget.items.map((item) => (
-                          <tr key={item.id} className="hover:bg-muted/20">
-                            <td className="px-3 py-2">
-                              <p className="font-medium">{item.name}</p>
-                              <p className="text-xs text-muted-foreground">{item.category}</p>
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              {item.quantity} {item.unit}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">{fmt(item.unitCost)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(item.totalCost)}</td>
-                            <td className="px-2 py-2 text-right whitespace-nowrap">
-                              {(budget.status === "Draft" || budget.status === "Sent") && (
-                                <div className="flex items-center justify-end gap-1">
-                                  <button onClick={() => startEditItem(item)}
-                                    className="text-muted-foreground hover:text-foreground p-1">
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button onClick={() => handleRemoveItem(item.id)}
-                                    disabled={removeItemMut.isPending}
-                                    className="text-muted-foreground hover:text-destructive p-1 disabled:opacity-40">
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* New budget form */}
-      {addingBudget && (
-        <div className="rounded-md border border-dashed border-primary/40 p-4 space-y-3">
-          <p className="text-sm font-medium">Novo orçamento</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Nome do orçamento</Label>
-              <Input value={budgetName} onChange={(e) => setBudgetName(e.target.value)}
-                placeholder="Ex: Orçamento V1" className="mt-0.5" autoFocus />
-            </div>
-            <div>
-              <Label className="text-xs">Margem (%)</Label>
-              <Input value={budgetMargin} onChange={(e) => setBudgetMargin(e.target.value)}
-                type="number" min={0} max={100} className="mt-0.5" />
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" onClick={() => setAddingBudget(false)}>Cancelar</Button>
-            <Button size="sm"
-              disabled={!budgetName.trim() || createBudgetMut.isPending}
-              onClick={handleCreateBudget}>
-              {createBudgetMut.isPending ? "Criando…" : "Criar"}
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1370,7 +997,11 @@ export default function BuildProjectDetailPage() {
         {tab === "geral"      && <TabGeral project={project} />}
         {tab === "etapas"     && <BuildStagesTab projectId={project.id} />}
         {tab === "progresso"  && <BuildProgressTab projectId={project.id} />}
-        {tab === "orcamento"  && <TabOrcamento project={project} />}
+        {tab === "orcamento"  && <BuildBudgetTab project={project} />}
+        {tab === "aditivos"   && <ChangeOrdersTab projectId={project.id} />}
+        {tab === "escolhas"   && <SelectionsTab projectId={project.id} onOpenChangeOrders={() => setTab("aditivos")} />}
+        {tab === "materiais"  && <MaterialsTab projectId={project.id} />}
+        {tab === "medicoes"   && <MeasurementsTab projectId={project.id} />}
         {tab === "diario"     && <TabDiario projectId={project.id} />}
         {tab === "financeiro" && <TabFinanceiro projectId={project.id} />}
         {tab === "portal"     && <BuildPortalTab projectId={project.id} />}
