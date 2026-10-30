@@ -88,9 +88,11 @@ inexistente (baixa, registrada em §13).
 | Suite | Resultado |
 |---|---|
 | Backend unit | 980/980 |
-| Backend integração (PostgreSQL real, Testcontainers) | 710/710 |
-| Vitest | 871/871 |
-| Playwright | 76/76 |
+| Backend integração (PostgreSQL real, Testcontainers) | 711/711 |
+| Vitest (inclui o portal "Minha Obra") | 917/917 |
+| Playwright (app) | 76/76 |
+| Playwright do portal com fixtures (DEV) | 11/11 |
+| Portal "Minha Obra" contra a API real (CORS real, PostgreSQL descartável) | 19/19 |
 
 Caminhos críticos 1–9 cobertos por testes de integração (portal publicado; portal com senha sem/errada/certa/expirada;
 financeiro oculto ausente do JSON; IFC → processamento → elementos → vínculos → estado → portal; movimento → etapa →

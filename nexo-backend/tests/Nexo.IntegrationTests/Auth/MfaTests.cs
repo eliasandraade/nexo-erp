@@ -90,13 +90,15 @@ public class MfaTests
 
         var challenge = await FirstStepAsync(user.Login, user.Password);
         (await SecondStepAsync(challenge, "000000")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        var ok = await SecondStepAsync(challenge, CodeAt(secret, 1));
+        // one code for the whole test: recomputing it could cross a 30 s step and test a different, fresh code
+        var code = CodeAt(secret, 1);
+        var ok = await SecondStepAsync(challenge, code);
         ok.StatusCode.Should().Be(HttpStatusCode.OK, await ok.Content.ReadAsStringAsync());
         (await ok.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString().Should().NotBeNullOrEmpty();
 
-        (await SecondStepAsync(challenge, CodeAt(secret, 1))).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a challenge works once");
+        (await SecondStepAsync(challenge, code)).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a challenge works once");
         var again = await FirstStepAsync(user.Login, user.Password);
-        (await SecondStepAsync(again, CodeAt(secret, 1))).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a code works once");
+        (await SecondStepAsync(again, code)).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a code works once");
     }
 
     [Fact]
