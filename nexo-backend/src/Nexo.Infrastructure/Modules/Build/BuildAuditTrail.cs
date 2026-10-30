@@ -56,6 +56,20 @@ public sealed class BuildAuditTrail
             actorType: "portal_client",
             metadata: new { requestId = _http.HttpContext?.TraceIdentifier, details });
 
+    /// <summary>An event of a system job (no signed-in user), for an explicit tenant (e.g. the weekly AI digest).</summary>
+    public void RecordSystem(string action, Guid tenantId, string entityType, Guid entityId, string description, string actorName,
+        object? details = null)
+        => _audit.Stage(
+            actionType: action,
+            severity: AuditSeverity.Info,
+            entityType: EntityPrefix + entityType,
+            entityId: entityId.ToString(),
+            description: description,
+            tenantId: tenantId,
+            actorName: actorName,
+            actorType: "system",
+            metadata: new { details });
+
     /// <summary>An event caused by the anonymous portal visitor (e.g. the portal locking after wrong passwords).</summary>
     public void RecordPortalVisitor(string action, Guid tenantId, Guid portalId, string description)
         => _audit.Stage(

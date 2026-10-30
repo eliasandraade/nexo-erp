@@ -2970,6 +2970,154 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("user_sessions", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildAiSuggestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AppliedRefsJson")
+                        .HasColumnType("text")
+                        .HasColumnName("applied_refs_json");
+
+                    b.Property<int>("Capability")
+                        .HasColumnType("integer")
+                        .HasColumnName("capability");
+
+                    b.Property<decimal>("Confidence")
+                        .HasColumnType("numeric(4,3)")
+                        .HasColumnName("confidence");
+
+                    b.Property<long>("CostMicros")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cost_micros");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("created_by_name");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by");
+
+                    b.Property<string>("DecidedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("decided_by_name");
+
+                    b.Property<string>("DecisionNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("decision_note");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("InputRefsJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("input_refs_json");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("input_tokens");
+
+                    b.Property<int>("LatencyMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("latency_ms");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("OutputJson")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("output_json");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("output_tokens");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("PromptHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("prompt_hash");
+
+                    b.Property<string>("PromptType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("prompt_type");
+
+                    b.Property<string>("PromptVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("prompt_version");
+
+                    b.Property<Guid?>("PromptVersionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("prompt_version_id");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("provider");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer")
+                        .HasColumnName("source");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("SubjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subject_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("TenantId", "CreatedAt")
+                        .HasDatabaseName("ix_bld_ai_suggestions_tenant_created");
+
+                    b.HasIndex("TenantId", "ProjectId", "Capability", "Status")
+                        .HasDatabaseName("ix_bld_ai_suggestions_project_capability");
+
+                    b.ToTable("bld_ai_suggestions", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildAssistanceRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3953,6 +4101,105 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_bld_daily_log_photos_tenant_id");
 
                     b.ToTable("bld_daily_log_photos", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("integer")
+                        .HasColumnName("category");
+
+                    b.Property<bool>("ClientVisible")
+                        .HasColumnType("boolean")
+                        .HasColumnName("client_visible");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("content_type");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("ExtractedJson")
+                        .HasColumnType("text")
+                        .HasColumnName("extracted_json");
+
+                    b.Property<string>("FileKey")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("file_key");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("file_name");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("sha256");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.Property<Guid?>("SuggestionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("suggestion_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UploadedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("uploaded_by");
+
+                    b.Property<string>("UploadedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("uploaded_by_name");
+
+                    b.Property<DateOnly?>("ValidUntil")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_until");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("SuggestionId");
+
+                    b.HasIndex("TenantId", "ProjectId", "Category")
+                        .HasDatabaseName("ix_bld_documents_project_category");
+
+                    b.ToTable("bld_documents", "nexo");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildElementProgressEvent", b =>
@@ -13149,6 +13396,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildAiSuggestion", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_ai_suggestions_project");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildAssistanceRequest", b =>
                 {
                     b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
@@ -13297,6 +13554,22 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_bld_daily_log_photos_log");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildDocument", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_documents_project");
+
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildAiSuggestion", null)
+                        .WithMany()
+                        .HasForeignKey("SuggestionId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bld_documents_suggestion");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildElementProgressEvent", b =>

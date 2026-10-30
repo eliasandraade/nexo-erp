@@ -185,6 +185,26 @@ public sealed class BuildTenantSettingsService
             throw new ForbiddenException("O módulo 3D do Orken Build está desligado para esta empresa. Fale com o suporte Orken.", Code3DDisabled);
     }
 
+    public const string CodeAiDisabled = "build_ai_disabled";
+    public const string CodeVisionDisabled = "build_vision_disabled";
+
+    /// <summary>403 build_ai_disabled when the platform has not turned the Build AI on for this company (default off).</summary>
+    public async Task EnsureBuildAiAsync(Guid tenantId, CancellationToken ct)
+    {
+        var s = await GetAsync(tenantId, ct);
+        if (!s.BuildAiEnabled)
+            throw new ForbiddenException("A IA do Orken Build está desligada para esta empresa. Fale com o suporte Orken.", CodeAiDisabled);
+    }
+
+    /// <summary>403 build_vision_disabled: sending photos or files to the AI needs the Vision flag too (default off).</summary>
+    public async Task EnsureBuildVisionAsync(Guid tenantId, CancellationToken ct)
+    {
+        var s = await GetAsync(tenantId, ct);
+        if (!s.BuildVisionEnabled)
+            throw new ForbiddenException("A análise de imagens e arquivos pela IA está desligada para esta empresa. Fale com o suporte Orken.",
+                CodeVisionDisabled);
+    }
+
     /// <summary>Platform side: changes the flags of a company (only the ones sent). Audited with the platform actor.</summary>
     public async Task<BuildTenantSettingsDto> UpdateAsync(Guid tenantId, UpdateBuildTenantSettingsRequest r, PlatformActor actor,
         CancellationToken ct)

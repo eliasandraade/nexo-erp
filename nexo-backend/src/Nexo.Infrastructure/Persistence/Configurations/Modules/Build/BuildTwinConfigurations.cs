@@ -237,3 +237,71 @@ public class BuildRealityCaptureConfiguration : IEntityTypeConfiguration<BuildRe
         b.HasIndex(x => new { x.TenantId, x.ProjectId, x.CapturedAt }).HasDatabaseName("ix_bld_reality_captures_project_captured");
     }
 }
+
+public class BuildAiSuggestionConfiguration : IEntityTypeConfiguration<BuildAiSuggestion>
+{
+    public void Configure(EntityTypeBuilder<BuildAiSuggestion> b)
+    {
+        BuildCommonColumns.Base(b, "bld_ai_suggestions");
+        b.Property(x => x.ProjectId).HasColumnName("project_id").IsRequired();
+        b.Property(x => x.Capability).HasColumnName("capability").HasConversion<int>().IsRequired();
+        b.Property(x => x.Status).HasColumnName("status").HasConversion<int>().IsRequired().IsConcurrencyToken();
+        b.Property(x => x.Source).HasColumnName("source").HasConversion<int>().IsRequired();
+        b.Property(x => x.SubjectId).HasColumnName("subject_id");
+        b.Property(x => x.InputRefsJson).HasColumnName("input_refs_json").HasColumnType("text").IsRequired();
+        b.Property(x => x.OutputJson).HasColumnName("output_json").HasColumnType("text").IsRequired();
+        b.Property(x => x.Confidence).HasColumnName("confidence").HasColumnType("numeric(4,3)").IsRequired();
+        b.Property(x => x.Provider).HasColumnName("provider").HasMaxLength(50);
+        b.Property(x => x.Model).HasColumnName("model").HasMaxLength(100);
+        b.Property(x => x.PromptType).HasColumnName("prompt_type").HasMaxLength(100);
+        b.Property(x => x.PromptVersion).HasColumnName("prompt_version").HasMaxLength(20);
+        b.Property(x => x.PromptVersionId).HasColumnName("prompt_version_id");
+        b.Property(x => x.PromptHash).HasColumnName("prompt_hash").HasMaxLength(64);
+        b.Property(x => x.InputTokens).HasColumnName("input_tokens").IsRequired();
+        b.Property(x => x.OutputTokens).HasColumnName("output_tokens").IsRequired();
+        b.Property(x => x.CostMicros).HasColumnName("cost_micros").IsRequired();
+        b.Property(x => x.LatencyMs).HasColumnName("latency_ms").IsRequired();
+        b.Property(x => x.CreatedBy).HasColumnName("created_by").IsRequired();
+        b.Property(x => x.CreatedByName).HasColumnName("created_by_name").HasMaxLength(200).IsRequired();
+        b.Property(x => x.DecidedBy).HasColumnName("decided_by");
+        b.Property(x => x.DecidedByName).HasColumnName("decided_by_name").HasMaxLength(200);
+        b.Property(x => x.DecidedAt).HasColumnName("decided_at").HasColumnType("timestamptz");
+        b.Property(x => x.DecisionNote).HasColumnName("decision_note").HasMaxLength(1000);
+        b.Property(x => x.AppliedRefsJson).HasColumnName("applied_refs_json").HasColumnType("text");
+        b.Property(x => x.ExpiresAt).HasColumnName("expires_at").HasColumnType("timestamptz");
+        b.Ignore(x => x.IsPending);
+
+        b.HasOne<BuildProject>().WithMany().HasForeignKey(x => x.ProjectId)
+            .HasConstraintName("fk_bld_ai_suggestions_project").OnDelete(DeleteBehavior.Cascade);
+        b.HasIndex(x => new { x.TenantId, x.ProjectId, x.Capability, x.Status }).HasDatabaseName("ix_bld_ai_suggestions_project_capability");
+        b.HasIndex(x => new { x.TenantId, x.CreatedAt }).HasDatabaseName("ix_bld_ai_suggestions_tenant_created");
+    }
+}
+
+public class BuildDocumentConfiguration : IEntityTypeConfiguration<BuildDocument>
+{
+    public void Configure(EntityTypeBuilder<BuildDocument> b)
+    {
+        BuildCommonColumns.Base(b, "bld_documents");
+        b.Property(x => x.ProjectId).HasColumnName("project_id").IsRequired();
+        b.Property(x => x.Category).HasColumnName("category").HasConversion<int>().IsRequired();
+        b.Property(x => x.Title).HasColumnName("title").HasMaxLength(200).IsRequired();
+        b.Property(x => x.FileKey).HasColumnName("file_key").HasMaxLength(500).IsRequired();
+        b.Property(x => x.FileName).HasColumnName("file_name").HasMaxLength(200).IsRequired();
+        b.Property(x => x.ContentType).HasColumnName("content_type").HasMaxLength(100).IsRequired();
+        b.Property(x => x.SizeBytes).HasColumnName("size_bytes").IsRequired();
+        b.Property(x => x.Sha256).HasColumnName("sha256").HasMaxLength(64).IsRequired();
+        b.Property(x => x.ClientVisible).HasColumnName("client_visible").IsRequired();
+        b.Property(x => x.ValidUntil).HasColumnName("valid_until");
+        b.Property(x => x.ExtractedJson).HasColumnName("extracted_json").HasColumnType("text");
+        b.Property(x => x.SuggestionId).HasColumnName("suggestion_id");
+        b.Property(x => x.UploadedBy).HasColumnName("uploaded_by").IsRequired();
+        b.Property(x => x.UploadedByName).HasColumnName("uploaded_by_name").HasMaxLength(200).IsRequired();
+
+        b.HasOne<BuildProject>().WithMany().HasForeignKey(x => x.ProjectId)
+            .HasConstraintName("fk_bld_documents_project").OnDelete(DeleteBehavior.Cascade);
+        b.HasOne<BuildAiSuggestion>().WithMany().HasForeignKey(x => x.SuggestionId)
+            .HasConstraintName("fk_bld_documents_suggestion").OnDelete(DeleteBehavior.SetNull).IsRequired(false);
+        b.HasIndex(x => new { x.TenantId, x.ProjectId, x.Category }).HasDatabaseName("ix_bld_documents_project_category");
+    }
+}

@@ -356,6 +356,20 @@ public class InterpreterAdminController : ControllerBase
     // PROMPT VERSIONS
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Every prompt type the SuperAdmin can version, whether a runtime sends it today (<c>usedByRuntime</c>) and the hash of
+    /// its built-in default (what runs while no version is active).
+    /// </summary>
+    [HttpGet("prompts/types")]
+    public IActionResult GetPromptTypes()
+        => Ok(AiGovernanceAdminService.PromptTypes.Select(t => new
+        {
+            type = t,
+            usedByRuntime = AiGovernanceAdminService.RuntimePromptTypes.Contains(t),
+            builtInHash = Nexo.Application.Modules.Build.BuildAiPrompts.Defaults.TryGetValue(t, out var d)
+                ? ActivePromptProvider.HashOf(d) : null,
+        }));
+
     [HttpGet("prompts")]
     public async Task<IActionResult> GetPrompts(
         [FromQuery] string? type = null,

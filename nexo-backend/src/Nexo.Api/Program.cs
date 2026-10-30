@@ -62,6 +62,8 @@ try
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.ServiceCustomerEmailsJob>();
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.BuildProgressSnapshotJob>();
         builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Build.BuildModelProcessingJobRunner>();
+        // Weekly client digest suggestions (Build:Ai:WeeklyDigestJob:Enabled, default false): never publishes.
+        builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Build.BuildWeeklyDigestJob>();
         // Re-seals AI provider keys still in the legacy Base64 form once a master key is configured (after migrations).
         builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Interpreter.AiKeyUpgradeHostedService>();
     }

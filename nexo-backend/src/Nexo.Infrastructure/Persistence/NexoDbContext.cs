@@ -158,6 +158,9 @@ public class NexoDbContext : DbContext
     public DbSet<BuildModelStageBinding>     BldModelBindings          => Set<BuildModelStageBinding>();
     public DbSet<BuildElementProgressEvent>  BldElementEvents          => Set<BuildElementProgressEvent>();
     public DbSet<BuildRealityCapture>        BldRealityCaptures        => Set<BuildRealityCapture>();
+    // Wave 5 — AI
+    public DbSet<BuildAiSuggestion>          BldAiSuggestions          => Set<BuildAiSuggestion>();
+    public DbSet<BuildDocument>              BldDocuments              => Set<BuildDocument>();
 
     // ── Service module (Orken Service — motor de serviços) ───────────────────
     public DbSet<SvcProfessional>     SvcProfessionals => Set<SvcProfessional>();

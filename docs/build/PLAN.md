@@ -112,3 +112,12 @@ autorização (o merge na `master` publica em produção).
   (foto/360/vídeo/drone/nuvem de pontos, magic bytes, limites por família). Portal v1.3: `model3d`/`realityCapture`,
   `/twin` (só a URL assinada do GLB de visualização), `/twin/state` (ETag), `/reality-captures`. Docs:
   `internal-api.md` (# Wave 4), `client-portal-contract.md` (v1.3), `digital-twin.md`.
+- **Wave 5 — concluída (backend).** Migration `BuildWave5Ai` (aditiva: `bld_ai_suggestions`, `bld_documents`). Serviço
+  genérico `IAiStructuredCompletion` sobre o runtime da plataforma (provedor/chave do SuperAdmin, prompts `build-*`
+  versionados com padrão embutido, reserva de uso, telemetria, JSON Schema + validação, dados delimitados contra prompt
+  injection). `BuildAiSuggestion` com proveniência e aceite humano (inteiro ou por item; vence em 7/14 dias). Capacidades:
+  copiloto do diário, interpretador de progresso (`AiConfirmed` pelo caminho único; NC crítica bloqueia), mapeador do modelo
+  (regras por classe IFC sem provedor), atualização ao cliente e resumo semanal (rascunho; texto por modelo sem provedor),
+  risco de prazo/custo determinístico (`BuildRiskAnalyzer`: SPI/CPI/EAC) com explicação por LLM, inteligência de documentos
+  (PDF/imagem, visão). Documentos da obra (CRUD, magic bytes, 20 MB) e portal v1.4 (`documents`). Job opcional de resumo
+  semanal. Docs: `ai.md`, `internal-api.md` (# Wave 5), `client-portal-contract.md` (v1.4).

@@ -659,6 +659,7 @@ public sealed partial class BuildPublicPortalService
         if (v.PostConstruction) list.Add("postConstruction");
         if (v.Model3d) list.Add("model3d");
         if (v.RealityCapture) list.Add("realityCapture");
+        if (v.Documents) list.Add("documents");
         return list;
     }
 

@@ -21,6 +21,8 @@ public enum BuildClientUpdateSource
 {
     Manual = 1,
     Ai     = 2,
+    /// <summary>Templated text built from the facts by the deterministic fallback (no generated prose).</summary>
+    Rules  = 3,
 }
 
 /// <summary>

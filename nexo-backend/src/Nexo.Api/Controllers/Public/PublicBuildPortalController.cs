@@ -252,6 +252,15 @@ public class PublicBuildPortalController : ControllerBase
         return Ok(await _portal.GetRealityCapturesAsync(companySlug, projectSlug, SessionToken, skip, take, ct));
     }
 
+    /// <summary>Client-visible project documents (flag documents, v1.4) as signed URLs (~15 min). Never internal fields.</summary>
+    [HttpGet("documents")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildDocumentsDto>> Documents(string companySlug, string projectSlug, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetDocumentsAsync(companySlug, projectSlug, SessionToken, ct));
+    }
+
     private const long MaxUploadBytes = 8L * 1024 * 1024;
 
     private static readonly Dictionary<string, string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)

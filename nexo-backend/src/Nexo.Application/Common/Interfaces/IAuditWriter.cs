@@ -153,6 +153,13 @@ public static class AuditActions
     public const string BuildRealityCaptureSaved      = "build_reality_capture_saved";
     public const string BuildRealityCaptureVisibility = "build_reality_capture_visibility";
     public const string BuildRealityCaptureDeleted    = "build_reality_capture_deleted";
+    // Build Wave 5 — AI suggestions and documents
+    public const string BuildAiSuggestionGenerated    = "build_ai_suggestion_generated";
+    public const string BuildAiSuggestionAccepted     = "build_ai_suggestion_accepted";
+    public const string BuildAiSuggestionRejected     = "build_ai_suggestion_rejected";
+    public const string BuildDocumentSaved            = "build_document_saved";
+    public const string BuildDocumentVisibility       = "build_document_visibility";
+    public const string BuildDocumentDeleted          = "build_document_deleted";
 
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";

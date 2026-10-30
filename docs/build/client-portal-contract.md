@@ -1,7 +1,7 @@
-# Orken Build — Portal do Cliente — contrato da API pública (v1.3)
+# Orken Build — Portal do Cliente — contrato da API pública (v1.4)
 
 Documento para o time do frontend externo (Astra). Descreve **somente** a API pública do portal do cliente de
-uma obra. Tudo aqui é estável na versão `contract v1.3` (compatível com a v1, v1.1 e v1.2 — só acréscimos, ver §9 "Changelog"); mudanças
+uma obra. Tudo aqui é estável na versão `contract v1.4` (compatível com a v1, v1.1, v1.2 e v1.3 — só acréscimos, ver §9 "Changelog"); mudanças
 incompatíveis viram `v2` (ver "Versionamento").
 
 ## 1. Base, endereço e slugs
@@ -56,6 +56,7 @@ Se o site Astra tiver rotas próprias no primeiro segmento (ex.: `/sobre`), avis
 | GET | `/twin` (v1.3) | `build-portal` | obrigatória |
 | GET | `/twin/state?date=` (v1.3) | `build-portal` | obrigatória |
 | GET | `/reality-captures?skip=&take=` (v1.3) | `build-portal` | obrigatória |
+| GET | `/documents` (v1.4) | `build-portal` | obrigatória |
 
 Em portal **público** a sessão é ignorada — e todas as rotas de escrita (decisão de aditivo, escolha, aceite da entrega,
 abrir chamado, enviar foto, avaliar) respondem `403 portal_decision_requires_password` (agir em nome do cliente exige o
@@ -580,6 +581,36 @@ sem visualização no portal por enquanto — ofereça só o download). `take` a
    `AssistedMapping`: mostre a lista de zonas com seus estados (sem 3D).
 5. `viewerUrl` expira (~15 min): se o carregamento falhar com 403, chame `/twin` de novo.
 
+### 2.23 GET /documents (v1.4) — documentos da obra
+
+Flag `documents` (padrão **desligada**). Só os documentos que a construtora marcou como visíveis ao cliente (contrato,
+projeto, ART/RRT, alvará, nota fiscal, laudo, manual, garantia, foto, outro), ordenados por categoria e do mais novo ao mais
+antigo:
+
+```json
+{
+  "items": [
+    {
+      "title": "Manual do Proprietário",
+      "category": "Manual",
+      "fileName": "Manual do Proprietário.pdf",
+      "contentType": "application/pdf",
+      "sizeBytes": 482113,
+      "validUntil": "2031-10-30",
+      "url": "https://…assinada…",
+      "urlExpiresAt": "2026-10-30T14:18:11+00:00",
+      "uploadedAt": "2026-10-28T10:02:00+00:00"
+    }
+  ]
+}
+```
+
+- `category`: `Contrato | Projeto | ArtRrt | Alvara | NotaFiscal | Laudo | Manual | Garantia | Foto | Outro`.
+- `validUntil` pode ser `null`. `url` é assinada (~15 min) ou `null` (armazenamento indisponível): peça de novo ao expirar.
+- `contentType`: `application/pdf`, `image/jpeg`, `image/png` ou `image/webp`.
+- Nunca vêm: id interno, chave de armazenamento, hash, quem enviou, nem os dados que a IA extraiu do documento.
+- Flag desligada → `404 portal_section_disabled`.
+
 ## 3. Senha e sessão
 
 1. `GET` bootstrap sem sessão num portal com senha → `401`:
@@ -617,7 +648,8 @@ A construtora decide por obra. Padrões seguros entre parênteses.
 | `postConstruction` (v1.2) | `property` (bootstrap, após a entrega), `GET /handover`, `GET /warranty`, `GET /assistance` e as escritas de pós-obra (só em portal com senha) | ligado |
 | `model3d` (v1.3) | `GET /twin` e `GET /twin/state` (gêmeo digital, só leitura) | desligado |
 | `realityCapture` (v1.3) | `GET /reality-captures` (só as marcadas como visíveis) | desligado |
-| `videos`, `documents`, `financialCategories`, `financialTransactions`, `receipts`, `risks`, `team` | reservadas para próximas versões — ainda não geram dados | desligado |
+| `documents` (v1.4) | `GET /documents` (só os marcados como visíveis) | desligado |
+| `videos`, `financialCategories`, `financialTransactions`, `receipts`, `risks`, `team` | reservadas para próximas versões — ainda não geram dados | desligado |
 
 Garantias: nada financeiro aparece sem `financialSummary`; a nota interna do diário nunca sai (só `ClientSummary`);
 fotos só se a foto e o registro do dia foram marcados; nenhum id interno, senha, hash ou custo detalhado.
@@ -681,12 +713,22 @@ Estourou → `429` sem corpo. Faça backoff; não repita em loop.
 
 ## 8. Versionamento
 
-`contract v1.3` (`contractVersion: "1.3"` no bootstrap; a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
+`contract v1.4` (`contractVersion: "1.4"` no bootstrap; a v1.3 respondia `"1.3"`, a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
 (major): `1.x` continua compatível. Mudanças **aditivas** (campos novos, novos `type` na timeline,
 novas seções em `sections`) podem chegar sem aviso — ignore o que não conhecer. Remoções ou mudanças de significado
 só numa `v2`, anunciada antes.
 
 ## 9. Changelog
+
+### v1.4 — Wave 5 (IA e documentos)
+
+Só acréscimos; nada da v1–v1.3 mudou de significado.
+
+- `contractVersion` passa a `"1.4"`. A flag `documents` (antes reservada) passa a valer, desligada por padrão, e aparece em
+  `sections` quando ligada.
+- Nova rota: `GET /documents` (§2.23) — documentos marcados como visíveis, com URL assinada de ~15 min.
+- A IA da construtora não fala com o portal: textos gerados por IA (atualizações, resumo semanal) só chegam ao cliente depois
+  que uma pessoa os publica, pelas rotas e campos que já existiam (`latestUpdates`, timeline `update`).
 
 ### v1.3 — Wave 4 (Gêmeo digital)
 

@@ -464,3 +464,73 @@ por URL pré-assinada (PUT) não foi feito: o envio passa pela API (limite eleva
 
 Portal do cliente: flags `model3d` e `realityCapture` (padrão **desligadas**) e rotas da v1.3 em
 [`client-portal-contract.md`](client-portal-contract.md).
+
+# Wave 5 — IA
+
+Arquitetura, capacidades, proveniência, prompts, custos e privacidade em [`ai.md`](ai.md). Todas as rotas abaixo em
+`/api/v1/build` (Management, módulo `build`). **Gerar** exige `BuildAiEnabled` (`403 build_ai_disabled`); enviar fotos ou
+arquivos ao provedor exige também `BuildVisionEnabled` (`403 build_vision_disabled`). Sem provedor utilizável: as
+capacidades com fallback gravam uma sugestão `source=Rules`; as outras respondem `422 ai_provider_unavailable`. Falha do
+provedor/resposta inválida → `503 ai_provider_failed` (`details[0]` = motivo, ex.: `invalid_output`) e nada é gravado.
+
+## Gerar sugestões (→ `201` `BuildAiSuggestionDto`, status `Pending`)
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| POST | `/projects/{id}/ai/daily-log-copilot` | `{ date? (padrão hoje; futura → 422 invalid_date), text (obrigatório, ≤ 8000 → 422 ai_input_required / ai_input_too_long), photoIds? (≤ 5 fotos do diário desta obra; 422 too_many_photos / photo_not_found / photo_too_large) }` — fallback: regras |
+| POST | `/projects/{id}/ai/progress-interpreter` | `{ lookbackDays? (1–60, padrão 14), photoIds? }` — sem diário no período e sem fotos → `422 ai_no_evidence`; **sem fallback** |
+| POST | `/projects/{id}/ai/model-mapper` | `{ modelVersionId? }` (padrão: versão principal) — sem modelo pronto → `422 model_not_ready`; sem etapas → `422 ai_no_stages`; fallback: tabela de classes IFC |
+| POST | `/projects/{id}/ai/client-update` | `{ from?, to? }` (padrão últimos 7 dias; até hoje, ≤ 93 dias → `422 invalid_period`) — fallback: texto por modelo |
+| POST | `/projects/{id}/ai/weekly-digest` | últimos 7 dias — fallback: texto por modelo |
+| POST | `/projects/{id}/risk/explain` | `{ kind: delay ou cost }` — explicação da análise determinística; **sem fallback** |
+| POST | `/documents/{id}/analyze` | exige IA **e** visão; PDF/JPEG/PNG/WebP ≤ 5 MB para a IA; **sem fallback** |
+
+`BuildAiSuggestionDto`: `id`, `projectId`, `capability`, `status`, `source` (`Llm` ou `Rules`), `subjectId`, `confidence`,
+`output` (validado; formatos em `ai.md`), `inputRefs`, `applied`, `provider`, `model`, `promptType`, `promptVersion`,
+`promptVersionId`, `promptHash`, `inputTokens`, `outputTokens`, `costMicros`, `latencyMs`, `createdByName`, `createdAt`,
+`decidedByName`, `decidedAt`, `decisionNote`, `expiresAt`. Itens selecionáveis: progresso → `output.items[].id` (= id da
+etapa); mapeador → `output.bindings[].id` (`b1`, `b2`…). Ids que o provedor inventou são descartados e contados em
+`output.discardedRefs`.
+
+## Decidir
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/projects/{id}/ai/suggestions?capability=&status=` | até 200, mais novas primeiro; vencidas viram `Expired` na leitura |
+| GET | `/ai/suggestions/{id}` | |
+| POST | `/ai/suggestions/{id}/accept` | `{ itemIds?, note? }` — sem `itemIds` = tudo; subconjunto → `PartiallyAccepted`; item desconhecido → `422 ai_item_not_found`; vencida/decidida → `409`; recusa do caminho de destino (ex.: `422 stage_has_critical_nonconformity`) mantém `Pending` |
+| POST | `/ai/suggestions/{id}/reject` | `{ note? }` — nada muda na obra |
+
+O que aceitar faz: copiloto → cria/completa o diário da data (`ClientVisible` falso); progresso → `BuildStageProgressApplier`
+com `Source=AiConfirmed` e `SourceRef` = sugestão (nunca para trás) + retrato do dia; mapeador → vínculos de categoria/zona
+(`AiConfirmed` ou `Rules`); atualização/resumo → `BuildClientUpdate` rascunho (`Ai` ou `Rules`); documento → categoria,
+validade e `extracted`; risco → só ciência. `applied` registra os ids criados/alterados.
+
+## Risco determinístico (sempre disponível, sem IA)
+
+| Método | Rota | Resposta |
+|---|---|---|
+| GET | `/projects/{id}/risk/delay` | `BuildRiskAnalysisDto` `{ projectId, kind: "delay", asOf, level (none, low, medium, high), metrics { spi, actualPercent, plannedPercent, delayedStages, forecastSlipDays, lateMaterials, pendingChangeOrders, openCriticalNonConformities }, items[{ key, kind, severity, title, evidence, metrics, refs }], methodology: "build-risk/1" }` |
+| GET | `/projects/{id}/risk/cost` | idem com `metrics { budget, realized, earnedValue, cpi, eac, vac, approvedChangeOrders, budgetWithChangeOrders, unlinkedMaterialsEstimated }` |
+
+## Documentos da obra
+
+`BuildDocument`: `category` (`Contrato`, `Projeto`, `ArtRrt`, `Alvara`, `NotaFiscal`, `Laudo`, `Manual`, `Garantia`, `Foto`,
+`Outro`), `title`, `fileName` (só exibição, saneado), `contentType`, `sizeBytes`, `sha256`, `clientVisible` (padrão falso),
+`validUntil`, `extracted` (dados confirmados da IA — **interno**), `suggestionId`, `uploadedByName`, `url` assinada (15 min).
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/projects/{id}/documents?category=` | até 500 |
+| POST | `/projects/{id}/documents` | multipart `file`, `category?` (padrão `Outro`), `title?` (padrão: nome do arquivo), `validUntil?`, `clientVisible?`. Conteúdo pelos primeiros bytes: PDF (`%PDF-`), JPEG, PNG, WebP → senão `422 invalid_file_content`; > 20 MB → `413 file_too_large`; armazenamento indisponível → `503 storage_unavailable` |
+| GET/PUT/DELETE | `/documents/{id}` | PUT `{ category?, title?, validUntil? }`; DELETE apaga também o arquivo |
+| PUT | `/documents/{id}/client-visibility` | `{ clientVisible }` |
+
+Arquivos em `private/tenants/{t}/build/documents/{projectId}/{id}.<ext>` (contexto `build-document`; a chave nunca usa o nome
+do cliente). Portal: flag `documents` e `GET /documents` na v1.4 de [`client-portal-contract.md`](client-portal-contract.md).
+
+## Plataforma
+
+- `GET /api/platform/interpreter/prompts/types` (Platform) → `[{ type, usedByRuntime, builtInHash }]` — os oito `build-*`
+  entram como usados pelo runtime; `POST /api/platform/interpreter/prompts` aceita os novos tipos.
+- `Build:Ai:WeeklyDigestJob:Enabled` (padrão `false`) liga o job de resumo semanal (só sugere; nunca publica).

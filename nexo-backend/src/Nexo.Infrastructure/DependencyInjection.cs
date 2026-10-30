@@ -188,6 +188,10 @@ public static class DependencyInjection
         services.AddScoped<BuildTwinService>();
         services.AddScoped<BuildRealityCaptureService>();
         services.AddScoped<IBuildModelProcessor, BuildModelProcessor>();
+        // Wave 5 — AI (reuses the platform AI runtime), deterministic risk, project documents
+        services.AddScoped<BuildRiskService>();
+        services.AddScoped<BuildDocumentService>();
+        services.AddScoped<BuildAiService>();
 
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();
@@ -235,6 +239,7 @@ public static class DependencyInjection
         services.AddScoped<IAiProviderRegistry, AiProviderRegistry>();
         services.AddScoped<IAnalyzerSelector, AnalyzerSelectorService>();
         services.AddScoped<IAnalysisRunner, AnalysisRunner>();
+        services.AddScoped<IAiStructuredCompletion, AiStructuredCompletion>();
         services.AddSingleton<IAiUsageGuard, AiUsageGuard>();
         services.AddScoped<AiProviderAdminService>();
         services.AddScoped<AiGovernanceAdminService>();

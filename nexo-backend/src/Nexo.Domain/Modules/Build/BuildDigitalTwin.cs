@@ -111,6 +111,8 @@ public enum BuildBindingSource
     Manual      = 1,
     AiSuggested = 2,
     AiConfirmed = 3,
+    /// <summary>Deterministic IFC-class/keyword mapping (Wave 5 fallback), accepted by a person.</summary>
+    Rules       = 4,
 }
 
 public enum BuildElementState

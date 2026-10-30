@@ -9,6 +9,8 @@ public enum BuildUploadKind
 {
     Model,
     RealityCapture,
+    /// <summary>Project documents (Wave 5): 20 MB.</summary>
+    Document,
 }
 
 /// <summary>
@@ -31,7 +33,12 @@ public sealed class BuildUploadLimitAttribute : Attribute, IResourceFilter, IOrd
     public void OnResourceExecuting(ResourceExecutingContext context)
     {
         var options = context.HttpContext.RequestServices.GetRequiredService<BuildTwinOptions>();
-        var limit = (Kind == BuildUploadKind.Model ? options.MaxModelBytes : options.MaxCaptureBytes) + MultipartOverhead;
+        var limit = Kind switch
+        {
+            BuildUploadKind.Model => options.MaxModelBytes,
+            BuildUploadKind.Document => Nexo.Domain.Modules.Build.BuildDocument.MaxBytes,
+            _ => options.MaxCaptureBytes,
+        } + MultipartOverhead;
 
         var bodySize = context.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
         if (bodySize is { IsReadOnly: false }) bodySize.MaxRequestBodySize = limit;
