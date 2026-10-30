@@ -150,6 +150,15 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(80)")
                         .HasColumnName("entity_type");
 
+                    b.Property<string>("ImpersonatorEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("impersonator_email");
+
+                    b.Property<Guid?>("ImpersonatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("impersonator_id");
+
                     b.Property<string>("IpAddress")
                         .HasMaxLength(45)
                         .HasColumnType("character varying(45)")
@@ -1424,6 +1433,96 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("module_subscription_events", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Entities.PlatformSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<DateTime>("LastUsedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<bool>("MfaVerified")
+                        .HasColumnType("boolean")
+                        .HasColumnName("mfa_verified");
+
+                    b.Property<bool>("PendingMfa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pending_mfa");
+
+                    b.Property<Guid>("PlatformUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("platform_user_id");
+
+                    b.Property<string>("PreviousRefreshTokenHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("previous_refresh_token_hash");
+
+                    b.Property<string>("RefreshTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("refresh_token_hash");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("revoked_at");
+
+                    b.Property<string>("RevokedReason")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("revoked_reason");
+
+                    b.Property<DateTime?>("RotatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("rotated_at");
+
+                    b.Property<string>("SecurityStamp")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("security_stamp");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("user_agent");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PreviousRefreshTokenHash")
+                        .HasDatabaseName("ix_platform_sessions_previous_hash");
+
+                    b.HasIndex("RefreshTokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_platform_sessions_refresh_hash");
+
+                    b.HasIndex("PlatformUserId", "ExpiresAt")
+                        .HasDatabaseName("ix_platform_sessions_user_expires");
+
+                    b.ToTable("platform_sessions", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Entities.PlatformUser", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1441,6 +1540,29 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("email");
 
+                    b.Property<bool>("MfaEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("mfa_enabled");
+
+                    b.Property<long?>("MfaLastUsedStep")
+                        .HasColumnType("bigint")
+                        .HasColumnName("mfa_last_used_step");
+
+                    b.Property<string>("MfaPendingSecret")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("mfa_pending_secret");
+
+                    b.Property<string>("MfaRecoveryCodes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("mfa_recovery_codes");
+
+                    b.Property<string>("MfaSecret")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("mfa_secret");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -1452,6 +1574,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("role");
+
+                    b.Property<string>("SecurityStamp")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("security_stamp");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamptz")
@@ -9738,6 +9866,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Tenant");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Entities.PlatformSession", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.PlatformUser", null)
+                        .WithMany()
+                        .HasForeignKey("PlatformUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_platform_sessions_user");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Entities.Product", b =>

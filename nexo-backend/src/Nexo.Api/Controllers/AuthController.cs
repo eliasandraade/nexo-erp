@@ -139,6 +139,18 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("auth-login")]
     public async Task<ActionResult<LoginResponse>> VerifyMfa([FromBody] MfaVerifyRequest request, CancellationToken ct)
     {
+        if (Nexo.Infrastructure.Auth.PlatformAuthService.IsPlatformToken(request.Challenge))
+        {
+            var platform = await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>()
+                .VerifyMfaAsync(request.Challenge, request.Code, request.RecoveryCode, ct);
+            if (platform.Tokens is not null) return Ok(PlatformLoginResponse(platform.User!, platform.Tokens));
+            return platform.ErrorCode switch
+            {
+                "account_locked" => StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Muitas tentativas. Tente de novo em 15 minutos.", code = "account_locked" }),
+                "invalid_challenge" => Unauthorized(new { error = "A verificação expirou. Entre com sua senha de novo.", code = "invalid_challenge" }),
+                _ => Unauthorized(new { error = "Código inválido.", code = "invalid_code" }),
+            };
+        }
         var userAgentRaw = Request.Headers.UserAgent.ToString();
         var outcome = await _authService.VerifyMfaAsync(request, HttpContext.Connection.RemoteIpAddress?.ToString(),
             string.IsNullOrWhiteSpace(userAgentRaw) ? null : userAgentRaw.Length > 500 ? userAgentRaw[..500] : userAgentRaw, ct);
@@ -159,6 +171,7 @@ public class AuthController : ControllerBase
 
     /// <summary>Starts the setup: a new secret (manual key + otpauth link for the QR code).</summary>
     [HttpPost("mfa/setup")]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     [Authorize]
     [EnableRateLimiting("credential-check")]
     public async Task<ActionResult<MfaSetupDto>> MfaSetup([FromBody] MfaSetupRequest request, [FromServices] MfaService mfa, CancellationToken ct)
@@ -166,6 +179,7 @@ public class AuthController : ControllerBase
 
     /// <summary>Turns it on with a first code; returns the recovery codes (shown once).</summary>
     [HttpPost("mfa/enable")]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     [Authorize]
     [EnableRateLimiting("credential-check")]
     public async Task<ActionResult<MfaEnabledDto>> MfaEnable([FromBody] MfaEnableRequest request, [FromServices] MfaService mfa, CancellationToken ct)
@@ -173,6 +187,7 @@ public class AuthController : ControllerBase
 
     /// <summary>Turns it off: password plus a code (or a recovery code).</summary>
     [HttpPost("mfa/disable")]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     [Authorize]
     [EnableRateLimiting("credential-check")]
     public async Task<IActionResult> MfaDisable([FromBody] MfaDisableRequest request, [FromServices] MfaService mfa, CancellationToken ct)
@@ -187,40 +202,34 @@ public class AuthController : ControllerBase
     /// </summary>
     private async Task<ActionResult<LoginResponse>?> TryPlatformLoginAsync(LoginRequest request, CancellationToken ct)
     {
-        var email = request.Login.Trim().ToLowerInvariant();
-        var platformUser = await _db.PlatformUsers.AsNoTracking().FirstOrDefaultAsync(u => u.Email == email, ct);
-        if (platformUser is null) return null;
-
-        var attempts = HttpContext.RequestServices.GetRequiredService<LoginAttemptGuard>();
-        var account = LoginAttemptGuard.ForPlatform(platformUser.Id);
-        if (await attempts.IsLockedAsync(account, ct))
+        var platform = HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>();
+        var result = await platform.SignInAsync(request.Login, request.Password, HttpContext.Connection.RemoteIpAddress?.ToString(),
+            Request.Headers.UserAgent.ToString(), ct);
+        if (result is null) return null;                                  // not a platform account: the tenant login runs
+        if (result.ErrorCode == "account_locked")
             return StatusCode(StatusCodes.Status429TooManyRequests, new
             {
                 error = $"Muitas tentativas com senha errada. Tente de novo em {AuthService.LockoutWindow.TotalMinutes:0} minutos.",
                 code = "account_locked",
             });
-        if (!_hasher.Verify(request.Password, platformUser.PasswordHash))
-        {
-            await attempts.RegisterFailureAsync(account, ct);
-            return null;
-        }
-        await attempts.ResetAsync(account, ct);
+        if (result.ErrorCode is not null) return null;                    // wrong password: same answer as any wrong login
+        if (result.MfaChallenge is { } challenge) return Ok(new { mfaRequired = true, mfaChallenge = challenge });
+        return Ok(PlatformLoginResponse(result.User!, result.Tokens!));
+    }
 
-        var platformResult = _jwt.GeneratePlatformToken(platformUser);
-        var platformSession = new SessionDto(
-            UserId:        platformUser.Id.ToString(),
+    private static LoginResponse PlatformLoginResponse(Nexo.Domain.Entities.PlatformUser user, Nexo.Infrastructure.Auth.PlatformTokens tokens)
+        => new(tokens.AccessToken, tokens.RefreshToken, tokens.AccessTokenExpiresAt, new SessionDto(
+            UserId:        user.Id.ToString(),
             TenantId:      string.Empty,
-            Name:          platformUser.Email,
-            Role:          platformUser.Role,
-            Login:         platformUser.Email,
-            Email:         platformUser.Email,
+            Name:          user.Email,
+            Role:          user.Role,
+            Login:         user.Email,
+            Email:         user.Email,
             ActiveModules: [],
             StoreId:       null,
             StoreIds:      [],
             CompanyName:   "Orken Platform",
-            Type:          "platform");
-        return Ok(new LoginResponse(platformResult.AccessToken, string.Empty, platformResult.ExpiresAt, platformSession));
-    }
+            Type:          "platform"));
 
     /// <summary>
     /// Rotate a refresh token. Returns a new access token (and keeps the same refresh token
@@ -240,6 +249,15 @@ public class AuthController : ControllerBase
             refreshToken = Request.Cookies["nexo_refresh"];
             if (string.IsNullOrWhiteSpace(refreshToken))
                 return BadRequest(new { error = "Refresh token is required." });
+        }
+
+        if (Nexo.Infrastructure.Auth.PlatformAuthService.IsPlatformToken(refreshToken))
+        {
+            var (tokens, error) = await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>()
+                .RefreshAsync(refreshToken, ct);
+            return tokens is not null
+                ? Ok(new RefreshResponse(tokens.AccessToken, tokens.AccessTokenExpiresAt, tokens.RefreshToken, tokens.RefreshTokenExpiresAt))
+                : (ActionResult)PlatformAuthController.RefreshRefusedResult(this, error);
         }
 
         var result = await _authService.RefreshAsync(new RefreshTokenRequest(refreshToken), ct);
@@ -322,6 +340,7 @@ public class AuthController : ControllerBase
     /// The old refresh token is revoked; a new one is issued.
     /// </summary>
     [HttpPost("switch-store")]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     [Authorize]
     public async Task<ActionResult<SwitchStoreResponse>> SwitchStore(
         [FromBody] SwitchStoreRequest request,
@@ -369,6 +388,33 @@ public class AuthController : ControllerBase
     /// Revokes the provided refresh token. Safe to call multiple times.
     /// The access token will expire naturally within its 15-minute window.
     /// </summary>
+    /// <summary>
+    /// The platform administrator leaves the tenant session: audited with who acted. The access token is also refused from
+    /// now on (until it expires anyway, at most 30 minutes after it was issued).
+    /// </summary>
+    [HttpPost("impersonation/end")]
+    [Authorize]
+    public async Task<IActionResult> EndImpersonation(CancellationToken ct)
+    {
+        if (!Nexo.Api.Filters.DenyDuringImpersonationAttribute.IsImpersonation(User))
+            return BadRequest(new { error = "Esta sessão não é um acesso da plataforma.", code = "not_impersonation" });
+        var jti = User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti) ?? User.FindFirstValue("jti");
+        if (jti is not null)
+            await HttpContext.RequestServices.GetRequiredService<ICacheService>().SetAsync($"impersonation:ended:{jti}", new EndedImpersonation(DateTime.UtcNow),
+                TimeSpan.FromMinutes(35), ct);
+        var audit = HttpContext.RequestServices.GetRequiredService<IAuditWriter>();
+        Guid.TryParse(User.FindFirstValue("tenantId"), out var tenantId);
+        audit.Stage(AuditActions.PlatformImpersonationEnded, AuditSeverity.Warning, "Tenant", tenantId.ToString(),
+            $"Platform admin {User.FindFirstValue(ImpersonationClaims.ActorEmail)} left the tenant session.",
+            tenantId: tenantId == Guid.Empty ? null : tenantId,
+            actorId: Guid.TryParse(User.FindFirstValue(ImpersonationClaims.ActorId), out var actor) ? actor : null,
+            actorName: User.FindFirstValue(ImpersonationClaims.ActorEmail), actorType: "platform");
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
+    }
+
+    public sealed record EndedImpersonation(DateTime At);
+
     [HttpPost("logout")]
     [Authorize]
     public async Task<IActionResult> Logout(
@@ -382,7 +428,12 @@ public class AuthController : ControllerBase
             refreshToken = Request.Cookies["nexo_refresh"];
         }
         
-        if (!string.IsNullOrWhiteSpace(refreshToken))
+        if (User.FindFirstValue("type") == "platform")
+        {
+            if (Guid.TryParse(User.FindFirstValue("platformUserId"), out var platformUserId) && Guid.TryParse(User.FindFirstValue("sid"), out var sid))
+                await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>().LogoutAsync(platformUserId, sid, ct);
+        }
+        else if (!string.IsNullOrWhiteSpace(refreshToken))
         {
             await _authService.LogoutAsync(refreshToken, ct);
         }
@@ -445,6 +496,7 @@ public class AuthController : ControllerBase
 
     /// <summary>"Sair de todos os dispositivos" — including this one (cookies cleared).</summary>
     [HttpPost("sessions/revoke-all")]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     [Authorize]
     public async Task<IActionResult> RevokeAllSessions(
         [FromBody] RevokeAllSessionsRequest request, [FromServices] AccountSecurityService accounts, CancellationToken ct)

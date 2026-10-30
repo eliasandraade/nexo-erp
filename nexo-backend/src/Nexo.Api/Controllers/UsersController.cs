@@ -80,6 +80,7 @@ public class UsersController : ControllerBase
     /// own account — otherwise the 204/403 answer would let any user guess a colleague's password.
     /// </summary>
     [HttpPost("{id:guid}/change-password")]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     [EnableRateLimiting("credential-check")]
     public async Task<IActionResult> ChangePassword(
         Guid id,

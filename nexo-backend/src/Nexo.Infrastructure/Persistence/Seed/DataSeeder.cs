@@ -332,11 +332,14 @@ public class DataSeeder
 
         if (existing is not null)
         {
-            // Always sync the password hash to the current env var value so that
-            // changing Seed:PlatformPassword in Railway takes effect on next deploy.
-            existing.ChangePasswordHash(_hasher.Hash(platformPassword));
-            await _context.SaveChangesAsync(ct);
-            _logger.LogInformation("Seed: platform superuser password synced.");
+            // Changing Seed:PlatformPassword in Railway takes effect on the next deploy (break-glass). Only an actual
+            // change rewrites the hash — which ends every session of the account; an unchanged password touches nothing.
+            if (!_hasher.Verify(platformPassword, existing.PasswordHash))
+            {
+                existing.ChangePasswordHash(_hasher.Hash(platformPassword));
+                await _context.SaveChangesAsync(ct);
+                _logger.LogInformation("Seed: platform superuser password changed from configuration; its sessions ended.");
+            }
             return;
         }
 

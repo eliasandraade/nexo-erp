@@ -98,6 +98,15 @@ public class JwtTokenService : IJwtTokenService
         Guid storeId,
         IReadOnlyList<Guid> accessibleStoreIds,
         DateTime expiry)
+        => BuildToken(AccessClaims(user, tenantSlug, companyName, activeModules, storeId, accessibleStoreIds), GetAudience(), expiry);
+
+    private static List<Claim> AccessClaims(
+        User user,
+        string tenantSlug,
+        string companyName,
+        IReadOnlyList<string> activeModules,
+        Guid storeId,
+        IReadOnlyList<Guid> accessibleStoreIds)
     {
         var claims = new List<Claim>
         {
@@ -125,7 +134,16 @@ public class JwtTokenService : IJwtTokenService
         foreach (var id in accessibleStoreIds)
             claims.Add(new Claim("store", id.ToString()));
 
-        return BuildToken(claims, GetAudience(), expiry);
+        return claims;
+    }
+
+    public PlatformTokenResult GenerateImpersonationToken(ImpersonationGrant grant)
+    {
+        var claims = AccessClaims(grant.User, grant.TenantSlug, grant.CompanyName, grant.ActiveModules, grant.StoreId, grant.StoreIds);
+        claims.Add(new Claim(ImpersonationClaims.Marker, "1"));
+        claims.Add(new Claim(ImpersonationClaims.ActorId, grant.ActorId.ToString()));
+        claims.Add(new Claim(ImpersonationClaims.ActorEmail, grant.ActorEmail));
+        return new PlatformTokenResult(BuildToken(claims, GetAudience(), grant.ExpiresAt), grant.ExpiresAt);
     }
 
     private string BuildRefreshToken(User user, DateTime expiry)
@@ -168,9 +186,9 @@ public class JwtTokenService : IJwtTokenService
         return new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
     }
 
-    public PlatformTokenResult GeneratePlatformToken(PlatformUser user)
+    public PlatformTokenResult GeneratePlatformToken(PlatformUser user, Guid sessionId, bool mfaVerified)
     {
-        var expiry = DateTime.UtcNow.AddHours(8);
+        var expiry = DateTime.UtcNow.AddMinutes(15);
 
         var claims = new List<Claim>
         {
@@ -180,6 +198,9 @@ public class JwtTokenService : IJwtTokenService
             new("email",          user.Email),
             new("role",           user.Role),
             new("type",           "platform"),
+            new("sid",            sessionId.ToString()),
+            new("security_stamp", user.SecurityStamp),
+            new("platform_mfa",   mfaVerified ? "true" : "false"),
             new(ClaimTypes.Role,  user.Role),
         };
 

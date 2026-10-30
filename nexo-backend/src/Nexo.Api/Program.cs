@@ -129,8 +129,12 @@ try
         options.AddPolicy("Platform", policy =>
             policy.RequireAuthenticatedUser().RequireClaim("type", "platform"));
         // Platform administrators only (super_admin): acts that change what tenants can do (activation, approvals, catalogues).
+        // Admin acts also require a sign-in that passed two-step verification (Platform:RequireMfaForAdmin, default true):
+        // a stolen password alone can't change tenants, keys or impersonate.
+        var adminNeedsMfa = builder.Configuration.GetValue("Platform:RequireMfaForAdmin", true);
         options.AddPolicy("PlatformAdmin", policy =>
-            policy.RequireAuthenticatedUser().RequireClaim("type", "platform").RequireRole("super_admin"));
+            policy.RequireAuthenticatedUser().RequireClaim("type", "platform").RequireRole("super_admin")
+                  .RequireAssertion(ctx => !adminNeedsMfa || ctx.User.HasClaim("platform_mfa", "true")));
     });
 
     // ── CORS ──────────────────────────────────────────────────────────────────

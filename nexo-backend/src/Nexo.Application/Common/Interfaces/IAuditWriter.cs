@@ -62,6 +62,17 @@ public static class AuditActions
 
     // Platform admin
     public const string PlatformImpersonation  = "platform_impersonation";
+    public const string PlatformImpersonationEnded = "platform_impersonation_ended";
+    public const string PlatformLoggedIn       = "platform_logged_in";
+    public const string PlatformLoginFailed    = "platform_login_failed";
+    public const string PlatformLoggedOut      = "platform_logged_out";
+    public const string PlatformSessionRevoked = "platform_session_revoked";
+    public const string PlatformMfaEnabled     = "platform_mfa_enabled";
+    public const string PlatformMfaDisabled    = "platform_mfa_disabled";
+    public const string PlatformMfaFailed      = "platform_mfa_failed";
+    public const string PlatformNoteCreated    = "platform_note_created";
+    public const string PlatformNoteDeleted    = "platform_note_deleted";
+    public const string PlatformNotePinned     = "platform_note_pinned";
 
     // AI providers (platform-wide)
     public const string AiProviderUpdated      = "ai_provider_updated";
@@ -78,4 +89,16 @@ public static class AuditSeverity
     public const string Info     = "info";
     public const string Warning  = "warning";
     public const string Critical = "critical";
+}
+
+/// <summary>
+/// Claims of a tenant session opened by a platform administrator (impersonation): who really acts, and the marker that
+/// the session is an impersonation (no refresh, no account changes, every audit record names the administrator).
+/// </summary>
+public static class ImpersonationClaims
+{
+    public const string Marker     = "imp";
+    public const string ActorId    = "imp_actor_id";
+    public const string ActorEmail = "imp_actor_email";
+    public const string Reason     = "imp_reason";
 }

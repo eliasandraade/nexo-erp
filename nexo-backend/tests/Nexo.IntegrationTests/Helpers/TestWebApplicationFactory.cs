@@ -132,6 +132,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // on the fly. TaxIntelligenceTests turns enforcement, the mode and the pilot scope on in derived hosts to
         // prove what each configuration accepts and refuses.
         builder.UseSetting("Secrets:MasterKey", TestMasterKey);
+        // Admin acts normally require a sign-in with two-step verification; most suites sign in with the password only.
+        // PlatformSecurityTests turns the requirement back on in its own host.
+        builder.UseSetting("Platform:RequireMfaForAdmin", "false");
         builder.UseSetting("TaxIntelligence:Policy:Enabled", "true");
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "false");
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForCalculations", "false");

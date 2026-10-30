@@ -53,6 +53,19 @@ public class AuditRecord : BaseEntity
 
     public string? IpAddress { get; private set; }
 
+    /// <summary>
+    /// The platform administrator who was impersonating the actor when this happened (null otherwise). The actor is
+    /// the tenant user the session impersonates; this says who really acted.
+    /// </summary>
+    public Guid? ImpersonatorId { get; private set; }
+    public string? ImpersonatorEmail { get; private set; }
+
+    public void AttributeToImpersonator(Guid impersonatorId, string? impersonatorEmail)
+    {
+        ImpersonatorId = impersonatorId;
+        ImpersonatorEmail = impersonatorEmail is { Length: > 200 } ? impersonatorEmail[..200] : impersonatorEmail;
+    }
+
     public static AuditRecord Create(
         string actionType,
         string severity,
