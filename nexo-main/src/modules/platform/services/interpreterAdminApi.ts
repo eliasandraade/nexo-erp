@@ -6,10 +6,15 @@ import type {
   AiProviderTestResult,
   AiDashboardStats,
   AiTelemetryRecord,
+  AiCostsOverview,
   TenantCostSummary,
+  TenantAiLimits,
   PlaygroundInput,
   PlaygroundResult,
   PromptVersion,
+  CreatePromptVersionInput,
+  CreatedPromptVersion,
+  PromptActivation,
 } from "../types/aiOperations";
 
 const BASE = "/platform/interpreter";
@@ -178,40 +183,39 @@ export async function fetchAiTelemetry(
 
 // ── Costs ─────────────────────────────────────────────────────────────────────
 
-interface RawCostItem {
-  tenantId:      string;
-  tenantName:    string;
-  costUsd:       number;
-  totalCalls:    number;
-  llmCalls:      number;
-  softLimitUsd:  number | null;
-  hardLimitUsd:  number | null;
-  softLimitHit:  boolean;
-  hardLimitHit:  boolean;
-}
-
-interface RawCostsResponse {
-  totalUsd: number;
-  items:    RawCostItem[];
-}
-
-function mapCostItem(r: RawCostItem): TenantCostSummary {
+function mapCostItem(r: Partial<TenantCostSummary> & { tenantId: string }): TenantCostSummary {
   return {
-    tenantId:           r.tenantId,
-    tenantName:         r.tenantName,
-    requests:           r.totalCalls,
-    inputTokens:        0,   // not aggregated separately in backend yet
-    outputTokens:       0,
-    estimatedCostMicros: Math.round(r.costUsd * 1_000_000),
-    softLimitCents:     r.softLimitUsd != null ? Math.round(r.softLimitUsd * 100) : null,
-    hardLimitCents:     r.hardLimitUsd != null ? Math.round(r.hardLimitUsd * 100) : null,
-    spentCents:         Math.round(r.costUsd * 100),
+    tenantId:         r.tenantId,
+    tenantName:       r.tenantName ?? r.tenantId,
+    costUsd:          r.costUsd ?? 0,
+    totalCalls:       r.totalCalls ?? 0,
+    llmCalls:         r.llmCalls ?? 0,
+    monthSpentUsd:    r.monthSpentUsd ?? 0,
+    monthReservedUsd: r.monthReservedUsd ?? 0,
+    softLimitUsd:     r.softLimitUsd ?? null,
+    hardLimitUsd:     r.hardLimitUsd ?? null,
+    softLimitHit:     r.softLimitHit ?? false,
+    hardLimitHit:     r.hardLimitHit ?? false,
   };
 }
 
-export async function fetchAiCosts(): Promise<TenantCostSummary[]> {
-  const raw = await apiClient.get<RawCostsResponse>(`${BASE}/costs`);
-  return raw.items.map(mapCostItem);
+/** Month spend (calendar month, UTC) and limits per company, plus the last 30 days of telemetry. */
+export async function fetchAiCosts(): Promise<AiCostsOverview> {
+  const raw = await apiClient.get<Partial<AiCostsOverview>>(`${BASE}/costs`);
+  return {
+    totalUsd:      raw.totalUsd ?? 0,
+    monthSpentUsd: raw.monthSpentUsd ?? 0,
+    items:         (raw.items ?? []).map(mapCostItem),
+  };
+}
+
+/** super_admin with two-step sign-in only. null clears a limit. Answers the updated company. */
+export async function setTenantAiLimits(tenantId: string, limits: TenantAiLimits): Promise<TenantCostSummary> {
+  const raw = await apiClient.put<TenantCostSummary>(`${BASE}/costs/${tenantId}/limits`, {
+    softLimitUsd: limits.softLimitUsd,
+    hardLimitUsd: limits.hardLimitUsd,
+  });
+  return mapCostItem(raw);
 }
 
 // ── Playground ────────────────────────────────────────────────────────────────
@@ -260,6 +264,17 @@ export async function fetchPromptVersions(promptType: string): Promise<PromptVer
   return raw.map(mapPromptVersion);
 }
 
-export async function setActivePrompt(id: string): Promise<void> {
-  await apiClient.post<void>(`${BASE}/prompts/${id}/activate`, {});
+/** super_admin with two-step sign-in only. The new version is created inactive. 409 = the version already exists. */
+export function createPromptVersion(input: CreatePromptVersionInput): Promise<CreatedPromptVersion> {
+  return apiClient.post<CreatedPromptVersion>(`${BASE}/prompts`, {
+    promptType:  input.promptType,
+    version:     input.version,
+    content:     input.content,
+    description: input.description,
+  });
+}
+
+/** super_admin with two-step sign-in only. 409 = another activation of the same type won concurrently. */
+export function activatePromptVersion(id: string): Promise<PromptActivation> {
+  return apiClient.post<PromptActivation>(`${BASE}/prompts/${id}/activate`, {});
 }

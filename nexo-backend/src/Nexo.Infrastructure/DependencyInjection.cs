@@ -208,7 +208,10 @@ public static class DependencyInjection
         services.AddScoped<IAiProviderRegistry, AiProviderRegistry>();
         services.AddScoped<IAnalyzerSelector, AnalyzerSelectorService>();
         services.AddScoped<IAnalysisRunner, AnalysisRunner>();
+        services.AddSingleton<IAiUsageGuard, AiUsageGuard>();
         services.AddScoped<AiProviderAdminService>();
+        services.AddScoped<AiGovernanceAdminService>();
+        services.AddScoped<IMovementReferenceGuard, MovementReferenceGuard>();
         services.AddScoped<IInterpretationService, RuleBasedInterpretationService>();
 
         // Telemetry writer — singleton so it can hold IServiceProvider safely

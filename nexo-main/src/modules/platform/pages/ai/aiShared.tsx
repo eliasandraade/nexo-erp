@@ -74,6 +74,18 @@ export function errorText(e: unknown, fallback = "Falha na comunicação com o b
   return fallback;
 }
 
+export const STEP_UP_REQUIRED_MESSAGE =
+  "Esta ação exige um super administrador conectado com verificação em duas etapas.";
+
+/**
+ * Error text for governed actions (limits, prompt versions): the backend answers 403 with an empty body when the
+ * operator is not a super_admin signed in with two-step verification, so the reason is spelled out here.
+ */
+export function governedErrorText(e: unknown, fallback?: string): string {
+  if (e instanceof ApiError && e.status === 403) return STEP_UP_REQUIRED_MESSAGE;
+  return errorText(e, fallback);
+}
+
 const ERROR_TITLE: Record<number, string> = {
   400: "Requisição inválida",
   403: "Sem permissão — só super_admin pode fazer isto",

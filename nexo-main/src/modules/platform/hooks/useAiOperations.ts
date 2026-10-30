@@ -11,9 +11,11 @@ import {
   setAiProviderKey,
   clearAiProviderKey,
   testAiProvider,
-  setActivePrompt,
+  setTenantAiLimits,
+  createPromptVersion,
+  activatePromptVersion,
 } from "../services/interpreterAdminApi";
-import type { AiProviderPatch, PlaygroundResult } from "../types/aiOperations";
+import type { AiProviderPatch, CreatePromptVersionInput, PlaygroundResult, TenantAiLimits } from "../types/aiOperations";
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
@@ -75,30 +77,51 @@ export function useAiTelemetry(page: number, pageSize = 20) {
 
 // ── Costs ─────────────────────────────────────────────────────────────────────
 
+const COSTS_KEY = ["platform", "ai", "costs"] as const;
+
 export function useAiCosts() {
   return useQuery({
-    queryKey: ["platform", "ai", "costs"],
+    queryKey: COSTS_KEY,
     queryFn:  fetchAiCosts,
     staleTime: 60_000,
   });
 }
 
+/** Limits change the hit flags and which companies are listed: refetch the whole list. */
+export function useSetTenantAiLimits() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tenantId, limits }: { tenantId: string; limits: TenantAiLimits }) => setTenantAiLimits(tenantId, limits),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: COSTS_KEY }),
+  });
+}
+
 // ── Prompts ───────────────────────────────────────────────────────────────────
+
+const promptsKey = (promptType: string) => ["platform", "ai", "prompts", promptType] as const;
 
 export function usePromptVersions(promptType: string) {
   return useQuery({
-    queryKey: ["platform", "ai", "prompts", promptType],
+    queryKey: promptsKey(promptType),
     queryFn:  () => fetchPromptVersions(promptType),
     staleTime: 30_000,
   });
 }
 
-export function useSetActivePrompt() {
+export function useCreatePromptVersion() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ versionId }: { promptType: string; versionId: string }) => setActivePrompt(versionId),
-    onSuccess:  (_data, { promptType }) =>
-      qc.invalidateQueries({ queryKey: ["platform", "ai", "prompts", promptType] }),
+    mutationFn: (input: CreatePromptVersionInput) => createPromptVersion(input),
+    onSuccess:  (_data, input) => qc.invalidateQueries({ queryKey: promptsKey(input.promptType) }),
+  });
+}
+
+/** Refetches on success and on failure too: a 409 means another activation won, so the list is stale. */
+export function useActivatePromptVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ versionId }: { promptType: string; versionId: string }) => activatePromptVersion(versionId),
+    onSettled:  (_data, _error, { promptType }) => qc.invalidateQueries({ queryKey: promptsKey(promptType) }),
   });
 }
 

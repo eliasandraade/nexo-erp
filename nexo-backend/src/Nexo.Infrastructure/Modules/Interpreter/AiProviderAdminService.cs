@@ -99,8 +99,15 @@ public sealed class AiProviderAdminService
         if (changes.Count > 0)
             Stage(AuditActions.AiProviderUpdated, AuditSeverity.Warning, row, $"Provedor de IA {row.Provider}: {string.Join(", ", changes)}.", actor,
                 new { changes });
-        await _db.SaveChangesAsync(ct);
-        await tx.CommitAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
+        {
+            throw new ConflictException("Outro provedor acabou de ser definido como padrão. Recarregue a lista.");
+        }
         return await StateAsync(id, ct);
     }
 

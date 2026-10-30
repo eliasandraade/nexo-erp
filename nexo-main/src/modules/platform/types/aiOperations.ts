@@ -131,16 +131,41 @@ export interface AiTelemetryRecord {
 
 // ── Costs ─────────────────────────────────────────────────────────────────────
 
+/**
+ * One company in GET /platform/interpreter/costs. Two windows that must not be mixed:
+ * the last 30 days come from telemetry; the month (calendar month, UTC) is what the limits count.
+ */
 export interface TenantCostSummary {
-  tenantId:          string;
-  tenantName:        string;
-  requests:          number;
-  inputTokens:       number;
-  outputTokens:      number;
-  estimatedCostMicros: number;
-  softLimitCents:    number | null;
-  hardLimitCents:    number | null;
-  spentCents:        number;
+  tenantId:         string;
+  tenantName:       string;
+  /** Last 30 days, telemetry. */
+  costUsd:          number;
+  totalCalls:       number;
+  llmCalls:         number;
+  /** This calendar month (UTC), settled calls. */
+  monthSpentUsd:    number;
+  /** Paid calls in flight right now: reserved against the hard limit before they happen. */
+  monthReservedUsd: number;
+  /** USD per calendar month; null = no limit. */
+  softLimitUsd:     number | null;
+  hardLimitUsd:     number | null;
+  softLimitHit:     boolean;
+  hardLimitHit:     boolean;
+}
+
+export interface AiCostsOverview {
+  /** Last 30 days, telemetry, every company. */
+  totalUsd:      number;
+  /** This calendar month (UTC), settled, every company. */
+  monthSpentUsd: number;
+  /** Companies with usage or with a limit (a limit shows up even with zero usage). */
+  items:         TenantCostSummary[];
+}
+
+/** PUT /platform/interpreter/costs/{tenantId}/limits — USD per calendar month; null clears. */
+export interface TenantAiLimits {
+  softLimitUsd: number | null;
+  hardLimitUsd: number | null;
 }
 
 // ── Playground ────────────────────────────────────────────────────────────────
@@ -202,14 +227,42 @@ export interface PlaygroundInput {
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
+export type PromptType = "extraction" | "interpretation" | "memory";
+
 export interface PromptVersion {
   id:          string;
-  promptType:  string;  // "extraction" | "interpretation" | "memory"
+  promptType:  string;  // PromptType
   version:     string;
+  /** SHA-256 of the content, first 16 hex characters — what telemetry records. */
   hash:        string;
   isActive:    boolean;
+  /** The list only carries a preview of the content. */
   content:     string;
   description: string;
   createdAt:   string;
   createdBy:   string;
+}
+
+/** POST /platform/interpreter/prompts. Created inactive. */
+export interface CreatePromptVersionInput {
+  promptType:  PromptType;
+  version:     string;
+  content:     string;
+  description: string;
+}
+
+export interface CreatedPromptVersion {
+  id:         string;
+  promptType: string;
+  version:    string;
+  hash:       string;
+  isActive:   boolean;
+}
+
+/** POST /platform/interpreter/prompts/{id}/activate. */
+export interface PromptActivation {
+  activated:  string;
+  promptType: string;
+  version:    string;
+  hash:       string;
 }
