@@ -139,27 +139,39 @@ public sealed class BuildTwinService
 
     // ── Elements and state ────────────────────────────────────────────────────
 
+    /// <summary>Most external ids accepted by the externalId filter of the elements list.</summary>
+    public const int MaxExternalIdFilter = 200;
+
+    /// <summary>
+    /// Paged elements of a version with their state on the date. Filters: category, zone — a zone of the version <b>or a manual
+    /// zone of the project</b>: the elements whose zone is that zone or one of its descendants in the combined tree (model zones
+    /// of the version + manual zones); elements of a model only belong to the model's zones, so a manual zone without model
+    /// zones below it matches none —, state (or Unbound) and externalId (exact, comma-separated, up to 200 → 422 too_many_ids).
+    /// </summary>
     public async Task<BuildModelElementPageDto> ElementsAsync(Guid versionId, string? category, Guid? zoneId, string? state, DateOnly? date,
-        int? skip, int? take, CancellationToken ct)
+        int? skip, int? take, CancellationToken ct, string? externalIds = null)
     {
         var v = await VersionAsync(versionId, ct);
         var s = Math.Max(0, skip ?? 0);
         var n = Math.Clamp(take ?? 100, 1, MaxPageSize);
         var unboundOnly = string.Equals(state?.Trim(), "Unbound", StringComparison.OrdinalIgnoreCase);
         BuildElementState? stateFilter = string.IsNullOrWhiteSpace(state) || unboundOnly ? null : BuildTwinParse.Enum<BuildElementState>(state, "Estado");
+        var idFilter = ParseExternalIds(externalIds);
 
-        var zones = await _db.BldModelZones.AsNoTracking().Where(z => z.TenantId == Tid && z.ModelVersionId == v.Id)
+        var zones = await _db.BldModelZones.AsNoTracking()
+            .Where(z => z.TenantId == Tid && (z.ModelVersionId == v.Id || (z.ProjectId == v.ProjectId && z.ModelVersionId == null)))
             .Select(z => new { z.Id, z.Name, z.ParentZoneId }).ToListAsync(ct);
         HashSet<Guid>? zoneSet = null;
         if (zoneId is { } zid)
         {
-            if (zones.All(z => z.Id != zid)) throw new DomainException("A zona não é desta versão do modelo.", "invalid_zone");
+            if (zones.All(z => z.Id != zid)) throw new DomainException("A zona não é desta versão do modelo nem uma zona manual desta obra.", "invalid_zone");
             zoneSet = Descendants(zid, zones.Select(z => (z.Id, z.ParentZoneId)));
         }
 
         var q = _db.BldModelElements.AsNoTracking().Where(e => e.TenantId == Tid && e.ModelVersionId == v.Id);
         if (!string.IsNullOrWhiteSpace(category)) q = q.Where(e => e.Category == category.Trim());
         if (zoneSet is not null) q = q.Where(e => e.ZoneId != null && zoneSet.Contains(e.ZoneId.Value));
+        if (idFilter is not null) q = q.Where(e => idFilter.Contains(e.ExternalId));
 
         var result = await _reader.ComputeAsync(Tid, v.ProjectId, v.Id, DateOrToday(date), bypass: false, ct);
         var states = result.Elements.ToDictionary(e => e.ExternalId, StringComparer.Ordinal);
@@ -197,6 +209,44 @@ public sealed class BuildTwinService
     {
         var v = await VersionAsync(versionId, ct);
         return BuildTwinMap.State(await _reader.ComputeAsync(Tid, v.ProjectId, v.Id, DateOrToday(date), bypass: false, ct));
+    }
+
+    /// <summary>Comma-separated external ids (trimmed, distinct); null when empty; more than 200 → 422 too_many_ids.</summary>
+    public static List<string>? ParseExternalIds(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var ids = raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.Ordinal).ToList();
+        if (ids.Count == 0) return null;
+        if (ids.Count > MaxExternalIdFilter)
+            throw new DomainException($"Informe no máximo {MaxExternalIdFilter} ids externos por consulta.", "too_many_ids");
+        return ids;
+    }
+
+    /// <summary>
+    /// State on a date of the project's manual zones (assisted mapping / simplified representation), through their zone
+    /// bindings (own or nearest ancestor) — no model version involved. A zone without a bound stage has state null.
+    /// </summary>
+    public async Task<BuildZoneStatesDto> ZoneStatesAsync(Guid projectId, DateOnly? date, CancellationToken ct)
+    {
+        await BuildScope.EnsureProjectAsync(_db, Tid, projectId, ct);
+        var day = DateOrToday(date);
+        var zones = await _db.BldModelZones.AsNoTracking()
+            .Where(z => z.TenantId == Tid && z.ProjectId == projectId && z.ModelVersionId == null)
+            .OrderBy(z => z.Order).ThenBy(z => z.Name)
+            .Select(z => new { z.Id, z.Name, z.Kind, z.ParentZoneId }).ToListAsync(ct);
+        var result = await _reader.ComputeAsync(Tid, projectId, null, day, bypass: false, ct);
+        var states = result.Zones.ToDictionary(z => z.ZoneId);
+        var stageNames = await _db.BldStages.AsNoTracking().Where(st => st.TenantId == Tid && st.ProjectId == projectId)
+            .ToDictionaryAsync(st => st.Id, st => st.Name, ct);
+        var items = zones.Select(z =>
+        {
+            var zs = states.GetValueOrDefault(z.Id);
+            return new BuildZoneStateDto(z.Id, z.Name, z.Kind.ToString(), z.ParentZoneId, zs?.State?.ToString(), zs?.StageId,
+                zs?.StageId is { } sid ? stageNames.GetValueOrDefault(sid) : null);
+        }).ToList();
+        var counts = items.Where(i => i.State is not null).GroupBy(i => i.State!).ToDictionary(g => g.Key, g => g.Count());
+        counts["Unbound"] = items.Count(i => i.State is null);
+        return new BuildZoneStatesDto(day, items, counts);
     }
 
     private static HashSet<Guid> Descendants(Guid root, IEnumerable<(Guid Id, Guid? Parent)> zones)

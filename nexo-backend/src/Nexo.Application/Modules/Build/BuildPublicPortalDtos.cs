@@ -136,6 +136,13 @@ public sealed record PublicBuildSessionDto(string Token, DateTimeOffset ExpiresA
 /// <summary>What a locked (password) portal shows before the password: name, logo and title only.</summary>
 public sealed record PublicBuildPortalTeaserDto(string Name, string? LogoUrl, string? Title);
 
+/// <summary>
+/// Error body of the public portal API (documentation type for OpenAPI — the shape every error of
+/// <c>/api/public/build</c> already had): <c>error</c> (Portuguese message) and <c>code</c>; <c>portal</c> only in the 401
+/// of a password portal; <c>retryAfterSeconds</c> only in the 429 portal_locked. Rate-limit 429 has no body.
+/// </summary>
+public sealed record PublicBuildErrorDto(string Error, string Code, PublicBuildPortalTeaserDto? Portal = null, int? RetryAfterSeconds = null);
+
 // ── Wave 2 (contract v1.1): change orders, selections, measurements ─────────
 
 public sealed record PublicBuildChangeOrderItemDto(string Name, string Kind, decimal Quantity, string Unit, decimal UnitPrice, decimal Total);

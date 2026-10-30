@@ -165,7 +165,12 @@ public record BuildDashboardDto(
     decimal  TotalRealized,          // Σ confirmed Obra Out movements (Core)
     decimal  Balance,                // TotalApproved - TotalRealized
     double   AvgStageProgress,       // mean of all stages' ProgressPercent (0-100)
-    IReadOnlyList<BuildRecentExpenseDto> RecentExpenses);
+    IReadOnlyList<BuildRecentExpenseDto> RecentExpenses,
+    // ── Wave 6 (additive): portfolio of the active projects, totals and top risks ──
+    IReadOnlyList<BuildDashboardProjectDto>? Projects = null,
+    BuildDashboardTotalsDto? Totals = null,
+    IReadOnlyList<BuildDashboardRiskDto>? TopRisks = null,
+    DateOnly? AsOf = null);
 
 public record BuildRecentExpenseDto(
     Guid     ProjectId,

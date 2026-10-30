@@ -69,7 +69,8 @@ public class BuildProgressCostTests
             events[0].EffectiveDate.Should().Be(today);
             var snap = await db.BldProgressSnapshots.IgnoreQueryFilters().SingleAsync(s => s.ProjectId == projectId && s.Date == today);
             snap.ActualPercent.Should().Be(30m, "(3·40 + 1·0) / 4");
-            snap.Methodology.Should().Be("weighted-stages/1");
+            // Wave 6: with BuildPredict on (default) the forecast dates come from productivity/1 (docs/build/forecast.md)
+            snap.Methodology.Should().Be("weighted-stages/1+productivity/1");
         }
 
         var progress = await Json(await admin.GetAsync($"/api/v1/build/projects/{projectId}/progress"), HttpStatusCode.OK);

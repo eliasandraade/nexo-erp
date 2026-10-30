@@ -39,7 +39,7 @@ Capacidade do Build (BuildAiService)
 |---|---|---|
 | `BuildAiEnabled` | desligado | gerar sugestões (`403 build_ai_disabled` sem ela). Aceitar/recusar/listar sugestões já existentes não depende dela |
 | `BuildVisionEnabled` | desligado | enviar fotos do diário ou arquivos de documento ao provedor (`403 build_vision_disabled`) |
-| `BuildPredictEnabled` | ligado | não bloqueia nada nesta Wave: a análise determinística de risco é **sempre** disponível (não tem custo nem provedor); a explicação por LLM exige `BuildAiEnabled` |
+| `BuildPredictEnabled` | ligado | não bloqueia a análise determinística de risco (sempre disponível); a explicação por LLM exige `BuildAiEnabled`. Wave 6: liga a previsão `productivity/1` ([`forecast.md`](forecast.md)), cuja entrega prevista alimenta o risco de prazo — a explicação da previsão é a mesma `risk/explain` (nenhuma chamada nova a LLM) |
 
 ## Capacidades
 

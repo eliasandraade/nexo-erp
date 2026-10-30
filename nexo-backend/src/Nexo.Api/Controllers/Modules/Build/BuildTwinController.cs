@@ -107,11 +107,31 @@ public class BuildTwinController : ControllerBase
 
     // ── Elements, zones, state ────────────────────────────────────────────────
 
-    /// <summary>Paged elements with their state on <paramref name="date"/> (default today). state: a state name or Unbound.</summary>
+    /// <summary>
+    /// Paged elements with their state on <paramref name="date"/> (default today). state: a state name or Unbound. zoneId: a zone of
+    /// the version or a manual zone of the project (its subtree). externalId: exact ids, comma-separated, up to 200 (422 too_many_ids).
+    /// </summary>
     [HttpGet("models/versions/{versionId:guid}/elements")]
     public async Task<ActionResult<BuildModelElementPageDto>> Elements(Guid versionId, [FromQuery] string? category, [FromQuery] Guid? zoneId,
-        [FromQuery] string? state, [FromQuery] DateOnly? date, [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct)
-        => Ok(await _twin.ElementsAsync(versionId, category, zoneId, state, date, skip, take, ct));
+        [FromQuery] string? state, [FromQuery] DateOnly? date, [FromQuery] int? skip, [FromQuery] int? take, [FromQuery] string? externalId,
+        CancellationToken ct)
+        => Ok(await _twin.ElementsAsync(versionId, category, zoneId, state, date, skip, take, ct, externalId));
+
+    /// <summary>
+    /// Signed URL (15 min) of the version's private source file, for the company's own users only (never in the portal). Audited.
+    /// 422 source_not_stored (refused format); 503 storage_unavailable.
+    /// </summary>
+    [HttpGet("models/versions/{versionId:guid}/source")]
+    public async Task<ActionResult<BuildModelSourceDto>> Source(Guid versionId, CancellationToken ct)
+    {
+        Response.Headers.CacheControl = "no-store";
+        return Ok(await _models.SourceAsync(versionId, ct));
+    }
+
+    /// <summary>State of the project's manual zones on a date (yyyy-MM-dd, default today) through zone bindings — no model version.</summary>
+    [HttpGet("projects/{projectId:guid}/twin/zones/state")]
+    public async Task<ActionResult<BuildZoneStatesDto>> ZoneStates(Guid projectId, [FromQuery] DateOnly? date, CancellationToken ct)
+        => Ok(await _twin.ZoneStatesAsync(projectId, date, ct));
 
     [HttpGet("models/versions/{versionId:guid}/elements/{externalId}/events")]
     public async Task<ActionResult<IReadOnlyList<BuildElementEventDto>>> ElementEvents(Guid versionId, string externalId, CancellationToken ct)

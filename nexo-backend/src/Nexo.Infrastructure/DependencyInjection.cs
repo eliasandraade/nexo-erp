@@ -192,6 +192,10 @@ public static class DependencyInjection
         services.AddScoped<BuildRiskService>();
         services.AddScoped<BuildDocumentService>();
         services.AddScoped<BuildAiService>();
+        // Wave 6 — forecast (productivity/1), weather per activity, platform observability
+        services.AddSingleton<BuildForecastOptions>();
+        services.AddScoped<BuildForecastService>();
+        services.AddScoped<BuildPlatformObservabilityService>();
 
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();

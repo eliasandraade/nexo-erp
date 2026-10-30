@@ -160,6 +160,11 @@ public static class AuditActions
     public const string BuildDocumentSaved            = "build_document_saved";
     public const string BuildDocumentVisibility       = "build_document_visibility";
     public const string BuildDocumentDeleted          = "build_document_deleted";
+    // Build Wave 6 — forecast, weather, platform observability, source file reads
+    public const string BuildForecastRecomputed       = "build_forecast_recomputed";
+    public const string BuildStageWeatherSensitivity  = "build_stage_weather_sensitivity";
+    public const string BuildModelSourceRead          = "build_model_source_read";
+    public const string BuildModelJobRetried          = "build_model_job_retried";
 
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";

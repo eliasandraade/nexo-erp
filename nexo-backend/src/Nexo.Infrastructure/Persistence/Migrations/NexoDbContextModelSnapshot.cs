@@ -4276,6 +4276,96 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("bld_element_progress_events", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildForecast", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Confidence")
+                        .HasColumnType("numeric(4,3)")
+                        .HasColumnName("confidence");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CreatedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("created_by_name");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<string>("FactorsJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("factors");
+
+                    b.Property<DateOnly?>("ForecastDelivery")
+                        .HasColumnType("date")
+                        .HasColumnName("forecast_delivery");
+
+                    b.Property<DateTime>("GeneratedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("generated_at");
+
+                    b.Property<string>("Methodology")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("methodology");
+
+                    b.Property<DateOnly?>("PlannedDelivery")
+                        .HasColumnType("date")
+                        .HasColumnName("planned_delivery");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer")
+                        .HasColumnName("source");
+
+                    b.Property<string>("StagesJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("stages");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId")
+                        .HasDatabaseName("ix_bld_forecasts_tenant_id");
+
+                    b.HasIndex("ProjectId", "Date")
+                        .HasDatabaseName("ix_bld_forecasts_project_date");
+
+                    b.HasIndex("ProjectId", "GeneratedAt")
+                        .HasDatabaseName("ix_bld_forecasts_project_generated");
+
+                    b.ToTable("bld_forecasts", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildHandover", b =>
                 {
                     b.Property<Guid>("Id")
@@ -6281,6 +6371,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamptz")
                         .HasColumnName("updated_at");
+
+                    b.Property<bool?>("WeatherSensitive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("weather_sensitive");
 
                     b.Property<decimal>("Weight")
                         .ValueGeneratedOnAdd()
@@ -13580,6 +13674,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_bld_element_progress_events_project");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildForecast", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_forecasts_project");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildHandover", b =>

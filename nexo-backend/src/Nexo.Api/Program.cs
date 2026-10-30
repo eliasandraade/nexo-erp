@@ -391,6 +391,12 @@ try
         // types of the same name and broke the whole document; nested types are now qualified.
         opts.CustomSchemaIds(Nexo.Api.OpenApiSchemaIds.For);
 
+        // Non-nullable reference types (string, DTOs) are not "nullable" in the document — the public portal contract
+        // (docs/build/openapi-portal.json) and its TypeScript types rely on it.
+        opts.SupportNonNullableReferenceTypes();
+        // nullable DTO properties keep their "nullable" flag (a bare $ref cannot carry it)
+        opts.UseAllOfToExtendReferenceSchemas();
+
         // Enable Bearer token in Swagger UI
         opts.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
         {

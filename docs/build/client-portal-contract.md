@@ -718,7 +718,33 @@ Estourou → `429` sem corpo. Faça backoff; não repita em loop.
 novas seções em `sections`) podem chegar sem aviso — ignore o que não conhecer. Remoções ou mudanças de significado
 só numa `v2`, anunciada antes.
 
+### OpenAPI e tipos TypeScript
+
+- [`openapi-portal.json`](openapi-portal.json): OpenAPI 3 das rotas `/api/public/build/…` com todos os DTOs públicos,
+  o sucesso de cada rota e o corpo de erro `PublicBuildErrorDto` (`{ error, code, portal?, retryAfterSeconds? }`).
+- [`portal-types.ts`](portal-types.ts): tipos TypeScript gerados desse documento (campo com `?` pode vir `null` ou ausente).
+- Os dois são gerados da API em execução (Swagger) e conferidos por um teste: se a API mudar e os arquivos não, o teste
+  falha. Para regenerar (em `nexo-backend`, com Docker):
+
+  ```bash
+  ORKEN_WRITE_PORTAL_OPENAPI=1 dotnet test tests/Nexo.IntegrationTests --filter "FullyQualifiedName~BuildPortalOpenApiTests"
+  ```
+
+  (PowerShell: `$env:ORKEN_WRITE_PORTAL_OPENAPI='1'; dotnet test …`). Este documento (markdown) continua sendo a referência
+  de regras e significado; o OpenAPI descreve os formatos.
+
 ## 9. Changelog
+
+### v1.4 (revisão Wave 6 — sem mudança de formato)
+
+Nenhum campo, rota ou código novo: `contractVersion` continua `"1.4"`.
+
+- Publicados [`openapi-portal.json`](openapi-portal.json) e [`portal-types.ts`](portal-types.ts) (§8), com o corpo de erro
+  documentado como `PublicBuildErrorDto` — o mesmo formato de sempre.
+- Quando a construtora tem as previsões ligadas (padrão), as datas **previstas** (`forecastDelivery`, curva `forecast`, fim
+  previsto por etapa) passam a vir do motor de produtividade `productivity/1` (dias úteis, ritmo recente, sequência das
+  etapas) em vez da média simples; o significado ("previsão") e os formatos são os mesmos.
+- O clima do bootstrap (`weather`) não mudou.
 
 ### v1.4 — Wave 5 (IA e documentos)
 

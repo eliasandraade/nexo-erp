@@ -1,4 +1,4 @@
-# Orken Build — API interna (Waves 1 a 4)
+# Orken Build — API interna (Waves 1 a 6)
 
 Rotas internas novas/alteradas da Wave 1. Todas exigem login com papel de gestão (`AppRoles.Management`) e o módulo
 `build` ativo. Erros seguem o padrão da API: `400` validação, `404` inexistente/de outra empresa, `409` conflito
@@ -534,3 +534,69 @@ do cliente). Portal: flag `documents` e `GET /documents` na v1.4 de [`client-por
 - `GET /api/platform/interpreter/prompts/types` (Platform) → `[{ type, usedByRuntime, builtInHash }]` — os oito `build-*`
   entram como usados pelo runtime; `POST /api/platform/interpreter/prompts` aceita os novos tipos.
 - `Build:Ai:WeeklyDigestJob:Enabled` (padrão `false`) liga o job de resumo semanal (só sugere; nunca publica).
+
+# Wave 6 — Previsões, clima, painel, SuperAdmin e lacunas
+
+Migration `BuildWave6Forecast` (aditiva: `bld_forecasts`; coluna nula `bld_stages.weather_sensitive`). Metodologia, calendário,
+confiança, regras de clima e limitações em [`forecast.md`](forecast.md). Rotas em `/api/v1/build` (Management, módulo
+`build`) salvo as da plataforma.
+
+## Previsão de entrega (`productivity/1`, exige `BuildPredictEnabled` → senão `403 build_predict_disabled`)
+
+| Método | Rota | Resposta / observação |
+|---|---|---|
+| GET | `/projects/{id}/forecast` | `BuildForecastDto` — a previsão gravada hoje (a mais recente) ou, se não houver, calculada na hora (`stored: false`, `source: "OnTheFly"`, não grava) |
+| POST | `/projects/{id}/forecast` | `201` — recalcula e grava (`source: "Manual"`, `createdByName`); auditado (`build_forecast_recomputed`); o histórico é mantido |
+| GET | `/projects/{id}/forecast/history?take=` | `[{ id, date, generatedAt, source (Scheduled, Manual), methodology, version, forecastDelivery, plannedDelivery, delayDays, confidence, createdByName }]`, mais novas primeiro (1–365, padrão 60); funciona com a flag desligada |
+
+`BuildForecastDto`: `id?`, `projectId`, `date`, `generatedAt`, `source`, `stored`, `methodology` (`productivity/1`),
+`version`, `forecastDelivery`, `plannedDelivery`, `delayDays` (previsão − fim planejado), `expectedEnd` (término
+contratado), `daysLateVsContract`, `confidence` (0..1), `stages[{ stageId, name, order, weight, status, actualPercent,
+method (completed, window, overall, planned, none), ratePerWorkingDay, plannedRatePerWorkingDay, dataPoints, plannedStart,
+plannedEnd, forecastStart, forecastEnd, delayDays, inheritedDelayDays, confidence }]`, `factors[{ key, kind, severity,
+title, evidence, stageId, days }]`, `calendar { workingDays, holidays, windowDays }`, `createdByName`.
+
+Progresso (Wave 1): com BuildPredict ligado, `GET /projects/{id}/progress` (e retratos, curvas, portal) usa as datas do
+`productivity/1` — `methodology: "weighted-stages/1+productivity/1"`; desligado ou sem entrega calculável →
+`weighted-stages/1` (fallback). Job: `BuildProgressSnapshotJob` grava uma previsão `Scheduled` por obra ativa por dia.
+
+## Clima por atividade
+
+| Método | Rota | Resposta / observação |
+|---|---|---|
+| GET | `/projects/{id}/weather` | `{ projectId, available, reason?, message?, source: "Open-Meteo", disclaimer, today?, days[7], stages[] }`; dia: `{ date, temperatureMax, temperatureMin, precipitationMm, precipitationProbability, windSpeedMaxKmh, description, level (none, medium, high), risks[{ stageId, stageName, kind (heavy_rain, rain, strong_wind), level, message }] }`; `stages[{ stageId, name, sensitive, basis (explicit, keyword, none), keyword, explicitSetting, activeFrom, activeTo }]`. Sem previsão → `200` com `available: false` e `reason` `no_coordinates` · `weather_disabled` · `provider_unavailable` |
+| PUT | `/stages/{id}/weather-sensitivity` | `{ weatherSensitive: true \| false \| null }` (null → regra por palavras-chave) → `BuildWeatherStageDto`; auditado (`build_stage_weather_sensitivity`) |
+
+## Painel geral (`GET /dashboard`, campos novos — os antigos continuam iguais)
+
+`projects[]` (obras ativas: planejamento, andamento, pausada): `{ projectId, name, clientName, status, actualPercent,
+plannedPercent, expectedEnd, forecastDelivery, daysLate (previsão − término contratado), forecastMethodology, costRealized
+(saídas confirmadas da obra), contractTotal (orçamento aprovado — ou estimado — + aditivos aprovados), cpiLike ((% real ×
+contrato) ÷ realizado; null sem realizado/contrato), openNonConformities { Low, Medium, High, Critical }, openAssistance,
+pendingChangeOrders (rascunho/enviados), lateMaterials, portalPublished, lastDailyLogDate, pendingAiSuggestions }`;
+`totals { activeProjects, lateProjects, costRealized, contractTotal, openNonConformities, openCriticalNonConformities,
+openAssistance, pendingChangeOrders, lateMaterials, publishedPortals, pendingAiSuggestions }`; `topRisks[≤ 10]{ projectId,
+projectName, kind (forecast_late, critical_nonconformity, cost_performance, late_material), severity, message, value }`;
+`asOf`. Número fixo de consultas SQL, qualquer que seja o número de obras (testado).
+
+## Lacunas do frontend
+
+| Método | Rota | Observação |
+|---|---|---|
+| GET | `/models/versions/{id}/source` | `{ versionId, fileName, sourceFormat, sizeBytes, sha256, url, expiresAt }` — URL assinada (15 min) do arquivo **original** privado, só para usuários da empresa (nunca no portal); cada leitura é auditada (`build_model_source_read`); `422 source_not_stored` (RVT/DWG recusado); `503 storage_unavailable`; `Cache-Control: no-store` |
+| GET | `/models/versions/{id}/elements?externalId=a,b,c` | filtro exato por id externo (até 200, separados por vírgula → senão `422 too_many_ids`); combina com os demais filtros |
+| GET | `/models/versions/{id}/elements?zoneId=` | aceita também uma **zona manual** da obra: elementos cuja zona é ela ou descendente na árvore combinada (zonas do modelo + manuais). Elementos do modelo só pertencem às zonas do modelo, então uma zona manual sem zonas do modelo abaixo dela devolve `total: 0` (não é erro); zona desconhecida → `422 invalid_zone` |
+| GET | `/projects/{id}/twin/zones/state?date=` | estado das zonas **manuais** na data (padrão hoje) sem versão de modelo, pelos vínculos de zona (própria ou ancestral mais próxima): `{ date, zones[{ zoneId, name, kind, parentZoneId, state, stageId, stageName }], counts { <estado>, Unbound } }` |
+
+## Plataforma (SuperAdmin)
+
+| Método | Rota | Política | Observação |
+|---|---|---|---|
+| GET | `/api/platform/build/overview` | `Platform` (token da plataforma; token de empresa/impersonação → `403`) | por empresa com o módulo `build` (assinatura ou dados): `moduleStatus`, `projectsActive/Total`, `publishedPortals`, `modelVersionsByStatus`, `jobsFailed`, `jobsPending` (pendentes + em execução), `lastJobError` (sanitizado: sem nomes de arquivo, caminhos ou chaves), `storage { modelsBytes, realityCaptureBytes, documentsBytes, photosBytes (null: fotos do diário não guardam tamanho), photosCount, totalBytes }` (das colunas `SizeBytes`), `ai30d { suggestions, accepted, rejected, acceptedRate, inputTokens, outputTokens, costMicros }` (das sugestões, mesmos números da telemetria), `flags`; `totals` |
+| GET | `/api/platform/build/jobs?status=Failed&take=` | `Platform` | jobs de processamento recentes (`Failed` padrão; `Pending`, `Running`, `Done`), até 200, com o erro sanitizado |
+| POST | `/api/platform/build/jobs/{id}/retry` | `PlatformAdmin` (super_admin com verificação em duas etapas; nunca em impersonação) | cria um job novo do mesmo tipo (o que falhou fica no histórico) e recoloca a versão `Failed` na fila; `422 job_not_failed` · `job_source_missing` · `job_already_queued`; auditado (`build_model_job_retried`, ator da plataforma, `Warning`) |
+
+## OpenAPI do portal
+
+O documento OpenAPI das rotas públicas está em [`openapi-portal.json`](openapi-portal.json) e os tipos TypeScript em
+[`portal-types.ts`](portal-types.ts); como regenerar: [`client-portal-contract.md`](client-portal-contract.md) §8.

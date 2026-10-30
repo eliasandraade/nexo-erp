@@ -161,6 +161,8 @@ public class NexoDbContext : DbContext
     // Wave 5 — AI
     public DbSet<BuildAiSuggestion>          BldAiSuggestions          => Set<BuildAiSuggestion>();
     public DbSet<BuildDocument>              BldDocuments              => Set<BuildDocument>();
+    // Wave 6 — forecasts
+    public DbSet<BuildForecast>              BldForecasts              => Set<BuildForecast>();
 
     // ── Service module (Orken Service — motor de serviços) ───────────────────
     public DbSet<SvcProfessional>     SvcProfessionals => Set<SvcProfessional>();

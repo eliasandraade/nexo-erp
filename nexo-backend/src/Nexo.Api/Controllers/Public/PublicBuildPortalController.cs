@@ -8,7 +8,9 @@ using Nexo.Infrastructure.Modules.Build;
 namespace Nexo.Api.Controllers.Public;
 
 /// <summary>
-/// Public client portal of Orken Build (no login) — contract v1.2, docs/build/client-portal-contract.md.
+/// Public client portal of Orken Build (no login) — contract v1.4, docs/build/client-portal-contract.md. Every action declares
+/// its success type and the shared error body (<see cref="PublicBuildErrorDto"/>) for the OpenAPI document exported to
+/// docs/build/openapi-portal.json.
 /// Address: <c>/api/public/build/{companySlug}/{projectSlug}</c>. Unknown and unpublished portals answer
 /// the same 404. A password portal needs the <c>X-Build-Portal-Session</c> header (token from POST …/session).
 /// Responses are never cached (they may carry signed media URLs).
@@ -17,6 +19,15 @@ namespace Nexo.Api.Controllers.Public;
 [AllowAnonymous]
 [Route("api/public/build/{companySlug}/{projectSlug}")]
 [BuildPortalErrors]
+[Produces("application/json")]
+[ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status400BadRequest)]
+[ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status403Forbidden)]
+[ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status404NotFound)]
+[ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status409Conflict)]
+[ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status422UnprocessableEntity)]
+[ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status429TooManyRequests)]
+[ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status500InternalServerError)]
 public class PublicBuildPortalController : ControllerBase
 {
     private readonly BuildPublicPortalService _portal;
@@ -28,6 +39,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Everything the portal home needs, limited to the sections the company enabled.</summary>
     [HttpGet]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildBootstrapDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildBootstrapDto>> Bootstrap(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -37,6 +49,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Opens a session of a password portal: { token, expiresAt }. Send the token in X-Build-Portal-Session.</summary>
     [HttpPost("session")]
     [EnableRateLimiting("build-portal-auth")]
+    [ProducesResponseType(typeof(PublicBuildSessionDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildSessionDto>> OpenSession(
         string companySlug, string projectSlug, [FromBody] CreatePublicBuildSessionRequest? request, CancellationToken ct)
     {
@@ -47,6 +60,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Ends the session in X-Build-Portal-Session (idempotent).</summary>
     [HttpDelete("session")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> CloseSession(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -57,6 +71,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Newest first: published updates, client-visible daily log summaries, stage progress, photos.</summary>
     [HttpGet("timeline")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildTimelineDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildTimelineDto>> Timeline(
         string companySlug, string projectSlug, [FromQuery] DateTimeOffset? before, [FromQuery] int? take, CancellationToken ct)
     {
@@ -67,6 +82,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Client-visible site photos (signed URLs valid ~15 minutes).</summary>
     [HttpGet("photos")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildPhotosDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildPhotosDto>> Photos(
         string companySlug, string projectSlug, [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct)
     {
@@ -77,6 +93,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Progress curves (actual from daily snapshots, planned, forecast when enabled).</summary>
     [HttpGet("progress")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildProgressDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildProgressDto>> Progress(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -88,6 +105,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Change orders sent to the client (pending) and decided ones (flag changeOrders).</summary>
     [HttpGet("change-orders")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildChangeOrdersDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildChangeOrdersDto>> ChangeOrders(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -97,6 +115,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client approves/rejects a pending change order — password portal with a session only.</summary>
     [HttpPost("change-orders/{publicId:guid}/decision")]
     [EnableRateLimiting("build-portal-decision")]
+    [ProducesResponseType(typeof(PublicBuildChangeOrderDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildChangeOrderDto>> DecideChangeOrder(string companySlug, string projectSlug, Guid publicId,
         [FromBody] PublicBuildChangeOrderDecisionRequest? request, CancellationToken ct)
     {
@@ -107,6 +126,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client's selections and their options (flag selections).</summary>
     [HttpGet("selections")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildSelectionsDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildSelectionsDto>> Selections(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -116,6 +136,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client chooses an option — password portal with a session, selection open, before the deadline.</summary>
     [HttpPost("selections/{publicId:guid}/choice")]
     [EnableRateLimiting("build-portal-decision")]
+    [ProducesResponseType(typeof(PublicBuildSelectionDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildSelectionDto>> ChooseSelection(string companySlug, string projectSlug, Guid publicId,
         [FromBody] PublicBuildSelectionChoiceRequest? request, CancellationToken ct)
     {
@@ -126,6 +147,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Approved measurements (flag measurements; values only with financialSummary).</summary>
     [HttpGet("measurements")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildMeasurementsDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildMeasurementsDto>> Measurements(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -137,6 +159,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The handover: status, dates, documents (signed URLs), walkthrough summary (flag postConstruction).</summary>
     [HttpGet("handover")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildHandoverDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildHandoverDto>> Handover(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -146,6 +169,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client accepts the handover — password portal with a session only; once.</summary>
     [HttpPost("handover/accept")]
     [EnableRateLimiting("build-portal-decision")]
+    [ProducesResponseType(typeof(PublicBuildHandoverDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildHandoverDto>> AcceptHandover(string companySlug, string projectSlug,
         [FromBody] PublicBuildHandoverAcceptRequest? request, CancellationToken ct)
     {
@@ -156,6 +180,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Warranty terms (started on the delivery) with expiry and whether active today.</summary>
     [HttpGet("warranty")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildWarrantyDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildWarrantyDto>> Warranty(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -165,6 +190,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The project's technical assistance requests (status and timeline) and the accepted categories.</summary>
     [HttpGet("assistance")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildAssistanceListDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildAssistanceListDto>> Assistance(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -174,6 +200,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client opens a request — password portal with a session, after the delivery.</summary>
     [HttpPost("assistance")]
     [EnableRateLimiting("build-portal-decision")]
+    [ProducesResponseType(typeof(PublicBuildAssistanceDto), StatusCodes.Status201Created)]
     public async Task<ActionResult<PublicBuildAssistanceDto>> OpenAssistance(string companySlug, string projectSlug,
         [FromBody] PublicBuildAssistanceOpenRequest? request, CancellationToken ct)
     {
@@ -190,6 +217,9 @@ public class PublicBuildPortalController : ControllerBase
     [EnableRateLimiting("build-portal-decision")]
     [RequestSizeLimit(MaxUploadBytes + 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes + 1024 * 1024)]
+    [ProducesResponseType(typeof(PublicBuildAssistanceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
+    [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<PublicBuildAssistanceDto>> AddAssistancePhoto(string companySlug, string projectSlug, Guid publicId,
         IFormFile? file, CancellationToken ct)
     {
@@ -212,6 +242,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client rates a resolved request (1–5), once.</summary>
     [HttpPost("assistance/{publicId:guid}/feedback")]
     [EnableRateLimiting("build-portal-decision")]
+    [ProducesResponseType(typeof(PublicBuildAssistanceDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildAssistanceDto>> AssistanceFeedback(string companySlug, string projectSlug, Guid publicId,
         [FromBody] PublicBuildAssistanceFeedbackRequest? request, CancellationToken ct)
     {
@@ -227,6 +258,7 @@ public class PublicBuildPortalController : ControllerBase
     /// </summary>
     [HttpGet("twin")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildTwinDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildTwinDto>> Twin(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();
@@ -236,6 +268,8 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>State map on a date for the time slider (yyyy-MM-dd, project start … today). ETag; 304 when unchanged.</summary>
     [HttpGet("twin/state")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildTwinStateDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status304NotModified)]
     public async Task<IActionResult> TwinState(string companySlug, string projectSlug, [FromQuery] DateOnly? date, CancellationToken ct)
     {
         var dto = await _portal.GetTwinStateAsync(companySlug, projectSlug, SessionToken, date, ct);
@@ -245,6 +279,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Client-visible site captures (flag realityCapture), newest first, as signed URLs.</summary>
     [HttpGet("reality-captures")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildRealityCapturesDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildRealityCapturesDto>> RealityCaptures(string companySlug, string projectSlug,
         [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct)
     {
@@ -255,6 +290,7 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Client-visible project documents (flag documents, v1.4) as signed URLs (~15 min). Never internal fields.</summary>
     [HttpGet("documents")]
     [EnableRateLimiting("build-portal")]
+    [ProducesResponseType(typeof(PublicBuildDocumentsDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildDocumentsDto>> Documents(string companySlug, string projectSlug, CancellationToken ct)
     {
         NoStore();

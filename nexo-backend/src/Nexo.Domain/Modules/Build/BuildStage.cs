@@ -28,6 +28,11 @@ public class BuildStage : TenantEntity
     /// Must be &gt; 0; existing rows default to 1 (all stages equal).
     /// </summary>
     public decimal          Weight           { get; private set; } = 1m;
+    /// <summary>
+    /// Whether the stage's work is sensitive to the weather (rain, wind) — Wave 6. Null = decided by the configurable keyword
+    /// list on the stage name (concretagem, fundação, cobertura…); true/false = set explicitly by the company.
+    /// </summary>
+    public bool?            WeatherSensitive { get; private set; }
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
@@ -131,6 +136,13 @@ public class BuildStage : TenantEntity
         PlannedEndDate = next;
         SetUpdatedAt();
         return true;
+    }
+
+    /// <summary>Sets (true/false) or clears (null = keyword default) the weather sensitivity of the stage.</summary>
+    public void SetWeatherSensitive(bool? sensitive)
+    {
+        WeatherSensitive = sensitive;
+        SetUpdatedAt();
     }
 
     public void Reorder(int newOrder)

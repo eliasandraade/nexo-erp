@@ -19,47 +19,147 @@ public sealed class BuildProgressEngine
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly NexoDbContext _db;
+    private readonly BuildForecastOptions _forecast;
 
-    public BuildProgressEngine(NexoDbContext db) => _db = db;
+    public BuildProgressEngine(NexoDbContext db, BuildForecastOptions forecast)
+    {
+        _db = db;
+        _forecast = forecast;
+    }
 
+    /// <summary>
+    /// Weighted-stages result (<see cref="BuildProgressCalculator"/>) and, when the company has BuildPredict on, the productivity
+    /// forecast that replaced its forecast dates (see <see cref="ApplyForecast"/>).
+    /// </summary>
     public sealed record Computation(
         BuildProject Project,
         IReadOnlyList<BuildProgressStageInput> Inputs,
         BuildProgressResult Result,
-        BuildScheduleRevision? Plan);
+        BuildScheduleRevision? Plan)
+    {
+        /// <summary>Progress events of the project (oldest first) — the forecast's productivity history.</summary>
+        public IReadOnlyList<BuildForecastEvent> Events { get; init; } = [];
+        /// <summary>The productivity/1 forecast (without change-order/weather factors); null when BuildPredict is off.</summary>
+        public BuildForecastResult? Forecast { get; init; }
+        public bool PredictEnabled { get; init; }
+        /// <summary>The weather sensitivity setting of each stage (null = keyword default).</summary>
+        public IReadOnlyDictionary<Guid, bool?> WeatherSensitive { get; init; } = new Dictionary<Guid, bool?>();
+    }
+
+    /// <summary>Methodology reported when the productivity forecast replaced the Wave 1 forecast dates.</summary>
+    public const string CombinedMethodology = BuildProgressCalculator.Methodology + "+" + BuildForecastEngine.Methodology;
 
     private IQueryable<T> Q<T>(Guid tenantId, bool bypassFilters) where T : TenantEntity
         => (bypassFilters ? _db.Set<T>().IgnoreQueryFilters() : _db.Set<T>()).Where(x => x.TenantId == tenantId);
 
     public async Task<Computation?> ComputeAsync(Guid tenantId, Guid projectId, DateOnly today, bool bypassFilters,
         CancellationToken ct)
+        => (await ComputeManyAsync(tenantId, [projectId], today, bypassFilters, ct)).GetValueOrDefault(projectId);
+
+    /// <summary>
+    /// The computation of several projects of one tenant with a fixed number of queries (projects, stages, latest plans,
+    /// BuildPredict flag, progress events) — used by the portfolio dashboard without N+1.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<Guid, Computation>> ComputeManyAsync(Guid tenantId, IReadOnlyCollection<Guid> projectIds,
+        DateOnly today, bool bypassFilters, CancellationToken ct)
     {
-        var project = await Q<BuildProject>(tenantId, bypassFilters).AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == projectId, ct);
-        if (project is null) return null;
+        var ids = projectIds.Distinct().ToList();
+        if (ids.Count == 0) return new Dictionary<Guid, Computation>();
+        var projects = await Q<BuildProject>(tenantId, bypassFilters).AsNoTracking()
+            .Where(p => ids.Contains(p.Id)).ToListAsync(ct);
+        if (projects.Count == 0) return new Dictionary<Guid, Computation>();
+        var found = projects.Select(p => p.Id).ToList();
 
         var stages = await Q<BuildStage>(tenantId, bypassFilters).AsNoTracking()
-            .Where(s => s.ProjectId == projectId).ToListAsync(ct);
-        var plan = await Q<BuildScheduleRevision>(tenantId, bypassFilters).AsNoTracking()
-            .Where(r => r.ProjectId == projectId).OrderByDescending(r => r.Number).FirstOrDefaultAsync(ct);
+            .Where(s => found.Contains(s.ProjectId)).ToListAsync(ct);
+        var revisions = Q<BuildScheduleRevision>(tenantId, bypassFilters);
+        var plans = await revisions.AsNoTracking()
+            .Where(r => found.Contains(r.ProjectId)
+                        && r.Number == revisions.Where(x => x.ProjectId == r.ProjectId).Max(x => x.Number))
+            .ToListAsync(ct);
+        var predict = await PredictEnabledAsync(tenantId, ct);
+        var events = predict
+            ? await Q<BuildStageProgressEvent>(tenantId, bypassFilters).AsNoTracking()
+                .Where(e => found.Contains(e.ProjectId))
+                .OrderBy(e => e.EffectiveDate).ThenBy(e => e.CreatedAt)
+                .Select(e => new { e.ProjectId, e.StageId, e.EffectiveDate, e.CreatedAt, e.PreviousPercent, e.Percent })
+                .ToListAsync(ct)
+            : [];
 
-        var frozen = plan is null
-            ? new Dictionary<Guid, BuildScheduleItemDto>()
-            : ParseItems(plan.ItemsJson).GroupBy(i => i.StageId).ToDictionary(g => g.Key, g => g.First());
+        var stagesByProject = stages.GroupBy(s => s.ProjectId).ToDictionary(g => g.Key, g => g.ToList());
+        var planByProject = plans.GroupBy(p => p.ProjectId).ToDictionary(g => g.Key, g => g.OrderByDescending(p => p.Number).First());
+        var eventsByProject = events.GroupBy(e => e.ProjectId).ToDictionary(g => g.Key,
+            g => (IReadOnlyList<BuildForecastEvent>)g.Select(e => new BuildForecastEvent(e.StageId, e.EffectiveDate, e.CreatedAt,
+                e.PreviousPercent, e.Percent)).ToList());
 
-        var inputs = stages.Select(s =>
+        var result = new Dictionary<Guid, Computation>(projects.Count);
+        foreach (var project in projects)
         {
-            var inPlan = frozen.TryGetValue(s.Id, out var item);
-            return new BuildProgressStageInput(
-                s.Id, s.Name, s.Order,
-                inPlan && item!.Weight > 0m ? item.Weight : s.Weight,
-                s.ProgressPercent, s.Status,
-                inPlan ? item!.PlannedStart : s.PlannedStartDate,
-                inPlan ? item!.PlannedEnd : s.PlannedEndDate,
-                s.ActualStartDate, s.ActualEndDate);
-        }).ToList();
+            var plan = planByProject.GetValueOrDefault(project.Id);
+            var projectStages = stagesByProject.GetValueOrDefault(project.Id) ?? [];
+            var frozen = plan is null
+                ? new Dictionary<Guid, BuildScheduleItemDto>()
+                : ParseItems(plan.ItemsJson).GroupBy(i => i.StageId).ToDictionary(g => g.Key, g => g.First());
 
-        return new Computation(project, inputs, BuildProgressCalculator.Calculate(inputs, today), plan);
+            var inputs = projectStages.Select(s =>
+            {
+                var inPlan = frozen.TryGetValue(s.Id, out var item);
+                return new BuildProgressStageInput(
+                    s.Id, s.Name, s.Order,
+                    inPlan && item!.Weight > 0m ? item.Weight : s.Weight,
+                    s.ProgressPercent, s.Status,
+                    inPlan ? item!.PlannedStart : s.PlannedStartDate,
+                    inPlan ? item!.PlannedEnd : s.PlannedEndDate,
+                    s.ActualStartDate, s.ActualEndDate);
+            }).ToList();
+
+            var baseResult = BuildProgressCalculator.Calculate(inputs, today);
+            var projectEvents = eventsByProject.GetValueOrDefault(project.Id) ?? [];
+            BuildForecastResult? forecast = predict
+                ? BuildForecastEngine.Calculate(new BuildForecastInput(today, inputs, projectEvents, _forecast.Calendar, _forecast.WindowDays))
+                : null;
+            result[project.Id] = new Computation(project, inputs, forecast is null ? baseResult : ApplyForecast(baseResult, forecast), plan)
+            {
+                Events = projectEvents,
+                Forecast = forecast,
+                PredictEnabled = predict,
+                WeatherSensitive = projectStages.ToDictionary(s => s.Id, s => s.WeatherSensitive),
+            };
+        }
+        return result;
+    }
+
+    private async Task<bool> PredictEnabledAsync(Guid tenantId, CancellationToken ct)
+        => await _db.BldTenantSettings.IgnoreQueryFilters().AsNoTracking().Where(s => s.TenantId == tenantId)
+               .Select(s => (bool?)s.BuildPredictEnabled).FirstOrDefaultAsync(ct)
+           ?? BuildTenantSettings.DefaultBuildPredict;
+
+    /// <summary>
+    /// Replaces the Wave 1 forecast dates (weighted-stages/1: observed average rate in calendar days) by the productivity forecast
+    /// (productivity/1: working days, recent window, sequence) when it has a delivery: forecast start, end and delay per stage,
+    /// forecast delivery and the forecast % at the planned delivery. Planned and actual figures are untouched. Without a
+    /// productivity delivery the Wave 1 result stays (fallback).
+    /// </summary>
+    public static BuildProgressResult ApplyForecast(BuildProgressResult r, BuildForecastResult f)
+    {
+        if (f.ForecastDelivery is null) return r;
+        var byStage = f.Stages.ToDictionary(s => s.StageId);
+        var stages = r.Stages.Select(s => byStage.TryGetValue(s.StageId, out var fs) && fs.ForecastEnd is not null
+            ? s with
+            {
+                ForecastStart = fs.ForecastStart,
+                ForecastEnd = fs.ForecastEnd,
+                DelayDays = fs.DelayDays,
+                Flags = s.Flags.Where(x => x != BuildProgressCalculator.FlagNoForecast).ToList(),
+            }
+            : s).ToList();
+        var merged = r with { Stages = stages, ForecastDelivery = f.ForecastDelivery, Methodology = CombinedMethodology };
+        return merged with
+        {
+            ForecastPercent = r.PlannedDelivery is { } pd
+                ? BuildProgressCalculator.ForecastPercentAt(merged, pd < r.Date ? r.Date : pd)
+                : r.ForecastPercent,
+        };
     }
 
     public static IReadOnlyList<BuildScheduleItemDto> ParseItems(string json)

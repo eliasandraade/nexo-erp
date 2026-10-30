@@ -90,6 +90,30 @@ public sealed class BuildModelService
             v.GeometrySource.ToString(), v.ViewerSource.ToString());
     }
 
+    /// <summary>
+    /// Signed URL (15 min) of the version's private source file (IFC, GLB, PDF…) for the company's own users — never offered
+    /// to the portal. Every read is audited. 422 source_not_stored when the file was refused (RVT/DWG); 503 when storage is off.
+    /// </summary>
+    public async Task<BuildModelSourceDto> SourceAsync(Guid versionId, CancellationToken ct)
+    {
+        var v = await LoadVersionAsync(versionId, tracking: false, ct);
+        if (v.SourceFileKey is not { } key || !StorageKeys.IsOfTenant(key, Tid))
+            throw new DomainException("O arquivo desta versão não foi armazenado (formato recusado).", "source_not_stored");
+        if (!_flags.StorageEnabled) throw new BuildStorageUnavailableException("O armazenamento de arquivos está indisponível.");
+        string url;
+        try { url = _storage.GetSignedUrl(key, PrivateFileUrls.Ttl); }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not sign a model source URL.");
+            throw new BuildStorageUnavailableException("Não foi possível gerar o link do arquivo agora. Tente de novo.", ex);
+        }
+        _audit.Record(AuditActions.BuildModelSourceRead, "ModelVersion", v.Id,
+            $"Link do arquivo original da versão {v.Number} gerado.", new { projectId = v.ProjectId, modelId = v.ModelId, format = v.SourceFormat.ToString() });
+        await _db.SaveChangesAsync(ct);
+        return new BuildModelSourceDto(v.Id, v.SourceFileName, v.SourceFormat.ToString(), v.SizeBytes, v.Sha256, url,
+            DateTimeOffset.UtcNow.Add(PrivateFileUrls.Ttl));
+    }
+
     // ── Uploads ───────────────────────────────────────────────────────────────
 
     public async Task<BuildModelUploadResultDto> CreateModelAsync(Guid projectId, string? name, string? discipline,

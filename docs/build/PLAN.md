@@ -121,3 +121,15 @@ autorização (o merge na `master` publica em produção).
   risco de prazo/custo determinístico (`BuildRiskAnalyzer`: SPI/CPI/EAC) com explicação por LLM, inteligência de documentos
   (PDF/imagem, visão). Documentos da obra (CRUD, magic bytes, 20 MB) e portal v1.4 (`documents`). Job opcional de resumo
   semanal. Docs: `ai.md`, `internal-api.md` (# Wave 5), `client-portal-contract.md` (v1.4).
+- **Wave 6 — concluída (backend).** Migration `BuildWave6Forecast` (aditiva: `bld_forecasts`, `bld_stages.weather_sensitive`).
+  Motor de previsão determinístico `productivity/1` (`BuildForecastEngine`: produtividade em Δ%/dia útil pela janela de 21
+  dias → ritmo geral → ritmo planejado; calendário seg–sáb configurável com feriados nacionais em tabela estática;
+  sequência pela ordem das etapas com atraso herdado; confiança 0..1; fatores — produtividade baixa, atraso herdado,
+  aditivos pendentes e clima como risco, nunca aplicados); previsão gravada com histórico (manual e job diário com
+  BuildPredict) e usada pelo progresso da Wave 1 (`weighted-stages/1` como fallback). Clima por atividade (Open-Meteo diário
+  com cache, etapas sensíveis por flag ou palavra-chave, limiares de chuva/vento, "previsão, não certeza"). Painel geral
+  (carteira de obras, totais e principais riscos, sem N+1 — testado por contagem de SQL). SuperAdmin: visão do Build por
+  empresa, jobs com erro sanitizado e reprocessamento auditado (`PlatformAdmin` + MFA). Lacunas: URL assinada do arquivo
+  original (auditada, nunca no portal), filtro por id externo e por zona manual, estado de zonas manuais sem modelo.
+  OpenAPI do portal (`openapi-portal.json`) e tipos TS (`portal-types.ts`) gerados e conferidos por teste. Docs:
+  `forecast.md`, `internal-api.md` (# Wave 6), `client-portal-contract.md` (v1.4, revisão Wave 6).
