@@ -36,7 +36,7 @@ describe("NewProjectDialog — tracking mode", () => {
     fillRequired();
     fireEvent.click(threeD);
     expect(threeD).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByText(/envio do modelo 3D será habilitado em breve/)).toBeInTheDocument();
+    expect(screen.getByText(/abra a aba “Gêmeo digital” para enviar o projeto/)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Latitude"), { target: { value: "-23,55" } });
     fireEvent.change(screen.getByLabelText("Longitude"), { target: { value: "-46.63" } });

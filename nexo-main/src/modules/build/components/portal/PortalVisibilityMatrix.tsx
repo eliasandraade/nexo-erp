@@ -8,7 +8,7 @@ type Flag = keyof BuildPortalVisibility;
 
 interface Item { flag: Flag; label: string; hint?: string; soon?: boolean }
 
-const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boolean }> = [
+const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boolean; note?: string }> = [
   {
     title: "Progresso",
     items: [
@@ -56,13 +56,19 @@ const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boole
     ],
   },
   {
+    title: "3D e captura",
+    note: "O cliente vê só o arquivo de visualização (GLB) e as cores do andamento — nunca o projeto original (IFC, RVT, DWG, PDF).",
+    items: [
+      { flag: "model3d",        label: "Modelo 3D / gêmeo digital", hint: "Modelo, planta mapeada ou representação simplificada, com o estado por data." },
+      { flag: "realityCapture", label: "Captura da realidade", hint: "Só as capturas marcadas como visíveis (fotos, 360°, vídeos, drone)." },
+    ],
+  },
+  {
     title: "Outros",
     items: [
       { flag: "clientUpdates",  label: "Atualizações para o cliente" },
       { flag: "contact",        label: "Contato da obra" },
       { flag: "documents",      label: "Documentos", soon: true },
-      { flag: "model3d",        label: "Modelo 3D", soon: true },
-      { flag: "realityCapture", label: "Captura da realidade (scan)", soon: true },
       { flag: "risks",          label: "Riscos", soon: true },
       { flag: "team",           label: "Equipe", soon: true },
     ],
@@ -88,6 +94,7 @@ export function PortalVisibilityMatrix({ value, onChange }: Props) {
               Atenção: o cliente passará a ver valores financeiros da obra. Confira se os lançamentos estão corretos antes de publicar.
             </div>
           )}
+          {group.note && <p className="text-[11px] text-muted-foreground" data-testid="portal-3d-note">{group.note}</p>}
           {group.items.map((item) => {
             const id = `portal-vis-${item.flag}`;
             return (

@@ -74,6 +74,20 @@ describe("BuildPortalTab", () => {
     expect(req).not.toHaveProperty("password");
   });
 
+  it("Wave 4: '3D e captura' toggles are live (not 'em breve') and the note says the client never gets the original project", async () => {
+    vi.mocked(portalApi.updateProjectPortal).mockImplementation(async (_id, req) => ({ ...portal, ...req }));
+    renderTab(<BuildPortalTab projectId="p1" />);
+    const model = await screen.findByRole("switch", { name: /Modelo 3D/ });
+    const capture = screen.getByRole("switch", { name: /Captura da realidade/ });
+    expect(model).toBeEnabled();
+    expect(capture).toBeEnabled();
+    expect(screen.getByTestId("portal-3d-note")).toHaveTextContent("nunca o projeto original");
+    fireEvent.click(model);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar portal" }));
+    await waitFor(() => expect(portalApi.updateProjectPortal).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(portalApi.updateProjectPortal).mock.calls[0][1].visibility).toMatchObject({ model3d: true, realityCapture: false });
+  });
+
   it("Wave 2 flags: aditivos and escolhas on by default, medições off; turning medições on is saved", async () => {
     vi.mocked(portalApi.updateProjectPortal).mockImplementation(async (_id, req) => ({ ...portal, ...req }));
     renderTab(<BuildPortalTab projectId="p1" />);

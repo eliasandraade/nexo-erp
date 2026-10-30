@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { newHandoffNonce, offerImpersonation } from "@/services/impersonation-handoff";
 import { ImpersonationReasonDialog } from "../components/ImpersonationReasonDialog";
 import { ResetPasswordDialog } from "../components/ResetPasswordDialog";
+import { BuildSettingsCard } from "../components/BuildSettingsCard";
 import { platformErrorMessage } from "../services/platformErrors";
 
 import {
@@ -386,6 +387,7 @@ export default function PlatformTenantDetailPage() {
               </div>
             );
           })}
+          <BuildSettingsCard tenantId={tenant.id} />
         </div>
       )}
 

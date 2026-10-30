@@ -60,8 +60,8 @@ export function TrackingModeChoice({ value, onChange }: Props) {
       </div>
       {value === "ThreeD" && (
         <p className="rounded-md border border-dashed border-border bg-muted/30 p-2 text-xs text-muted-foreground">
-          O envio do modelo 3D será habilitado em breve. Por enquanto a obra é acompanhada pelas etapas, diário e
-          portal do cliente, e o modo 3D fica registrado para quando o recurso chegar.
+          Depois de criar a obra, abra a aba “Gêmeo digital” para enviar o projeto (IFC recomendado; GLB, PDF ou
+          imagem também servem). Sem projeto, dá para usar uma representação simplificada com as medidas que você tiver.
         </p>
       )}
     </fieldset>

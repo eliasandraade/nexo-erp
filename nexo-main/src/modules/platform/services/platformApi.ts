@@ -264,3 +264,30 @@ export function clientPath(path: string): string {
   if (path === "/api") return "/";
   return path.startsWith("/api/") ? path.slice(4) : path;
 }
+
+// ─── Orken Build feature flags (per company) ──────────────────────────────────
+
+/** Build3D / BuildAI / BuildVision / BuildPredict of a company (GET/PUT /api/platform/tenants/{id}/build-settings). */
+export interface PlatformBuildSettings {
+  tenantId:            string;
+  build3DEnabled:      boolean;
+  buildAiEnabled:      boolean;
+  buildVisionEnabled:  boolean;
+  buildPredictEnabled: boolean;
+  /** False while no row exists (the defaults apply). */
+  customized:          boolean;
+  updatedByName:       string | null;
+  updatedAt:           string | null;
+}
+
+/** Only the flags sent change. */
+export type UpdatePlatformBuildSettings = Partial<Pick<PlatformBuildSettings,
+  "build3DEnabled" | "buildAiEnabled" | "buildVisionEnabled" | "buildPredictEnabled">>;
+
+export async function fetchTenantBuildSettings(tenantId: string): Promise<PlatformBuildSettings> {
+  return apiClient.get<PlatformBuildSettings>(`/platform/tenants/${tenantId}/build-settings`);
+}
+
+export async function updateTenantBuildSettings(tenantId: string, req: UpdatePlatformBuildSettings): Promise<PlatformBuildSettings> {
+  return apiClient.put<PlatformBuildSettings>(`/platform/tenants/${tenantId}/build-settings`, req);
+}

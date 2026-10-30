@@ -21,7 +21,7 @@ export type BuildStageStatus =
   | "InProgress"
   | "Completed";
 
-/** How the construtora follows the project: standard tracking, or 3D (model onboarding arrives later). */
+/** How the construtora follows the project: standard tracking, or 3D (model onboarding in the "Gêmeo digital" tab). */
 export type BuildTrackingMode = "Standard" | "ThreeD";
 
 /** Kind of a budget / change-order line (BuildCostKind). Old items come as "Other". */

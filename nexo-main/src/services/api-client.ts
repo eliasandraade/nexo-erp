@@ -343,9 +343,63 @@ async function requestForm<T>(path: string, form: FormData, isRetry = false): Pr
   return res.json() as Promise<T>;
 }
 
+/** Upload progress: bytes sent of the total (total 0 when the browser cannot tell). */
+export type UploadProgressHandler = (loaded: number, total: number) => void;
+
+function parseJson(text: string): ErrorBody | null {
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as ErrorBody;
+  } catch {
+    return null;
+  }
+}
+
+function sendXhr(method: "POST" | "PUT", url: string, form: FormData, token: string | null,
+  onProgress?: UploadProgressHandler): Promise<{ status: number; statusText: string; text: string }> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    if (onProgress) xhr.upload.onprogress = (e) => onProgress(e.loaded, e.lengthComputable ? e.total : 0);
+    xhr.onload = () => resolve({ status: xhr.status, statusText: xhr.statusText, text: xhr.responseText });
+    xhr.onerror = () => reject(new ApiError(0, "Falha de conexão ao enviar o arquivo."));
+    xhr.onabort = () => reject(new ApiError(0, "Envio cancelado."));
+    xhr.send(form);
+  });
+}
+
+/**
+ * Multipart upload through XMLHttpRequest — fetch has no upload progress. Same token handling (one renewal on 401)
+ * and the same ApiError shape as the JSON calls.
+ */
+async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormData, onProgress?: UploadProgressHandler,
+  isRetry = false): Promise<T> {
+  const token = getAccessToken();
+  const res = await sendXhr(method, `${BASE_URL}${path}`, form, token, onProgress);
+  const body = parseJson(res.text);
+
+  if (res.status === 401) {
+    if (await recoverFromUnauthorized(token, body?.code, isRetry)) return uploadForm<T>(method, path, form, onProgress, true);
+    throw new ApiError(401, body?.error ?? body?.message ?? "Unauthorized", body?.code);
+  }
+  if (res.status < 200 || res.status >= 300) {
+    const details = Array.isArray(body?.details) && body.details.length > 0 ? body.details.map(String) : undefined;
+    const serverMessage = body?.error ?? body?.message ?? undefined;
+    let message = details ? details.join(" | ") : serverMessage ?? res.statusText;
+    if (res.status >= 500 && body?.requestId) message = `${message} (código: ${body.requestId})`;
+    throw new ApiError(res.status, message, body?.code, body?.requestId, details, serverMessage);
+  }
+  if (res.status === 204 || !res.text) return undefined as unknown as T;
+  return JSON.parse(res.text) as T;
+}
+
 // ── Public client ─────────────────────────────────────────────────────────────
 
 export const apiClient = {
+  /** Multipart POST/PUT with upload progress (large files: models, reality capture). */
+  upload:   <T>(method: "POST" | "PUT", path: string, form: FormData, onProgress?: UploadProgressHandler) =>
+    uploadForm<T>(method, path, form, onProgress),
   get:      <T>(path: string)                   => request<T>("GET",    path),
   post:     <T>(path: string, body?: unknown)   => request<T>("POST",   path, body),
   put:      <T>(path: string, body: unknown)    => request<T>("PUT",    path, body),

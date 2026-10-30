@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Pencil, Undo2,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
   MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2, Globe,
-  FilePlus2, ListChecks, Package, Ruler, ShieldCheck, KeyRound,
+  FilePlus2, ListChecks, Package, Ruler, ShieldCheck, KeyRound, Box,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,9 @@ import { ApiError } from "@/services/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
 
+// "Gêmeo digital" in its own chunk (the 3D viewer inside it is a further lazy chunk)
+const DigitalTwinTab = lazy(() => import("../components/twin/DigitalTwinTab").then((m) => ({ default: m.DigitalTwinTab })));
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(v: number | null | undefined) {
@@ -67,16 +70,17 @@ function fmtPct(v: number) {
 }
 
 type Tab =
-  | "geral" | "etapas" | "progresso" | "orcamento" | "aditivos" | "escolhas" | "materiais" | "medicoes"
+  | "geral" | "etapas" | "progresso" | "gemeo" | "orcamento" | "aditivos" | "escolhas" | "materiais" | "medicoes"
   | "qualidade" | "pos-obra" | "diario" | "financeiro" | "portal";
 
 // ── Tab selector ──────────────────────────────────────────────────────────────
 
-function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function TabBar({ active, onChange, threeD }: { active: Tab; onChange: (t: Tab) => void; threeD?: boolean }) {
   const tabs: Array<{ key: Tab; label: string; icon: React.ElementType }> = [
     { key: "geral",      label: "Geral",       icon: HardHat },
     { key: "etapas",     label: "Etapas",      icon: CheckCircle },
     { key: "progresso",  label: "Progresso",   icon: TrendingUp },
+    { key: "gemeo",      label: "Gêmeo digital", icon: Box },
     { key: "orcamento",  label: "Orçamento",   icon: FileText },
     { key: "aditivos",   label: "Aditivos",    icon: FilePlus2 },
     { key: "escolhas",   label: "Escolhas do cliente", icon: ListChecks },
@@ -104,6 +108,9 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
         >
           <Icon className="h-3.5 w-3.5" />
           {label}
+          {key === "gemeo" && threeD && (
+            <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">3D</span>
+          )}
         </button>
       ))}
     </div>
@@ -993,7 +1000,7 @@ export default function BuildProjectDetailPage() {
           <ProjectStatusBadge status={project.status} />
         </div>
 
-        <TabBar active={tab} onChange={setTab} />
+        <TabBar active={tab} onChange={setTab} threeD={project.trackingMode === "ThreeD"} />
       </div>
 
       {/* Tab content */}
@@ -1001,6 +1008,11 @@ export default function BuildProjectDetailPage() {
         {tab === "geral"      && <TabGeral project={project} />}
         {tab === "etapas"     && <BuildStagesTab projectId={project.id} />}
         {tab === "progresso"  && <BuildProgressTab projectId={project.id} />}
+        {tab === "gemeo"      && (
+          <Suspense fallback={<div className="h-40 rounded-md bg-muted animate-pulse" />}>
+            <DigitalTwinTab project={project} />
+          </Suspense>
+        )}
         {tab === "orcamento"  && <BuildBudgetTab project={project} />}
         {tab === "aditivos"   && <ChangeOrdersTab projectId={project.id} />}
         {tab === "escolhas"   && <SelectionsTab projectId={project.id} onOpenChangeOrders={() => setTab("aditivos")} />}
