@@ -217,6 +217,63 @@ export interface BuildDashboardDto {
   balance:          number;
   avgStageProgress: number;
   recentExpenses:   BuildRecentExpenseDto[];
+  // ── Wave 6 (additive): portfolio of the active projects, totals and top risks ──
+  projects?:        BuildDashboardProjectDto[] | null;
+  totals?:          BuildDashboardTotalsDto | null;
+  topRisks?:        BuildDashboardRiskDto[] | null;
+  asOf?:            string | null;
+}
+
+/** One active project (planning, in progress, paused) of the portfolio. */
+export interface BuildDashboardProjectDto {
+  projectId:            string;
+  name:                 string;
+  clientName:           string;
+  status:               BuildProjectStatus;
+  actualPercent:        number;
+  plannedPercent:       number | null;
+  expectedEnd:          string | null;
+  forecastDelivery:     string | null;
+  /** Forecast − contractual end (calendar days, positive = late); null without both dates. */
+  daysLate:             number | null;
+  forecastMethodology:  string;
+  costRealized:         number;
+  contractTotal:        number | null;
+  /** (actual % × contract) ÷ realized; null without realized cost or contract. */
+  cpiLike:              number | null;
+  /** Keys Low, Medium, High, Critical. */
+  openNonConformities:  Record<string, number>;
+  openAssistance:       number;
+  pendingChangeOrders:  number;
+  lateMaterials:        number;
+  portalPublished:      boolean;
+  lastDailyLogDate:     string | null;
+  pendingAiSuggestions: number;
+}
+
+export interface BuildDashboardTotalsDto {
+  activeProjects:              number;
+  lateProjects:                number;
+  costRealized:                number;
+  contractTotal:               number;
+  openNonConformities:         number;
+  openCriticalNonConformities: number;
+  openAssistance:              number;
+  pendingChangeOrders:         number;
+  lateMaterials:               number;
+  publishedPortals:            number;
+  pendingAiSuggestions:        number;
+}
+
+export type BuildDashboardRiskKind = "forecast_late" | "critical_nonconformity" | "cost_performance" | "late_material" | (string & {});
+
+export interface BuildDashboardRiskDto {
+  projectId:   string;
+  projectName: string;
+  kind:        BuildDashboardRiskKind;
+  severity:    "high" | "medium" | (string & {});
+  message:     string;
+  value:       number | null;
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────

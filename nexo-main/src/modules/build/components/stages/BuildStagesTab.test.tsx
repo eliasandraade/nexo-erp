@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { ApiError } from "@/services/api-client";
 import { BuildStagesTab } from "./BuildStagesTab";
 import * as buildApi from "../../api/build.api";
+import * as forecastApi from "../../api/build-forecast.api";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -18,6 +19,22 @@ vi.mock("../../api/build.api", async (importOriginal) => ({
   deleteStage:         vi.fn(),
   updateStageProgress: vi.fn(),
 }));
+
+vi.mock("../../api/build-forecast.api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/build-forecast.api")>()),
+  fetchProjectWeather:         vi.fn(),
+  setStageWeatherSensitivity:  vi.fn(),
+}));
+
+const weatherStage = (over: Partial<forecastApi.BuildWeatherStageDto> = {}): forecastApi.BuildWeatherStageDto => ({
+  stageId: "s1", name: "Fundação", sensitive: true, basis: "keyword", keyword: "fundacao", explicitSetting: null,
+  activeFrom: null, activeTo: null, ...over,
+});
+
+const weather = (stages: forecastApi.BuildWeatherStageDto[]): forecastApi.BuildWeatherDto => ({
+  projectId: "p1", available: false, reason: "no_coordinates", message: "Sem local.", source: "Open-Meteo", disclaimer: "Previsão.",
+  today: null, days: [], stages,
+});
 
 const stage = (id: string, name: string, over: Partial<buildApi.BuildStageDto> = {}): buildApi.BuildStageDto => ({
   id, projectId: "p1", name, description: null, order: 0, status: "Pending", plannedStartDate: null,
@@ -37,7 +54,10 @@ function renderTab(ui: ReactNode) {
 }
 
 describe("BuildStagesTab", () => {
-  beforeEach(() => { vi.spyOn(window, "confirm").mockReturnValue(true); });
+  beforeEach(() => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(forecastApi.fetchProjectWeather).mockResolvedValue(weather([weatherStage()]));
+  });
   afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); });
 
   it("lists the stages with status, weight, planned dates and progress", async () => {
@@ -249,5 +269,35 @@ describe("BuildStagesTab", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Atualizar progresso de Estrutura" }));
     expect(await screen.findByLabelText("Progresso da etapa")).toBeInTheDocument();
+  });
+  it("'Sensível ao clima' shows the keyword rule and PUTs true / false / null (Automático)", async () => {
+    vi.mocked(buildApi.fetchStages).mockResolvedValue(threeStages());
+    vi.mocked(forecastApi.setStageWeatherSensitivity).mockResolvedValue(weatherStage({ basis: "explicit", explicitSetting: true }));
+    renderTab(<BuildStagesTab projectId="p1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Editar Fundação" }));
+    const select = await screen.findByLabelText("Sensível ao clima");
+    expect(select).toHaveValue("auto");
+    expect(await screen.findByText("Automático: sensível — o nome contém “fundacao”.")).toBeInTheDocument();
+
+    fireEvent.change(select, { target: { value: "yes" } });
+    await waitFor(() => expect(forecastApi.setStageWeatherSensitivity).toHaveBeenCalledWith("s1", true));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Sensibilidade ao clima atualizada."));
+    fireEvent.change(select, { target: { value: "no" } });
+    await waitFor(() => expect(forecastApi.setStageWeatherSensitivity).toHaveBeenLastCalledWith("s1", false));
+    fireEvent.change(select, { target: { value: "auto" } });
+    await waitFor(() => expect(forecastApi.setStageWeatherSensitivity).toHaveBeenLastCalledWith("s1", null));
+  });
+
+  it("'Sensível ao clima' reflects an explicit setting and toasts a failure", async () => {
+    vi.mocked(buildApi.fetchStages).mockResolvedValue(threeStages());
+    vi.mocked(forecastApi.fetchProjectWeather).mockResolvedValue(weather([weatherStage({ basis: "explicit", explicitSetting: false, sensitive: false })]));
+    vi.mocked(forecastApi.setStageWeatherSensitivity).mockRejectedValue(new Error("Etapa não encontrada"));
+    renderTab(<BuildStagesTab projectId="p1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Editar Fundação" }));
+    await waitFor(() => expect(screen.getByLabelText("Sensível ao clima")).toHaveValue("no"));
+    fireEvent.change(screen.getByLabelText("Sensível ao clima"), { target: { value: "yes" } });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Etapa não encontrada"));
   });
 });

@@ -257,9 +257,37 @@ export interface RealityCaptureFilters {
   type?: BuildRealityCaptureType | ""; stageId?: string; zoneId?: string; elementExternalId?: string; from?: string; to?: string;
 }
 
+/** Short-lived (15 min) signed URL of a version's private source file (company users only, audited). */
+export interface BuildModelSourceDto {
+  versionId:    string;
+  fileName:     string;
+  sourceFormat: BuildModelSourceFormat;
+  sizeBytes:    number;
+  sha256:       string | null;
+  url:          string;
+  expiresAt:    string;
+}
+
+/** State of the project's manual zones on a date, through the zone bindings (no model version needed). */
+export interface BuildZoneStateDto {
+  zoneId:       string;
+  name:         string;
+  kind:         BuildZoneKind;
+  parentZoneId: string | null;
+  state:        BuildElementState | null;
+  stageId:      string | null;
+  stageName:    string | null;
+}
+
+export interface BuildZoneStatesDto {
+  date:   string;
+  zones:  BuildZoneStateDto[];
+  counts: Record<string, number>;
+}
+
 export interface ElementFilters {
   category?: string; zoneId?: string; state?: BuildElementState | "Unbound" | ""; date?: string; skip?: number; take?: number;
-  /** Sent for forward compatibility: the server ignores it today (no element lookup by id). */
+  /** Exact external ids, comma-separated (up to 200 → else 422 too_many_ids). */
   externalId?: string;
 }
 
@@ -311,6 +339,13 @@ export const fetchElements = (versionId: string, f: ElementFilters = {}) =>
   apiClient.get<BuildModelElementPageDto>(`${B}/models/versions/${versionId}/elements${qs({
     category: f.category, zoneId: f.zoneId, state: f.state, date: f.date, skip: f.skip, take: f.take, externalId: f.externalId,
   })}`);
+
+/** Signed URL of the original file: 422 source_not_stored (RVT/DWG refused), 503 storage_unavailable. */
+export const fetchModelSource = (versionId: string) =>
+  apiClient.get<BuildModelSourceDto>(`${B}/models/versions/${versionId}/source`);
+
+export const fetchZoneStates = (projectId: string, date?: string) =>
+  apiClient.get<BuildZoneStatesDto>(`${B}/projects/${projectId}/twin/zones/state${qs({ date })}`);
 
 export const fetchElementEvents = (versionId: string, externalId: string) =>
   apiClient.get<BuildElementEventDto[]>(`${B}/models/versions/${versionId}/elements/${encodeURIComponent(externalId)}/events`);

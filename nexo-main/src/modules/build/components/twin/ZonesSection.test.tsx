@@ -19,6 +19,7 @@ vi.mock("../../api/build-twin.api", async (importOriginal) => ({
   fetchProjectZones: vi.fn(),
   fetchBindings:     vi.fn(),
   fetchTwinState:    vi.fn(),
+  fetchZoneStates:   vi.fn(),
   createZone:        vi.fn(),
   updateZone:        vi.fn(),
   deleteZone:        vi.fn(),
@@ -66,6 +67,7 @@ describe("ZonesSection", () => {
     vi.mocked(twinApi.fetchProjectZones).mockResolvedValue([]);
     vi.mocked(twinApi.fetchBindings).mockResolvedValue([]);
     vi.mocked(twinApi.fetchTwinState).mockResolvedValue(emptyState);
+    vi.mocked(twinApi.fetchZoneStates).mockRejectedValue(new Error("indisponível"));
   });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -81,8 +83,30 @@ describe("ZonesSection", () => {
     expect(screen.getByText("10 × 8 × 3 m, cota 0 m")).toBeInTheDocument();
     expect(screen.getByText(/sem caixa · contorno na planta \(3 pontos\)/)).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Desvincular Estrutura de Térreo" })).toBeInTheDocument();
-    // no processed version: the zone state is derived from the bound stage (30% → em andamento), inherited by the child
+    // no processed version and the zone-state route failing: derived here from the bound stage (30% → em andamento), inherited
     expect(screen.getAllByText("Em andamento").length).toBeGreaterThanOrEqual(2);
+    expect(twinApi.fetchTwinState).not.toHaveBeenCalled();
+  });
+
+  it("without a model version the manual zones are colored by GET twin/zones/state on the date", async () => {
+    vi.mocked(twinApi.fetchProjectZones).mockResolvedValue([
+      zone({ simplifiedBox: { width: 10, depth: 8, height: 3, elevation: 0 } }),
+      zone({ id: "z2", name: "Cobertura", simplifiedBox: { width: 10, depth: 8, height: 1, elevation: 3 } }),
+    ]);
+    vi.mocked(twinApi.fetchZoneStates).mockResolvedValue({
+      date: "2026-10-30",
+      zones: [
+        { zoneId: "z1", name: "Térreo", kind: "Floor", parentZoneId: null, state: "Delayed", stageId: "s1", stageName: "Estrutura" },
+        { zoneId: "z2", name: "Cobertura", kind: "Roof", parentZoneId: null, state: null, stageId: null, stageName: null },
+      ],
+      counts: { Delayed: 1, Unbound: 1 },
+    });
+    wrap(<ZonesSection projectId="p1" models={[]} stages={stages} />);
+
+    const figure = await screen.findByTestId("simplified-representation");
+    await waitFor(() => expect(figure).toHaveTextContent("Atrasado"));
+    expect(figure).toHaveTextContent("sem vínculo");
+    expect(twinApi.fetchZoneStates).toHaveBeenCalledWith("p1", expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
     expect(twinApi.fetchTwinState).not.toHaveBeenCalled();
   });
 
@@ -200,6 +224,7 @@ describe("ZonesSection", () => {
     expect(await screen.findByText("Mapeamento sobre a planta (2D)")).toBeInTheDocument();
     await waitFor(() => expect(twinApi.fetchTwinState).toHaveBeenCalledWith("v1", expect.any(String)));
     expect(await screen.findByText("Concluído")).toBeInTheDocument();
+    expect(twinApi.fetchZoneStates).not.toHaveBeenCalled();
   });
 });
 

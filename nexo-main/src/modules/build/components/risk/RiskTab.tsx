@@ -10,6 +10,7 @@ import { aiErrorMessage, readRiskAnalysis, readRiskExplanation } from "../../lib
 import { fmtBRL, fmtDate } from "../../lib/format";
 import { AiDisabledNotice, AiErrorAlert } from "../ai/common";
 import { AiSuggestionCard } from "../ai/AiSuggestionCard";
+import { ForecastSection } from "./ForecastSection";
 
 type Fmt = "ratio" | "pct" | "int" | "brl" | "days";
 
@@ -189,6 +190,7 @@ export function RiskTab({ projectId }: { projectId: string }) {
         Os indicadores abaixo são calculados pelo Orken a partir do cronograma, do progresso, dos custos, materiais, aditivos e
         qualidade. A IA, quando habilitada, apenas explica esses números e sugere ações.
       </p>
+      <ForecastSection projectId={projectId} />
       <RiskCard projectId={projectId} kind="delay" />
       <RiskCard projectId={projectId} kind="cost" />
     </div>

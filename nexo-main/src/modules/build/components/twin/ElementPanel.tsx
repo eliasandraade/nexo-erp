@@ -68,7 +68,7 @@ export function ElementPanel({ projectId, version, externalId, date, state, stag
         <div className="col-span-2"><dt className="text-xs text-muted-foreground">Id externo</dt><dd className="break-all font-mono text-[11px]">{externalId}</dd></div>
       </dl>
       {lookup.isSuccess && !el && (
-        <p className="text-[11px] text-muted-foreground">Detalhes não encontrados nos primeiros elementos desta versão.</p>
+        <p className="text-[11px] text-muted-foreground">Este elemento não foi encontrado nesta versão do modelo.</p>
       )}
 
       <form className="space-y-2 border-t border-border pt-3" onSubmit={(e) => {

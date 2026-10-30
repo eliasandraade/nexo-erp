@@ -4,6 +4,8 @@ import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-li
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as aiApi from "../../api/build-ai.api";
 import * as twinApi from "../../api/build-twin.api";
+import * as forecastApi from "../../api/build-forecast.api";
+import { ApiError } from "@/services/api-client";
 import { AI_DISABLED_MESSAGE } from "../../lib/ai";
 import { RiskTab } from "./RiskTab";
 
@@ -14,6 +16,11 @@ vi.mock("../../api/build-ai.api", async (importOriginal) => ({
   fetchDelayRisk:   vi.fn(),
   fetchCostRisk:    vi.fn(),
   explainRisk:      vi.fn(),
+}));
+vi.mock("../../api/build-forecast.api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/build-forecast.api")>()),
+  fetchForecast:        vi.fn(),
+  fetchForecastHistory: vi.fn(),
 }));
 vi.mock("../../api/build-twin.api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/build-twin.api")>()),
@@ -50,6 +57,8 @@ beforeEach(() => {
   vi.mocked(aiApi.fetchCostRisk).mockResolvedValue(cost);
   vi.mocked(aiApi.fetchSuggestions).mockResolvedValue([]);
   vi.mocked(twinApi.fetchBuildSettings).mockResolvedValue(settings(true));
+  vi.mocked(forecastApi.fetchForecast).mockRejectedValue(new ApiError(403, "x", "build_predict_disabled"));
+  vi.mocked(forecastApi.fetchForecastHistory).mockResolvedValue([]);
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 

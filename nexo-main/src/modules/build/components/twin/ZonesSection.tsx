@@ -9,9 +9,11 @@ import type {
   BuildElementState, BuildManualZoneKind, BuildModelDto, BuildModelZoneDto, SaveBuildZoneRequest,
 } from "../../api/build-twin.api";
 import {
-  useBindings, useCreateBinding, useDeleteBinding, useDeleteZone, useProjectZones, useSaveZone, useTwinState,
+  useBindings, useCreateBinding, useDeleteBinding, useDeleteZone, useProjectZones, useSaveZone, useTwinState, useZoneStates,
 } from "../../hooks/use-build-twin";
-import { MANUAL_ZONE_KINDS, ZONE_KINDS, isSheetVersion, primaryVersion, twinErrorMessage, zoneStateIndex, zoneStatesToday } from "../../lib/twin";
+import {
+  MANUAL_ZONE_KINDS, ZONE_KINDS, isSheetVersion, manualZoneStateIndex, primaryVersion, twinErrorMessage, zoneStateIndex, zoneStatesToday,
+} from "../../lib/twin";
 import { localToday } from "../../lib/format";
 import { EMPTY_ZONE_FORM as EMPTY, zoneRequest, type ZoneForm } from "../../lib/twin-forms";
 import { Card, StateDot, selectClass } from "./common";
@@ -37,12 +39,16 @@ export function ZonesSection({ projectId, models, stages }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [bindStage, setBindStage] = useState<Record<string, string>>({});
 
-  // any processed version answers the zone states (manual zones are included); without one, today's state from the stages
+  // any processed version answers the zone states (manual zones are included); without one, the manual zones' state comes from
+  // GET twin/zones/state (through the zone bindings) — and, if that fails, today's state computed from the stages here
   const stateVersion = primaryVersion(models) ?? models.flatMap((m) => m.versions).find((v) => v.status === "Ready") ?? null;
   const { data: state } = useTwinState(stateVersion?.id ?? null, today);
-  const zoneStates = useMemo<Map<string, BuildElementState>>(
-    () => (stateVersion ? zoneStateIndex(state) : zoneStatesToday(zones, bindings, stages, today)),
-    [stateVersion, state, zones, bindings, stages, today]);
+  const manual = useZoneStates(projectId, today, !stateVersion);
+  const zoneStates = useMemo<Map<string, BuildElementState>>(() => {
+    if (stateVersion) return zoneStateIndex(state);
+    if (manual.data) return manualZoneStateIndex(manual.data);
+    return zoneStatesToday(zones, bindings, stages, today);
+  }, [stateVersion, state, manual.data, zones, bindings, stages, today]);
   const sheets = models.flatMap((m) => m.versions.filter(isSheetVersion).map((v) => ({ model: m, version: v })));
 
   const submit = () => {

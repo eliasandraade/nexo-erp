@@ -1,7 +1,7 @@
 import { ApiError } from "@/services/api-client";
 import type {
   BuildElementState, BuildManualZoneKind, BuildModelDiscipline, BuildModelDto, BuildModelVersionDto,
-  BuildModelVersionStatus, BuildRealityCaptureType, BuildTwinStateDto, BuildZoneKind, BuildZonePoint,
+  BuildModelVersionStatus, BuildRealityCaptureType, BuildTwinStateDto, BuildZoneKind, BuildZonePoint, BuildZoneStatesDto,
 } from "../api/build-twin.api";
 
 // Pure rules of the "Gêmeo digital" tab (docs/build/digital-twin.md). No React, no three.js — unit-tested.
@@ -40,6 +40,13 @@ export function zoneStateIndex(dto: BuildTwinStateDto | null | undefined): Map<s
   const map = new Map<string, BuildElementState>();
   if (!dto) return map;
   for (const state of ELEMENT_STATES) for (const id of dto.zoneStates?.[state] ?? []) map.set(id, state);
+  return map;
+}
+
+/** zoneId → state, from GET twin/zones/state (manual zones; unknown or unbound states are left out). */
+export function manualZoneStateIndex(dto: BuildZoneStatesDto | null | undefined): Map<string, BuildElementState> {
+  const map = new Map<string, BuildElementState>();
+  for (const z of dto?.zones ?? []) if (z.state && (ELEMENT_STATES as string[]).includes(z.state)) map.set(z.zoneId, z.state);
   return map;
 }
 

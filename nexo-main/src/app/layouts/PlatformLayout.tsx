@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { AdminMfaBanner } from "@/modules/platform/components/AdminMfaBanner";
 
 const groups = [
-  { label: "Plataforma", links: [["/platform", "Visão geral"], ["/platform/tenants", "Empresas"], ["/platform/trial", "Períodos de teste"], ["/platform/activity", "Atividade"], ["/platform/system", "Sistema"], ["/platform/seguranca", "Segurança"]] },
+  { label: "Plataforma", links: [["/platform", "Visão geral"], ["/platform/tenants", "Empresas"], ["/platform/trial", "Períodos de teste"], ["/platform/activity", "Atividade"], ["/platform/system", "Sistema"], ["/platform/seguranca", "Segurança"], ["/platform/build", "Orken Build"]] },
   { label: "Operações de IA", links: [["/platform/ai", "Visão geral de IA"], ["/platform/ai/playground", "Testar interpretação"], ["/platform/ai/providers", "Provedores"], ["/platform/ai/telemetry", "Telemetria"], ["/platform/ai/costs", "Custos"], ["/platform/ai/prompts", "Instruções"]] },
 ];
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {

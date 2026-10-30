@@ -170,9 +170,15 @@ export function uploadConvertedViewer<T>(
 
 /** SHA-256 (hex) of a local file — to confirm the user picked the same IFC as the version. null when unavailable. */
 export async function sha256Hex(file: Blob): Promise<string | null> {
+  if (!globalThis.crypto?.subtle) return null;
+  return sha256HexOfBytes(await file.arrayBuffer());
+}
+
+/** SHA-256 (hex) of bytes already in memory, or null without WebCrypto. */
+export async function sha256HexOfBytes(bytes: ArrayBuffer): Promise<string | null> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return null;
-  const digest = await subtle.digest("SHA-256", await file.arrayBuffer());
+  const digest = await subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 

@@ -1,5 +1,5 @@
 import { type ReactNode } from "react";
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ vi.mock("./load-ifc-converter", () => ({ loadIfcConverter: async () => ({ conver
 vi.mock("../../api/build-twin.api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/build-twin.api")>()),
   uploadViewer: vi.fn(),
+  fetchModelSource: vi.fn(),
 }));
 
 const version = (over: Partial<twinApi.BuildModelVersionDto> = {}): twinApi.BuildModelVersionDto => ({
@@ -103,5 +104,81 @@ describe("IfcBrowserConvert", () => {
     fireEvent.change(screen.getByTestId("ifc-convert-input"), { target: { files: [] } });
     expect(h.convert).not.toHaveBeenCalled();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  describe("from the stored source (GET models/versions/{id}/source)", () => {
+    const source = (over: Partial<twinApi.BuildModelSourceDto> = {}): twinApi.BuildModelSourceDto => ({
+      versionId: "v1", fileName: "casa.ifc", sourceFormat: "Ifc", sizeBytes: 12, sha256: null,
+      url: "https://storage.example/signed/abc", expiresAt: "2026-10-30T10:15:00Z", ...over,
+    });
+    const fetchMock = vi.fn();
+    beforeEach(() => { vi.stubGlobal("fetch", fetchMock); });
+    afterEach(() => { vi.unstubAllGlobals(); fetchMock.mockReset(); });
+
+    it("downloads the original IFC through the signed URL and converts it, without asking for the file", async () => {
+      vi.mocked(twinApi.fetchModelSource).mockResolvedValue(source());
+      fetchMock.mockResolvedValue({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode("ISO-10303-21").buffer });
+      h.convert.mockResolvedValue({ glb: new ArrayBuffer(4), elements: 7 });
+      vi.mocked(twinApi.uploadViewer).mockResolvedValue(version({ hasViewer: true }));
+      wrap(<IfcBrowserConvert projectId="p1" version={version()} enabled />);
+
+      fireEvent.click(screen.getByRole("button", { name: /Gerar visualização 3D no navegador/ }));
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Visualização 3D gerada (7 elementos)."));
+      expect(twinApi.fetchModelSource).toHaveBeenCalledWith("v1");
+      expect(fetchMock).toHaveBeenCalledWith("https://storage.example/signed/abc");
+      const picked = h.convert.mock.calls[0][0] as File;
+      expect(picked.name).toBe("casa.ifc");
+      expect(screen.queryByTestId("ifc-convert-fallback")).not.toBeInTheDocument();
+    });
+
+    it("a blocked download (CORS) offers picking the same .ifc, which then converts", async () => {
+      vi.mocked(twinApi.fetchModelSource).mockResolvedValue(source());
+      fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
+      h.convert.mockResolvedValue({ glb: new ArrayBuffer(4), elements: 3 });
+      vi.mocked(twinApi.uploadViewer).mockResolvedValue(version({ hasViewer: true }));
+      wrap(<IfcBrowserConvert projectId="p1" version={version()} enabled />);
+
+      fireEvent.click(screen.getByRole("button", { name: /Gerar visualização 3D no navegador/ }));
+      const fallback = await screen.findByTestId("ifc-convert-fallback");
+      expect(fallback).toHaveTextContent("Não foi possível baixar o arquivo do projeto guardado no Orken");
+      expect(fallback).toHaveTextContent("por CORS");
+      expect(fallback).toHaveTextContent("Escolha o mesmo arquivo .ifc no seu computador");
+      expect(h.convert).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: /Escolher o arquivo .ifc/ })).toBeEnabled();
+
+      fireEvent.change(screen.getByTestId("ifc-convert-input"), { target: { files: [ifc()] } });
+      await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Visualização 3D gerada (3 elementos)."));
+    });
+
+    it("the server refusing the source (422) or a storage error falls back too; a different file is refused", async () => {
+      vi.mocked(twinApi.fetchModelSource).mockRejectedValue(
+        new ApiError(422, "x", "source_not_stored", undefined, undefined, "O arquivo original não foi guardado."));
+      wrap(<IfcBrowserConvert projectId="p1" version={version()} enabled />);
+      fireEvent.click(screen.getByRole("button", { name: /Gerar visualização 3D no navegador/ }));
+      expect(await screen.findByTestId("ifc-convert-fallback")).toHaveTextContent("O arquivo original não foi guardado");
+      cleanup();
+
+      vi.mocked(twinApi.fetchModelSource).mockResolvedValue(source());
+      fetchMock.mockResolvedValue({ ok: false, status: 403, arrayBuffer: async () => new ArrayBuffer(0) });
+      wrap(<IfcBrowserConvert projectId="p1" version={version()} enabled />);
+      fireEvent.click(screen.getByRole("button", { name: /Gerar visualização 3D no navegador/ }));
+      expect(await screen.findByTestId("ifc-convert-fallback")).toHaveTextContent("o armazenamento respondeu 403");
+      cleanup();
+
+      fetchMock.mockResolvedValue({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode("outro").buffer });
+      wrap(<IfcBrowserConvert projectId="p1" version={version({ sha256: "ABCDEF" })} enabled />);
+      fireEvent.click(screen.getByRole("button", { name: /Gerar visualização 3D no navegador/ }));
+      expect(await screen.findByTestId("ifc-convert-fallback")).toHaveTextContent("o arquivo baixado não confere com o da versão");
+      expect(h.convert).not.toHaveBeenCalled();
+    });
+
+    it("a conversion error after the download is shown as an error, not as a fallback", async () => {
+      vi.mocked(twinApi.fetchModelSource).mockResolvedValue(source());
+      fetchMock.mockResolvedValue({ ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode("ISO").buffer });
+      h.convert.mockRejectedValue(new Error("Nenhum elemento com geometria e GlobalId foi encontrado neste IFC."));
+      wrap(<IfcBrowserConvert projectId="p1" version={version()} enabled />);
+      fireEvent.click(screen.getByRole("button", { name: /Gerar visualização 3D no navegador/ }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Nenhum elemento com geometria");
+      expect(screen.queryByTestId("ifc-convert-fallback")).not.toBeInTheDocument();
+    });
   });
 });

@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Pencil, Undo2,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
@@ -39,6 +39,7 @@ import { DailyLogClientVisibility, PhotoClientVisibilityToggle } from "../compon
 import { DailyLogCopilot } from "../components/ai/DailyLogCopilot";
 import { RiskTab } from "../components/risk/RiskTab";
 import { DocumentsTab } from "../components/documents/DocumentsTab";
+import { WeatherCard } from "../components/weather/WeatherCard";
 import type {
   BuildProjectDetailsDto, BuildDailyLogDto,
 } from "../api/build.api";
@@ -75,6 +76,16 @@ function fmtPct(v: number) {
 type Tab =
   | "geral" | "etapas" | "progresso" | "riscos" | "gemeo" | "orcamento" | "aditivos" | "escolhas" | "materiais" | "medicoes"
   | "qualidade" | "pos-obra" | "diario" | "documentos" | "financeiro" | "portal";
+
+const TABS: readonly Tab[] = [
+  "geral", "etapas", "progresso", "riscos", "gemeo", "orcamento", "aditivos", "escolhas", "materiais", "medicoes",
+  "qualidade", "pos-obra", "diario", "documentos", "financeiro", "portal",
+];
+
+/** `?aba=riscos` (links from the Build dashboard) → that tab; anything else → Geral. */
+function tabFrom(raw: string | null): Tab {
+  return TABS.find((t) => t === raw) ?? "geral";
+}
 
 // ── Tab selector ──────────────────────────────────────────────────────────────
 
@@ -187,6 +198,9 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
           </div>
         ))}
       </div>
+
+      {/* Clima na obra (Wave 6) — sem coordenadas, leva a editar a obra */}
+      <WeatherCard projectId={project.id} onEditSite={isActive ? () => setEditOpen(true) : undefined} />
 
       {/* Etapas recentes */}
       {project.stages.length > 0 && (
@@ -958,7 +972,8 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 export default function BuildProjectDetailPage() {
   const { id = "" }   = useParams<{ id: string }>();
   const navigate      = useNavigate();
-  const [tab, setTab] = useState<Tab>("geral");
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => tabFrom(searchParams.get("aba")));
 
   const { data: project, isLoading, isError } = useProjectDetails(id);
 

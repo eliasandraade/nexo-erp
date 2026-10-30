@@ -2,7 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import {
   bulkBind, createBinding, createZone, deleteBinding, deleteRealityCapture, deleteZone, fetchBindings, fetchBuildSettings,
   fetchElementEvents, fetchElements, fetchModelVersion, fetchModelViewer, fetchModels, fetchProjectZones, fetchRealityCaptures,
-  fetchTwinOverview, fetchTwinState, fetchVersionZones, recordElementEvents, reprocessModelVersion, setRealityCaptureVisibility,
+  fetchTwinOverview, fetchTwinState, fetchVersionZones, fetchZoneStates, recordElementEvents, reprocessModelVersion, setRealityCaptureVisibility,
   updateRealityCapture, updateZone,
   type BulkBuildBindingRequest, type CreateBuildBindingRequest, type ElementFilters, type RealityCaptureFilters,
   type RecordBuildElementEventsRequest, type SaveBuildZoneRequest, type UpdateRealityCaptureRequest,
@@ -20,6 +20,7 @@ export const TWIN_KEYS = {
   events:    (versionId: string, externalId: string)    => ["build", "twin", "version", versionId, "events", externalId] as const,
   vzones:    (versionId: string)                        => ["build", "twin", "version", versionId, "zones"] as const,
   zones:     (projectId: string)                        => ["build", "twin", projectId, "zones"] as const,
+  zoneStates: (projectId: string, date: string)         => ["build", "twin", projectId, "zone-states", date] as const,
   bindings:  (projectId: string)                        => ["build", "twin", projectId, "bindings"] as const,
   captures:  (projectId: string, f: RealityCaptureFilters) => ["build", "twin", projectId, "captures", f] as const,
 } as const;
@@ -189,26 +190,27 @@ export function useInvalidateTwin(projectId: string) {
   return () => invalidateTwin(qc, projectId);
 }
 
-/** Pages scanned at most to find one element (there is no lookup by id on the server — see the gap in the PR notes). */
-export const ELEMENT_LOOKUP_MAX_PAGES = 20;
-
 /**
- * One element's details (category, zone, quantities, stage, state on the date). The server has no "element by external id"
- * route: the id is sent as a filter (ignored today, used if the server adds it) and the pages are scanned up to 10 000 elements.
+ * One element's details (category, zone, quantities, stage, state on the date) by its exact external id
+ * (GET elements?externalId= — a direct lookup, no page scan). `null` when the version has no such element.
  */
 export function useElementLookup(versionId: string | null, externalId: string | null, date: string) {
   return useQuery({
     queryKey: [...TWIN_KEYS.elements(versionId ?? "", { externalId: externalId ?? "", date }), "lookup"],
     enabled: !!versionId && !!externalId,
     queryFn: async () => {
-      const take = 500;
-      for (let page = 0; page < ELEMENT_LOOKUP_MAX_PAGES; page++) {
-        const res = await fetchElements(versionId!, { externalId: externalId!, date, skip: page * take, take });
-        const found = res.items.find((e) => e.externalId === externalId);
-        if (found) return found;
-        if ((page + 1) * take >= res.total) break;
-      }
-      return null;
+      const res = await fetchElements(versionId!, { externalId: externalId!, date, take: 1 });
+      return res.items.find((e) => e.externalId === externalId) ?? null;
     },
+  });
+}
+
+/** Manual zones' state on a date through the zone bindings (GET twin/zones/state) — no model version needed. */
+export function useZoneStates(projectId: string, date: string, enabled = true) {
+  return useQuery({
+    queryKey: TWIN_KEYS.zoneStates(projectId, date),
+    queryFn: () => fetchZoneStates(projectId, date),
+    enabled: !!projectId && enabled,
+    retry: false,
   });
 }

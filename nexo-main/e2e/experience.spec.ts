@@ -632,6 +632,45 @@ test('Build: Gêmeo digital com IFC pronto sem visualização e representação 
  await noOverflow(page);
  expect(errors).toEqual([]);
 });
+test('Build: painel com carteira de obras, filtro de atrasadas e risco que abre a previsão (390px)',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.setViewportSize({width:390,height:844});await prepare(page);
+ const API='http://localhost:5000/api'; const now=new Date().toISOString(); const json=(b:unknown)=>({status:200,contentType:'application/json',body:JSON.stringify(b)});
+ const row=(over:Record<string,unknown>)=>({projectId:'b1',name:'Residencial Jardim das Acácias — torre B com nome comprido',clientName:'Cliente com nome bem comprido para testar quebra',status:'InProgress',actualPercent:42,plannedPercent:55,expectedEnd:'2027-01-20',forecastDelivery:'2027-02-15',daysLate:26,forecastMethodology:'productivity/1',costRealized:1234567,contractTotal:9876543,cpiLike:0.82,openNonConformities:{Low:1,Medium:0,High:0,Critical:0},openAssistance:1,pendingChangeOrders:2,lateMaterials:1,portalPublished:true,lastDailyLogDate:'2026-10-29',pendingAiSuggestions:3,...over});
+ const dashboard={totalProjects:2,planningCount:0,inProgressCount:2,pausedCount:0,completedCount:0,cancelledCount:0,overdueCount:1,totalEstimated:2000000,totalApproved:1500000,totalRealized:1300000,balance:200000,avgStageProgress:40,recentExpenses:[],asOf:'2026-10-30',
+  projects:[row({}),row({projectId:'b2',name:'Casa Beta',daysLate:-2,cpiLike:1.05,openNonConformities:{Low:0,Medium:0,High:0,Critical:2},portalPublished:false,lastDailyLogDate:null})],
+  totals:{activeProjects:2,lateProjects:1,costRealized:1300000,contractTotal:12000000,openNonConformities:3,openCriticalNonConformities:2,openAssistance:1,pendingChangeOrders:4,lateMaterials:2,publishedPortals:1,pendingAiSuggestions:6},
+  topRisks:[{projectId:'b1',projectName:'Residencial Jardim das Acácias — torre B com nome comprido',kind:'forecast_late',severity:'medium',message:'Entrega prevista 26 dias depois do término contratado.',value:26},{projectId:'b2',projectName:'Casa Beta',kind:'critical_nonconformity',severity:'high',message:'2 não conformidade(s) crítica(s) aberta(s).',value:2}]};
+ const project={id:'b1',name:'Residencial Jardim das Acácias',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:'2026-09-01',expectedEndDate:'2027-01-20',actualEndDate:null,budgetEstimated:1000,budgetApproved:1000,stages:[],recentLogs:[],createdAt:now,updatedAt:now,stageCount:0,completedStageCount:0,logCount:0};
+ const forecast={id:'f1',projectId:'b1',date:'2026-10-30',generatedAt:now,source:'Scheduled',stored:true,methodology:'productivity/1',version:1,forecastDelivery:'2027-02-15',plannedDelivery:'2027-01-31',delayDays:15,expectedEnd:'2027-01-20',daysLateVsContract:26,confidence:0.62,
+  stages:[{stageId:'s1',name:'Alvenaria do pavimento térreo e superior',order:0,weight:2,status:'InProgress',actualPercent:40,method:'window',ratePerWorkingDay:1.5,plannedRatePerWorkingDay:2.25,dataPoints:6,plannedStart:'2026-09-01',plannedEnd:'2026-12-10',forecastStart:'2026-09-01',forecastEnd:'2026-12-30',delayDays:20,inheritedDelayDays:0,confidence:0.7}],
+  factors:[{key:'w',kind:'weather_risk',severity:'low',title:'Chuva prevista na concretagem',evidence:'15 mm em 04/11',stageId:'s1',days:null}],calendar:{workingDays:['seg','ter','qua','qui','sex','sáb'],holidays:'feriados nacionais',windowDays:21},createdByName:null};
+ await page.route(`${API}/v1/build/dashboard`,r=>r.fulfill(json(dashboard)));
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill(json(project)));
+ await page.route(`${API}/v1/build/settings`,r=>r.fulfill(json({tenantId:'qa',build3DEnabled:true,buildAiEnabled:false,buildVisionEnabled:false,buildPredictEnabled:true,customized:false,updatedByName:null,updatedAt:null})));
+ await page.route(`${API}/v1/build/projects/b1/forecast`,r=>r.fulfill(json(forecast)));
+ await page.route(/\/v1\/build\/projects\/b1\/forecast\/history/,r=>r.fulfill(json([])));
+ await page.goto('/build');
+ const cards=page.getByTestId('portfolio-card');
+ await expect(cards).toHaveCount(2);
+ await expect(page.getByTestId('portfolio-table')).toBeHidden();
+ await expect(page.getByTestId('portfolio-totals')).toContainText('Atrasadas (previsão)');
+ await expect(cards.filter({hasText:'Residencial Jardim'})).toContainText('26 dias de atraso');
+ await noOverflow(page);
+ await page.getByRole('button',{name:'Atrasadas',exact:true}).click();
+ await expect(cards).toHaveCount(1);
+ await expect(cards.first()).toContainText('Residencial Jardim');
+ await page.getByRole('button',{name:'Com NC crítica'}).click();
+ await expect(cards).toHaveCount(1);
+ await expect(cards.first()).toContainText('Casa Beta');
+ await noOverflow(page);
+ await page.getByTestId('portfolio-risks').getByRole('button',{name:/Residencial Jardim/}).click();
+ await expect(page).toHaveURL(/\/build\/projetos\/b1\?aba=riscos$/);
+ await expect(page.getByTestId('forecast-kpis')).toContainText('+26 dias vs. contrato');
+ await expect(page.getByTestId('forecast-factors')).toContainText('Risco — não aplicado às datas');
+ await noOverflow(page);
+ expect(errors).toEqual([]);
+});
 test('Build: visualizador 3D sem WebGL ou sem arquivo mostra aviso amigável, sem quebrar a aba',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await prepare(page);

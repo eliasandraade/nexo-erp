@@ -13,6 +13,7 @@ import {
 import type { BuildStageDto } from "../../api/build.api";
 import { parseDecimal } from "../../lib/format";
 import { StageProgressDialog } from "./StageProgressDialog";
+import { StageWeatherSensitivity } from "./StageWeatherSensitivity";
 import { errorMessage } from "../commercial/errors";
 
 const fmtDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -236,6 +237,7 @@ export function BuildStagesTab({ projectId }: { projectId: string }) {
                     <Input id={`stage-end-${stage.id}`} type="date" value={details.end}
                       onChange={(e) => setDetails({ ...details, end: e.target.value })} className="text-sm" />
                   </div>
+                  <StageWeatherSensitivity projectId={projectId} stageId={stage.id} />
                   <p className="text-[11px] text-muted-foreground sm:col-span-3">
                     O peso define quanto a etapa conta no progresso geral (maior que zero).
                   </p>
