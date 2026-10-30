@@ -11,6 +11,7 @@ import {
 } from "../../hooks/use-build-portal";
 import type { BuildClientUpdateDto, BuildClientUpdateKind, BuildClientUpdateStatus } from "../../api/build-portal.api";
 import { fmtDateTime } from "../../lib/format";
+import { ClientUpdateAi } from "../ai/ClientUpdateAi";
 
 const KIND_LABEL: Record<BuildClientUpdateKind, string> = {
   Update: "Atualização", Milestone: "Marco", WeeklyDigest: "Resumo semanal",
@@ -108,6 +109,8 @@ export function ClientUpdatesSection({ projectId }: { projectId: string }) {
           </Button>
         )}
       </div>
+
+      <ClientUpdateAi projectId={projectId} />
 
       {draft && !draft.id && (
         <UpdateEditor draft={draft} onChange={setDraft} onSave={save} onCancel={() => setDraft(null)} saving={createMut.isPending} />

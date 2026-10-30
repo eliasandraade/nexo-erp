@@ -6,6 +6,16 @@ import { ApiError } from "@/services/api-client";
 import { BuildPortalTab } from "./BuildPortalTab";
 import * as portalApi from "../../api/build-portal.api";
 
+// Wave 5 AI panels inside the tab: no suggestions, AI off (their own tests are in components/ai)
+vi.mock("../../api/build-ai.api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/build-ai.api")>()),
+  fetchSuggestions: vi.fn().mockResolvedValue([]),
+}));
+vi.mock("../../api/build-twin.api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/build-twin.api")>()),
+  fetchBuildSettings: vi.fn().mockResolvedValue({ buildAiEnabled: false, buildVisionEnabled: false }),
+}));
+
 vi.mock("../../api/build-portal.api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/build-portal.api")>()),
   fetchPortalCompany:   vi.fn(),

@@ -4,7 +4,7 @@ import {
   ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Pencil, Undo2,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
   MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2, Globe,
-  FilePlus2, ListChecks, Package, Ruler, ShieldCheck, KeyRound, Box,
+  FilePlus2, ListChecks, Package, Ruler, ShieldCheck, KeyRound, Box, Gauge, FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,9 @@ import { MeasurementsTab } from "../components/measurements/MeasurementsTab";
 import { QualityTab } from "../components/quality/QualityTab";
 import { PostConstructionTab } from "../components/post-construction/PostConstructionTab";
 import { DailyLogClientVisibility, PhotoClientVisibilityToggle } from "../components/diary/DailyLogClientVisibility";
+import { DailyLogCopilot } from "../components/ai/DailyLogCopilot";
+import { RiskTab } from "../components/risk/RiskTab";
+import { DocumentsTab } from "../components/documents/DocumentsTab";
 import type {
   BuildProjectDetailsDto, BuildDailyLogDto,
 } from "../api/build.api";
@@ -70,8 +73,8 @@ function fmtPct(v: number) {
 }
 
 type Tab =
-  | "geral" | "etapas" | "progresso" | "gemeo" | "orcamento" | "aditivos" | "escolhas" | "materiais" | "medicoes"
-  | "qualidade" | "pos-obra" | "diario" | "financeiro" | "portal";
+  | "geral" | "etapas" | "progresso" | "riscos" | "gemeo" | "orcamento" | "aditivos" | "escolhas" | "materiais" | "medicoes"
+  | "qualidade" | "pos-obra" | "diario" | "documentos" | "financeiro" | "portal";
 
 // ── Tab selector ──────────────────────────────────────────────────────────────
 
@@ -80,6 +83,7 @@ function TabBar({ active, onChange, threeD }: { active: Tab; onChange: (t: Tab) 
     { key: "geral",      label: "Geral",       icon: HardHat },
     { key: "etapas",     label: "Etapas",      icon: CheckCircle },
     { key: "progresso",  label: "Progresso",   icon: TrendingUp },
+    { key: "riscos",     label: "Riscos e previsões", icon: Gauge },
     { key: "gemeo",      label: "Gêmeo digital", icon: Box },
     { key: "orcamento",  label: "Orçamento",   icon: FileText },
     { key: "aditivos",   label: "Aditivos",    icon: FilePlus2 },
@@ -89,6 +93,7 @@ function TabBar({ active, onChange, threeD }: { active: Tab; onChange: (t: Tab) 
     { key: "qualidade",  label: "Qualidade",   icon: ShieldCheck },
     { key: "pos-obra",   label: "Entrega e pós-obra", icon: KeyRound },
     { key: "diario",     label: "Diário",      icon: BookOpen },
+    { key: "documentos", label: "Documentos",  icon: FolderOpen },
     { key: "financeiro", label: "Financeiro",  icon: BarChart2 },
     { key: "portal",     label: "Portal do cliente", icon: Globe },
   ];
@@ -418,6 +423,8 @@ function TabDiario({ projectId }: { projectId: string }) {
           </Button>
         )}
       </div>
+
+      <DailyLogCopilot projectId={projectId} logs={logs} />
 
       {adding && (
         <div className="rounded-md border border-dashed border-primary/40 p-4 space-y-3">
@@ -1008,6 +1015,7 @@ export default function BuildProjectDetailPage() {
         {tab === "geral"      && <TabGeral project={project} />}
         {tab === "etapas"     && <BuildStagesTab projectId={project.id} />}
         {tab === "progresso"  && <BuildProgressTab projectId={project.id} />}
+        {tab === "riscos"     && <RiskTab projectId={project.id} />}
         {tab === "gemeo"      && (
           <Suspense fallback={<div className="h-40 rounded-md bg-muted animate-pulse" />}>
             <DigitalTwinTab project={project} />
@@ -1021,6 +1029,7 @@ export default function BuildProjectDetailPage() {
         {tab === "qualidade"  && <QualityTab projectId={project.id} />}
         {tab === "pos-obra"   && <PostConstructionTab projectId={project.id} />}
         {tab === "diario"     && <TabDiario projectId={project.id} />}
+        {tab === "documentos" && <DocumentsTab projectId={project.id} />}
         {tab === "financeiro" && <TabFinanceiro projectId={project.id} />}
         {tab === "portal"     && <BuildPortalTab projectId={project.id} />}
       </div>

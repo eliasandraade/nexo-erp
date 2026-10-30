@@ -583,6 +583,27 @@ test('Build: Qualidade e Entrega e pós-obra abrem numa obra sem dados',async({p
  await expect(page.getByTestId('warranty-disclaimer')).toContainText('não é orientação jurídica');
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Build: Riscos e previsões e Documentos abrem com a IA desligada, sem quebrar (390px)',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api'; const now=new Date().toISOString(); const json=(b:unknown)=>({status:200,contentType:'application/json',body:JSON.stringify(b)});
+ const project={id:'b1',name:'Casa QA',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:null,expectedEndDate:null,actualEndDate:null,budgetEstimated:1000,budgetApproved:1000,stages:[],recentLogs:[],createdAt:now,updatedAt:now,stageCount:0,completedStageCount:0,logCount:0};
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill(json(project)));
+ await page.route(`${API}/v1/build/settings`,r=>r.fulfill(json({tenantId:'qa',build3DEnabled:true,buildAiEnabled:false,buildVisionEnabled:false,buildPredictEnabled:true,customized:false,updatedByName:null,updatedAt:null})));
+ await page.route(`${API}/v1/build/projects/b1/risk/delay`,r=>r.fulfill(json({projectId:'b1',kind:'delay',asOf:'2026-10-30',level:'medium',methodology:'build-risk/1',metrics:{spi:0.85,actualPercent:34,plannedPercent:40,delayedStages:1,forecastSlipDays:12,lateMaterials:0,pendingChangeOrders:0,openCriticalNonConformities:0},items:[{key:'spi_low',kind:'spi_low',severity:'medium',title:'Ritmo abaixo do plano',evidence:'SPI 0,85',metrics:{spi:0.85},refs:[]}]})));
+ await page.route(`${API}/v1/build/projects/b1/documents**`,r=>r.fulfill(json([{id:'d1',projectId:'b1',category:'Alvara',title:'Alvará de construção com um título bem comprido para testar quebra',fileName:'alvara.pdf',contentType:'application/pdf',sizeBytes:120000,sha256:'x',clientVisible:false,validUntil:'2020-01-01',extracted:null,suggestionId:null,uploadedByName:'Ana',url:null,urlExpiresAt:null,createdAt:now}])));
+ await page.setViewportSize({width:390,height:900});
+ await page.goto('/build/projetos/b1');
+ await page.getByRole('button',{name:'Riscos e previsões'}).click();
+ await expect(page.getByTestId('risk-delay')).toContainText('Ritmo abaixo do plano');
+ await expect(page.getByTestId('risk-delay')).toContainText('calculados, sem IA');
+ await expect(page.getByRole('button',{name:/Explicar com IA/}).first()).toBeDisabled();
+ await expect(page.getByTestId('risk-cost')).toContainText('Análise indisponível.');
+ await noOverflow(page);
+ await page.getByRole('button',{name:'Documentos'}).click();
+ await expect(page.getByTestId('document-row')).toContainText('Vencido');
+ await expect(page.getByRole('button',{name:/Analisar com IA/})).toBeDisabled();
+ await noOverflow(page);
+});
 test('Build: Gêmeo digital com IFC pronto sem visualização e representação simplificada (390px)',async({page})=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.setViewportSize({width:390,height:844});await prepare(page);

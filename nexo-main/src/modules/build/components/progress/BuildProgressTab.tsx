@@ -7,6 +7,7 @@ import type { BuildPlanSource, BuildProgressDto } from "../../api/build-progress
 import { fmtDate, fmtPercent } from "../../lib/format";
 import { ScheduleBaselinePanel } from "./ScheduleBaselinePanel";
 import { ProgressAtDate } from "./ProgressAtDate";
+import { ProgressInterpreterAi } from "../ai/ProgressInterpreterAi";
 
 const ProgressCurvesChart = lazy(() => import("./ProgressCurvesChart"));
 
@@ -92,6 +93,8 @@ export function BuildProgressTab({ projectId }: { projectId: string }) {
           {" "}· Plano de referência: <span className="font-medium text-foreground">{planSourceLabel(progress.planSource, progress.planRevisionNumber)}</span>
         </p>
       </div>
+
+      <ProgressInterpreterAi projectId={projectId} />
 
       {progress.warnings.length > 0 && (
         <ul className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">

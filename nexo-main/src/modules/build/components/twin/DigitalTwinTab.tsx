@@ -15,6 +15,7 @@ import {
 import { fmtDateTime } from "../../lib/format";
 import { StatusPill } from "../commercial/StatusPill";
 import { BindingsSection } from "./BindingsSection";
+import { ModelMapperAi } from "../ai/ModelMapperAi";
 import { ModelUploadForm } from "./ModelUploadForm";
 import { RealityCaptureSection } from "./RealityCaptureSection";
 import { TwinOnboarding } from "./TwinOnboarding";
@@ -122,7 +123,10 @@ export function DigitalTwinTab({ project }: { project: BuildProjectDetailsDto })
       {section === "zonas" && <ZonesSection projectId={projectId} models={models} stages={project.stages} />}
 
       {section === "vinculos" && (
-        <BindingsSection projectId={projectId} version={bindingVersion} stages={project.stages} coveragePercent={ov?.bindingCoveragePercent ?? null} />
+        <div className="min-w-0 space-y-4">
+          <ModelMapperAi projectId={projectId} version={selected?.status === "Ready" ? selected : allVersions.find((v) => v.status === "Ready") ?? null} />
+          <BindingsSection projectId={projectId} version={bindingVersion} stages={project.stages} coveragePercent={ov?.bindingCoveragePercent ?? null} />
+        </div>
       )}
 
       {section === "captura" && (
