@@ -29,3 +29,7 @@ dist-ssr
 .review-baseline/
 playwright-report/
 test-results/
+
+# Local backend host for the portal integration suite (build outputs)
+e2e/backend-host/bin/
+e2e/backend-host/obj/

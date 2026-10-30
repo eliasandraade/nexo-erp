@@ -1,0 +1,22 @@
+[WebServer] (node:21404) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:36456) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 11 tests using 1 worker
+
+(node:13272) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  1 e2e\build-portal.spec.ts:3:3 › public review at 360 (2.9s)
+  ok  2 e2e\build-portal.spec.ts:3:3 › public review at 390 (780ms)
+  ok  3 e2e\build-portal.spec.ts:3:3 › public review at 430 (1.0s)
+  ok  4 e2e\build-portal.spec.ts:3:3 › public review at 768 (841ms)
+  ok  5 e2e\build-portal.spec.ts:3:3 › public review at 1440 (1.0s)
+  ok  6 e2e\build-portal.spec.ts:22:1 › private wrong password then access (823ms)
+  ok  7 e2e\build-portal.spec.ts:36:1 › decision requires impact confirmation (1.3s)
+  ok  8 e2e\build-portal.spec.ts:45:1 › handover and assistance (829ms)
+  ok  9 e2e\build-portal.spec.ts:53:1 › model failure retains photos and stage fallback (1.7s)
+  ok 10 e2e\build-portal.spec.ts:65:1 › custom production route is closed without adapter (552ms)
+  ok 11 e2e\build-portal.spec.ts:73:1 › structured model and historical snapshot (1.3s)
+
+  11 passed (16.5s)
