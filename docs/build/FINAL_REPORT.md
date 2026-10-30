@@ -97,7 +97,7 @@ inexistente (baixa, registrada em §13).
 Caminhos críticos 1–9 cobertos por testes de integração (portal publicado; portal com senha sem/errada/certa/expirada;
 financeiro oculto ausente do JSON; IFC → processamento → elementos → vínculos → estado → portal; movimento → etapa →
 custo; orçamento → aprovação → conversão; aditivo → decisão do cliente → impacto; inspeção → entrega → garantia →
-assistência; isolamento entre empresas). SonarCloud: quality gate verde (cobertura ≥ 80% no código novo).
+assistência; isolamento entre empresas). SonarCloud: quality gate verde; detalhamento dos 543 itens em §16.
 
 ## 10. Performance
 
@@ -121,6 +121,9 @@ storage → 503 `storage_unavailable`; previsões desligadas → método pondera
 
 ## 13. Pendências reais
 
+- **Bloqueio antes do merge: domínio do portal.** `www.orken.com.br` não existe no DNS, mas é a origem dos links que o
+  admin gera (`PORTAL_PUBLIC_ORIGIN`). Criar o `www` apontando para o mesmo frontend (com TLS e fallback do SPA), ou
+  decidir usar `app.orken.com.br` nos links (§16).
 - **Merge e deploy** (decisão do Elias); depois, smoke em produção das rotas novas.
 - CORS: `https://www.orken.com.br` e `https://app.orken.com.br` já estão na lista fixa; outra origem do site entra em
   `Cors:AllowedOrigins`. Desde a v1.6 `ETag` e `Retry-After` são expostos ao navegador.
@@ -160,3 +163,154 @@ Wave 4 · `54ec134`/`19de292`/`2084730` Wave 5 · `df7d934` Sonar · `ce0ac36`/`
 8. O frontend "Minha Obra" faz parte deste PR (`nexo-main/src/modules/build-portal`, rota `/{empresa}/{obra}`; merge de
    `codex/minha-obra`). Detalhes em `docs/build/client-portal-frontend.md`, inclusive a suíte que roda contra esta API
    real (`npx playwright test --config playwright.build-portal.integration.config.ts`, em `nexo-main`).
+
+## 16. Auditoria final de release (HEAD `aa15b12`)
+
+### SonarCloud
+
+O comentário do bot ("543 New issues") e o "0 itens" reportado antes medem coisas diferentes: o 0 era só de
+**confiabilidade**. A análise do PR (só linhas novas ou alteradas: 62.135) tem:
+
+| Tipo | Abertos |
+|---|---|
+| BUG | 0 |
+| VULNERABILITY | 0 |
+| SECURITY_HOTSPOT | 0 (100 % revisados) |
+| CODE_SMELL (manutenibilidade) | 543 |
+
+Nenhum item aceito, todos `OPEN`. Dívida estimada de 56 h, razão de dívida 0,28 % (nota A, limite 5 %): por isso o gate passa.
+
+| Área | Itens | CRITICAL |
+|---|---|---|
+| Backend (src) | 208 | 39 |
+| Backend (testes) | 8 | 0 |
+| Frontend do Build (admin, plataforma e roteador) | 258 | 7 |
+| Portal "Minha Obra" | 69 | 6 |
+
+Os 52 CRITICAL são 44 de complexidade cognitiva (S3776), 5 laços de nova tentativa sem condição de parada explícita
+(S1994), 2 nomes de parâmetro (S927) e 1 aninhamento profundo (S2004). Os maiores grupos restantes: props não
+`readonly` (144), ternários aninhados (110), `static readonly` para arrays constantes (56), métodos com muitos
+parâmetros (47), literais repetidos (21), `<output>` em vez de `role="status"` (21).
+
+Conferidos um a um os que poderiam esconder defeito:
+- **S1994:** os 5 laços repetem só quando `attempt == 0`; a segunda falha sobe ou vira 409. Terminam.
+- **S2681:** `if (ok) toast.success(ok); return r;` numa linha; o `return` incondicional é o pretendido.
+- **S6551:** `FormData.get` de campos de texto devolve string.
+- **S6479:** 13 listas com índice como `key`. Todas renderizam texto estático e são trocadas inteiras a cada recarga; os
+  pontos da planta só crescem ou encolhem no fim.
+
+Nenhum é defeito funcional nem risco de segurança; ficam como dívida de manutenção documentada. A `master` tem 1.527
+itens abertos (184 BUG, 5 VULNERABILITY) que não são deste PR.
+
+### Migrations
+
+`Up()` das 6 migrations, sem nenhum `Drop`, `Rename`, `AlterColumn` ou `Sql()` bruto.
+
+| Migration | Operações | Em tabelas existentes | Risco |
+|---|---|---|---|
+| BuildWave1Portal | 7 tabelas, 9 colunas, 16 índices | `int_movements.stage_id` (nulo) + índice não concorrente; `bld_stages.weight` (default 1); `bld_projects` área/lat/long (nulos), `tracking_mode` (default 1 = Standard); `bld_daily_logs`/`_photos` `client_visible` (default false) | **MEDIUM** |
+| BuildWave2Commercial | 10 tabelas, 17 colunas, 30 índices, 1 FK | `bld_budgets` 15 colunas (nulas, `version` default 1), índice único filtrado por `root_budget_id IS NOT NULL` (sem conflito: coluna nova toda nula), FK `SetNull` para modelos; `bld_budget_items.kind` default 5 = Other | LOW |
+| BuildWave3Quality | 8 tabelas, 27 índices | nenhuma | LOW |
+| BuildWave4DigitalTwin | 9 tabelas, 30 índices | nenhuma | LOW |
+| BuildWave5Ai | 2 tabelas, 6 índices | nenhuma | LOW |
+| BuildWave6Forecast | 1 tabela, 1 coluna, 3 índices | `bld_stages.weather_sensitive` (nula) | LOW |
+
+Observações:
+- **Por que MEDIUM na Wave 1:** `int_movements` é o livro financeiro compartilhado entre módulos. O `CREATE INDEX` não
+  concorrente bloqueia escrita nessa tabela enquanto o índice é construído. As migrations rodam no boot
+  (`MigrateAsync`, em transação, sem `CONCURRENTLY`). O tempo depende do número de linhas em produção, que não foi
+  medido. Antes do merge: `SELECT count(*) FROM nexo.int_movements;` (até centenas de milhares = segundos).
+- **Defaults:** `NOT NULL` com default constante só altera metadado no PostgreSQL 11 ou mais novo, sem reescrever a
+  tabela. O dev usa o 16; a versão de produção deve ser conferida com `SELECT version();`.
+- **Efeito dos defaults nos dados existentes:**
+  - etapas existentes com peso 1 (peso igual);
+  - diário e fotos antigos ocultos do portal até a construtora liberar;
+  - itens de orçamento antigos como "Outro".
+- **FKs:**
+  - Para etapa: `SetNull` (aditivos, escolhas, inspeções, não conformidades, materiais, capturas) ou `Cascade` só no
+    vínculo modelo↔etapa.
+  - `int_movements.stage_id` não tem FK, de propósito: livro entre módulos. Lançamento de etapa excluída cai em
+    "Sem etapa" no custo por etapa.
+  - Para projeto: `Cascade`, mas projeto não tem exclusão física (só mudança de status).
+- Durante o deploy, o código antigo convive bem com o esquema novo: só colunas nulas ou com default.
+
+### Rota pública `/{empresa}/{obra}`
+
+- O resolver só aceita exatamente 2 segmentos `[a-z0-9-]` (3–60 caracteres), nenhum deles reservado.
+- Os 37 primeiros segmentos usados por rotas e navegação do app estão todos reservados.
+- Arquivos estáticos não casam: o ponto do nome do arquivo e o `.well-known` ficam fora do padrão.
+- O backend recusa salvar slug reservado (`BuildPortalSlug.Reserved`) e tem a mesma lista do frontend, conferida
+  programaticamente.
+
+Lista final (50): `acesso-encerrado admin agendar api app assets assinatura auditoria build caixa check-email clientes
+compras configuracoes dashboard esqueci-senha estoque financeiro fiscal forgot-password fornecedores health impersonate
+listas-de-preco login logout menu obra obras orken pdv perfil platform portal produtos public rastrear redefinir-senha
+register relatorios reset-password restaurante service static tributos usuarios vendas verify-email workspaces www`.
+
+### Configuração e ambiente
+
+- **Domínio (bloqueio):** `www.orken.com.br` não existe no DNS (NXDOMAIN em 2026-10-30), e `orken.com.br` redireciona
+  para `http://app.orken.com.br`. O admin monta o link do cliente com `PORTAL_PUBLIC_ORIGIN = "https://www.orken.com.br"`
+  (`nexo-main/src/modules/build/api/build-portal.api.ts`). Hoje `https://app.orken.com.br/solutie/shoppingeusebio`
+  serve o SPA com fallback, mas o link gerado pelo admin não abriria.
+- **CORS:** `https://app.orken.com.br` e `https://www.orken.com.br` estão fixos no código para todos os ambientes;
+  `Cors:AllowedOrigins` só acrescenta. Observação antiga, não deste PR: as origens `localhost` também valem em produção.
+- **IP do cliente:**
+  - A API de produção responde direto da borda da Railway (`Server: railway-hikari`, sem CDN).
+  - O padrão do código é o primeiro valor de `X-Forwarded-For`, com base em resposta de fórum.
+  - A documentação oficial da Railway aponta `X-Real-IP`, e o fórum tem respostas conflitantes.
+  - Não confirmado sem ambiente: **bloqueio do smoke**. Registrar os dois headers numa requisição de IP conhecido e,
+    se preciso, ajustar `RateLimiting:ClientIpSource=RealIp`.
+  - Mesmo com o header errado, o bloqueio global por portal (`Too_many_wrong_passwords_from_anywhere_lock_the_whole_portal`)
+    limita a força bruta.
+- **IA:**
+  - `BuildAiEnabled` e `BuildVisionEnabled` nascem `false`, também para empresa sem registro de configuração.
+  - Desligada: 403. Sem provider ou com o limite mensal atingido: sugestão por regras ou 422 `ai_provider_unavailable`.
+  - Resposta inválida do modelo: 503 sem gravar.
+  - O uso é contabilizado no runtime da plataforma. Os valores dos limites são configuração do SuperAdmin e devem ser
+    conferidos manualmente.
+- **Storage:**
+  - Contexts `build-daily-log`, `build-portal-logo`, `build-portal-cover`, `build-selection-option`, `build-quality`,
+    `build-handover`, `build-assistance`, `build-reality`.
+  - URL assinada de 15 min (`PrivateFileUrls.Ttl`), chave sempre conferida contra o tenant.
+  - Limites de upload: modelos 150 MB (`Build:Models:MaxUploadMb`), imagens de captura 25 MB, documentos 20 MB,
+    upload público 8 MB, JSON público 64 KB.
+  - Uploads passam pela API (sem PUT direto no R2).
+- **Clima:** `WeatherEnabled` é `false` no `appsettings.json`. A rota de clima responde 404 e a previsão segue com o
+  motivo `weather_disabled` (teste em `BuildForecastTests`).
+
+### Controles críticos presentes no HEAD (evidência: testes)
+
+| Controle | Evidência |
+|---|---|
+| Isolamento de tenant e projeto, IDOR | `Another_tenant_cannot_touch_this_tenants_portal_or_costs`, `Another_tenant_gets_404_for_every_wave2_resource`/`wave3`, `Suggestions_and_documents_of_another_company_are_404`, `Change_orders_cannot_be_decided_on_a_public_portal_nor_across_projects_or_tenants`; E2E real de isolamento |
+| Sessão: emissão, expiração, revogação | `Password_portal_needs_a_valid_session`: token de 256 bits aleatórios gerado pelo servidor, só o hash gravado, escopo empresa+portal; expira; cai com troca de senha e no logout (sem *session fixation*) |
+| Força bruta e rate limit | `Wrong_passwords_lock_only_the_guessing_client_not_the_real_one`, `Too_many_wrong_passwords_from_anywhere_lock_the_whole_portal`, `Parallel_wrong_passwords_each_count`, `RateLimitResponse_IncludesRetryAfterHeader` |
+| CORS | `CORS_PublicPortalOrigin_CanReadETagAndRetryAfter_AndSendTheSessionHeader` e preflights |
+| CSRF | O portal usa header e `credentials: "omit"`, sem credencial implícita, então CSRF não se aplica; o admin mantém os cookies e testes existentes |
+| XSS | Sem `dangerouslySetInnerHTML`, `innerHTML` ou `eval` no portal e no admin do Build; URLs de mídia só `https:` (`safeUrl`); CSP sem `unsafe-inline` em script (`CSP_AllowsStylesButNotUnsafeInlineScripts`) |
+| Uploads, MIME e assinatura de bytes | `Reality_capture_checks_the_magic_and_portal_sections_stay_off_by_default`; E2E real: PNG falso recusado com 422 e 8 MB+1 com 413; `Public_json_bodies_are_capped_at_64_kb` |
+| Escopo de URL assinada e caminhos | `Site_photos_only_take_this_tenants_private_daily_log_keys`, `Source_url_is_for_the_company_only_audited_and_never_in_the_portal`; o caminho crítico 4 sobe `../../etc/Projeto Casa.ifc` |
+| Enumeração de portal | `Unknown_and_unpublished_portals_answer_the_same_404` |
+| Dados antes da autenticação | O mesmo teste de sessão: o teaser não tem `project` nem `stages`; `A_public_portal_never_serves_the_personal_sections` |
+| Financeiro oculto | `Financial_data_is_absent_unless_enabled`, `Change_order_money_reaches_the_client_only_with_the_financial_summary` |
+| Notas internas | `Documents_check_the_content_and_the_portal_lists_only_client_visible_ones_without_internal_fields`, `Timeline_and_photos_only_show_what_was_marked_for_the_client` |
+| BIM bruto | Caminho crítico 4: o JSON público não contém `.ifc`, `/source.`, `private/` nem o id do modelo; só a chave do GLB derivado vira URL assinada |
+| Impersonation | `An_impersonating_administrator_cannot_change_how_the_portal_is_opened`, `An_impersonation_needs_a_reason_names_who_acted_never_refreshes_and_ends_at_once` |
+| MFA do SuperAdmin | `Admin_acts_need_two_step_verification_with_codes_that_work_once`, `MfaTests` |
+
+### Digital Twin no HEAD
+
+- GLB derivado com URL assinada.
+- `elementIndex` a partir de vínculos reais, sem inferência por nome de nó (teste `never reads metadata from node
+  names`).
+- Snapshots por data com ETag e 304.
+- Modos Projeto, Agora e Comparar; aviso de `geometrySource` para representação simplificada e mapeamento assistido.
+- Limite conhecido: `Build:Models:MaxElements` = 200.000 e upload de 150 MB. O maior modelo testado é o IFC de exemplo
+  e o GLB sintético da suíte. Desempenho com modelos grandes não foi medido.
+
+### Manual / smoke pós-merge (não testados)
+
+iPhone físico · Android físico · leitor de tela · IFC grande · GLB grande · Core Web Vitals · Railway real · CORS real
+no domínio do portal · IP real (`X-Forwarded-For` × `X-Real-IP`) · storage real (R2) · provider real de IA ·
+`count(*)` de `int_movements` e `SELECT version()` antes do merge.
