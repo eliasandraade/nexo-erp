@@ -14,6 +14,7 @@ public class InterpreterTelemetryConfiguration : IEntityTypeConfiguration<Interp
 
         b.Property(x => x.OperationType).HasMaxLength(50).IsRequired();
         b.Property(x => x.Provider).HasMaxLength(50).IsRequired();
+        b.Property(x => x.ModelId).HasMaxLength(100);
         b.Property(x => x.PromptType).HasMaxLength(100).IsRequired();
         b.Property(x => x.PromptVersion).HasMaxLength(20).IsRequired();
         b.Property(x => x.PromptHash).HasMaxLength(64).IsRequired();

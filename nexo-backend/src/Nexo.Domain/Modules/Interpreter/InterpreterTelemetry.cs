@@ -28,8 +28,12 @@ public class InterpreterTelemetry
     public int      RequiresInputCount    { get; private set; }
     public double   AmountConfidence      { get; private set; }
     public double   DateConfidence        { get; private set; }
+    /// <summary>Never written: prompts and provider responses are not stored (privacy). Kept so no column is dropped.</summary>
     public string?  RawPrompt             { get; private set; }
+    /// <summary>Never written: prompts and provider responses are not stored (privacy). Kept so no column is dropped.</summary>
     public string?  RawResponse           { get; private set; }
+    /// <summary>The provider's model id the call ran with (null for rule-based).</summary>
+    public string?  ModelId               { get; private set; }
     public DateTime CreatedAt             { get; private set; }
 
     private InterpreterTelemetry() { }
@@ -55,8 +59,7 @@ public class InterpreterTelemetry
         int     requiresInputCount,
         double  amountConfidence,
         double  dateConfidence,
-        string? rawPrompt    = null,
-        string? rawResponse  = null)
+        string? modelId      = null)
     {
         return new InterpreterTelemetry
         {
@@ -81,8 +84,7 @@ public class InterpreterTelemetry
             RequiresInputCount   = requiresInputCount,
             AmountConfidence     = amountConfidence,
             DateConfidence       = dateConfidence,
-            RawPrompt            = rawPrompt,
-            RawResponse          = rawResponse,
+            ModelId              = modelId,
             CreatedAt            = DateTime.UtcNow,
         };
     }

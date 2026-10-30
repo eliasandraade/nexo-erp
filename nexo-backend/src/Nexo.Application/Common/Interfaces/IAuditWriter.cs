@@ -62,6 +62,12 @@ public static class AuditActions
 
     // Platform admin
     public const string PlatformImpersonation  = "platform_impersonation";
+
+    // AI providers (platform-wide)
+    public const string AiProviderUpdated      = "ai_provider_updated";
+    public const string AiProviderKeySet       = "ai_provider_key_set";
+    public const string AiProviderKeyRemoved   = "ai_provider_key_removed";
+    public const string AiProviderTested       = "ai_provider_tested";
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";
 }

@@ -361,20 +361,21 @@ public class DataSeeder
             return;
         }
 
+        // Prices are USD micro-dollars per million tokens (Anthropic list price of the model). OpenAI has no analyzer in
+        // this version: it is listed so the SuperAdmin shows it as "não disponível", never as working.
         var providers = new[]
         {
             AiProvider.Create(
                 name: "RuleBased (Motor de Regras)", provider: "RuleBased",
-                isEnabled: true, isDefault: true, priority: 1,
-                modelId: null, costPerInputTokenMicros: 0, costPerOutputTokenMicros: 0),
+                isEnabled: true, isDefault: true, priority: 1),
             AiProvider.Create(
-                name: "Claude 3 Haiku (Anthropic)", provider: "Claude",
+                name: "Claude (Anthropic)", provider: "Claude",
                 isEnabled: false, isDefault: false, priority: 2,
-                modelId: "claude-haiku-20240307", costPerInputTokenMicros: 250, costPerOutputTokenMicros: 1250),
+                modelId: "claude-haiku-5-5", costPerMillionInputMicros: 100_000, costPerMillionOutputMicros: 500_000),
             AiProvider.Create(
-                name: "GPT-4o Mini (OpenAI)", provider: "OpenAI",
+                name: "OpenAI", provider: "OpenAI",
                 isEnabled: false, isDefault: false, priority: 3,
-                modelId: "gpt-4o-mini", costPerInputTokenMicros: 150, costPerOutputTokenMicros: 600),
+                modelId: null),
         };
 
         _context.AiProviders.AddRange(providers);
