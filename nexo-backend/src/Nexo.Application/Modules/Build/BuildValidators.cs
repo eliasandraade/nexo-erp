@@ -33,6 +33,8 @@ public class CreateBuildProjectRequestValidator : AbstractValidator<CreateBuildP
         RuleFor(x => x)
             .Must(x => x.StartDate is null || x.ExpectedEndDate is null || x.StartDate <= x.ExpectedEndDate)
             .WithMessage("A previsão de término precisa ser depois do início.");
+
+        BuildSiteRules.Apply(this, x => x.TrackingMode, x => x.Latitude, x => x.Longitude, x => x.AreaM2);
     }
 }
 
@@ -68,6 +70,8 @@ public class UpdateBuildProjectRequestValidator : AbstractValidator<UpdateBuildP
         RuleFor(x => x)
             .Must(x => x.StartDate is null || x.ExpectedEndDate is null || x.StartDate <= x.ExpectedEndDate)
             .WithMessage("A previsão de término precisa ser depois do início.");
+
+        BuildSiteRules.Apply(this, x => x.TrackingMode, x => x.Latitude, x => x.Longitude, x => x.AreaM2);
     }
 }
 
@@ -88,6 +92,9 @@ public class CreateBuildStageRequestValidator : AbstractValidator<CreateBuildSta
         RuleFor(x => x)
             .Must(x => x.PlannedStart is null || x.PlannedEnd is null || x.PlannedStart <= x.PlannedEnd)
             .WithMessage("O fim previsto precisa ser depois do início previsto.");
+
+        RuleFor(x => x.Weight).GreaterThan(0m).When(x => x.Weight.HasValue)
+            .WithMessage("O peso da etapa precisa ser maior que zero.");
     }
 }
 
@@ -161,6 +168,8 @@ public class UpdateBuildStageRequestValidator : AbstractValidator<UpdateBuildSta
             .MaximumLength(1000).WithMessage("A descrição pode ter até 1000 caracteres.")
             .When(x => x.Description is not null);
         RuleFor(x => x.Order).GreaterThanOrEqualTo(0).WithMessage("Ordem inválida.");
+        RuleFor(x => x.Weight).GreaterThan(0m).When(x => x.Weight.HasValue)
+            .WithMessage("O peso da etapa precisa ser maior que zero.");
         RuleFor(x => x)
             .Must(x => x.PlannedStart is null || x.PlannedEnd is null || x.PlannedStart <= x.PlannedEnd)
             .WithMessage("O fim previsto precisa ser depois do início previsto.");

@@ -82,6 +82,23 @@ public static class AuditActions
     public const string AiTenantLimitsChanged  = "ai_tenant_limits_changed";
     public const string AiPromptCreated        = "ai_prompt_created";
     public const string AiPromptActivated      = "ai_prompt_activated";
+    // Orken Build — progress, cost per stage, client portal
+    public const string BuildScheduleFrozen          = "build_schedule_frozen";
+    public const string BuildMovementStageAssigned   = "build_movement_stage_assigned";
+    public const string BuildPortalCompanyUpdated    = "build_portal_company_updated";
+    public const string BuildPortalUpdated           = "build_portal_updated";
+    public const string BuildPortalPasswordSet       = "build_portal_password_set";
+    public const string BuildPortalPasswordRemoved   = "build_portal_password_removed";
+    public const string BuildPortalPublished         = "build_portal_published";
+    public const string BuildPortalUnpublished       = "build_portal_unpublished";
+    public const string BuildPortalLocked            = "build_portal_locked";
+    public const string BuildDailyLogClientVisibility = "build_daily_log_client_visibility";
+    public const string BuildPhotoClientVisibility   = "build_photo_client_visibility";
+    public const string BuildClientUpdateCreated     = "build_client_update_created";
+    public const string BuildClientUpdateEdited      = "build_client_update_edited";
+    public const string BuildClientUpdatePublished   = "build_client_update_published";
+    public const string BuildClientUpdateArchived    = "build_client_update_archived";
+
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";
 }

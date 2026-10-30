@@ -161,6 +161,15 @@ public static class DependencyInjection
         services.AddScoped<IBuildDailyLogPhotoRepository, BuildDailyLogPhotoRepository>();
         services.AddScoped<IBuildFinancialQueryService, BuildFinancialQueryService>();
         services.AddScoped<IBuildDashboardQueryService, BuildDashboardQueryService>();
+        // Wave 1: weighted progress + snapshots, cost per stage, client portal (internal + public)
+        services.AddScoped<BuildAuditTrail>();
+        services.AddScoped<BuildPortalMedia>();
+        services.AddScoped<BuildProgressEngine>();
+        services.AddScoped<BuildProgressService>();
+        services.AddScoped<Nexo.Application.Modules.Build.IBuildProgressRecorder>(sp => sp.GetRequiredService<BuildProgressService>());
+        services.AddScoped<BuildCostService>();
+        services.AddScoped<BuildPortalAdminService>();
+        services.AddScoped<BuildPublicPortalService>();
 
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();

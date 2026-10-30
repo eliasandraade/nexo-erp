@@ -23,6 +23,8 @@ public class BuildStageConfiguration : IEntityTypeConfiguration<BuildStage>
         builder.Property(x => x.ActualStartDate).HasColumnName("actual_start_date");
         builder.Property(x => x.ActualEndDate).HasColumnName("actual_end_date");
         builder.Property(x => x.ProgressPercent).HasColumnName("progress_percent").IsRequired();
+        builder.Property(x => x.Weight).HasColumnName("weight").HasColumnType("numeric(12,4)")
+            .HasDefaultValue(1m).HasSentinel(0m).IsRequired();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 

@@ -40,6 +40,8 @@ public class StorageController : ControllerBase
             ["service-portal-logo"]  = new("service/portal/logo", false, Management),
             ["service-portal-cover"] = new("service/portal/cover", false, Management),
             ["build-daily-log"]      = new("build/daily-logs", true, Management),
+            ["build-portal-logo"]    = new("build/portal/logo", false, Management),
+            ["build-portal-cover"]   = new("build/portal/cover", false, Management),
             ["service-record"]       = new("service/records", true, Management, NeedsPrivateBucket: true),
         };
 

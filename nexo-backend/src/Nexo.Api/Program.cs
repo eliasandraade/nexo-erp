@@ -60,6 +60,7 @@ try
     {
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.OverdueTitlesJob>();
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.ServiceCustomerEmailsJob>();
+        builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.BuildProgressSnapshotJob>();
         // Re-seals AI provider keys still in the legacy Base64 form once a master key is configured (after migrations).
         builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Interpreter.AiKeyUpgradeHostedService>();
     }
@@ -167,7 +168,7 @@ try
                   // every non-simple request was preceded by a fresh OPTIONS round-trip,
                   // doubling latency on the cold first load.
                   .SetPreflightMaxAge(TimeSpan.FromHours(24))
-                  .WithExposedHeaders("Content-Disposition", "Content-Length", Nexo.Api.Middleware.CorrelationIdMiddleware.Header);
+                  .WithExposedHeaders("Content-Disposition", "Content-Length", "Retry-After", Nexo.Api.Middleware.CorrelationIdMiddleware.Header);
         });
     });
 
@@ -311,6 +312,42 @@ try
                     QueueLimit           = 0,
                 });
         });
+    });
+
+    // Orken Build client portal (public, per client IP): "build-portal" for reads, "build-portal-auth" for
+    // password attempts (on top of the per-portal lock after 20 wrong passwords). Overridable via
+    // RateLimiting:BuildPortal:* and RateLimiting:BuildPortalAuth:*.
+    builder.Services.Configure<RateLimiterOptions>(options =>
+    {
+        void AddIpPolicy(string policy, string section, int defaultPermit, int defaultWindow)
+        {
+            var enabled = builder.Configuration.GetValue($"RateLimiting:{section}:Enabled", true);
+            var permit  = builder.Configuration.GetValue($"RateLimiting:{section}:PermitLimit", defaultPermit);
+            var window  = builder.Configuration.GetValue($"RateLimiting:{section}:WindowSeconds", defaultWindow);
+
+            options.AddPolicy(policy, httpContext =>
+            {
+                if (!enabled)
+                    return RateLimitPartition.GetNoLimiter($"{policy}:disabled");
+
+                var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+                var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
+                    ? forwardedFor.Split(',')[0].Trim()
+                    : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+                return RateLimitPartition.GetFixedWindowLimiter($"{policy}|{clientIp}", _ =>
+                    new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit          = permit,
+                        Window               = TimeSpan.FromSeconds(window),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit           = 0,
+                    });
+            });
+        }
+
+        AddIpPolicy("build-portal", "BuildPortal", 120, 60);
+        AddIpPolicy("build-portal-auth", "BuildPortalAuth", 10, 300);
     });
 
     // ── Controllers ───────────────────────────────────────────────────────────

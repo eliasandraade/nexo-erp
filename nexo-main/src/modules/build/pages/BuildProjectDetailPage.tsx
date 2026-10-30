@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Trash2, Pencil, ArrowUp, ArrowDown, SlidersHorizontal, Undo2,
+  ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Trash2, Pencil, Undo2,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
-  MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2,
+  MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2, Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -13,9 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 import {
-  useProjectDetails, useProjectFinancial,
+  useProjectDetails, useProjectFinancial, useStages,
   useStartProject, usePauseProject, useCompleteProject, useCancelProject,
-  useStages, useCreateStage, useUpdateStageProgress, useDeleteStage, useUpdateStage, useReorderStages,
   useBudgets, useBudget, useCreateBudget,
   useSendBudget, useApproveBudget, useRejectBudget,
   useAddBudgetItem, useUpdateBudgetItem, useRemoveBudgetItem, useSetBudgetMargin,
@@ -26,8 +25,15 @@ import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { BudgetStatusBadge } from "../components/BudgetStatusBadge";
 import { BuildExpenseDialog } from "../components/BuildExpenseDialog";
 import { EditProjectDialog } from "../components/EditProjectDialog";
+import { BuildStagesTab } from "../components/stages/BuildStagesTab";
+import { localToday } from "../lib/format";
+import { BuildProgressTab } from "../components/progress/BuildProgressTab";
+import { CostByStageSection } from "../components/finance/CostByStageSection";
+import { MovementStageSelect } from "../components/finance/MovementStageSelect";
+import { BuildPortalTab } from "../components/portal/BuildPortalTab";
+import { DailyLogClientVisibility, PhotoClientVisibilityToggle } from "../components/diary/DailyLogClientVisibility";
 import type {
-  BuildProjectDetailsDto, BuildStageDto, BuildBudgetDto, BuildDailyLogDto,
+  BuildProjectDetailsDto, BuildBudgetDto, BuildDailyLogDto,
 } from "../api/build.api";
 import {
   getWeatherCurrent, getWeatherHistory,
@@ -56,7 +62,7 @@ function fmtPct(v: number) {
   return `${v.toFixed(1)}%`;
 }
 
-type Tab = "geral" | "etapas" | "orcamento" | "diario" | "financeiro";
+type Tab = "geral" | "etapas" | "progresso" | "orcamento" | "diario" | "financeiro" | "portal";
 
 // ── Tab selector ──────────────────────────────────────────────────────────────
 
@@ -64,9 +70,11 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
   const tabs: Array<{ key: Tab; label: string; icon: React.ElementType }> = [
     { key: "geral",      label: "Geral",       icon: HardHat },
     { key: "etapas",     label: "Etapas",      icon: CheckCircle },
+    { key: "progresso",  label: "Progresso",   icon: TrendingUp },
     { key: "orcamento",  label: "Orçamento",   icon: FileText },
     { key: "diario",     label: "Diário",      icon: BookOpen },
     { key: "financeiro", label: "Financeiro",  icon: BarChart2 },
+    { key: "portal",     label: "Portal do cliente", icon: Globe },
   ];
 
   return (
@@ -241,262 +249,6 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
       )}
 
       <EditProjectDialog project={project} open={editOpen} onClose={() => setEditOpen(false)} />
-    </div>
-  );
-}
-
-// ── Tab: Etapas ───────────────────────────────────────────────────────────────
-
-/** Today's date in the user's calendar (not UTC — after 9 pm in Brazil UTC is already tomorrow). */
-function localToday() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-const fmtDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-
-function TabEtapas({ projectId }: { projectId: string }) {
-  const { data: stages = [], isLoading } = useStages(projectId);
-  const createMut   = useCreateStage(projectId);
-  const progressMut = useUpdateStageProgress(projectId);
-  const deleteMut   = useDeleteStage(projectId);
-  const updateMut   = useUpdateStage(projectId);
-  const reorderMut  = useReorderStages(projectId);
-  const [details, setDetails] = useState<{ id: string; name: string; description: string; start: string; end: string } | null>(null);
-
-  const saveDetails = (stage: BuildStageDto) => {
-    if (!details || !details.name.trim()) return;
-    if (details.start && details.end && details.end < details.start) { toast.error("O fim previsto precisa ser depois do início."); return; }
-    updateMut.mutate({ id: stage.id, req: {
-      name: details.name.trim(), description: details.description.trim() || null, order: stage.order,
-      plannedStart: details.start || null, plannedEnd: details.end || null,
-    } }, {
-      onSuccess: () => { setDetails(null); toast.success("Etapa atualizada."); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar etapa."),
-    });
-  };
-
-  // swap with the neighbour and renumber everything 0..n-1 (gaps or duplicates heal themselves)
-  const move = (index: number, delta: -1 | 1) => {
-    const order = [...stages];
-    const target = index + delta;
-    if (target < 0 || target >= order.length) return;
-    [order[index], order[target]] = [order[target], order[index]];
-    reorderMut.mutate({ entries: order.map((st, i) => ({ stageId: st.id, order: i })) }, {
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao reordenar."),
-    });
-  };
-
-  const [adding, setAdding]   = useState(false);
-  const [newName, setNewName] = useState("");
-  const [editId,  setEditId]  = useState<string | null>(null);
-  const [editPct, setEditPct] = useState(0);
-
-  const handleAddStage = () => {
-    if (!newName.trim()) return;
-    createMut.mutate({ name: newName.trim() }, {
-      onSuccess: () => { setAdding(false); setNewName(""); toast.success("Etapa adicionada!"); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao criar etapa."),
-    });
-  };
-
-  const handleUpdateProgress = (stage: BuildStageDto) => {
-    progressMut.mutate({ id: stage.id, req: { progressPercent: editPct } }, {
-      onSuccess: () => { setEditId(null); toast.success("Progresso atualizado!"); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar."),
-    });
-  };
-
-  const handleDelete = (id: string) => {
-    if (!confirm("Remover esta etapa?")) return;
-    deleteMut.mutate(id, {
-      onSuccess: () => toast.success("Etapa removida."),
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao remover."),
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {stages.length} etapa{stages.length !== 1 ? "s" : ""}
-        </p>
-        {!adding && (
-          <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar etapa
-          </Button>
-        )}
-      </div>
-
-      {adding && (
-        <div className="flex items-center gap-2 p-3 rounded-md border border-dashed border-primary/40">
-          <Input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Nome da etapa…"
-            className="flex-1 text-sm"
-            autoFocus
-            onKeyDown={(e) => e.key === "Enter" && handleAddStage()}
-          />
-          <button onClick={handleAddStage} disabled={!newName.trim() || createMut.isPending}
-            className="text-primary disabled:opacity-40">
-            <Check className="h-4 w-4" />
-          </button>
-          <button onClick={() => { setAdding(false); setNewName(""); }}
-            className="text-muted-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 rounded-md bg-muted animate-pulse" />
-          ))}
-        </div>
-      ) : stages.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border p-8 text-center">
-          <p className="text-sm text-muted-foreground">Nenhuma etapa cadastrada.</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => setAdding(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar primeira etapa
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {stages.map((stage, index) => (
-            <div key={stage.id} className="rounded-md border border-border bg-card p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0 flex-1 basis-40">
-                  <p className="font-medium text-sm truncate">{stage.name}</p>
-                  {stage.description && (
-                    <p className="text-xs text-muted-foreground truncate">{stage.description}</p>
-                  )}
-                  {(stage.plannedStartDate || stage.plannedEndDate) && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Previsto: {stage.plannedStartDate ? fmtDay(stage.plannedStartDate) : "—"} a {stage.plannedEndDate ? fmtDay(stage.plannedEndDate) : "—"}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className={cn(
-                    "text-xs px-2 py-0.5 rounded-full font-medium",
-                    stage.status === "Completed" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                    stage.status === "InProgress" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" :
-                    "bg-muted text-muted-foreground",
-                  )}>
-                    {stage.status === "Completed" ? "Concluída" :
-                     stage.status === "InProgress" ? "Em andamento" : "Pendente"}
-                  </span>
-                  <button
-                    onClick={() => move(index, -1)} disabled={index === 0 || reorderMut.isPending}
-                    aria-label={`Subir ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-2 disabled:opacity-30"
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => move(index, 1)} disabled={index === stages.length - 1 || reorderMut.isPending}
-                    aria-label={`Descer ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-2 disabled:opacity-30"
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => { setEditId(stage.id); setEditPct(stage.progressPercent); }}
-                    aria-label={`Atualizar progresso de ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-2"
-                  >
-                    <SlidersHorizontal className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setDetails({ id: stage.id, name: stage.name, description: stage.description ?? "",
-                      start: stage.plannedStartDate ?? "", end: stage.plannedEndDate ?? "" })}
-                    aria-label={`Editar ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-2"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(stage.id)}
-                    aria-label={`Remover ${stage.name}`}
-                    className="text-muted-foreground hover:text-destructive transition-colors p-2"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {details?.id === stage.id && (
-                <div className="grid gap-2 rounded-md border border-dashed border-primary/40 p-3 sm:grid-cols-2">
-                  <div className="space-y-1 sm:col-span-2">
-                    <Label htmlFor={`stage-name-${stage.id}`} className="text-xs">Nome</Label>
-                    <Input id={`stage-name-${stage.id}`} value={details.name} maxLength={200}
-                      onChange={(e) => setDetails({ ...details, name: e.target.value })} className="text-sm" />
-                  </div>
-                  <div className="space-y-1 sm:col-span-2">
-                    <Label htmlFor={`stage-desc-${stage.id}`} className="text-xs">Descrição</Label>
-                    <Input id={`stage-desc-${stage.id}`} value={details.description} maxLength={1000}
-                      onChange={(e) => setDetails({ ...details, description: e.target.value })} className="text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor={`stage-start-${stage.id}`} className="text-xs">Início previsto</Label>
-                    <Input id={`stage-start-${stage.id}`} type="date" value={details.start}
-                      onChange={(e) => setDetails({ ...details, start: e.target.value })} className="text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor={`stage-end-${stage.id}`} className="text-xs">Fim previsto</Label>
-                    <Input id={`stage-end-${stage.id}`} type="date" value={details.end}
-                      onChange={(e) => setDetails({ ...details, end: e.target.value })} className="text-sm" />
-                  </div>
-                  <div className="flex gap-2 sm:col-span-2">
-                    <Button size="sm" onClick={() => saveDetails(stage)} disabled={!details.name.trim() || updateMut.isPending}>Salvar etapa</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setDetails(null)}>Cancelar</Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Progress bar + inline edit */}
-              {editId === stage.id ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={editPct}
-                    onChange={(e) => setEditPct(Number(e.target.value))}
-                    className="flex-1 accent-primary"
-                  />
-                  <span className="text-sm tabular-nums w-10 text-right">{editPct}%</span>
-                  <button onClick={() => handleUpdateProgress(stage)} disabled={progressMut.isPending}
-                    className="text-primary disabled:opacity-40">
-                    <Check className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => setEditId(null)} className="text-muted-foreground">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Progresso</span>
-                    <span className="tabular-nums">{stage.progressPercent}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        stage.progressPercent === 100 ? "bg-emerald-500" :
-                        stage.progressPercent > 0 ? "bg-primary" : "bg-muted-foreground/20",
-                      )}
-                      style={{ width: `${stage.progressPercent}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -1250,10 +1002,13 @@ function TabDiario({ projectId }: { projectId: string }) {
                       >
                         <X className="h-2.5 w-2.5" />
                       </button>
+                      <PhotoClientVisibilityToggle projectId={projectId} photo={photo} logVisible={!!log.clientVisible} />
                     </div>
                   ))}
                 </div>
               )}
+
+              <DailyLogClientVisibility projectId={projectId} log={log} />
             </div>
           ))}
         </div>
@@ -1279,6 +1034,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
   const { data: movementsData, isLoading: movLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useProjectMovements(projectId);
   const voidMut = useVoidMovement(projectId);
+  const { data: stages = [] } = useStages(projectId);
   const [confirmVoid, setConfirmVoid] = useState<string | null>(null);
 
   const movements = movementsData?.pages.flatMap((pg) => pg.items) ?? [];
@@ -1457,6 +1213,8 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
         </div>
       )}
 
+      <CostByStageSection projectId={projectId} />
+
       {/* ── CTA: registrar despesa ─────────────────────────────────────── */}
       <Button
         className="w-full"
@@ -1512,6 +1270,8 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <MovementStageSelect projectId={projectId} movementId={m.id} description={m.description}
+                    stageId={m.stageId} stages={stages} />
                   <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
                     -{fmt(m.amount)}
                   </p>
@@ -1608,10 +1368,12 @@ export default function BuildProjectDetailPage() {
       {/* Tab content */}
       <div className="flex-1 overflow-auto p-6">
         {tab === "geral"      && <TabGeral project={project} />}
-        {tab === "etapas"     && <TabEtapas projectId={project.id} />}
+        {tab === "etapas"     && <BuildStagesTab projectId={project.id} />}
+        {tab === "progresso"  && <BuildProgressTab projectId={project.id} />}
         {tab === "orcamento"  && <TabOrcamento project={project} />}
         {tab === "diario"     && <TabDiario projectId={project.id} />}
         {tab === "financeiro" && <TabFinanceiro projectId={project.id} />}
+        {tab === "portal"     && <BuildPortalTab projectId={project.id} />}
       </div>
     </div>
   );

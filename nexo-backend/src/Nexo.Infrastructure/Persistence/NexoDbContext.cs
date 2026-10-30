@@ -123,6 +123,13 @@ public class NexoDbContext : DbContext
     public DbSet<BuildBudgetItem>     BldBudgetItems   => Set<BuildBudgetItem>();
     public DbSet<BuildDailyLog>       BldDailyLogs     => Set<BuildDailyLog>();
     public DbSet<BuildDailyLogPhoto>  BldDailyLogPhotos => Set<BuildDailyLogPhoto>();
+    public DbSet<BuildStageProgressEvent> BldStageProgressEvents => Set<BuildStageProgressEvent>();
+    public DbSet<BuildScheduleRevision>   BldScheduleRevisions   => Set<BuildScheduleRevision>();
+    public DbSet<BuildProgressSnapshot>   BldProgressSnapshots   => Set<BuildProgressSnapshot>();
+    public DbSet<BuildPortalCompany>      BldPortalCompanies     => Set<BuildPortalCompany>();
+    public DbSet<BuildProjectPortal>      BldProjectPortals      => Set<BuildProjectPortal>();
+    public DbSet<BuildPortalSession>      BldPortalSessions      => Set<BuildPortalSession>();
+    public DbSet<BuildClientUpdate>       BldClientUpdates       => Set<BuildClientUpdate>();
 
     // ── Service module (Orken Service — motor de serviços) ───────────────────
     public DbSet<SvcProfessional>     SvcProfessionals => Set<SvcProfessional>();

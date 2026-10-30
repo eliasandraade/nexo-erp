@@ -146,7 +146,8 @@ public record MovementListItemResponse(
     Guid?    ContextId,
     Guid?    SupplierId,
     string   Status,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    Guid?    StageId = null);       // obra stage (Build cost per stage); null outside an obra
 
 public record MovementListResponse(
     IReadOnlyList<MovementListItemResponse> Items,

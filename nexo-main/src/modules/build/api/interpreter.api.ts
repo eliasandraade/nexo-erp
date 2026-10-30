@@ -99,6 +99,8 @@ export interface MovementListItemDto {
   supplierId:  string | null;
   status:      MovementStatus;
   createdAt:   string;
+  /** Stage of the project the cost belongs to — only when the list endpoint sends it. */
+  stageId?:    string | null;
 }
 
 export interface MovementListResponse {

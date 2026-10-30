@@ -21,6 +21,10 @@ public static class BusinessClock
         return TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local.Date, DateTimeKind.Unspecified), Brazil);
     }
 
+    /// <summary>Today's calendar day in Brazil.</summary>
+    public static DateOnly Today(DateTime? nowUtc = null)
+        => DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(nowUtc ?? DateTime.UtcNow, Brazil));
+
     /// <summary>UTC instant at which a Brazil calendar day begins.</summary>
     public static DateTime DayStartUtc(DateOnly day)
         => TimeZoneInfo.ConvertTimeToUtc(day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Unspecified), Brazil);

@@ -21,6 +21,9 @@ export type BuildStageStatus =
   | "InProgress"
   | "Completed";
 
+/** How the construtora follows the project: standard tracking, or 3D (model onboarding arrives later). */
+export type BuildTrackingMode = "Standard" | "ThreeD";
+
 export type BuildBudgetStatus =
   | "Draft"
   | "Sent"
@@ -47,6 +50,10 @@ export interface BuildProjectDto {
   logCount:             number;
   createdAt:            string;
   updatedAt:            string;
+  latitude?:            number | null;
+  longitude?:           number | null;
+  areaM2?:              number | null;
+  trackingMode?:        BuildTrackingMode;
 }
 
 export interface BuildStageDto {
@@ -61,6 +68,8 @@ export interface BuildStageDto {
   actualStartDate:  string | null;
   actualEndDate:    string | null;
   progressPercent:  number;
+  /** Relative weight in the overall progress (> 0, default 1). */
+  weight?:          number;
 }
 
 export interface BuildBudgetItemDto {
@@ -95,6 +104,7 @@ export interface BuildDailyLogPhotoDto {
   url:        string | null;
   caption:    string | null;
   createdAt:  string;
+  clientVisible?: boolean;
 }
 
 export interface BuildDailyLogDto {
@@ -107,6 +117,9 @@ export interface BuildDailyLogDto {
   createdAt:      string;
   updatedAt:      string;
   photos:         BuildDailyLogPhotoDto[];
+  /** Shown on the client portal (only `clientSummary`, never the internal notes). */
+  clientVisible?: boolean;
+  clientSummary?: string | null;
 }
 
 export interface BuildProjectDetailsDto extends BuildProjectDto {
@@ -168,8 +181,13 @@ export interface CreateBuildProjectRequest {
   budgetEstimated?: number;
   startDate?:       string;
   expectedEndDate?: string;
+  trackingMode?:    BuildTrackingMode;
+  latitude?:        number | null;
+  longitude?:       number | null;
+  areaM2?:          number | null;
 }
 
+/** PUT is a full replace: site fields sent as null are cleared, so always send the current values back. */
 export interface UpdateBuildProjectRequest {
   name:             string;
   clientName:       string;
@@ -179,6 +197,10 @@ export interface UpdateBuildProjectRequest {
   budgetApproved?:  number;
   startDate?:       string;
   expectedEndDate?: string;
+  trackingMode?:    BuildTrackingMode;
+  latitude:         number | null;
+  longitude:        number | null;
+  areaM2:           number | null;
 }
 
 export interface CreateBuildStageRequest {
@@ -186,6 +208,7 @@ export interface CreateBuildStageRequest {
   description?:  string;
   plannedStart?: string;   // yyyy-MM-dd
   plannedEnd?:   string;
+  weight?:       number;
 }
 
 export interface UpdateBuildStageRequest {
@@ -194,11 +217,16 @@ export interface UpdateBuildStageRequest {
   order:        number;
   plannedStart: string | null;
   plannedEnd:   string | null;
+  weight?:      number;
 }
 
 export interface UpdateBuildStageProgressRequest {
   progressPercent: number;
   status?:         BuildStageStatus;
+  /** Recorded in the progress history. */
+  note?:           string;
+  /** Day the progress refers to (yyyy-MM-dd; default today). */
+  effectiveDate?:  string;
 }
 
 export interface ReorderBuildStagesRequest {

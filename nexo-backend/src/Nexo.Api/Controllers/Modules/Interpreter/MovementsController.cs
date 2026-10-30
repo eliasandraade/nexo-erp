@@ -274,7 +274,8 @@ public class MovementsController : ControllerBase
                 ContextId:   m.ContextId,
                 SupplierId:  m.SupplierId,
                 Status:      m.Status.ToString(),
-                CreatedAt:   m.CreatedAt)).ToList(),
+                CreatedAt:   m.CreatedAt,
+                StageId:     m.StageId)).ToList(),
             TotalCount: total,
             Page:       page,
             PageSize:   pageSize));
