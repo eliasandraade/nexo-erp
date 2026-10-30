@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { type Access, safeUrl } from "./types";
-import { type PortalGateway, unavailableGateway } from "./api/gateway";
+import { type PortalGateway } from "./api/gateway";
+import { createHttpGateway } from "./api/http-gateway";
+import { usePortalSession } from "./hooks/usePortalSession";
 import { PortalView } from "./PortalView";
 import "./portal.css";
 
@@ -14,19 +16,16 @@ const messages: Record<Exclude<Access["kind"], "ready">, string> = {
   "not-found": "Não encontramos este acompanhamento.",
   unavailable: "O acompanhamento está indisponível neste momento.",
 };
-export default function PortalPage({
-  gateway = unavailableGateway,
-}: {
-  gateway?: PortalGateway;
-}) {
+export default function PortalPage({ gateway }: { gateway?: PortalGateway }) {
   const { companySlug = "", projectSlug = "" } = useParams();
+  const [httpGateway] = useState(() => createHttpGateway());
   // Key destroys all state synchronously when tenant/project changes.
   return (
     <PortalSession
       key={`${companySlug}/${projectSlug}`}
       tenant={companySlug}
       project={projectSlug}
-      gateway={gateway}
+      gateway={gateway ?? httpGateway}
     />
   );
 }
@@ -39,11 +38,16 @@ export function PortalSession({
   project: string;
   gateway: PortalGateway;
 }) {
-  const [access, setAccess] = useState<Access>();
-  const [busy, setBusy] = useState(false);
+  const { access, busy, run, retrySeconds } = usePortalSession(
+    gateway,
+    tenant,
+    project,
+  );
   const [password, setPassword] = useState("");
-  const request = useRef<AbortController>();
-  const sequence = useRef(0);
+  const actions = useMemo(
+    () => gateway.actions?.(tenant, project),
+    [gateway, tenant, project],
+  );
   useEffect(() => {
     const originalTitle = document.title;
     let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
@@ -57,45 +61,20 @@ export function PortalSession({
     robots.content = "noindex, nofollow, noarchive";
     document.title = "Minha Obra";
     return () => {
-      request.current?.abort();
       document.title = originalTitle;
       if (created) robots.remove();
       else robots.content = previous ?? "";
     };
   }, []);
-  const run = useCallback(
-    async (secret?: string) => {
-      request.current?.abort();
-      const controller = new AbortController();
-      request.current = controller;
-      const id = ++sequence.current;
-      setBusy(true);
-      setAccess(undefined);
-      try {
-        const result =
-          secret === undefined
-            ? await gateway.load(tenant, project, controller.signal)
-            : await gateway.unlock(tenant, project, secret, controller.signal);
-        if (!controller.signal.aborted && id === sequence.current)
-          setAccess(result);
-      } catch {
-        if (!controller.signal.aborted && id === sequence.current)
-          setAccess({ kind: "unavailable" });
-      } finally {
-        if (!controller.signal.aborted && id === sequence.current) {
-          setBusy(false);
-          setPassword("");
-        }
-      }
-    },
-    [gateway, tenant, project],
-  );
   useEffect(() => {
-    void run();
-    return () => request.current?.abort();
-  }, [run]); // Session key isolates projects.
-  useEffect(() => {
-    if (access?.kind !== "ready") {document.title='Minha Obra';const robots=document.querySelector<HTMLMetaElement>('meta[name="robots"]');if(robots)robots.content='noindex, nofollow, noarchive';return;}
+    if (access?.kind !== "ready") {
+      document.title = "Minha Obra";
+      const robots = document.querySelector<HTMLMetaElement>(
+        'meta[name="robots"]',
+      );
+      if (robots) robots.content = "noindex, nofollow, noarchive";
+      return;
+    }
     document.title = access.portal.name + " · " + access.portal.company;
     const robots = document.querySelector<HTMLMetaElement>(
       'meta[name="robots"]',
@@ -108,20 +87,29 @@ export function PortalSession({
           : "noindex, nofollow, noarchive";
   }, [access]);
   if (access?.kind === "ready")
-    return (
-      <PortalView
-        portal={access.portal}
-        actions={gateway.actions?.(tenant, project)}
-      />
-    );
+    return <PortalView portal={access.portal} actions={actions} />;
   const locked =
     access && ["private", "expired", "wrong-password"].includes(access.kind);
   return (
     <main className="my-build mb-access">
       <div>
-        {access?.publicIdentity && <div>{safeUrl(access.publicIdentity.logo)&&<img width="64" height="64" src={safeUrl(access.publicIdentity.logo)} alt=""/>}<p>{access.publicIdentity.company}</p></div>}
+        {access?.publicIdentity && (
+          <div>
+            {safeUrl(access.publicIdentity.logo) && (
+              <img
+                width="64"
+                height="64"
+                src={safeUrl(access.publicIdentity.logo)}
+                alt=""
+              />
+            )}
+            <p>{access.publicIdentity.company}</p>
+          </div>
+        )}
         <p className="mb-eyebrow">Minha Obra</p>
-        <h1>{access?.publicIdentity?.name || 'Mais perto de cada conquista.'}</h1>
+        <h1>
+          {access?.publicIdentity?.name || "Mais perto de cada conquista."}
+        </h1>
         {!access ? (
           <p role="status">Abrindo seu acompanhamento…</p>
         ) : (
@@ -131,7 +119,11 @@ export function PortalSession({
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              if (password.trim()) void run(password);
+              if (password.trim()) {
+                const secret = password;
+                setPassword("");
+                void run(secret);
+              }
             }}
           >
             <label htmlFor="portal-password">Senha de acesso</label>
@@ -143,14 +135,20 @@ export function PortalSession({
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <button disabled={busy || !password.trim()}>
+            <button disabled={busy || retrySeconds > 0 || !password.trim()}>
               Acessar minha obra
             </button>
           </form>
         )}
+        {retrySeconds > 0 && (
+          <p role="status">Tente novamente em {retrySeconds} segundos.</p>
+        )}
         {(access?.kind === "unavailable" ||
           access?.kind === "rate-limited") && (
-          <button onClick={() => void run()} disabled={busy}>
+          <button
+            onClick={() => void run()}
+            disabled={busy || retrySeconds > 0}
+          >
             Tentar novamente
           </button>
         )}

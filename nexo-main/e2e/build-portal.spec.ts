@@ -62,7 +62,8 @@ test("model failure retains photos and stage fallback", async ({ page }) => {
   await page.getByText("Elementos e estados da construção").click();
   await expect(page.getByText("Não iniciado", { exact: false })).toBeVisible();
 });
-test("custom production route is closed without adapter", async ({ page }) => {
+test("custom production route handles HTTP failure without fixtures", async ({ page }) => {
+  await page.route("**/api/public/build/solutie/shoppingeusebio", route => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "unavailable", error: "Unavailable" }) }));
   await page.goto("/solutie/shoppingeusebio");
   await expect(
     page.getByText("O acompanhamento está indisponível neste momento."),

@@ -37,13 +37,31 @@ const reserved = new Set([
   "platform",
   "reset-password",
   "api",
-  "assets"
+  "assets",
+  "acesso-encerrado",
+  "app",
+  "admin",
+  "static",
+  "www",
+  "orken",
+  "portal",
+  "obra",
+  "obras",
+  "health",
+  "public",
+  "logout",
 ]);
 export function resolveBuildPortal(pathname: string): boolean {
   const parts = pathname.split("/").filter(Boolean);
   return (
     parts.length === 2 &&
-    parts.every((part) => /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(part)) &&
+    parts.every(
+      (part) =>
+        part.length >= 3 &&
+        part.length <= 60 &&
+        /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(part) &&
+        !reserved.has(part),
+    ) &&
     !reserved.has(parts[0])
   );
 }

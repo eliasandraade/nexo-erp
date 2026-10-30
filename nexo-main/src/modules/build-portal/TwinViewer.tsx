@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { type Phase, type TwinModel, date, safeUrl } from "./types";
+import {
+  type Phase,
+  type TwinModel,
+  type TwinSnapshot,
+  date,
+  safeUrl,
+} from "./types";
 
 const labels: Record<Phase, string> = {
   waiting: "Não iniciado",
@@ -10,11 +16,32 @@ const labels: Record<Phase, string> = {
   complete: "Concluído",
   delayed: "Atenção ao prazo",
   blocked: "Bloqueado",
+  review: "Requer revisão",
+  unknown: "Sem vínculo confirmado",
 };
-export default function TwinViewer({ model }: { model: TwinModel }) {
+export default function TwinViewer({
+  model,
+  loadState,
+  refresh,
+}: {
+  model: TwinModel;
+  loadState?: (date: string, signal: AbortSignal) => Promise<TwinSnapshot>;
+  refresh?: () => Promise<void>;
+}) {
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const modelRef = useRef(model);
+  modelRef.current = model;
+  const [historical, setHistorical] = useState<TwinSnapshot>();
+  const [dateBusy, setDateBusy] = useState(false);
+  const [dateError, setDateError] = useState("");
+  const [requestedDate, setRequestedDate] = useState(model.maxDate ?? "");
+  const renewAttempt = useRef(0);
+  const historyRef = useRef<TwinSnapshot>();
+  historyRef.current = historical;
   const container = useRef<HTMLDivElement>(null);
   const reset = useRef<() => void>();
-  const [category,setCategory]=useState('');
+  const [category, setCategory] = useState("");
   const [stage, setStage] = useState("");
   const [cut, setCut] = useState(0);
   const [mode, setMode] = useState<"project" | "now" | "compare">("compare");
@@ -26,7 +53,36 @@ export default function TwinViewer({ model }: { model: TwinModel }) {
   const apply = useRef<() => void>();
   const current = useRef({ mode, snapshot, floor, stage, cut, category });
   current.current = { mode, snapshot, floor, stage, cut, category };
-  const states = model.snapshots.find((s) => s.id === snapshot)?.states;
+  const states =
+    historical?.states ??
+    model.snapshots.find((s) => s.id === snapshot)?.states;
+  useEffect(() => {
+    if (!loadState || !requestedDate) return;
+    const controller = new AbortController();
+    setDateBusy(true);
+    setDateError("");
+    void loadState(requestedDate, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted) setHistorical(value);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setHistorical({
+            id: requestedDate,
+            date: requestedDate,
+            states: {},
+            zoneStates: {},
+          });
+          setDateError(
+            "O registro desta data está indisponível. Tente outra data ou atualize o acompanhamento.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDateBusy(false);
+      });
+    return () => controller.abort();
+  }, [loadState, requestedDate]);
   const stateOf = (id: string, fallback: Phase) =>
     states ? states[id] : fallback;
   const selection = model.elements.find((e) => e.id === selected);
@@ -61,7 +117,15 @@ export default function TwinViewer({ model }: { model: TwinModel }) {
     setError("");
     setLoading(true);
     try {
-      if (!safeUrl(model.url)) throw Error("Modelo indisponível");
+      if (model.geometrySource === "AssistedMapping") {
+        setLoading(false);
+        return;
+      }
+      if (
+        !safeUrl(model.url) &&
+        model.geometrySource !== "SimplifiedRepresentation"
+      )
+        throw Error("Modelo indisponível");
       renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
       renderer.localClippingEnabled = true;
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
@@ -112,107 +176,157 @@ export default function TwinViewer({ model }: { model: TwinModel }) {
           .find((h) => h.object.visible);
         setSelected(hit?.object.userData.portalId ?? "");
       });
-      new GLTFLoader().load(
-        model.url!,
-        (gltf) => {
-          root = gltf.scene;
-          if (!alive) {
-            dispose();
-            return;
-          }
-          root.traverse((object) => {
+      const acceptRoot = (group: THREE.Group) => {
+        root = group;
+        if (!alive) {
+          dispose();
+          return;
+        }
+        root.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return;
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          object.userData.originalMaterials = materials;
+          object.userData.portalMaterials = materials.map((m) => m.clone());
+        });
+        apply.current = () => {
+          const config = current.current;
+          const model = modelRef.current;
+          const historical =
+            historyRef.current?.states ??
+            model.snapshots.find((s) => s.id === config.snapshot)?.states;
+          const bounds = new THREE.Box3().setFromObject(root!);
+          const clipping = new THREE.Plane(
+            new THREE.Vector3(0, -1, 0),
+            bounds.max.y - ((bounds.max.y - bounds.min.y) * config.cut) / 100,
+          );
+          root!.traverse((object) => {
             if (!(object instanceof THREE.Mesh)) return;
-            const materials = Array.isArray(object.material)
-              ? object.material
-              : [object.material];
-            object.userData.originalMaterials = materials;
-            object.userData.portalMaterials = materials.map((m) => m.clone());
-          });
-          apply.current = () => {
-            const config = current.current;
-            const historical = model.snapshots.find(
-              (s) => s.id === config.snapshot,
-            )?.states;
-            const bounds = new THREE.Box3().setFromObject(root!);
-            const clipping = new THREE.Plane(
-              new THREE.Vector3(0, -1, 0),
-              bounds.max.y - ((bounds.max.y - bounds.min.y) * config.cut) / 100,
+            let ancestor: THREE.Object3D | null = object;
+            let element = model.elements.find((e) => e.node === object.name);
+            let inFloor = !config.floor;
+            while (ancestor) {
+              element ??= model.elements.find((e) => e.node === ancestor!.name);
+              if (ancestor.name === config.floor) inFloor = true;
+              ancestor = ancestor.parent;
+            }
+            const zone = model.zones?.find(
+              (z) => z.id === object.name || z.node === object.name,
             );
-            root!.traverse((object) => {
-              if (!(object instanceof THREE.Mesh)) return;
-              const element = model.elements.find(
-                (e) => e.node === object.name,
-              );
-              object.userData.portalId = element?.id;
-              const status = element
-                ? historical
-                  ? historical[element.id]
-                  : element.status
+            object.userData.portalId = element?.id;
+            const status = element
+              ? historical
+                ? historical[element.id]
+                : element.status
+              : zone
+                ? (historyRef.current?.zoneStates ?? model.zoneStates)?.[
+                    zone.id
+                  ]
                 : undefined;
-              object.visible =
-                (!config.floor || element?.floor === config.floor) &&
-                (!config.stage || element?.stage === config.stage) && (!config.category || element?.category === config.category) &&
-                (config.mode !== "now" ||
-                  status === "complete" ||
-                  status === "active");
-              const originals = object.userData
-                .originalMaterials as THREE.Material[];
-              const styled = object.userData
-                .portalMaterials as THREE.Material[];
-              styled.forEach((material, index) => {
-                material.copy(originals[index]);
-                if (config.mode !== "project" && status !== "complete") {
-                  if ("color" in material)
-                    (material.color as THREE.Color).set(
-                      status === "active"
+            object.visible =
+              (inFloor || element?.floor === config.floor) &&
+              (!config.stage || element?.stage === config.stage) &&
+              (!config.category || element?.category === config.category) &&
+              (config.mode !== "now" ||
+                status === "complete" ||
+                status === "active");
+            const originals = object.userData
+              .originalMaterials as THREE.Material[];
+            const styled = object.userData.portalMaterials as THREE.Material[];
+            styled.forEach((material, index) => {
+              material.copy(originals[index]);
+              if (config.mode !== "project") {
+                if ("color" in material)
+                  (material.color as THREE.Color).set(
+                    status === "complete"
+                      ? 0x34594d
+                      : status === "active"
                         ? 0x3d7566
                         : status === "delayed"
                           ? 0xa4712e
                           : status === "blocked"
                             ? 0x925b50
-                            : 0x9aa59e,
-                    );
-                  material.transparent =
-                    status === undefined || status === "waiting";
-                  material.opacity = material.transparent ? 0.18 : 1;
-                  material.depthWrite = !material.transparent;
-                }
-                material.clippingPlanes = config.cut > 0 ? [clipping] : [];
-                material.needsUpdate = true;
-              });
-              object.material = styled.length === 1 ? styled[0] : styled;
+                            : status === "review"
+                              ? 0x795b8f
+                              : 0x9aa59e,
+                  );
+                material.transparent =
+                  status === undefined || status === "waiting";
+                material.opacity = material.transparent ? 0.18 : 1;
+                material.depthWrite = !material.transparent;
+              }
+              material.clippingPlanes = config.cut > 0 ? [clipping] : [];
+              material.needsUpdate = true;
             });
-            render();
-          };
-          scene!.add(root);
-          const box = new THREE.Box3().setFromObject(root);
-          const size = box.getSize(new THREE.Vector3()).length() || 10;
-          const center = box.getCenter(new THREE.Vector3());
-          reset.current = () => {
-            camera.position
-              .copy(center)
-              .add(new THREE.Vector3(size * 0.8, size * 0.6, size * 0.8));
-            controls!.target.copy(center);
-            camera.near = size / 1000;
-            camera.far = size * 100;
-            camera.updateProjectionMatrix();
-            controls!.update();
-            render();
-          };
-          reset.current();
-          apply.current();
-          setLoading(false);
-        },
-        undefined,
-        () => {
-          if (alive) {
+            object.material = styled.length === 1 ? styled[0] : styled;
+          });
+          render();
+        };
+        scene!.add(root);
+        const box = new THREE.Box3().setFromObject(root);
+        const size = box.getSize(new THREE.Vector3()).length() || 10;
+        const center = box.getCenter(new THREE.Vector3());
+        reset.current = () => {
+          camera.position
+            .copy(center)
+            .add(new THREE.Vector3(size * 0.8, size * 0.6, size * 0.8));
+          controls!.target.copy(center);
+          camera.near = size / 1000;
+          camera.far = size * 100;
+          camera.updateProjectionMatrix();
+          controls!.update();
+          render();
+        };
+        reset.current();
+        apply.current();
+        setLoading(false);
+      };
+      if (model.geometrySource === "SimplifiedRepresentation" && !model.url) {
+        const group = new THREE.Group();
+        let offset = 0;
+        for (const zone of modelRef.current.zones ?? []) {
+          const b = zone.box;
+          if (
+            !b ||
+            ![b.width, b.height, b.depth, b.elevation].every(Number.isFinite) ||
+            Math.min(b.width, b.height, b.depth) <= 0
+          )
+            continue;
+          const mesh = new THREE.Mesh(
+            new THREE.BoxGeometry(b.width, b.height, b.depth),
+            new THREE.MeshStandardMaterial({ color: 0x9aa59e }),
+          );
+          mesh.name = zone.id;
+          mesh.position.set(
+            offset + b.width / 2,
+            b.elevation + b.height / 2,
+            0,
+          );
+          offset += b.width + 1;
+          group.add(mesh);
+        }
+        acceptRoot(group);
+      } else
+        new GLTFLoader().load(
+          model.url!,
+          (gltf) => acceptRoot(gltf.scene),
+          undefined,
+          () => {
+            if (!alive) return;
             setLoading(false);
             setError(
               "O modelo 3D não pôde ser carregado. As fotos e etapas continuam disponíveis.",
             );
-          }
-        },
-      );
+            if (
+              refreshRef.current &&
+              Date.now() - renewAttempt.current > 60000
+            ) {
+              renewAttempt.current = Date.now();
+              void refreshRef.current();
+            }
+          },
+        );
     } catch {
       setLoading(false);
       setError(
@@ -229,12 +343,61 @@ export default function TwinViewer({ model }: { model: TwinModel }) {
       reset.current = undefined;
       apply.current = undefined;
     };
-  }, [model]);
+  }, [model.url, model.geometrySource]);
   useEffect(() => {
     apply.current?.();
-  }, [mode, snapshot, floor, stage, cut, category]);
+  }, [mode, snapshot, floor, stage, cut, category, historical, model]);
   return (
     <div>
+      {model.geometrySource === "SimplifiedRepresentation" && (
+        <p>
+          Representação simplificada. Volumes separados para consulta das
+          medidas; a disposição não representa a posição real dos ambientes.
+        </p>
+      )}
+      {model.geometrySource === "AssistedMapping" && (
+        <p>Mapeamento em planta. Consulte as zonas e os estados abaixo.</p>
+      )}
+      {loadState && model.minDate && model.maxDate && (
+        <label>
+          Consultar data da obra
+          <input
+            type="date"
+            min={model.minDate}
+            max={model.maxDate}
+            value={requestedDate}
+            onChange={(e) => setRequestedDate(e.target.value)}
+          />
+        </label>
+      )}
+      {loadState && model.minDate && model.maxDate && (
+        <label>
+          Percorrer evolução por data
+          <input
+            type="range"
+            min={Date.parse(model.minDate)}
+            max={Date.parse(model.maxDate)}
+            step={86400000}
+            defaultValue={Date.parse(model.maxDate)}
+            onPointerUp={(e) =>
+              setRequestedDate(
+                new Date(Number(e.currentTarget.value))
+                  .toISOString()
+                  .slice(0, 10),
+              )
+            }
+            onKeyUp={(e) =>
+              setRequestedDate(
+                new Date(Number(e.currentTarget.value))
+                  .toISOString()
+                  .slice(0, 10),
+              )
+            }
+          />
+        </label>
+      )}
+      {dateBusy && <p role="status">Consultando estado nesta data…</p>}
+      {dateError && <p role="alert">{dateError}</p>}
       <div className="mb-controls">
         {(["project", "now", "compare"] as const).map((value, index) => (
           <button
@@ -258,36 +421,77 @@ export default function TwinViewer({ model }: { model: TwinModel }) {
           Tela cheia
         </button>
       </div>
-      {model.snapshots.length>0 && <label>Percorrer evolução<input type="range" min="0" max={model.snapshots.length} value={snapshot?model.snapshots.findIndex(s=>s.id===snapshot):model.snapshots.length} onChange={e=>setSnapshot(model.snapshots[Number(e.target.value)]?.id??'')} aria-valuetext={snapshot?date(model.snapshots.find(s=>s.id===snapshot)?.date??null):'Hoje, último estado publicado'}/></label>}
-      <label>
-        Registro no tempo
-        <select value={snapshot} onChange={(e) => setSnapshot(e.target.value)}>
-          <option value="">Hoje, último estado publicado</option>
-          {model.snapshots.map((s) => (
-            <option key={s.id} value={s.id}>
-              {date(s.date)}
-            </option>
-          ))}
-        </select>
-      </label>
+      {!loadState && model.snapshots.length > 0 && (
+        <label>
+          Percorrer evolução
+          <input
+            type="range"
+            min="0"
+            max={model.snapshots.length}
+            value={
+              snapshot
+                ? model.snapshots.findIndex((s) => s.id === snapshot)
+                : model.snapshots.length
+            }
+            onChange={(e) =>
+              setSnapshot(model.snapshots[Number(e.target.value)]?.id ?? "")
+            }
+            aria-valuetext={
+              snapshot
+                ? date(
+                    model.snapshots.find((s) => s.id === snapshot)?.date ??
+                      null,
+                  )
+                : "Hoje, último estado publicado"
+            }
+          />
+        </label>
+      )}
+      {!loadState && (
+        <label>
+          Registro no tempo
+          <select
+            value={snapshot}
+            onChange={(e) => setSnapshot(e.target.value)}
+          >
+            <option value="">Hoje, último estado publicado</option>
+            {model.snapshots.map((s) => (
+              <option key={s.id} value={s.id}>
+                {date(s.date)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Pavimento
         <select value={floor} onChange={(e) => setFloor(e.target.value)}>
           <option value="">Todos</option>
-          {[...new Set(model.elements.map((e) => e.floor))].map((f) => (
-            <option key={f}>{f}</option>
-          ))}
+          {[...new Set(model.elements.map((e) => e.floor).filter(Boolean))].map(
+            (f) => (
+              <option key={f}>{f}</option>
+            ),
+          )}
+          {model.zones
+            ?.filter((z) => z.node)
+            .map((z) => (
+              <option key={z.id} value={z.node}>
+                {z.name}
+              </option>
+            ))}
         </select>
       </label>
-      <label>
-        Etapa
-        <select value={stage} onChange={(e) => setStage(e.target.value)}>
-          <option value="">Todas</option>
-          {[...new Set(model.elements.map((e) => e.stage))].map((value) => (
-            <option key={value}>{value}</option>
-          ))}
-        </select>
-      </label>
+      {model.elements.some((e) => e.stage) && (
+        <label>
+          Etapa
+          <select value={stage} onChange={(e) => setStage(e.target.value)}>
+            <option value="">Todas</option>
+            {[...new Set(model.elements.map((e) => e.stage))].map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+      )}
       <label>
         Corte horizontal: {cut === 0 ? "desativado" : cut + "%"}
         <input
@@ -298,9 +502,44 @@ export default function TwinViewer({ model }: { model: TwinModel }) {
           onChange={(e) => setCut(Number(e.target.value))}
         />
       </label>
-      {model.elements.some(e=>e.category)&&<label>Categoria<select value={category} onChange={e=>setCategory(e.target.value)}><option value="">Todas</option>{[...new Set(model.elements.map(e=>e.category).filter(Boolean))].map(value=><option key={value}>{value}</option>)}</select></label>}
-      {selection?.photos?.length ? <div className="mb-gallery">{selection.photos.map(photo=><a key={photo.id} href={safeUrl(photo.url)} target="_blank" rel="noreferrer"><img src={safeUrl(photo.thumbnail)||safeUrl(photo.url)} alt={photo.caption} loading="lazy"/>{photo.caption}</a>)}</div>:null}
-      {selection?.updateId && <a href={'#update-'+selection.updateId}>Ver atualização</a>}
+      {model.elements.some((e) => e.category) && (
+        <label>
+          Categoria
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+          >
+            <option value="">Todas</option>
+            {[
+              ...new Set(model.elements.map((e) => e.category).filter(Boolean)),
+            ].map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {selection?.photos?.length ? (
+        <div className="mb-gallery">
+          {selection.photos.map((photo) => (
+            <a
+              key={photo.id}
+              href={safeUrl(photo.url)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                src={safeUrl(photo.thumbnail) || safeUrl(photo.url)}
+                alt={photo.caption}
+                loading="lazy"
+              />
+              {photo.caption}
+            </a>
+          ))}
+        </div>
+      ) : null}
+      {selection?.updateId && (
+        <a href={"#update-" + selection.updateId}>Ver atualização</a>
+      )}
       {error ? (
         <p role="alert">{error}</p>
       ) : (
@@ -326,6 +565,32 @@ export default function TwinViewer({ model }: { model: TwinModel }) {
             ? labels[stateOf(selection.id, selection.status)!]
             : "Sem registro nesta data"}{" "}
           · {selection.stage}
+        </p>
+      )}
+      {!!model.zones?.length && (
+        <details open={model.geometrySource === "AssistedMapping"}>
+          <summary>Zonas da obra</summary>
+          <ul>
+            {model.zones.map((z) => (
+              <li key={z.id}>
+                {z.name}:{" "}
+                {
+                  labels[
+                    (historical?.zoneStates ?? model.zoneStates)?.[z.id] ??
+                      "unknown"
+                  ]
+                }
+                {z.box &&
+                  ` · ${z.box.width} × ${z.box.depth} × ${z.box.height} m`}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {model.unbound !== undefined && (
+        <p>
+          {model.unbound} elementos sem vínculo de execução, exibidos de forma
+          neutra.
         </p>
       )}
       <details>

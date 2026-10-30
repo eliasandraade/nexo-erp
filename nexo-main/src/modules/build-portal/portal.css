@@ -375,3 +375,9 @@
 .mb-dialog select{display:block;width:100%;min-height:44px;margin-block:8px;border:1px solid #819187;border-radius:4px;background:#fafbf8;color:#242e2b;padding:8px}.mb-dialog .mb-confirm{background:#283f35;color:#fafbf8;min-height:44px;padding:12px;border-radius:4px}.my-build progress::-webkit-progress-bar{background:#d9ded8;border-radius:4px}.my-build progress::-webkit-progress-value{background:var(--build-brand);border-radius:4px}
 
 .mb-week{background:color-mix(in srgb,var(--build-secondary,#34594d) 9%,#f6f5f1)}
+.mb-curves { width: 100%; max-width: 760px; height: auto; margin-top: 24px; }
+.mb-table-wrap { max-width: 100%; overflow-x: auto; }
+.my-build table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+.my-build th, .my-build td { text-align: left; padding: 12px; border-bottom: 1px solid #d6ddd8; }
+.my-build .mb-check { display: flex; align-items: flex-start; gap: 12px; margin: 20px 0; }
+.my-build .mb-check input { width: 20px; min-height: 20px; margin-top: 3px; flex-shrink: 0; }

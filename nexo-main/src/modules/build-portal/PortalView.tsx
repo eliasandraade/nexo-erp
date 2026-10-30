@@ -1,3 +1,5 @@
+import { ProgressDetails, PortalOperations } from "./PortalDetails";
+import { actionError } from "./api/http-gateway";
 import type { PortalActions } from "./api/gateway";
 import { lazy, Suspense, useState, type CSSProperties } from "react";
 import { type Portal, type Photo, date, percent, safeUrl } from "./types";
@@ -15,6 +17,8 @@ const labels = {
   complete: "Concluído",
   delayed: "Atenção ao prazo",
   blocked: "Aguardando liberação",
+  review: "Em revisão",
+  unknown: "Sem informação",
 };
 const money = (value: number | null) =>
   value === null
@@ -31,20 +35,50 @@ export function PortalView({
   const [photoDate, setPhotoDate] = useState("");
   const [zone, setZone] = useState("");
   const [visit, setVisit] = useState(false);
-  const [photo, setPhoto] = useState<Photo>();
+  const [selectedPhoto, setPhoto] = useState<Photo>();
+  const photo = p.photos.find((item) => item.id === selectedPhoto?.id);
   const [filter, setFilter] = useState("");
   const [viewer, setViewer] = useState(false);
   const [decision, setDecision] = useState<{ id: string; option: string }>();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const visiblePhotos = p.photos.filter(item => (!filter || item.stage === filter) && (!photoDate || item.date.startsWith(photoDate)) && (!zone || item.zone === zone));
+  const has = (section: string) => !p.sections || p.sections.includes(section);
+  const hasTimeline = [
+    "clientUpdates",
+    "dailyLogs",
+    "stageProgress",
+    "photos",
+  ].some(has);
+  const more = async (section: "timeline" | "photos" | "captures") => {
+    setBusy(true);
+    try {
+      await actions.more?.(section);
+    } catch (e) {
+      setNotice(actionError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const visiblePhotos = p.photos.filter(
+    (item) =>
+      (!filter || item.stage === filter) &&
+      (!photoDate || item.date.startsWith(photoDate)) &&
+      (!zone || item.zone === zone),
+  );
   const chosen = p.decisions.find((item) => item.id === decision?.id);
   const option = chosen?.options.find((item) => item.id === decision?.option);
   const accent = /^#[0-9a-f]{6}$/i.test(p.color ?? "") ? p.color : "#34594d";
   return (
     <div
       className="my-build"
-      style={{ "--build-brand": accent, "--build-secondary": /^#[0-9a-f]{6}$/i.test(p.secondaryColor??'')?p.secondaryColor:accent } as CSSProperties}
+      style={
+        {
+          "--build-brand": accent,
+          "--build-secondary": /^#[0-9a-f]{6}$/i.test(p.secondaryColor ?? "")
+            ? p.secondaryColor
+            : accent,
+        } as CSSProperties
+      }
     >
       <a className="skip-link" href="#my-build-main">
         Pular para a obra
@@ -58,13 +92,26 @@ export function PortalView({
       </header>
       <nav className="mb-nav" aria-label="Sua obra">
         <a href="#overview">Visão geral</a>
-        <a href="#stages">Etapas</a>
-        <a href="#updates">Atualizações</a>
-        <a href="#photos">Fotos</a>
+        {has("stageProgress") && <a href="#stages">Etapas</a>}
+        {hasTimeline && <a href="#updates">Atualizações</a>}
+        {(has("photos") || has("realityCapture")) && (
+          <a href="#photos">Fotos</a>
+        )}
         {p.documents.length > 0 && <a href="#documents">Documentos</a>}
         {p.finance && <a href="#finance">Financeiro</a>}
       </nav>
       <main id="my-build-main">
+        {!!p.sectionErrors?.length && (
+          <aside className="mb-section" role="status">
+            <h2>Alguns registros não puderam ser carregados</h2>
+            {p.sectionErrors.map((e, i) => (
+              <p key={i}>{e.message}</p>
+            ))}
+            <button onClick={() => void actions.refresh?.()}>
+              Tentar carregar novamente
+            </button>
+          </aside>
+        )}
         <section className="mb-hero" id="overview">
           <div className="mb-hero-copy">
             <p className="mb-eyebrow">
@@ -74,28 +121,33 @@ export function PortalView({
             </p>
             <h1>{p.name}</h1>
             <p className="mb-lead">
-              {p.lifecycle === "building"
-                ? "Sua obra, mais perto de você."
-                : p.lifecycle === "completed"
-                  ? "Obra concluída."
-                  : "Bem-vindo ao seu imóvel."}
+              {p.welcome ||
+                (p.lifecycle === "building"
+                  ? "Sua obra, mais perto de você."
+                  : p.lifecycle === "completed"
+                    ? "Obra concluída."
+                    : "Bem-vindo ao seu imóvel.")}
             </p>
-            <div className="mb-progress">
-              <span>{percent(p.progress)}</span>
-              <p>da obra concluída</p>
-              {percent(p.progress) !== "Não informado" && (
-                <progress
-                  aria-label="Progresso da obra"
-                  value={p.progress!}
-                  max={100}
-                />
-              )}
-            </div>
-            <dl className="mb-facts">
-              <div>
-                <dt>Previsão atual de entrega</dt>
-                <dd>{date(p.delivery)}</dd>
+            {has("overallProgress") && (
+              <div className="mb-progress">
+                <span>{percent(p.progress)}</span>
+                <p>da obra concluída</p>
+                {percent(p.progress) !== "Não informado" && (
+                  <progress
+                    aria-label="Progresso da obra"
+                    value={p.progress!}
+                    max={100}
+                  />
+                )}
               </div>
+            )}
+            <dl className="mb-facts">
+              {has("forecastDelivery") && (
+                <div>
+                  <dt>Previsão atual de entrega</dt>
+                  <dd>{date(p.delivery)}</dd>
+                </div>
+              )}
               <div>
                 <dt>Última atualização</dt>
                 <dd>{date(p.updatedAt)}</dd>
@@ -142,36 +194,41 @@ export function PortalView({
             </small>
           </section>
         )}
-        <section id="stages" className="mb-section">
-          <p className="mb-eyebrow">Do primeiro passo à entrega</p>
-          <h2>O caminho da sua obra</h2>
-          {!p.stages.length && (
-            <p>
-              O cronograma será exibido quando a construtora publicar as etapas.
-            </p>
-          )}
-          <ol className="mb-stages">
-            {p.stages.map((stage, index) => (
-              <li key={stage.id}>
-                <span className="mb-step">
-                  {stage.status === "complete"
-                    ? "✓"
-                    : String(index + 1).padStart(2, "0")}
-                </span>
-                <div>
-                  <span className="mb-eyebrow">{labels[stage.status]}</span>
-                  <h3>{stage.name}</h3>
-                  {stage.date && <small>{date(stage.date)}</small>}
-                </div>
-                <strong>{percent(stage.progress)}</strong>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <ProgressDetails portal={p} />
+        {has("stageProgress") && (
+          <section id="stages" className="mb-section">
+            <p className="mb-eyebrow">Do primeiro passo à entrega</p>
+            <h2>O caminho da sua obra</h2>
+            {!p.stages.length && (
+              <p>
+                O cronograma será exibido quando a construtora publicar as
+                etapas.
+              </p>
+            )}
+            <ol className="mb-stages">
+              {p.stages.map((stage, index) => (
+                <li key={stage.id}>
+                  <span className="mb-step">
+                    {stage.status === "complete"
+                      ? "✓"
+                      : String(index + 1).padStart(2, "0")}
+                  </span>
+                  <div>
+                    <span className="mb-eyebrow">{labels[stage.status]}</span>
+                    <h3>{stage.name}</h3>
+                    {stage.date && <small>{date(stage.date)}</small>}
+                  </div>
+                  <strong>{percent(stage.progress)}</strong>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
         {p.model && (
           <section className="mb-section">
             <p className="mb-eyebrow">Outro ponto de vista</p>
             <h2>Veja a construção acontecer</h2>
+            {p.model.disclaimer && <p>{p.model.disclaimer}</p>}
             {p.model.status === "ready" ? (
               <>
                 <p>
@@ -186,7 +243,11 @@ export function PortalView({
                   <Suspense
                     fallback={<p role="status">Preparando a visualização…</p>}
                   >
-                    <TwinViewer model={p.model} />
+                    <TwinViewer
+                      model={p.model}
+                      loadState={actions.twinState}
+                      refresh={actions.refresh}
+                    />
                   </Suspense>
                 )}
               </>
@@ -223,114 +284,162 @@ export function PortalView({
             ))}
           </section>
         )}
-        <section id="updates" className="mb-section">
-          <h2>Histórias de uma obra em movimento</h2>
-          {!p.updates.length && (
-            <p>A primeira atualização ainda não foi publicada.</p>
-          )}
-          <ol className="mb-updates">
-            {p.updates.map((update) => (
-              <li key={update.id}>
-                <time>{date(update.publishedAt)}</time>
-                <article id={"update-"+update.id}>
-                  <p className="mb-eyebrow">
-                    {update.planned ? "Previsto" : "Publicado pela construtora"}
+        {hasTimeline && (
+          <section id="updates" className="mb-section">
+            <h2>Histórias de uma obra em movimento</h2>
+            {!p.updates.length && (
+              <p>A primeira atualização ainda não foi publicada.</p>
+            )}
+            <ol className="mb-updates">
+              {p.updates.map((update) => (
+                <li key={update.id}>
+                  <time>{date(update.publishedAt)}</time>
+                  <article id={"update-" + update.id}>
+                    <p className="mb-eyebrow">
+                      {update.planned
+                        ? "Previsto"
+                        : "Publicado pela construtora"}
+                    </p>
+                    <h3>{update.title}</h3>
+                    <p>{update.body}</p>
+                  </article>
+                </li>
+              ))}
+            </ol>
+            {p.pagination?.timeline && (
+              <button disabled={busy} onClick={() => void more("timeline")}>
+                Ver atualizações anteriores
+              </button>
+            )}
+          </section>
+        )}
+        {(has("photos") || has("realityCapture")) && (
+          <section id="photos" className="mb-section">
+            <h2>Como está ficando</h2>
+            {!p.photos.length ? (
+              <p>
+                Assim que a construtora publicar fotos, você poderá acompanhar
+                cada detalhe aqui.
+              </p>
+            ) : (
+              <>
+                <label>
+                  Filtrar por etapa
+                  <select
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                  >
+                    <option value="">Todas as etapas</option>
+                    {[
+                      ...new Set(
+                        p.photos.map((item) => item.stage).filter(Boolean),
+                      ),
+                    ].map((stage) => (
+                      <option key={stage}>{stage}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Data das imagens
+                  <input
+                    type="date"
+                    value={photoDate}
+                    onChange={(e) => setPhotoDate(e.target.value)}
+                  />
+                </label>
+                <label>
+                  Ambiente
+                  <select
+                    value={zone}
+                    onChange={(e) => setZone(e.target.value)}
+                  >
+                    <option value="">Todos os ambientes</option>
+                    {[
+                      ...new Set(
+                        p.photos.map((item) => item.zone).filter(Boolean),
+                      ),
+                    ].map((value) => (
+                      <option key={value}>{value}</option>
+                    ))}
+                  </select>
+                </label>
+                {visiblePhotos.length === 0 && (
+                  <p role="status">
+                    Nenhuma imagem nesta seleção. Altere a data, etapa ou
+                    ambiente.
                   </p>
-                  <h3>{update.title}</h3>
-                  <p>{update.body}</p>
-                </article>
-              </li>
+                )}
+                <div className="mb-gallery">
+                  {p.photos
+                    .filter(
+                      (item) =>
+                        (!filter || item.stage === filter) &&
+                        (!photoDate || item.date.startsWith(photoDate)) &&
+                        (!zone || item.zone === zone),
+                    )
+                    .map((item) => (
+                      <button
+                        key={item.id}
+                        onClick={() => {
+                          setCompare("");
+                          setPhoto(item);
+                        }}
+                      >
+                        {item.kind === "video" && !item.thumbnail ? (
+                          <span>▶ Vídeo da obra</span>
+                        ) : (
+                          <img
+                            loading="lazy"
+                            src={safeUrl(item.thumbnail) || safeUrl(item.url)}
+                            alt={item.caption}
+                          />
+                        )}
+                        <span>{item.caption}</span>
+                        {!safeUrl(item.url) && (
+                          <small>Arquivo indisponível neste momento.</small>
+                        )}
+                        <small>{date(item.date)}</small>
+                      </button>
+                    ))}
+                </div>
+              </>
+            )}
+            {p.pagination?.photos !== undefined && (
+              <button disabled={busy} onClick={() => void more("photos")}>
+                Ver mais fotos
+              </button>
+            )}
+            {p.pagination?.captures !== undefined && (
+              <button disabled={busy} onClick={() => void more("captures")}>
+                Ver mais capturas
+              </button>
+            )}
+            {p.downloads?.map((d, i) => (
+              <p key={i}>
+                {safeUrl(d.url) ? (
+                  <a href={safeUrl(d.url)} target="_blank" rel="noreferrer">
+                    Baixar captura: {d.name}
+                  </a>
+                ) : (
+                  `${d.name}: arquivo indisponível`
+                )}
+              </p>
             ))}
-          </ol>
-        </section>
-        <section id="photos" className="mb-section">
-          <h2>Como está ficando</h2>
-          {!p.photos.length ? (
-            <p>
-              Assim que a construtora publicar fotos, você poderá acompanhar
-              cada detalhe aqui.
-            </p>
-          ) : (
-            <>
-              <label>
-                Filtrar por etapa
-                <select
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                >
-                  <option value="">Todas as etapas</option>
-                  {[
-                    ...new Set(
-                      p.photos.map((item) => item.stage).filter(Boolean),
-                    ),
-                  ].map((stage) => (
-                    <option key={stage}>{stage}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Data das imagens
-                <input
-                  type="date"
-                  value={photoDate}
-                  onChange={(e) => setPhotoDate(e.target.value)}
-                />
-              </label>
-              <label>
-                Ambiente
-                <select value={zone} onChange={(e) => setZone(e.target.value)}>
-                  <option value="">Todos os ambientes</option>
-                  {[
-                    ...new Set(
-                      p.photos.map((item) => item.zone).filter(Boolean),
-                    ),
-                  ].map((value) => (
-                    <option key={value}>{value}</option>
-                  ))}
-                </select>
-              </label>
-              {visiblePhotos.length===0&&<p role="status">Nenhuma imagem nesta seleção. Altere a data, etapa ou ambiente.</p>}<div className="mb-gallery">
-                {p.photos
-                  .filter(
-                    (item) =>
-                      (!filter || item.stage === filter) &&
-                      (!photoDate || item.date.startsWith(photoDate)) &&
-                      (!zone || item.zone === zone),
-                  )
-                  .map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => {
-                        setCompare("");
-                        setPhoto(item);
-                      }}
-                    >
-                      {item.kind === "video" && !item.thumbnail ? (
-                        <span>▶ Vídeo da obra</span>
-                      ) : (
-                        <img
-                          loading="lazy"
-                          src={safeUrl(item.thumbnail) || safeUrl(item.url)}
-                          alt={item.caption}
-                        />
-                      )}
-                      <span>{item.caption}</span>
-                      <small>{date(item.date)}</small>
-                    </button>
-                  ))}
-              </div>
-            </>
-          )}
-        </section>
-        {!!p.decisions.length && (
+          </section>
+        )}
+        {(p.decisions.length > 0 || p.sections?.includes("selections")) && (
           <section className="mb-section">
             <h2>Sua escolha faz parte</h2>
+            {!p.decisions.length && (
+              <p>Nenhuma escolha publicada neste momento.</p>
+            )}
             {p.decisions.map((item) => (
               <article className="mb-decision" key={item.id}>
                 <p className="mb-eyebrow">
-                  {item.status === "confirmed"
-                    ? "Escolha registrada"
-                    : `Sua decisão até ${date(item.due)}`}
+                  {item.statusLabel ??
+                    (item.status === "confirmed"
+                      ? "Escolha registrada"
+                      : `Sua decisão até ${date(item.due)}`)}
                 </p>
                 <h3>{item.title}</h3>
                 {item.status === "confirmed" ? (
@@ -344,6 +453,14 @@ export function PortalView({
                       <div className="mb-option" key={o.id}>
                         <div>
                           <h4>{o.name}</h4>
+                          {safeUrl(o.image) && (
+                            <img
+                              width="120"
+                              src={safeUrl(o.image)}
+                              alt={o.name}
+                              loading="lazy"
+                            />
+                          )}
                           <p>{o.description}</p>
                           <p>
                             {o.extra === 0
@@ -354,10 +471,12 @@ export function PortalView({
                               ? "Prazo a confirmar"
                               : o.days === 0
                                 ? "Sem alteração de prazo"
-                                : `${o.days} dias adicionais`}
+                                : o.leadTime
+                                  ? `${o.days} dias de fornecimento`
+                                  : `${o.days} dias adicionais`}
                           </p>
                         </div>
-                        {actions.decide && (
+                        {actions.decide && item.canChoose !== false && (
                           <button
                             onClick={() => {
                               setNotice("");
@@ -369,7 +488,7 @@ export function PortalView({
                         )}
                       </div>
                     ))}
-                    {!actions.decide && (
+                    {(!actions.decide || item.canChoose === false) && (
                       <p>
                         A confirmação online ainda não está disponível. Consulte
                         a construtora.
@@ -421,9 +540,12 @@ export function PortalView({
               ))}
           </section>
         )}
-        {!!p.documents.length && (
+        {(p.documents.length > 0 || p.sections?.includes("documents")) && (
           <section id="documents" className="mb-section">
             <h2>Tudo no seu lugar</h2>
+            {!p.documents.length && (
+              <p>Nenhum documento publicado neste momento.</p>
+            )}
             {p.documents.map((doc) => (
               <article className="mb-option" key={doc.id}>
                 <div>
@@ -439,7 +561,8 @@ export function PortalView({
             ))}
           </section>
         )}
-        {p.lifecycle === "handover" && (
+        <PortalOperations portal={p} actions={actions} />
+        {!p.sections && p.lifecycle === "handover" && (
           <section className="mb-section">
             <h2>Cuidado que continua</h2>
             {p.warranties.map((w) => (
@@ -533,6 +656,15 @@ export function PortalView({
         {safeUrl(p.contact) && (
           <a href={safeUrl(p.contact)}>Falar com a construtora</a>
         )}
+        {p.visibility === "private" && actions.logout && (
+          <button
+            onClick={() =>
+              void actions.logout?.().catch((e) => setNotice(actionError(e)))
+            }
+          >
+            Sair do acompanhamento
+          </button>
+        )}
         <small>Powered by Orken</small>
       </footer>
       <Dialog
@@ -621,9 +753,12 @@ export function PortalView({
             Prazo:{" "}
             {option?.days === null
               ? "A confirmar"
-              : `${option?.days} dias adicionais`}
+              : option?.leadTime
+                ? `${option.days} dias de fornecimento`
+                : `${option?.days} dias adicionais`}
           </p>
-          <button className="mb-confirm"
+          <button
+            className="mb-confirm"
             disabled={busy}
             onClick={async () => {
               if (!chosen || !option || !actions.decide) return;
@@ -634,8 +769,8 @@ export function PortalView({
                 setNotice(
                   "Escolha enviada. Aguarde a atualização do registro pela construtora.",
                 );
-              } catch {
-                setNotice("Não foi possível confirmar. Tente novamente.");
+              } catch (error) {
+                setNotice(actionError(error));
               } finally {
                 setBusy(false);
               }

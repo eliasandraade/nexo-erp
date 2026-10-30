@@ -1,6 +1,12 @@
-// TEMPORARY CONTRACT: frontend presentation model, awaiting backend/OpenAPI.
-/** Presentation model, NOT an agreed backend DTO. Map only authorized public responses here. */
-export type Phase = "waiting" | "active" | "complete" | "delayed" | "blocked";
+/** Presentation model. Backend v1.5 DTOs are confined to api/generated and api/adapter. */
+export type Phase =
+  | "waiting"
+  | "active"
+  | "complete"
+  | "delayed"
+  | "blocked"
+  | "review"
+  | "unknown";
 export interface Photo {
   kind?: "image" | "video";
   zone?: string;
@@ -12,6 +18,53 @@ export interface Photo {
   stage?: string;
 }
 export interface Portal {
+  sections?: string[];
+  sectionErrors?: { section: string; message: string }[];
+  refreshAt?: string;
+  title?: string;
+  welcome?: string;
+  curves?: {
+    actual: { date: string; percent: number }[];
+    planned?: { date: string; percent: number }[];
+    forecast?: { date: string; percent: number }[];
+  };
+  schedule?: {
+    name: string;
+    order: number;
+    start: string | null;
+    end: string | null;
+  }[];
+  changeOrders?: {
+    id: string;
+    number: number;
+    title: string;
+    description?: string;
+    status: string;
+    canDecide: boolean;
+    cost: number | null;
+    days: number;
+    items: { name: string; quantity: number; unit: string }[];
+  }[];
+  measurements?: {
+    number: number;
+    start: string;
+    end: string;
+    amount: number | null;
+    items: { name: string; previous: number; measured: number }[];
+  }[];
+  handover?: {
+    status: string;
+    scheduled?: string;
+    delivered?: string;
+    accepted?: string;
+    canAccept: boolean;
+    keys: boolean;
+    documents: { name: string; url?: string }[];
+    inspection?: { status: string; items: { text: string; result: string }[] };
+  };
+  warrantyNotice?: string;
+  downloads?: { name: string; url?: string; date: string }[];
+  pagination?: { timeline?: string; photos?: number; captures?: number };
   visibility?: "public" | "private";
   indexable?: boolean;
   weather?: { date: string; description: string; impact?: string }[];
@@ -68,6 +121,9 @@ export interface Portal {
     }[];
   };
   decisions: {
+    canChoose?: boolean;
+    statusLabel?: string;
+    description?: string;
     id: string;
     version: string;
     title: string;
@@ -75,6 +131,8 @@ export interface Portal {
     status: "pending" | "confirmed";
     selected?: string;
     options: {
+      image?: string;
+      leadTime?: boolean;
       id: string;
       name: string;
       description: string;
@@ -84,11 +142,39 @@ export interface Portal {
   }[];
   warranties: { id: string; name: string; until: string }[];
   assistance: null | {
+    canOpen?: boolean;
     categories: string[];
-    tickets: { id: string; title: string; status: string }[];
+    tickets: {
+      id: string;
+      title: string;
+      status: string;
+      number?: number;
+      description?: string;
+      canAddPhotos?: boolean;
+      canGiveFeedback?: boolean;
+      photos?: string[];
+      rating?: number;
+      resolution?: string;
+      scheduled?: string;
+      timeline?: { status: string; at: string }[];
+    }[];
   };
 }
 export interface TwinModel {
+  geometrySource?: string;
+  disclaimer?: string;
+  minDate?: string;
+  maxDate?: string;
+  zones?: {
+    id: string;
+    name: string;
+    kind: string;
+    node?: string;
+    parentId?: string;
+    box?: { width: number; height: number; depth: number; elevation: number };
+  }[];
+  zoneStates?: Record<string, Phase>;
+  unbound?: number;
   status: "ready" | "processing" | "unavailable";
   url?: string;
   elements: {
@@ -104,7 +190,13 @@ export interface TwinModel {
     photos?: Photo[];
     updateId?: string;
   }[];
-  snapshots: { id: string; date: string; states: Record<string, Phase> }[];
+  snapshots: TwinSnapshot[];
+}
+export interface TwinSnapshot {
+  id: string;
+  date: string;
+  states: Record<string, Phase>;
+  zoneStates?: Record<string, Phase>;
 }
 export type Access =
   | { kind: "ready"; portal: Portal }

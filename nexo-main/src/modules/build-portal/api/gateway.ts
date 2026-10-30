@@ -1,5 +1,4 @@
-import type { Access } from "../types";
-// TEMPORARY CONTRACT: no HTTP routes until backend publishes its contract.
+import type { Access, TwinSnapshot } from "../types";
 export interface PortalGateway {
   actions?: (tenant: string, project: string) => PortalActions;
   load(tenant: string, project: string, signal: AbortSignal): Promise<Access>;
@@ -9,19 +8,30 @@ export interface PortalGateway {
     password: string,
     signal: AbortSignal,
   ): Promise<Access>;
+  subscribe?: (listener: (event: Access | "changed") => void) => () => void;
+  dispose?: () => void;
 }
-// No speculative endpoint, admin token, persisted password or production fixture.
-export const unavailableGateway: PortalGateway = {
-  load: async () => ({ kind: "unavailable" }),
-  unlock: async () => ({ kind: "unavailable" }),
-};
-
 export interface PortalActions {
-  decide?: (id: string, option: string, version: string) => Promise<void>;
+  decide?: (id: string, option: string, version?: string) => Promise<void>;
+  changeOrder?: (
+    id: string,
+    decision: "approve" | "reject",
+    signer: string,
+    comment: string,
+  ) => Promise<void>;
+  acceptHandover?: (signer: string, comment: string) => Promise<void>;
   requestAssistance?: (input: {
     category: string;
+    title?: string;
     description: string;
-    availability: string;
+    location?: string;
+    availability?: string;
     files: File[];
   }) => Promise<void>;
+  uploadEvidence?: (id: string, files: File[]) => Promise<void>;
+  feedback?: (id: string, rating: number, comment: string) => Promise<void>;
+  twinState?: (date: string, signal: AbortSignal) => Promise<TwinSnapshot>;
+  more?: (section: "timeline" | "photos" | "captures") => Promise<void>;
+  refresh?: () => Promise<void>;
+  logout?: () => Promise<void>;
 }
