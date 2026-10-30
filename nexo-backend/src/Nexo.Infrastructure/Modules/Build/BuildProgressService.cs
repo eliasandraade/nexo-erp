@@ -33,6 +33,11 @@ public sealed class BuildProgressService : IBuildProgressRecorder
 
     public void Stage(BuildStageProgressEvent progressEvent) => _db.BldStageProgressEvents.Add(progressEvent);
 
+    public Task<bool> HasOpenCriticalNonConformityAsync(Guid tenantId, Guid stageId, CancellationToken ct = default)
+        => _db.BldNonConformities.IgnoreQueryFilters().AnyAsync(n => n.TenantId == tenantId && n.StageId == stageId
+            && n.Severity == BuildNonConformitySeverity.Critical
+            && (n.Status == BuildNonConformityStatus.Open || n.Status == BuildNonConformityStatus.InTreatment), ct);
+
     public async Task RefreshTodaySnapshotAsync(Guid projectId, CancellationToken ct = default)
     {
         var today = BusinessClock.Today();

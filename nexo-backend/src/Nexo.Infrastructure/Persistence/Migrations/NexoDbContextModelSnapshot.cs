@@ -2970,6 +2970,175 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("user_sessions", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildAssistanceRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("ClientFeedback")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("client_feedback");
+
+                    b.Property<int?>("ClientRating")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("client_rating");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("closed_at");
+
+                    b.Property<string>("ContactPhone")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("contact_phone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("description");
+
+                    b.Property<DateTime?>("FeedbackAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("feedback_at");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("location");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<string>("OpenedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("opened_by_name");
+
+                    b.Property<DateOnly>("OpenedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("opened_on");
+
+                    b.Property<int>("OpenedVia")
+                        .HasColumnType("integer")
+                        .HasColumnName("opened_via");
+
+                    b.Property<string>("PhotoKeysJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("photo_keys");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<Guid>("PublicId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("public_id");
+
+                    b.Property<DateTime?>("RejectedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("rejected_at");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("rejection_reason");
+
+                    b.Property<string>("ResolutionNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("resolution_notes");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<DateTime?>("ScheduledFor")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("scheduled_for");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<string>("TriageNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("triage_notes");
+
+                    b.Property<DateTime?>("TriagedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("triaged_at");
+
+                    b.Property<string>("TriagedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("triaged_by_name");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.Property<bool?>("WarrantyCovered")
+                        .HasColumnType("boolean")
+                        .HasColumnName("warranty_covered");
+
+                    b.Property<Guid?>("WarrantyTermId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("warranty_term_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("PublicId")
+                        .IsUnique()
+                        .HasDatabaseName("uix_bld_assistance_requests_public_id");
+
+                    b.HasIndex("WarrantyTermId");
+
+                    b.HasIndex("TenantId", "ProjectId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("uix_bld_assistance_requests_project_number");
+
+                    b.HasIndex("TenantId", "ProjectId", "Status")
+                        .HasDatabaseName("ix_bld_assistance_requests_project_status");
+
+                    b.ToTable("bld_assistance_requests", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildBudget", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3503,6 +3672,104 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("bld_change_order_items", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildChecklistTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("StageNameHint")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("stage_name_hint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Name")
+                        .HasDatabaseName("ix_bld_checklist_templates_tenant_name");
+
+                    b.ToTable("bld_checklist_templates", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildChecklistTemplateItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer")
+                        .HasColumnName("order");
+
+                    b.Property<bool>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<bool>("RequiresPhoto")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_photo");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TemplateId");
+
+                    b.HasIndex("TenantId", "TemplateId")
+                        .HasDatabaseName("ix_bld_checklist_template_items_template");
+
+                    b.ToTable("bld_checklist_template_items", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildClientUpdate", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3686,6 +3953,257 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_bld_daily_log_photos_tenant_id");
 
                     b.ToTable("bld_daily_log_photos", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildHandover", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("AcceptanceChannel")
+                        .HasColumnType("integer")
+                        .HasColumnName("acceptance_channel");
+
+                    b.Property<string>("AcceptanceComment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("acceptance_comment");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .IsConcurrencyToken()
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<string>("AcceptedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("accepted_by_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("DeliveredAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("delivered_at");
+
+                    b.Property<string>("DeliveredByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("delivered_by_name");
+
+                    b.Property<string>("DocumentsJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("documents");
+
+                    b.Property<bool>("KeysDelivered")
+                        .HasColumnType("boolean")
+                        .HasColumnName("keys_delivered");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateOnly?>("ScheduledFor")
+                        .HasColumnType("date")
+                        .HasColumnName("scheduled_for");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("WalkthroughInspectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("walkthrough_inspection_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("WalkthroughInspectionId");
+
+                    b.HasIndex("TenantId", "ProjectId")
+                        .IsUnique()
+                        .HasDatabaseName("uix_bld_handovers_project");
+
+                    b.ToTable("bld_handovers", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildInspection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("CompletedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("completed_by_name");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("InspectorName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("inspector_name");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("notes");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateOnly?>("ScheduledFor")
+                        .HasColumnType("date")
+                        .HasColumnName("scheduled_for");
+
+                    b.Property<Guid?>("StageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stage_id");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("TemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("StageId");
+
+                    b.HasIndex("TemplateId");
+
+                    b.HasIndex("TenantId", "ProjectId", "Kind", "Status")
+                        .HasDatabaseName("ix_bld_inspections_project_kind_status");
+
+                    b.ToTable("bld_inspections", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildInspectionItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("InspectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inspection_id");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("integer")
+                        .HasColumnName("order");
+
+                    b.Property<string>("PhotoKeysJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("photo_keys");
+
+                    b.Property<bool>("Required")
+                        .HasColumnType("boolean")
+                        .HasColumnName("required");
+
+                    b.Property<bool>("RequiresPhoto")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_photo");
+
+                    b.Property<int>("Result")
+                        .HasColumnType("integer")
+                        .HasColumnName("result");
+
+                    b.Property<int?>("Severity")
+                        .HasColumnType("integer")
+                        .HasColumnName("severity");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("text");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InspectionId");
+
+                    b.HasIndex("TenantId", "InspectionId")
+                        .HasDatabaseName("ix_bld_inspection_items_inspection");
+
+                    b.ToTable("bld_inspection_items", "nexo");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildMaterialDelivery", b =>
@@ -4012,6 +4530,160 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_bld_measurement_items_measurement");
 
                     b.ToTable("bld_measurement_items", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildNonConformity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("cancel_reason");
+
+                    b.Property<string>("CorrectiveAction")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("corrective_action");
+
+                    b.Property<decimal?>("CostImpact")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("cost_impact");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CreatedByName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("created_by_name");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("description");
+
+                    b.Property<DateOnly?>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<Guid?>("InspectionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inspection_id");
+
+                    b.Property<Guid?>("InspectionItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inspection_item_id");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<string>("PhotoKeysJson")
+                        .IsRequired()
+                        .HasColumnType("json")
+                        .HasColumnName("photo_keys");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_by");
+
+                    b.Property<string>("ResolvedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("resolved_by_name");
+
+                    b.Property<string>("ResponsibleName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("responsible_name");
+
+                    b.Property<string>("RootCause")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("root_cause");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("integer")
+                        .HasColumnName("severity");
+
+                    b.Property<Guid?>("StageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stage_id");
+
+                    b.Property<int>("Status")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateTime?>("VerifiedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("verified_at");
+
+                    b.Property<Guid?>("VerifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("verified_by");
+
+                    b.Property<string>("VerifiedByName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("verified_by_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InspectionId");
+
+                    b.HasIndex("InspectionItemId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("StageId");
+
+                    b.HasIndex("TenantId", "InspectionItemId")
+                        .HasDatabaseName("ix_bld_non_conformities_inspection_item");
+
+                    b.HasIndex("TenantId", "ProjectId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("uix_bld_non_conformities_project_number");
+
+                    b.HasIndex("TenantId", "ProjectId", "Status", "Severity")
+                        .HasDatabaseName("ix_bld_non_conformities_project_status");
+
+                    b.HasIndex("TenantId", "StageId", "Severity", "Status")
+                        .HasDatabaseName("ix_bld_non_conformities_stage_severity");
+
+                    b.ToTable("bld_non_conformities", "nexo");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildPortalCompany", b =>
@@ -4807,6 +5479,62 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_bld_stage_progress_events_project");
 
                     b.ToTable("bld_stage_progress_events", "nexo");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildWarrantyTerm", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<int>("Months")
+                        .HasColumnType("integer")
+                        .HasColumnName("months");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("project_id");
+
+                    b.Property<DateOnly?>("StartsAt")
+                        .HasColumnType("date")
+                        .HasColumnName("starts_at");
+
+                    b.Property<string>("System")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("system");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tenant_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("TenantId", "ProjectId")
+                        .HasDatabaseName("ix_bld_warranty_terms_project");
+
+                    b.ToTable("bld_warranty_terms", "nexo");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Interpreter.AiProvider", b =>
@@ -11727,6 +12455,22 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Navigation("Tenant");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildAssistanceRequest", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_assistance_requests_project");
+
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildWarrantyTerm", null)
+                        .WithMany()
+                        .HasForeignKey("WarrantyTermId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bld_assistance_requests_warranty_term");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildBudget", b =>
                 {
                     b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
@@ -11811,6 +12555,26 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_bld_change_order_items_change_order");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildChecklistTemplate", b =>
+                {
+                    b.HasOne("Nexo.Domain.Entities.Tenant", null)
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_checklist_templates_tenants");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildChecklistTemplateItem", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildChecklistTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_checklist_template_items_template");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildClientUpdate", b =>
                 {
                     b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
@@ -11839,6 +12603,54 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_bld_daily_log_photos_log");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildHandover", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_handovers_project");
+
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildInspection", null)
+                        .WithMany()
+                        .HasForeignKey("WalkthroughInspectionId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bld_handovers_walkthrough");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildInspection", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_inspections_project");
+
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildStage", null)
+                        .WithMany()
+                        .HasForeignKey("StageId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bld_inspections_stage");
+
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildChecklistTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bld_inspections_template");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildInspectionItem", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildInspection", null)
+                        .WithMany()
+                        .HasForeignKey("InspectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_inspection_items_inspection");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildMaterialDelivery", b =>
@@ -11891,6 +12703,34 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_bld_measurement_items_measurement");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildNonConformity", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildInspection", null)
+                        .WithMany()
+                        .HasForeignKey("InspectionId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bld_non_conformities_inspection");
+
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildInspectionItem", null)
+                        .WithMany()
+                        .HasForeignKey("InspectionItemId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bld_non_conformities_inspection_item");
+
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_non_conformities_project");
+
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildStage", null)
+                        .WithMany()
+                        .HasForeignKey("StageId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_bld_non_conformities_stage");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildPortalCompany", b =>
@@ -11997,6 +12837,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_bld_stage_progress_events_project");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Modules.Build.BuildWarrantyTerm", b =>
+                {
+                    b.HasOne("Nexo.Domain.Modules.Build.BuildProject", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_bld_warranty_terms_project");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Modules.Interpreter.ExtractionResult", b =>

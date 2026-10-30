@@ -89,3 +89,15 @@ autorização (o merge na `master` publica em produção).
   (confirmação gera aditivo em rascunho); materiais (cotação, pedido, entregas parciais, atraso, vínculo a lançamento da
   obra); medições (aprovação move o progresso pelo mesmo caminho do avanço manual, origem `Measurement`). Portal v1.1:
   flags `changeOrders`, `selections`, `measurements`. Docs: `internal-api.md`, `client-portal-contract.md` (v1.1).
+- **Wave 3 — concluída (backend).** Migration `BuildWave3Quality` (aditiva). Checklists (modelos com itens obrigatórios
+  e que exigem foto), vistorias de qualidade com itens copiados do modelo e resultado calculado (obrigatório pendente
+  bloqueia; foto exigida; `Passed`/`PassedWithRemarks`/`Failed`), cada item `NotOk` abre uma NC; NCs com gravidade,
+  prazo, causa raiz, ação corretiva, resolução/verificação (mesmo usuário permitido e registrado), resumo de qualidade;
+  **NC crítica aberta impede a etapa de chegar a 100%** no caminho único de progresso (manual e medição). Pós-obra:
+  entrega (vistoria com o cliente → pendências viram NCs; entrega recusada com NC crítica; conclui a obra; aceite pelo
+  portal ou interno, sem IP), garantias (conjunto de referência criado na entrega, editável — não é orientação jurídica),
+  assistência técnica (abertura pela empresa ou pelo cliente, triagem calcula a cobertura pela garantia da categoria,
+  agenda, resolve, avaliação do cliente). Portal v1.2: `phase`, `property` ("Meu Imóvel"), flag `postConstruction`,
+  rotas de entrega/garantia/assistência com upload público de fotos (JPEG/PNG/WebP, 8 MB, magic bytes, 6 por chamado,
+  privado). Uploads internos `build-quality`, `build-handover`, `build-assistance`. Docs: `internal-api.md` (# Wave 3),
+  `client-portal-contract.md` (v1.2).

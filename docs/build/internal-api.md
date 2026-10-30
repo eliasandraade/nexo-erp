@@ -1,4 +1,4 @@
-# Orken Build — API interna (Waves 1 e 2)
+# Orken Build — API interna (Waves 1, 2 e 3)
 
 Rotas internas novas/alteradas da Wave 1. Todas exigem login com papel de gestão (`AppRoles.Management`) e o módulo
 `build` ativo. Erros seguem o padrão da API: `400` validação, `404` inexistente/de outra empresa, `409` conflito
@@ -208,3 +208,137 @@ Flags novas em `visibility` (`PUT /projects/{id}/portal`): `changeOrders` (padr�
 (aditivo, escolha) só em portal com senha. Rotas públicas: [`client-portal-contract.md`](client-portal-contract.md) (v1.1).
 
 API pública consumida pelo site do cliente: ver [`client-portal-contract.md`](client-portal-contract.md).
+
+# Wave 3 — Qualidade e pós-obra
+
+Mesmas regras de acesso (gestão + módulo `build`), mesmo padrão de erros, toda mudança auditada (`build_inspection_*`,
+`build_non_conformity_*`, `build_handover_*`, `build_warranty_term_*`, `build_assistance_*`). Migration aditiva
+`BuildWave3Quality` (tabelas `bld_checklist_templates`, `bld_checklist_template_items`, `bld_inspections`,
+`bld_inspection_items`, `bld_non_conformities`, `bld_handovers`, `bld_warranty_terms`, `bld_assistance_requests`).
+Ações que podem ser disparadas duas vezes ao mesmo tempo (concluir vistoria, transições de NC, entrega, aceite, avaliação)
+usam o status como token de concorrência → `409`.
+
+**Uploads privados** (`POST /api/integrations/storage/upload`, papel de gestão): contextos novos `build-quality`
+(fotos de vistoria/NC, pasta `build/quality`), `build-handover` (documentos da entrega, `build/handover`, PDF aceito) e
+`build-assistance` (fotos de chamados, `build/assistance`). As chaves só são aceitas se forem do próprio tenant e da
+pasta certa (`422 invalid_file_key`).
+
+## Checklists (modelos)
+
+`BuildChecklistTemplate` (`name`, `category` = disciplina, `stageNameHint`) com itens (`order`, `text`, `required`,
+`requiresPhoto`).
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET/POST | `/checklist-templates` | `{ name, category?, stageNameHint?, items?: [{ text, required (padrão true), requiresPhoto }] }` |
+| GET/PUT/DELETE | `/checklist-templates/{id}` | PUT substitui os itens. Vistorias já criadas **não mudam** (itens copiados) |
+
+## Vistorias (inspeções)
+
+`BuildInspection`: `kind` (`Quality` | `ClientWalkthrough`), `stageId?`, `templateId?`, `title`, `scheduledFor?`,
+`status` `Planned → InProgress → Passed | PassedWithRemarks | Failed` (ou `Cancelled`), `inspectorName`, `notes`
+(interna), `completedAt/By`. Itens: `text`, `required`, `requiresPhoto`, `result` (`Pending | Ok | NotOk |
+NotApplicable`), `comment`, `severity?` (da NC que o item abrirá), `photoKeys`/`photoUrls`, `nonConformityId`.
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/projects/{id}/inspections?kind=&status=` | |
+| POST | `/projects/{id}/inspections` | `{ title, stageId?, templateId?, scheduledFor?, inspectorName?, notes?, items? }` — itens do modelo copiados (retrato) + itens avulsos |
+| GET/PUT | `/inspections/{id}` | PUT `{ title, stageId?, scheduledFor?, inspectorName?, notes? }` só aberta (`422 inspection_closed`) |
+| POST | `/inspections/{id}/start` | `Planned → InProgress` |
+| PUT | `/inspections/{id}/items/{itemId}` | `{ result, comment?, photoKeys?, severity? }` — passa a vistoria para `InProgress` |
+| POST | `/inspections/{id}/complete` | `{ notes? }` — calcula o resultado (abaixo); concluir de novo → `409` |
+| POST | `/inspections/{id}/cancel` | concluída → `409` |
+
+**Resultado ao concluir:** item obrigatório `Pending` → `422 inspection_required_items_pending` (`details` = itens);
+item com `requiresPhoto` julgado `Ok`/`NotOk` sem foto → `422 inspection_photo_required`; sem itens →
+`422 inspection_empty`. Depois: algum obrigatório `NotOk` → `Failed`; algum `NotOk` → `PassedWithRemarks`; senão
+`Passed` (opcional pendente não bloqueia). **Cada item `NotOk` abre uma NC** na mesma gravação (título
+`"{vistoria}: {item}"`, descrição = comentário, etapa da vistoria, fotos copiadas, gravidade do item ou — sem ela —
+`High` se obrigatório, `Medium` se opcional).
+
+## Não conformidades (NC)
+
+`BuildNonConformity`: número por obra, `stageId?`, `inspectionId?`/`inspectionItemId?`, `title`, `description`,
+`severity` (`Low | Medium | High | Critical`, padrão `Medium`), `status` `Open → InTreatment → Resolved → Verified`
+(ou `Cancelled` enquanto aberta), `responsibleName`, `dueDate`, `isOverdue` (aberta e vencida), `rootCause`,
+`correctiveAction`, fotos, `costImpact?` (**informativo**: nada financeiro é criado automaticamente — lance a despesa
+normalmente se quiser), `resolvedAt/ByName`, `verifiedAt/ByName`, `verifiedBySameUser` (permitido, registrado).
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/projects/{id}/non-conformities?status=&severity=&overdue=true` | |
+| POST | `/projects/{id}/non-conformities` | `{ title, description?, severity?, stageId?, responsibleName?, dueDate?, costImpact?, photoKeys?, rootCause?, correctiveAction? }` |
+| GET/PUT | `/non-conformities/{id}` | PUT só aberta/em tratamento (`422 nc_not_open`) |
+| POST | `/non-conformities/{id}/start` | `Open → InTreatment` |
+| POST | `/non-conformities/{id}/resolve` | `{ correctiveAction?, rootCause? }` — exige ação corretiva (agora ou antes): `422 nc_corrective_action_required` |
+| POST | `/non-conformities/{id}/verify` | só depois de resolvida (`422 nc_not_resolved`) |
+| POST | `/non-conformities/{id}/reopen` | verificação reprovou: `Resolved → InTreatment` |
+| POST | `/non-conformities/{id}/cancel` | `{ reason }` — só aberta/em tratamento |
+
+Repetir a mesma transição → `409`; transição inválida → `422 nc_invalid_transition`.
+
+**Bloqueio da etapa:** enquanto a etapa tiver NC **Critical** `Open`/`InTreatment`, ela não chega a 100% — regra no
+caminho único de progresso (`BuildStageProgressApplier`), então vale para `PUT /stages/{id}/progress` (inclusive
+`status: "Completed"`) **e** para a aprovação de medição: `422 stage_has_critical_nonconformity`
+("Etapa com não conformidade crítica aberta."). Resolvida (ou cancelada), libera.
+
+`GET /projects/{id}/quality/summary` → `inspectionsByStatus` (vistorias de qualidade), `completedInspections`,
+`passRate` (% de `Passed` + `PassedWithRemarks` sobre as concluídas; `null` sem nenhuma), `openNonConformities`,
+`openNonConformitiesBySeverity`, `overdueNonConformities`, `awaitingVerification` (resolvidas), `criticalOpen`.
+
+## Entrega (handover)
+
+Uma por obra. `status` `Scheduled → InspectionDone → Delivered`, `scheduledFor`, `walkthroughInspectionId`,
+`deliveredAt/ByName`, `keysDelivered`, `documents[{ name, fileKey?, fileUrl? }]`, `notes` (interna), aceite
+(`acceptedAt`, `acceptedByName`, `acceptanceChannel` `Internal | Portal`, `acceptanceComment` — **nenhum IP é
+guardado**), `projectStatus`, `projectStatusNote`, `openCriticalNonConformities`.
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/projects/{id}/handover` | `404` enquanto não agendada |
+| PUT | `/projects/{id}/handover` | `{ scheduledFor?, keysDelivered?, documents?, notes? }` — cria na primeira chamada |
+| POST | `/projects/{id}/handover/walkthrough` | `{ title?, templateId?, scheduledFor?, inspectorName?, items? }` → vistoria `ClientWalkthrough` (`201`); já existe uma não cancelada → `409`. Concluída, a entrega vai a `InspectionDone` e cada pendência (`NotOk`) vira NC com a gravidade do item |
+| POST | `/projects/{id}/handover/deliver` | `{ keysDelivered? }` — com NC crítica aberta → `422 handover_critical_nonconformity`; entregue de novo → `409` |
+| POST | `/projects/{id}/handover/accept` | `{ signerName, comment? }` — aceite registrado pela empresa (canal `Internal`); só depois da vistoria/entrega (`422 handover_not_ready`); de novo → `409` |
+
+**Entregar:** marca a obra `Completed` (pela transição existente, que grava `actualEndDate`) se ela não estiver
+concluída nem cancelada — se estiver cancelada o status é mantido e `projectStatusNote` explica. A entrega pode ser feita
+sem vistoria com o cliente (de `Scheduled`). As garantias sem início começam na data da entrega; sem nenhuma garantia,
+cria o **conjunto de referência** abaixo.
+
+## Garantias
+
+`BuildWarrantyTerm`: `system`, `months` (1–600), `startsAt` (padrão = data da entrega), `expiresAt` (último dia
+coberto, inclusive: dia de mesmo número do início, meses depois, ou o seguinte se o mês não o tiver — CC art. 132 §3), `isActive`, `description`, `isDefault`.
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET/POST | `/projects/{id}/warranty` | `{ system, months, startsAt?, description? }` |
+| POST | `/projects/{id}/warranty/defaults` | cria o conjunto de referência (já há garantias → `409`) |
+| PUT/DELETE | `/warranty-terms/{id}` | |
+
+Conjunto de referência (**não é orientação jurídica**; ajuste ao contrato): Estrutura 60 meses (Código Civil, art. 618 —
+solidez e segurança), Impermeabilização 60, Instalações elétricas 36, Instalações hidráulicas 36, Revestimentos 24,
+Esquadrias 24, Pintura 24 (inspirado na tabela de prazos da ABNT NBR 15575).
+
+## Assistência técnica
+
+`BuildAssistanceRequest`: número por obra, `publicId` (o portal só usa ele), `category` (um `system` das garantias da
+obra ou `Outros` — senão `422 invalid_category`), `title`, `description`, `location`, `openedVia` (`Internal | Portal`),
+`openedByName`, `contactPhone`, `openedOn`, `status` `Open → Triaged → Scheduled → InProgress → Resolved → Closed` ou
+`Rejected`, `triageNotes` (**interna**), `warrantyCovered` + `warrantyTermId`/`warrantySystem`, `scheduledFor`,
+`resolutionNotes` e `rejectionReason` (visíveis ao cliente), `clientRating` 1–5, `clientFeedback`, fotos (até 6).
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/assistance?projectId=&status=&covered=` | todos os chamados da empresa |
+| GET/POST | `/projects/{id}/assistance` | `{ category, title, description, location?, openedByName?, contactPhone? }` |
+| GET | `/assistance/{id}` | |
+| POST | `/assistance/{id}/triage` | `{ warrantyCovered?, notes? }` — sem `warrantyCovered`, **calcula**: garantia da categoria cobrindo a data de abertura → `true`; fora do prazo → `false`; categoria sem garantia (ex.: `Outros`) → `null` |
+| POST | `/assistance/{id}/schedule` | `{ scheduledFor }` (instante) |
+| POST | `/assistance/{id}/start` · `/resolve` `{ resolutionNotes }` · `/close` · `/reject` `{ reason }` | transição inválida → `422 assistance_invalid_transition`; repetida → `409` |
+| POST | `/assistance/{id}/photos` | `{ key }` (upload `build-assistance`) |
+
+Portal do cliente: flag nova `postConstruction` (padrão **ligado**) e rotas da v1.2 em
+[`client-portal-contract.md`](client-portal-contract.md).

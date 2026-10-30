@@ -122,8 +122,8 @@ public sealed class BuildMeasurementService
             if (!stages.TryGetValue(item.StageId, out var stage))
                 throw new DomainException("Uma etapa desta medição não existe mais; ajuste a medição.", "measurement_stage_missing");
             item.RefreshPrevious(stage.ProgressPercent);
-            BuildStageProgressApplier.Apply(_progress, stage, item.MeasuredPercent, effective, BuildProgressSource.Measurement,
-                _audit.UserId, _audit.UserName, $"Medição #{m.Number}", m.Id);
+            await BuildStageProgressApplier.ApplyAsync(_progress, stage, item.MeasuredPercent, effective, BuildProgressSource.Measurement,
+                _audit.UserId, _audit.UserName, $"Medição #{m.Number}", m.Id, ct);
         }
 
         _audit.Record(AuditActions.BuildMeasurementApproved, "Measurement", m.Id, $"Medição #{m.Number} aprovada.",

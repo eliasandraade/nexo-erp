@@ -112,14 +112,17 @@ public class BuildStageService
             ?? throw new NotFoundException("BuildStage", stageId);
 
         var effective = request.EffectiveDate ?? BusinessClock.Today();
-        BuildStageProgressApplier.Apply(_progress, stage, request.ProgressPercent, effective, BuildProgressSource.Manual,
-            _currentUser.UserId, _currentUser.Name, request.Note);
+        await BuildStageProgressApplier.ApplyAsync(_progress, stage, request.ProgressPercent, effective, BuildProgressSource.Manual,
+            _currentUser.UserId, _currentUser.Name, request.Note, ct: ct);
 
         // Optional explicit status override (e.g. mark InProgress without 100%)
         if (!string.IsNullOrWhiteSpace(request.Status))
         {
             if (!Enum.TryParse<BuildStageStatus>(request.Status, ignoreCase: true, out var s))
                 throw new DomainException($"Invalid stage status: '{request.Status}'.");
+            if (s == BuildStageStatus.Completed && stage.Status != BuildStageStatus.Completed)
+                BuildNonConformity.EnsureStageCanComplete(
+                    await _progress.HasOpenCriticalNonConformityAsync(stage.TenantId, stage.Id, ct));
             stage.UpdateStatus(s);
         }
 

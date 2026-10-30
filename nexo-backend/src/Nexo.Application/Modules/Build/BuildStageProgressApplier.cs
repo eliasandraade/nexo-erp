@@ -7,10 +7,12 @@ namespace Nexo.Application.Modules.Build;
 /// status follow) and stages the history event (previous → new, source, reference, who) when the % changes or
 /// a note is given. Used by the manual progress update and by measurement approval; the caller saves and then
 /// refreshes today's snapshot.
+/// Quality rule (Wave 3): moving a stage to 100% is refused (422 stage_has_critical_nonconformity) while it has an
+/// open Critical non-conformity — whatever the path.
 /// </summary>
 public static class BuildStageProgressApplier
 {
-    public static BuildStageProgressEvent? Apply(
+    public static async Task<BuildStageProgressEvent?> ApplyAsync(
         IBuildProgressRecorder recorder,
         BuildStage             stage,
         int                    percent,
@@ -19,9 +21,13 @@ public static class BuildStageProgressApplier
         Guid                   recordedBy,
         string?                recordedByName,
         string?                note      = null,
-        Guid?                  sourceRef = null)
+        Guid?                  sourceRef = null,
+        CancellationToken      ct        = default)
     {
         var previous = stage.ProgressPercent;
+        if (percent == 100 && previous != 100)
+            BuildNonConformity.EnsureStageCanComplete(
+                await recorder.HasOpenCriticalNonConformityAsync(stage.TenantId, stage.Id, ct));
         stage.UpdateProgress(percent, effectiveDate);
         if (previous == stage.ProgressPercent && string.IsNullOrWhiteSpace(note)) return null;
 

@@ -122,6 +122,23 @@ public static class AuditActions
     public const string BuildMeasurementSubmitted    = "build_measurement_submitted";
     public const string BuildMeasurementApproved     = "build_measurement_approved";
     public const string BuildMeasurementRejected     = "build_measurement_rejected";
+    // Orken Build — Wave 3 quality and post-construction
+    public const string BuildChecklistTemplateSaved   = "build_checklist_template_saved";
+    public const string BuildChecklistTemplateDeleted = "build_checklist_template_deleted";
+    public const string BuildInspectionSaved          = "build_inspection_saved";
+    public const string BuildInspectionCompleted      = "build_inspection_completed";
+    public const string BuildInspectionCancelled      = "build_inspection_cancelled";
+    public const string BuildNonConformitySaved       = "build_non_conformity_saved";
+    public const string BuildNonConformityStatusChanged = "build_non_conformity_status_changed";
+    public const string BuildHandoverSaved            = "build_handover_saved";
+    public const string BuildHandoverDelivered        = "build_handover_delivered";
+    public const string BuildHandoverAccepted         = "build_handover_accepted";
+    public const string BuildWarrantyTermSaved        = "build_warranty_term_saved";
+    public const string BuildWarrantyTermDeleted      = "build_warranty_term_deleted";
+    public const string BuildAssistanceOpened         = "build_assistance_opened";
+    public const string BuildAssistanceStatusChanged  = "build_assistance_status_changed";
+    public const string BuildAssistancePhotoAdded     = "build_assistance_photo_added";
+    public const string BuildAssistanceFeedback       = "build_assistance_feedback";
 
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";

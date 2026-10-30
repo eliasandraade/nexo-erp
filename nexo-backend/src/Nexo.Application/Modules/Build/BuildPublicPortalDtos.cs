@@ -24,6 +24,10 @@ public sealed record PublicBuildBootstrapDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public PublicBuildFinancialSummaryDto? FinancialSummary { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public PublicBuildContactDto? Contact { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<PublicBuildUpdateDto>? LatestUpdates { get; init; }
+    /// <summary>v1.2: "construction" until the handover is delivered, then "delivered".</summary>
+    public string Phase { get; init; } = PublicBuildPortal.PhaseConstruction;
+    /// <summary>v1.2 "Meu Imóvel": only after the delivery and with the flag postConstruction.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public PublicBuildPropertyDto? Property { get; init; }
 }
 
 public sealed record PublicBuildPortalDto(
@@ -226,7 +230,7 @@ public sealed record PublicBuildMeasurementsDto(IReadOnlyList<PublicBuildMeasure
 /// <summary>Constants of the public portal contract.</summary>
 public static class PublicBuildPortal
 {
-    public const string ContractVersion = "1.1";
+    public const string ContractVersion = "1.2";
     public const string SessionHeader   = "X-Build-Portal-Session";
 
     public const string CodeNotFound         = "portal_not_found";
@@ -246,6 +250,25 @@ public static class PublicBuildPortal
     public const string CodeSelectionClosed          = "selection_closed";
     public const string CodeSelectionDeadlinePassed  = "selection_deadline_passed";
     public const string CodeInvalidOption            = "invalid_option";
+
+    // Wave 3 (v1.2)
+    public const string PhaseConstruction            = "construction";
+    public const string PhaseDelivered               = "delivered";
+    public const string CodeHandoverNotReady         = "handover_not_ready";
+    public const string CodeHandoverAlreadyAccepted  = "handover_already_accepted";
+    public const string CodePropertyNotDelivered     = "property_not_delivered";
+    public const string CodeInvalidAssistance        = "invalid_assistance_request";
+    public const string CodeInvalidCategory          = "invalid_category";
+    public const string CodeAssistanceLimit          = "assistance_limit_reached";
+    public const string CodeAssistanceClosed         = "assistance_closed";
+    public const string CodeAssistancePhotoLimit     = "assistance_photo_limit";
+    public const string CodeAssistanceNotResolved    = "assistance_not_resolved";
+    public const string CodeFeedbackAlreadyGiven     = "feedback_already_given";
+    public const string CodeInvalidRating            = "invalid_rating";
+    public const string CodeInvalidFileType          = "invalid_file_type";
+    public const string CodeInvalidFileContent       = "invalid_file_content";
+    public const string CodeFileTooLarge             = "file_too_large";
+    public const string CodeStorageUnavailable       = "storage_unavailable";
 }
 
 /// <summary>

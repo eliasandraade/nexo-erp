@@ -178,6 +178,8 @@ public static class DependencyInjection
         services.AddScoped<BuildSelectionService>();
         services.AddScoped<BuildMaterialService>();
         services.AddScoped<BuildMeasurementService>();
+        services.AddScoped<BuildQualityService>();
+        services.AddScoped<BuildPostConstructionService>();
 
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();

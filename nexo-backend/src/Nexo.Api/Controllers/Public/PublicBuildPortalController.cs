@@ -8,7 +8,7 @@ using Nexo.Infrastructure.Modules.Build;
 namespace Nexo.Api.Controllers.Public;
 
 /// <summary>
-/// Public client portal of Orken Build (no login) — contract v1.1, docs/build/client-portal-contract.md.
+/// Public client portal of Orken Build (no login) — contract v1.2, docs/build/client-portal-contract.md.
 /// Address: <c>/api/public/build/{companySlug}/{projectSlug}</c>. Unknown and unpublished portals answer
 /// the same 404. A password portal needs the <c>X-Build-Portal-Session</c> header (token from POST …/session).
 /// Responses are never cached (they may carry signed media URLs).
@@ -131,6 +131,102 @@ public class PublicBuildPortalController : ControllerBase
         NoStore();
         return Ok(await _portal.GetMeasurementsAsync(companySlug, projectSlug, SessionToken, ct));
     }
+
+    // ── v1.2: "Meu Imóvel" — handover, warranty, technical assistance ────────
+
+    /// <summary>The handover: status, dates, documents (signed URLs), walkthrough summary (flag postConstruction).</summary>
+    [HttpGet("handover")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildHandoverDto>> Handover(string companySlug, string projectSlug, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetHandoverAsync(companySlug, projectSlug, SessionToken, ct));
+    }
+
+    /// <summary>The client accepts the handover — password portal with a session only; once.</summary>
+    [HttpPost("handover/accept")]
+    [EnableRateLimiting("build-portal-decision")]
+    public async Task<ActionResult<PublicBuildHandoverDto>> AcceptHandover(string companySlug, string projectSlug,
+        [FromBody] PublicBuildHandoverAcceptRequest? request, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.AcceptHandoverAsync(companySlug, projectSlug, SessionToken, request, ct));
+    }
+
+    /// <summary>Warranty terms (started on the delivery) with expiry and whether active today.</summary>
+    [HttpGet("warranty")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildWarrantyDto>> Warranty(string companySlug, string projectSlug, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetWarrantyAsync(companySlug, projectSlug, SessionToken, ct));
+    }
+
+    /// <summary>The project's technical assistance requests (status and timeline) and the accepted categories.</summary>
+    [HttpGet("assistance")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildAssistanceListDto>> Assistance(string companySlug, string projectSlug, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetAssistanceAsync(companySlug, projectSlug, SessionToken, ct));
+    }
+
+    /// <summary>The client opens a request — password portal with a session, after the delivery.</summary>
+    [HttpPost("assistance")]
+    [EnableRateLimiting("build-portal-decision")]
+    public async Task<ActionResult<PublicBuildAssistanceDto>> OpenAssistance(string companySlug, string projectSlug,
+        [FromBody] PublicBuildAssistanceOpenRequest? request, CancellationToken ct)
+    {
+        NoStore();
+        var dto = await _portal.OpenAssistanceAsync(companySlug, projectSlug, SessionToken, request, ct);
+        return StatusCode(StatusCodes.Status201Created, dto);
+    }
+
+    /// <summary>
+    /// Adds one photo (multipart field <c>file</c>): JPEG, PNG or WebP, up to 8 MB, checked by its first bytes; at most 6 per
+    /// request. Stored privately; only signed URLs come back.
+    /// </summary>
+    [HttpPost("assistance/{publicId:guid}/photos")]
+    [EnableRateLimiting("build-portal-decision")]
+    [RequestSizeLimit(MaxUploadBytes + 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes + 1024 * 1024)]
+    public async Task<ActionResult<PublicBuildAssistanceDto>> AddAssistancePhoto(string companySlug, string projectSlug, Guid publicId,
+        IFormFile? file, CancellationToken ct)
+    {
+        NoStore();
+        var target = await _portal.AuthorizeAssistanceUploadAsync(companySlug, projectSlug, SessionToken, publicId, ct);
+        if (file is null || file.Length == 0)
+            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileType, "Envie uma imagem no campo file.");
+        var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
+        if (!ImageExtensions.TryGetValue(contentType, out var extension))
+            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileType, "Envie uma imagem JPEG, PNG ou WebP.");
+        if (file.Length > MaxUploadBytes)
+            throw new BuildPortalAccessException(413, PublicBuildPortal.CodeFileTooLarge, "A imagem pode ter até 8 MB.");
+        if (!await Nexo.Api.Controllers.Integrations.FileSignature.MatchesAsync(file, contentType, ct))
+            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileContent,
+                "O conteúdo do arquivo não corresponde a uma imagem válida.");
+        await using var stream = file.OpenReadStream();
+        return Ok(await _portal.StoreAssistancePhotoAsync(target, stream, contentType, extension, file.Length, ct));
+    }
+
+    /// <summary>The client rates a resolved request (1–5), once.</summary>
+    [HttpPost("assistance/{publicId:guid}/feedback")]
+    [EnableRateLimiting("build-portal-decision")]
+    public async Task<ActionResult<PublicBuildAssistanceDto>> AssistanceFeedback(string companySlug, string projectSlug, Guid publicId,
+        [FromBody] PublicBuildAssistanceFeedbackRequest? request, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GiveAssistanceFeedbackAsync(companySlug, projectSlug, SessionToken, publicId, request, ct));
+    }
+
+    private const long MaxUploadBytes = 8L * 1024 * 1024;
+
+    private static readonly Dictionary<string, string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["image/jpeg"] = ".jpg",
+        ["image/png"]  = ".png",
+        ["image/webp"] = ".webp",
+    };
 
     private void NoStore() => Response.Headers.CacheControl = "no-store";
 }

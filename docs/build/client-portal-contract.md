@@ -1,7 +1,7 @@
-# Orken Build — Portal do Cliente — contrato da API pública (v1.1)
+# Orken Build — Portal do Cliente — contrato da API pública (v1.2)
 
 Documento para o time do frontend externo (Astra). Descreve **somente** a API pública do portal do cliente de
-uma obra. Tudo aqui é estável na versão `contract v1.1` (compatível com a v1 — só acréscimos, ver §9 "Changelog"); mudanças
+uma obra. Tudo aqui é estável na versão `contract v1.2` (compatível com a v1 e a v1.1 — só acréscimos, ver §9 "Changelog"); mudanças
 incompatíveis viram `v2` (ver "Versionamento").
 
 ## 1. Base, endereço e slugs
@@ -46,9 +46,17 @@ Se o site Astra tiver rotas próprias no primeiro segmento (ex.: `/sobre`), avis
 | GET | `/selections` | `build-portal` | obrigatória |
 | POST | `/selections/{id}/choice` | `build-portal-decision` | **exige portal com senha** |
 | GET | `/measurements` | `build-portal` | obrigatória |
+| GET | `/handover` (v1.2) | `build-portal` | obrigatória |
+| POST | `/handover/accept` (v1.2) | `build-portal-decision` | **exige portal com senha** |
+| GET | `/warranty` (v1.2) | `build-portal` | obrigatória |
+| GET | `/assistance` (v1.2) | `build-portal` | obrigatória |
+| POST | `/assistance` (v1.2) | `build-portal-decision` | **exige portal com senha** |
+| POST | `/assistance/{id}/photos` (v1.2, multipart) | `build-portal-decision` | **exige portal com senha** |
+| POST | `/assistance/{id}/feedback` (v1.2) | `build-portal-decision` | **exige portal com senha** |
 
-Em portal **público** a sessão é ignorada — e as duas rotas de decisão respondem `403 portal_decision_requires_password`
-(decidir algo em nome do cliente exige o portal com senha).
+Em portal **público** a sessão é ignorada — e todas as rotas de escrita (decisão de aditivo, escolha, aceite da entrega,
+abrir chamado, enviar foto, avaliar) respondem `403 portal_decision_requires_password` (agir em nome do cliente exige o
+portal com senha).
 
 ### 2.1 GET bootstrap
 
@@ -59,7 +67,8 @@ Em portal **público** a sessão é ignorada — e as duas rotas de decisão res
 
 ```json
 {
-  "contractVersion": "1.1",
+  "contractVersion": "1.2",
+  "phase": "construction",
   "sections": ["overallProgress", "stageProgress", "schedule", "photos", "weather", "clientUpdates", "contact",
                "changeOrders", "selections"],
   "portal": {
@@ -109,7 +118,7 @@ Em portal **público** a sessão é ignorada — e as duas rotas de decisão res
 ```
 
 Observações:
-- `portal`, `company`, `project`, `contractVersion` e `sections` sempre vêm.
+- `portal`, `company`, `project`, `contractVersion`, `sections` e `phase` (v1.2, §2.12) sempre vêm.
 - `progress.plannedPercent` some quando nenhuma etapa tem datas previstas; `forecastDelivery` só vem com a flag
   `forecastDelivery`.
 - `weather` só vem se a flag estiver ligada **e** a obra tiver coordenadas **e** o clima estiver ativo na
@@ -341,6 +350,145 @@ Medições **aprovadas** da obra (avanço medido por etapa no período). `404 po
 - `measuredPercent` é acumulado (o % da etapa depois da medição); `previousPercent` o de antes.
 - `totalAmount` e `amount` **só** aparecem quando a flag `financialSummary` também está ligada.
 
+### 2.12 Fase e "Meu Imóvel" no bootstrap (v1.2)
+
+O bootstrap ganha:
+
+```json
+{
+  "contractVersion": "1.2",
+  "phase": "delivered",
+  "property": {
+    "handoverDate": "2026-10-30",
+    "handoverAccepted": true,
+    "warrantyTerms": [
+      { "system": "Estrutura", "months": 60, "startsAt": "2026-10-30", "expiresAt": "2031-10-30", "isActive": true,
+        "description": "Solidez e segurança da estrutura (referência: Código Civil, art. 618)." }
+    ],
+    "openAssistanceCount": 1
+  }
+}
+```
+
+- `phase` sempre vem: `construction` até a construtora registrar a entrega, depois `delivered`. Use para trocar
+  "Minha Obra" por "Meu Imóvel".
+- `property` só vem com `phase = delivered` **e** a flag `postConstruction` ligada (nome `postConstruction` em `sections`).
+- `expiresAt` é o **último dia coberto** (inclusive): o dia de mesmo número do início, `months` depois, ou o dia seguinte quando o mês não tem esse dia (Código Civil, art. 132 §3). `isActive` = hoje dentro do prazo.
+
+### 2.13 GET /handover (v1.2)
+
+`200` (flag `postConstruction`; `404 portal_item_not_found` enquanto a entrega não foi agendada):
+
+```json
+{
+  "status": "Delivered",
+  "scheduledFor": "2026-10-30",
+  "deliveredAt": "2026-10-30T15:00:00+00:00",
+  "keysDelivered": true,
+  "documents": [ { "name": "Manual do proprietário", "url": "https://…assinada…" } ],
+  "documentUrlsExpireAt": "2026-10-30T15:15:00+00:00",
+  "walkthrough": {
+    "status": "PassedWithRemarks", "scheduledFor": "2026-10-28", "completedAt": "2026-10-28T13:00:00+00:00",
+    "totalItems": 2, "okItems": 1, "pendingItems": 1,
+    "items": [ { "text": "Portas e janelas", "result": "Ok" }, { "text": "Pintura da sala", "result": "NotOk" } ]
+  },
+  "acceptedAt": "2026-10-30T16:00:00+00:00",
+  "acceptedByName": "Maria Souza",
+  "acceptanceChannel": "Portal",
+  "acceptanceComment": "Recebido em ordem.",
+  "canAccept": false
+}
+```
+
+- `status`: `Scheduled | InspectionDone | Delivered`. `walkthrough.status`: `Planned | InProgress | Passed |
+  PassedWithRemarks | Failed`. `result`: `Pending | Ok | NotOk | NotApplicable`; `pendingItems` = itens `NotOk`
+  (pendências que a construtora vai tratar).
+- Nunca saem: observações internas da entrega, comentários/fotos/vistoriador da vistoria, chaves de arquivo.
+- `documents[].url` é assinada (~15 min) ou `null` (documento sem arquivo).
+
+### 2.14 POST /handover/accept (v1.2)
+
+```http
+POST …/handover/accept
+X-Build-Portal-Session: {token}
+
+{ "signerName": "Maria Souza", "comment": "Recebido em ordem." }
+```
+
+- **Exige portal com senha** (`403 portal_decision_requires_password` em portal público) e sessão válida.
+- Só depois da vistoria de entrega ou da entrega (`422 handover_not_ready`); aceite único (`409 handover_already_accepted`).
+- `signerName` obrigatório, até 200 (`400 signer_name_required`); `comment` até 2000. Nenhum IP é guardado.
+- `200` → o mesmo formato de §2.13.
+
+### 2.15 GET /warranty (v1.2)
+
+`200` → `{ "items": [ …mesmo formato de property.warrantyTerms… ], "notice": "Prazos de referência informados pela
+construtora. Consulte o termo de garantia do seu contrato." }`. Só garantias que já começaram (na entrega). Mostre o
+`notice`: os prazos são os cadastrados pela construtora, não orientação jurídica.
+
+### 2.16 GET /assistance e POST /assistance (v1.2)
+
+`GET` → `{ "items": [ … ], "categories": ["Esquadrias", …, "Outros"], "canOpen": true }` — os chamados da obra (abertos
+pelo cliente ou pela construtora), mais recentes primeiro. `canOpen` = portal com senha **e** imóvel entregue.
+
+```json
+{
+  "id": "b8f9…",
+  "number": 3,
+  "category": "Impermeabilização",
+  "title": "Infiltração no banheiro",
+  "description": "Mancha de umidade no teto.",
+  "location": "Banheiro social",
+  "openedVia": "Portal",
+  "openedAt": "2026-11-02T12:00:00+00:00",
+  "status": "Scheduled",
+  "warrantyCovered": true,
+  "scheduledFor": "2026-11-05T13:00:00+00:00",
+  "photoUrls": ["https://…assinada…"],
+  "photoUrlsExpireAt": "2026-11-02T12:15:00+00:00",
+  "canAddPhotos": true,
+  "canGiveFeedback": false,
+  "timeline": [ { "status": "Open", "at": "…" }, { "status": "Triaged", "at": "…" } ]
+}
+```
+
+- `status`: `Open | Triaged | Scheduled | InProgress | Resolved | Closed | Rejected`. `warrantyCovered` aparece depois
+  da triagem (`true`/`false`; ausente se a construtora ainda não decidiu). `resolutionNotes` e `rejectionReason`
+  aparecem quando existem; `rating`/`feedback` depois da avaliação.
+- Nunca saem: notas internas da triagem, telefone de contato, ids internos.
+
+`POST /assistance` (**portal com senha**, sessão; rate limit `build-portal-decision`):
+
+```json
+{ "category": "Impermeabilização", "title": "Infiltração no banheiro", "description": "Mancha de umidade no teto.",
+  "location": "Banheiro social", "contactPhone": "11999990000", "openedByName": "Maria Souza" }
+```
+
+- `category`: uma de `categories` (sem diferença de maiúsculas) → senão `400 invalid_category`. `title` (até 200) e
+  `description` (até 4000) obrigatórios; `location` até 200, `contactPhone` até 30, `openedByName` até 200 →
+  senão `400 invalid_assistance_request`.
+- Só depois da entrega (`422 property_not_delivered`); no máximo **20 chamados abertos pelo portal** por obra
+  (`422 assistance_limit_reached`).
+- `201` → o chamado (formato acima).
+
+### 2.17 POST /assistance/{id}/photos (v1.2)
+
+`multipart/form-data` com o campo `file`. **Portal com senha** e sessão.
+
+- Tipos: `image/jpeg`, `image/png`, `image/webp` (`400 invalid_file_type`); até **8 MB** (`413 file_too_large`);
+  o conteúdo precisa começar com a assinatura do tipo (`400 invalid_file_content` — ex.: um `.txt` renomeado `.png`).
+- Até **6 fotos** por chamado (`422 assistance_photo_limit`); chamado resolvido/encerrado/recusado
+  (`422 assistance_closed`).
+- O nome do arquivo enviado é ignorado; a foto é guardada **privada** e só volta como URL assinada.
+- Armazenamento desligado/indisponível → `503 storage_unavailable` (tente mais tarde).
+- `{id}` precisa ser um chamado **desta obra** → senão `404 portal_item_not_found`.
+- `200` → o chamado atualizado.
+
+### 2.18 POST /assistance/{id}/feedback (v1.2)
+
+`{ "rating": 5, "comment": "Atendimento rápido." }` — **portal com senha**. `rating` 1–5 (`400 invalid_rating`);
+só com o chamado `Resolved` (`422 assistance_not_resolved`); uma vez (`409 feedback_already_given`). `200` → o chamado.
+
 ## 3. Senha e sessão
 
 1. `GET` bootstrap sem sessão num portal com senha → `401`:
@@ -375,6 +523,7 @@ A construtora decide por obra. Padrões seguros entre parênteses.
 | `changeOrders` (v1.1) | `GET /change-orders` e a decisão (decisão só em portal com senha) | ligado |
 | `selections` (v1.1) | `GET /selections` e a escolha (escolha só em portal com senha) | ligado |
 | `measurements` (v1.1) | `GET /measurements` (valores só com `financialSummary`) | desligado |
+| `postConstruction` (v1.2) | `property` (bootstrap, após a entrega), `GET /handover`, `GET /warranty`, `GET /assistance` e as escritas de pós-obra (só em portal com senha) | ligado |
 | `videos`, `documents`, `financialCategories`, `financialTransactions`, `receipts`, `model3d`, `realityCapture`, `risks`, `team` | reservadas para próximas versões — ainda não geram dados | desligado |
 
 Garantias: nada financeiro aparece sem `financialSummary`; a nota interna do diário nunca sai (só `ClientSummary`);
@@ -399,6 +548,18 @@ Corpo padrão: `{ "error": "mensagem em português", "code": "…" }` (+ `portal
 | 409 | `selection_closed` | escolha já feita, confirmada ou encerrada (v1.1) |
 | 422 | `selection_deadline_passed` | prazo da escolha terminou (v1.1) |
 | 400 | `invalid_decision` · `signer_name_required` · `invalid_option` | corpo da decisão/escolha inválido (v1.1) |
+| 422 | `handover_not_ready` | aceite antes da vistoria de entrega (v1.2) |
+| 409 | `handover_already_accepted` | entrega já aceita (v1.2) |
+| 422 | `property_not_delivered` | abrir chamado antes da entrega (v1.2) |
+| 400 | `invalid_category` · `invalid_assistance_request` | categoria fora da lista · campos do chamado inválidos (v1.2) |
+| 422 | `assistance_limit_reached` | 20 chamados abertos pelo portal (v1.2) |
+| 422 | `assistance_closed` · `assistance_photo_limit` | chamado não aceita fotos · já tem 6 fotos (v1.2) |
+| 400 | `invalid_file_type` · `invalid_file_content` | tipo não aceito · conteúdo não é a imagem declarada (v1.2) |
+| 413 | `file_too_large` | foto com mais de 8 MB (v1.2) |
+| 503 | `storage_unavailable` | envio de fotos indisponível (v1.2) |
+| 422 | `assistance_not_resolved` | avaliação antes da resolução (v1.2) |
+| 409 | `feedback_already_given` | avaliação já enviada (v1.2) |
+| 400 | `invalid_rating` | nota fora de 1–5 (v1.2) |
 | 429 | — (corpo vazio) | rate limit por IP estourado (ver §6) |
 | 500 | — | erro inesperado (`{ error, requestId }`) |
 
@@ -408,7 +569,7 @@ Corpo padrão: `{ "error": "mensagem em português", "code": "…" }` (+ `portal
 |---|---|---|---|
 | `build-portal` | GETs e `DELETE /session` | 120 req / 60 s | `RateLimiting:BuildPortal:*` |
 | `build-portal-auth` | `POST /session` | 10 req / 300 s | `RateLimiting:BuildPortalAuth:*` |
-| `build-portal-decision` | `POST …/decision`, `POST …/choice` (v1.1) | 30 req / 300 s | `RateLimiting:BuildPortalDecision:*` |
+| `build-portal-decision` | `POST …/decision`, `POST …/choice` (v1.1), `POST …/handover/accept`, `POST …/assistance`, `…/photos`, `…/feedback` (v1.2) | 30 req / 300 s | `RateLimiting:BuildPortalDecision:*` |
 
 Estourou → `429` sem corpo. Faça backoff; não repita em loop.
 
@@ -423,12 +584,27 @@ Estourou → `429` sem corpo. Faça backoff; não repita em loop.
 
 ## 8. Versionamento
 
-`contract v1.1` (`contractVersion: "1.1"` no bootstrap; a v1 respondia `"1"`). Compare só o número antes do ponto
+`contract v1.2` (`contractVersion: "1.2"` no bootstrap; a v1.1 respondia `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
 (major): `1.x` continua compatível. Mudanças **aditivas** (campos novos, novos `type` na timeline,
 novas seções em `sections`) podem chegar sem aviso — ignore o que não conhecer. Remoções ou mudanças de significado
 só numa `v2`, anunciada antes.
 
 ## 9. Changelog
+
+### v1.2 — Wave 3 (Qualidade e pós-obra)
+
+Só acréscimos; nada da v1/v1.1 mudou de significado.
+
+- `contractVersion` passa a `"1.2"`; bootstrap ganha `phase` (`construction` | `delivered`) e, depois da entrega,
+  `property` (data da entrega, aceite, garantias com `expiresAt`/`isActive`, chamados abertos) — §2.12.
+- Nova flag `postConstruction` (padrão ligado; nome em `sections`).
+- Novas rotas: `GET /handover`, `POST /handover/accept`, `GET /warranty`, `GET /assistance`, `POST /assistance`,
+  `POST /assistance/{id}/photos` (multipart: JPEG/PNG/WebP, até 8 MB, assinatura conferida, até 6 por chamado),
+  `POST /assistance/{id}/feedback` (§2.13–§2.18). Escritas só em portal com senha (`403 portal_decision_requires_password`).
+- Novos códigos: `handover_not_ready`, `handover_already_accepted`, `property_not_delivered`, `invalid_category`,
+  `invalid_assistance_request`, `assistance_limit_reached`, `assistance_closed`, `assistance_photo_limit`,
+  `invalid_file_type`, `invalid_file_content`, `file_too_large` (413), `storage_unavailable` (503),
+  `assistance_not_resolved`, `feedback_already_given`, `invalid_rating`.
 
 ### v1.1 — Wave 2 (Comercial)
 

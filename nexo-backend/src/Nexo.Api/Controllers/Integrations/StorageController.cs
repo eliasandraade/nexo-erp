@@ -43,6 +43,9 @@ public class StorageController : ControllerBase
             ["build-portal-logo"]    = new("build/portal/logo", false, Management),
             ["build-portal-cover"]   = new("build/portal/cover", false, Management),
             ["build-selection-option"] = new("build/selections", true, Management),
+            ["build-quality"]        = new("build/quality", true, Management),
+            ["build-handover"]       = new("build/handover", true, Management),
+            ["build-assistance"]     = new("build/assistance", true, Management),
             ["service-record"]       = new("service/records", true, Management, NeedsPrivateBucket: true),
         };
 

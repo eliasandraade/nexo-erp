@@ -80,6 +80,8 @@ public interface IBuildProgressRecorder
 {
     void Stage(BuildStageProgressEvent progressEvent);
     Task RefreshTodaySnapshotAsync(Guid projectId, CancellationToken ct = default);
+    /// <summary>Whether the stage has an Open/InTreatment Critical non-conformity (blocks marking it 100%).</summary>
+    Task<bool> HasOpenCriticalNonConformityAsync(Guid tenantId, Guid stageId, CancellationToken ct = default);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.Options;
 using Nexo.Application.Integrations.Weather;
 using Nexo.Application.Modules.Build;
@@ -29,7 +30,7 @@ namespace Nexo.Infrastructure.Modules.Build;
 ///     visible), no password data; photos only when both the photo and its log are client-visible, as
 ///     signed URLs (15 min) for keys of the portal's tenant.
 /// </summary>
-public sealed class BuildPublicPortalService
+public sealed partial class BuildPublicPortalService
 {
     private const int DefaultSessionHours = 12;
     private const int MaxTokenLength = 128;
@@ -45,12 +46,15 @@ public sealed class BuildPublicPortalService
     private readonly BuildAuditTrail _audit;
     private readonly ILogger<BuildPublicPortalService> _logger;
     private readonly BuildChangeOrderEffects _effects;
+    private readonly IStorageProvider _storage;
 
     public BuildPublicPortalService(NexoDbContext db, BuildProgressEngine engine, IPasswordHasher hasher,
         BuildPortalMedia media, IWeatherProvider weather, IIntegrationFeatureFlags flags, IConfiguration config,
-        BuildAuditTrail audit, ILogger<BuildPublicPortalService> logger, BuildChangeOrderEffects effects)
+        BuildAuditTrail audit, ILogger<BuildPublicPortalService> logger, BuildChangeOrderEffects effects,
+        IStorageProvider storage)
     {
         _effects = effects;
+        _storage = storage;
         _db = db;
         _engine = engine;
         _hasher = hasher;
@@ -78,6 +82,7 @@ public sealed class BuildPublicPortalService
         var vis = ctx.Visibility;
         var today = BusinessClock.Today();
 
+        var handover = await HandoverOfAsync(ctx, ct);
         BuildProgressEngine.Computation? c = null;
         if (vis.OverallProgress || vis.StageProgress || vis.Schedule || vis.ForecastDelivery)
             c = await _engine.ComputeAsync(ctx.TenantId, ctx.Project.Id, today, bypassFilters: true, ct);
@@ -112,6 +117,8 @@ public sealed class BuildPublicPortalService
             FinancialSummary = vis.FinancialSummary ? await FinancialAsync(ctx, today, ct) : null,
             Contact = vis.Contact ? Contact(ctx) : null,
             LatestUpdates = vis.ClientUpdates ? await LatestUpdatesAsync(ctx, ct) : null,
+            Phase = handover?.IsDelivered == true ? PublicBuildPortal.PhaseDelivered : PublicBuildPortal.PhaseConstruction,
+            Property = vis.PostConstruction && handover?.IsDelivered == true ? await PropertyAsync(ctx, handover, ct) : null,
         };
     }
 
@@ -643,6 +650,7 @@ public sealed class BuildPublicPortalService
         if (v.ChangeOrders) list.Add("changeOrders");
         if (v.Selections) list.Add("selections");
         if (v.Measurements) list.Add("measurements");
+        if (v.PostConstruction) list.Add("postConstruction");
         return list;
     }
 
