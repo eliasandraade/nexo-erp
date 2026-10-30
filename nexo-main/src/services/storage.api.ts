@@ -11,7 +11,13 @@ export type StorageContext =
   | "build-portal-cover";
 
 /** Private files (service records, site photos): only short-lived signed URLs, never a public one. */
-export type PrivateStorageContext = "build-daily-log" | "build-selection-option" | "service-record";
+export type PrivateStorageContext =
+  | "build-daily-log"
+  | "build-selection-option"
+  | "build-quality"
+  | "build-handover"
+  | "build-assistance"
+  | "service-record";
 
 export interface StorageUploadResult {
   key: string;

@@ -35,6 +35,8 @@ export interface BuildPortalVisibility {
   selections:            boolean;
   /** Wave 2: approved measurements (values only together with financialSummary). */
   measurements:          boolean;
+  /** Wave 3: "Meu Imóvel" — handover, warranty and technical assistance (writes need a password portal). */
+  postConstruction:      boolean;
 }
 
 /** Mirrors the server's safe defaults (BuildPortalVisibility.Defaults). */
@@ -43,7 +45,7 @@ export const DEFAULT_PORTAL_VISIBILITY: BuildPortalVisibility = {
   dailyLogs: false, photos: true, videos: false, documents: false, weather: true,
   financialSummary: false, financialCategories: false, financialTransactions: false, receipts: false,
   model3d: false, realityCapture: false, clientUpdates: true, risks: false, team: false, contact: true,
-  changeOrders: true, selections: true, measurements: false,
+  changeOrders: true, selections: true, measurements: false, postConstruction: true,
 };
 
 export interface BuildPortalCompanyDto {

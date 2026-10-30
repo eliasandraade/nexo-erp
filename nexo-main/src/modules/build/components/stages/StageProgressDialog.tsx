@@ -10,6 +10,7 @@ import {
 import { useUpdateStageProgress } from "../../hooks/use-build";
 import type { BuildStageDto } from "../../api/build.api";
 import { localToday } from "../../lib/format";
+import { errorMessage } from "../commercial/errors";
 
 interface Props {
   projectId: string;
@@ -23,12 +24,14 @@ export function StageProgressDialog({ projectId, stage, onClose }: Props) {
   const [pct,  setPct]  = useState(0);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(localToday);
+  const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
     if (!stage) return;
     setPct(stage.progressPercent);
     setNote("");
     setDate(localToday());
+    setFailure(null);
   }, [stage]);
 
   const today = localToday();
@@ -37,6 +40,7 @@ export function StageProgressDialog({ projectId, stage, onClose }: Props) {
   const save = () => {
     if (!stage) return;
     if (futureDate) { toast.error("A data do avanço não pode estar no futuro."); return; }
+    setFailure(null);
     progressMut.mutate({
       id: stage.id,
       req: {
@@ -46,7 +50,11 @@ export function StageProgressDialog({ projectId, stage, onClose }: Props) {
       },
     }, {
       onSuccess: () => { toast.success("Progresso atualizado!"); onClose(); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar."),
+      onError:   (e) => {
+        const msg = errorMessage(e, "Erro ao atualizar.");
+        setFailure(msg);
+        toast.error(msg);
+      },
     });
   };
 
@@ -70,6 +78,11 @@ export function StageProgressDialog({ projectId, stage, onClose }: Props) {
               />
               <span className="w-12 text-right text-sm font-semibold tabular-nums">{pct}%</span>
             </div>
+            {pct === 100 && (
+              <p className="text-[11px] text-muted-foreground">
+                Uma não conformidade crítica aberta impede concluir a etapa (100%).
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
@@ -90,6 +103,13 @@ export function StageProgressDialog({ projectId, stage, onClose }: Props) {
             <p className="text-[11px] text-muted-foreground">Fica no histórico interno do avanço.</p>
           </div>
         </div>
+
+        {failure && (
+          <p role="alert" data-testid="stage-progress-error"
+            className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+            {failure}
+          </p>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>

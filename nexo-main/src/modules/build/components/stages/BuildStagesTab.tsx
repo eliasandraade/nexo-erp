@@ -13,6 +13,7 @@ import {
 import type { BuildStageDto } from "../../api/build.api";
 import { parseDecimal } from "../../lib/format";
 import { StageProgressDialog } from "./StageProgressDialog";
+import { errorMessage } from "../commercial/errors";
 
 const fmtDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 const fmtWeight = (w: number | undefined) => (w ?? 1).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
@@ -51,7 +52,7 @@ export function BuildStagesTab({ projectId }: { projectId: string }) {
       weight: w.value,
     } }, {
       onSuccess: () => { setDetails(null); toast.success("Etapa atualizada."); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar etapa."),
+      onError:   (e) => toast.error(errorMessage(e, "Erro ao atualizar etapa.")),
     });
   };
 

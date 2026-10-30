@@ -566,6 +566,23 @@ test('Build: etapas reordenadas e editadas, desvio com sinal certo e estorno de 
  await expect.poll(()=>voided).toBe('m1');
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
 });
+test('Build: Qualidade e Entrega e pós-obra abrem numa obra sem dados',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api'; const now=new Date().toISOString();
+ const project={id:'b1',name:'Casa QA',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:null,expectedEndDate:null,actualEndDate:null,budgetEstimated:1000,budgetApproved:1000,stages:[],recentLogs:[],createdAt:now,updatedAt:now,stageCount:0,completedStageCount:0,logCount:0};
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(project)}));
+ await page.route(`${API}/v1/build/projects/b1/handover`,r=>r.fulfill({status:404,contentType:'application/json',body:JSON.stringify({error:'Entrega não agendada.'})}));
+ await page.goto('/build/projetos/b1');
+ await page.getByRole('button',{name:'Qualidade'}).click();
+ await expect(page.getByText('Nenhuma vistoria de qualidade nesta obra.')).toBeVisible();
+ await page.getByRole('tab',{name:'Não conformidades'}).click();
+ await expect(page.getByText(/impede concluir a etapa \(100%\)/)).toBeVisible();
+ await page.getByRole('button',{name:'Entrega e pós-obra'}).click();
+ await expect(page.getByText('A entrega do imóvel ainda não foi agendada.')).toBeVisible();
+ await page.getByRole('tab',{name:'Garantias'}).click();
+ await expect(page.getByTestId('warranty-disclaimer')).toContainText('não é orientação jurídica');
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});
 test('Conta: esqueci a senha e redefinição pelo link',async({page})=>{
  let asked: Json=null, reset: Json=null;
  await page.route('http://localhost:5000/api/auth/forgot-password',r=>{asked=r.request().postDataJSON();return r.fulfill({status:202,contentType:'application/json',body:'{"message":"ok"}'});});

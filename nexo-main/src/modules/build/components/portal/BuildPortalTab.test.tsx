@@ -91,6 +91,21 @@ describe("BuildPortalTab", () => {
       .toMatchObject({ changeOrders: true, selections: true, measurements: true });
   });
 
+  it("Wave 3 flag: Pós-obra (Meu Imóvel) on by default; turning it off is saved", async () => {
+    vi.mocked(portalApi.updateProjectPortal).mockImplementation(async (_id, req) => ({ ...portal, ...req }));
+    renderTab(<BuildPortalTab projectId="p1" />);
+
+    expect(await screen.findByText("Pós-obra (Meu Imóvel)")).toBeInTheDocument();
+    const post = screen.getByRole("switch", { name: /Entrega, garantias e assistência técnica/ });
+    expect(post).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(post);
+    fireEvent.click(screen.getByRole("button", { name: "Salvar portal" }));
+    await waitFor(() => expect(portalApi.updateProjectPortal).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(portalApi.updateProjectPortal).mock.calls[0][1].visibility)
+      .toEqual({ ...portalApi.DEFAULT_PORTAL_VISIBILITY, postConstruction: false });
+  });
+
   it("publish shows the backend's reason when it refuses", async () => {
     vi.mocked(portalApi.publishProjectPortal).mockRejectedValue(
       new ApiError(422, "Defina o endereço da empresa no portal do cliente antes de publicar.", "portal_company_missing"));

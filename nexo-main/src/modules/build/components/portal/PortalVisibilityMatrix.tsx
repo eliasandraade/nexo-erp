@@ -49,6 +49,13 @@ const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boole
     ],
   },
   {
+    title: "Pós-obra (Meu Imóvel)",
+    items: [
+      { flag: "postConstruction", label: "Entrega, garantias e assistência técnica",
+        hint: "Depois da entrega, o cliente vê o imóvel, as garantias e os chamados. Abrir chamado, aceitar a entrega e avaliar só em portal com senha." },
+    ],
+  },
+  {
     title: "Outros",
     items: [
       { flag: "clientUpdates",  label: "Atualizações para o cliente" },

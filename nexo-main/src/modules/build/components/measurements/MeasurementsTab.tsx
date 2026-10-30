@@ -152,7 +152,8 @@ export function MeasurementsTab({ projectId }: { projectId: string }) {
         open={!!pending}
         title={pending?.action === "approve" ? `Aprovar a medição #${pending.m.number}?` : `Recusar a medição #${pending?.m.number ?? ""}?`}
         description={pending?.action === "approve"
-          ? <p>Cada etapa recebe o % medido e o progresso da obra é atualizado. Se uma etapa já passou do % medido, a aprovação é recusada.</p>
+          ? <><p>Cada etapa recebe o % medido e o progresso da obra é atualizado. Se uma etapa já passou do % medido, a aprovação é recusada.</p>
+              <p>Uma etapa com não conformidade crítica aberta não chega a 100%: a aprovação também é recusada.</p></>
           : <p>O progresso não muda.</p>}
         confirmLabel={pending?.action === "approve" ? "Aprovar e atualizar o progresso" : "Recusar"}
         destructive={pending?.action === "reject"}

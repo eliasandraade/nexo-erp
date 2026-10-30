@@ -4,7 +4,7 @@ import {
   ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Pencil, Undo2,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
   MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2, Globe,
-  FilePlus2, ListChecks, Package, Ruler,
+  FilePlus2, ListChecks, Package, Ruler, ShieldCheck, KeyRound,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,8 @@ import { ChangeOrdersTab } from "../components/change-orders/ChangeOrdersTab";
 import { SelectionsTab } from "../components/selections/SelectionsTab";
 import { MaterialsTab } from "../components/materials/MaterialsTab";
 import { MeasurementsTab } from "../components/measurements/MeasurementsTab";
+import { QualityTab } from "../components/quality/QualityTab";
+import { PostConstructionTab } from "../components/post-construction/PostConstructionTab";
 import { DailyLogClientVisibility, PhotoClientVisibilityToggle } from "../components/diary/DailyLogClientVisibility";
 import type {
   BuildProjectDetailsDto, BuildDailyLogDto,
@@ -66,7 +68,7 @@ function fmtPct(v: number) {
 
 type Tab =
   | "geral" | "etapas" | "progresso" | "orcamento" | "aditivos" | "escolhas" | "materiais" | "medicoes"
-  | "diario" | "financeiro" | "portal";
+  | "qualidade" | "pos-obra" | "diario" | "financeiro" | "portal";
 
 // ── Tab selector ──────────────────────────────────────────────────────────────
 
@@ -80,6 +82,8 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
     { key: "escolhas",   label: "Escolhas do cliente", icon: ListChecks },
     { key: "materiais",  label: "Materiais",   icon: Package },
     { key: "medicoes",   label: "Medições",    icon: Ruler },
+    { key: "qualidade",  label: "Qualidade",   icon: ShieldCheck },
+    { key: "pos-obra",   label: "Entrega e pós-obra", icon: KeyRound },
     { key: "diario",     label: "Diário",      icon: BookOpen },
     { key: "financeiro", label: "Financeiro",  icon: BarChart2 },
     { key: "portal",     label: "Portal do cliente", icon: Globe },
@@ -1002,6 +1006,8 @@ export default function BuildProjectDetailPage() {
         {tab === "escolhas"   && <SelectionsTab projectId={project.id} onOpenChangeOrders={() => setTab("aditivos")} />}
         {tab === "materiais"  && <MaterialsTab projectId={project.id} />}
         {tab === "medicoes"   && <MeasurementsTab projectId={project.id} />}
+        {tab === "qualidade"  && <QualityTab projectId={project.id} />}
+        {tab === "pos-obra"   && <PostConstructionTab projectId={project.id} />}
         {tab === "diario"     && <TabDiario projectId={project.id} />}
         {tab === "financeiro" && <TabFinanceiro projectId={project.id} />}
         {tab === "portal"     && <BuildPortalTab projectId={project.id} />}
