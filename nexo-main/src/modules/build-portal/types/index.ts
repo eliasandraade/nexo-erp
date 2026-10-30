@@ -1,4 +1,4 @@
-// TEMPORARY CONTRACT: frontend presentation model, awaiting Claude/OpenAPI.
+// TEMPORARY CONTRACT: frontend presentation model, awaiting backend/OpenAPI.
 /** Presentation model, NOT an agreed backend DTO. Map only authorized public responses here. */
 export type Phase = "waiting" | "active" | "complete" | "delayed" | "blocked";
 export interface Photo {

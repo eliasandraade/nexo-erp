@@ -3,7 +3,7 @@
 > vitest run
 
 
- RUN  v3.2.7 C:/Users/Elias/.codex/worktrees/minha-obra/NexoERP/nexo-main
+ RUN  v3.2.7 nexo-main
 
 stderr | src/modules/tax/pages/TaxOpportunityDetailPage.test.tsx > TaxOpportunityDetailPage > answers the business questions and shows a calculated-tax reduction, never as a saving
 ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.

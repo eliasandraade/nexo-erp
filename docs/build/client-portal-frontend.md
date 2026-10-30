@@ -6,11 +6,13 @@ O contrato `client-portal-contract.md` ainda não foi publicado. Confirmado pelo
 
 `nexo-main/src/modules/build-portal/types/index.ts` contém somente o modelo de apresentação marcado TEMPORARY CONTRACT. `api/gateway.ts` é a porta de integração. O adapter real deve validar/mapear respostas do OpenAPI para esse modelo, sem expor DTOs administrativos. Componentes não conhecem endpoints, tokens ou o formato de serialização do backend.
 
+Ponto exato de substituição: `nexo-main/src/modules/build-portal/api/gateway.ts`, implementação `unavailableGateway` da interface `PortalGateway`. A injeção ocorre em `nexo-main/src/modules/build-portal/PortalPage.tsx`. Ainda não há diretório `hooks/`: os hooks de carregamento, cancelamento e sessão estão em `PortalSession`, nesse mesmo arquivo. O contrato provisório permanece inalterado até o alinhamento com o backend.
+
 `route.ts` é o único resolvedor do caminho desejado `/{companySlug}/{projectSlug}`. Namespaces existentes são reservados. A superfície é montada fora de AuthProvider e WorkspaceProvider: login administrativo não autoriza o cliente público e não o redireciona para a plataforma. Mudança de slug destrói a sessão visual anterior; respostas atrasadas/abortadas são ignoradas.
 
 Produção usa `unavailableGateway`, sem chamadas a endpoints inventados e sem dados simulados. Implementar o adapter real é requisito para lançamento. Nenhuma alteração de backend nesta branch.
 
-## Contratos necessários ao Claude
+## Contratos necessários ao backend
 
 - Resolver publicação/acesso por ambos os slugs, de forma indistinguível para tenants/projetos incorretos. Identidade de tela privada somente se explicitamente segura para exposição pré-auth.
 - Autenticação específica do portal, expiração, revogação, logout, política de CSRF/cookies/CORS, rate limit com Retry-After. Nunca reutilizar JWT administrativo. Senhas não persistidas no navegador.
@@ -45,7 +47,7 @@ Requer QA com backend real antes de publicação. Os testes de fixtures não cer
 
 ## Estado da implementação em 30/10/2026
 
-Branch codex/minha-obra, worktree isolado de origin/master 7dfe843. Frontend preparado para integração, não liberado para produção.
+Branch dedicada, worktree isolado de origin/master 7dfe843. Frontend preparado para integração, não liberado para produção.
 
 Implementado: shell público separado do ERP, rota customizada com namespaces reservados, estados de acesso, white label, home/progresso/previsão, etapas, publicações e resumo semanal, galeria foto/vídeo com filtros e comparação, financeiro por nível recebido, decisões com confirmação de impactos, documentos, entrega e garantias, assistência com formulário/anexos pela porta de integração, clima fornecido pelo adapter, visita panorâmica condicional e viewer GLTF.
 
@@ -61,4 +63,6 @@ Limites concretos para lançamento:
 - Não foi feita validação em iPhone/Android físico nem leitor de tela falado. Core Web Vitals de produção ainda precisam de medição.
 - SEO privado é conservador no frontend; headers, cache, URLs assinadas e proteção do HTML/arquivos exigem servidor.
 
-Sem merge, deploy ou alteração de backend. Não usar os callbacks de dev como implementação HTTP. A documentação do Claude deve entrar em client-portal-contract.md; este arquivo tem nome distinto para não ser confundido com contrato aprovado.
+Sem merge, deploy ou alteração de backend. Não usar os callbacks de dev como implementação HTTP. A documentação do backend deve entrar em client-portal-contract.md; este arquivo tem nome distinto para não ser confundido com contrato aprovado.
+
+Os logs de revisão preservam os resultados da execução; caminhos locais foram normalizados para referências relativas ao repositório.
