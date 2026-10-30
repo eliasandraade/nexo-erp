@@ -20,7 +20,7 @@ Branch `feat/build-complete` · PR #90 (rascunho) · base `master` 6064c7a · 20
 - **Determinístico primeiro**: previsão (`productivity/1`), riscos (SPI/CPI/EAC) e regras de fallback não dependem de LLM.
 - **Flags por empresa** (`BuildTenantSettings`): Build3D, BuildAI, BuildVision, BuildPredict — controladas no SuperAdmin.
 
-Documentos: `PLAN.md`, `internal-api.md`, `client-portal-contract.md` (v1.5), `digital-twin.md`, `ai.md`, `forecast.md`,
+Documentos: `PLAN.md`, `internal-api.md`, `client-portal-contract.md` (v1.6), `digital-twin.md`, `ai.md`, `forecast.md`,
 `openapi-portal.json`, `portal-types.ts`.
 
 ## 2. Funcionalidades por Wave
@@ -120,7 +120,8 @@ storage → 503 `storage_unavailable`; previsões desligadas → método pondera
 ## 13. Pendências reais
 
 - **Merge e deploy** (decisão do Elias); depois, smoke em produção das rotas novas.
-- Adicionar a origem do site do Astra em `Cors:AllowedOrigins`.
+- CORS: `https://www.orken.com.br` e `https://app.orken.com.br` já estão na lista fixa; outra origem do site entra em
+  `Cors:AllowedOrigins`. Desde a v1.6 `ETag` e `Retry-After` são expostos ao navegador.
 - Confirmar em produção qual cabeçalho traz o IP real na Railway e ajustar `RateLimiting:ClientIpSource` se preciso.
 - Ligar BuildAI/BuildVision por empresa e revisar limites de custo antes de liberar IA aos clientes.
 - QA manual com arquivos IFC/GLB reais e grandes num navegador com WebGL (os testes usam um IFC pequeno de exemplo).
@@ -136,11 +137,11 @@ storage → 503 `storage_unavailable`; previsões desligadas → método pondera
 
 `b171273` Wave 1 · `5333a03` correções Wave 1 · `65abf8c` Wave 2 · `7dab57e`/`d8e21a0` Wave 3 · `6b58fc6`/`13fe668`
 Wave 4 · `54ec134`/`19de292`/`2084730` Wave 5 · `df7d934` Sonar · `ce0ac36`/`b66733c` Wave 6 · `6cde485` testes ·
-`de4b39b` revisão de segurança · este relatório.
+`de4b39b` revisão de segurança · `ab57a36` contrato v1.6 (ETag no CORS, `elementIndex`) · este relatório.
 
 ## 15. Instruções para o Astra (site público)
 
-1. Leia `client-portal-contract.md` (v1.5). Use `openapi-portal.json` e `portal-types.ts` como fonte dos tipos.
+1. Leia `client-portal-contract.md` (v1.6). Use `openapi-portal.json` e `portal-types.ts` como fonte dos tipos.
 2. URL pública: `https://www.orken.com.br/{empresa}/{obra}`; chame `GET /api/public/build/{empresa}/{obra}`.
    404 = não existe (não diferencie). 401 `portal_password_required` → tela de senha → `POST …/session` → envie o token no
    cabeçalho `X-Build-Portal-Session` em todas as chamadas; 401 `portal_session_expired` → peça a senha de novo.
@@ -148,7 +149,10 @@ Wave 4 · `54ec134`/`19de292`/`2084730` Wave 5 · `df7d934` Sonar · `ce0ac36`/`
 3. Renderize só as seções listadas em `sections`; campos ausentes significam "não visível" — nunca mostre zeros no lugar.
 4. Mídia vem como URL assinada de 15 min: não guarde em cache longo; recarregue a rota ao expirar.
 5. 3D: `GET …/twin` (three.js `GLTFLoader`; o nome do nó é o `externalId`; cores pelos estados de `GET …/twin/state?date=`,
-   use `ETag`). Respeite o aviso de `geometrySource` (representação simplificada não é o projeto).
+   use `ETag`; etapa, categoria e zona de cada elemento em `elementIndex`, v1.6). Respeite o aviso de `geometrySource` (representação simplificada não é o projeto).
 6. Ações do cliente (aprovar aditivo, escolher opção, aceitar entrega, abrir assistência, enviar fotos, avaliar) só existem
    em portal com senha; trate 409 (já decidido), 429 (`Retry-After`), 413 e 422 com as mensagens do servidor.
-7. Antes do lançamento, peça a inclusão da origem do site em `Cors:AllowedOrigins`.
+7. Se o site não for servido por `www.orken.com.br` ou `app.orken.com.br`, peça a inclusão da origem em
+   `Cors:AllowedOrigins`.
+8. O frontend "Minha Obra" já integrado está na branch `codex/minha-obra` (`docs/build/client-portal-frontend.md`), com a
+   suíte que roda contra esta API real.
