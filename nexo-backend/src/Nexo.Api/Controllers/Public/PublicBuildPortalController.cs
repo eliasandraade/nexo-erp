@@ -219,6 +219,39 @@ public class PublicBuildPortalController : ControllerBase
         return Ok(await _portal.GiveAssistanceFeedbackAsync(companySlug, projectSlug, SessionToken, publicId, request, ct));
     }
 
+    // ── v1.3: digital twin and reality capture ───────────────────────────────
+
+    /// <summary>
+    /// The digital twin (flag model3d): geometry source, signed URL (~15 min) of the viewer GLB — never the original model —,
+    /// zones, today's state map and the disclaimer for the geometry source.
+    /// </summary>
+    [HttpGet("twin")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildTwinDto>> Twin(string companySlug, string projectSlug, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetTwinAsync(companySlug, projectSlug, SessionToken, ct));
+    }
+
+    /// <summary>State map on a date for the time slider (yyyy-MM-dd, project start … today). ETag; 304 when unchanged.</summary>
+    [HttpGet("twin/state")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<IActionResult> TwinState(string companySlug, string projectSlug, [FromQuery] DateOnly? date, CancellationToken ct)
+    {
+        var dto = await _portal.GetTwinStateAsync(companySlug, projectSlug, SessionToken, date, ct);
+        return Nexo.Api.Controllers.Modules.Build.BuildTwinController.ETag(this, dto);
+    }
+
+    /// <summary>Client-visible site captures (flag realityCapture), newest first, as signed URLs.</summary>
+    [HttpGet("reality-captures")]
+    [EnableRateLimiting("build-portal")]
+    public async Task<ActionResult<PublicBuildRealityCapturesDto>> RealityCaptures(string companySlug, string projectSlug,
+        [FromQuery] int? skip, [FromQuery] int? take, CancellationToken ct)
+    {
+        NoStore();
+        return Ok(await _portal.GetRealityCapturesAsync(companySlug, projectSlug, SessionToken, skip, take, ct));
+    }
+
     private const long MaxUploadBytes = 8L * 1024 * 1024;
 
     private static readonly Dictionary<string, string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)

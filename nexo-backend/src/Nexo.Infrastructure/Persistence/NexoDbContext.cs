@@ -148,6 +148,16 @@ public class NexoDbContext : DbContext
     public DbSet<BuildHandover>              BldHandovers              => Set<BuildHandover>();
     public DbSet<BuildWarrantyTerm>          BldWarrantyTerms          => Set<BuildWarrantyTerm>();
     public DbSet<BuildAssistanceRequest>     BldAssistanceRequests     => Set<BuildAssistanceRequest>();
+    // Wave 4 — digital twin
+    public DbSet<BuildTenantSettings>        BldTenantSettings         => Set<BuildTenantSettings>();
+    public DbSet<BuildModel>                 BldModels                 => Set<BuildModel>();
+    public DbSet<BuildModelVersion>          BldModelVersions          => Set<BuildModelVersion>();
+    public DbSet<BuildModelProcessingJob>    BldModelJobs              => Set<BuildModelProcessingJob>();
+    public DbSet<BuildModelZone>             BldModelZones             => Set<BuildModelZone>();
+    public DbSet<BuildModelElement>          BldModelElements          => Set<BuildModelElement>();
+    public DbSet<BuildModelStageBinding>     BldModelBindings          => Set<BuildModelStageBinding>();
+    public DbSet<BuildElementProgressEvent>  BldElementEvents          => Set<BuildElementProgressEvent>();
+    public DbSet<BuildRealityCapture>        BldRealityCaptures        => Set<BuildRealityCapture>();
 
     // ── Service module (Orken Service — motor de serviços) ───────────────────
     public DbSet<SvcProfessional>     SvcProfessionals => Set<SvcProfessional>();

@@ -639,7 +639,7 @@ public class BuildCommercialTests
         (await Json(await Anonymous().GetAsync($"{portal}/measurements"), HttpStatusCode.OK))
             .GetProperty("items")[0].GetProperty("totalAmount").GetDecimal().Should().Be(8000m);
         var bootstrap = await Json(await Anonymous().GetAsync(portal), HttpStatusCode.OK);
-        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.2");
+        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.3");
         bootstrap.GetProperty("sections").EnumerateArray().Select(s => s.GetString()).Should().Contain("measurements");
     }
 

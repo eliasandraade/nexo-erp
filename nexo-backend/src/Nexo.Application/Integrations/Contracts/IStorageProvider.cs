@@ -23,4 +23,11 @@ public interface IStorageProvider
     /// to the provider). Private keys ("private/…") are signed against the private bucket.
     /// </summary>
     string GetSignedUrl(string key, TimeSpan ttl);
+
+    /// <summary>
+    /// Opens a stored object for reading (server-side processing, e.g. a BIM model). The caller disposes the stream.
+    /// Providers that cannot read back throw <see cref="NotSupportedException"/>.
+    /// </summary>
+    Task<Stream> OpenReadAsync(string key, CancellationToken ct = default)
+        => throw new NotSupportedException("Este armazenamento não permite ler arquivos de volta.");
 }

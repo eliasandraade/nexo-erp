@@ -30,5 +30,10 @@ public sealed class InMemoryStorageProvider : IStorageProvider
 
     public Task PingAsync(CancellationToken ct = default) => Task.CompletedTask;
 
+    public Task<Stream> OpenReadAsync(string key, CancellationToken ct = default)
+        => Objects.TryGetValue(key, out var o)
+            ? Task.FromResult<Stream>(new MemoryStream(o.Bytes, writable: false))
+            : throw new FileNotFoundException("Object not found.", key);
+
     public string GetSignedUrl(string key, TimeSpan ttl) => $"{Host}{key}?signature=test&ttl={(int)ttl.TotalSeconds}";
 }

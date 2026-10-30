@@ -1,4 +1,4 @@
-# Orken Build — API interna (Waves 1, 2 e 3)
+# Orken Build — API interna (Waves 1 a 4)
 
 Rotas internas novas/alteradas da Wave 1. Todas exigem login com papel de gestão (`AppRoles.Management`) e o módulo
 `build` ativo. Erros seguem o padrão da API: `400` validação, `404` inexistente/de outra empresa, `409` conflito
@@ -341,4 +341,126 @@ obra ou `Outros` — senão `422 invalid_category`), `title`, `description`, `lo
 | POST | `/assistance/{id}/photos` | `{ key }` (upload `build-assistance`) |
 
 Portal do cliente: flag nova `postConstruction` (padrão **ligado**) e rotas da v1.2 em
+[`client-portal-contract.md`](client-portal-contract.md).
+
+# Wave 4 — Gêmeo digital (Digital Twin)
+
+Mesmas regras de acesso (gestão + módulo `build`, prefixo `/api/v1/build`), mesmo padrão de erros, toda mudança
+auditada (`build_model_*`, `build_element_state_recorded`, `build_reality_capture_*`, `build_tenant_settings_changed`).
+Migration aditiva `BuildWave4DigitalTwin` (tabelas `bld_tenant_settings`, `bld_models`, `bld_model_versions`,
+`bld_model_processing_jobs`, `bld_model_zones`, `bld_model_elements`, `bld_model_stage_bindings`,
+`bld_element_progress_events`, `bld_reality_captures`). Desenho, formatos e regras: [`digital-twin.md`](digital-twin.md).
+
+Três camadas que nunca se misturam: **fonte geométrica** (arquivo do modelo + derivado de visualização, ambos privados),
+**verdade operacional** (etapas, cronograma, diário, medições, eventos de estado) e **interpretação** (vínculos etapa ↔
+elemento/zona/categoria, com `source` `Manual` hoje; `AiSuggested`/`AiConfirmed` na Wave 5). Geometria nunca é inventada.
+
+## Recursos por empresa (feature flags)
+
+| Método | Rota | Observação |
+|---|---|---|
+| GET | `/api/v1/build/settings` | flags da empresa logada (só leitura): `build3DEnabled`, `buildAiEnabled`, `buildVisionEnabled`, `buildPredictEnabled`, `customized` |
+| GET | `/api/platform/tenants/{tenantId}/build-settings` | **PlatformAdmin** (token de plataforma `super_admin`, com 2FA quando `Platform:RequireMfaForAdmin`). Sem linha → padrões |
+| PUT | `/api/platform/tenants/{tenantId}/build-settings` | `{ build3DEnabled?, buildAiEnabled?, buildVisionEnabled?, buildPredictEnabled? }` — só o que vier muda; auditado (`actorType=platform`); empresa inexistente → `404` |
+
+Padrões: 3D **ligado** (sem custo externo), IA **desligada**, visão **desligada**, previsões **ligadas**. Com 3D desligado,
+upload/versão/visualizador/reprocessamento respondem `403 build_3d_disabled`; leituras continuam.
+
+## Modelos e versões
+
+`BuildModel` (`name`, `discipline` `Arquitetura | Estrutura | Hidraulica | Eletrica | Outro` — acentos aceitos,
+`currentVersionId` = última versão `Ready`) → `BuildModelVersion` (`number`, `sourceFormat` `Ifc | Glb | Gltf | Rvt | Dwg |
+Dxf | Pdf | Image`, `sourceFileName` só para exibição, `sizeBytes`, `sha256`, `geometrySource` `NativeBim | Converted3D |
+AssistedMapping | SimplifiedRepresentation`, `viewerSource` `None | Uploaded | ConvertedServer | ConvertedBrowser`, `hasViewer`,
+`status` `Uploaded | Queued | Processing | Ready | Failed | Rejected`, `statusMessage` em português, `elementCount`,
+`storeyCount`, `schema`, `layers` (DXF), `processedAt`). Chaves de armazenamento **nunca** saem nas respostas.
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/projects/{id}/models` | modelos com versões (mais nova primeiro) |
+| POST | `/projects/{id}/models` | multipart `file`, `name?`, `discipline?` (padrão `Arquitetura`) → `201 { model, version }` |
+| GET | `/models/{modelId}` | |
+| POST | `/models/{modelId}/versions` | multipart `file` → `201 { model, version }` |
+| GET | `/models/versions/{versionId}` | |
+| GET | `/models/versions/{versionId}/viewer` | `{ viewerUrl, expiresAt }` — URL assinada (15 min) **só do GLB de visualização** |
+| PUT | `/models/versions/{versionId}/viewer` | multipart `file` (GLB convertido no navegador com web-ifc, nós nomeados com os GlobalIds). Só versão IFC `Ready` (`422 viewer_requires_parsed_ifc`); não-GLB → `422 invalid_file_content`; menos de 50% dos nomes de nós são elementos da versão → `422 viewer_mismatch` (`Build:Models:ViewerMatchMinRatio`) |
+| POST | `/models/versions/{versionId}/reprocess` | só versão `Failed` (`422 version_not_failed`) |
+
+Upload: limite `Build:Models:MaxUploadMb` (padrão 150; o limite do corpo/multipart só é elevado nestas rotas) →
+`413 file_too_large`; armazenamento desligado/indisponível → `503 storage_unavailable`. O formato vem dos **primeiros
+bytes** (nunca do nome): IFC (`ISO-10303-21;`), GLB (`glTF` v2), glTF JSON (só com dados embutidos `data:` —
+`422 gltf_external_uri` se apontar para arquivos externos), DXF ASCII, PDF, PNG/JPEG/WebP. **RVT** (OLE `D0 CF 11 E0`) e
+**DWG** (`AC10…`) → `422 model_format_rejected` com `{ error, code, model, version }`: a versão fica registrada como
+`Rejected` com a orientação de exportação e **nada é armazenado**. `.ifczip`/zip → `422 model_format_compressed`;
+ifcXML/DXF binário → `422 model_format_unsupported`; desconhecido → `422 model_format_unknown` (nada registrado).
+Chave: `private/tenants/{t}/build/models/{modelId}/{versionId}/source.<ext>` (o nome do cliente nunca entra na chave).
+PDF/imagem ficam `Ready` na hora (folha para mapeamento assistido); os demais entram na fila (`Queued`).
+
+## Processamento (fila)
+
+`bld_model_processing_jobs` (`kind` `Parse | Convert`, `status` `Pending | Running | Done | Failed`, `attempts` ≤ 3,
+`lockedUntil`). `BuildModelProcessingJobRunner` (não roda em `Testing`) consome a fila a cada `Build:Models:PollSeconds`
+(10 s); a reserva é um `UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED) RETURNING id`. Arquivo ilegível/esquema não
+suportado falha na hora (`Failed` + mensagem); outros erros voltam para a fila. Tempo limite `Build:Models:JobTimeoutMinutes`
+(15). IFC: xBIM Essentials (gerenciado, sem nativo) → zonas (Site/Building/Storey/Space) e elementos (`IfcElement` exceto
+aberturas: GlobalId, classe, nome, tipo, 1º material, zona, quantidades `netVolume`/`netArea`/`length`/`count`).
+GLB/glTF: nós com malha → elementos (id = nome do nó se único, senão `node:{i}`). DXF: nomes das camadas.
+Conversão IFC→GLB no servidor só com `Build:Models:IfcConvertPath` configurado.
+
+## Zonas, elementos e estado (4D)
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/models/versions/{id}/zones` | zonas lidas do modelo com `elementCount` |
+| GET/POST | `/projects/{id}/zones` | zonas manuais: `{ kind (Floor, Area, Room, Facade, Roof, External), name, order?, parentZoneId?, outline? [{x,y}] (3–200 pontos, 0..1, exige sheetVersionId), sheetVersionId? (PDF/imagem/DXF da obra), simplifiedBox? { width, depth, height, elevation } (m) }` |
+| PUT/DELETE | `/zones/{zoneId}` | só zonas manuais (`422 zone_from_model`) |
+| GET | `/models/versions/{id}/elements?category=&zoneId=&state=&date=&skip=&take=` | `zoneId` inclui subzonas; `state` = nome do estado ou `Unbound`; `take` ≤ 500; cada item traz `state`, `stageId`, `explicitState`, `properties` |
+| GET | `/models/versions/{id}/elements/{externalId}/events` | histórico de estados explícitos |
+| GET | `/models/versions/{id}/state?date=yyyy-MM-dd` | `{ date, counts, states: { estado: [externalIds] }, zoneStates: { estado: [zoneIds] }, unbound, total }` com `ETag` (`304` com `If-None-Match`) |
+
+**Regra do estado em uma data `d`:** (1) último evento explícito do elemento com data efetiva ≤ `d`; senão (2) derivado
+da etapa vinculada — precedência Elemento > Zona (a do elemento ou ancestral mais próxima) > Categoria; várias etapas no
+mesmo nível → a de **fim previsto mais tarde**; etapa em `d`: % = último evento de progresso ≤ `d` (sem histórico: % atual
+a partir de hoje, 0 antes), 100 → `Completed`; bloqueada (status atual, só de hoje em diante) → `Blocked`; fim previsto
+< `d` → `Delayed`; % > 0 → `InProgress`; senão `NotStarted`; (3) sem vínculo → `null` (não conta como avanço,
+contado em `unbound`). Eventos explícitos e vínculos de elemento valem pelo id externo em qualquer versão da obra (GlobalId
+é estável entre versões). NC por elemento (Wave 3) não entra no estado.
+
+## Vínculos e estados explícitos
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/projects/{id}/twin/bindings` | |
+| POST | `/projects/{id}/twin/bindings` | `{ stageId, scope (Element, Zone, Category), modelVersionId?, elementExternalId?, zoneId?, category? }` — etapa de outra obra → `422 stage_not_of_project`; elemento inexistente na versão → `422 element_not_found` |
+| POST | `/projects/{id}/twin/bindings/bulk` | `{ stageId, modelVersionId, category?, zoneId?, externalIds?, replaceExisting? (padrão true) }` — ex.: todas as `IfcWall` do Térreo → Alvenaria. Cria vínculos de Elemento; ao menos um filtro; ids inexistentes → `422 element_not_found` → `{ matched, created, replaced }` |
+| DELETE | `/twin/bindings/{id}` | |
+| POST | `/projects/{id}/twin/element-events` | `{ modelVersionId, externalIds[] (≤ 5000), state, note?, effectiveDate? (padrão hoje; futura → 422 invalid_date), source? (Manual), sourceRef? }` — histórico só de inclusão; não mexe no % da etapa nem nos retratos diários |
+
+## Visão geral e preparação 5D
+
+- `GET /projects/{id}/twin` — `build3DEnabled`, `geometrySource` da obra (versão principal: 3D com visualizador,
+  Arquitetura primeiro; senão caixas → `SimplifiedRepresentation`; senão `None`), modelos/versões/status, zonas manuais,
+  `totalElements`, `boundElements`, `bindingCoveragePercent` (vinculados ÷ total, versões atuais), `pendingJobs`, etapas
+  com `boundElements`.
+- `GET /projects/{id}/twin/cost?date=` — por etapa: orçado (orçamento de referência), realizado até a data (lançamentos
+  confirmados de saída da obra com etapa), elementos vinculados, soma de `volume`/`area`/`length`, custo por elemento e
+  por m³/m² (**rateio por quantidade** — preparação para 5D, não é orçamento por elemento).
+
+## Captura da realidade
+
+`BuildRealityCapture`: `type` (`Photo`, `Photo360`, `Video`, `Drone`, `PointCloud`), `capturedAt`, `stageId?`, `zoneId?`,
+`elementExternalId?`, `title`, `notes` (interna), `contentType`, `sizeBytes`, `clientVisible` (padrão falso), `url` assinada
+(15 min), `processed` (falso para nuvem de pontos — guardada, não processada).
+
+| Método | Rota | Corpo / observação |
+|---|---|---|
+| GET | `/projects/{id}/reality-captures?type=&stageId=&zoneId=&elementExternalId=&from=&to=` | até 500, mais recentes primeiro |
+| POST | `/projects/{id}/reality-captures` | multipart `file`, `type`, `title`, `capturedAt?`, `stageId?`, `zoneId?`, `elementExternalId?`, `notes?`, `clientVisible?`. Conteúdo pelos primeiros bytes: imagem JPEG/PNG/WebP (≤ 25 MB, `Photo`/`Photo360`/`Drone`), vídeo MP4/MOV (`ftyp`)/WebM (≤ 200 MB, `Video`/`Drone`), `.las` (`LASF`)/`.e57` (`ASTM-E57`) (≤ 500 MB, `PointCloud`); incompatível → `422 invalid_file_content`; limites `Build:RealityCapture:Max{Image,Video,PointCloud}Mb` → `413 file_too_large` |
+| GET/PUT/DELETE | `/reality-captures/{id}` | PUT `{ title, notes?, capturedAt?, stageId?, zoneId?, elementExternalId? }`; DELETE apaga também o arquivo |
+| PUT | `/reality-captures/{id}/client-visibility` | `{ clientVisible }` |
+
+Arquivos em `private/tenants/{t}/build/reality/{projectId}/…` (contexto de upload `build-reality`). Upload direto ao R2
+por URL pré-assinada (PUT) não foi feito: o envio passa pela API (limite elevado só nesta rota).
+
+Portal do cliente: flags `model3d` e `realityCapture` (padrão **desligadas**) e rotas da v1.3 em
 [`client-portal-contract.md`](client-portal-contract.md).

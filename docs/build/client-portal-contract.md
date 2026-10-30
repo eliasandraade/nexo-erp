@@ -1,7 +1,7 @@
-# Orken Build — Portal do Cliente — contrato da API pública (v1.2)
+# Orken Build — Portal do Cliente — contrato da API pública (v1.3)
 
 Documento para o time do frontend externo (Astra). Descreve **somente** a API pública do portal do cliente de
-uma obra. Tudo aqui é estável na versão `contract v1.2` (compatível com a v1 e a v1.1 — só acréscimos, ver §9 "Changelog"); mudanças
+uma obra. Tudo aqui é estável na versão `contract v1.3` (compatível com a v1, v1.1 e v1.2 — só acréscimos, ver §9 "Changelog"); mudanças
 incompatíveis viram `v2` (ver "Versionamento").
 
 ## 1. Base, endereço e slugs
@@ -53,6 +53,9 @@ Se o site Astra tiver rotas próprias no primeiro segmento (ex.: `/sobre`), avis
 | POST | `/assistance` (v1.2) | `build-portal-decision` | **exige portal com senha** |
 | POST | `/assistance/{id}/photos` (v1.2, multipart) | `build-portal-decision` | **exige portal com senha** |
 | POST | `/assistance/{id}/feedback` (v1.2) | `build-portal-decision` | **exige portal com senha** |
+| GET | `/twin` (v1.3) | `build-portal` | obrigatória |
+| GET | `/twin/state?date=` (v1.3) | `build-portal` | obrigatória |
+| GET | `/reality-captures?skip=&take=` (v1.3) | `build-portal` | obrigatória |
 
 Em portal **público** a sessão é ignorada — e todas as rotas de escrita (decisão de aditivo, escolha, aceite da entrega,
 abrir chamado, enviar foto, avaliar) respondem `403 portal_decision_requires_password` (agir em nome do cliente exige o
@@ -489,6 +492,94 @@ pelo cliente ou pela construtora), mais recentes primeiro. `canOpen` = portal co
 `{ "rating": 5, "comment": "Atendimento rápido." }` — **portal com senha**. `rating` 1–5 (`400 invalid_rating`);
 só com o chamado `Resolved` (`422 assistance_not_resolved`); uma vez (`409 feedback_already_given`). `200` → o chamado.
 
+### 2.19 GET /twin (v1.3) — gêmeo digital
+
+> Disponível quando a obra liga `model3d` **e** o 3D está habilitado para a construtora na plataforma. Se a plataforma
+> desligar o 3D, `model3d` some de `sections` e `/twin` responde 404 `section_disabled` — o site deve esconder a seção.
+
+Flag `model3d` (padrão **desligado**; desligada → `404 portal_section_disabled`). Somente leitura.
+
+```json
+{
+  "geometrySource": "NativeBim",
+  "modelName": "Arquitetura casa",
+  "discipline": "Arquitetura",
+  "viewerUrl": "https://…/viewer.glb?X-Amz-…",
+  "viewerExpiresAt": "2026-10-30T14:18:11+00:00",
+  "zones": [
+    { "id": "2O2Fr$t4X7Zf8NOew3FLOH", "kind": "Storey", "name": "Térreo", "parentId": "…", "elevation": 0, "order": 2,
+      "externalId": "2O2Fr$t4X7Zf8NOew3FLOH" },
+    { "id": "z-8c1f0a2b3d4e5f60", "kind": "Area", "name": "Garagem", "order": 0,
+      "simplifiedBox": { "width": 3, "depth": 5, "height": 2.6, "elevation": 0 } }
+  ],
+  "state": {
+    "date": "2026-10-30",
+    "counts": { "NotStarted": 0, "InProgress": 0, "Completed": 2, "Delayed": 0, "Blocked": 0, "NeedsReview": 1 },
+    "states": { "Completed": ["3hX…", "1kQ…"], "NeedsReview": ["0aB…"] },
+    "zoneStates": { "Completed": ["2O2Fr$t4X7Zf8NOew3FLOH"] },
+    "unbound": 4
+  },
+  "minDate": "2026-01-05",
+  "maxDate": "2026-10-30",
+  "disclaimer": "Modelo BIM do projeto. As cores mostram o andamento registrado pela construtora; não substituem a vistoria."
+}
+```
+
+- `geometrySource`: `NativeBim` (IFC com geometria) · `Converted3D` (GLB/glTF enviado pela construtora) ·
+  `AssistedMapping` (planta 2D: só zonas, sem 3D) · `SimplifiedRepresentation` (sem modelo: caixas digitadas pela
+  construtora) · `null` (nada para mostrar ainda). **Mostre sempre `disclaimer`** — em `SimplifiedRepresentation` ele diz
+  "Representação simplificada; não corresponde ao projeto arquitetônico".
+- `viewerUrl` (pode faltar): URL **assinada** (~15 min, `viewerExpiresAt`) do arquivo de visualização (GLB). Nunca é o
+  arquivo original do projeto (IFC, RVT, DWG, PDF…), que não sai por este portal. Expirou → chame `/twin` de novo.
+- `zones`: estrutura (terreno, edifício, pavimentos, ambientes) e zonas criadas pela construtora. `simplifiedBox` só
+  existe quando a construtora digitou as medidas (metros) — nunca é gerada.
+- `state`: o mesmo formato de `/twin/state` para hoje. `states`: estado → ids externos dos elementos (só estados que
+  ocorrem). `unbound`: elementos sem etapa vinculada — **não pinte como andamento** (deixe neutros).
+- Estados: `NotStarted`, `InProgress`, `Completed`, `Delayed` (etapa passou do fim previsto sem terminar), `Blocked`,
+  `NeedsReview` (marcado pela construtora para revisão).
+
+### 2.20 GET /twin/state?date=yyyy-MM-dd (v1.3) — linha do tempo
+
+Mesma flag. `date` entre `minDate` (início da obra) e hoje (padrão hoje); fora disso → `400 invalid_date`. Resposta = o
+objeto `state` acima para aquela data. Vem com `ETag` e `Cache-Control: private, no-cache` (não tem URL assinada):
+reenvie `If-None-Match` com o ETag e trate `304` reaproveitando o que já tem.
+
+### 2.21 GET /reality-captures (v1.3)
+
+Flag `realityCapture` (padrão **desligado**). Capturas que a construtora marcou como visíveis, mais recentes primeiro:
+
+```json
+{ "items": [ { "type": "Video", "capturedAt": "2026-10-20T13:00:00+00:00", "title": "Voo semanal", "stageName": "Alvenaria",
+               "zoneName": "Térreo", "contentType": "video/mp4", "url": "https://…", "urlExpiresAt": "…" } ],
+  "total": 1, "skip": 0, "take": 24 }
+```
+
+`type`: `Photo`, `Photo360` (equirretangular — use um visualizador 360°), `Video`, `Drone`, `PointCloud` (`.las`/`.e57`,
+sem visualização no portal por enquanto — ofereça só o download). `take` até 50. Notas internas nunca saem.
+
+### 2.22 Como desenhar o gêmeo digital (orientação para o Astra)
+
+1. `GET /twin`. Com `viewerUrl`: carregue com o `GLTFLoader` do three.js (`loader.load(viewerUrl, gltf => scene.add(gltf.scene))`).
+   **O nome de cada nó (`object.name`) é o id externo do elemento** (o GlobalId do IFC) — o mesmo que aparece em `states`.
+2. Monte um mapa `id → estado` a partir de `state.states` e percorra a cena:
+   ```js
+   const stateOf = new Map(Object.entries(state.states).flatMap(([s, ids]) => ids.map(id => [id, s])));
+   gltf.scene.traverse(o => {
+     if (!o.isMesh && !o.children?.length) return;
+     const s = stateOf.get(o.name) ?? stateOf.get(o.parent?.name);
+     o.traverse(m => { if (m.isMesh) m.material = materials[s ?? 'unbound']; });
+   });
+   ```
+   Cores sugeridas: `Completed` verde, `InProgress` azul, `Delayed` laranja, `Blocked` vermelho, `NeedsReview` roxo,
+   `NotStarted` cinza claro, sem etapa (`unbound`) cinza translúcido. Clone os materiais por estado (não altere o material
+   original compartilhado).
+3. Linha do tempo: um slider de `minDate` a `maxDate`; ao soltar, `GET /twin/state?date=…` (com `If-None-Match`) e
+   repinte. Não recarregue o GLB.
+4. Sem `viewerUrl` e `geometrySource` = `SimplifiedRepresentation`: desenhe uma caixa por zona com `simplifiedBox`
+   (largura × profundidade × altura, base em `elevation`), pintada por `state.zoneStates` — com o `disclaimer` visível.
+   `AssistedMapping`: mostre a lista de zonas com seus estados (sem 3D).
+5. `viewerUrl` expira (~15 min): se o carregamento falhar com 403, chame `/twin` de novo.
+
 ## 3. Senha e sessão
 
 1. `GET` bootstrap sem sessão num portal com senha → `401`:
@@ -524,7 +615,9 @@ A construtora decide por obra. Padrões seguros entre parênteses.
 | `selections` (v1.1) | `GET /selections` e a escolha (escolha só em portal com senha) | ligado |
 | `measurements` (v1.1) | `GET /measurements` (valores só com `financialSummary`) | desligado |
 | `postConstruction` (v1.2) | `property` (bootstrap, após a entrega), `GET /handover`, `GET /warranty`, `GET /assistance` e as escritas de pós-obra (só em portal com senha) | ligado |
-| `videos`, `documents`, `financialCategories`, `financialTransactions`, `receipts`, `model3d`, `realityCapture`, `risks`, `team` | reservadas para próximas versões — ainda não geram dados | desligado |
+| `model3d` (v1.3) | `GET /twin` e `GET /twin/state` (gêmeo digital, só leitura) | desligado |
+| `realityCapture` (v1.3) | `GET /reality-captures` (só as marcadas como visíveis) | desligado |
+| `videos`, `documents`, `financialCategories`, `financialTransactions`, `receipts`, `risks`, `team` | reservadas para próximas versões — ainda não geram dados | desligado |
 
 Garantias: nada financeiro aparece sem `financialSummary`; a nota interna do diário nunca sai (só `ClientSummary`);
 fotos só se a foto e o registro do dia foram marcados; nenhum id interno, senha, hash ou custo detalhado.
@@ -560,6 +653,7 @@ Corpo padrão: `{ "error": "mensagem em português", "code": "…" }` (+ `portal
 | 422 | `assistance_not_resolved` | avaliação antes da resolução (v1.2) |
 | 409 | `feedback_already_given` | avaliação já enviada (v1.2) |
 | 400 | `invalid_rating` | nota fora de 1–5 (v1.2) |
+| 400 | `invalid_date` | `GET /twin/state` com data depois de hoje ou antes do início da obra (v1.3) |
 | 429 | — (corpo vazio) | rate limit por IP estourado (ver §6) |
 | 500 | — | erro inesperado (`{ error, requestId }`) |
 
@@ -580,16 +674,30 @@ Estourou → `429` sem corpo. Faça backoff; não repita em loop.
 - Fotos: URLs **assinadas** de curta duração (~15 min, `urlExpiresAt`). Não salve as URLs; peça de novo à API
   quando expirarem (ex.: ao rolar a galeria após 10 min, recarregue a página de fotos).
 - Logo e capa (`logoUrl`, `coverUrl`): URLs públicas estáveis da CDN da Orken; podem ser cacheadas pelo navegador.
-- Arquivos de projeto (BIM etc.) nunca são servidos por este portal.
+- Arquivos de projeto (BIM etc.) nunca são servidos por este portal. O gêmeo digital (v1.3) recebe só o arquivo de
+  **visualização** (GLB) por URL assinada de ~15 min.
+- Exceção ao `no-store`: `GET /twin/state` (sem URLs assinadas) usa `Cache-Control: private, no-cache` + `ETag`
+  (revalide com `If-None-Match`; `304` = nada mudou).
 
 ## 8. Versionamento
 
-`contract v1.2` (`contractVersion: "1.2"` no bootstrap; a v1.1 respondia `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
+`contract v1.3` (`contractVersion: "1.3"` no bootstrap; a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
 (major): `1.x` continua compatível. Mudanças **aditivas** (campos novos, novos `type` na timeline,
 novas seções em `sections`) podem chegar sem aviso — ignore o que não conhecer. Remoções ou mudanças de significado
 só numa `v2`, anunciada antes.
 
 ## 9. Changelog
+
+### v1.3 — Wave 4 (Gêmeo digital)
+
+Só acréscimos; nada da v1–v1.2 mudou de significado.
+
+- `contractVersion` passa a `"1.3"`. As flags `model3d` e `realityCapture` (antes reservadas) passam a valer, ambas
+  desligadas por padrão, e aparecem em `sections` quando ligadas.
+- Novas rotas: `GET /twin` (fonte da geometria, URL assinada do GLB de visualização — nunca o arquivo original —, zonas,
+  estado de hoje, aviso), `GET /twin/state?date=` (linha do tempo, com `ETag`) e `GET /reality-captures` (§2.19–§2.21).
+- Orientação de visualização com three.js (§2.22).
+- Novo código: `invalid_date` (400).
 
 ### v1.2 — Wave 3 (Qualidade e pós-obra)
 

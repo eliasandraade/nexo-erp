@@ -101,3 +101,14 @@ autorização (o merge na `master` publica em produção).
   rotas de entrega/garantia/assistência com upload público de fotos (JPEG/PNG/WebP, 8 MB, magic bytes, 6 por chamado,
   privado). Uploads internos `build-quality`, `build-handover`, `build-assistance`. Docs: `internal-api.md` (# Wave 3),
   `client-portal-contract.md` (v1.2).
+- **Wave 4 — concluída (backend).** Migration `BuildWave4DigitalTwin` (aditiva). Recursos por empresa
+  (`BuildTenantSettings`: 3D/previsões ligados, IA/visão desligados; só a plataforma altera, auditado; 3D desligado →
+  `403 build_3d_disabled` nos uploads). Modelos e versões (formato pelos primeiros bytes; RVT/DWG registrados como
+  `Rejected` sem armazenar; SHA-256; chave privada sem o nome do cliente); fila em tabela com `FOR UPDATE SKIP LOCKED`,
+  3 tentativas e `IBuildModelProcessor`; IFC via xBIM (zonas, elementos, tipo, material, quantidades), GLB/glTF (nós),
+  DXF (camadas); IfcConvert opcional; GLB do navegador anexado com conferência de GlobalIds (≥ 50%). Zonas manuais com
+  contorno 0..1 e caixa simplificada digitada; vínculos Elemento > Zona > Categoria (em lote); eventos explícitos de
+  estado; motor 4D puro (estado em uma data); visão geral com cobertura; 5D = rateio por quantidade. Captura da realidade
+  (foto/360/vídeo/drone/nuvem de pontos, magic bytes, limites por família). Portal v1.3: `model3d`/`realityCapture`,
+  `/twin` (só a URL assinada do GLB de visualização), `/twin/state` (ETag), `/reality-captures`. Docs:
+  `internal-api.md` (# Wave 4), `client-portal-contract.md` (v1.3), `digital-twin.md`.

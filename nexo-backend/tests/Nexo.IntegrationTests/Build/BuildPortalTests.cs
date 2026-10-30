@@ -154,7 +154,7 @@ public class BuildPortalTests
         var body = await Json(resp, HttpStatusCode.OK);
         resp.Headers.CacheControl!.NoStore.Should().BeTrue();
 
-        body.GetProperty("contractVersion").GetString().Should().Be("1.2");
+        body.GetProperty("contractVersion").GetString().Should().Be("1.3");
         body.GetProperty("company").GetProperty("name").GetString().Should().Be("Construtora Teste");
         body.GetProperty("project").GetProperty("name").GetString().Should().Be("Casa Beta");
         body.GetProperty("portal").GetProperty("primaryColor").GetString().Should().Be("#0a3d62");

@@ -139,6 +139,20 @@ public static class AuditActions
     public const string BuildAssistanceStatusChanged  = "build_assistance_status_changed";
     public const string BuildAssistancePhotoAdded     = "build_assistance_photo_added";
     public const string BuildAssistanceFeedback       = "build_assistance_feedback";
+    // Wave 4 — digital twin
+    public const string BuildTenantSettingsChanged    = "build_tenant_settings_changed";
+    public const string BuildModelUploaded            = "build_model_uploaded";
+    public const string BuildModelRejected            = "build_model_rejected";
+    public const string BuildModelViewerAttached      = "build_model_viewer_attached";
+    public const string BuildModelReprocessed         = "build_model_reprocessed";
+    public const string BuildModelZoneSaved           = "build_model_zone_saved";
+    public const string BuildModelZoneDeleted         = "build_model_zone_deleted";
+    public const string BuildModelBindingSaved        = "build_model_binding_saved";
+    public const string BuildModelBindingDeleted      = "build_model_binding_deleted";
+    public const string BuildElementStateRecorded     = "build_element_state_recorded";
+    public const string BuildRealityCaptureSaved      = "build_reality_capture_saved";
+    public const string BuildRealityCaptureVisibility = "build_reality_capture_visibility";
+    public const string BuildRealityCaptureDeleted    = "build_reality_capture_deleted";
 
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";

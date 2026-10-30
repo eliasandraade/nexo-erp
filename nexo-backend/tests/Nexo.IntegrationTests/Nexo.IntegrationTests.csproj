@@ -21,4 +21,8 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.11" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="3.11.0" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Wave 4: hand-written IFC4 model (project/site/building/2 storeys/walls/slabs/a space) -->
+    <EmbeddedResource Include="Build/Resources/casa-teste.ifc" LogicalName="casa-teste.ifc" />
+  </ItemGroup>
 </Project>

@@ -47,12 +47,14 @@ public sealed partial class BuildPublicPortalService
     private readonly ILogger<BuildPublicPortalService> _logger;
     private readonly BuildChangeOrderEffects _effects;
     private readonly IStorageProvider _storage;
+    private readonly BuildTwinStateReader _twin;
 
     public BuildPublicPortalService(NexoDbContext db, BuildProgressEngine engine, IPasswordHasher hasher,
         BuildPortalMedia media, IWeatherProvider weather, IIntegrationFeatureFlags flags, IConfiguration config,
         BuildAuditTrail audit, ILogger<BuildPublicPortalService> logger, BuildChangeOrderEffects effects,
-        IStorageProvider storage)
+        IStorageProvider storage, BuildTwinStateReader twin)
     {
+        _twin = twin;
         _effects = effects;
         _storage = storage;
         _db = db;
@@ -66,10 +68,11 @@ public sealed partial class BuildPublicPortalService
         _logger = logger;
     }
 
-    private sealed record Ctx(BuildPortalCompany Company, BuildProjectPortal Portal, BuildProject Project)
+    /// <param name="Visibility">The portal's visibility, minus what the platform turned off for the tenant (3D).</param>
+    private sealed record Ctx(BuildPortalCompany Company, BuildProjectPortal Portal, BuildProject Project,
+        BuildPortalVisibility Visibility)
     {
         public Guid TenantId => Portal.TenantId;
-        public BuildPortalVisibility Visibility { get; } = Portal.Visibility;
     }
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -603,7 +606,10 @@ public sealed partial class BuildPublicPortalService
         var project = await _db.BldProjects.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(p => p.TenantId == company.TenantId && p.Id == portal.ProjectId, ct)
             ?? throw BuildPortalAccessException.NotFound();
-        return new Ctx(company, portal, project);
+        var visibility = portal.Visibility;
+        if (visibility.Model3d && !await Build3DEnabledAsync(company.TenantId, ct))
+            visibility = visibility with { Model3d = false };   // the platform switched 3D off for this company
+        return new Ctx(company, portal, project, visibility);
     }
 
     private async Task EnsureAccessAsync(Ctx ctx, string? token, CancellationToken ct)
@@ -651,6 +657,8 @@ public sealed partial class BuildPublicPortalService
         if (v.Selections) list.Add("selections");
         if (v.Measurements) list.Add("measurements");
         if (v.PostConstruction) list.Add("postConstruction");
+        if (v.Model3d) list.Add("model3d");
+        if (v.RealityCapture) list.Add("realityCapture");
         return list;
     }
 

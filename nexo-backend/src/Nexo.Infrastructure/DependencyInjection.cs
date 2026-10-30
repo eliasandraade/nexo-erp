@@ -180,6 +180,14 @@ public static class DependencyInjection
         services.AddScoped<BuildMeasurementService>();
         services.AddScoped<BuildQualityService>();
         services.AddScoped<BuildPostConstructionService>();
+        // Wave 4 — digital twin
+        services.AddSingleton<BuildTwinOptions>();
+        services.AddScoped<BuildTenantSettingsService>();
+        services.AddScoped<BuildTwinStateReader>();
+        services.AddScoped<BuildModelService>();
+        services.AddScoped<BuildTwinService>();
+        services.AddScoped<BuildRealityCaptureService>();
+        services.AddScoped<IBuildModelProcessor, BuildModelProcessor>();
 
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();

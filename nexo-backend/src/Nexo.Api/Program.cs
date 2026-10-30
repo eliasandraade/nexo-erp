@@ -61,6 +61,7 @@ try
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.OverdueTitlesJob>();
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.ServiceCustomerEmailsJob>();
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.BuildProgressSnapshotJob>();
+        builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Build.BuildModelProcessingJobRunner>();
         // Re-seals AI provider keys still in the legacy Base64 form once a master key is configured (after migrations).
         builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Interpreter.AiKeyUpgradeHostedService>();
     }

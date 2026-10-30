@@ -93,6 +93,13 @@ public sealed class CloudflareR2Provider : IStorageProvider
             Protocol   = Protocol.HTTPS,
         });
 
+    /// <summary>Streams the object (the S3 response stream; disposing it releases the connection).</summary>
+    public async Task<Stream> OpenReadAsync(string key, CancellationToken ct = default)
+    {
+        var response = await _s3.Value.GetObjectAsync(BucketFor(key), key, ct);
+        return response.ResponseStream;
+    }
+
     private string BucketFor(string key)
         => StorageKeys.IsPrivate(key) && !string.IsNullOrWhiteSpace(_opts.R2.PrivateBucketName)
             ? _opts.R2.PrivateBucketName
