@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Modules.Interpreter.Interfaces;
 using Nexo.Domain.Modules.Interpreter;
+using Nexo.Infrastructure.Modules.Interpreter;
 using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Api.Controllers;
@@ -19,21 +20,16 @@ namespace Nexo.Api.Controllers;
 public class InterpreterAdminController : ControllerBase
 {
     private readonly NexoDbContext          _db;
-    private readonly IAnalyzerSelector      _analyzerSelector;
-    private readonly IInterpretationService _interpretationService;
-    private readonly IMovementMemoryService _memoryService;
+    private readonly AiProviderAdminService _providers;
 
-    public InterpreterAdminController(
-        NexoDbContext          db,
-        IAnalyzerSelector      analyzerSelector,
-        IInterpretationService interpretationService,
-        IMovementMemoryService memoryService)
+    public InterpreterAdminController(NexoDbContext db, AiProviderAdminService providers)
     {
-        _db                    = db;
-        _analyzerSelector      = analyzerSelector;
-        _interpretationService = interpretationService;
-        _memoryService         = memoryService;
+        _db        = db;
+        _providers = providers;
     }
+
+    private PlatformActor Actor() => new(GetPlatformUserId(), User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue("email"),
+        Request.Headers.UserAgent.ToString(), HttpContext.TraceIdentifier);
 
     private Guid? GetPlatformUserId()
     {
@@ -295,107 +291,79 @@ public class InterpreterAdminController : ControllerBase
     // AI PROVIDERS
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Every provider with its real status (available, disabled, missing_key, missing_model, implementation_missing,
+    /// secret_unavailable, invalid_credentials, rate_limited, unhealthy) and the order the automatic mode uses. Never a key.
+    /// </summary>
     [HttpGet("providers")]
     public async Task<IActionResult> GetProviders(CancellationToken ct)
     {
-
-        var providers = await _db.AiProviders
-            .OrderBy(p => p.Priority)
-            .Select(p => new
-            {
-                p.Id,
-                p.Name,
-                p.Provider,
-                p.IsEnabled,
-                p.IsDefault,
-                p.ModelId,
-                p.ApiKeyLastFour,
-                hasApiKey          = p.ApiKeyEncrypted != null,
-                p.MonthlyTokenLimit,
-                costPerInputToken  = p.CostPerInputTokenMicros / 1_000_000.0,
-                costPerOutputToken = p.CostPerOutputTokenMicros / 1_000_000.0,
-                p.Priority,
-                p.UpdatedAt,
-            })
-            .ToListAsync(ct);
-
-        return Ok(providers);
+        var states = await _providers.ListAsync(ct);
+        return Ok(new
+        {
+            providers = states.Select(ProviderView),
+            secretStorageAvailable = _providers.SecretStorageAvailable,
+            automaticOrder = states.Where(s => s.IsAvailable).Select(s => s.Provider.ToString()),
+        });
     }
 
     [HttpPatch("providers/{id:guid}")]
-    public async Task<IActionResult> PatchProvider(
-        Guid id,
-        [FromBody] PatchProviderRequest body,
-        CancellationToken ct)
-    {
-
-        var provider = await _db.AiProviders.FindAsync(new object[] { id }, ct);
-        if (provider is null) return NotFound();
-
-        if (body.IsEnabled.HasValue)
-            provider.SetEnabled(body.IsEnabled.Value);
-
-        if (body.IsDefault.HasValue)
-        {
-            if (body.IsDefault.Value)
-            {
-                // Clear default on all others first
-                var others = await _db.AiProviders.Where(p => p.Id != id && p.IsDefault).ToListAsync(ct);
-                foreach (var other in others)
-                    other.SetDefault(false);
-            }
-            provider.SetDefault(body.IsDefault.Value);
-        }
-
-        if (body.MonthlyTokenLimit is not null || body.CostPerInputTokenMicros is not null || body.CostPerOutputTokenMicros is not null)
-        {
-            provider.UpdateLimits(
-                body.MonthlyTokenLimit ?? provider.MonthlyTokenLimit,
-                body.CostPerInputTokenMicros ?? provider.CostPerInputTokenMicros,
-                body.CostPerOutputTokenMicros ?? provider.CostPerOutputTokenMicros);
-        }
-
-        await _db.SaveChangesAsync(ct);
-        return NoContent();
-    }
+    [Authorize(Policy = "PlatformAdmin")]
+    public async Task<IActionResult> PatchProvider(Guid id, [FromBody] PatchProviderRequest body, CancellationToken ct)
+        => Ok(ProviderView(await _providers.UpdateAsync(id, new AiProviderPatch(body.IsEnabled, body.IsDefault, body.ModelId, body.Priority,
+            body.MonthlyTokenLimit, body.ClearMonthlyTokenLimit ?? false, body.InputUsdPerMillionTokens, body.OutputUsdPerMillionTokens), Actor(), ct)));
 
     public sealed record PatchProviderRequest(
-        bool?  IsEnabled             = null,
-        bool?  IsDefault             = null,
-        long?  MonthlyTokenLimit     = null,
-        long?  CostPerInputTokenMicros  = null,
-        long?  CostPerOutputTokenMicros = null);
+        bool?    IsEnabled                 = null,
+        bool?    IsDefault                 = null,
+        string?  ModelId                   = null,
+        int?     Priority                  = null,
+        long?    MonthlyTokenLimit         = null,
+        bool?    ClearMonthlyTokenLimit    = null,
+        decimal? InputUsdPerMillionTokens  = null,
+        decimal? OutputUsdPerMillionTokens = null);
 
-    [HttpPost("providers/{id:guid}/rotate-key")]
-    public async Task<IActionResult> RotateKey(
-        Guid id,
-        [FromBody] RotateKeyRequest body,
-        CancellationToken ct)
+    /// <summary>Stores a new API key, encrypted (AES-256-GCM, master key outside the database). Answers only the last four.</summary>
+    [HttpPut("providers/{id:guid}/api-key")]
+    [Authorize(Policy = "PlatformAdmin")]
+    public async Task<IActionResult> SetApiKey(Guid id, [FromBody] SetApiKeyRequest body, CancellationToken ct)
+        => Ok(ProviderView(await _providers.SetKeyAsync(id, body.ApiKey ?? "", Actor(), ct)));
+
+    public sealed record SetApiKeyRequest(string? ApiKey);
+
+    [HttpDelete("providers/{id:guid}/api-key")]
+    [Authorize(Policy = "PlatformAdmin")]
+    public async Task<IActionResult> ClearApiKey(Guid id, CancellationToken ct)
+        => Ok(ProviderView(await _providers.ClearKeyAsync(id, Actor(), ct)));
+
+    /// <summary>"Testar conexão": one minimal call with a short timeout; the sanitized result is recorded and returned.</summary>
+    [HttpPost("providers/{id:guid}/test")]
+    [Authorize(Policy = "PlatformAdmin")]
+    public async Task<IActionResult> TestProvider(Guid id, CancellationToken ct)
+        => Ok(await _providers.TestAsync(id, Actor(), ct));
+
+    private static object ProviderView(AiProviderState s) => new
     {
-
-        var provider = await _db.AiProviders.FindAsync(new object[] { id }, ct);
-        if (provider is null) return NotFound();
-
-        if (string.IsNullOrWhiteSpace(body.ApiKey))
-        {
-            provider.ClearApiKey();
-            await _db.SaveChangesAsync(ct);
-            return Ok(new { lastFour = (string?)null });
-        }
-
-        var lastFour  = body.ApiKey.Length >= 4
-            ? body.ApiKey.Substring(body.ApiKey.Length - 4)
-            : body.ApiKey;
-
-        // TODO: replace with real AES-256 encryption via IEncryptionService
-        var encrypted = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(body.ApiKey));
-        provider.SetApiKey(encrypted, lastFour);
-
-        await _db.SaveChangesAsync(ct);
-        return Ok(new { lastFour });
-    }
-
-    public sealed record RotateKeyRequest(string? ApiKey);
+        s.Id,
+        s.Name,
+        provider = s.Provider.ToString(),
+        status = s.StatusName,
+        s.StatusMessage,
+        s.Implemented,
+        s.RequiresKey,
+        s.AllowedByDeployment,
+        s.IsEnabled,
+        s.IsDefault,
+        s.Priority,
+        s.ModelId,
+        hasApiKey = s.HasApiKey,
+        s.ApiKeyLastFour,
+        s.ApiKeyUpdatedAt,
+        s.MonthlyTokenLimit,
+        inputUsdPerMillionTokens = s.CostPerMillionInputMicros / 1_000_000m,
+        outputUsdPerMillionTokens = s.CostPerMillionOutputMicros / 1_000_000m,
+        lastTest = s.LastTestAt is null ? null : new { status = s.LastTestStatus, message = s.LastTestMessage, at = s.LastTestAt },
+    };
 
     // ─────────────────────────────────────────────────────────────────────────
     // PROMPT VERSIONS
@@ -470,56 +438,43 @@ public class InterpreterAdminController : ControllerBase
     // PLAYGROUND
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Runs the same analysis the companies use. "auto" (or empty) follows the automatic order with fallback; a named
+    /// provider runs alone: unavailable means 422 ai_provider_unavailable, failing means 503 ai_provider_failed, never a 500
+    /// and never another provider in its place. Writes telemetry; never returns the provider's raw answer.
+    /// </summary>
     [HttpPost("playground")]
-    public async Task<IActionResult> Playground(
-        [FromBody] PlaygroundRequest body,
-        CancellationToken ct)
+    [Authorize(Policy = "PlatformAdmin")]
+    public async Task<IActionResult> Playground([FromBody] PlaygroundRequest body, CancellationToken ct)
     {
+        AnalyzerProvider? force = null;
+        if (!string.IsNullOrWhiteSpace(body.ForceProvider) && !string.Equals(body.ForceProvider, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            if (int.TryParse(body.ForceProvider, out _) || !Enum.TryParse<AnalyzerProvider>(body.ForceProvider, ignoreCase: true, out var parsed) || !Enum.IsDefined(parsed))
+                return BadRequest(new { error = "Provedor de IA desconhecido.", code = "ai_provider_invalid", requestId = HttpContext.TraceIdentifier });
+            force = parsed;
+        }
 
-        var platformUserId = GetPlatformUserId() ?? Guid.Empty;
-
-        // Use the first real tenant if none provided (platform context has no tenant)
-        var tenantId = body.TenantId ?? await _db.Tenants
-            .IgnoreQueryFilters()
-            .OrderBy(t => t.CompanyName)
-            .Select(t => t.Id)
-            .FirstOrDefaultAsync(ct);
-
-        if (tenantId == Guid.Empty)
-            return BadRequest(new { error = "No tenant available for playground context." });
-
-        var source   = body.Source ?? InputSourceType.Text;
-        var analyzer = _analyzerSelector.Select(source, tenantId, body.ForceProvider);
-
-        var input = new AnalysisInput(
-            Source:     source,
-            RawText:    body.Text,
-            StorageKey: null,
-            TenantId:   tenantId,
-            UserId:     platformUserId);
-
-        var sw     = System.Diagnostics.Stopwatch.StartNew();
-        var output = await analyzer.AnalyzeAsync(input, ct);
-        sw.Stop();
-
-        var memCtx         = await _memoryService.GetCompactContextAsync(tenantId, platformUserId, ct);
-        var interpretation = await _interpretationService.SuggestAsync(output, memCtx, tenantId, platformUserId, ct);
-
+        var result = await _providers.PlaygroundAsync(new AiPlaygroundRequest(body.Text ?? "", force, body.TenantId), Actor(), ct);
+        var run = result.Run;
+        var output = run.Output;
+        var interpretation = result.Interpretation;
         return Ok(new
         {
-            provider      = analyzer.Provider.ToString(),
-            elapsedMs     = sw.ElapsedMilliseconds,
-            input = new
-            {
-                body.Text,
-                source = source.ToString(),
-            },
+            result.TenantId,
+            provider = run.Provider.ToString(),
+            run.ModelId,
+            run.Forced,
+            run.FallbackUsed,
+            attempts = run.Attempts.Select(x => new { provider = x.Provider.ToString(), x.ModelId, x.Succeeded, x.FailureReason, x.DurationMs }),
+            elapsedMs = run.DurationMs,
+            prompt = new { type = output.Prompt.PromptType, version = output.Prompt.PromptVersion, hash = output.Prompt.PromptHash },
             extraction = new
             {
-                amount  = new { output.Amount.Value,  output.Amount.Confidence,  output.Amount.Status },
-                date    = new { output.Date.Value,    output.Date.Confidence,    output.Date.Status },
-                payee   = new { output.Payee.Value,   output.Payee.Confidence,   output.Payee.Status },
-                account = new { output.Account.Value, output.Account.Confidence, output.Account.Status },
+                amount  = new { output.Amount.Value,  output.Amount.Confidence,  status = output.Amount.Status.ToString() },
+                date    = new { output.Date.Value,    output.Date.Confidence,    status = output.Date.Status.ToString() },
+                payee   = new { output.Payee.Value,   output.Payee.Confidence,   status = output.Payee.Status.ToString() },
+                account = new { output.Account.Value, output.Account.Confidence, status = output.Account.Status.ToString() },
                 output.InputTokens,
                 output.OutputTokens,
                 costUsd = output.EstimatedCostMicros / 1_000_000.0,
@@ -538,13 +493,8 @@ public class InterpreterAdminController : ControllerBase
                 interpretation.AccountId,
                 accSource    = interpretation.AccountSource.ToString(),
             },
-            rawProviderResponse = output.RawProviderResponse,
         });
     }
 
-    public sealed record PlaygroundRequest(
-        string?          Text,
-        InputSourceType? Source        = null,
-        AnalyzerProvider? ForceProvider = null,
-        Guid?            TenantId      = null);
+    public sealed record PlaygroundRequest(string? Text, string? ForceProvider = null, Guid? TenantId = null);
 }

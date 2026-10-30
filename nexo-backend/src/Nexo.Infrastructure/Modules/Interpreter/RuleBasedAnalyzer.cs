@@ -7,14 +7,13 @@ namespace Nexo.Infrastructure.Modules.Interpreter;
 /// <summary>
 /// Deterministic regex extractor. Tries to resolve each field independently.
 /// Fields resolved with high confidence (≥0.90) are AutoFilled.
-/// Unresolved fields return ExtractedField.Unknown() — AnalyzerSelectorService
-/// can delegate those to an LLM analyzer for a second pass.
+/// Unresolved fields return ExtractedField.Unknown(). Needs no configuration (no key, no model, no cost).
 /// </summary>
 public sealed partial class RuleBasedAnalyzer : IDocumentAnalyzer
 {
     public AnalyzerProvider Provider => AnalyzerProvider.RuleBased;
 
-    public Task<AnalysisOutput> AnalyzeAsync(AnalysisInput input, CancellationToken ct = default)
+    public Task<AnalysisOutput> AnalyzeAsync(AnalysisInput input, AnalyzerConfig? config, CancellationToken ct = default)
     {
         var text = BuildSearchText(input);
 
@@ -29,7 +28,8 @@ public sealed partial class RuleBasedAnalyzer : IDocumentAnalyzer
             Date:                date,
             Payee:               payee,
             Account:             account,
-            RawProviderResponse: text,
+            // The user's text is already kept as RawUserText; it is not copied here a second time.
+            RawProviderResponse: "{}",
             Prompt:              new PromptMetadata("rule-based", "1.0.0", ComputeHash(text)));
 
         return Task.FromResult(output);

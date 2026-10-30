@@ -8,37 +8,48 @@ import {
   fetchPromptVersions,
   runPlayground,
   updateAiProvider,
-  rotateAiProviderKey,
+  setAiProviderKey,
+  clearAiProviderKey,
+  testAiProvider,
   setActivePrompt,
 } from "../services/interpreterAdminApi";
-import type { PlaygroundResult } from "../types/aiOperations";
+import type { AiProviderPatch, PlaygroundResult } from "../types/aiOperations";
 
 // ── Providers ─────────────────────────────────────────────────────────────────
 
+const PROVIDERS_KEY = ["platform", "ai", "providers"] as const;
+
 export function useAiProviders() {
   return useQuery({
-    queryKey: ["platform", "ai", "providers"],
+    queryKey: PROVIDERS_KEY,
     queryFn:  fetchAiProviders,
     staleTime: 30_000,
   });
 }
 
-export function useUpdateAiProvider() {
+/** Every provider mutation changes the computed status of the others too (default, automatic order): refetch them all. */
+function useProvidersMutation<TVars, TData>(fn: (vars: TVars) => Promise<TData>) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof updateAiProvider>[1] }) =>
-      updateAiProvider(id, patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "ai", "providers"] }),
+    mutationFn: fn,
+    onSettled:  () => qc.invalidateQueries({ queryKey: PROVIDERS_KEY }),
   });
 }
 
-export function useRotateAiProviderKey() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, apiKey }: { id: string; apiKey?: string }) =>
-      rotateAiProviderKey(id, apiKey),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "ai", "providers"] }),
-  });
+export function useUpdateAiProvider() {
+  return useProvidersMutation(({ id, patch }: { id: string; patch: AiProviderPatch }) => updateAiProvider(id, patch));
+}
+
+export function useSetAiProviderKey() {
+  return useProvidersMutation(({ id, apiKey }: { id: string; apiKey: string }) => setAiProviderKey(id, apiKey));
+}
+
+export function useClearAiProviderKey() {
+  return useProvidersMutation(({ id }: { id: string }) => clearAiProviderKey(id));
+}
+
+export function useTestAiProvider() {
+  return useProvidersMutation(({ id }: { id: string }) => testAiProvider(id));
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -93,14 +104,16 @@ export function useSetActivePrompt() {
 
 // ── Playground ────────────────────────────────────────────────────────────────
 
+/** Keeps the last result and the last error (never swallowed: the page shows message, code, reason and requestId). */
 export function usePlayground() {
   const [result, setResult] = useState<PlaygroundResult | null>(null);
-  const [error,  setError]  = useState<string | null>(null);
+  const [error,  setError]  = useState<Error | null>(null);
 
   const mutation = useMutation({
     mutationFn: runPlayground,
+    onMutate:   () => { setError(null); },
     onSuccess:  (data) => { setResult(data); setError(null); },
-    onError:    (e: Error) => { setError(e.message); },
+    onError:    (e: Error) => { setResult(null); setError(e); },
   });
 
   return {

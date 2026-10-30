@@ -111,3 +111,7 @@ secret-scan-results.json
 *.bak
 /*.sql
 nexo_backup*.sql
+
+# Local secret files (never commit): a provider key once lived in api_anthropic.txt at the repository root
+api_anthropic.txt
+*.secret.txt

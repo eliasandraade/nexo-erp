@@ -31,6 +31,12 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         .WithPassword("nexo_test")
         .Build();
 
+    /// <summary>The fake Anthropic API every Claude call of this host goes to (nothing leaves the test host).</summary>
+    public FakeAnthropicHandler Anthropic { get; } = new();
+
+    /// <summary>A test-only master key (base64 of 32 fixed bytes) so AI provider keys are really encrypted in the tests.</summary>
+    public static readonly string TestMasterKey = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes("test-only-master-key-32-bytes!!!"));
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -88,6 +94,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
             // the customer e-mails job — behave as in production. Nothing leaves the test host.
             services.RemoveAll<Nexo.Application.Common.Interfaces.IEmailService>();
             services.AddScoped<Nexo.Application.Common.Interfaces.IEmailService, DeliveringTestEmailService>();
+
+            // Claude calls go to an in-process fake: the suite never reaches Anthropic.
+            services.AddHttpClient(Nexo.Infrastructure.Modules.Interpreter.AnthropicClientFactory.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => Anthropic);
         });
 
         // JWT overrides so test tokens validate against the test server.
@@ -121,6 +131,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // only the approval enforcement — the Mode stays unconfigured (Disabled) — so tests can use rules created
         // on the fly. TaxIntelligenceTests turns enforcement, the mode and the pilot scope on in derived hosts to
         // prove what each configuration accepts and refuses.
+        builder.UseSetting("Secrets:MasterKey", TestMasterKey);
         builder.UseSetting("TaxIntelligence:Policy:Enabled", "true");
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "false");
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForCalculations", "false");

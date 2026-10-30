@@ -3241,7 +3241,16 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)");
 
+                    b.Property<DateTime?>("ApiKeyUpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<long>("CostPerInputTokenMicros")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CostPerMillionInputMicros")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("CostPerMillionOutputMicros")
                         .HasColumnType("bigint");
 
                     b.Property<long>("CostPerOutputTokenMicros")
@@ -3255,6 +3264,17 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsEnabled")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastTestAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastTestMessage")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("LastTestStatus")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
 
                     b.Property<string>("ModelId")
                         .HasMaxLength(100)
@@ -3280,6 +3300,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("ux_ai_providers_single_default")
+                        .HasFilter("\"IsDefault\" = true");
 
                     b.HasIndex("Priority");
 
@@ -3633,6 +3658,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("InputTokens")
                         .HasColumnType("integer");
+
+                    b.Property<string>("ModelId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<Guid?>("MovementId")
                         .HasColumnType("uuid");
