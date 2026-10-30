@@ -7,7 +7,22 @@ using Nexo.Infrastructure.TaxIntelligence;
 
 namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 
-/// <summary>Opportunity review workflow and decision dossiers.</summary>
+/// <summary>Filters of the opportunity list (query string).</summary>
+public sealed class OpportunityListQuery
+{
+    public TaxOpportunityStatus? Status { get; set; }
+    public TaxRiskLevel? Risk { get; set; }
+    public TaxOpportunityType[]? Type { get; set; }
+    public bool? Open { get; set; }
+    public bool? Mine { get; set; }
+    public DateOnly? From { get; set; }
+    public DateOnly? To { get; set; }
+    public string? Search { get; set; }
+    public int? Skip { get; set; }
+    public int? Take { get; set; }
+}
+
+/// <summary>Opportunity review workflow: list, timeline, assignment, requirements, evidence review, decision and execution.</summary>
 [ApiController]
 [Route("api/tax")]
 [Authorize(Roles = AppRoles.Management)]
@@ -19,9 +34,18 @@ public class TaxOpportunitiesController : ControllerBase
     public TaxOpportunitiesController(TaxOpportunityService service) => _service = service;
 
     [HttpGet("opportunities")]
-    public async Task<ActionResult<IReadOnlyList<TaxOpportunitySummaryDto>>> List(
-        [FromQuery] TaxOpportunityStatus? status, [FromQuery] int take = 50, CancellationToken ct = default)
-        => Ok(await _service.ListAsync(status, take, ct));
+    public async Task<ActionResult<TaxPage<TaxOpportunitySummaryDto>>> List([FromQuery] OpportunityListQuery q, CancellationToken ct)
+        => Ok(await _service.ListAsync(new TaxOpportunityFilter(q.Status, q.Risk, q.Type, q.Open, q.Mine, q.From, q.To, q.Search, q.Skip ?? 0, q.Take ?? 50), ct));
+
+    /// <summary>What happened to the opportunity, from the audit trail (who, when, what).</summary>
+    [HttpGet("opportunities/{id:guid}/timeline")]
+    public async Task<ActionResult<IReadOnlyList<TaxTimelineEventDto>>> Timeline(Guid id, CancellationToken ct) => Ok(await _service.TimelineAsync(id, ct));
+
+    /// <summary>Assigns who moves the analysis forward — a work assignment, never an approval power.</summary>
+    [HttpPost("opportunities/{id:guid}/assign")]
+    [Authorize(Roles = TaxCapabilities.Analyze)]
+    public async Task<ActionResult<TaxOpportunityDto>> Assign(Guid id, [FromBody] AssignOpportunityRequest request, CancellationToken ct)
+        => Ok(await _service.AssignAsync(id, request, ct));
 
     [HttpGet("opportunities/{id:guid}")]
     public async Task<ActionResult<TaxOpportunityDto>> Get(Guid id, CancellationToken ct) => Ok(await _service.GetAsync(id, ct));
@@ -48,7 +72,7 @@ public class TaxOpportunitiesController : ControllerBase
     /// document, final amounts) or diverged. Diretoria only; sealed with its own dossier hash.
     /// </summary>
     [HttpPost("opportunities/{id:guid}/execution")]
-    [Authorize(Roles = AppRoles.Directors)]
+    [Authorize(Roles = TaxCapabilities.Decide)]
     public async Task<ActionResult<TaxOpportunityDto>> VerifyExecution(Guid id, [FromBody] VerifyExecutionRequest request, CancellationToken ct)
         => Ok(await _service.VerifyExecutionAsync(id, request, ct));
 
@@ -67,10 +91,45 @@ public class TaxOpportunitiesController : ControllerBase
     /// internally for the controlled pilot, professionally in the definitive mode.
     /// </summary>
     [HttpPost("opportunities/{id:guid}/approve")]
-    [Authorize(Roles = AppRoles.Directors)]
+    [Authorize(Roles = TaxCapabilities.Decide)]
     public async Task<ActionResult<TaxOpportunityDto>> Approve(Guid id, [FromBody] ApproveOpportunityRequest request, CancellationToken ct)
         => Ok(await _service.ApproveAsync(id, request, ct));
+}
+
+/// <summary>Frozen decision dossiers, as recorded.</summary>
+[ApiController]
+[Route("api/tax")]
+[Authorize(Roles = AppRoles.Management)]
+public class TaxDecisionsController : ControllerBase
+{
+    private readonly TaxOpportunityService _service;
+
+    public TaxDecisionsController(TaxOpportunityService service) => _service = service;
 
     [HttpGet("decisions/{id:guid}")]
     public async Task<ActionResult<TaxDecisionDto>> Decision(Guid id, CancellationToken ct) => Ok(await _service.GetDecisionAsync(id, ct));
+}
+
+/// <summary>Decision dossiers exported as a ZIP with a SHA-256 manifest (the board only).</summary>
+[ApiController]
+[Route("api/tax")]
+[Authorize(Roles = AppRoles.Management)]
+public class TaxDecisionExportController : ControllerBase
+{
+    private readonly TaxDossierExportService _exports;
+
+    public TaxDecisionExportController(TaxDossierExportService exports) => _exports = exports;
+
+    /// <summary>
+    /// The decision dossier as a ZIP (JSON exactly as frozen, readable version, sources, evidence index, files when asked for, SHA-256 manifest).
+    /// The board only; another company's dossier is simply not found.
+    /// </summary>
+    [HttpGet("decisions/{id:guid}/export")]
+    [Authorize(Roles = TaxCapabilities.Export)]
+    public async Task<IActionResult> ExportDecision(Guid id, [FromQuery] bool includeFiles = false, CancellationToken ct = default)
+    {
+        var (name, content) = await _exports.ExportAsync(id, includeFiles, ct);
+        Response.Headers.CacheControl = "no-store";
+        return File(content, "application/zip", name);
+    }
 }

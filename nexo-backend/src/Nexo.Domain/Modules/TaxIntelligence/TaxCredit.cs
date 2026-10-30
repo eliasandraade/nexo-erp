@@ -14,6 +14,8 @@ namespace Nexo.Domain.Modules.TaxIntelligence;
 /// </summary>
 public class TaxCredit : StoreEntity
 {
+    private const string StageCode = "tax_credit_stage";
+
     /// <summary>Error code of every refusal caused by an amount beyond what the balance allows.</summary>
     public const string AmountErrorCode = "tax_credit_amount";
 
@@ -101,7 +103,7 @@ public class TaxCredit : StoreEntity
     public void StartRequirementsReview()
     {
         if (Stage != TaxCreditStage.PotentialIdentified)
-            throw new DomainException("Só um crédito potencial entra em revisão de requisitos.", "tax_credit_stage");
+            throw new DomainException("Só um crédito potencial entra em revisão de requisitos.", StageCode);
         Stage = TaxCreditStage.RequirementsUnderReview;
         SetUpdatedAt();
     }
@@ -114,7 +116,7 @@ public class TaxCredit : StoreEntity
     public TaxCreditLedgerEntry ConfirmToBeAppropriated(decimal amount, string basis, DateOnly onDate, Guid actorId, string actorName)
     {
         if (Stage != TaxCreditStage.RequirementsUnderReview)
-            throw new DomainException("Confirme os requisitos depois de abrir a revisão do crédito potencial.", "tax_credit_stage");
+            throw new DomainException("Confirme os requisitos depois de abrir a revisão do crédito potencial.", StageCode);
         Positive(amount);
         if (amount > OriginalAmount) throw new DomainException("O valor passa do tributo destacado no documento.", AmountErrorCode);
         if (string.IsNullOrWhiteSpace(basis)) throw new DomainException("Informe a base da confirmação dos requisitos.");
@@ -127,7 +129,7 @@ public class TaxCredit : StoreEntity
     public void Discard(string reason)
     {
         if (Stage is TaxCreditStage.ToBeAppropriated or TaxCreditStage.Discarded)
-            throw new DomainException("Só um crédito potencial ou em revisão pode ser descartado.", "tax_credit_stage");
+            throw new DomainException("Só um crédito potencial ou em revisão pode ser descartado.", StageCode);
         if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe por que o crédito foi descartado.");
         Stage = TaxCreditStage.Discarded;
         DiscardReason = reason.Trim();
@@ -137,7 +139,7 @@ public class TaxCredit : StoreEntity
     public TaxCreditLedgerEntry Appropriate(decimal amount, string reason, DateOnly onDate, Guid actorId, string actorName)
     {
         if (Stage != TaxCreditStage.ToBeAppropriated)
-            throw new DomainException("Um crédito potencial não é apropriado: confirme os requisitos antes.", "tax_credit_stage");
+            throw new DomainException("Um crédito potencial não é apropriado: confirme os requisitos antes.", StageCode);
         Positive(amount);
         if (SourceDocumentKey is null)
             throw new DomainException("Sem a chave do documento fiscal eletrônico o crédito não pode ser apropriado (LC 214/2025, art. 47, § 1º, II).", "tax_credit_document");
@@ -161,7 +163,7 @@ public class TaxCredit : StoreEntity
         if (ExpiresOn is not null && onDate > ExpiresOn)
             throw new DomainException("O crédito está vencido.", "tax_credit_expired");
         if (_entries.Any(e => e.Type == TaxCreditEntryType.Used && e.ObligationReference == obligationReference.Trim()))
-            throw new ConflictException("Este crédito já foi usado nesta obrigação.");
+            throw new ConflictException("Este crédito já foi usado nesta obrigação.", "tax_credit_obligation_used");
         if (amount > Balance().Available)
             throw new DomainException("O valor passa do saldo disponível.", AmountErrorCode);
         return Append(TaxCreditEntryType.Used, amount, obligationReference.Trim(), $"Usado na obrigação {obligationReference.Trim()}.", onDate, actorId, actorName);
@@ -245,6 +247,17 @@ public class TaxCreditLedgerEntry : StoreEntity
     public DateOnly OccurredOn { get; private set; }
     public Guid ActorId { get; private set; }
     public string ActorName { get; private set; } = string.Empty;
+    /// <summary>
+    /// Client key of the request that wrote the movement, unique per credit: a retried request (double click,
+    /// network retry) finds the movement already recorded instead of writing it twice.
+    /// </summary>
+    public string? IdempotencyKey { get; private set; }
+
+    public void KeyedBy(string idempotencyKey)
+    {
+        if (IdempotencyKey is not null) throw new InvalidOperationException("Idempotency key already set.");
+        IdempotencyKey = idempotencyKey;
+    }
 }
 
 /// <summary>

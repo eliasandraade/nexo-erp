@@ -7,7 +7,7 @@ import { useAuth } from "@/modules/auth/context/AuthContext";
 import { cn } from "@/lib/utils";
 
 const groups = [
-  { label: "Plataforma", links: [["/platform", "Visão geral"], ["/platform/tenants", "Empresas"], ["/platform/trial", "Períodos de teste"], ["/platform/activity", "Atividade"], ["/platform/system", "Sistema"]] },
+  { label: "Plataforma", links: [["/platform", "Visão geral"], ["/platform/tenants", "Empresas"], ["/platform/trial", "Períodos de teste"], ["/platform/activity", "Atividade"], ["/platform/system", "Sistema"], ["/platform/tributos", "Inteligência tributária"]] },
   { label: "Operações de IA", links: [["/platform/ai", "Visão geral de IA"], ["/platform/ai/playground", "Testar interpretação"], ["/platform/ai/providers", "Provedores"], ["/platform/ai/telemetry", "Telemetria"], ["/platform/ai/costs", "Custos"], ["/platform/ai/prompts", "Instruções"]] },
 ];
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
@@ -20,7 +20,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
         {group.links.map(([to, label]) => <NavLink key={to} to={to} end={to === "/platform" || to === "/platform/ai"} onClick={onNavigate} className={({isActive}) => cn("block rounded px-3 py-2 text-sm", isActive ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground" : "text-sidebar-foreground hover:bg-muted")}>{label}</NavLink>)}
       </div>)}
     </nav>
-    <div className="mt-6 border-t border-border p-4"><p className="truncate text-sm font-medium">{session?.name || session?.email}</p><p className="mt-1 text-xs text-muted-foreground">Administrador da plataforma</p><button onClick={logout} className="mt-3 flex min-h-10 items-center gap-2 text-sm text-muted-foreground"><LogOut className="h-4 w-4" />Sair</button></div>
+    <div className="mt-6 border-t border-border p-4"><p className="truncate text-sm font-medium">{session?.name || session?.email}</p><p className="mt-1 text-xs text-muted-foreground">Administrador da plataforma</p><button onClick={() => logout()} className="mt-3 flex min-h-10 items-center gap-2 text-sm text-muted-foreground"><LogOut className="h-4 w-4" />Sair</button></div>
   </div>;
 }
 export function PlatformLayout() {

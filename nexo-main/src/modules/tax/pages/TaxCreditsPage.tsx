@@ -5,7 +5,6 @@ import { PlugZap, Plus, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
-import { ErrorState } from "@/components/shared/ErrorState";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { MetricBlock } from "@/components/shared/MetricBlock";
 import { Button } from "@/components/ui/button";
@@ -15,23 +14,52 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
-import { ApiError } from "@/services/api-client";
 import {
-  TAX_KEY, TAX_KEYS, getSplitProvider, getTaxCreditTotals, listSplitExpectations, listTaxCredits, moveTaxCredit, registerTaxCredit,
-  type CreditMovement, type CreditTax, type TaxCreditDto,
+  TAX_KEY, TAX_KEYS, getSplitProvider, getTaxCreditTotals, listSplitExpectations, listTaxCredits, moveTaxCredit, registerTaxCredit, splitCsvUrl,
+  type CreditMovement, type CreditStage, type CreditTax, type SplitStatus, type TaxCreditDto, type TaxType,
 } from "../api/tax.api";
+import { useAuth } from "@/modules/auth/context/AuthContext";
+import { DownloadButton, TaxPager, TaxQueryError, toastError } from "../components/TaxCommon";
+import { EvidenceFiles } from "../components/EvidenceFiles";
 import {
-  CREDIT_ENTRY_TYPES, CREDIT_LIFECYCLE, CREDIT_MOVEMENTS, CREDIT_TAX_NAMES, POTENTIAL_CREDIT_COPY, SPLIT_EXPECTATION_COPY, labelOf, toneOf,
+  CREDIT_ENTRY_TYPES, CREDIT_LIFECYCLE, CREDIT_MOVEMENTS, CREDIT_TAX_NAMES, POTENTIAL_CREDIT_COPY, SPLIT_EXPECTATION_COPY, SPLIT_STATUS, TAX_NAMES,
+  labelOf, toneOf,
 } from "../lib/labels";
 import { ToneBadge } from "../components/TaxBadges";
 import {
-  creditProblems, emptyCredit, errorMessage, formatIsoDate, movementProblems, toCreditRequest, toMovementRequest,
+  brazilTodayIso, creditProblems, emptyCredit, formatIsoDate, movementProblems, toCreditRequest, toMovementRequest,
   type CreditDraft, type MovementDraft,
 } from "../lib/forms";
 import { SplitTable } from "../components/SplitTable";
 import { Field, ProblemList, TaxNote, TaxSubNav } from "../components/TaxShell";
 
 const TABS = ["creditos", "split"] as const;
+const PAGE = 20;
+const ALL = "__all";
+const STAGES: Record<CreditStage, string> = {
+  PotentialIdentified: "Potencial estimado",
+  RequirementsUnderReview: "Requisitos em revisão",
+  ToBeAppropriated: "Requisitos confirmados",
+  Discarded: "Descartado",
+};
+const LEDGER = new Set<CreditMovement>(["ConfirmToBeAppropriated", "Appropriate", "Use", "Block", "Unblock", "Reverse", "Expire"]);
+
+/**
+ * The movements a credit can take now, by its stage and balance. Reviewing a potential credit is management work; anything that
+ * writes the ledger is the board's (the server enforces both).
+ */
+export function allowedMovements(c: TaxCreditDto, isDirector: boolean, todayIso: string): CreditMovement[] {
+  const all: CreditMovement[] = [];
+  if (c.stage === "PotentialIdentified") all.push("StartRequirementsReview", "Discard");
+  if (c.stage === "RequirementsUnderReview") all.push("ConfirmToBeAppropriated", "Discard");
+  if (c.stage === "ToBeAppropriated") {
+    if (c.balance.toBeAppropriated > 0) all.push("Appropriate");
+    if (c.balance.available > 0) all.push("Use", "Block", "Reverse");
+    if (c.balance.blocked > 0) all.push("Unblock");
+    if (c.expiresOn && todayIso > c.expiresOn && c.balance.available > 0) all.push("Expire");
+  }
+  return isDirector ? all : all.filter((m) => !LEDGER.has(m));
+}
 
 /** Créditos de CBS/IBS (razão por crédito: reconhecido, apropriado, usado, bloqueado) e conferência do split payment. */
 export default function TaxCreditsPage() {
@@ -60,12 +88,20 @@ export default function TaxCreditsPage() {
 function Credits() {
   const [registering, setRegistering] = useState(false);
   const [moving, setMoving] = useState<TaxCreditDto | null>(null);
+  const [tax, setTax] = useState<CreditTax | "">("");
+  const [stage, setStage] = useState<CreditStage | "">("");
+  const [skip, setSkip] = useState(0);
+  const { session } = useAuth();
+  const isDirector = session?.role === "diretoria";
+  const today = brazilTodayIso();
   const totals = useQuery({ queryKey: TAX_KEYS.creditTotals, queryFn: getTaxCreditTotals });
-  const credits = useQuery({ queryKey: TAX_KEYS.credits, queryFn: listTaxCredits });
+  const credits = useQuery({ queryKey: [...TAX_KEYS.credits, tax, stage, skip], queryFn: () => listTaxCredits({ tax, stage, skip, take: PAGE }) });
 
   return (
     <>
-      {totals.isError && <ErrorState title="Não foi possível somar os créditos" onRetry={() => void totals.refetch()} compact />}
+      {totals.isLoading && <Skeleton className="h-24 w-full" />}
+      {totals.isError && <TaxQueryError error={totals.error} what="os totais de créditos" onRetry={() => void totals.refetch()} />}
+      {totals.data?.length === 0 && <TaxNote>Nenhum crédito registrado ainda: os totais aparecem aqui por tributo.</TaxNote>}
       {totals.data && totals.data.length > 0 && (
         <div className="space-y-3">
           {totals.data.map((t) => (
@@ -89,11 +125,34 @@ function Credits() {
         description="Um crédito registrado começa como potencial. Só depois de confirmar os requisitos ele fica a apropriar; só o apropriado pode ser usado, contra imposto devido do mesmo tributo, uma vez por obrigação."
         actions={<Button size="sm" onClick={() => setRegistering(true)}><Plus className="mr-1.5 h-3.5 w-3.5" /> Registrar crédito</Button>}
       >
+        <div className="mb-3 flex flex-wrap gap-3">
+          <Field id="cr-f-tax" label="Tributo" className="w-40">
+            <Select value={tax || ALL} onValueChange={(v) => { setTax(v === ALL ? "" : (v as CreditTax)); setSkip(0); }}>
+              <SelectTrigger id="cr-f-tax"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos</SelectItem>
+                {(Object.keys(CREDIT_TAX_NAMES) as CreditTax[]).map((k) => <SelectItem key={k} value={k}>{CREDIT_TAX_NAMES[k]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field id="cr-f-stage" label="Etapa" className="w-56">
+            <Select value={stage || ALL} onValueChange={(v) => { setStage(v === ALL ? "" : (v as CreditStage)); setSkip(0); }}>
+              <SelectTrigger id="cr-f-stage"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todas</SelectItem>
+                {(Object.keys(STAGES) as CreditStage[]).map((k) => <SelectItem key={k} value={k}>{STAGES[k]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+        </div>
         {credits.isLoading && <Skeleton className="h-32 w-full" />}
-        {credits.isError && <ErrorState title="Não foi possível listar os créditos" onRetry={() => void credits.refetch()} compact />}
-        {credits.data?.length === 0 && <EmptyState icon={Wallet} title="Nenhum crédito registrado" description="Registre o crédito de uma nota de compra para acompanhar apropriação e uso." compact />}
+        {credits.isError && <TaxQueryError error={credits.error} what="os créditos" onRetry={() => void credits.refetch()} />}
+        {credits.data?.items.length === 0 && (
+          <EmptyState icon={Wallet} title={tax || stage ? "Nenhum crédito com estes filtros" : "Nenhum crédito registrado"}
+            description="Registre o crédito de uma nota de compra para acompanhar apropriação e uso." compact />
+        )}
         <ul className="space-y-3">
-          {credits.data?.map((c) => (
+          {credits.data?.items.map((c) => (
             <li key={c.id} className="rounded-md border border-border p-3 text-sm">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
@@ -109,7 +168,9 @@ function Credits() {
                   {c.recognitionBasis && <p className="break-words text-xs text-muted-foreground">Requisitos confirmados: {c.recognitionBasis}</p>}
                   {c.discardReason && <p className="break-words text-xs text-muted-foreground">Descartado: {c.discardReason}</p>}
                 </div>
-                <Button size="sm" variant="outline" onClick={() => setMoving(c)}>Movimentar</Button>
+                {allowedMovements(c, isDirector, today).length > 0
+                  ? <Button size="sm" variant="outline" onClick={() => setMoving(c)}>Movimentar</Button>
+                  : allowedMovements(c, true, today).length > 0 && <p className="text-xs text-muted-foreground">Movimentos do razão: diretoria</p>}
               </div>
               <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
                 <Pair label="Destacado" value={c.originalAmount} />
@@ -132,13 +193,18 @@ function Credits() {
                   </ul>
                 </details>
               )}
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs font-medium">Documentos do crédito</summary>
+                <div className="mt-2"><EvidenceFiles owner="Credit" ownerId={c.id} defaultType="FiscalDocument" /></div>
+              </details>
             </li>
           ))}
         </ul>
+        {credits.data && credits.data.total > PAGE && <TaxPager total={credits.data.total} skip={skip} take={PAGE} onSkip={setSkip} />}
       </SectionCard>
 
       <RegisterDialog open={registering} onClose={() => setRegistering(false)} />
-      <MovementDialog key={moving?.id ?? "none"} credit={moving} onClose={() => setMoving(null)} />
+      <MovementDialog key={moving?.id ?? "none"} credit={moving} allowed={moving ? allowedMovements(moving, isDirector, today) : []} onClose={() => setMoving(null)} />
     </>
   );
 }
@@ -156,7 +222,7 @@ function RegisterDialog({ open, onClose }: Readonly<{ open: boolean; onClose: ()
   const save = useMutation({
     mutationFn: () => registerTaxCredit(toCreditRequest(d)),
     onSuccess: () => { toast.success("Crédito registrado."); void qc.invalidateQueries({ queryKey: TAX_KEY }); close(); },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: toastError,
   });
   const text = (k: keyof CreditDraft) => ({ value: d[k], onChange: (e: React.ChangeEvent<HTMLInputElement>) => setD({ ...d, [k]: e.target.value }) });
 
@@ -208,16 +274,21 @@ function defaultMovement(credit: TaxCreditDto | null): CreditMovement {
   return "StartRequirementsReview";
 }
 
-function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | null; onClose: () => void }>) {
+function MovementDialog({ credit, allowed, onClose }: Readonly<{ credit: TaxCreditDto | null; allowed: CreditMovement[]; onClose: () => void }>) {
   const qc = useQueryClient();
-  const [m, setM] = useState<MovementDraft>(() => ({ ...EMPTY_MOVE, movement: defaultMovement(credit) }));
+  const [m, setM] = useState<MovementDraft>(() => {
+    const preferred = defaultMovement(credit);
+    return { ...EMPTY_MOVE, movement: allowed.includes(preferred) ? preferred : (allowed[0] ?? preferred) };
+  });
+  // One key per dialog: a double click or a retried request never writes the movement twice.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [touched, setTouched] = useState(false);
   const problems = movementProblems(m);
   const close = () => { setM(EMPTY_MOVE); setTouched(false); onClose(); };
   const save = useMutation({
-    mutationFn: () => moveTaxCredit(credit!.id, toMovementRequest(m)),
+    mutationFn: () => moveTaxCredit(credit!.id, { ...toMovementRequest(m), idempotencyKey }),
     onSuccess: () => { toast.success("Movimento registrado."); void qc.invalidateQueries({ queryKey: TAX_KEY }); close(); },
-    onError: (e) => toast.error(e instanceof ApiError && e.status === 409 ? "Este crédito já foi usado nessa obrigação." : errorMessage(e)),
+    onError: toastError,
   });
 
   return (
@@ -231,7 +302,7 @@ function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | n
           <Field id="mv-kind" label="Movimento">
             <Select value={m.movement} onValueChange={(v) => setM({ ...m, movement: v as CreditMovement })}>
               <SelectTrigger id="mv-kind"><SelectValue /></SelectTrigger>
-              <SelectContent>{(Object.keys(CREDIT_MOVEMENTS) as CreditMovement[]).map((k) => <SelectItem key={k} value={k}>{CREDIT_MOVEMENTS[k]}</SelectItem>)}</SelectContent>
+              <SelectContent>{allowed.map((k) => <SelectItem key={k} value={k}>{CREDIT_MOVEMENTS[k]}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
           {m.movement === "Expire" && credit && (
@@ -273,8 +344,16 @@ function MovementDialog({ credit, onClose }: Readonly<{ credit: TaxCreditDto | n
 }
 
 function SplitPayment() {
+  const [status, setStatus] = useState<SplitStatus | "">("");
+  const [tax, setTax] = useState<TaxType | "">("");
+  const [minAgeDays, setMinAgeDays] = useState<number | "">("");
+  const [skip, setSkip] = useState(0);
+  const filter = { status, tax, minAgeDays };
   const provider = useQuery({ queryKey: TAX_KEYS.splitProvider, queryFn: getSplitProvider });
-  const expectations = useQuery({ queryKey: TAX_KEYS.splitExpectations("all"), queryFn: () => listSplitExpectations() });
+  const expectations = useQuery({
+    queryKey: TAX_KEYS.splitExpectations({ ...filter, skip }),
+    queryFn: () => listSplitExpectations({ ...filter, skip, take: PAGE }),
+  });
 
   return (
     <>
@@ -289,13 +368,45 @@ function SplitPayment() {
       )}
       <TaxNote>
         {SPLIT_EXPECTATION_COPY} As expectativas nascem de um cálculo (abra o cálculo e registre). Só uma liquidação registrada — o que foi retido de
-        fato, lançado à mão até haver integração — muda a conciliação; manual e Swagger de integração não são transação liquidada.
+        fato, lançado à mão até haver integração — muda a conciliação. Uma expectativa sozinha nunca significa que algo foi retido ou recolhido.
       </TaxNote>
-      <SectionCard title="Retido x esperado">
+      <SectionCard
+        title="Retido x esperado"
+        actions={<DownloadButton path={splitCsvUrl(filter)} fileName="split.csv" label="Exportar CSV" />}
+      >
+        <div className="mb-3 flex flex-wrap gap-3">
+          <Field id="sp-status" label="Situação" className="w-48">
+            <Select value={status || ALL} onValueChange={(v) => { setStatus(v === ALL ? "" : (v as SplitStatus)); setSkip(0); }}>
+              <SelectTrigger id="sp-status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todas</SelectItem>
+                {(Object.keys(SPLIT_STATUS) as SplitStatus[]).map((k) => <SelectItem key={k} value={k}>{SPLIT_STATUS[k].label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field id="sp-tax" label="Tributo" className="w-40">
+            <Select value={tax || ALL} onValueChange={(v) => { setTax(v === ALL ? "" : (v as TaxType)); setSkip(0); }}>
+              <SelectTrigger id="sp-tax"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todos</SelectItem>
+                {(Object.keys(TAX_NAMES) as TaxType[]).map((k) => <SelectItem key={k} value={k}>{TAX_NAMES[k]}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field id="sp-age" label="Em aberto há pelo menos (dias)" className="w-56">
+            <Input id="sp-age" inputMode="numeric" value={minAgeDays}
+              onChange={(e) => { const n = Number.parseInt(e.target.value, 10); setMinAgeDays(Number.isNaN(n) ? "" : Math.max(0, n)); setSkip(0); }} />
+          </Field>
+        </div>
         {expectations.isLoading && <Skeleton className="h-32 w-full" />}
-        {expectations.isError && <ErrorState title="Não foi possível ler as retenções" onRetry={() => void expectations.refetch()} compact />}
-        {expectations.data?.length === 0 && <EmptyState icon={Wallet} title="Nenhuma retenção esperada" compact />}
-        {expectations.data && expectations.data.length > 0 && <SplitTable items={expectations.data} showCalculation />}
+        {expectations.isError && <TaxQueryError error={expectations.error} what="as retenções" onRetry={() => void expectations.refetch()} />}
+        {expectations.data?.items.length === 0 && <EmptyState icon={Wallet} title={status || tax || minAgeDays !== "" ? "Nada com estes filtros" : "Nenhuma retenção esperada"} compact />}
+        {expectations.data && expectations.data.items.length > 0 && (
+          <>
+            <SplitTable items={expectations.data.items} showCalculation />
+            <TaxPager total={expectations.data.total} skip={skip} take={PAGE} onSkip={setSkip} />
+          </>
+        )}
       </SectionCard>
     </>
   );

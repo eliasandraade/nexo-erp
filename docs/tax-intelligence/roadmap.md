@@ -6,21 +6,20 @@
 |---|---|---|
 | Catálogo | Só IBS/CBS de 2026 e regras de base do art. 12. 2027+ guardado como pendente/não verificado | cálculos de 2027+ saem sem alíquota (com aviso) |
 | Regimes diferenciados/específicos | Itens marcados não são calculados | quem tem cesta básica, saúde, educação etc. vê só aviso |
-| Classificação de itens | Produto não informa regime diferenciado nem NBS; vendas tratam tudo como regime geral | pode superestimar o tributo de itens com redução |
+| Classificação de itens | Classificação tributária por produto (cClassTrib, NCM/NBS) lida pelas vendas; catálogo cClassTrib versionado na plataforma, fail-closed para código inativo | quais códigos servem a cada produto depende da empresa e do profissional |
 | Tributos no preço | Vendas não informam ICMS/ISS/PIS/Cofins embutidos | base superestimada (avisado) |
 | Créditos | Ledger gerencial; elegibilidade declarada, não decidida; sem ligação automática com compras | depende de quem lança |
 | Split payment | Nenhum provedor integrado; retenção real registrada à mão | conciliação manual |
-| Evidências | Só descrição, referência e hash; nenhum arquivo | anexar documentos fica fora do sistema |
 | Maker-checker | Por risco: baixo = auto-aprovação com justificativa; médio = outro revisor identificado; alto = aprovador independente. Acima de `MaterialityThreshold`, o aprovador independente é obrigatório. A justificativa nunca substitui a independência | o valor de materialidade é decisão do dono (sem valor configurado, não há regra de materialidade) |
 | Regras por tenant | Não há regras específicas de um tenant (benefício próprio, regime especial) | benefícios só como texto no perfil |
 | Engine | Registry por versão; V1 congelada. Uma V2 com outra forma canônica precisa decidir como ler o JSON de regras gravado | documentado em rule-engine.md |
 | Revisão jurídica | Catálogo e textos não passaram por profissional tributário; todo o catálogo V1 está `ProfessionalReview = Pending` | com a política de produção, **nenhuma oportunidade pode ser aprovada** até a revisão |
 | Obrigações acessórias | Avaliação histórica por período e escopo (`Unknown`, `Declared`, `Verified`, `InconsistencyIdentified`, `UnderRemediation`, `RemediationVerified`, `NonCompliant`, `NotApplicable`). Só `Verified` conta para regras. A participação no PNCT é registrada, mas não equivale a regularidade | quais documentos comprovam o cumprimento depende do profissional |
 | Recorte da V1 | Matriz fail-closed ([supported-operations.md](supported-operations.md)): 2026, fornecimento único, classificação suficiente, sem MEI/SIMEI nem Simples acima do sublimite | vendas do PDV recusadas até o cadastro do produto ter cClassTrib |
-| Evidências | Tipadas, vinculadas ao requisito e revisadas (aceita/recusada). Referência externa + hash; **nenhum arquivo** é guardado | upload privado é o próximo passo (storage com prefixo do tenant e URL assinada) |
+| Evidências | Tipadas, vinculadas ao requisito, revisadas, substituídas (versões) e revogadas. Arquivo privado opcional (PDF, imagem, XML) com tipo conferido pelos bytes e SHA-256 dos bytes; download autorizado e auditado | sem antivírus configurado, os arquivos ficam marcados "não verificado" (`RequireScan` recusa upload até haver scanner) |
 | Créditos | Ciclo de vida: potencial → requisitos em revisão → a apropriar → apropriado/usado/bloqueado/estornado/vencido; descartado. Potencial nunca é disponível | elegibilidade não é decidida pelo sistema |
-| Split payment | Expectativa gerencial; só uma liquidação registrada muda a conciliação | sem provedor integrado |
-| Retenção | Política pendente de definição legal; nenhum descarte automático; exportação pela API | ver [audit-model.md](audit-model.md#retenção) |
+| Split payment | Expectativa gerencial; liquidação parcial, estorno, divergência, idade, filtros e CSV; abstração de provedor sem provedor falso | sem provedor integrado — liquidação registrada à mão |
+| Retenção | Motor de política versionado (padrão da plataforma + ajuste da empresa quando permitido), legal hold e prévia; **nenhum descarte automático** | prazos dependem de definição jurídica — ver [audit-model.md](audit-model.md#retenção) |
 | Produto | Empacotamento comercial (módulo pago? plano?) não decidido | decisão do dono |
 
 ## Política de aprovação

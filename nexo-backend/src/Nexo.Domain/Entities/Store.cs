@@ -59,6 +59,9 @@ public class Store : TenantEntity
         SetUpdatedAt();
     }
 
+    /// <summary>Bounds each slug regex: the patterns are linear, the timeout keeps any input from holding a request thread.</summary>
+    private static readonly TimeSpan SlugTimeout = TimeSpan.FromMilliseconds(250);
+
     // lowercase, sem acentos, só letras/números/hífen
     public static string NormalizeSlug(string input)
     {
@@ -69,9 +72,9 @@ public class Store : TenantEntity
                 sb.Append(c);
 
         var slug = sb.ToString().ToLowerInvariant();
-        slug = Regex.Replace(slug, @"[\s_]+", "-");
-        slug = Regex.Replace(slug, @"[^a-z0-9\-]", "");
-        slug = Regex.Replace(slug, @"-{2,}", "-");
+        slug = Regex.Replace(slug, @"[\s_]+", "-", RegexOptions.None, SlugTimeout);
+        slug = Regex.Replace(slug, @"[^a-z0-9\-]", "", RegexOptions.None, SlugTimeout);
+        slug = Regex.Replace(slug, @"-{2,}", "-", RegexOptions.None, SlugTimeout);
         return slug.Trim('-');
     }
 

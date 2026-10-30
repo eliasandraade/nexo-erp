@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  startTransition,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -21,7 +22,8 @@ interface AuthContextValue {
    * Also returns the session type so the caller can redirect appropriately.
    */
   login: (input: LoginInput) => Promise<{ error: string | null; type: "tenant" | "platform" | null }>;
-  logout: () => void;
+  /** Signs out locally and goes to `to` (the login page by default; a reason can ride in its query). */
+  logout: (to?: string) => void;
   /** Switch the active store. Issues new JWT pair scoped to the given store. */
   switchStore: (storeId: string) => Promise<void>;
   /** Set session after successful email verification (auto-login). */
@@ -52,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(fresh);
         // If platform user lands on a non-platform route, redirect them
         if (fresh.type === "platform" && !window.location.pathname.startsWith("/platform")) {
-          navigate("/platform", { replace: true });
+          void navigate("/platform", { replace: true });
         }
       } else {
         // Token rejected by server — force logout. With optimistic render the
@@ -60,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // validation window before bouncing to /login.
         setSession(null);
         queryClient.clear();
-        navigate("/login", { replace: true });
+        void navigate("/login", { replace: true });
       }
       setIsReady(true);
     }).catch(() => {
@@ -78,14 +80,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null, type: result.session.type } as const;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback((to = "/login") => {
     // Server-side revocation is best effort; the local session is cleared regardless.
     void authService.logout();
-    setSession(null);
+    // Go first, then drop the session in a transition: React Router 7 navigates inside one, so both land in the
+    // same render and the guard of the page being left never redirects to a bare /login (losing `to`'s reason).
+    void navigate(to, { replace: true });
+    startTransition(() => setSession(null));
     // Drop every cached query so the next user on this browser never sees the
     // previous session's data (dashboard, customers, sales, …).
     queryClient.clear();
-    navigate("/login", { replace: true });
   }, [navigate, queryClient]);
 
   const switchStore = useCallback(async (storeId: string): Promise<void> => {

@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Integrations.Contracts;
@@ -43,7 +42,7 @@ public class LookupController : ControllerBase
     public async Task<IActionResult> LookupCep(string cep, CancellationToken ct)
     {
         // Normalize: strip all non-digit characters
-        var normalizedCep = Regex.Replace(cep, @"\D", "");
+        var normalizedCep = string.Concat(cep.Where(char.IsAsciiDigit));
 
         // Log normalization if different
         if (normalizedCep != cep)
@@ -94,7 +93,7 @@ public class LookupController : ControllerBase
     public async Task<IActionResult> LookupCnpj(string cnpj, CancellationToken ct)
     {
         // Normalize: strip all non-digit characters
-        var normalizedCnpj = Regex.Replace(cnpj, @"\D", "");
+        var normalizedCnpj = string.Concat(cnpj.Where(char.IsAsciiDigit));
 
         // Log normalization if different
         if (normalizedCnpj != cnpj)

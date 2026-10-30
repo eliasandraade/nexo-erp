@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Application.Integrations.Contracts;
@@ -36,7 +35,7 @@ public class BarcodeController : ControllerBase
             return NotFound(new { error = "Consulta por código de barras não está habilitada." });
 
         // Normalize: digits only
-        var normalized = Regex.Replace(barcode, @"\D", "");
+        var normalized = string.Concat(barcode.Where(char.IsAsciiDigit));
 
         if (normalized.Length < 8 || normalized.Length > 14)
             return BadRequest(new { error = "Código de barras deve ter entre 8 e 14 dígitos." });

@@ -47,5 +47,8 @@ export function overviewAttention(o: TaxOverviewDto): string[] {
   if (o.openHighRisk > 0) a.push(`${o.openHighRisk} ${o.openHighRisk === 1 ? "oportunidade de risco alto espera" : "oportunidades de risco alto esperam"} decisão da diretoria.`);
   if (o.splitDivergences > 0) a.push(`${o.splitDivergences} ${o.splitDivergences === 1 ? "retenção do split não confere" : "retenções do split não conferem"} com o esperado.`);
   if (o.creditsToBeAppropriated > 0) a.push("Há créditos com requisitos confirmados que ainda não foram apropriados.");
+  if (o.approvedAwaitingExecution > 0)
+    a.push(`${o.approvedAwaitingExecution} ${o.approvedAwaitingExecution === 1 ? "cenário aprovado espera" : "cenários aprovados esperam"} a verificação da execução.`);
+  if (o.coverageRefusals > 0) a.push(`${o.coverageRefusals} ${o.coverageRefusals === 1 ? "operação ficou" : "operações ficaram"} fora do recorte suportado no período.`);
   return a;
 }

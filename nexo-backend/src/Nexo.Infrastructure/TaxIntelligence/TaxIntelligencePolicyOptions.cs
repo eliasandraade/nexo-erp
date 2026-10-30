@@ -57,8 +57,11 @@ public sealed class TaxIntelligencePolicyOptions
     /// </summary>
     public decimal? MaterialityThreshold { get; set; }
 
-    /// <summary>The strictest approval the risk and the materiality of an opportunity require.</summary>
-    public ApprovalRequirement RequiredFor(TaxRiskLevel risk, decimal estimatedImpact)
+    /// <summary>The strictest approval the risk and the materiality of an opportunity require (installation default threshold).</summary>
+    public ApprovalRequirement RequiredFor(TaxRiskLevel risk, decimal estimatedImpact) => RequiredFor(risk, estimatedImpact, MaterialityThreshold);
+
+    /// <summary>The strictest approval the risk and a given materiality threshold (the one in force on the decision date) require.</summary>
+    public ApprovalRequirement RequiredFor(TaxRiskLevel risk, decimal estimatedImpact, decimal? threshold)
     {
         var byRisk = risk switch
         {
@@ -66,7 +69,7 @@ public sealed class TaxIntelligencePolicyOptions
             TaxRiskLevel.Medium => MediumRisk,
             _ => LowRisk,
         };
-        var material = MaterialityThreshold is not null && estimatedImpact >= MaterialityThreshold;
+        var material = threshold is not null && estimatedImpact >= threshold;
         return material && byRisk < ApprovalRequirement.IndependentApprover ? ApprovalRequirement.IndependentApprover : byRisk;
     }
 }

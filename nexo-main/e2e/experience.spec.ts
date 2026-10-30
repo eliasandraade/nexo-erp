@@ -808,7 +808,9 @@ test('Configurações: só regras com efeito — descontos do PDV e alertas de e
 // ── Inteligência tributária (mocked) ─────────────────────────────────────────
 const taxOverview = { profileConfigured:true, periodFrom:'2026-09-27', periodTo:'2026-10-26', calculations:4, taxedBase:12000, estimatedTax:120, effectiveRatePercent:1,
   creditsAvailable:30, creditsBlocked:0, creditsPotential:7, creditsToBeAppropriated:5, openOpportunities:3, potentialSavings:210.5, potentialCalculatedTaxReductions:0.5, potentialDeferrals:900, potentialCashFlow:40, potentialCredits:15,
-  openHighRisk:1, blockedOpportunities:1, splitDivergences:0, activeRulesToday:6, pendingRulesToday:2 };
+  openHighRisk:1, blockedOpportunities:1, splitDivergences:0, activeRulesToday:6, pendingRulesToday:2, outboundTax:120, inboundTax:35,
+  creditsAppropriated:60, creditsUsed:20, approvedAwaitingExecution:0, unverifiedRulesToday:0, rulesPendingProfessionalReview:6,
+  complianceInForce:null, complianceInForceTo:null, coverageRefusals:0, coverageRefusalsByStatus:null, governanceRefusals:0 };
 const taxShadowNotice = 'Piloto controlado — resultados para análise e validação. Não executa alteração fiscal, contábil ou financeira automaticamente.';
 const taxGovernanceStatus = { enabled:true, mode:'ControlledPilot', policy:'orken-pilot-approval/1', admitted:true, refusalCode:null, refusalMessage:null,
   effectsNotice:taxShadowNotice, pilotScope:null };
@@ -847,7 +849,7 @@ test('Tributos: visão geral separa as naturezas de impacto e cabe no celular', 
   await expect(page.getByText('R$ 210,50')).toBeVisible();
   await expect(page.getByText('R$ 900,00')).toBeVisible();
   await expect(page.getByText('R$ 1.165,50')).toHaveCount(0);
-  await expect(page.getByText('Redução simulada do IBS/CBS calculado').first()).toBeVisible();
+  await expect(page.getByText('Redução do IBS/CBS calculado — não é economia').first()).toBeVisible();
   await expect(page.getByText('R$ 211,00')).toHaveCount(0);
   await expect(page.getByText(/alíquotas de teste/)).toBeVisible();
   await noOverflow(page); expect(errors).toEqual([]);
@@ -870,7 +872,7 @@ test('Tributos: risco alto só aprova com a decisão assumida', async ({ page })
   await expect(page.getByText('Aprovado internamente para piloto controlado', { exact:true })).toBeVisible();
   await expect(page.getByText('Revisão profissional pendente', { exact:true })).toBeVisible();
   // The shadow-mode banner: the pilot never changes anything fiscal by itself.
-  await expect(page.getByRole('status').filter({ hasText:'Piloto controlado' })).toContainText('Não executa alteração fiscal, contábil ou financeira automaticamente');
+  await expect(page.getByRole('region', { name:'Piloto controlado' })).toContainText('Não executa alteração fiscal, contábil ou financeira automaticamente');
   await page.getByRole('button', { name:'Aprovar' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog.getByRole('button', { name:'Aprovar' })).toBeDisabled();

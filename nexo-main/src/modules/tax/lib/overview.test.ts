@@ -6,7 +6,9 @@ const overview: TaxOverviewDto = {
   profileConfigured: true, periodFrom: "2026-09-26", periodTo: "2026-10-26", calculations: 3, taxedBase: 1000, estimatedTax: 10,
   effectiveRatePercent: 1, creditsAvailable: 5, creditsBlocked: 0, creditsPotential: 0, creditsToBeAppropriated: 0, openOpportunities: 2,
   potentialSavings: 100, potentialCalculatedTaxReductions: 0.5, potentialDeferrals: 250, potentialCashFlow: 30, potentialCredits: 12.5, openHighRisk: 0,
-  blockedOpportunities: 0, splitDivergences: 0, activeRulesToday: 4, pendingRulesToday: 1,
+  blockedOpportunities: 0, splitDivergences: 0, activeRulesToday: 4, pendingRulesToday: 1, outboundTax: 10, inboundTax: 3, creditsAppropriated: 0,
+  creditsUsed: 0, approvedAwaitingExecution: 0, unverifiedRulesToday: 0, rulesPendingProfessionalReview: 4, complianceInForce: null, complianceInForceTo: null,
+  coverageRefusals: 0, coverageRefusalsByStatus: null, governanceRefusals: 0,
 };
 
 describe("overview impacts", () => {
@@ -15,7 +17,7 @@ describe("overview impacts", () => {
     expect(tiles.map((t) => [t.nature, t.amount])).toEqual([
       ["DefinitiveSaving", 100], ["CalculatedTaxReduction", 0.5], ["Deferral", 250], ["CashFlow", 30], ["Credit", 12.5],
     ]);
-    expect(tiles.find((t) => t.nature === "CalculatedTaxReduction")?.label).toBe("Redução simulada do IBS/CBS calculado");
+    expect(tiles.find((t) => t.nature === "CalculatedTaxReduction")?.label).toBe("Redução do IBS/CBS calculado — não é economia");
     expect(tiles.find((t) => t.nature === "DefinitiveSaving")?.amount).toBe(100);
     expect(tiles.find((t) => t.nature === "Deferral")?.label).toBe("Diferimento — não é economia");
     expect(tiles.some((t) => t.amount === 393 || t.amount === 100.5)).toBe(false);
@@ -38,6 +40,10 @@ describe("overview impacts", () => {
       "Cadastre o perfil tributário: sem ele nenhum cálculo é feito.",
       "2 oportunidades de risco alto esperam decisão da diretoria.",
       "1 retenção do split não confere com o esperado.",
+    ]);
+    expect(overviewAttention({ ...overview, approvedAwaitingExecution: 1, coverageRefusals: 3 })).toEqual([
+      "1 cenário aprovado espera a verificação da execução.",
+      "3 operações ficaram fora do recorte suportado no período.",
     ]);
   });
 });

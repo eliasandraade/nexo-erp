@@ -29,12 +29,13 @@ public class TaxProfile : StoreEntity
     public TaxProfileVersion AddVersion(
         DateOnly validFrom, TaxRegime regime, string state, string cityIbgeCode, string primaryCnae,
         IReadOnlyList<string> secondaryCnaes, IReadOnlyList<string> specialRegimes, IReadOnlyList<string> benefits,
-        string reason, Guid createdById, string createdByName)
+        string reason, Guid createdById, string createdByName,
+        TaxSimplesSituation? simplesSituation = null, bool? regularRegimeOption = null)
     {
         var number = _versions.Count == 0 ? 1 : _versions.Max(v => v.VersionNumber) + 1;
         var version = new TaxProfileVersion(
             TenantId, Id, number, validFrom, regime, state, cityIbgeCode, primaryCnae, secondaryCnaes,
-            specialRegimes, benefits, reason, createdById, createdByName);
+            specialRegimes, benefits, reason, createdById, createdByName, simplesSituation, regularRegimeOption);
         _versions.Add(version);
         SetUpdatedAt();
         return version;
@@ -53,7 +54,8 @@ public class TaxProfileVersion : StoreEntity
     internal TaxProfileVersion(
         Guid tenantId, Guid profileId, int versionNumber, DateOnly validFrom, TaxRegime regime, string state,
         string cityIbgeCode, string primaryCnae, IReadOnlyList<string> secondaryCnaes, IReadOnlyList<string> specialRegimes,
-        IReadOnlyList<string> benefits, string reason, Guid createdById, string createdByName)
+        IReadOnlyList<string> benefits, string reason, Guid createdById, string createdByName,
+        TaxSimplesSituation? simplesSituation = null, bool? regularRegimeOption = null)
         : base(tenantId)
     {
         if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Informe o motivo da nova versão do perfil.");
@@ -74,6 +76,33 @@ public class TaxProfileVersion : StoreEntity
         Reason = reason.Trim();
         CreatedById = createdById;
         CreatedByName = createdByName;
+        SimplesSituation = simplesSituation ?? SituationOf(regime);
+        CheckSimples(regime, SimplesSituation, regularRegimeOption);
+        IbsCbsRegularRegimeOption = regularRegimeOption;
+    }
+
+    /// <summary>The Simples situation the general regime implies when none is declared — never "within the regular regime" by guess.</summary>
+    public static TaxSimplesSituation SituationOf(TaxRegime regime) => regime switch
+    {
+        TaxRegime.SimplesNacional => TaxSimplesSituation.WithinSublimit,
+        TaxRegime.SimplesNacionalExcessoSublimite => TaxSimplesSituation.AboveSublimit,
+        TaxRegime.Mei => TaxSimplesSituation.Mei,
+        _ => TaxSimplesSituation.NotOptant,
+    };
+
+    private static void CheckSimples(TaxRegime regime, TaxSimplesSituation situation, bool? regularOption)
+    {
+        var consistent = regime switch
+        {
+            TaxRegime.SimplesNacional => situation is TaxSimplesSituation.WithinSublimit or TaxSimplesSituation.Unknown,
+            TaxRegime.SimplesNacionalExcessoSublimite => situation is TaxSimplesSituation.AboveSublimit or TaxSimplesSituation.Unknown,
+            TaxRegime.Mei => situation is TaxSimplesSituation.Mei or TaxSimplesSituation.Simei or TaxSimplesSituation.Unknown,
+            _ => situation == TaxSimplesSituation.NotOptant,
+        };
+        if (!consistent)
+            throw new DomainException("A situação no Simples não combina com o regime informado.", "tax_profile_simples_situation");
+        if (situation == TaxSimplesSituation.NotOptant && regularOption is not null)
+            throw new DomainException("A opção pelo regime regular do IBS/CBS só existe para optantes do Simples.", "tax_profile_regular_option");
     }
 
     public Guid ProfileId { get; private set; }
@@ -93,6 +122,14 @@ public class TaxProfileVersion : StoreEntity
     public string Reason { get; private set; } = string.Empty;
     public Guid CreatedById { get; private set; }
     public string CreatedByName { get; private set; } = string.Empty;
+
+    /// <summary>Simples Nacional situation as declared (MEI, SIMEI, sub-limit…); Unknown is never read as the regular regime.</summary>
+    public TaxSimplesSituation SimplesSituation { get; private set; } = TaxSimplesSituation.Unknown;
+    /// <summary>
+    /// Whether a Simples optant chose to pay IBS/CBS under the regular regime. Null = not informed — treated as
+    /// unknown (the operation is not calculated), never as either answer.
+    /// </summary>
+    public bool? IbsCbsRegularRegimeOption { get; private set; }
 
     public bool IsSimplesNacional => Regime is TaxRegime.SimplesNacional or TaxRegime.SimplesNacionalExcessoSublimite or TaxRegime.Mei;
 }

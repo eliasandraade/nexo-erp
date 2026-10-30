@@ -234,9 +234,10 @@ public class TaxPilotGovernanceTests
                         $"{t.Name} must not depend on the sales services (it never changes a sale or a price)");
                 }
 
-        // The split payment provider is read-only (configuration status): no member can settle, retain or pay.
-        typeof(Nexo.Infrastructure.TaxIntelligence.ISplitPaymentProvider).GetMethods()
-            .Where(m => !m.IsSpecialName).Should().BeEmpty("the pilot never settles a split with a provider");
+        // The split payment provider only reports (configuration status and, once a real one exists, the retentions it did): no member
+        // can settle, retain, pay or transmit anything.
+        typeof(Nexo.Infrastructure.TaxIntelligence.ISplitPaymentProvider).GetMethods().Where(m => !m.IsSpecialName)
+            .Select(m => m.Name).Should().OnlyContain(n => n.StartsWith("Fetch", StringComparison.Ordinal), "the pilot never settles a split with a provider");
     }
 
     [Fact]

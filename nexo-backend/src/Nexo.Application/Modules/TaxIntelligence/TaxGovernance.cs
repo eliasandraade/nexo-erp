@@ -73,30 +73,66 @@ public sealed record TaxRuleGovernanceDto(
     Guid? InternalApprovedById, string? InternalApprovedBy, string? InternalApprovedByRole, DateTime? InternalApprovedAt,
     string? InternalApprovalScope, DateOnly? InternalApprovalValidFrom, DateOnly? InternalApprovalValidTo, string? PilotCaveats,
     string? InternalApprovalDecisionRef,
-    ProfessionalReviewStatus ProfessionalReview, bool ProfessionallyApproved, string? ProfessionalReviewScope, string? ProfessionalCaveats);
+    ProfessionalReviewStatus ProfessionalReview, bool ProfessionallyApproved, string? ProfessionalReviewScope, string? ProfessionalCaveats,
+    Guid? ProfessionalReviewRecordId = null, string? ProfessionalReviewer = null, string? ProfessionalReference = null,
+    DateOnly? ProfessionalReviewValidFrom = null, DateOnly? ProfessionalReviewValidTo = null, IReadOnlyList<string>? ProfessionalReviewRegimes = null);
 
 /// <summary>The pilot scope as it stood: the decision that opened it, its window and who activated it.</summary>
 public sealed record TaxPilotScopeSnapshotDto(
     string DecisionReference, DateOnly ValidFrom, DateOnly? ValidTo, string ActivatedByName, DateTime ActivatedAt);
 
-/// <summary>The approval governance a calculation or a decision ran under: mode, policy, enforcement, scope and each rule.</summary>
-public sealed record TaxGovernanceDto(
-    TaxApprovalMode Mode, string Policy, bool Enforced, string Nature, string Notice, string? EffectsNotice,
-    TaxPilotScopeSnapshotDto? PilotScope, IReadOnlyList<TaxRuleGovernanceDto> Rules)
+/// <summary>
+/// The approval governance a calculation or a decision ran under: mode, policy, enforcement, scope and each rule.
+/// The derived lists are computed once whenever the mode or the rules are set — also by a <c>with</c> copy.
+/// </summary>
+public sealed record TaxGovernanceDto
 {
+    private readonly TaxApprovalMode _mode;
+    private readonly IReadOnlyList<TaxRuleGovernanceDto> _rules = [];
+
+    public TaxGovernanceDto(
+        TaxApprovalMode mode, string policy, bool enforced, string nature, string notice, string? effectsNotice,
+        TaxPilotScopeSnapshotDto? pilotScope, IReadOnlyList<TaxRuleGovernanceDto> rules)
+    {
+        Policy = policy;
+        Enforced = enforced;
+        Nature = nature;
+        Notice = notice;
+        EffectsNotice = effectsNotice;
+        PilotScope = pilotScope;
+        _mode = mode;
+        _rules = rules;
+        Derive();
+    }
+
+    public TaxApprovalMode Mode { get => _mode; init { _mode = value; Derive(); } }
+    public string Policy { get; init; }
+    public bool Enforced { get; init; }
+    public string Nature { get; init; }
+    public string Notice { get; init; }
+    public string? EffectsNotice { get; init; }
+    public TaxPilotScopeSnapshotDto? PilotScope { get; init; }
+    public IReadOnlyList<TaxRuleGovernanceDto> Rules { get => _rules; init { _rules = value; Derive(); } }
+
     /// <summary>Rule versions (key vN) that do not back new work in the mode.</summary>
-    public IReadOnlyList<string> NotApproved => Rules
-        .Where(r => !TaxGovernance.Satisfies(Mode, r.TechnicalStatus == TaxRuleStatus.Active, r.ApprovedForPilot, r.ProfessionallyApproved))
-        .Select(r => $"{r.Key} v{r.Version}").ToList();
+    public IReadOnlyList<string> NotApproved { get; private set; } = [];
 
     /// <summary>Rule versions (key vN) whose professional review is not an approval for the date.</summary>
-    public IReadOnlyList<string> ProfessionalReviewPending => Rules
-        .Where(r => !r.ProfessionallyApproved).Select(r => $"{r.Key} v{r.Version}").ToList();
+    public IReadOnlyList<string> ProfessionalReviewPending { get; private set; } = [];
 
     /// <summary>The exact internal decision records behind the rules — one per distinct decision, never a global stand-in.</summary>
-    public IReadOnlyList<string> DecisionReferences => Rules
-        .Select(r => r.InternalApprovalDecisionRef).Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d!)
-        .Distinct(StringComparer.Ordinal).OrderBy(d => d, StringComparer.Ordinal).ToList();
+    public IReadOnlyList<string> DecisionReferences { get; private set; } = [];
+
+    private void Derive()
+    {
+        NotApproved = _rules
+            .Where(r => !TaxGovernance.Satisfies(_mode, r.TechnicalStatus == TaxRuleStatus.Active, r.ApprovedForPilot, r.ProfessionallyApproved))
+            .Select(r => $"{r.Key} v{r.Version}").ToList();
+        ProfessionalReviewPending = _rules.Where(r => !r.ProfessionallyApproved).Select(r => $"{r.Key} v{r.Version}").ToList();
+        DecisionReferences = _rules
+            .Select(r => r.InternalApprovalDecisionRef).Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d!)
+            .Distinct(StringComparer.Ordinal).OrderBy(d => d, StringComparer.Ordinal).ToList();
+    }
 }
 
 /// <summary>
@@ -105,4 +141,4 @@ public sealed record TaxGovernanceDto(
 /// </summary>
 public sealed record TaxGovernanceStatusDto(
     bool Enabled, TaxApprovalMode Mode, string Policy, bool Admitted, string? RefusalCode, string? RefusalMessage,
-    string? EffectsNotice, TaxPilotScopeSnapshotDto? PilotScope);
+    string? EffectsNotice, TaxPilotScopeSnapshotDto? PilotScope, TaxModuleStatus ModuleStatus = TaxModuleStatus.Inactive);

@@ -54,13 +54,23 @@ public class TaxLegalSource : BaseEntity
         };
     }
 
-    /// <summary>Records that someone compared the excerpt with the official text (text only, not a legal opinion).</summary>
-    public void MarkVerified(string verifiedBy, DateTime verifiedAtUtc)
+    /// <summary>The authenticated user who recorded the verification (kept apart from who compared, as informed).</summary>
+    public Guid? VerificationRecordedById { get; private set; }
+    public string? VerificationRecordedBy { get; private set; }
+
+    /// <summary>
+    /// Records that someone compared the excerpt with the official text (text only, not a legal opinion). Who
+    /// compared is as informed; who recorded it is the authenticated user. A verified source activates nothing.
+    /// </summary>
+    public void MarkVerified(string verifiedBy, DateTime verifiedAtUtc, Guid? recordedById = null, string? recordedBy = null)
     {
         if (string.IsNullOrWhiteSpace(verifiedBy)) throw new DomainException("Informe quem conferiu a fonte.");
+        if (IsTextVerified) throw new DomainException("O texto desta fonte já foi conferido; um novo texto é uma nova fonte.", "tax_legal_source_verified");
         TextVerification = TextVerificationStatus.Verified;
         VerifiedBy = verifiedBy.Trim();
         VerifiedAt = verifiedAtUtc;
+        VerificationRecordedById = recordedById;
+        VerificationRecordedBy = string.IsNullOrWhiteSpace(recordedBy) ? null : recordedBy.Trim();
         SetUpdatedAt();
     }
 }

@@ -53,6 +53,21 @@ public class TaxOpportunity : StoreEntity
     /// evidence). Only grows: a later answer or review never erases an earlier participant.
     /// </summary>
     public List<Guid> ParticipantIds { get; private set; } = [];
+    /// <summary>Who is responsible for moving the analysis forward (a work assignment, not an approval).</summary>
+    public Guid? AssignedToId { get; private set; }
+    public string? AssignedToName { get; private set; }
+    public DateTime? AssignedAt { get; private set; }
+
+    /// <summary>Assigns (or clears, with null) the person responsible for the analysis. It grants no approval power.</summary>
+    public void Assign(Guid? userId, string? userName, DateTime atUtc)
+    {
+        if (userId is not null && string.IsNullOrWhiteSpace(userName))
+            throw new DomainException("Informe o nome de quem fica responsável.", "tax_opportunity_assignee");
+        AssignedToId = userId;
+        AssignedToName = userId is null ? null : userName!.Trim();
+        AssignedAt = atUtc;
+        SetUpdatedAt();
+    }
 
     public IReadOnlyCollection<TaxOpportunityRequirement> Requirements => _requirements.AsReadOnly();
     public IReadOnlyCollection<TaxOpportunityEvidence> Evidence => _evidence.AsReadOnly();
@@ -137,16 +152,68 @@ public class TaxOpportunity : StoreEntity
 
     /// <summary>
     /// Attaches evidence, optionally to the requirement it supports. Evidence of the execution phase
-    /// (the fiscal document of the operation…) is only accepted after the scenario approval.
+    /// (the fiscal document of the operation…) is only accepted after the scenario approval. With a stored file,
+    /// the hash is the SHA-256 of its bytes; a reference alone is fingerprinted from its description.
     /// </summary>
     public TaxOpportunityEvidence AddEvidence(
         TaxEvidenceType type, Guid? requirementId, string description, string? documentReference, string contentHash, string? notes,
-        Guid userId, string userName)
+        Guid userId, string userName, TaxEvidenceFile? file = null)
+    {
+        EnsureEvidenceOpen();
+        if (string.IsNullOrWhiteSpace(description)) throw new DomainException("Descreva a evidência.");
+        CheckPhase(requirementId);
+        var e = new TaxOpportunityEvidence(TenantId, Id, type, requirementId, description, documentReference,
+            file?.Sha256 ?? contentHash, notes, userId, userName, file);
+        _evidence.Add(e);
+        Participate(userId);
+        SetUpdatedAt();
+        return e;
+    }
+
+    /// <summary>
+    /// A newer version of a piece of evidence (a corrected file, the signed contract instead of the draft). The old
+    /// one becomes Superseded and stays on record — and in any dossier that already froze it.
+    /// </summary>
+    public TaxOpportunityEvidence ReplaceEvidence(Guid evidenceId, string description, string? documentReference, string contentHash,
+        string? notes, Guid userId, string userName, TaxEvidenceFile? file = null)
+    {
+        EnsureEvidenceOpen();
+        var old = _evidence.FirstOrDefault(x => x.Id == evidenceId) ?? throw new NotFoundException("Evidência", evidenceId);
+        if (!old.InForce) throw new DomainException("Só uma evidência em vigor pode ser substituída.", "tax_evidence_state");
+        if (string.IsNullOrWhiteSpace(description)) throw new DomainException("Descreva a evidência.");
+        CheckPhase(old.RequirementId);
+        var e = new TaxOpportunityEvidence(TenantId, Id, old.Type, old.RequirementId, description, documentReference,
+            file?.Sha256 ?? contentHash, notes, userId, userName, file, old);
+        old.SupersedeBy(e.Id);
+        _evidence.Add(e);
+        Participate(userId);
+        SetUpdatedAt();
+        return e;
+    }
+
+    /// <summary>
+    /// Withdraws a piece of evidence on record (wrong document, wrong operation). It supports nothing from then on;
+    /// a decision that already froze it keeps it in its dossier, unchanged.
+    /// </summary>
+    public void RevokeEvidence(Guid evidenceId, string reason, Guid userId, string userName, DateTime atUtc)
+    {
+        var e = _evidence.FirstOrDefault(x => x.Id == evidenceId) ?? throw new NotFoundException("Evidência", evidenceId);
+        if (!e.InForce) throw new DomainException("Esta evidência já não está em vigor.", "tax_evidence_state");
+        if (string.IsNullOrWhiteSpace(reason)) throw new DomainException("Diga por que a evidência foi revogada.", "tax_evidence_reason");
+        e.Revoke(reason, userName, atUtc);
+        Participate(userId);
+        SetUpdatedAt();
+    }
+
+    private void EnsureEvidenceOpen()
     {
         if (Status is TaxOpportunityStatus.Rejected or TaxOpportunityStatus.Blocked
             or TaxOpportunityStatus.ExecutionVerified or TaxOpportunityStatus.ExecutionDiverged)
             throw new DomainException("Esta oportunidade já foi encerrada.", "tax_opportunity_closed");
-        if (string.IsNullOrWhiteSpace(description)) throw new DomainException("Descreva a evidência.");
+    }
+
+    private void CheckPhase(Guid? requirementId)
+    {
         var requirement = requirementId is null ? null
             : _requirements.FirstOrDefault(r => r.Id == requirementId) ?? throw new NotFoundException("Requisito", requirementId.Value);
         var executionPhase = Status == TaxOpportunityStatus.Approved;
@@ -154,31 +221,24 @@ public class TaxOpportunity : StoreEntity
             throw new DomainException("Depois da aprovação do cenário, só entram evidências ligadas a requisitos da execução.", "tax_evidence_phase");
         if (!executionPhase && requirement?.Phase == RequirementPhase.ExecutionVerification)
             throw new DomainException("Evidência da execução só depois que o cenário for aprovado e a operação acontecer.", "tax_evidence_phase");
-
-        var e = new TaxOpportunityEvidence(TenantId, Id, type, requirementId, description, documentReference, contentHash, notes, userId, userName);
-        _evidence.Add(e);
-        Participate(userId);
-        SetUpdatedAt();
-        return e;
     }
 
     /// <summary>Accepts or rejects a piece of evidence. A rejected one does not support any requirement.</summary>
     public void ReviewEvidence(Guid evidenceId, bool accepted, string? notes, Guid userId, string userName, DateTime atUtc)
     {
-        if (Status is TaxOpportunityStatus.Rejected or TaxOpportunityStatus.Blocked
-            or TaxOpportunityStatus.ExecutionVerified or TaxOpportunityStatus.ExecutionDiverged)
-            throw new DomainException("Esta oportunidade já foi encerrada.", "tax_opportunity_closed");
+        EnsureEvidenceOpen();
         var e = _evidence.FirstOrDefault(x => x.Id == evidenceId) ?? throw new NotFoundException("Evidência", evidenceId);
+        if (!e.InForce) throw new DomainException("Esta evidência já não está em vigor: revise a versão atual.", "tax_evidence_state");
         if (!accepted && string.IsNullOrWhiteSpace(notes)) throw new DomainException("Diga por que a evidência foi recusada.");
         e.Review(accepted, notes, userId, userName, atUtc);
         Participate(userId);
         SetUpdatedAt();
     }
 
-    /// <summary>Whether the requirement has the evidence it asks for (of its type, linked to it, not rejected).</summary>
+    /// <summary>Whether the requirement has the evidence it asks for (of its type, linked to it, in force and not rejected).</summary>
     public bool HasRequiredEvidence(TaxOpportunityRequirement r)
         => r.RequiredEvidence is null
-           || _evidence.Any(e => e.RequirementId == r.Id && e.Type == r.RequiredEvidence && e.Status != TaxEvidenceStatus.Rejected);
+           || _evidence.Any(e => e.RequirementId == r.Id && e.Type == r.RequiredEvidence && e.Supports);
 
     /// <summary>
     /// Marks the opportunity as a prohibited structure. Final: the saving is no longer offered and
@@ -365,14 +425,21 @@ public class TaxOpportunityRequirement : StoreEntity
 /// <summary>
 /// Evidence attached during the analysis or the execution check (a proposal, a contract, the
 /// authorised fiscal document…), typed and linked to the requirement it supports. Content never
-/// changes; only its review status moves (accepted / rejected, with who and why).
+/// changes; only its review status moves (accepted / rejected, with who and why), and a newer version
+/// supersedes it or it is revoked — the old record always stays.
 /// </summary>
 public class TaxOpportunityEvidence : StoreEntity
 {
+    /// <summary>The hash is the SHA-256 of the stored file's bytes.</summary>
+    public const string FileHash = "sha256-file";
+    /// <summary>No file: the hash fingerprints the reference and its description (integrity of the record only).</summary>
+    public const string ReferenceHash = "reference";
+
     private TaxOpportunityEvidence() { }   // EF Core
 
     internal TaxOpportunityEvidence(Guid tenantId, Guid opportunityId, TaxEvidenceType type, Guid? requirementId, string description,
-        string? documentReference, string contentHash, string? notes, Guid addedById, string addedByName) : base(tenantId)
+        string? documentReference, string contentHash, string? notes, Guid addedById, string addedByName,
+        TaxEvidenceFile? file = null, TaxOpportunityEvidence? supersedes = null) : base(tenantId)
     {
         OpportunityId = opportunityId;
         Type = type;
@@ -380,10 +447,47 @@ public class TaxOpportunityEvidence : StoreEntity
         Description = description.Trim();
         DocumentReference = string.IsNullOrWhiteSpace(documentReference) ? null : documentReference.Trim();
         ContentHash = contentHash;
+        HashKind = file is null ? ReferenceHash : FileHash;
+        FileId = file?.Id;
         Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
         Status = TaxEvidenceStatus.Submitted;
         AddedById = addedById;
         AddedByName = addedByName;
+        Version = supersedes is null ? 1 : supersedes.Version + 1;
+        SupersedesEvidenceId = supersedes?.Id;
+    }
+
+    /// <summary>What <see cref="ContentHash"/> fingerprints: the file's bytes or only the reference.</summary>
+    public string HashKind { get; private set; } = ReferenceHash;
+    /// <summary>The private file, when one was uploaded.</summary>
+    public Guid? FileId { get; private set; }
+    public int Version { get; private set; } = 1;
+    public Guid? SupersedesEvidenceId { get; private set; }
+    public Guid? SupersededByEvidenceId { get; private set; }
+    public DateTime? RevokedAt { get; private set; }
+    public string? RevokedByName { get; private set; }
+    public string? RevocationReason { get; private set; }
+
+    /// <summary>Not superseded or revoked.</summary>
+    public bool InForce => Status is not (TaxEvidenceStatus.Superseded or TaxEvidenceStatus.Revoked);
+
+    /// <summary>Whether it can support a requirement: in force and not rejected.</summary>
+    public bool Supports => Status is TaxEvidenceStatus.Submitted or TaxEvidenceStatus.Accepted;
+
+    internal void SupersedeBy(Guid newerId)
+    {
+        Status = TaxEvidenceStatus.Superseded;
+        SupersededByEvidenceId = newerId;
+        SetUpdatedAt();
+    }
+
+    internal void Revoke(string reason, string userName, DateTime atUtc)
+    {
+        Status = TaxEvidenceStatus.Revoked;
+        RevokedAt = atUtc;
+        RevokedByName = userName;
+        RevocationReason = reason.Trim();
+        SetUpdatedAt();
     }
 
     public Guid OpportunityId { get; private set; }
@@ -393,7 +497,7 @@ public class TaxOpportunityEvidence : StoreEntity
     public string Description { get; private set; } = string.Empty;
     /// <summary>
     /// Where the document is (access key of an NF-e, contract number, a reference in the company's own
-    /// archive). No file is stored by this version — private upload is a next step.
+    /// archive). The file itself, when uploaded, is <see cref="FileId"/>.
     /// </summary>
     public string? DocumentReference { get; private set; }
     public string ContentHash { get; private set; } = string.Empty;

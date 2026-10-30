@@ -14,13 +14,8 @@ namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 public class TaxProfileController : ControllerBase
 {
     private readonly TaxProfileService _profiles;
-    private readonly TaxComplianceService _compliance;
 
-    public TaxProfileController(TaxProfileService profiles, TaxComplianceService compliance)
-    {
-        _profiles = profiles;
-        _compliance = compliance;
-    }
+    public TaxProfileController(TaxProfileService profiles) => _profiles = profiles;
 
     /// <summary>Profile versions of the current establishment, the one in force today and a suggestion from the fiscal profile.</summary>
     [HttpGet("profile")]
@@ -28,9 +23,21 @@ public class TaxProfileController : ControllerBase
 
     /// <summary>Adds a profile version (e.g. a change of regime from a date). Earlier versions never change.</summary>
     [HttpPost("profile/versions")]
-    [Authorize(Roles = AppRoles.Directors)]
+    [Authorize(Roles = TaxCapabilities.Policies)]
     public async Task<ActionResult<TaxProfileVersionDto>> AddProfileVersion([FromBody] CreateTaxProfileVersionRequest request, CancellationToken ct)
         => Ok(await _profiles.AddVersionAsync(request, ct));
+}
+
+/// <summary>Ancillary-obligation assessments of the establishment and the obligations it can assess.</summary>
+[ApiController]
+[Route("api/tax")]
+[Authorize(Roles = AppRoles.Management)]
+[Nexo.Api.Filters.ValidateBody]
+public class TaxComplianceController : ControllerBase
+{
+    private readonly TaxComplianceService _compliance;
+
+    public TaxComplianceController(TaxComplianceService compliance) => _compliance = compliance;
 
     /// <summary>Ancillary-obligation assessments of the establishment, by period and scope.</summary>
     [HttpGet("compliance-assessments")]
@@ -42,8 +49,13 @@ public class TaxProfileController : ControllerBase
     /// compliance; a declaration, a remediation or PNCT participation never does. Earlier assessments stay.
     /// </summary>
     [HttpPost("compliance-assessments")]
-    [Authorize(Roles = AppRoles.Directors)]
+    [Authorize(Roles = TaxCapabilities.Policies)]
     public async Task<ActionResult<TaxComplianceAssessmentDto>> RecordComplianceAssessment(
         [FromBody] RecordComplianceAssessmentRequest request, CancellationToken ct)
         => Ok(await _compliance.RecordAsync(request, DateTime.UtcNow, ct));
+
+    /// <summary>The ancillary obligations the platform catalogue lets companies assess (active ones).</summary>
+    [HttpGet("obligations")]
+    public async Task<ActionResult<IReadOnlyList<TaxObligationDefinitionDto>>> Obligations(CancellationToken ct)
+        => Ok(await _compliance.ObligationsAsync(onlyActive: true, ct));
 }

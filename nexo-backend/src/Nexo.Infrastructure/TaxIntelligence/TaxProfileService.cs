@@ -62,23 +62,25 @@ public sealed class TaxProfileService
             }
             var version = profile.AddVersion(
                 r.ValidFrom, r.Regime, r.State.Trim(), r.CityIbgeCode.Trim(), r.PrimaryCnae.Trim(),
-                r.SecondaryCnaes ?? [], r.SpecialRegimes ?? [], r.Benefits ?? [], r.Reason, _audit.UserId, _audit.UserName);
+                r.SecondaryCnaes ?? [], r.SpecialRegimes ?? [], r.Benefits ?? [], r.Reason, _audit.UserId, _audit.UserName,
+                r.SimplesSituation, r.IbsCbsRegularRegimeOption);
             _db.TaxProfileVersions.Add(version);
 
             _audit.Record(TaxAuditActions.ProfileVersionCreated, "ProfileVersion", version.Id,
                 $"Perfil tributário v{version.VersionNumber}: {r.Regime} a partir de {r.ValidFrom:dd/MM/yyyy}.",
-                new { version.VersionNumber, validFrom = r.ValidFrom, regime = r.Regime.ToString(), r.State, r.CityIbgeCode, r.Reason },
+                new { version.VersionNumber, validFrom = r.ValidFrom, regime = r.Regime.ToString(), r.State, r.CityIbgeCode, r.Reason,
+                    simplesSituation = version.SimplesSituation.ToString(), version.IbsCbsRegularRegimeOption },
                 AuditSeverity.Warning);
             await _db.SaveChangesAsync(ct);
             return Map(version);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            throw new ConflictException("Outra versão do perfil foi criada ao mesmo tempo. Recarregue e tente de novo.");
+            throw new ConflictException("Outra versão do perfil foi criada ao mesmo tempo. Recarregue e tente de novo.", "tax_profile_concurrent");
         }
     }
 
     private static TaxProfileVersionDto Map(TaxProfileVersion v) => new(
         v.Id, v.VersionNumber, v.ValidFrom, v.Regime, v.State, v.CityIbgeCode, v.PrimaryCnae, v.SecondaryCnaes,
-        v.SpecialRegimes, v.Benefits, v.Reason, v.CreatedByName, v.CreatedAt);
+        v.SpecialRegimes, v.Benefits, v.Reason, v.CreatedByName, v.CreatedAt, v.SimplesSituation, v.IbsCbsRegularRegimeOption);
 }

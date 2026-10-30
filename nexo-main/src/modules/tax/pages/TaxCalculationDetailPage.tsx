@@ -5,18 +5,19 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
-import { ErrorState } from "@/components/shared/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import {
-  TAX_KEY, TAX_KEYS, createSplitExpectations, getTaxCalculation, getTaxOpportunity, listSplitExpectations, type SplitProcedure,
+  TAX_KEY, TAX_KEYS, createSplitExpectations, detectOpportunitiesAgain, getTaxCalculation, getTaxOpportunity, listSplitExpectations,
+  type SplitProcedure, type TaxDirection,
 } from "../api/tax.api";
+import { TaxQueryError, toastError } from "../components/TaxCommon";
 import {
   COMPLIANCE_STATUS, COVERAGE_STATUS, DIRECTIONS, OPPORTUNITY_TYPES, SOURCES, SPLIT_EXPECTATION_COPY, SPLIT_PROCEDURES, SYSTEM_CALCULATION_COPY, labelOf, toneOf,
 } from "../lib/labels";
-import { errorMessage, formatIsoDate } from "../lib/forms";
+import { formatIsoDate } from "../lib/forms";
 import { EngineResult, TechnicalTrail } from "../components/EngineResult";
 import { ImpactBadge, OpportunityStatusBadge, RiskBadge, ToneBadge } from "../components/TaxBadges";
 import { Field, TaxNote, TaxSubNav } from "../components/TaxShell";
@@ -40,7 +41,7 @@ export default function TaxCalculationDetailPage() {
       <TaxSubNav />
 
       {calc.isLoading && <Skeleton className="h-64 w-full" />}
-      {calc.isError && <ErrorState title="Não foi possível abrir o cálculo" onRetry={() => void calc.refetch()} />}
+      {calc.isError && <TaxQueryError error={calc.error} what="o cálculo" onRetry={() => void calc.refetch()} />}
       {c && (
         <>
           {c.reused && <TaxNote>Esta mesma operação já tinha sido calculada com as mesmas regras: o resultado guardado foi reaproveitado.</TaxNote>}
@@ -56,6 +57,12 @@ export default function TaxCalculationDetailPage() {
               )}
               {c.advisories.length > 0 && (
                 <ul className="list-disc pl-5">{c.advisories.map((a) => <li key={a}>{a}</li>)}</ul>
+              )}
+              {c.complianceAssessment && (
+                <p className="text-xs text-muted-foreground">
+                  Obrigações acessórias usadas: {labelOf(COMPLIANCE_STATUS, c.complianceAssessment.status)} de {formatIsoDate(c.complianceAssessment.periodFrom)} a{" "}
+                  {formatIsoDate(c.complianceAssessment.periodTo)} ({c.complianceAssessment.scope}).
+                </p>
               )}
               {c.currentComplianceAssessment && (
                 <p className="text-xs text-warning">
@@ -73,8 +80,8 @@ export default function TaxCalculationDetailPage() {
           <SectionCard title="Quanto custa e o que aconteceu">
             <EngineResult output={c.output} input={c.input} />
           </SectionCard>
-          <Opportunities ids={c.opportunityIds} />
-          <SplitSection calculationId={c.id} />
+          <Opportunities ids={c.opportunityIds} calculationId={c.id} />
+          <SplitSection calculationId={c.id} direction={c.direction} />
           <TechnicalTrail
             output={c.output}
             hashes={{ calculationId: c.id, engineVersion: c.engineVersion, inputHash: c.inputHash, ruleSetHash: c.ruleSetHash, outputHash: c.outputHash, profileVersionNumber: c.profileVersionNumber }}
@@ -85,10 +92,27 @@ export default function TaxCalculationDetailPage() {
   );
 }
 
-function Opportunities({ ids }: Readonly<{ ids: string[] }>) {
+function Opportunities({ ids, calculationId }: Readonly<{ ids: string[]; calculationId: string }>) {
+  const qc = useQueryClient();
   const items = useQueries({ queries: ids.map((oid) => ({ queryKey: TAX_KEYS.opportunity(oid), queryFn: () => getTaxOpportunity(oid) })) });
+  const detect = useMutation({
+    mutationFn: () => detectOpportunitiesAgain(calculationId),
+    onSuccess: (created) => {
+      toast.success(created.length > 0 ? `${created.length} alternativa(s) nova(s) encontrada(s).` : "Nenhuma alternativa nova.");
+      void qc.invalidateQueries({ queryKey: TAX_KEYS.calculation(calculationId) });
+    },
+    onError: toastError,
+  });
   return (
-    <SectionCard title="Existe alternativa?" description="Oportunidades encontradas neste cálculo. Nenhuma é aplicada sem revisão e aprovação.">
+    <SectionCard
+      title="Existe alternativa?"
+      description="Oportunidades encontradas neste cálculo. Nenhuma é aplicada sem revisão e aprovação."
+      actions={
+        <Button type="button" variant="outline" size="sm" disabled={detect.isPending} onClick={() => detect.mutate()}>
+          {detect.isPending ? "Procurando…" : "Procurar de novo"}
+        </Button>
+      }
+    >
       {ids.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma oportunidade encontrada para esta operação.</p>}
       <ul className="space-y-2">
         {items.map((q, i) => (
@@ -116,20 +140,30 @@ function Opportunities({ ids }: Readonly<{ ids: string[] }>) {
   );
 }
 
-function SplitSection({ calculationId }: Readonly<{ calculationId: string }>) {
+function SplitSection({ calculationId, direction }: Readonly<{ calculationId: string; direction: TaxDirection }>) {
   const qc = useQueryClient();
   const [procedure, setProcedure] = useState<SplitProcedure>("Standard");
-  const expectations = useQuery({ queryKey: TAX_KEYS.splitExpectations(calculationId), queryFn: () => listSplitExpectations(calculationId) });
+  const expectations = useQuery({
+    queryKey: TAX_KEYS.splitExpectations({ calculationId }),
+    queryFn: () => listSplitExpectations({ calculationId, take: 50 }),
+    enabled: direction === "Outbound",
+  });
   const create = useMutation({
     mutationFn: () => createSplitExpectations(calculationId, procedure),
     onSuccess: () => { toast.success("Expectativas gerenciais de segregação registradas."); void qc.invalidateQueries({ queryKey: [...TAX_KEY, "split"] }); void qc.invalidateQueries({ queryKey: TAX_KEYS.overview }); },
-    onError: (e) => toast.error(errorMessage(e)),
+    onError: toastError,
   });
 
+  if (direction !== "Outbound")
+    return (
+      <SectionCard title="Split payment">
+        <p className="text-sm text-muted-foreground">Retenção esperada vale para operações de saída (o estabelecimento é o fornecedor).</p>
+      </SectionCard>
+    );
   return (
     <SectionCard title="Split payment" description={`${SPLIT_EXPECTATION_COPY} Serve para conferir depois com o que foi retido de fato, liquidação a liquidação.`}>
       <div className="space-y-3">
-        {expectations.data?.length === 0 && (
+        {expectations.data?.items.length === 0 && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <Field id="split-proc" label="Procedimento" className="sm:w-56">
               <Select value={procedure} onValueChange={(v) => setProcedure(v as SplitProcedure)}>
@@ -142,8 +176,9 @@ function SplitSection({ calculationId }: Readonly<{ calculationId: string }>) {
             </Button>
           </div>
         )}
-        {expectations.isError && <ErrorState title="Não foi possível ler as retenções" onRetry={() => void expectations.refetch()} compact />}
-        {expectations.data && expectations.data.length > 0 && <SplitTable items={expectations.data} />}
+        {expectations.isLoading && <Skeleton className="h-16 w-full" />}
+        {expectations.isError && <TaxQueryError error={expectations.error} what="as retenções" onRetry={() => void expectations.refetch()} />}
+        {expectations.data && expectations.data.items.length > 0 && <SplitTable items={expectations.data.items} />}
       </div>
     </SectionCard>
   );

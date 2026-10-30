@@ -289,6 +289,8 @@ public static class DependencyInjection
             o.RequireApprovedRulesForCalculations = !IsDevelopmentOrTesting(configuration);
             configuration.GetSection(Nexo.Infrastructure.TaxIntelligence.TaxIntelligencePolicyOptions.Section).Bind(o);
         });
+        services.Configure<Nexo.Infrastructure.TaxIntelligence.TaxExportOptions>(
+            configuration.GetSection(Nexo.Infrastructure.TaxIntelligence.TaxExportOptions.Section));
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxAuditTrail>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxCatalogService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxApprovalGate>();
@@ -302,6 +304,24 @@ public static class DependencyInjection
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxSplitPaymentService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxOverviewService>();
         services.AddSingleton<Nexo.Infrastructure.TaxIntelligence.ISplitPaymentProvider, Nexo.Infrastructure.TaxIntelligence.NotConfiguredSplitPaymentProvider>();
+        // Finalization: runtime state (platform activation on top of the configuration), private files, policies, catalogues, exports.
+        services.Configure<Nexo.Infrastructure.TaxIntelligence.Files.TaxFileOptions>(
+            configuration.GetSection(Nexo.Infrastructure.TaxIntelligence.Files.TaxFileOptions.Section));
+        services.AddSingleton<Nexo.Infrastructure.TaxIntelligence.TaxMetrics>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxContext>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxModuleState>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxModuleService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxInputBuilder>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxClassificationService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxMaterialityService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxRetentionService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxDocumentService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxEvidenceService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxOpportunityEvidenceService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxDossierExportService>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.Files.TaxFileStore>();
+        services.AddScoped<Nexo.Infrastructure.TaxIntelligence.Files.ITaxFileStorage, Nexo.Infrastructure.TaxIntelligence.Files.PrivateTaxFileStorage>();
+        services.AddSingleton<Nexo.Infrastructure.TaxIntelligence.Files.ITaxFileScanner, Nexo.Infrastructure.TaxIntelligence.Files.NoTaxFileScanner>();
         services.AddSingleton<Nexo.Application.Features.Fiscal.IFiscalDocumentProvider, Nexo.Application.Features.Fiscal.NotConfiguredFiscalProvider>();
 
         // ── Dashboard ─────────────────────────────────────────────────────────

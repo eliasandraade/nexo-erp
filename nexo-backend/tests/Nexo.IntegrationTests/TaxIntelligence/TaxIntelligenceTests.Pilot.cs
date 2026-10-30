@@ -315,6 +315,7 @@ public partial class TaxIntelligenceTests
         (await Json(await Post(pilot, $"/api/tax/calculations/{approvedId}/verify", new { }))).GetProperty("reproducible").GetBoolean()
             .Should().BeTrue("a withdrawn approval never makes history unreadable");
 
+        await ForceActivateAsync(_factory, Nexo.Domain.Modules.TaxIntelligence.TaxApprovalMode.ProfessionalFinal);
         var definitive = HostWith(admin, host: Enforced("ProfessionalFinal"));
         var refused = await Json(await Post(definitive, "/api/tax/calculations", Operation(Unique("Definitivo"), gross: 1048m)), HttpStatusCode.UnprocessableEntity);
         Code(refused).Should().Be("tax_professional_review_pending", "the internal pilot approval is never a professional approval");
@@ -351,6 +352,13 @@ public partial class TaxIntelligenceTests
 
         await ApproveAsync(platform, versionId, day, day, "DEC-SIMULATION");
         await Json(await Post(pilot, "/api/tax/simulations", Simulation("Aprovada")));
+        // The pilot follows its own policy: the internal approval is not per regime, so a scenario in another regime runs too.
+        var otherRegime = await Json(await Post(pilot, "/api/tax/simulations", new
+        {
+            name = Unique("Outro regime"), baseline = Operation(Unique("Base"), gross: 1052m),
+            scenarios = new object[] { new { name = "Lucro Real", regime = "LucroReal", referenceDate = day, convertConditionalDiscounts = false, assumeCreditable = false } },
+        }));
+        otherRegime.GetProperty("scenarioGovernance").EnumerateArray().Select(s => s.GetProperty("regime").GetString()).Should().Contain("LucroReal");
         await Json(await Post(pilot, "/api/tax/simulations/supplier-comparison", Comparison()));
 
         await Json(await Post(platform, $"/api/platform/tax/rule-versions/{versionId}/pilot-approval/withdraw",
@@ -361,6 +369,7 @@ public partial class TaxIntelligenceTests
             .Should().Be("tax_pilot_approval_missing");
         (await AuditMetadataAsync("tax_simulation_refused")).Should().Contain(m => m.Contains($"{key} v1"), "every refused simulation is audited");
 
+        await ForceActivateAsync(_factory, Nexo.Domain.Modules.TaxIntelligence.TaxApprovalMode.ProfessionalFinal);
         var definitive = HostWith(admin, host: Enforced("ProfessionalFinal"));
         Code(await Json(await Post(definitive, "/api/tax/simulations", Simulation("Definitivo")), HttpStatusCode.UnprocessableEntity))
             .Should().Be("tax_professional_review_pending", "the internal pilot approval is never a professional approval");
