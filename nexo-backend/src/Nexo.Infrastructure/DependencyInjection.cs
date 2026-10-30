@@ -170,6 +170,7 @@ public static class DependencyInjection
         services.AddScoped<BuildCostService>();
         services.AddScoped<BuildPortalAdminService>();
         services.AddScoped<BuildPublicPortalService>();
+        services.AddSingleton<BuildPortalPasswordGuard>();   // caps concurrent BCrypt checks of portal passwords
         // Wave 2 — commercial (templates, versions, PDF, change orders, selections, materials, measurements)
         services.AddScoped<BuildBudgetCommercialService>();
         services.AddHttpClient(BuildBudgetCommercialService.LogoHttpClient, c => c.Timeout = TimeSpan.FromSeconds(5));

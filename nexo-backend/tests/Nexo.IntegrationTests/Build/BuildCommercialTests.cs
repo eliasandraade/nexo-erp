@@ -343,6 +343,12 @@ public class BuildCommercialTests
         pending.GetProperty("canDecide").GetBoolean().Should().BeTrue();
         pending.GetProperty("stageName").GetString().Should().Be("Fundação");
         pending.TryGetProperty("createdByName", out _).Should().BeFalse();
+        // v1.5: no money without the financial summary
+        pending.TryGetProperty("costImpact", out _).Should().BeFalse("the portal does not show the financial summary");
+        var line = pending.GetProperty("items")[0];
+        line.GetProperty("name").GetString().Should().Be("Concreto extra");
+        line.TryGetProperty("unitPrice", out _).Should().BeFalse();
+        line.TryGetProperty("total", out _).Should().BeFalse();
 
         // without a session the decision is refused like any password-portal call
         (await Code(await Anonymous().PostAsJsonAsync($"{portal}/change-orders/{publicId}/decision",
@@ -357,6 +363,8 @@ public class BuildCommercialTests
         decided.GetProperty("status").GetString().Should().Be("Approved");
         decided.GetProperty("decisionChannel").GetString().Should().Be("Portal");
         decided.GetProperty("canDecide").GetBoolean().Should().BeFalse();
+        decided.TryGetProperty("decidedAt", out _).Should().BeTrue();
+        decided.TryGetProperty("signerName", out _).Should().BeFalse("v1.5: who signed is not echoed back by the public API");
 
         // idempotent: a second decision is a conflict
         (await Code(await client.PostAsJsonAsync($"{portal}/change-orders/{publicId}/decision",
@@ -396,8 +404,8 @@ public class BuildCommercialTests
             new { title = "Pintura extra", costImpact = 800m }), HttpStatusCode.Created);
         await Json(await admin.PostAsync($"/api/v1/build/change-orders/{publicCo.GetProperty("id").GetGuid()}/send", null), HttpStatusCode.OK);
         var publicPortal = await PortalAsync(admin, company, publicProject);
-        var listed = await Json(await Anonymous().GetAsync($"{publicPortal}/change-orders"), HttpStatusCode.OK);
-        listed.GetProperty("items")[0].GetProperty("canDecide").GetBoolean().Should().BeFalse();
+        // v1.5: change orders are personal data — a public portal does not even list them
+        (await Code(await Anonymous().GetAsync($"{publicPortal}/change-orders"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
         (await Code(await Anonymous().PostAsJsonAsync($"{publicPortal}/change-orders/{publicCo.GetProperty("publicId").GetGuid()}/decision",
             new { decision = "approve", signerName = "Maria" }), HttpStatusCode.Forbidden)).Should().Be("portal_decision_requires_password");
 
@@ -427,6 +435,28 @@ public class BuildCommercialTests
         (await other.GetAsync($"/api/v1/build/projects/{y}/change-orders")).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await Json(await admin.GetAsync($"/api/v1/build/change-orders/{coYId}"), HttpStatusCode.OK))
             .GetProperty("status").GetString().Should().Be("SentToClient");
+    }
+
+    [Fact]
+    public async Task Change_order_money_reaches_the_client_only_with_the_financial_summary()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var projectId = await ProjectAsync(admin, "Obra aditivo com valores");
+        var co = await Json(await admin.PostAsJsonAsync($"/api/v1/build/projects/{projectId}/change-orders", new
+        {
+            title = "Muro extra",
+            items = new object[] { new { name = "Bloco", kind = "Material", quantity = 100m, unit = "un", unitCost = 4m } },
+        }), HttpStatusCode.Created);
+        await Json(await admin.PostAsync($"/api/v1/build/change-orders/{co.GetProperty("id").GetGuid()}/send", null), HttpStatusCode.OK);
+        var company = await CompanyAsync(admin);
+        var password = PortalPassword();
+        var portal = await PortalAsync(admin, company, projectId, password, new { changeOrders = true, financialSummary = true });
+        var client = await SessionAsync(portal, password);
+
+        var item = (await Json(await client.GetAsync($"{portal}/change-orders"), HttpStatusCode.OK)).GetProperty("items")[0];
+        item.GetProperty("costImpact").GetDecimal().Should().Be(400m);
+        item.GetProperty("items")[0].GetProperty("unitPrice").GetDecimal().Should().Be(4m);
+        item.GetProperty("items")[0].GetProperty("total").GetDecimal().Should().Be(400m);
     }
 
     // ── Selections ────────────────────────────────────────────────────────────
@@ -497,11 +527,12 @@ public class BuildCommercialTests
 
         (await admin.PostAsync($"/api/v1/build/selections/{selectionId}/confirm", null)).StatusCode.Should().Be(HttpStatusCode.Conflict);
 
-        // a public portal shows selections but the client cannot choose there
+        // v1.5: a public portal neither shows selections nor lets the client choose there
         var publicProject = await ProjectAsync(admin, "Obra escolhas pública");
         var sel2 = (await Json(await admin.PostAsJsonAsync($"/api/v1/build/projects/{publicProject}/selections",
             new { title = "Louças" }), HttpStatusCode.Created)).GetProperty("publicId").GetGuid();
         var publicPortal = await PortalAsync(admin, company, publicProject);
+        (await Code(await Anonymous().GetAsync($"{publicPortal}/selections"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
         (await Code(await Anonymous().PostAsJsonAsync($"{publicPortal}/selections/{sel2}/choice", new { optionId = Guid.NewGuid() }),
             HttpStatusCode.Forbidden)).Should().Be("portal_decision_requires_password");
     }
@@ -639,7 +670,7 @@ public class BuildCommercialTests
         (await Json(await Anonymous().GetAsync($"{portal}/measurements"), HttpStatusCode.OK))
             .GetProperty("items")[0].GetProperty("totalAmount").GetDecimal().Should().Be(8000m);
         var bootstrap = await Json(await Anonymous().GetAsync(portal), HttpStatusCode.OK);
-        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.4");
+        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.5");
         bootstrap.GetProperty("sections").EnumerateArray().Select(s => s.GetString()).Should().Contain("measurements");
     }
 

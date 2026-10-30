@@ -139,13 +139,16 @@ public sealed record PublicBuildPortalTeaserDto(string Name, string? LogoUrl, st
 /// <summary>
 /// Error body of the public portal API (documentation type for OpenAPI — the shape every error of
 /// <c>/api/public/build</c> already had): <c>error</c> (Portuguese message) and <c>code</c>; <c>portal</c> only in the 401
-/// of a password portal; <c>retryAfterSeconds</c> only in the 429 portal_locked. Rate-limit 429 has no body.
+/// of a password portal; <c>retryAfterSeconds</c> only in the 429 portal_locked / portal_busy. Rate-limit 429 has no body.
 /// </summary>
 public sealed record PublicBuildErrorDto(string Error, string Code, PublicBuildPortalTeaserDto? Portal = null, int? RetryAfterSeconds = null);
 
 // ── Wave 2 (contract v1.1): change orders, selections, measurements ─────────
 
-public sealed record PublicBuildChangeOrderItemDto(string Name, string Kind, decimal Quantity, string Unit, decimal UnitPrice, decimal Total);
+/// <summary>A line of a change order. <c>unitPrice</c>/<c>total</c> only when the portal shows the financial summary (v1.5).</summary>
+public sealed record PublicBuildChangeOrderItemDto(string Name, string Kind, decimal Quantity, string Unit,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? UnitPrice,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? Total);
 
 /// <summary>
 /// A change order shown to the client. <c>id</c> is an opaque public id. <c>status</c>: "Pending" (waiting for
@@ -158,7 +161,8 @@ public sealed record PublicBuildChangeOrderDto
     public string Title { get; init; } = string.Empty;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? Description { get; init; }
     public string Reason { get; init; } = string.Empty;
-    public decimal CostImpact { get; init; }
+    /// <summary>Only when the portal shows the financial summary (v1.5); otherwise absent.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public decimal? CostImpact { get; init; }
     public int ScheduleImpactDays { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? StageName { get; init; }
     public string Status { get; init; } = string.Empty;
@@ -168,7 +172,6 @@ public sealed record PublicBuildChangeOrderDto
     /// <summary>"Portal" (the client) or "Internal" (recorded by the company).</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? DecisionChannel { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? ClientComment { get; init; }
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? SignerName { get; init; }
     public IReadOnlyList<PublicBuildChangeOrderItemDto> Items { get; init; } = [];
 }
 
@@ -237,7 +240,7 @@ public sealed record PublicBuildMeasurementsDto(IReadOnlyList<PublicBuildMeasure
 /// <summary>Constants of the public portal contract.</summary>
 public static class PublicBuildPortal
 {
-    public const string ContractVersion = "1.4";
+    public const string ContractVersion = "1.5";
     public const string SessionHeader   = "X-Build-Portal-Session";
 
     public const string CodeNotFound         = "portal_not_found";
@@ -245,6 +248,8 @@ public static class PublicBuildPortal
     public const string CodePasswordInvalid  = "portal_password_invalid";
     public const string CodeSessionExpired   = "portal_session_expired";
     public const string CodeLocked           = "portal_locked";
+    /// <summary>v1.5: too many password checks running at once — retry in a moment (429 with retryAfterSeconds).</summary>
+    public const string CodeBusy             = "portal_busy";
     public const string CodeSectionDisabled  = "portal_section_disabled";
     public const string CodePasswordNotNeeded = "portal_password_not_required";
 
@@ -276,6 +281,12 @@ public static class PublicBuildPortal
     public const string CodeInvalidFileContent       = "invalid_file_content";
     public const string CodeFileTooLarge             = "file_too_large";
     public const string CodeStorageUnavailable       = "storage_unavailable";
+
+    // v1.5
+    /// <summary>A write collided with a simultaneous change and the retry collided too (409): try again.</summary>
+    public const string CodeConflict                 = "portal_conflict";
+    /// <summary>A JSON body beyond 64 KB (413).</summary>
+    public const string CodePayloadTooLarge          = "payload_too_large";
 }
 
 /// <summary>

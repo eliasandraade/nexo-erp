@@ -11,6 +11,9 @@ namespace Nexo.Api.Controllers.Modules.Build;
 /// The company side of the client portal: company slug/branding, each project's portal (slug, access,
 /// password, branding, visibility, publication), what of the daily log the client sees, and client updates.
 /// Every change is audited. The password is write-only: responses only say whether one is set.
+/// A platform administrator impersonating the company cannot change how the client portal is opened: the portal settings
+/// (access mode, visibility — the whole PUT, the simplest rule that cannot be bypassed field by field) and setting or
+/// removing its password answer 403 impersonation_forbidden.
 /// </summary>
 [ApiController]
 [Route("api/v1/build")]
@@ -41,17 +44,20 @@ public class BuildPortalController : ControllerBase
         => Ok(await _portal.GetPortalAsync(projectId, ct));
 
     [HttpPut("projects/{projectId:guid}/portal")]
+    [DenyDuringImpersonation]
     public async Task<ActionResult<BuildProjectPortalDto>> UpdatePortal(
         Guid projectId, [FromBody] UpdateBuildProjectPortalRequest request, CancellationToken ct)
         => Ok(await _portal.UpdatePortalAsync(projectId, request, ct));
 
     /// <summary>Sets the portal password (≥ 8 characters). Every open session of the portal ends.</summary>
     [HttpPut("projects/{projectId:guid}/portal/password")]
+    [DenyDuringImpersonation]
     public async Task<ActionResult<BuildProjectPortalDto>> SetPassword(
         Guid projectId, [FromBody] SetBuildPortalPasswordRequest request, CancellationToken ct)
         => Ok(await _portal.SetPasswordAsync(projectId, request.Password, ct));
 
     [HttpDelete("projects/{projectId:guid}/portal/password")]
+    [DenyDuringImpersonation]
     public async Task<ActionResult<BuildProjectPortalDto>> RemovePassword(Guid projectId, CancellationToken ct)
         => Ok(await _portal.RemovePasswordAsync(projectId, ct));
 

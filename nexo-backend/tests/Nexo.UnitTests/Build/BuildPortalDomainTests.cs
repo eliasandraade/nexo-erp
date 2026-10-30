@@ -149,15 +149,19 @@ public class BuildProjectPortalTests
     }
 
     [Fact]
-    public void Twenty_wrong_passwords_lock_the_portal_for_fifteen_minutes()
+    public void Wrong_passwords_lock_one_client_long_before_the_whole_portal()
+    {
+        // per client IP (cache) 20 → that IP waits 15 min; the portal-wide counter (database) only bounds a distributed attack
+        BuildProjectPortal.MaxFailedAttemptsPerClient.Should().Be(20);
+        BuildProjectPortal.MaxFailedAttemptsGlobal.Should().BeGreaterThanOrEqualTo(10 * BuildProjectPortal.MaxFailedAttemptsPerClient);
+        BuildProjectPortal.LockMinutes.Should().Be(15);
+    }
+
+    [Fact]
+    public void A_lock_in_the_past_does_not_lock()
     {
         var p = Portal(BuildPortalAccess.Password);
-        var now = DateTime.UtcNow;
-        for (var i = 0; i < BuildProjectPortal.MaxFailedAttempts - 1; i++) p.RegisterFailedAttempt(now);
-        p.IsLocked(now).Should().BeFalse();
-        p.RegisterFailedAttempt(now);
-        p.IsLocked(now).Should().BeTrue();
-        p.IsLocked(now.AddMinutes(BuildProjectPortal.LockMinutes + 1)).Should().BeFalse();
+        p.IsLocked(DateTime.UtcNow).Should().BeFalse();
     }
 
     [Fact]

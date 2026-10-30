@@ -23,7 +23,7 @@ public sealed partial class BuildPublicPortalService
         var expires = DateTimeOffset.UtcNow.Add(BuildPortalMedia.SignedUrlTtl);
         return new PublicBuildDocumentsDto(rows.Select(r =>
         {
-            var url = _media.SignedUrl(r.FileKey, tid);
+            var url = _media.SignedUrl(r.FileKey, tid, BuildDocumentService.Folder);
             return new PublicBuildDocumentDto(r.Title, r.Category.ToString(), r.FileName, r.ContentType, r.SizeBytes, r.ValidUntil, url,
                 url is null ? null : expires, Utc(r.CreatedAt));
         }).ToList());

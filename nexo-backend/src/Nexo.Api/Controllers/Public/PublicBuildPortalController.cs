@@ -1,19 +1,23 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.RateLimiting;
+using Nexo.Api.Filters;
+using Nexo.Api.Middleware;
 using Nexo.Application.Modules.Build;
 using Nexo.Infrastructure.Modules.Build;
 
 namespace Nexo.Api.Controllers.Public;
 
 /// <summary>
-/// Public client portal of Orken Build (no login) — contract v1.4, docs/build/client-portal-contract.md. Every action declares
+/// Public client portal of Orken Build (no login) — contract v1.5, docs/build/client-portal-contract.md. Every action declares
 /// its success type and the shared error body (<see cref="PublicBuildErrorDto"/>) for the OpenAPI document exported to
 /// docs/build/openapi-portal.json.
 /// Address: <c>/api/public/build/{companySlug}/{projectSlug}</c>. Unknown and unpublished portals answer
 /// the same 404. A password portal needs the <c>X-Build-Portal-Session</c> header (token from POST …/session).
-/// Responses are never cached (they may carry signed media URLs).
+/// Responses are never cached (they may carry signed media URLs). JSON bodies are capped at
+/// <see cref="MaxJsonBodyBytes"/> (413 payload_too_large).
 /// </summary>
 [ApiController]
 [AllowAnonymous]
@@ -30,9 +34,17 @@ namespace Nexo.Api.Controllers.Public;
 [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status500InternalServerError)]
 public class PublicBuildPortalController : ControllerBase
 {
-    private readonly BuildPublicPortalService _portal;
+    /// <summary>Largest JSON body a public write accepts (a password, a decision, a short form).</summary>
+    public const int MaxJsonBodyBytes = 64 * 1024;
 
-    public PublicBuildPortalController(BuildPublicPortalService portal) => _portal = portal;
+    private readonly BuildPublicPortalService _portal;
+    private readonly ClientIpResolver _clientIp;
+
+    public PublicBuildPortalController(BuildPublicPortalService portal, ClientIpResolver clientIp)
+    {
+        _portal = portal;
+        _clientIp = clientIp;
+    }
 
     private string? SessionToken => Request.Headers[PublicBuildPortal.SessionHeader].FirstOrDefault();
 
@@ -49,12 +61,15 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>Opens a session of a password portal: { token, expiresAt }. Send the token in X-Build-Portal-Session.</summary>
     [HttpPost("session")]
     [EnableRateLimiting("build-portal-auth")]
+    [RequestSizeLimit(MaxJsonBodyBytes)]
+    [BuildPortalBodyLimit(MaxJsonBodyBytes)]
+    [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(PublicBuildSessionDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildSessionDto>> OpenSession(
         string companySlug, string projectSlug, [FromBody] CreatePublicBuildSessionRequest? request, CancellationToken ct)
     {
         NoStore();
-        return Ok(await _portal.OpenSessionAsync(companySlug, projectSlug, request?.Password, ct));
+        return Ok(await _portal.OpenSessionAsync(companySlug, projectSlug, request?.Password, _clientIp.Resolve(HttpContext), ct));
     }
 
     /// <summary>Ends the session in X-Build-Portal-Session (idempotent).</summary>
@@ -115,6 +130,9 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client approves/rejects a pending change order — password portal with a session only.</summary>
     [HttpPost("change-orders/{publicId:guid}/decision")]
     [EnableRateLimiting("build-portal-decision")]
+    [RequestSizeLimit(MaxJsonBodyBytes)]
+    [BuildPortalBodyLimit(MaxJsonBodyBytes)]
+    [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(PublicBuildChangeOrderDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildChangeOrderDto>> DecideChangeOrder(string companySlug, string projectSlug, Guid publicId,
         [FromBody] PublicBuildChangeOrderDecisionRequest? request, CancellationToken ct)
@@ -136,6 +154,9 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client chooses an option — password portal with a session, selection open, before the deadline.</summary>
     [HttpPost("selections/{publicId:guid}/choice")]
     [EnableRateLimiting("build-portal-decision")]
+    [RequestSizeLimit(MaxJsonBodyBytes)]
+    [BuildPortalBodyLimit(MaxJsonBodyBytes)]
+    [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(PublicBuildSelectionDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildSelectionDto>> ChooseSelection(string companySlug, string projectSlug, Guid publicId,
         [FromBody] PublicBuildSelectionChoiceRequest? request, CancellationToken ct)
@@ -169,6 +190,9 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client accepts the handover — password portal with a session only; once.</summary>
     [HttpPost("handover/accept")]
     [EnableRateLimiting("build-portal-decision")]
+    [RequestSizeLimit(MaxJsonBodyBytes)]
+    [BuildPortalBodyLimit(MaxJsonBodyBytes)]
+    [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(PublicBuildHandoverDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildHandoverDto>> AcceptHandover(string companySlug, string projectSlug,
         [FromBody] PublicBuildHandoverAcceptRequest? request, CancellationToken ct)
@@ -200,6 +224,9 @@ public class PublicBuildPortalController : ControllerBase
     /// <summary>The client opens a request — password portal with a session, after the delivery.</summary>
     [HttpPost("assistance")]
     [EnableRateLimiting("build-portal-decision")]
+    [RequestSizeLimit(MaxJsonBodyBytes)]
+    [BuildPortalBodyLimit(MaxJsonBodyBytes)]
+    [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(PublicBuildAssistanceDto), StatusCodes.Status201Created)]
     public async Task<ActionResult<PublicBuildAssistanceDto>> OpenAssistance(string companySlug, string projectSlug,
         [FromBody] PublicBuildAssistanceOpenRequest? request, CancellationToken ct)
@@ -211,20 +238,23 @@ public class PublicBuildPortalController : ControllerBase
 
     /// <summary>
     /// Adds one photo (multipart field <c>file</c>): JPEG, PNG or WebP, up to 8 MB, checked by its first bytes; at most 6 per
-    /// request. Stored privately; only signed URLs come back.
+    /// request. Stored privately; only signed URLs come back. The portal, the session, the request (of THIS project, open,
+    /// below the photo limit) are checked BEFORE the body is read: an anonymous caller cannot make the server buffer a file.
     /// </summary>
     [HttpPost("assistance/{publicId:guid}/photos")]
     [EnableRateLimiting("build-portal-decision")]
-    [RequestSizeLimit(MaxUploadBytes + 1024 * 1024)]
-    [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes + 1024 * 1024)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file")]
+    [RequestSizeLimit(MaxUploadRequestBytes)]
     [ProducesResponseType(typeof(PublicBuildAssistanceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<PublicBuildAssistanceDto>> AddAssistancePhoto(string companySlug, string projectSlug, Guid publicId,
-        IFormFile? file, CancellationToken ct)
+        CancellationToken ct)
     {
         NoStore();
         var target = await _portal.AuthorizeAssistanceUploadAsync(companySlug, projectSlug, SessionToken, publicId, ct);
+        var file = await ReadUploadAsync(ct);
         if (file is null || file.Length == 0)
             throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileType, "Envie uma imagem no campo file.");
         var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
@@ -239,9 +269,39 @@ public class PublicBuildPortalController : ControllerBase
         return Ok(await _portal.StoreAssistancePhotoAsync(target, stream, contentType, extension, file.Length, ct));
     }
 
+    /// <summary>The multipart field <c>file</c>, read only now (after authorization), within the upload limits.</summary>
+    private async Task<IFormFile?> ReadUploadAsync(CancellationToken ct)
+    {
+        if (!Request.HasFormContentType)
+            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileType, "Envie uma imagem no campo file.");
+        try
+        {
+            var form = await Request.ReadFormAsync(new FormOptions
+            {
+                MultipartBodyLengthLimit = MaxUploadRequestBytes,
+                ValueCountLimit = 16,
+                ValueLengthLimit = 4 * 1024,
+                MultipartHeadersLengthLimit = 16 * 1024,
+            }, ct);
+            return form.Files.GetFile("file");
+        }
+        catch (InvalidDataException)
+        {
+            // a multipart section or the whole body beyond the limits
+            throw new BuildPortalAccessException(413, PublicBuildPortal.CodeFileTooLarge, "A imagem pode ter até 8 MB.");
+        }
+        catch (IOException)
+        {
+            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileType, "Envie uma imagem no campo file.");
+        }
+    }
+
     /// <summary>The client rates a resolved request (1–5), once.</summary>
     [HttpPost("assistance/{publicId:guid}/feedback")]
     [EnableRateLimiting("build-portal-decision")]
+    [RequestSizeLimit(MaxJsonBodyBytes)]
+    [BuildPortalBodyLimit(MaxJsonBodyBytes)]
+    [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(PublicBuildAssistanceDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<PublicBuildAssistanceDto>> AssistanceFeedback(string companySlug, string projectSlug, Guid publicId,
         [FromBody] PublicBuildAssistanceFeedbackRequest? request, CancellationToken ct)
@@ -298,6 +358,8 @@ public class PublicBuildPortalController : ControllerBase
     }
 
     private const long MaxUploadBytes = 8L * 1024 * 1024;
+    /// <summary>The whole multipart request: the 8 MB image plus room for the multipart framing (≈ 9 MB).</summary>
+    private const long MaxUploadRequestBytes = MaxUploadBytes + 1024 * 1024;
 
     private static readonly Dictionary<string, string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -310,14 +372,49 @@ public class PublicBuildPortalController : ControllerBase
 }
 
 /// <summary>
+/// Refuses a declared body (Content-Length) above the limit with 413 payload_too_large before anything reads it — on any server
+/// (the [RequestSizeLimit] next to it covers bodies without a Content-Length on Kestrel; see <see cref="BuildPortalErrorsAttribute"/>).
+/// </summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class BuildPortalBodyLimitAttribute : Attribute, IResourceFilter
+{
+    public BuildPortalBodyLimitAttribute(long maxBytes) => MaxBytes = maxBytes;
+
+    public long MaxBytes { get; }
+
+    public void OnResourceExecuting(ResourceExecutingContext context)
+    {
+        if (context.HttpContext.Request.ContentLength is not { } length || length <= MaxBytes) return;
+        context.HttpContext.Response.Headers.CacheControl = "no-store";
+        context.Result = BuildPortalErrorsAttribute.PayloadTooLarge();
+    }
+
+    public void OnResourceExecuted(ResourceExecutedContext context) { /* nothing to undo */ }
+}
+
+/// <summary>
 /// Maps <see cref="BuildPortalAccessException"/> to its status with a fixed body (no request id), so an
 /// unknown and an unpublished portal answer byte-identical 404s.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class)]
 public sealed class BuildPortalErrorsAttribute : Attribute, IExceptionFilter
 {
+    public static ObjectResult PayloadTooLarge()
+        => new(new { error = "O conteúdo enviado é grande demais.", code = PublicBuildPortal.CodePayloadTooLarge })
+        {
+            StatusCode = StatusCodes.Status413PayloadTooLarge,
+        };
+
     public void OnException(ExceptionContext context)
     {
+        if (context.Exception is BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge })
+        {
+            // a body beyond [RequestSizeLimit] (detected by the server while binding): the portal's error shape, not a 500
+            context.HttpContext.Response.Headers.CacheControl = "no-store";
+            context.Result = PayloadTooLarge();
+            context.ExceptionHandled = true;
+            return;
+        }
         if (context.Exception is not BuildPortalAccessException ex) return;
         object body = ex.Portal is not null
             ? new { error = ex.Message, code = ex.Code, portal = ex.Portal }

@@ -67,9 +67,9 @@ public sealed partial class BuildPublicPortalService
     private async Task<Ctx> PostConstructionWriteAsync(string companySlug, string projectSlug, string? token, CancellationToken ct)
     {
         var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
-        if (!ctx.Visibility.PostConstruction) throw BuildPortalAccessException.SectionDisabled();
+        await EnsureAccessAsync(ctx, token, ct);   // before anything that reveals the portal's configuration
         EnsureDecisionPortal(ctx);
-        await EnsureAccessAsync(ctx, token, ct);
+        if (!ctx.Visibility.PostConstruction) throw BuildPortalAccessException.SectionDisabled();
         return ctx;
     }
 
@@ -149,7 +149,7 @@ public sealed partial class BuildPublicPortalService
                 };
             }
         }
-        var documents = h.Documents.Select(d => new PublicBuildHandoverDocumentDto(d.Name, _media.SignedUrl(d.FileKey, tid))).ToList();
+        var documents = h.Documents.Select(d => new PublicBuildHandoverDocumentDto(d.Name, _media.SignedUrl(d.FileKey, tid, BuildPostConstructionService.HandoverFolder))).ToList();
         var password = ctx.Portal.Access == BuildPortalAccess.Password;
         return new PublicBuildHandoverDto
         {
@@ -228,16 +228,21 @@ public sealed partial class BuildPublicPortalService
             ?? throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidCategory,
                 "Escolha uma das categorias da garantia ou \"Outros\".");
 
-        var open = await _db.BldAssistanceRequests.IgnoreQueryFilters()
-            .CountAsync(a => a.TenantId == tid && a.ProjectId == pid && a.OpenedVia == BuildDecisionChannel.Portal
-                          && a.Status != BuildAssistanceStatus.Resolved && a.Status != BuildAssistanceStatus.Closed
-                          && a.Status != BuildAssistanceStatus.Rejected, ct);
-        if (open >= MaxOpenPortalRequests)
-            throw new BuildPortalAccessException(422, PublicBuildPortal.CodeAssistanceLimit,
-                $"Há {open} chamados abertos. Aguarde o atendimento ou fale com a construtora.");
-
+        // The limit is counted and the request inserted under one per-project advisory lock, inside one transaction, so
+        // parallel requests cannot all see "19 open" and all insert. A number taken in parallel by the company side
+        // (unique violation) is retried once, then answered 409 portal_conflict.
         for (var attempt = 0; ; attempt++)
         {
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            await BuildScope.AdvisoryLockAsync(_db, "build-assistance-open:" + pid, ct);
+            var open = await _db.BldAssistanceRequests.IgnoreQueryFilters()
+                .CountAsync(a => a.TenantId == tid && a.ProjectId == pid && a.OpenedVia == BuildDecisionChannel.Portal
+                              && a.Status != BuildAssistanceStatus.Resolved && a.Status != BuildAssistanceStatus.Closed
+                              && a.Status != BuildAssistanceStatus.Rejected, ct);
+            if (open >= MaxOpenPortalRequests)
+                throw new BuildPortalAccessException(422, PublicBuildPortal.CodeAssistanceLimit,
+                    $"Há {open} chamados abertos. Aguarde o atendimento ou fale com a construtora.");
+
             var number = await BuildPostConstructionRules.NextAssistanceNumberAsync(_db, tid, pid, ct);
             var created = BuildAssistanceRequest.Open(tid, pid, number, category, r.Title!, r.Description!, r.Location,
                 BuildDecisionChannel.Portal, string.IsNullOrWhiteSpace(r.OpenedByName) ? "Cliente (portal)" : r.OpenedByName,
@@ -249,15 +254,20 @@ public sealed partial class BuildPublicPortalService
             try
             {
                 await _db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
                 return MapAssistance(ctx, created);
             }
-            catch (DbUpdateException ex) when (attempt == 0 && BuildScope.IsUniqueViolation(ex))
+            catch (DbUpdateException ex) when (BuildScope.IsUniqueViolation(ex))
             {
+                if (attempt > 0) throw Conflict();
                 foreach (var entry in _db.ChangeTracker.Entries().Where(e => e.State == EntityState.Added).ToList())
                     entry.State = EntityState.Detached;
             }
         }
     }
+
+    private static BuildPortalAccessException Conflict()
+        => new(409, PublicBuildPortal.CodeConflict, "Outra alteração aconteceu ao mesmo tempo. Tente de novo.");
 
     /// <summary>
     /// Checks everything that does not need the file (portal, session, request of THIS project, open, below the photo
@@ -298,26 +308,40 @@ public sealed partial class BuildPublicPortalService
                 "O envio de fotos está indisponível no momento. Tente mais tarde.");
         }
 
-        var request = await _db.BldAssistanceRequests.IgnoreQueryFilters()
-            .FirstAsync(a => a.TenantId == target.TenantId && a.ProjectId == target.ProjectId && a.Id == target.RequestId, ct);
-        try
+        // The append runs under a per-request advisory lock (the company side takes the same lock), so two uploads cannot both
+        // read 5 photos and both write 6, nor overwrite each other's key list. A concurrent status change (concurrency token)
+        // is retried once, then answered 409 portal_conflict.
+        for (var attempt = 0; ; attempt++)
         {
-            request.AddPhoto(key);
-            _audit.RecordPortalClient(AuditActions.BuildAssistancePhotoAdded, target.TenantId, "AssistanceRequest", request.Id,
-                $"Cliente anexou uma foto ao chamado #{request.Number}.", null);
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await using var tx = await _db.Database.BeginTransactionAsync(ct);
+                await BuildScope.AdvisoryLockAsync(_db, BuildPostConstructionService.AssistancePhotosLock(target.RequestId), ct);
+                var request = await _db.BldAssistanceRequests.IgnoreQueryFilters()
+                    .FirstAsync(a => a.TenantId == target.TenantId && a.ProjectId == target.ProjectId && a.Id == target.RequestId, ct);
+                request.AddPhoto(key);
+                _audit.RecordPortalClient(AuditActions.BuildAssistancePhotoAdded, target.TenantId, "AssistanceRequest", request.Id,
+                    $"Cliente anexou uma foto ao chamado #{request.Number}.", null);
+                await _db.SaveChangesAsync(ct);
+                await tx.CommitAsync(ct);
+                return MapAssistance(ctx, request);
+            }
+            catch (DbUpdateConcurrencyException) when (attempt == 0)
+            {
+                _db.ChangeTracker.Clear();
+            }
+            catch (Exception ex) when (ex is DomainException or DbUpdateException)
+            {
+                await DeleteQuietlyAsync(key);
+                if (ex is DbUpdateConcurrencyException) throw Conflict();
+                if (ex is DomainException { Code: "assistance_photo_limit" })
+                    throw new BuildPortalAccessException(422, PublicBuildPortal.CodeAssistancePhotoLimit,
+                        $"Cada chamado aceita até {BuildAssistanceRequest.MaxPhotos} fotos.");
+                if (ex is DomainException)
+                    throw new BuildPortalAccessException(422, PublicBuildPortal.CodeAssistanceClosed, "Este chamado não aceita mais fotos.");
+                throw;
+            }
         }
-        catch (Exception ex) when (ex is DomainException or DbUpdateException)
-        {
-            await DeleteQuietlyAsync(key);
-            if (ex is DomainException { Code: "assistance_photo_limit" })
-                throw new BuildPortalAccessException(422, PublicBuildPortal.CodeAssistancePhotoLimit,
-                    $"Cada chamado aceita até {BuildAssistanceRequest.MaxPhotos} fotos.");
-            if (ex is DomainException)
-                throw new BuildPortalAccessException(422, PublicBuildPortal.CodeAssistanceClosed, "Este chamado não aceita mais fotos.");
-            throw;
-        }
-        return MapAssistance(ctx, request);
     }
 
     private async Task DeleteQuietlyAsync(string key)
@@ -374,7 +398,7 @@ public sealed partial class BuildPublicPortalService
     private PublicBuildAssistanceDto MapAssistance(Ctx ctx, BuildAssistanceRequest a)
     {
         var password = ctx.Portal.Access == BuildPortalAccess.Password;
-        var urls = a.PhotoKeys.Select(k => _media.SignedUrl(k, ctx.TenantId)).Where(u => u is not null).Select(u => u!).ToList();
+        var urls = a.PhotoKeys.Select(k => _media.SignedUrl(k, ctx.TenantId, BuildPostConstructionService.AssistanceFolder)).Where(u => u is not null).Select(u => u!).ToList();
         var timeline = new List<PublicBuildAssistanceEventDto> { new(nameof(BuildAssistanceStatus.Open), Utc(a.CreatedAt)) };
         void Add(BuildAssistanceStatus s, DateTime? at)
         {

@@ -1,4 +1,4 @@
-// Orken Build — Portal do Cliente (API pública), contrato v1.4
+// Orken Build — Portal do Cliente (API pública), contrato v1.5
 // GERADO de docs/build/openapi-portal.json por BuildPortalOpenApiTests — não edite à mão.
 // Regenerar (em nexo-backend): ORKEN_WRITE_PORTAL_OPENAPI=1 dotnet test tests/Nexo.IntegrationTests --filter "FullyQualifiedName~BuildPortalOpenApiTests"
 // Campos com `?` podem vir null ou ausentes. Datas: "yyyy-MM-dd" (date) ou ISO 8601 (date-time).
@@ -96,7 +96,7 @@ export interface PublicBuildChangeOrderDto {
   title: string;
   description?: string | null;
   reason: string;
-  costImpact: number;
+  costImpact?: number | null;
   scheduleImpactDays: number;
   stageName?: string | null;
   status: string;
@@ -105,7 +105,6 @@ export interface PublicBuildChangeOrderDto {
   decidedAt?: string | null;
   decisionChannel?: string | null;
   clientComment?: string | null;
-  signerName?: string | null;
   items: PublicBuildChangeOrderItemDto[];
 }
 
@@ -114,8 +113,8 @@ export interface PublicBuildChangeOrderItemDto {
   kind: string;
   quantity: number;
   unit: string;
-  unitPrice: number;
-  total: number;
+  unitPrice?: number | null;
+  total?: number | null;
 }
 
 export interface PublicBuildChangeOrdersDto {

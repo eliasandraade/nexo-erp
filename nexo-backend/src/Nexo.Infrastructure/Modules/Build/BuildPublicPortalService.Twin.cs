@@ -43,7 +43,7 @@ public sealed partial class BuildPublicPortalService
         }
 
         // only the derivative made for viewing; the source of an IFC/DXF/PDF is never signed here
-        var viewerUrl = primary?.ViewerFileKey is { } key ? _media.SignedUrl(key, ctx.TenantId) : null;
+        var viewerUrl = primary?.ViewerFileKey is { } key ? _media.SignedUrl(key, ctx.TenantId, BuildModelService.Folder) : null;
         return new PublicBuildTwinDto
         {
             GeometrySource = geometry?.ToString(),
@@ -98,7 +98,7 @@ public sealed partial class BuildPublicPortalService
         var expires = DateTimeOffset.UtcNow.Add(BuildPortalMedia.SignedUrlTtl);
         return new PublicBuildRealityCapturesDto(rows.Select(r =>
         {
-            var url = _media.SignedUrl(r.MediaKey, tid);
+            var url = _media.SignedUrl(r.MediaKey, tid, BuildRealityCaptureService.Folder);
             return new PublicBuildRealityCaptureDto(r.Type.ToString(), Utc(r.CapturedAt), r.Title, r.StageName, r.ZoneName, r.ContentType,
                 url, url is null ? null : expires);
         }).ToList(), total, s, n);

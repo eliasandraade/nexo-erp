@@ -85,6 +85,8 @@ describe("BuildPortalTab", () => {
   });
 
   it("Wave 4: '3D e captura' toggles are live (not 'em breve') and the note says the client never gets the original project", async () => {
+    // password-only sections (v1.5) are editable on a password portal
+    vi.mocked(portalApi.fetchProjectPortal).mockResolvedValue({ ...portal, access: "Password", hasPassword: true });
     vi.mocked(portalApi.updateProjectPortal).mockImplementation(async (_id, req) => ({ ...portal, ...req }));
     renderTab(<BuildPortalTab projectId="p1" />);
     const model = await screen.findByRole("switch", { name: /Modelo 3D/ });
@@ -99,6 +101,8 @@ describe("BuildPortalTab", () => {
   });
 
   it("Wave 2 flags: aditivos and escolhas on by default, medições off; turning medições on is saved", async () => {
+    // password-only sections (v1.5) are editable on a password portal
+    vi.mocked(portalApi.fetchProjectPortal).mockResolvedValue({ ...portal, access: "Password", hasPassword: true });
     vi.mocked(portalApi.updateProjectPortal).mockImplementation(async (_id, req) => ({ ...portal, ...req }));
     renderTab(<BuildPortalTab projectId="p1" />);
 
@@ -116,6 +120,8 @@ describe("BuildPortalTab", () => {
   });
 
   it("Wave 3 flag: Pós-obra (Meu Imóvel) on by default; turning it off is saved", async () => {
+    // password-only sections (v1.5) are editable on a password portal
+    vi.mocked(portalApi.fetchProjectPortal).mockResolvedValue({ ...portal, access: "Password", hasPassword: true });
     vi.mocked(portalApi.updateProjectPortal).mockImplementation(async (_id, req) => ({ ...portal, ...req }));
     renderTab(<BuildPortalTab projectId="p1" />);
 

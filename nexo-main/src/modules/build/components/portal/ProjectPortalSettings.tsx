@@ -188,7 +188,7 @@ export function ProjectPortalSettings({ projectId, portal, company }: Props) {
             <h4 className="text-sm font-semibold">O que o cliente vê</h4>
             <p className="text-xs text-muted-foreground">Itens desligados nunca saem do sistema. A nota interna do diário nunca é mostrada.</p>
           </div>
-          <PortalVisibilityMatrix value={form.visibility} onChange={(v) => set("visibility", v)} />
+          <PortalVisibilityMatrix value={form.visibility} access={form.access} onChange={(v) => set("visibility", v)} />
         </div>
 
         <div className="flex items-center justify-end gap-2">

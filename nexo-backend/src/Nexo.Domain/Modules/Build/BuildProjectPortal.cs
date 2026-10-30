@@ -16,13 +16,16 @@ public enum BuildPortalAccess
 /// hash), branding, contacts and what it shows (<see cref="BuildPortalVisibility"/>).
 ///
 /// Password rules: changing or removing the password bumps <see cref="PasswordVersion"/>, which
-/// invalidates every open session. After <see cref="MaxFailedAttempts"/> wrong passwords in a row the
-/// portal refuses attempts for <see cref="LockMinutes"/> minutes.
+/// invalidates every open session. Wrong passwords lock in two layers (both for <see cref="LockMinutes"/> minutes):
+/// <see cref="MaxFailedAttemptsPerClient"/> from one client IP lock that IP only (kept in the cache, so a guesser cannot
+/// lock the real client out), and <see cref="MaxFailedAttemptsGlobal"/> from anywhere lock the whole portal
+/// (<see cref="FailedAttempts"/>/<see cref="LockedUntil"/>, counted atomically in the database) to bound a distributed attack.
 /// </summary>
 public class BuildProjectPortal : TenantEntity
 {
-    public const int MaxFailedAttempts = 20;
-    public const int LockMinutes       = 15;
+    public const int MaxFailedAttemptsPerClient = 20;
+    public const int MaxFailedAttemptsGlobal    = 200;
+    public const int LockMinutes                = 15;
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -134,27 +137,8 @@ public class BuildProjectPortal : TenantEntity
         SetUpdatedAt();
     }
 
+    /// <summary>The whole portal is locked (global threshold). The counting itself is one atomic SQL update in the service.</summary>
     public bool IsLocked(DateTime nowUtc) => LockedUntil is { } until && until > nowUtc;
-
-    /// <summary>A wrong password: counts it and locks the portal after too many in a row.</summary>
-    public void RegisterFailedAttempt(DateTime nowUtc)
-    {
-        FailedAttempts++;
-        if (FailedAttempts >= MaxFailedAttempts)
-        {
-            LockedUntil    = nowUtc.AddMinutes(LockMinutes);
-            FailedAttempts = 0;
-        }
-        SetUpdatedAt();
-    }
-
-    public void RegisterSuccessfulAttempt()
-    {
-        if (FailedAttempts == 0 && LockedUntil is null) return;
-        FailedAttempts = 0;
-        LockedUntil    = null;
-        SetUpdatedAt();
-    }
 
     // ── Publication ───────────────────────────────────────────────────────────
 

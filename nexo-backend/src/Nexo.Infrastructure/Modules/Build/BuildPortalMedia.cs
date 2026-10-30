@@ -38,14 +38,22 @@ public sealed class BuildPortalMedia
            && StorageKeys.IsOfTenant(key, tenantId)
            && key.StartsWith($"tenants/{tenantId}/{PortalFolder}", StringComparison.Ordinal);
 
+    /// <summary>The check behind <see cref="SignedUrl"/>: the tenant's PRIVATE folder for that section.</summary>
+    public static bool IsSignable(string? key, Guid tenantId, string expectedFolder)
+        => !string.IsNullOrWhiteSpace(expectedFolder) && StorageKeys.IsPrivateOf(key, tenantId, expectedFolder.Trim('/'));
+
     public string? BrandingUrl(string? key, Guid tenantId)
         => IsBrandingKeyOf(key, tenantId) ? _publicUrls.ResolvePublicUrl(key) : null;
 
-    /// <summary>A short-lived signed URL for a private file of <paramref name="tenantId"/>, or null.</summary>
-    public string? SignedUrl(string? key, Guid tenantId)
+    /// <summary>
+    /// A short-lived signed URL for a private file of <paramref name="tenantId"/> in the private folder the section's files
+    /// are uploaded to (<paramref name="expectedFolder"/>, e.g. <c>build/daily-logs</c>), or null. A key of another tenant,
+    /// a public key or a key of another folder (a record pointing at a file it does not own) is never signed.
+    /// </summary>
+    public string? SignedUrl(string? key, Guid tenantId, string expectedFolder)
     {
         if (string.IsNullOrWhiteSpace(key) || !_flags.StorageEnabled) return null;
-        if (!StorageKeys.IsOfTenant(key, tenantId)) return null;
+        if (!IsSignable(key, tenantId, expectedFolder)) return null;
         try
         {
             return _storage.GetSignedUrl(key, SignedUrlTtl);

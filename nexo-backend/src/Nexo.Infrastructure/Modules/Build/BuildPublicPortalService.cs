@@ -25,7 +25,9 @@ namespace Nexo.Infrastructure.Modules.Build;
 ///   - Unknown company, unknown project and unpublished portal answer the same 404 (no enumeration).
 ///   - A password portal needs a session: <see cref="PublicBuildPortal.SessionHeader"/> carries an opaque
 ///     token whose SHA-256 is matched; expired, revoked or opened before a password change → 401.
-///   - Only sections enabled in the portal's visibility are built; disabled ones are absent from the JSON.
+///   - Only sections enabled in the portal's visibility are built; disabled ones are absent from the JSON. A public
+///     portal never serves the password-only sections (personal data: <see cref="BuildPortalVisibility.PasswordOnlySections"/>).
+///   - The session is checked before anything else that depends on the portal's configuration (sections, decision rules).
 ///   - Public DTOs only: no internal ids, no internal notes (only the client summary of a log marked
 ///     visible), no password data; photos only when both the photo and its log are client-visible, as
 ///     signed URLs (15 min) for keys of the portal's tenant.
@@ -48,12 +50,16 @@ public sealed partial class BuildPublicPortalService
     private readonly BuildChangeOrderEffects _effects;
     private readonly IStorageProvider _storage;
     private readonly BuildTwinStateReader _twin;
+    private readonly ICacheService _cache;
+    private readonly BuildPortalPasswordGuard _guard;
 
     public BuildPublicPortalService(NexoDbContext db, BuildProgressEngine engine, IPasswordHasher hasher,
         BuildPortalMedia media, IWeatherProvider weather, IIntegrationFeatureFlags flags, IConfiguration config,
         BuildAuditTrail audit, ILogger<BuildPublicPortalService> logger, BuildChangeOrderEffects effects,
-        IStorageProvider storage, BuildTwinStateReader twin)
+        IStorageProvider storage, BuildTwinStateReader twin, ICacheService cache, BuildPortalPasswordGuard guard)
     {
+        _cache = cache;
+        _guard = guard;
         _twin = twin;
         _effects = effects;
         _storage = storage;
@@ -127,10 +133,22 @@ public sealed partial class BuildPublicPortalService
 
     // ── Session (password portals) ────────────────────────────────────────────
 
+    /// <summary>
+    /// Opens a session of a password portal. Brute force is bounded in layers:
+    ///   1. per client IP (<paramref name="clientIp"/>, hashed): <see cref="BuildProjectPortal.MaxFailedAttemptsPerClient"/>
+    ///      wrong passwords in <see cref="BuildProjectPortal.LockMinutes"/> min lock THAT client (cache), so a guesser cannot
+    ///      lock the real client out;
+    ///   2. per portal: <see cref="BuildProjectPortal.MaxFailedAttemptsGlobal"/> wrong passwords from anywhere lock the
+    ///      whole portal (database), bounding a distributed attack;
+    ///   3. both counters are incremented atomically BEFORE the (slow) BCrypt check, so parallel attempts each count; a
+    ///      correct password resets them;
+    ///   4. at most a few BCrypt checks run at once (<see cref="BuildPortalPasswordGuard"/>), else 429 portal_busy.
+    /// With the cache unavailable the per-client layer is skipped (fail-open); the portal-wide layer always applies.
+    /// </summary>
     public async Task<PublicBuildSessionDto> OpenSessionAsync(string companySlug, string projectSlug, string? password,
-        CancellationToken ct)
+        string? clientIp, CancellationToken ct)
     {
-        var ctx = await ResolveAsync(companySlug, projectSlug, tracking: true, ct);
+        var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
         var portal = ctx.Portal;
         if (portal.Access != BuildPortalAccess.Password || !portal.HasPassword)
             throw new BuildPortalAccessException(400, PublicBuildPortal.CodePasswordNotNeeded,
@@ -138,19 +156,51 @@ public sealed partial class BuildPublicPortalService
 
         var now = DateTime.UtcNow;
         if (portal.IsLocked(now))
-            throw Locked(portal, now);
+            throw Locked(portal.LockedUntil!.Value, now);
 
-        if (string.IsNullOrEmpty(password) || password.Length > MaxPasswordLength || !_hasher.Verify(password, portal.PasswordHash!))
+        var client = BuildPortalPasswordGuard.ClientKey(clientIp);
+        var lockKey = BuildPortalPasswordGuard.LockKey(portal.Id, client);
+        var failuresKey = BuildPortalPasswordGuard.FailuresKey(portal.Id, client);
+        if (await _cache.GetAsync<BuildPortalClientLock>(lockKey, ct) is { } held && held.Until > now)
+            throw Locked(held.Until, now);
+
+        // Count first (atomically), check later: a burst of parallel attempts cannot slip past the counters.
+        var clientFailures = await _cache.IncrementAsync(failuresKey, TimeSpan.FromMinutes(BuildProjectPortal.LockMinutes), ct);
+        if (clientFailures > BuildProjectPortal.MaxFailedAttemptsPerClient)
+            throw Locked(await LockClientAsync(lockKey, now, ct), now);
+        var portalLockUntil = await CountPortalAttemptAsync(ctx, now, ct);
+
+        var ok = false;
+        if (!string.IsNullOrEmpty(password) && password.Length <= MaxPasswordLength)
         {
-            portal.RegisterFailedAttempt(now);
-            if (portal.IsLocked(now))
+            using var slot = await _guard.TryEnterAsync(ct)
+                ?? throw new BuildPortalAccessException(429, PublicBuildPortal.CodeBusy,
+                    "Muitas tentativas ao mesmo tempo. Tente de novo em instantes.", retryAfterSeconds: 2);
+            ok = _hasher.Verify(password, portal.PasswordHash!);
+        }
+
+        if (!ok)
+        {
+            if (clientFailures >= BuildProjectPortal.MaxFailedAttemptsPerClient)
+            {
+                await LockClientAsync(lockKey, now, ct);
                 _audit.RecordPortalVisitor(AuditActions.BuildPortalLocked, portal.TenantId, portal.Id,
-                    $"Portal do cliente bloqueado por {BuildProjectPortal.LockMinutes} min após senhas erradas seguidas.");
+                    $"Senha do portal do cliente bloqueada por {BuildProjectPortal.LockMinutes} min para um visitante após " +
+                    $"{BuildProjectPortal.MaxFailedAttemptsPerClient} senhas erradas.");
+            }
+            if (await LockedByThisAttemptAsync(ctx, portalLockUntil, ct))
+                _audit.RecordPortalVisitor(AuditActions.BuildPortalLocked, portal.TenantId, portal.Id,
+                    $"Portal do cliente bloqueado por {BuildProjectPortal.LockMinutes} min após " +
+                    $"{BuildProjectPortal.MaxFailedAttemptsGlobal} senhas erradas (todas as origens).");
             await _db.SaveChangesAsync(ct);
             throw new BuildPortalAccessException(401, PublicBuildPortal.CodePasswordInvalid, "Senha incorreta.", Teaser(ctx));
         }
 
-        portal.RegisterSuccessfulAttempt();
+        // Right password: the counters start over (a portal-wide lock was checked above and is left to expire on its own).
+        await _cache.RemoveAsync(failuresKey, ct);
+        await _db.BldProjectPortals.IgnoreQueryFilters()
+            .Where(p => p.TenantId == ctx.TenantId && p.Id == portal.Id && p.FailedAttempts != 0)
+            .ExecuteUpdateAsync(set => set.SetProperty(p => p.FailedAttempts, 0), ct);
         var token = NewToken();
         var hours = Math.Clamp(_config.GetValue("Build:Portal:SessionHours", DefaultSessionHours), 1, 24 * 30);
         var session = BuildPortalSession.Open(portal.TenantId, portal.Id, HashToken(token), portal.PasswordVersion, now,
@@ -158,6 +208,37 @@ public sealed partial class BuildPublicPortalService
         _db.BldPortalSessions.Add(session);
         await _db.SaveChangesAsync(ct);
         return new PublicBuildSessionDto(token, new DateTimeOffset(session.ExpiresAt, TimeSpan.Zero));
+    }
+
+    /// <summary>
+    /// One attempt on the portal-wide counter, as a single SQL UPDATE (no lost increments under concurrency): adds 1, and when
+    /// that reaches <see cref="BuildProjectPortal.MaxFailedAttemptsGlobal"/> locks the portal and starts the count over.
+    /// Returns the lock instant this attempt would write (to tell afterwards whether it was this attempt that locked).
+    /// </summary>
+    private async Task<DateTime> CountPortalAttemptAsync(Ctx ctx, DateTime now, CancellationToken ct)
+    {
+        // timestamptz keeps microseconds: truncate so the value read back compares equal
+        var lockAt = now.AddMinutes(BuildProjectPortal.LockMinutes);
+        DateTime? until = new DateTime(lockAt.Ticks - lockAt.Ticks % 10, DateTimeKind.Utc);
+        const int threshold = BuildProjectPortal.MaxFailedAttemptsGlobal;
+        await _db.BldProjectPortals.IgnoreQueryFilters()
+            .Where(p => p.TenantId == ctx.TenantId && p.Id == ctx.Portal.Id)
+            .ExecuteUpdateAsync(set => set
+                .SetProperty(p => p.FailedAttempts, p => p.FailedAttempts + 1 >= threshold ? 0 : p.FailedAttempts + 1)
+                .SetProperty(p => p.LockedUntil, p => p.FailedAttempts + 1 >= threshold ? until : p.LockedUntil), ct);
+        return until.Value;
+    }
+
+    private Task<bool> LockedByThisAttemptAsync(Ctx ctx, DateTime until, CancellationToken ct)
+        => _db.BldProjectPortals.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(p => p.TenantId == ctx.TenantId && p.Id == ctx.Portal.Id && p.LockedUntil == until, ct);
+
+    private async Task<DateTime> LockClientAsync(string lockKey, DateTime now, CancellationToken ct)
+    {
+        if (await _cache.GetAsync<BuildPortalClientLock>(lockKey, ct) is { } held && held.Until > now) return held.Until;
+        var until = now.AddMinutes(BuildProjectPortal.LockMinutes);
+        await _cache.SetAsync(lockKey, new BuildPortalClientLock(until), TimeSpan.FromMinutes(BuildProjectPortal.LockMinutes), ct);
+        return until;
     }
 
     public async Task CloseSessionAsync(string companySlug, string projectSlug, string? token, CancellationToken ct)
@@ -252,7 +333,7 @@ public sealed partial class BuildPublicPortalService
             items.AddRange(photos.Select(p => new PublicBuildTimelineItemDto
             {
                 Type = "photo", OccurredAt = Utc(p.CreatedAt), Date = p.Date, Caption = p.Caption,
-                PhotoUrl = _media.SignedUrl(p.StorageKey, tid),
+                PhotoUrl = _media.SignedUrl(p.StorageKey, tid, BuildDailyLogService.PhotosFolder),
             }));
         }
 
@@ -275,7 +356,7 @@ public sealed partial class BuildPublicPortalService
         var rows = await query.OrderByDescending(x => x.Date).ThenByDescending(x => x.CreatedAt).Skip(s).Take(n).ToListAsync(ct);
         var expires = DateTimeOffset.UtcNow.Add(BuildPortalMedia.SignedUrlTtl);
         return new PublicBuildPhotosDto(
-            rows.Select(r => new PublicBuildPhotoDto(_media.SignedUrl(r.StorageKey, ctx.TenantId), r.Caption, r.Date, expires)).ToList(),
+            rows.Select(r => new PublicBuildPhotoDto(_media.SignedUrl(r.StorageKey, ctx.TenantId, BuildDailyLogService.PhotosFolder), r.Caption, r.Date, expires)).ToList(),
             total, s, n);
     }
 
@@ -338,9 +419,9 @@ public sealed partial class BuildPublicPortalService
         Guid publicId, PublicBuildChangeOrderDecisionRequest? request, CancellationToken ct)
     {
         var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
-        if (!ctx.Visibility.ChangeOrders) throw BuildPortalAccessException.SectionDisabled();
+        await EnsureAccessAsync(ctx, token, ct);   // before anything that reveals the portal's configuration
         EnsureDecisionPortal(ctx);
-        await EnsureAccessAsync(ctx, token, ct);
+        if (!ctx.Visibility.ChangeOrders) throw BuildPortalAccessException.SectionDisabled();
 
         var decision = request?.Decision?.Trim().ToLowerInvariant();
         if (decision is not ("approve" or "reject"))
@@ -399,6 +480,9 @@ public sealed partial class BuildPublicPortalService
             .Where(s => s.TenantId == tid && s.ProjectId == ctx.Project.Id && stageIds.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
         var canDecide = ctx.Portal.Access == BuildPortalAccess.Password;
+        // money (cost impact, unit price, line total) only when the company shows the financial summary; who signed the
+        // decision is not echoed back (the client knows; decidedAt and the status are enough)
+        var money = ctx.Visibility.FinancialSummary;
         return list.Select(c => new PublicBuildChangeOrderDto
         {
             Id = c.PublicId,
@@ -406,7 +490,7 @@ public sealed partial class BuildPublicPortalService
             Title = c.Title,
             Description = c.Description,
             Reason = c.Reason.ToString(),
-            CostImpact = c.CostImpact,
+            CostImpact = money ? c.CostImpact : null,
             ScheduleImpactDays = c.ScheduleImpactDays,
             StageName = c.StageId is { } sid ? stages.GetValueOrDefault(sid) : null,
             Status = c.Status == BuildChangeOrderStatus.SentToClient ? "Pending" : c.Status.ToString(),
@@ -415,9 +499,9 @@ public sealed partial class BuildPublicPortalService
             DecidedAt = c.DecidedAt is { } d ? Utc(d) : null,
             DecisionChannel = c.DecisionChannel?.ToString(),
             ClientComment = c.ClientComment,
-            SignerName = c.SignerName,
             Items = items[c.Id].OrderBy(i => i.Order)
-                .Select(i => new PublicBuildChangeOrderItemDto(i.Name, i.Kind.ToString(), i.Quantity, i.Unit, i.UnitCost, i.TotalCost))
+                .Select(i => new PublicBuildChangeOrderItemDto(i.Name, i.Kind.ToString(), i.Quantity, i.Unit,
+                    money ? i.UnitCost : null, money ? i.TotalCost : null))
                 .ToList(),
         }).ToList();
     }
@@ -446,9 +530,9 @@ public sealed partial class BuildPublicPortalService
         Guid publicId, PublicBuildSelectionChoiceRequest? request, CancellationToken ct)
     {
         var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
-        if (!ctx.Visibility.Selections) throw BuildPortalAccessException.SectionDisabled();
+        await EnsureAccessAsync(ctx, token, ct);   // before anything that reveals the portal's configuration
         EnsureDecisionPortal(ctx);
-        await EnsureAccessAsync(ctx, token, ct);
+        if (!ctx.Visibility.Selections) throw BuildPortalAccessException.SectionDisabled();
 
         var tid = ctx.TenantId;
         var pid = ctx.Project.Id;
@@ -525,7 +609,7 @@ public sealed partial class BuildPublicPortalService
                     PriceDelta = o.PriceDelta,
                     IsStandard = o.IsStandard,
                     // only selections the company marked visible reach here; the image stays private, signed per request
-                    ImageUrl = _media.SignedUrl(o.ImageKey, tid),
+                    ImageUrl = _media.SignedUrl(o.ImageKey, tid, BuildSelectionService.ImageFolder),
                     LeadTimeDays = o.LeadTimeDays,
                 }).ToList(),
                 ImageUrlsExpireAt = opts.Any(o => o.ImageKey is not null) ? expires : null,
@@ -606,7 +690,8 @@ public sealed partial class BuildPublicPortalService
         var project = await _db.BldProjects.IgnoreQueryFilters().AsNoTracking()
             .FirstOrDefaultAsync(p => p.TenantId == company.TenantId && p.Id == portal.ProjectId, ct)
             ?? throw BuildPortalAccessException.NotFound();
-        var visibility = portal.Visibility;
+        // personal/residential sections are only ever served behind a password (v1.5)
+        var visibility = portal.Visibility.EffectiveFor(portal.Access);
         if (visibility.Model3d && !await Build3DEnabledAsync(company.TenantId, ct))
             visibility = visibility with { Model3d = false };   // the platform switched 3D off for this company
         return new Ctx(company, portal, project, visibility);
@@ -633,10 +718,10 @@ public sealed partial class BuildPublicPortalService
     private PublicBuildPortalTeaserDto Teaser(Ctx ctx)
         => new(ctx.Company.DisplayName, _media.BrandingUrl(ctx.Portal.LogoKey, ctx.TenantId) ?? CompanyLogo(ctx), ctx.Portal.Title);
 
-    private static BuildPortalAccessException Locked(BuildProjectPortal portal, DateTime now)
+    private static BuildPortalAccessException Locked(DateTime until, DateTime now)
         => new(429, PublicBuildPortal.CodeLocked,
             "Muitas tentativas de senha. Tente de novo em alguns minutos.",
-            retryAfterSeconds: (int)Math.Ceiling(((portal.LockedUntil ?? now) - now).TotalSeconds));
+            retryAfterSeconds: Math.Max(1, (int)Math.Ceiling((until - now).TotalSeconds)));
 
     // ── Sections ──────────────────────────────────────────────────────────────
 

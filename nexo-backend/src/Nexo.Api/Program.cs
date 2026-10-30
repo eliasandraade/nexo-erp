@@ -318,8 +318,12 @@ try
     });
 
     // Orken Build client portal (public, per client IP): "build-portal" for reads, "build-portal-auth" for
-    // password attempts (on top of the per-portal lock after 20 wrong passwords). Overridable via
-    // RateLimiting:BuildPortal:* and RateLimiting:BuildPortalAuth:*.
+    // password attempts (on top of the per-client and per-portal password locks). Overridable via
+    // RateLimiting:BuildPortal:* and RateLimiting:BuildPortalAuth:*. The client IP comes from ClientIpResolver
+    // (RateLimiting:ClientIpSource — see the class for why X-Forwarded-For is trusted behind Railway's edge); the
+    // controller uses the same resolver for the per-client password lockout.
+    var buildPortalClientIp = new Nexo.Api.Middleware.ClientIpResolver(builder.Configuration);
+    builder.Services.AddSingleton(buildPortalClientIp);
     builder.Services.Configure<RateLimiterOptions>(options =>
     {
         void AddIpPolicy(string policy, string section, int defaultPermit, int defaultWindow)
@@ -333,10 +337,7 @@ try
                 if (!enabled)
                     return RateLimitPartition.GetNoLimiter($"{policy}:disabled");
 
-                var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-                var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
-                    ? forwardedFor.Split(',')[0].Trim()
-                    : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                var clientIp = buildPortalClientIp.Resolve(httpContext);
 
                 return RateLimitPartition.GetFixedWindowLimiter($"{policy}|{clientIp}", _ =>
                     new FixedWindowRateLimiterOptions
@@ -396,6 +397,8 @@ try
         opts.SupportNonNullableReferenceTypes();
         // nullable DTO properties keep their "nullable" flag (a bare $ref cannot carry it)
         opts.UseAllOfToExtendReferenceSchemas();
+        // uploads that read the form themselves (after authorizing) still document their multipart body
+        opts.OperationFilter<Nexo.Api.Filters.MultipartFileBodyOperationFilter>();
 
         // Enable Bearer token in Swagger UI
         opts.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme

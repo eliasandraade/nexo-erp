@@ -21,7 +21,7 @@ public class BuildPortalOpenApiTests
 {
     public const string WriteVariable = "ORKEN_WRITE_PORTAL_OPENAPI";
     private const string PublicPrefix = "/api/public/build";
-    private const string ContractVersion = "1.4";
+    private const string ContractVersion = "1.5";
 
     private readonly TestWebApplicationFactory _factory;
 

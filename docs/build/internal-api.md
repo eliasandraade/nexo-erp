@@ -49,9 +49,9 @@ passados são imutáveis; um job horário (`BuildProgressSnapshotJob`) garante u
 | Método | Rota | Corpo / observação |
 |---|---|---|
 | GET/PUT | `/api/v1/build/portal/company` | `{ slug, displayName, logoKey?, contactEmail?, contactPhone? }` — slug único na plataforma (`409`) |
-| GET/PUT | `/api/v1/build/projects/{id}/portal` | `{ slug?, access (Public/Password), title?, welcomeMessage?, logoKey?, coverKey?, primaryColor? (#RRGGBB), accentColor?, contactName?, contactPhone?, contactEmail?, contactWhatsApp?, visibility? }` — PUT substitui tudo; flags omitidas em `visibility` assumem o padrão seguro; resposta nunca traz senha/hash, só `hasPassword`, `isLocked`, `publicPath` |
-| PUT | `/api/v1/build/projects/{id}/portal/password` | `{ password }` (≥ 8) — encerra todas as sessões abertas |
-| DELETE | `/api/v1/build/projects/{id}/portal/password` | recusado se o portal publicado exige senha |
+| GET/PUT | `/api/v1/build/projects/{id}/portal` | `{ slug?, access (Public/Password), title?, welcomeMessage?, logoKey?, coverKey?, primaryColor? (#RRGGBB), accentColor?, contactName?, contactPhone?, contactEmail?, contactWhatsApp?, visibility? }` — PUT substitui tudo; flags omitidas em `visibility` assumem o padrão seguro; resposta nunca traz senha/hash, só `hasPassword`, `isLocked` (bloqueio **do portal inteiro**: 200 senhas erradas de todas as origens; o bloqueio por IP não aparece aqui), `publicPath`. PUT durante impersonação → `403 impersonation_forbidden` |
+| PUT | `/api/v1/build/projects/{id}/portal/password` | `{ password }` (≥ 8) — encerra todas as sessões abertas. Durante impersonação → `403 impersonation_forbidden` |
+| DELETE | `/api/v1/build/projects/{id}/portal/password` | recusado se o portal publicado exige senha. Durante impersonação → `403 impersonation_forbidden` |
 | POST | `/api/v1/build/projects/{id}/portal/publish` | exige slug da empresa e da obra, e senha se `access=Password` (`422 portal_not_configured`, `portal_company_missing`, `portal_slug_missing`, `portal_password_missing`) |
 | POST | `/api/v1/build/projects/{id}/portal/unpublish` | |
 | PUT | `/api/v1/build/daily-logs/{logId}/client-visibility` | `{ clientVisible, clientSummary }` — visível exige resumo; a nota interna nunca vai ao cliente |
@@ -62,6 +62,25 @@ passados são imutáveis; um job horário (`BuildProgressSnapshotJob`) garante u
 
 Logo e capa: enviar por `POST /api/integrations/storage/upload` com contexto `build-portal-logo` ou
 `build-portal-cover` (públicos, papéis de gestão) e usar a `key` devolvida (`tenants/{tenant}/build/portal/...`).
+
+Segurança do portal (revisão v1.5 do contrato público):
+
+- **Impersonação**: um administrador da plataforma dentro da empresa não muda como o portal é aberto — o `PUT` das
+  configurações do portal inteiro (acesso e visibilidade; regra simples, sem comparação campo a campo) e definir/remover a
+  senha respondem `403 impersonation_forbidden`. Ler as configurações continua permitido.
+- **Seções só com senha**: `postConstruction`, `changeOrders`, `selections`, `documents` e `realityCapture` só são servidas
+  por portal com senha; num portal público o valor salvo é mantido mas ignorado (a tela mostra "exige portal com senha").
+- **Senha do portal**: bloqueio por IP do visitante (20 erros/15 min, no cache — com o cache fora do ar essa camada é
+  pulada) + bloqueio do portal (200 erros/15 min, `failed_attempts`/`locked_until`, um `UPDATE` atômico por tentativa,
+  antes do BCrypt). No máximo `Build:Portal:MaxConcurrentPasswordChecks` (padrão 4) verificações BCrypt simultâneas por
+  instância; espera até `Build:Portal:PasswordCheckWaitMs` (padrão 2000) e então `429 portal_busy`.
+- **IP do cliente** (rate limits `build-portal*` e bloqueio por IP): `RateLimiting:ClientIpSource` = `ForwardedFor`
+  (padrão; primeiro item do `X-Forwarded-For`, que a borda da Railway reescreve) | `RealIp` (`X-Real-IP`) | `Remote`
+  (IP da conexão). As demais políticas (`auth-login`, `public-booking`, `public-orders`) não mudaram.
+- **Corridas**: abrir chamado pelo portal conta o limite (20 abertos) e insere sob um advisory lock por obra; anexar foto
+  (portal ou construtora) roda sob um advisory lock por chamado — conflito restante → tenta 1 vez, depois `409 portal_conflict`.
+- **Mídia**: cada seção do portal só assina chaves da pasta privada da própria seção (`build/daily-logs`, `build/selections`,
+  `build/handover`, `build/assistance`, `build/documents`, `build/reality`, `build/models`).
 
 
 Upload de imagem de opção de escolha: contexto `build-selection-option` (**privado**, papéis de gestão,
@@ -203,8 +222,9 @@ com itens por etapa: `previousPercent` (o % da etapa), `measuredPercent` (acumul
 
 ## Portal do cliente — visibilidade nova
 
-Flags novas em `visibility` (`PUT /projects/{id}/portal`): `changeOrders` (padrão **ligado**), `selections` (padrão
-**ligado**), `measurements` (padrão **desligado**; valores só junto com `financialSummary`). Decisões do cliente
+Flags novas em `visibility` (`PUT /projects/{id}/portal`): `changeOrders` (padrão **ligado**, só em portal com senha
+desde a v1.5; valores do aditivo só com `financialSummary`), `selections` (padrão **ligado**, só em portal com senha desde a
+v1.5), `measurements` (padrão **desligado**; valores só junto com `financialSummary`). Decisões do cliente
 (aditivo, escolha) só em portal com senha. Rotas públicas: [`client-portal-contract.md`](client-portal-contract.md) (v1.1).
 
 API pública consumida pelo site do cliente: ver [`client-portal-contract.md`](client-portal-contract.md).
@@ -340,7 +360,7 @@ obra ou `Outros` — senão `422 invalid_category`), `title`, `description`, `lo
 | POST | `/assistance/{id}/start` · `/resolve` `{ resolutionNotes }` · `/close` · `/reject` `{ reason }` | transição inválida → `422 assistance_invalid_transition`; repetida → `409` |
 | POST | `/assistance/{id}/photos` | `{ key }` (upload `build-assistance`) |
 
-Portal do cliente: flag nova `postConstruction` (padrão **ligado**) e rotas da v1.2 em
+Portal do cliente: flag nova `postConstruction` (padrão **ligado**; só em portal com senha desde a v1.5) e rotas da v1.2 em
 [`client-portal-contract.md`](client-portal-contract.md).
 
 # Wave 4 — Gêmeo digital (Digital Twin)
@@ -462,7 +482,8 @@ contado em `unbound`). Eventos explícitos e vínculos de elemento valem pelo id
 Arquivos em `private/tenants/{t}/build/reality/{projectId}/…` (contexto de upload `build-reality`). Upload direto ao R2
 por URL pré-assinada (PUT) não foi feito: o envio passa pela API (limite elevado só nesta rota).
 
-Portal do cliente: flags `model3d` e `realityCapture` (padrão **desligadas**) e rotas da v1.3 em
+Portal do cliente: flags `model3d` e `realityCapture` (padrão **desligadas**; `realityCapture` só em portal com senha desde a
+v1.5) e rotas da v1.3 em
 [`client-portal-contract.md`](client-portal-contract.md).
 
 # Wave 5 — IA
@@ -527,7 +548,7 @@ validade e `extracted`; risco → só ciência. `applied` registra os ids criado
 | PUT | `/documents/{id}/client-visibility` | `{ clientVisible }` |
 
 Arquivos em `private/tenants/{t}/build/documents/{projectId}/{id}.<ext>` (contexto `build-document`; a chave nunca usa o nome
-do cliente). Portal: flag `documents` e `GET /documents` na v1.4 de [`client-portal-contract.md`](client-portal-contract.md).
+do cliente). Portal: flag `documents` (só em portal com senha desde a v1.5) e `GET /documents` na v1.4 de [`client-portal-contract.md`](client-portal-contract.md).
 
 ## Plataforma
 

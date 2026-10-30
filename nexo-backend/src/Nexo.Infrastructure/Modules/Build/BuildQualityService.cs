@@ -48,6 +48,13 @@ internal static class BuildScope
 
     public static bool IsUniqueViolation(DbUpdateException ex)
         => ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
+
+    /// <summary>
+    /// A PostgreSQL advisory lock on <paramref name="name"/> held until the current transaction ends (call inside one): the
+    /// read-check-write that follows is serialized with every other caller of the same name.
+    /// </summary>
+    public static Task AdvisoryLockAsync(NexoDbContext db, string name, CancellationToken ct)
+        => db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({name}))", ct);
 }
 
 /// <summary>

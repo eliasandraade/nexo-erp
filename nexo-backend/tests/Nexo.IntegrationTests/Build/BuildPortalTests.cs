@@ -154,7 +154,7 @@ public class BuildPortalTests
         var body = await Json(resp, HttpStatusCode.OK);
         resp.Headers.CacheControl!.NoStore.Should().BeTrue();
 
-        body.GetProperty("contractVersion").GetString().Should().Be("1.4");
+        body.GetProperty("contractVersion").GetString().Should().Be("1.5");
         body.GetProperty("company").GetProperty("name").GetString().Should().Be("Construtora Teste");
         body.GetProperty("project").GetProperty("name").GetString().Should().Be("Casa Beta");
         body.GetProperty("portal").GetProperty("primaryColor").GetString().Should().Be("#0a3d62");
@@ -294,24 +294,202 @@ public class BuildPortalTests
         (await client3.GetAsync(url)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
+    private HttpClient From(string ip)
+    {
+        var client = Anonymous();
+        client.DefaultRequestHeaders.Add("X-Forwarded-For", ip);   // the client IP as Railway's edge writes it
+        return client;
+    }
+
+    private async Task<int> FailedAttemptsAsync(Guid projectId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return await db.BldProjectPortals.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.ProjectId == projectId).Select(p => p.FailedAttempts).SingleAsync();
+    }
+
     [Fact]
-    public async Task Too_many_wrong_passwords_lock_the_portal()
+    public async Task Wrong_passwords_lock_only_the_guessing_client_not_the_real_one()
     {
         var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
         var projectId = await ProjectAsync(admin);
         var password = PortalPassword();
         var (company, project) = await PublishedPortalAsync(admin, projectId, access: "Password", password: password);
         var url = $"/api/public/build/{company}/{project}/session";
-        var anon = Anonymous();
+        var guesser = From("203.0.113.10");
         for (var i = 0; i < 20; i++)
-            (await anon.PostAsJsonAsync(url, new { password = "nao-e-esta" })).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+            (await guesser.PostAsJsonAsync(url, new { password = "nao-e-esta" })).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
 
-        var locked = await anon.PostAsJsonAsync(url, new { password });
-        (await Json(locked, (HttpStatusCode)429)).GetProperty("code").GetString().Should().Be("portal_locked");
+        var locked = await guesser.PostAsJsonAsync(url, new { password });
+        (await Json(locked, (HttpStatusCode)429)).GetProperty("code").GetString().Should().Be("portal_locked",
+            "even the right password waits once this client is locked");
         locked.Headers.RetryAfter.Should().NotBeNull();
 
+        // the real client, from another IP, still gets in — and the portal itself is not locked
+        (await Json(await From("198.51.100.20").PostAsJsonAsync(url, new { password }), HttpStatusCode.OK))
+            .GetProperty("token").GetString().Should().NotBeNullOrEmpty();
+        (await Json(await admin.GetAsync($"/api/v1/build/projects/{projectId}/portal"), HttpStatusCode.OK))
+            .GetProperty("isLocked").GetBoolean().Should().BeFalse();
+        (await guesser.PostAsJsonAsync(url, new { password })).StatusCode.Should().Be((HttpStatusCode)429, "the guesser stays locked");
+    }
+
+    [Fact]
+    public async Task Parallel_wrong_passwords_each_count()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var projectId = await ProjectAsync(admin);
+        var password = PortalPassword();
+        var (company, project) = await PublishedPortalAsync(admin, projectId, access: "Password", password: password);
+        var url = $"/api/public/build/{company}/{project}/session";
+
+        var burst = await Task.WhenAll(Enumerable.Range(0, 30)
+            .Select(_ => From("203.0.113.30").PostAsJsonAsync(url, new { password = "nao-e-esta" })));
+        burst.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Unauthorized || r.StatusCode == (HttpStatusCode)429);
+        burst.Should().NotContain(r => r.StatusCode == HttpStatusCode.OK);
+
+        // every attempt that reached the check was counted in the database (one atomic UPDATE each, before BCrypt)
+        (await FailedAttemptsAsync(projectId)).Should().BeGreaterThanOrEqualTo(20);
+        (await Json(await From("203.0.113.30").PostAsJsonAsync(url, new { password }), (HttpStatusCode)429))
+            .GetProperty("code").GetString().Should().Be("portal_locked");
+    }
+
+    [Fact]
+    public async Task Too_many_wrong_passwords_from_anywhere_lock_the_whole_portal()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var projectId = await ProjectAsync(admin);
+        var password = PortalPassword();
+        var (company, project) = await PublishedPortalAsync(admin, projectId, access: "Password", password: password);
+        var url = $"/api/public/build/{company}/{project}/session";
+        using (var scope = _factory.Services.CreateScope())
+        {
+            // a distributed attack already made 199 wrong attempts from many IPs
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            await db.BldProjectPortals.IgnoreQueryFilters().Where(p => p.ProjectId == projectId)
+                .ExecuteUpdateAsync(set => set.SetProperty(p => p.FailedAttempts, Nexo.Domain.Modules.Build.BuildProjectPortal.MaxFailedAttemptsGlobal - 1));
+        }
+
+        (await From("192.0.2.200").PostAsJsonAsync(url, new { password = "nao-e-esta" })).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        var locked = await From("198.51.100.201").PostAsJsonAsync(url, new { password });
+        (await Json(locked, (HttpStatusCode)429)).GetProperty("code").GetString().Should().Be("portal_locked");
+        locked.Headers.RetryAfter.Should().NotBeNull();
         (await Json(await admin.GetAsync($"/api/v1/build/projects/{projectId}/portal"), HttpStatusCode.OK))
             .GetProperty("isLocked").GetBoolean().Should().BeTrue();
+        (await FailedAttemptsAsync(projectId)).Should().Be(0, "the count starts over once the portal locks");
+    }
+
+    [Fact]
+    public async Task A_right_password_resets_the_counters()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var projectId = await ProjectAsync(admin);
+        var password = PortalPassword();
+        var (company, project) = await PublishedPortalAsync(admin, projectId, access: "Password", password: password);
+        var url = $"/api/public/build/{company}/{project}/session";
+        var client = From("203.0.113.40");
+        for (var i = 0; i < 19; i++)
+            (await client.PostAsJsonAsync(url, new { password = "nao-e-esta" })).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await client.PostAsJsonAsync(url, new { password })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await FailedAttemptsAsync(projectId)).Should().Be(0);
+        for (var i = 0; i < 19; i++)
+            (await client.PostAsJsonAsync(url, new { password = "nao-e-esta" })).StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+                "the client's own count started over too");
+        (await client.PostAsJsonAsync(url, new { password })).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Public_json_bodies_are_capped_at_64_kb()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var projectId = await ProjectAsync(admin);
+        var (company, project) = await PublishedPortalAsync(admin, projectId, access: "Password", password: PortalPassword());
+        var huge = new StringContent("{\"password\":\"" + new string('a', 70 * 1024) + "\"}", System.Text.Encoding.UTF8, "application/json");
+        var r = await From("203.0.113.50").PostAsync($"/api/public/build/{company}/{project}/session", huge);
+        (await Json(r, HttpStatusCode.RequestEntityTooLarge)).GetProperty("code").GetString().Should().Be("payload_too_large");
+        (await FailedAttemptsAsync(projectId)).Should().Be(0, "a refused body never reaches the password check");
+    }
+
+    [Fact]
+    public async Task An_impersonating_administrator_cannot_change_how_the_portal_is_opened()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var projectId = await ProjectAsync(admin);
+        var (_, slug) = await PublishedPortalAsync(admin, projectId);
+        var tenantId = await AdminTenantIdAsync();
+
+        // a platform super administrator enters the company (same flow as the platform console)
+        var email = $"ops-{Guid.NewGuid():N}"[..14] + "@platform.test";
+        var platformPassword = "Px!" + Guid.NewGuid().ToString("N")[..20];   // generated per run
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            db.PlatformUsers.Add(PlatformUser.Create(email,
+                scope.ServiceProvider.GetRequiredService<Nexo.Application.Common.Interfaces.IPasswordHasher>().Hash(platformPassword), "super_admin"));
+            await db.SaveChangesAsync();
+        }
+        var login = await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/login",
+            new { email, password = platformPassword }), HttpStatusCode.OK);
+        var platform = _factory.CreateApiClient();
+        platform.DefaultRequestHeaders.Authorization = new("Bearer", login.GetProperty("accessToken").GetString());
+        var granted = await Json(await platform.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate",
+            new { reason = "Suporte: conferir o portal do cliente" }), HttpStatusCode.OK);
+        var imp = _factory.CreateApiClient();
+        imp.DefaultRequestHeaders.Authorization = new("Bearer", granted.GetProperty("accessToken").GetString());
+
+        (await imp.GetAsync($"/api/v1/build/projects/{projectId}/portal")).StatusCode.Should().Be(HttpStatusCode.OK, "reading stays allowed");
+        (await Json(await imp.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal/password", new { password = PortalPassword() }),
+            HttpStatusCode.Forbidden)).GetProperty("code").GetString().Should().Be("impersonation_forbidden");
+        (await Json(await imp.DeleteAsync($"/api/v1/build/projects/{projectId}/portal/password"), HttpStatusCode.Forbidden))
+            .GetProperty("code").GetString().Should().Be("impersonation_forbidden");
+        (await Json(await imp.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal",
+            new { slug, access = "Password", title = "Acompanhe sua obra" }), HttpStatusCode.Forbidden))
+            .GetProperty("code").GetString().Should().Be("impersonation_forbidden");
+
+        var after = await Json(await admin.GetAsync($"/api/v1/build/projects/{projectId}/portal"), HttpStatusCode.OK);
+        after.GetProperty("access").GetString().Should().Be("Public");
+        after.GetProperty("hasPassword").GetBoolean().Should().BeFalse();
+        // the company's own users still can
+        await Json(await admin.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal/password", new { password = PortalPassword() }),
+            HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_public_portal_never_serves_the_personal_sections()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var projectId = await ProjectAsync(admin);
+        var (company, project) = await PublishedPortalAsync(admin, projectId, visibility: new
+        {
+            overallProgress = true, postConstruction = true, changeOrders = true, selections = true, documents = true,
+            realityCapture = true,
+        });
+        var url = $"/api/public/build/{company}/{project}";
+        var bootstrap = await Json(await Anonymous().GetAsync(url), HttpStatusCode.OK);
+        bootstrap.GetProperty("sections").EnumerateArray().Select(x => x.GetString()).Should().Contain("overallProgress")
+            .And.NotContain(["postConstruction", "changeOrders", "selections", "documents", "realityCapture"]);
+        foreach (var path in new[] { "handover", "warranty", "assistance", "change-orders", "selections", "documents", "reality-captures" })
+            (await Json(await Anonymous().GetAsync($"{url}/{path}"), HttpStatusCode.NotFound)).GetProperty("code").GetString()
+                .Should().Be("portal_section_disabled", path);
+
+        // the same flags on a password portal: listed (with a session)
+        var password = PortalPassword();
+        await Json(await admin.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal/password", new { password }), HttpStatusCode.OK);
+        await Json(await admin.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal", new
+        {
+            slug = project, access = "Password", title = "Acompanhe sua obra",
+            visibility = new { postConstruction = true, changeOrders = true, selections = true, documents = true, realityCapture = true },
+        }), HttpStatusCode.OK);
+        // without a session nothing is revealed, not even which sections exist
+        (await Json(await Anonymous().GetAsync($"{url}/documents"), HttpStatusCode.Unauthorized)).GetProperty("code").GetString()
+            .Should().Be("portal_password_required");
+        var token = (await Json(await Anonymous().PostAsJsonAsync($"{url}/session", new { password }), HttpStatusCode.OK))
+            .GetProperty("token").GetString()!;
+        var client = Anonymous();
+        client.DefaultRequestHeaders.Add(SessionHeader, token);
+        (await Json(await client.GetAsync(url), HttpStatusCode.OK)).GetProperty("sections").EnumerateArray().Select(x => x.GetString())
+            .Should().Contain(["postConstruction", "changeOrders", "selections", "documents", "realityCapture"]);
+        (await client.GetAsync($"{url}/change-orders")).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // ── (3) financial visibility ──────────────────────────────────────────────

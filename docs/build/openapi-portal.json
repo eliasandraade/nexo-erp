@@ -2,7 +2,7 @@
   "openapi": "3.0.1",
   "info": {
     "title": "Orken Build — Portal do Cliente (API pública)",
-    "version": "1.4",
+    "version": "1.5",
     "description": "Gerado da API (Swagger) por BuildPortalOpenApiTests. Contrato humano: docs/build/client-portal-contract.md."
   },
   "paths": {
@@ -373,6 +373,16 @@
               }
             }
           },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBuildErrorDto"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Created",
             "content": {
@@ -522,6 +532,16 @@
           },
           "500": {
             "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBuildErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
             "content": {
               "application/json": {
                 "schema": {
@@ -970,6 +990,16 @@
               }
             }
           },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBuildErrorDto"
+                }
+              }
+            }
+          },
           "200": {
             "description": "OK",
             "content": {
@@ -1344,6 +1374,16 @@
           },
           "500": {
             "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBuildErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
             "content": {
               "application/json": {
                 "schema": {
@@ -2126,6 +2166,16 @@
               }
             }
           },
+          "413": {
+            "description": "Content Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBuildErrorDto"
+                }
+              }
+            }
+          },
           "200": {
             "description": "OK",
             "content": {
@@ -2266,6 +2316,16 @@
           },
           "500": {
             "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicBuildErrorDto"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Content Too Large",
             "content": {
               "application/json": {
                 "schema": {
@@ -3251,7 +3311,8 @@
           },
           "costImpact": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "nullable": true
           },
           "scheduleImpactDays": {
             "type": "integer",
@@ -3285,10 +3346,6 @@
             "type": "string",
             "nullable": true
           },
-          "signerName": {
-            "type": "string",
-            "nullable": true
-          },
           "items": {
             "type": "array",
             "items": {
@@ -3316,11 +3373,13 @@
           },
           "unitPrice": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "nullable": true
           },
           "total": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "nullable": true
           }
         },
         "additionalProperties": false

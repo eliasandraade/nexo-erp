@@ -48,6 +48,9 @@ public sealed class BuildPostConstructionService
     public const string AssistanceFolder = "build/assistance";
     public const string AssistanceContext = "build-assistance";
 
+    /// <summary>Advisory-lock name serializing photo appends of one assistance request (company side and portal).</summary>
+    public static string AssistancePhotosLock(Guid requestId) => "build-assistance-photos:" + requestId;
+
     private readonly NexoDbContext _db;
     private readonly ICurrentTenant _tenant;
     private readonly BuildAuditTrail _audit;
@@ -330,10 +333,16 @@ public sealed class BuildPostConstructionService
     public async Task<BuildAssistanceDto> AddAssistancePhotoAsync(Guid id, string key, CancellationToken ct)
     {
         BuildScope.EnsureKeys([key], Tid, AssistanceFolder, AssistanceContext);
-        var a = await LoadAssistanceAsync(id, ct);
-        a.AddPhoto(key);
-        _audit.Record(AuditActions.BuildAssistancePhotoAdded, "AssistanceRequest", a.Id, $"Foto anexada ao chamado #{a.Number}.");
-        await _db.SaveBuildAsync(ct);
+        await using (var tx = await _db.Database.BeginTransactionAsync(ct))
+        {
+            // same lock as the portal upload: two appends never read the same list (no lost photo, no 7th photo)
+            await BuildScope.AdvisoryLockAsync(_db, AssistancePhotosLock(id), ct);
+            var a = await LoadAssistanceAsync(id, ct);
+            a.AddPhoto(key);
+            _audit.Record(AuditActions.BuildAssistancePhotoAdded, "AssistanceRequest", a.Id, $"Foto anexada ao chamado #{a.Number}.");
+            await _db.SaveBuildAsync(ct);
+            await tx.CommitAsync(ct);
+        }
         return await GetAssistanceAsync(id, ct);
     }
 

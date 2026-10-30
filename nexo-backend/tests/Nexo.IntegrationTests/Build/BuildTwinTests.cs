@@ -153,7 +153,7 @@ public class BuildTwinTests
             name, plannedStart = "2026-01-05", plannedEnd = "2026-12-20", weight = 1m,
         }), HttpStatusCode.Created)).GetProperty("id").GetGuid();
 
-    private static async Task<string> PortalAsync(HttpClient c, Guid projectId, object visibility)
+    private static async Task<string> PortalAsync(HttpClient c, Guid projectId, object visibility, string? password = null)
     {
         var company = Slug("gemeo");
         await Json(await c.PutAsJsonAsync("/api/v1/build/portal/company", new
@@ -163,6 +163,12 @@ public class BuildTwinTests
         var slug = Slug("obra");
         await Json(await c.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal", new { slug, access = "Public", title = "Minha obra", visibility }),
             HttpStatusCode.OK);
+        if (password is not null)
+        {
+            await Json(await c.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal/password", new { password }), HttpStatusCode.OK);
+            await Json(await c.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal",
+                new { slug, access = "Password", title = "Minha obra", visibility }), HttpStatusCode.OK);
+        }
         await Json(await c.PostAsync($"/api/v1/build/projects/{projectId}/portal/publish", null), HttpStatusCode.OK);
         return $"/api/public/build/{company}/{slug}";
     }
@@ -338,8 +344,12 @@ public class BuildTwinTests
         }), HttpStatusCode.Created);
 
         // ── portal (model3d on): states, zones, no viewer yet, never the source ──
-        var portal = await PortalAsync(admin, projectId, new { model3d = true, realityCapture = true });
+        // (v1.5: site captures are personal data, served only by a password portal → the client here has a session)
+        var portalPassword = "Tw!" + Guid.NewGuid().ToString("N")[..12];
+        var portal = await PortalAsync(admin, projectId, new { model3d = true, realityCapture = true }, portalPassword);
         var anonymous = host.CreateClient();
+        anonymous.DefaultRequestHeaders.Add("X-Build-Portal-Session", (await Json(await host.CreateClient()
+            .PostAsJsonAsync($"{portal}/session", new { password = portalPassword }), HttpStatusCode.OK)).GetProperty("token").GetString());
         (await Json(await anonymous.GetAsync(portal), HttpStatusCode.OK)).GetProperty("sections").EnumerateArray()
             .Select(s => s.GetString()).Should().Contain(["model3d", "realityCapture"]);
         var twinResponse = await anonymous.GetAsync($"{portal}/twin");

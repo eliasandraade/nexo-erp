@@ -537,8 +537,20 @@ public sealed class BuildAiTests : IClassFixture<TestWebApplicationFactory>, IAs
             new { slug, access = "Public", title = "Minha obra", visibility = new { documents = true } }), HttpStatusCode.OK);
         await Json(await c.PostAsync($"/api/v1/build/projects/{projectId}/portal/publish", null), HttpStatusCode.OK);
         var anon = host.CreateClient();
+        // v1.5: documents are personal data — a public portal never serves them, whatever the flag says
+        var publicBootstrap = await Json(await anon.GetAsync($"/api/public/build/{company}/{slug}"), HttpStatusCode.OK);
+        publicBootstrap.GetProperty("sections").EnumerateArray().Select(x => x.GetString()).Should().NotContain("documents");
+        (await anon.GetAsync($"/api/public/build/{company}/{slug}/documents")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var portalPassword = "Dc!" + Guid.NewGuid().ToString("N")[..12];
+        await Json(await c.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal/password", new { password = portalPassword }), HttpStatusCode.OK);
+        await Json(await c.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal",
+            new { slug, access = "Password", title = "Minha obra", visibility = new { documents = true } }), HttpStatusCode.OK);
+        anon.DefaultRequestHeaders.Add("X-Build-Portal-Session", (await Json(await host.CreateClient()
+            .PostAsJsonAsync($"/api/public/build/{company}/{slug}/session", new { password = portalPassword }), HttpStatusCode.OK))
+            .GetProperty("token").GetString());
         var bootstrap = await Json(await anon.GetAsync($"/api/public/build/{company}/{slug}"), HttpStatusCode.OK);
-        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.4");
+        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.5");
         bootstrap.GetProperty("sections").EnumerateArray().Select(x => x.GetString()).Should().Contain("documents");
 
         var raw = await (await anon.GetAsync($"/api/public/build/{company}/{slug}/documents")).Content.ReadAsStringAsync();
@@ -553,7 +565,7 @@ public sealed class BuildAiTests : IClassFixture<TestWebApplicationFactory>, IAs
 
         // flag off → section disabled
         await Json(await c.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal",
-            new { slug, access = "Public", title = "Minha obra", visibility = new { documents = false } }), HttpStatusCode.OK);
+            new { slug, access = "Password", title = "Minha obra", visibility = new { documents = false } }), HttpStatusCode.OK);
         (await anon.GetAsync($"/api/public/build/{company}/{slug}/documents")).StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 

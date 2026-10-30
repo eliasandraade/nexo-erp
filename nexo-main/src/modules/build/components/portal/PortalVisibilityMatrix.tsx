@@ -1,12 +1,18 @@
 import { AlertTriangle } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import type { BuildPortalVisibility } from "../../api/build-portal.api";
+import type { BuildPortalAccess, BuildPortalVisibility } from "../../api/build-portal.api";
 import { hasFinancialVisible } from "../../lib/portal";
 
 type Flag = keyof BuildPortalVisibility;
 
-interface Item { flag: Flag; label: string; hint?: string; soon?: boolean }
+/**
+ * `requiresPassword`: personal/residential data — the API never serves it on a public portal (contract v1.5), so with
+ * access "Público" the toggle is shown off and disabled.
+ */
+interface Item { flag: Flag; label: string; hint?: string; soon?: boolean; requiresPassword?: boolean }
+
+const REQUIRES_PASSWORD_HINT = "exige portal com senha";
 
 const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boolean; note?: string }> = [
   {
@@ -44,15 +50,16 @@ const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boole
   {
     title: "Comercial",
     items: [
-      { flag: "changeOrders", label: "Aditivos", hint: "Aditivos enviados ao cliente e decididos. O cliente só aprova ou recusa em portal com senha." },
-      { flag: "selections",   label: "Escolhas do cliente", hint: "Escolhas marcadas como visíveis. O cliente só escolhe em portal com senha." },
+      { flag: "changeOrders", label: "Aditivos", requiresPassword: true,
+        hint: "Aditivos enviados ao cliente e decididos; o cliente aprova ou recusa. Valores só com o resumo financeiro ligado." },
+      { flag: "selections",   label: "Escolhas do cliente", requiresPassword: true, hint: "Escolhas marcadas como visíveis; o cliente escolhe pelo portal." },
     ],
   },
   {
     title: "Pós-obra (Meu Imóvel)",
     items: [
-      { flag: "postConstruction", label: "Entrega, garantias e assistência técnica",
-        hint: "Depois da entrega, o cliente vê o imóvel, as garantias e os chamados. Abrir chamado, aceitar a entrega e avaliar só em portal com senha." },
+      { flag: "postConstruction", label: "Entrega, garantias e assistência técnica", requiresPassword: true,
+        hint: "Depois da entrega, o cliente vê o imóvel, as garantias e os chamados; abre chamados, aceita a entrega e avalia." },
     ],
   },
   {
@@ -60,7 +67,8 @@ const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boole
     note: "O cliente vê só o arquivo de visualização (GLB) e as cores do andamento — nunca o projeto original (IFC, RVT, DWG, PDF).",
     items: [
       { flag: "model3d",        label: "Modelo 3D / gêmeo digital", hint: "Modelo, planta mapeada ou representação simplificada, com o estado por data." },
-      { flag: "realityCapture", label: "Captura da realidade", hint: "Só as capturas marcadas como visíveis (fotos, 360°, vídeos, drone)." },
+      { flag: "realityCapture", label: "Captura da realidade", requiresPassword: true,
+        hint: "Só as capturas marcadas como visíveis (fotos, 360°, vídeos, drone)." },
     ],
   },
   {
@@ -68,7 +76,7 @@ const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boole
     items: [
       { flag: "clientUpdates",  label: "Atualizações para o cliente" },
       { flag: "contact",        label: "Contato da obra" },
-      { flag: "documents",      label: "Documentos", soon: true },
+      { flag: "documents",      label: "Documentos", hint: "Só os marcados como visíveis ao cliente na aba Documentos.", requiresPassword: true },
       { flag: "risks",          label: "Riscos", soon: true },
       { flag: "team",           label: "Equipe", soon: true },
     ],
@@ -78,10 +86,15 @@ const VISIBILITY_GROUPS: Array<{ title: string; items: Item[]; financial?: boole
 interface Props {
   value: BuildPortalVisibility;
   onChange: (v: BuildPortalVisibility) => void;
+  /** The portal's access mode: on "Public" the password-only sections are shown off and cannot be turned on. */
+  access?: BuildPortalAccess;
 }
 
-/** What the client sees, grouped. "Em breve" items keep their stored value and cannot be changed yet. */
-export function PortalVisibilityMatrix({ value, onChange }: Props) {
+/**
+ * What the client sees, grouped. "Em breve" items keep their stored value and cannot be changed yet. Password-only items
+ * on a public portal keep their stored value too (it applies again once the portal asks for a password).
+ */
+export function PortalVisibilityMatrix({ value, onChange, access = "Public" }: Props) {
   const financialOn = hasFinancialVisible(value);
   return (
     <div className="grid gap-3 md:grid-cols-2">
@@ -97,6 +110,7 @@ export function PortalVisibilityMatrix({ value, onChange }: Props) {
           {group.note && <p className="text-[11px] text-muted-foreground" data-testid="portal-3d-note">{group.note}</p>}
           {group.items.map((item) => {
             const id = `portal-vis-${item.flag}`;
+            const needsPassword = !!item.requiresPassword && access === "Public";
             return (
               <div key={item.flag} className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -107,8 +121,13 @@ export function PortalVisibilityMatrix({ value, onChange }: Props) {
                     )}
                   </Label>
                   {item.hint && <p className="text-[11px] text-muted-foreground">{item.hint}</p>}
+                  {needsPassword && (
+                    <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400" data-testid={`portal-vis-${item.flag}-password`}>
+                      {REQUIRES_PASSWORD_HINT}
+                    </p>
+                  )}
                 </div>
-                <Switch id={id} checked={value[item.flag]} disabled={item.soon}
+                <Switch id={id} checked={needsPassword ? false : value[item.flag]} disabled={item.soon || needsPassword}
                   onCheckedChange={(on) => onChange({ ...value, [item.flag]: on })} />
               </div>
             );

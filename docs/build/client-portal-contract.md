@@ -1,8 +1,8 @@
-# Orken Build — Portal do Cliente — contrato da API pública (v1.4)
+# Orken Build — Portal do Cliente — contrato da API pública (v1.5)
 
 Documento para o time do frontend externo (Astra). Descreve **somente** a API pública do portal do cliente de
-uma obra. Tudo aqui é estável na versão `contract v1.4` (compatível com a v1, v1.1, v1.2 e v1.3 — só acréscimos, ver §9 "Changelog"); mudanças
-incompatíveis viram `v2` (ver "Versionamento").
+uma obra. Tudo aqui é estável na versão `contract v1.5` (compatível com a v1–v1.4, exceto os ajustes de segurança da v1.5
+listados no §9 "Changelog"); mudanças incompatíveis viram `v2` (ver "Versionamento").
 
 ## 1. Base, endereço e slugs
 
@@ -60,7 +60,16 @@ Se o site Astra tiver rotas próprias no primeiro segmento (ex.: `/sobre`), avis
 
 Em portal **público** a sessão é ignorada — e todas as rotas de escrita (decisão de aditivo, escolha, aceite da entrega,
 abrir chamado, enviar foto, avaliar) respondem `403 portal_decision_requires_password` (agir em nome do cliente exige o
-portal com senha).
+portal com senha). **v1.5:** em portal público as seções com dados pessoais/do imóvel (`postConstruction`, `changeOrders`,
+`selections`, `documents`, `realityCapture`) **nunca** são servidas, mesmo com a flag ligada: somem de `sections`/`property` e
+as leituras respondem `404 portal_section_disabled` (ver §4).
+
+Ordem das verificações (v1.5): portal existe e está publicado → **sessão** (portal com senha) → portal com senha (escritas)
+→ seção ligada. Sem sessão num portal com senha a resposta é sempre `401`, mesmo para uma seção desligada: nada da
+configuração do portal é revelado antes da senha.
+
+Corpos JSON das rotas `POST` (sessão, decisão, escolha, aceite, abrir chamado, avaliação) têm no máximo **64 KB** →
+`413 payload_too_large`.
 
 ### 2.1 GET bootstrap
 
@@ -149,8 +158,9 @@ Content-Type: application/json
 - O `token` (base64url, 43 caracteres) aparece **só nesta resposta**. Guarde em memória/sessionStorage e envie em
   toda chamada seguinte no header `X-Build-Portal-Session: {token}`.
 - Validade: `Build:Portal:SessionHours` (padrão **12 h**, fixa — não renova com uso).
-- Erros: `401 portal_password_invalid` (senha errada), `429 portal_locked` (bloqueio), `400 portal_password_not_required`
-  (portal público), `404 portal_not_found`.
+- Erros: `401 portal_password_invalid` (senha errada), `429 portal_locked` (bloqueio, ver §3), `429 portal_busy` (muitas
+  verificações de senha ao mesmo tempo no servidor — tente em `retryAfterSeconds`), `400 portal_password_not_required`
+  (portal público), `404 portal_not_found`, `413 payload_too_large`.
 
 ### 2.3 DELETE /session
 
@@ -231,7 +241,8 @@ Curvas de avanço (pontos semanais). `404 portal_section_disabled` se `overallPr
 ### 2.7 GET /change-orders (v1.1)
 
 Aditivos do contrato que a construtora enviou ao cliente (pendentes) e os já decididos — rascunhos e cancelados nunca
-aparecem. `404 portal_section_disabled` se a flag `changeOrders` estiver desligada. Mais recentes primeiro.
+aparecem. **Só em portal com senha** (v1.5). `404 portal_section_disabled` se a flag `changeOrders` estiver desligada ou o
+portal for público. Mais recentes primeiro. O exemplo abaixo é de um portal com `financialSummary` ligado.
 
 ```json
 {
@@ -253,7 +264,7 @@ aparecem. `404 portal_section_disabled` se a flag `changeOrders` estiver desliga
     {
       "id": "0b5e…", "number": 1, "title": "Troca de piso", "reason": "ClientRequest", "costImpact": -300.00,
       "scheduleImpactDays": 0, "status": "Approved", "canDecide": false,
-      "decidedAt": "2026-10-20T18:30:00+00:00", "decisionChannel": "Portal", "signerName": "Maria Souza",
+      "decidedAt": "2026-10-20T18:30:00+00:00", "decisionChannel": "Portal",
       "clientComment": "De acordo.", "items": []
     }
   ]
@@ -265,7 +276,10 @@ aparecem. `404 portal_section_disabled` se a flag `changeOrders` estiver desliga
   com senha.
 - `reason`: `ClientRequest | DesignChange | SiteCondition | Error | Other`. `costImpact` pode ser negativo (crédito);
   `scheduleImpactDays` pode ser 0 ou negativo. `decisionChannel`: `Portal` (o cliente) | `Internal` (registrado pela construtora).
-- Valores do aditivo aparecem mesmo com `financialSummary` desligado: são o preço que o cliente está aprovando.
+- **v1.5:** valores (`costImpact`, `items[].unitPrice`, `items[].total`) só aparecem com `financialSummary` ligado; sem
+  ele esses campos **não vêm** (nem como `null`) — mostre o aditivo pelo título, descrição, itens/quantidades e prazo.
+- **v1.5:** `signerName` não é mais devolvido (o cliente já sabe quem decidiu); `decidedAt`, `status` e `decisionChannel`
+  continuam.
 
 ### 2.8 POST /change-orders/{id}/decision (v1.1)
 
@@ -477,7 +491,8 @@ pelo cliente ou pela construtora), mais recentes primeiro. `canOpen` = portal co
 
 ### 2.17 POST /assistance/{id}/photos (v1.2)
 
-`multipart/form-data` com o campo `file`. **Portal com senha** e sessão.
+`multipart/form-data` com o campo `file`. **Portal com senha** e sessão. Portal, sessão e chamado são conferidos **antes** de
+o corpo ser lido (v1.5): sem sessão → `401`, chamado de outra obra → `404`, sem que o servidor receba o arquivo.
 
 - Tipos: `image/jpeg`, `image/png`, `image/webp` (`400 invalid_file_type`); até **8 MB** (`413 file_too_large`);
   o conteúdo precisa começar com a assinatura do tipo (`400 invalid_file_content` — ex.: um `.txt` renomeado `.png`).
@@ -623,12 +638,18 @@ antigo:
 3. Toda chamada: header `X-Build-Portal-Session: {token}`.
 4. Sessão vencida, revogada ou aberta antes de a construtora **trocar a senha** → `401 portal_session_expired`
    (mesmo formato com `portal`). Volte à tela de senha.
-5. Bloqueio: 20 senhas erradas seguidas bloqueiam o portal por 15 min → `429 portal_locked` com `retryAfterSeconds`
-   e header `Retry-After`.
+5. Bloqueio (v1.5), em duas camadas, ambas por 15 min → `429 portal_locked` com `retryAfterSeconds` e header `Retry-After`:
+   - **por visitante (IP)**: 20 senhas erradas em 15 min bloqueiam **só aquele IP** — quem tenta adivinhar não tranca o
+     cliente de verdade, que entra de outro IP;
+   - **por portal**: 200 senhas erradas de qualquer origem bloqueiam o portal inteiro (limita ataque distribuído).
+   Toda tentativa conta antes da verificação (tentativas em paralelo contam todas); a senha certa zera as contagens.
+6. `429 portal_busy` (v1.5): o servidor limita quantas senhas confere ao mesmo tempo; tente de novo em `retryAfterSeconds`.
 
 ## 4. Visibilidade (o que cada flag libera)
 
-A construtora decide por obra. Padrões seguros entre parênteses.
+A construtora decide por obra. Padrões seguros entre parênteses. **v1.5:** as flags marcadas com 🔒 só valem em portal
+**com senha** — num portal público ficam desligadas seja qual for o valor salvo (dados pessoais e do imóvel não saem sem
+senha); o painel da construtora mostra "exige portal com senha" nelas.
 
 | Flag | Libera | Padrão |
 |---|---|---|
@@ -642,16 +663,16 @@ A construtora decide por obra. Padrões seguros entre parênteses.
 | `financialSummary` | `financialSummary` (orçamento aprovado × total realizado) | desligado |
 | `clientUpdates` | `latestUpdates`, itens `update` | ligado |
 | `contact` | `contact` | ligado |
-| `changeOrders` (v1.1) | `GET /change-orders` e a decisão (decisão só em portal com senha) | ligado |
-| `selections` (v1.1) | `GET /selections` e a escolha (escolha só em portal com senha) | ligado |
+| `changeOrders` (v1.1) 🔒 | `GET /change-orders` e a decisão (valores só com `financialSummary`) | ligado (só com senha) |
+| `selections` (v1.1) 🔒 | `GET /selections` e a escolha | ligado (só com senha) |
 | `measurements` (v1.1) | `GET /measurements` (valores só com `financialSummary`) | desligado |
-| `postConstruction` (v1.2) | `property` (bootstrap, após a entrega), `GET /handover`, `GET /warranty`, `GET /assistance` e as escritas de pós-obra (só em portal com senha) | ligado |
+| `postConstruction` (v1.2) 🔒 | `property` (bootstrap, após a entrega), `GET /handover`, `GET /warranty`, `GET /assistance` e as escritas de pós-obra | ligado (só com senha) |
 | `model3d` (v1.3) | `GET /twin` e `GET /twin/state` (gêmeo digital, só leitura) | desligado |
-| `realityCapture` (v1.3) | `GET /reality-captures` (só as marcadas como visíveis) | desligado |
-| `documents` (v1.4) | `GET /documents` (só os marcados como visíveis) | desligado |
+| `realityCapture` (v1.3) 🔒 | `GET /reality-captures` (só as marcadas como visíveis) | desligado |
+| `documents` (v1.4) 🔒 | `GET /documents` (só os marcados como visíveis) | desligado |
 | `videos`, `financialCategories`, `financialTransactions`, `receipts`, `risks`, `team` | reservadas para próximas versões — ainda não geram dados | desligado |
 
-Garantias: nada financeiro aparece sem `financialSummary`; a nota interna do diário nunca sai (só `ClientSummary`);
+Garantias: nada financeiro aparece sem `financialSummary` (v1.5: inclusive os valores dos aditivos); a nota interna do diário nunca sai (só `ClientSummary`);
 fotos só se a foto e o registro do dia foram marcados; nenhum id interno, senha, hash ou custo detalhado.
 
 ## 5. Erros
@@ -661,12 +682,15 @@ Corpo padrão: `{ "error": "mensagem em português", "code": "…" }` (+ `portal
 | Status | `code` | Quando |
 |---|---|---|
 | 404 | `portal_not_found` | empresa/obra inexistente **ou** portal não publicado — corpo **idêntico** nos dois casos |
-| 404 | `portal_section_disabled` | rota de uma seção desligada (`/photos`, `/progress`) |
+| 404 | `portal_section_disabled` | rota de uma seção desligada (`/photos`, `/progress`), ou seção 🔒 em portal público (v1.5) |
 | 400 | `portal_password_not_required` | `POST /session` num portal público |
 | 401 | `portal_password_required` | portal com senha, sem header de sessão |
 | 401 | `portal_password_invalid` | senha errada |
 | 401 | `portal_session_expired` | sessão vencida, revogada ou de antes da troca de senha |
-| 429 | `portal_locked` | portal bloqueado após 20 senhas erradas (15 min) |
+| 429 | `portal_locked` | 20 senhas erradas deste IP ou 200 de todas as origens (15 min) — §3 |
+| 429 | `portal_busy` | muitas verificações de senha ao mesmo tempo; tente em `retryAfterSeconds` (v1.5) |
+| 409 | `portal_conflict` | escrita simultânea a outra alteração (abrir chamado, enviar foto) — tente de novo (v1.5) |
+| 413 | `payload_too_large` | corpo JSON acima de 64 KB (v1.5) |
 | 403 | `portal_decision_requires_password` | decisão (aditivo/escolha) em portal público (v1.1) |
 | 404 | `portal_item_not_found` | aditivo/escolha inexistente, de outra obra ou não visível ao cliente (v1.1) |
 | 409 | `change_order_already_decided` | aditivo já aprovado/recusado (v1.1) |
@@ -699,6 +723,11 @@ Corpo padrão: `{ "error": "mensagem em português", "code": "…" }` (+ `portal
 
 Estourou → `429` sem corpo. Faça backoff; não repita em loop.
 
+IP do cliente (v1.5): a API roda atrás da borda da Railway, que descarta o `X-Forwarded-For` enviado pelo cliente e grava o
+IP da conexão como primeiro item; por isso o padrão é o **primeiro item do `X-Forwarded-For`**. A Orken pode trocar a fonte
+sem mudar código (`RateLimiting:ClientIpSource` = `ForwardedFor` | `RealIp` (`X-Real-IP`) | `Remote` (IP da conexão)). O
+mesmo IP é usado no bloqueio de senha por visitante (§3), guardado só como hash.
+
 ## 7. Cache e mídia
 
 - Todas as respostas vêm com `Cache-Control: no-store`: não guarde em CDN/cache compartilhado (podem conter URLs
@@ -713,7 +742,7 @@ Estourou → `429` sem corpo. Faça backoff; não repita em loop.
 
 ## 8. Versionamento
 
-`contract v1.4` (`contractVersion: "1.4"` no bootstrap; a v1.3 respondia `"1.3"`, a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
+`contract v1.5` (`contractVersion: "1.5"` no bootstrap; a v1.4 respondia `"1.4"`, a v1.3 respondia `"1.3"`, a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
 (major): `1.x` continua compatível. Mudanças **aditivas** (campos novos, novos `type` na timeline,
 novas seções em `sections`) podem chegar sem aviso — ignore o que não conhecer. Remoções ou mudanças de significado
 só numa `v2`, anunciada antes.
@@ -734,6 +763,29 @@ só numa `v2`, anunciada antes.
   de regras e significado; o OpenAPI descreve os formatos.
 
 ## 9. Changelog
+
+### v1.5 — revisão de segurança do portal
+
+`contractVersion` passa a `"1.5"`. Ajustes de segurança e privacidade — alguns **restringem** o que a v1.4 servia (exceção
+consciente à regra "só acréscimos" do §8, por proteção de dados do cliente):
+
+- **Seções só com senha** (§4 🔒): em portal público, `postConstruction` (Meu Imóvel: entrega, garantias, chamados),
+  `changeOrders`, `selections`, `documents` e `realityCapture` deixam de ser servidas mesmo com a flag ligada — somem de
+  `sections` e de `property`, e as rotas respondem `404 portal_section_disabled`. As escritas continuam `403
+  portal_decision_requires_password`.
+- **Aditivos** (§2.7): `costImpact`, `items[].unitPrice` e `items[].total` só vêm com `financialSummary` ligado (antes vinham
+  sempre); `signerName` não é mais devolvido. Trate esses campos como opcionais.
+- **Ordem das verificações** (§2): a sessão do portal com senha é conferida antes de qualquer outra regra — sem sessão,
+  sempre `401` (antes, uma escrita numa seção desligada respondia `404` sem sessão).
+- **Bloqueio de senha** (§3): por IP (20 erros/15 min, só aquele IP) + por portal (200 erros/15 min de todas as origens),
+  contando cada tentativa antes da verificação; novo `429 portal_busy` quando o servidor está no limite de verificações
+  simultâneas de senha.
+- Novos códigos: `portal_busy` (429), `portal_conflict` (409, escrita simultânea em chamados/fotos), `payload_too_large`
+  (413, corpo JSON acima de 64 KB).
+- Envio de foto (§2.17): portal, sessão e chamado são conferidos antes de ler o arquivo. Formato inalterado.
+- Rate limit (§6): fonte do IP configurável (`RateLimiting:ClientIpSource`), padrão inalterado.
+- URLs assinadas: cada seção só assina arquivos da sua própria pasta privada (fotos do diário, opções de escolha, documentos
+  da entrega, fotos de chamado, documentos, capturas, modelo de visualização). Formato inalterado.
 
 ### v1.4 (revisão Wave 6 — sem mudança de formato)
 

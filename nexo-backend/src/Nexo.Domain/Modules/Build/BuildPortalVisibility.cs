@@ -5,7 +5,8 @@ namespace Nexo.Domain.Modules.Build;
 /// progress, stages, schedule, photos, client updates, contact and weather on; anything financial,
 /// documents, the internal daily log, forecasts, risks, team, 3D and measurements off; change orders and
 /// selections on (Wave 2); post-construction ("Meu Imóvel") on (Wave 3). A flag missing from stored JSON
-/// takes its default (properties with initializers).
+/// takes its default (properties with initializers). The <see cref="PasswordOnlySections"/> only ever apply to a password
+/// portal (<see cref="EffectiveFor"/>).
 /// </summary>
 public sealed record BuildPortalVisibility
 {
@@ -40,4 +41,18 @@ public sealed record BuildPortalVisibility
     public bool PostConstruction      { get; init; } = true;
 
     public static BuildPortalVisibility Defaults { get; } = new();
+
+    /// <summary>
+    /// Sections that carry personal or residential data (the property and its handover, warranty and assistance requests;
+    /// change orders; selections; documents; site captures). They are served only by a password portal: on a public portal
+    /// they are off whatever their flag says (contract v1.5).
+    /// </summary>
+    public static IReadOnlyList<string> PasswordOnlySections { get; } =
+        ["postConstruction", "changeOrders", "selections", "documents", "realityCapture"];
+
+    /// <summary>What a portal with this access actually serves: on a public portal the <see cref="PasswordOnlySections"/> are off.</summary>
+    public BuildPortalVisibility EffectiveFor(BuildPortalAccess access)
+        => access == BuildPortalAccess.Password
+            ? this
+            : this with { PostConstruction = false, ChangeOrders = false, Selections = false, Documents = false, RealityCapture = false };
 }

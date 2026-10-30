@@ -11,6 +11,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Domain.Entities;
+using Nexo.Domain.Modules.Build;
+using Nexo.Infrastructure.Modules.Build;
 using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
@@ -365,7 +367,7 @@ public class BuildQualityTests
         // ── portal: "Meu Imóvel", acceptance ──
         var rawBootstrap = await (await client.GetAsync(portal)).Content.ReadAsStringAsync();
         var bootstrap = JsonDocument.Parse(rawBootstrap).RootElement;
-        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.4");
+        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.5");
         bootstrap.GetProperty("phase").GetString().Should().Be("delivered");
         bootstrap.GetProperty("sections").EnumerateArray().Select(s => s.GetString()).Should().Contain("postConstruction");
         var property = bootstrap.GetProperty("property");
@@ -515,28 +517,20 @@ public class BuildQualityTests
             return id;
         }
 
-        // public portal: reads work, every write → 403 portal_decision_requires_password
+        // v1.5: a public portal never serves "Meu Imóvel" (personal/residential data) even with the flag on; writes stay 403
         var publicProject = await DeliveredProjectAsync("Obra pública W3");
-        var publicPortal = await PortalAsync(admin, company, publicProject);
-        (await Json(await Anonymous().GetAsync($"{publicPortal}/warranty"), HttpStatusCode.OK)).GetProperty("items").GetArrayLength().Should().Be(7);
-        var publicList = await Json(await Anonymous().GetAsync($"{publicPortal}/assistance"), HttpStatusCode.OK);
-        publicList.GetProperty("canOpen").GetBoolean().Should().BeFalse();
+        var publicPortal = await PortalAsync(admin, company, publicProject, visibility: new { postConstruction = true });
+        foreach (var section in new[] { "warranty", "assistance", "handover" })
+            (await Code(await Anonymous().GetAsync($"{publicPortal}/{section}"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
         (await Code(await Anonymous().PostAsJsonAsync($"{publicPortal}/assistance",
             new { category = "Outros", title = "Teste", description = "Teste" }), HttpStatusCode.Forbidden))
             .Should().Be("portal_decision_requires_password");
         (await Code(await Anonymous().PostAsJsonAsync($"{publicPortal}/handover/accept", new { signerName = "Maria" }), HttpStatusCode.Forbidden))
             .Should().Be("portal_decision_requires_password");
-
-        // flag off → section gone
-        var slug = publicPortal.Split('/').Last();
-        await Json(await admin.PutAsJsonAsync($"/api/v1/build/projects/{publicProject}/portal",
-            new { slug, access = "Public", visibility = new { postConstruction = false } }), HttpStatusCode.OK);
-        (await Code(await Anonymous().GetAsync($"{publicPortal}/warranty"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
-        (await Code(await Anonymous().GetAsync($"{publicPortal}/handover"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
-        var hidden = await Json(await Anonymous().GetAsync(publicPortal), HttpStatusCode.OK);
-        hidden.GetProperty("phase").GetString().Should().Be("delivered");
-        hidden.TryGetProperty("property", out _).Should().BeFalse();
-        hidden.GetProperty("sections").EnumerateArray().Select(s => s.GetString()).Should().NotContain("postConstruction");
+        var publicBootstrap = await Json(await Anonymous().GetAsync(publicPortal), HttpStatusCode.OK);
+        publicBootstrap.GetProperty("phase").GetString().Should().Be("delivered");
+        publicBootstrap.TryGetProperty("property", out _).Should().BeFalse();
+        publicBootstrap.GetProperty("sections").EnumerateArray().Select(s => s.GetString()).Should().NotContain("postConstruction");
 
         // a session of project X never touches project Y's requests
         var password = PortalPassword();
@@ -560,6 +554,78 @@ public class BuildQualityTests
         (await Json(await sessionX.GetAsync($"{portalX}/assistance"), HttpStatusCode.OK)).GetProperty("items").GetArrayLength().Should().Be(0);
         (await Json(await admin.GetAsync($"/api/v1/build/assistance/{requestYId}"), HttpStatusCode.OK))
             .GetProperty("clientRating").ValueKind.Should().Be(JsonValueKind.Null);
+
+        // the upload is authorized BEFORE its body is read: a malformed multipart body never gets parsed for a caller
+        // without a session (401) nor for a request of another project (404)
+        HttpContent Garbage()
+        {
+            var body = new ByteArrayContent(new byte[64 * 1024]);
+            body.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("multipart/form-data; boundary=nope");
+            return body;
+        }
+        (await Code(await Anonymous().PostAsync($"{portalX}/assistance/{publicY}/photos", Garbage()), HttpStatusCode.Unauthorized))
+            .Should().Be("portal_password_required");
+        (await Code(await sessionX.PostAsync($"{portalX}/assistance/{publicY}/photos", Garbage()), HttpStatusCode.NotFound))
+            .Should().Be("portal_item_not_found");
+
+        // flag off → section gone (password portal); without a session the answer is 401 first — the disabled section
+        // (portal configuration) is never revealed to someone without the password
+        var slugX = portalX.Split('/').Last();
+        await Json(await admin.PutAsJsonAsync($"/api/v1/build/projects/{x}/portal",
+            new { slug = slugX, access = "Password", visibility = new { postConstruction = false } }), HttpStatusCode.OK);
+        (await Code(await sessionX.GetAsync($"{portalX}/warranty"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
+        (await Code(await sessionX.GetAsync($"{portalX}/handover"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
+        (await Code(await Anonymous().GetAsync($"{portalX}/warranty"), HttpStatusCode.Unauthorized)).Should().Be("portal_password_required");
+        (await Code(await Anonymous().PostAsJsonAsync($"{portalX}/assistance",
+            new { category = "Outros", title = "Teste", description = "Teste" }), HttpStatusCode.Unauthorized)).Should().Be("portal_password_required");
+        (await Code(await Anonymous().PostAsJsonAsync($"{portalX}/handover/accept", new { signerName = "Maria" }), HttpStatusCode.Unauthorized))
+            .Should().Be("portal_password_required");
+        var hidden = await Json(await sessionX.GetAsync(portalX), HttpStatusCode.OK);
+        hidden.GetProperty("phase").GetString().Should().Be("delivered");
+        hidden.TryGetProperty("property", out _).Should().BeFalse();
+        hidden.GetProperty("sections").EnumerateArray().Select(s => s.GetString()).Should().NotContain("postConstruction");
+    }
+
+    [Fact]
+    public async Task Parallel_portal_writes_never_exceed_the_limits_nor_lose_a_photo()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var projectId = await ProjectAsync(admin, "Obra corrida W3");
+        await Json(await admin.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/handover", new { scheduledFor = Today }), HttpStatusCode.OK);
+        await Json(await admin.PostAsync($"/api/v1/build/projects/{projectId}/handover/deliver", null), HttpStatusCode.OK);
+        var company = await CompanyAsync(admin);
+        var password = PortalPassword();
+        var portal = await PortalAsync(admin, company, projectId, password);
+        var token = await TokenAsync(portal, password);
+        var client = WithSession(Anonymous(), token);
+
+        // 18 open requests, then 6 at once: the limit (20) is counted and enforced atomically → exactly 2 more
+        Guid first = default;
+        for (var i = 0; i < 18; i++)
+        {
+            var created = await Json(await client.PostAsJsonAsync($"{portal}/assistance",
+                new { category = "Outros", title = $"Chamado {i}", description = "Descrição" }), HttpStatusCode.Created);
+            if (i == 0) first = created.GetProperty("id").GetGuid();
+        }
+        var burst = await Task.WhenAll(Enumerable.Range(0, 6).Select(i => WithSession(Anonymous(), token)
+            .PostAsJsonAsync($"{portal}/assistance", new { category = "Outros", title = $"Paralelo {i}", description = "Descrição" })));
+        burst.Count(r => r.StatusCode == HttpStatusCode.Created).Should().Be(2);
+        burst.Where(r => r.StatusCode != HttpStatusCode.Created).Should().OnlyContain(r => r.StatusCode == HttpStatusCode.UnprocessableEntity);
+        (await Json(await admin.GetAsync($"/api/v1/build/projects/{projectId}/assistance"), HttpStatusCode.OK))
+            .GetArrayLength().Should().Be(BuildPublicPortalService.MaxOpenPortalRequests);
+
+        // 9 photos at once on one request: exactly 6 attached, none lost, the refused ones never stay in the store
+        var storage = new InMemoryStorageProvider();
+        await using var host = StorageHost(storage);
+        var uploads = await Task.WhenAll(Enumerable.Range(0, 9).Select(_ => WithSession(host.CreateClient(), token)
+            .PostAsync($"{portal}/assistance/{first}/photos", Upload(Png(), "image/png", "foto.png"))));
+        uploads.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(BuildAssistanceRequest.MaxPhotos);
+        foreach (var refused in uploads.Where(r => r.StatusCode != HttpStatusCode.OK))
+            (await Code(refused, HttpStatusCode.UnprocessableEntity)).Should().Be("assistance_photo_limit");
+        var stored = (await Json(await admin.GetAsync($"/api/v1/build/projects/{projectId}/assistance"), HttpStatusCode.OK))
+            .EnumerateArray().Single(a => a.GetProperty("number").GetInt32() == 1);
+        stored.GetProperty("photoKeys").GetArrayLength().Should().Be(BuildAssistanceRequest.MaxPhotos);
+        storage.Objects.Should().HaveCount(BuildAssistanceRequest.MaxPhotos);
     }
 
     [Fact]
