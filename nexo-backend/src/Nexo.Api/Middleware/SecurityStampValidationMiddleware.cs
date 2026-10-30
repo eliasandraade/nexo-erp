@@ -52,7 +52,7 @@ public class SecurityStampValidationMiddleware
             if (!PlatformMayCall(context.Request.Path))
             {
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                await context.Response.WriteAsJsonAsync(new { error = "Sessão da plataforma não acessa a área das empresas.", code = "platform_token_scope" });
+                await context.Response.WriteAsJsonAsync(new { error = "Sessão da plataforma não acessa a área das empresas.", code = "platform_token_scope" }, context.RequestAborted);
                 return;
             }
             var platform = context.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>();
@@ -62,7 +62,7 @@ public class SecurityStampValidationMiddleware
                 || !await platform.IsSessionActiveAsync(platformUserId, sessionId, platformStamp, context.RequestAborted))
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "Sessão da plataforma encerrada. Entre de novo.", code = "platform_session_ended" });
+                await context.Response.WriteAsJsonAsync(new { error = "Sessão da plataforma encerrada. Entre de novo.", code = "platform_session_ended" }, context.RequestAborted);
                 return;
             }
             await _next(context);
@@ -73,10 +73,10 @@ public class SecurityStampValidationMiddleware
         if (Nexo.Api.Filters.DenyDuringImpersonationAttribute.IsImpersonation(context.User)
             && context.User.FindFirstValue("jti") is { } impJti
             && await context.RequestServices.GetRequiredService<ICacheService>()
-                .GetAsync<Nexo.Api.Controllers.AuthController.EndedImpersonation>($"impersonation:ended:{impJti}") is not null)
+                .GetAsync<Nexo.Api.Controllers.AuthController.EndedImpersonation>($"impersonation:ended:{impJti}", context.RequestAborted) is not null)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "O acesso da plataforma a esta empresa terminou.", code = "impersonation_ended" });
+            await context.Response.WriteAsJsonAsync(new { error = "O acesso da plataforma a esta empresa terminou.", code = "impersonation_ended" }, context.RequestAborted);
             return;
         }
 

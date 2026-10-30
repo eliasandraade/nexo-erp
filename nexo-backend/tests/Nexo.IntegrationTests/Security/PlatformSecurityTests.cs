@@ -219,6 +219,95 @@ public sealed class PlatformSecurityTests : IClassFixture<TestWebApplicationFact
         records.Single(r => r.ActionType == "platform_impersonation").Description.Should().Contain("verificar cadastro de produto");
     }
 
+    [Fact]
+    public async Task Turning_two_step_off_resetting_it_and_revoking_one_session_are_explicit_and_audited()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var first = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+        var second = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+
+        var sessions = (await Json(await first.GetAsync("/api/platform/auth/security"))).GetProperty("sessions").EnumerateArray().ToList();
+        var other = sessions.Single(s => !s.GetProperty("current").GetBoolean()).GetProperty("id").GetGuid();
+        (await first.DeleteAsync($"/api/platform/auth/sessions/{other}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await second.GetAsync("/api/platform/stats")).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "that session ended");
+        (await first.DeleteAsync($"/api/platform/auth/sessions/{Guid.NewGuid()}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // Wrong password on setup; then on, off (with a recovery code).
+        (await Json(await first.PostAsJsonAsync("/api/platform/auth/mfa/setup", new { password = "wrong" }), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("invalid_password");
+        (await Json(await first.PostAsJsonAsync("/api/platform/auth/mfa/enable", new { code = "123456" }), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("mfa_setup_missing");
+        var secret = FromBase32((await Json(await first.PostAsJsonAsync("/api/platform/auth/mfa/setup", new { password }))).GetProperty("secret").GetString()!);
+        var step = Totp.StepAt(DateTime.UtcNow);
+        var codes = (await Json(await first.PostAsJsonAsync("/api/platform/auth/mfa/enable", new { code = Totp.Code(secret, step) })))
+            .GetProperty("recoveryCodes").EnumerateArray().Select(x => x.GetString()!).ToList();
+
+        var challenge = (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("mfaChallenge").GetString();
+        var verified = await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = Totp.Code(secret, step + 1) }));
+        var signedIn = Bearer(_factory.CreateApiClient(), verified.GetProperty("accessToken").GetString()!);
+        var refreshed = await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = verified.GetProperty("refreshToken").GetString() }));
+        refreshed.GetProperty("refreshToken").GetString().Should().StartWith("p.");
+        (await Json(await signedIn.PostAsJsonAsync("/api/platform/auth/mfa/disable", new { password, recoveryCode = "nope-nope" }), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("invalid_code");
+        (await signedIn.PostAsJsonAsync("/api/platform/auth/mfa/disable", new { password, recoveryCode = codes[1] })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // Another super administrator can reset the two-step verification of a colleague, never their own.
+        var (adminEmail, adminPassword) = await NewPlatformUserAsync();
+        var admin = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), adminEmail, adminPassword))).GetProperty("accessToken").GetString()!);
+        Guid adminId, targetId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            adminId = await db.PlatformUsers.Where(u => u.Email == adminEmail).Select(u => u.Id).SingleAsync();
+            targetId = await db.PlatformUsers.Where(u => u.Email == email).Select(u => u.Id).SingleAsync();
+        }
+        (await Json(await admin.PostAsync($"/api/platform/auth/users/{adminId}/mfa/reset", null), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("mfa_self_reset");
+        (await admin.PostAsync($"/api/platform/auth/users/{targetId}/mfa/reset", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var check = _factory.Services.CreateScope();
+        var actions = await check.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
+            .Where(r => r.EntityId == targetId.ToString()).Select(r => r.ActionType).ToListAsync();
+        actions.Should().Contain(["platform_mfa_enabled", "platform_mfa_disabled", "platform_session_revoked"]);
+    }
+
+    [Fact]
+    public async Task Platform_admin_screens_answer_the_truth_and_refuse_invalid_input_without_a_500()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var admin = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+
+        var health = await Json(await admin.GetAsync("/api/platform/health"));
+        health.GetProperty("checks").EnumerateArray().Select(c => c.GetProperty("name").GetString()).Should().Equal("database", "cache");
+
+        var endpoints = await Json(await admin.GetAsync("/api/platform/system/endpoints"));
+        endpoints.EnumerateArray().Select(e => e.GetProperty("path").GetString()).Should().OnlyContain(p => !p!.StartsWith("/api/api"));
+        endpoints.EnumerateArray().Should().Contain(e => e.GetProperty("hasParameters").GetBoolean());
+
+        var tenantAdmin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var tenantId = Guid.Parse((await Json(await tenantAdmin.GetAsync("/api/auth/me"))).GetProperty("tenantId").GetString()!);
+        (await admin.PutAsJsonAsync($"/api/platform/tenants/{tenantId}/status", new { status = "99" })).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var note = await Json(await admin.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/notes", new { content = "Nota de teste da plataforma", isPinned = false }), HttpStatusCode.Created);
+        var noteId = note.GetProperty("id").GetGuid();
+        (await admin.PatchAsync($"/api/platform/tenants/{tenantId}/notes/{noteId}/pin", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await admin.DeleteAsync($"/api/platform/tenants/{tenantId}/notes/{noteId}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var detail = await Json(await admin.GetAsync($"/api/platform/tenants/{tenantId}"));
+        var taken = await admin.PostAsJsonAsync("/api/platform/tenants", new
+        {
+            companyName = "Duplicada", tradeName = (string?)null, taxId = detail.GetProperty("taxId").GetString(),
+            email = $"dup-{Guid.NewGuid():N}"[..18] + "@nexo.test", phone = (string?)null, businessType = "varejo", modules = Array.Empty<string>(),
+            adminName = "Dup", adminLogin = $"dup{Guid.NewGuid():N}"[..14], adminPassword = "Dx!" + Guid.NewGuid().ToString("N")[..16], adminEmail = (string?)null,
+        });
+        (await Json(taken, HttpStatusCode.Conflict)).GetProperty("code").GetString().Should().Be("tenant_tax_id_taken");
+
+        using var scope = _factory.Services.CreateScope();
+        var actions = await scope.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
+            .Where(r => r.EntityId == noteId.ToString()).Select(r => r.ActionType).ToListAsync();
+        actions.Should().Contain(["platform_note_created", "platform_note_pinned", "platform_note_deleted"]);
+    }
+
     private static byte[] FromBase32(string base32)
     {
         const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
