@@ -186,9 +186,12 @@ async function attemptRefresh(): Promise<RefreshOutcome> {
   if (isImpersonating()) return "failed";   // the impersonation token is never renewed
   if (refreshPromise) return refreshPromise;
 
+  // checked before the shared promise exists: an IIFE that returns synchronously would run its `finally` before the
+  // assignment below and leave a settled "failed" promise cached, so no later 401 would ever refresh again
+  const sent = localStorage.getItem(TOKEN_KEYS.refresh);
+  if (!sent) return "failed";
+
   refreshPromise = (async (): Promise<RefreshOutcome> => {
-    const sent = localStorage.getItem(TOKEN_KEYS.refresh);
-    if (!sent) return "failed";
     try {
       const res = await fetch(`${BASE_URL}/auth/refresh`, {
         method: "POST",
