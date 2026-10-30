@@ -64,7 +64,7 @@ export function ScheduleBaselinePanel({ projectId }: { projectId: string }) {
               <p className="text-[11px] text-muted-foreground">
                 {r.items.length} etapa{r.items.length !== 1 ? "s" : ""}
                 {(() => {
-                  const ends = r.items.map((i) => i.plannedEnd).filter((d): d is string => !!d).sort();
+                  const ends = r.items.map((i) => i.plannedEnd).filter((d): d is string => !!d).sort((a, b) => a.localeCompare(b));
                   return ends.length ? ` · término planejado ${fmtDate(ends[ends.length - 1])}` : "";
                 })()}
               </p>

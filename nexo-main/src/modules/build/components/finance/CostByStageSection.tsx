@@ -20,7 +20,7 @@ export function CostByStageSection({ projectId }: { projectId: string }) {
       </div>
       {isLoading ? (
         <div className="h-24 rounded-md bg-muted animate-pulse" />
-      ) : isError || !data ? (
+      ) : isError || !Array.isArray(data?.stages) ? (
         <p className="rounded-md border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
           Erro ao carregar o custo por etapa.
         </p>
