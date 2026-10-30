@@ -242,8 +242,8 @@ public sealed class AiProviderRuntimeTests : IClassFixture<TestWebApplicationFac
 
     private async Task<HttpClient> SupportClientAsync()
     {
-        const string email = "support-ai@nexo.test";
-        const string password = "Support-AI-Pass!2026";
+        var email = $"support-ai-{Guid.NewGuid():N}"[..20] + "@nexo.test";
+        var password = "Sx!" + Guid.NewGuid().ToString("N")[..20];   // generated per run: no credential in the code
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();

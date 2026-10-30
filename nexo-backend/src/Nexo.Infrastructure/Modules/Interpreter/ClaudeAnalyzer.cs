@@ -141,7 +141,10 @@ public static class ClaudeExtraction
     public const decimal MaxAmount = 1_000_000_000m;
     public const int MaxText = 200;
 
-    public static readonly Dictionary<string, JsonElement> Schema = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>("""
+    /// <summary>The schema sent with every call (a fresh copy: the template itself is never exposed for mutation).</summary>
+    public static Dictionary<string, JsonElement> Schema => new(SchemaTemplate);
+
+    private static readonly IReadOnlyDictionary<string, JsonElement> SchemaTemplate = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>("""
         {
           "type": "object",
           "properties": {
