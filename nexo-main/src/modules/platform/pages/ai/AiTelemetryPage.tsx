@@ -116,13 +116,17 @@ function TelemetryRow({ rec }: { rec: AiTelemetryRecord }) {
                   <p className="text-destructive font-mono">{rec.errorMessage}</p>
                 </div>
               )}
-              {!rec.rawPrompt && (
-                <div className="col-span-4">
-                  <p className="text-xs text-muted-foreground italic">
-                    Prompt não registrado — o texto dos prompts não é guardado.
-                  </p>
+              {rec.modelId && (
+                <div className="col-span-2">
+                  <p className="text-muted-foreground mb-1">Modelo</p>
+                  <p className="font-mono text-foreground">{rec.modelId}</p>
                 </div>
               )}
+              <div className="col-span-4">
+                <p className="text-xs text-muted-foreground italic">
+                  Prompt e resposta do provedor não são guardados — só versão e hash do prompt.
+                </p>
+              </div>
             </div>
           </td>
         </tr>

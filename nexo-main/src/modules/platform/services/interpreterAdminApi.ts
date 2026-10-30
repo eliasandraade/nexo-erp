@@ -1,85 +1,48 @@
 import { apiClient } from "@/services/api-client";
 import type {
   AiProviderConfig,
+  AiProviderPatch,
+  AiProvidersOverview,
+  AiProviderTestResult,
   AiDashboardStats,
   AiTelemetryRecord,
   TenantCostSummary,
+  PlaygroundInput,
   PlaygroundResult,
   PromptVersion,
-  AnalyzerProvider,
-  FieldStatus,
 } from "../types/aiOperations";
 
 const BASE = "/platform/interpreter";
 
 // ── Providers ─────────────────────────────────────────────────────────────────
+// The backend computes each provider's status and never returns the key (nor its ciphertext): only the last four.
 
-interface RawProvider {
-  id: string;
-  name: string;
-  provider: string;
-  isEnabled: boolean;
-  isDefault: boolean;
-  modelId: string | null;
-  apiKeyLastFour: string | null;
-  hasApiKey: boolean;
-  monthlyTokenLimit: number | null;
-  costPerInputToken: number;   // USD per token (backend divides micros by 1M)
-  costPerOutputToken: number;
-  priority: number;
-  updatedAt: string;
-}
-
-function mapProvider(r: RawProvider): AiProviderConfig {
+export async function fetchAiProviders(): Promise<AiProvidersOverview> {
+  const raw = await apiClient.get<AiProvidersOverview>(`${BASE}/providers`);
   return {
-    id:                       r.id,
-    name:                     r.name,
-    provider:                 r.provider as AiProviderConfig["provider"],
-    isEnabled:                r.isEnabled,
-    isDefault:                r.isDefault,
-    apiKeyLastFour:           r.apiKeyLastFour,
-    modelId:                  r.modelId,
-    monthlyTokenLimit:        r.monthlyTokenLimit,
-    costPerInputTokenMicros:  Math.round(r.costPerInputToken  * 1_000_000),
-    costPerOutputTokenMicros: Math.round(r.costPerOutputToken * 1_000_000),
-    fallbackProviderId:       null,   // not exposed from backend yet
-    priority:                 r.priority,
-    updatedAt:                r.updatedAt,
+    providers:              raw.providers ?? [],
+    secretStorageAvailable: raw.secretStorageAvailable ?? false,
+    automaticOrder:         raw.automaticOrder ?? [],
   };
 }
 
-export async function fetchAiProviders(): Promise<AiProviderConfig[]> {
-  const raw = await apiClient.get<RawProvider[]>(`${BASE}/providers`);
-  return raw.map(mapProvider);
+/** super_admin only. Sends only the fields given; answers the updated provider. */
+export function updateAiProvider(id: string, patch: AiProviderPatch): Promise<AiProviderConfig> {
+  return apiClient.patch<AiProviderConfig>(`${BASE}/providers/${id}`, patch);
 }
 
-export async function updateAiProvider(
-  id: string,
-  patch: {
-    isEnabled?:              boolean;
-    isDefault?:              boolean;
-    monthlyTokenLimit?:      number | null;
-    costPerInputTokenMicros?:  number;
-    costPerOutputTokenMicros?: number;
-  }
-): Promise<void> {
-  await apiClient.patch<void>(`${BASE}/providers/${id}`, {
-    isEnabled:              patch.isEnabled,
-    isDefault:              patch.isDefault,
-    monthlyTokenLimit:      patch.monthlyTokenLimit,
-    costPerInputTokenMicros:  patch.costPerInputTokenMicros,
-    costPerOutputTokenMicros: patch.costPerOutputTokenMicros,
-  });
+/** Stores a new key (encrypted server-side). The answer carries only the last four characters. */
+export function setAiProviderKey(id: string, apiKey: string): Promise<AiProviderConfig> {
+  return apiClient.put<AiProviderConfig>(`${BASE}/providers/${id}/api-key`, { apiKey });
 }
 
-export async function rotateAiProviderKey(
-  id: string,
-  apiKey?: string
-): Promise<{ lastFour: string | null }> {
-  return apiClient.post<{ lastFour: string | null }>(
-    `${BASE}/providers/${id}/rotate-key`,
-    { apiKey: apiKey ?? null }
-  );
+export function clearAiProviderKey(id: string): Promise<AiProviderConfig> {
+  return apiClient.delete<AiProviderConfig>(`${BASE}/providers/${id}/api-key`);
+}
+
+/** One minimal (paid, for external providers) call to the provider. Only when the operator clicks. */
+export function testAiProvider(id: string): Promise<AiProviderTestResult> {
+  return apiClient.post<AiProviderTestResult>(`${BASE}/providers/${id}/test`, {});
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -155,6 +118,7 @@ interface RawTelemetryRow {
   requiresInputCount:   number;
   amountConfidence:     number;
   dateConfidence:       number;
+  modelId?:             string | null;
   createdAt:            string;
 }
 
@@ -190,8 +154,7 @@ function mapTelemetryRow(r: RawTelemetryRow): AiTelemetryRecord {
     requiresInputCount:   r.requiresInputCount,
     amountConfidence:     r.amountConfidence,
     dateConfidence:       r.dateConfidence,
-    rawPrompt:            null,
-    rawResponse:          null,
+    modelId:              r.modelId ?? null,
     createdAt:            r.createdAt,
   };
 }
@@ -253,71 +216,13 @@ export async function fetchAiCosts(): Promise<TenantCostSummary[]> {
 
 // ── Playground ────────────────────────────────────────────────────────────────
 
-interface RawPlaygroundResponse {
-  provider:   string;
-  elapsedMs:  number;
-  extraction: {
-    amount:       { value: number | null;  confidence: number; status: string };
-    date:         { value: string | null;  confidence: number; status: string };
-    payee:        { value: string | null;  confidence: number; status: string };
-    account:      { value: string | null;  confidence: number; status: string };
-    inputTokens:  number;
-    outputTokens: number;
-    costUsd:      number;
-  };
-  interpretation: {
-    direction:   string;
-    dirSource:   string;
-    nature:      string;
-    natureSource: string;
-    categoryId:  string | null;
-    catSource:   string;
-    contextType: string | null;
-    contextId:   string | null;
-    ctxSource:   string;
-    accountId:   string | null;
-    accSource:   string;
-  };
-  rawProviderResponse: string;
-}
-
-export async function runPlayground(input: {
-  text?:     string;
-  provider?: string;
-  tenantId?: string;
-}): Promise<PlaygroundResult> {
-  const raw = await apiClient.post<RawPlaygroundResponse>(`${BASE}/playground`, {
+/** super_admin only. forceProvider null = automatic mode. Errors (422/503/400/404) surface as ApiError. */
+export function runPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
+  return apiClient.post<PlaygroundResult>(`${BASE}/playground`, {
     text:          input.text,
-    forceProvider: input.provider ?? null,
-    tenantId:      input.tenantId ?? null,
+    forceProvider: input.forceProvider,
+    tenantId:      input.tenantId,
   });
-
-  const e = raw.extraction;
-  const i = raw.interpretation;
-
-  return {
-    draftId:       null,   // playground never creates a draft
-    analyzerChain: [raw.provider as PlaygroundResult["analyzerChain"][0]],
-    extraction: {
-      amount:  { value: e.amount.value,  confidence: e.amount.confidence,  status: e.amount.status  as FieldStatus, provider: raw.provider as AnalyzerProvider },
-      date:    { value: e.date.value,    confidence: e.date.confidence,    status: e.date.status    as FieldStatus, provider: raw.provider as AnalyzerProvider },
-      payee:   { value: e.payee.value,   confidence: e.payee.confidence,   status: e.payee.status   as FieldStatus, provider: raw.provider as AnalyzerProvider },
-      account: { value: e.account.value, confidence: e.account.confidence, status: e.account.status as FieldStatus, provider: raw.provider as AnalyzerProvider },
-      analyzerUsed: raw.provider as AnalyzerProvider,
-    },
-    suggestion: {
-      direction: { value: i.direction,   source: i.dirSource },
-      nature:    { value: i.nature,      source: i.natureSource },
-      category:  { value: i.categoryId,  source: i.catSource },
-      context:   { contextType: i.contextType, contextId: i.contextId, source: i.ctxSource },
-    },
-    rawPrompt:   null,
-    rawResponse: raw.rawProviderResponse || null,
-    tokenUsage:  e.inputTokens > 0
-      ? { input: e.inputTokens, output: e.outputTokens }
-      : null,
-    durationMs: raw.elapsedMs,
-  };
 }
 
 // ── Prompt versions ───────────────────────────────────────────────────────────

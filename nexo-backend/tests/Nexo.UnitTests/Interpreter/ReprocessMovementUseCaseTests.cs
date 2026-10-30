@@ -13,8 +13,7 @@ public class ReprocessMovementUseCaseTests
 {
     // ── Mocks ─────────────────────────────────────────────────────────────────
 
-    private readonly IAnalyzerSelector              _selector  = Substitute.For<IAnalyzerSelector>();
-    private readonly IDocumentAnalyzer              _analyzer  = Substitute.For<IDocumentAnalyzer>();
+    private readonly IAnalysisRunner                _runner    = Substitute.For<IAnalysisRunner>();
     private readonly IInterpretationService         _interp    = Substitute.For<IInterpretationService>();
     private readonly IMovementMemoryService         _memory    = Substitute.For<IMovementMemoryService>();
     private readonly IDescriptionNormalizer         _norm      = Substitute.For<IDescriptionNormalizer>();
@@ -28,7 +27,7 @@ public class ReprocessMovementUseCaseTests
     private readonly ICurrentUser                   _user      = F.CurrentUser();
 
     private ReprocessMovementUseCase BuildSut() => new(
-        _selector, _interp, _memory, _norm,
+        _runner, _interp, _memory, _norm,
         _movRepo, _extRepo, _sugRepo, _attRepo, _repRepo,
         _uow, _tenant, _user,
         NullLogger<ReprocessMovementUseCase>.Instance, F.Ledger());
@@ -46,10 +45,9 @@ public class ReprocessMovementUseCaseTests
         _attRepo.GetByMovementIdAsync(movement.Id, Arg.Any<CancellationToken>())
                 .Returns(new List<MovementAttachment>());
 
-        _selector.Select(Arg.Any<InputSourceType>(), Arg.Any<Guid>(), Arg.Any<AnalyzerProvider?>())
-                 .Returns(_analyzer);
-        _analyzer.AnalyzeAsync(Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
-                 .Returns(F.BuildAnalysisOutput(200m, DateOnly.FromDateTime(DateTime.UtcNow)));
+        _runner.RunAsync(Arg.Any<AnalysisInput>(), Arg.Any<AnalyzerProvider?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                 .Returns(new AnalysisRun(F.BuildAnalysisOutput(200m, DateOnly.FromDateTime(DateTime.UtcNow)), AnalyzerProvider.RuleBased, null, false,
+                     [new AnalysisAttempt(AnalyzerProvider.RuleBased, null, true, null, 1)], 1));
         _memory.GetCompactContextAsync(F.TenantId, F.UserId, Arg.Any<CancellationToken>())
                .Returns("{}");
         _interp.SuggestAsync(Arg.Any<AnalysisOutput>(), Arg.Any<string>(),
@@ -194,10 +192,11 @@ public class ReprocessMovementUseCaseTests
 
         await sut.ExecuteAsync(cmd);
 
-        _selector.Received(1).Select(
-            Arg.Any<InputSourceType>(),
-            Arg.Any<Guid>(),
-            Arg.Is<AnalyzerProvider?>(p => p == AnalyzerProvider.Claude));
+        await _runner.Received(1).RunAsync(
+            Arg.Any<AnalysisInput>(),
+            Arg.Is<AnalyzerProvider?>(p => p == AnalyzerProvider.Claude),
+            "Reprocess",
+            Arg.Any<CancellationToken>());
     }
 
     // ── Diff JSON ─────────────────────────────────────────────────────────────

@@ -6,25 +6,73 @@ export type FieldStatus      = "AutoFilled" | "NeedsAttention" | "RequiresInput"
 
 // ── Provider management ───────────────────────────────────────────────────────
 
-export interface AiProviderConfig {
-  id:                      string;
-  name:                    string;
-  provider:                AnalyzerProvider;
-  isEnabled:               boolean;
-  isDefault:               boolean;
-  apiKeyLastFour:          string | null;
-  modelId:                 string | null;
-  monthlyTokenLimit:       number | null;
-  costPerInputTokenMicros: number;   // microdollars per token
-  costPerOutputTokenMicros: number;
-  fallbackProviderId:      string | null;
-  priority:                number;   // lower = higher priority in chain
-  updatedAt:               string;
+/** Why a provider can (or cannot) run right now, as the backend computes it. */
+export type AiProviderStatus =
+  | "available"
+  | "disabled"
+  | "blocked_by_deployment"
+  | "missing_key"
+  | "missing_model"
+  | "implementation_missing"
+  | "secret_unavailable"
+  | "invalid_credentials"
+  | "rate_limited"
+  | "unhealthy";
+
+export interface AiProviderLastTest {
+  status:  string;
+  message: string;
+  at:      string;
 }
 
-export interface RotateKeyResult {
-  newKeyPrefix: string;   // first 8 chars for display
-  newKeyLastFour: string;
+/** A provider as GET /platform/interpreter/providers returns it. The key itself never leaves the server. */
+export interface AiProviderConfig {
+  id:                        string;
+  name:                      string;
+  provider:                  AnalyzerProvider;
+  status:                    AiProviderStatus;
+  statusMessage:             string;
+  implemented:               boolean;
+  requiresKey:               boolean;
+  allowedByDeployment:       boolean;
+  isEnabled:                 boolean;
+  isDefault:                 boolean;
+  priority:                  number;   // 1..100, lower runs first after the default
+  modelId:                   string | null;
+  hasApiKey:                 boolean;
+  apiKeyLastFour:            string | null;
+  apiKeyUpdatedAt:           string | null;
+  monthlyTokenLimit:         number | null;
+  inputUsdPerMillionTokens:  number;
+  outputUsdPerMillionTokens: number;
+  lastTest:                  AiProviderLastTest | null;
+}
+
+export interface AiProvidersOverview {
+  providers:              AiProviderConfig[];
+  /** False when the deployment has no master key: no API key can be stored. */
+  secretStorageAvailable: boolean;
+  /** Providers the automatic mode would use, in order. */
+  automaticOrder:         string[];
+}
+
+export interface AiProviderPatch {
+  isEnabled?:                 boolean;
+  isDefault?:                 boolean;
+  modelId?:                   string;   // "" clears
+  priority?:                  number;
+  monthlyTokenLimit?:         number;
+  clearMonthlyTokenLimit?:    boolean;
+  inputUsdPerMillionTokens?:  number;
+  outputUsdPerMillionTokens?: number;
+}
+
+export interface AiProviderTestResult {
+  status:    string;   // "ok" | "invalid_credentials" | "rate_limited" | "model_not_found" | "timeout" | …
+  message:   string;
+  modelId:   string | null;
+  latencyMs: number;
+  testedAt:  string;
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -77,8 +125,7 @@ export interface AiTelemetryRecord {
   requiresInputCount:    number;
   amountConfidence:      number;
   dateConfidence:        number;
-  rawPrompt:             string | null;   // null unless EnablePromptLogging
-  rawResponse:           string | null;   // null unless EnableRawResponseStorage
+  modelId?:              string | null;
   createdAt:             string;
 }
 
@@ -102,29 +149,55 @@ export interface PlaygroundExtractionField<T> {
   value:      T;
   confidence: number;
   status:     FieldStatus;
-  provider:   AnalyzerProvider;
 }
 
+export interface PlaygroundAttempt {
+  provider:      string;
+  modelId:       string | null;
+  succeeded:     boolean;
+  failureReason: string | null;
+  durationMs:    number;
+}
+
+/** POST /platform/interpreter/playground. There is deliberately no raw provider answer. */
 export interface PlaygroundResult {
-  draftId:     string | null;
-  analyzerChain: AnalyzerProvider[];
+  tenantId:     string;
+  provider:     string;          // the provider that actually ran
+  modelId:      string | null;
+  forced:       boolean;
+  fallbackUsed: boolean;
+  attempts:     PlaygroundAttempt[];
+  elapsedMs:    number;
+  prompt:       { type: string; version: string; hash: string };
   extraction: {
-    amount:      PlaygroundExtractionField<number | null>;
-    date:        PlaygroundExtractionField<string | null>;
-    payee:       PlaygroundExtractionField<string | null>;
-    account:     PlaygroundExtractionField<string | null>;
-    analyzerUsed: AnalyzerProvider;
+    amount:       PlaygroundExtractionField<number | null>;
+    date:         PlaygroundExtractionField<string | null>;
+    payee:        PlaygroundExtractionField<string | null>;
+    account:      PlaygroundExtractionField<string | null>;
+    inputTokens:  number;
+    outputTokens: number;
+    costUsd:      number;
   };
-  suggestion: {
-    direction: { value: string; source: string };
-    nature:    { value: string; source: string };
-    category:  { value: string | null; source: string };
-    context:   { contextType: string | null; contextId: string | null; source: string };
+  interpretation: {
+    direction:    string;
+    dirSource:    string;
+    nature:       string;
+    natureSource: string;
+    categoryId:   string | null;
+    catSource:    string;
+    contextType:  string | null;
+    contextId:    string | null;
+    ctxSource:    string;
+    accountId:    string | null;
+    accSource:    string;
   };
-  rawPrompt:   string | null;
-  rawResponse: string | null;
-  tokenUsage:  { input: number; output: number } | null;
-  durationMs:  number;
+}
+
+export interface PlaygroundInput {
+  text:          string;
+  /** null = automatic mode. */
+  forceProvider: AnalyzerProvider | null;
+  tenantId:      string | null;
 }
 
 // ── Prompts ───────────────────────────────────────────────────────────────────

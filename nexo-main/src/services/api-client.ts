@@ -141,13 +141,17 @@ async function request<T>(
     let message = res.statusText;
     let code: string | undefined;
     let requestId: string | undefined;
+    let details: string[] | undefined;
+    let serverMessage: string | undefined;
     try {
       const err = await res.json();
       if (Array.isArray(err?.details) && err.details.length > 0) {
         message = err.details.join(" | ");
+        details = err.details.map(String);
       } else {
         message = err?.error ?? err?.message ?? message;
       }
+      serverMessage = err?.error ?? err?.message ?? undefined;
       code = err?.code;
       requestId = err?.requestId;
     } catch {
@@ -156,7 +160,7 @@ async function request<T>(
     if (res.status === 429 && !message) message = "Muitas tentativas. Aguarde alguns minutos.";
     // an unexpected error carries the id of its log lines: show it, so support can find them
     if (res.status >= 500 && requestId) message = `${message} (código: ${requestId})`;
-    throw new ApiError(res.status, message, code, requestId);
+    throw new ApiError(res.status, message, code, requestId, details, serverMessage);
   }
 
   if (res.status === 204) return undefined as unknown as T;
@@ -234,7 +238,11 @@ export class ApiError extends Error {
     /** Machine-readable reason from the server body ({ code }), when it sends one. */
     public readonly code?: string,
     /** Id of the request in the server logs (X-Request-Id), for support. */
-    public readonly requestId?: string
+    public readonly requestId?: string,
+    /** The body's { details } list, when it sends one (e.g. the reason an AI provider failed). */
+    public readonly details?: string[],
+    /** The body's own { error } text, kept apart from `message` (which prefers `details`). */
+    public readonly serverMessage?: string
   ) {
     super(message);
     this.name = "ApiError";

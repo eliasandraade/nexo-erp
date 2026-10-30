@@ -197,16 +197,18 @@ public static class DependencyInjection
         services.AddScoped<IDescriptionNormalizer, DescriptionNormalizer>();
         services.AddScoped<IMovementMemoryService, MovementMemoryServiceImpl>();
 
-        // Analyzers (registered individually for IEnumerable<IDocumentAnalyzer> injection)
+        // AI runtime: the SuperAdmin's provider configuration (ai_providers) is the source of truth. Analyzers are
+        // registered individually (IEnumerable<IDocumentAnalyzer>); a provider without one shows as "não disponível".
+        services.AddSingleton<Nexo.Application.Common.Interfaces.ISecretProtector, Nexo.Infrastructure.Security.SecretProtector>();
+        services.AddHttpClient(AnthropicClientFactory.HttpClientName);
+        services.AddSingleton<AnthropicClientFactory>();
         services.AddScoped<IDocumentAnalyzer, RuleBasedAnalyzer>();
-        services.AddScoped<IDocumentAnalyzer, ClaudeAnalyzerStub>();
-
-        // Feature flags — controls which analyzers/features are active
-        services.AddSingleton<IInterpreterFeatureFlags>(
-            new InterpreterFeatureFlags(configuration));
-
-        // Application services
+        services.AddScoped<IDocumentAnalyzer, ClaudeAnalyzer>();
+        services.AddScoped<IActivePromptProvider, ActivePromptProvider>();
+        services.AddScoped<IAiProviderRegistry, AiProviderRegistry>();
         services.AddScoped<IAnalyzerSelector, AnalyzerSelectorService>();
+        services.AddScoped<IAnalysisRunner, AnalysisRunner>();
+        services.AddScoped<AiProviderAdminService>();
         services.AddScoped<IInterpretationService, RuleBasedInterpretationService>();
 
         // Telemetry writer — singleton so it can hold IServiceProvider safely

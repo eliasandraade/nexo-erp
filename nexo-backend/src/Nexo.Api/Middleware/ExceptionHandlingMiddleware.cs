@@ -63,6 +63,13 @@ public class ExceptionHandlingMiddleware
             _logger.LogWarning("Forbidden: {Message}", ex.Message);
             await WriteErrorAsync(ctx, 403, ex.Message);
         }
+        catch (Nexo.Domain.Modules.Interpreter.AiProviderCallException ex)
+        {
+            // An expected provider failure (credentials, rate limit, timeout, provider down, invalid output): answered with a
+            // sanitized message and the reason, logged as a warning — not an unexpected error, not tracked as one.
+            _logger.LogWarning("AI provider {Provider} call failed: {Reason}.", ex.Provider, ex.Reason);
+            await WriteErrorAsync(ctx, 503, ex.Message, [ex.Reason], Nexo.Domain.Modules.Interpreter.AiProviderCallException.ErrorCode);
+        }
         catch (DomainException ex)
         {
             _logger.LogWarning("Domain rule violation: {Message}", ex.Message);
