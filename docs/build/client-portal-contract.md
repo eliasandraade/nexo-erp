@@ -1,7 +1,7 @@
-# Orken Build — Portal do Cliente — contrato da API pública (v1.5)
+# Orken Build — Portal do Cliente — contrato da API pública (v1.6)
 
 Documento para o time do frontend externo (Astra). Descreve **somente** a API pública do portal do cliente de
-uma obra. Tudo aqui é estável na versão `contract v1.5` (compatível com a v1–v1.4, exceto os ajustes de segurança da v1.5
+uma obra. Tudo aqui é estável na versão `contract v1.6` (compatível com a v1–v1.5, exceto os ajustes de segurança da v1.5
 listados no §9 "Changelog"); mudanças incompatíveis viram `v2` (ver "Versionamento").
 
 ## 1. Base, endereço e slugs
@@ -13,7 +13,7 @@ listados no §9 "Changelog"); mudanças incompatíveis viram `v2` (ver "Versiona
 | URL pública sugerida no site Astra | `/{companySlug}/{projectSlug}` (ex.: `/construtora-silva/residencia-alfa`) |
 | Autenticação | Nenhuma conta. Portais com senha usam uma **sessão de portal** (ver §3). **Não** envie `Authorization`. |
 | Formato | JSON UTF-8, `camelCase`, datas `yyyy-MM-dd`, instantes ISO-8601 com fuso (`2026-10-30T14:03:11.123456+00:00`), enums como texto. |
-| CORS | A origem do site Astra precisa estar em `Cors:AllowedOrigins` da API (configuração da Orken). O header `X-Build-Portal-Session` é aceito; `Retry-After` é exposto. |
+| CORS | A origem do site Astra precisa estar em `Cors:AllowedOrigins` da API (configuração da Orken). O header `X-Build-Portal-Session` (e `If-None-Match`) é aceito; `Retry-After` e `ETag` são expostos (v1.6 — antes o navegador de outra origem não conseguia ler o `ETag`). `https://www.orken.com.br` e `https://app.orken.com.br` já estão na lista fixa. |
 
 **Regras de slug** (empresa e obra): 3–60 caracteres; só `a-z`, `0-9` e `-`; sem `-` no começo/fim nem `--`;
 sempre minúsculo (a API normaliza para minúsculas). O slug da empresa é único na plataforma; o da obra é único
@@ -537,7 +537,12 @@ Flag `model3d` (padrão **desligado**; desligada → `404 portal_section_disable
   },
   "minDate": "2026-01-05",
   "maxDate": "2026-10-30",
-  "disclaimer": "Modelo BIM do projeto. As cores mostram o andamento registrado pela construtora; não substituem a vistoria."
+  "disclaimer": "Modelo BIM do projeto. As cores mostram o andamento registrado pela construtora; não substituem a vistoria.",
+  "elementIndex": {
+    "stages": [ { "name": "Alvenaria", "order": 2, "elementIds": ["0aB…", "1kQ…", "3hX…"] } ],
+    "categories": [ { "name": "IfcSlab", "elementIds": ["5tR…"] }, { "name": "IfcWall", "elementIds": ["0aB…", "1kQ…", "3hX…"] } ],
+    "zones": { "2O2Fr$t4X7Zf8NOew3FLOH": ["0aB…", "1kQ…", "3hX…", "5tR…"] }
+  }
 }
 ```
 
@@ -553,6 +558,12 @@ Flag `model3d` (padrão **desligado**; desligada → `404 portal_section_disable
   ocorrem). `unbound`: elementos sem etapa vinculada — **não pinte como andamento** (deixe neutros).
 - Estados: `NotStarted`, `InProgress`, `Completed`, `Delayed` (etapa passou do fim previsto sem terminar), `Blocked`,
   `NeedsReview` (marcado pela construtora para revisão).
+- `elementIndex` (v1.6; ausente sem modelo): o que cada elemento **é**, sempre dado registrado — nunca deduzido do nome do
+  nó. `stages`: etapa de cada elemento segundo os vínculos que a construtora fez (por elemento, categoria ou zona), em
+  ordem de etapa; vem **vazio** quando o portal não mostra etapas (`stageProgress` e `schedule` desligados). `categories`:
+  a classe IFC de cada elemento (`IfcWall`, `IfcSlab`…; num GLB enviado direto, a categoria gravada no arquivo ou `Mesh`). `zones`: id público da zona
+  (o mesmo de `zones[].id`) → elementos que estão **diretamente** nela (não inclui subzonas). Elementos sem etapa não
+  aparecem em `stages` (são os `unbound`). Os ids são os nomes dos nós do GLB.
 
 ### 2.20 GET /twin/state?date=yyyy-MM-dd (v1.3) — linha do tempo
 
@@ -742,7 +753,7 @@ mesmo IP é usado no bloqueio de senha por visitante (§3), guardado só como ha
 
 ## 8. Versionamento
 
-`contract v1.5` (`contractVersion: "1.5"` no bootstrap; a v1.4 respondia `"1.4"`, a v1.3 respondia `"1.3"`, a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
+`contract v1.6` (`contractVersion: "1.6"` no bootstrap; a v1.5 respondia `"1.5"`, a v1.4 respondia `"1.4"`, a v1.3 respondia `"1.3"`, a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
 (major): `1.x` continua compatível. Mudanças **aditivas** (campos novos, novos `type` na timeline,
 novas seções em `sections`) podem chegar sem aviso — ignore o que não conhecer. Remoções ou mudanças de significado
 só numa `v2`, anunciada antes.
@@ -763,6 +774,16 @@ só numa `v2`, anunciada antes.
   de regras e significado; o OpenAPI descreve os formatos.
 
 ## 9. Changelog
+
+### v1.6 — integração do portal "Minha Obra"
+
+Só acréscimos; nada da v1–v1.5 mudou de significado.
+
+- `contractVersion` passa a `"1.6"`.
+- `GET /twin` ganha `elementIndex` (§2.19): etapa (pelos vínculos reais), classe IFC e zona de cada elemento, para os
+  filtros do visualizador. Nomes de etapa só quando o portal já mostra etapas.
+- CORS: `ETag` passa a ser exposto ao navegador de outra origem (antes só `Retry-After`), para a revalidação de
+  `/twin/state` com `If-None-Match` funcionar no site.
 
 ### v1.5 — revisão de segurança do portal
 

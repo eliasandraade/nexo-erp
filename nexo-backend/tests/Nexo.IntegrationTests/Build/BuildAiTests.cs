@@ -550,7 +550,7 @@ public sealed class BuildAiTests : IClassFixture<TestWebApplicationFactory>, IAs
             .PostAsJsonAsync($"/api/public/build/{company}/{slug}/session", new { password = portalPassword }), HttpStatusCode.OK))
             .GetProperty("token").GetString());
         var bootstrap = await Json(await anon.GetAsync($"/api/public/build/{company}/{slug}"), HttpStatusCode.OK);
-        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.5");
+        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.6");
         bootstrap.GetProperty("sections").EnumerateArray().Select(x => x.GetString()).Should().Contain("documents");
 
         var raw = await (await anon.GetAsync($"/api/public/build/{company}/{slug}/documents")).Content.ReadAsStringAsync();

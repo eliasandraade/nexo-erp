@@ -240,7 +240,7 @@ public sealed record PublicBuildMeasurementsDto(IReadOnlyList<PublicBuildMeasure
 /// <summary>Constants of the public portal contract.</summary>
 public static class PublicBuildPortal
 {
-    public const string ContractVersion = "1.5";
+    public const string ContractVersion = "1.6";
     public const string SessionHeader   = "X-Build-Portal-Session";
 
     public const string CodeNotFound         = "portal_not_found";

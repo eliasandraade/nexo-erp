@@ -1,4 +1,4 @@
-// Orken Build — Portal do Cliente (API pública), contrato v1.5
+// Orken Build — Portal do Cliente (API pública), contrato v1.6
 // GERADO de docs/build/openapi-portal.json por BuildPortalOpenApiTests — não edite à mão.
 // Regenerar (em nexo-backend): ORKEN_WRITE_PORTAL_OPENAPI=1 dotnet test tests/Nexo.IntegrationTests --filter "FullyQualifiedName~BuildPortalOpenApiTests"
 // Campos com `?` podem vir null ou ausentes. Datas: "yyyy-MM-dd" (date) ou ISO 8601 (date-time).
@@ -385,6 +385,19 @@ export interface PublicBuildTwinDto {
   minDate?: string | null;
   maxDate: string;
   disclaimer: string;
+  elementIndex?: PublicBuildTwinIndexDto | null;
+}
+
+export interface PublicBuildTwinGroupDto {
+  name: string;
+  elementIds: string[];
+  order?: number | null;
+}
+
+export interface PublicBuildTwinIndexDto {
+  stages: PublicBuildTwinGroupDto[];
+  categories: PublicBuildTwinGroupDto[];
+  zones: Record<string, string[]>;
 }
 
 export interface PublicBuildTwinStateDto {

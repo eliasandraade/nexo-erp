@@ -44,6 +44,8 @@ public sealed partial class BuildPublicPortalService
 
         // only the derivative made for viewing; the source of an IFC/DXF/PDF is never signed here
         var viewerUrl = primary?.ViewerFileKey is { } key ? _media.SignedUrl(key, ctx.TenantId, BuildModelService.Folder) : null;
+        var computed = await _twin.ComputeAsync(ctx.TenantId, ctx.Project.Id, primary?.Id, today, bypass: true, ct);
+        var zoneIds = await PublicZoneIdsAsync(ctx, primary?.Id, ct);
         return new PublicBuildTwinDto
         {
             GeometrySource = geometry?.ToString(),
@@ -52,11 +54,41 @@ public sealed partial class BuildPublicPortalService
             ViewerUrl = viewerUrl,
             ViewerExpiresAt = viewerUrl is null ? null : DateTimeOffset.UtcNow.Add(BuildPortalMedia.SignedUrlTtl),
             Zones = zones,
-            State = await TwinStateAsync(ctx, primary?.Id, today, ct),
+            State = PublicState(computed, zoneIds),
             MinDate = ctx.Project.StartDate,
             MaxDate = today,
             Disclaimer = BuildTwinTexts.Disclaimer(geometry),
+            ElementIndex = primary is null ? null : await ElementIndexAsync(ctx, primary.Id, computed, zoneIds, ct),
         };
+    }
+
+    /// <summary>
+    /// v1.6 — stage (resolved from the company's bindings), IFC category and zone of each element of the version shown. Stage names
+    /// only when the portal already shows stages (progress or schedule).
+    /// </summary>
+    private async Task<PublicBuildTwinIndexDto> ElementIndexAsync(Ctx ctx, Guid versionId, BuildTwinStateEngine.Result computed,
+        IReadOnlyDictionary<Guid, string> zoneIds, CancellationToken ct)
+    {
+        static IReadOnlyList<string> Sorted(IEnumerable<string> ids) => ids.Order(StringComparer.Ordinal).ToList();
+        var elements = await _db.BldModelElements.IgnoreQueryFilters().AsNoTracking()
+            .Where(e => e.TenantId == ctx.TenantId && e.ModelVersionId == versionId)
+            .Select(e => new { e.ExternalId, e.Category, e.ZoneId })
+            .ToListAsync(ct);
+        var stages = ctx.Visibility.StageProgress || ctx.Visibility.Schedule
+            ? await _db.BldStages.IgnoreQueryFilters().AsNoTracking()
+                .Where(s => s.TenantId == ctx.TenantId && s.ProjectId == ctx.Project.Id)
+                .ToDictionaryAsync(s => s.Id, s => (s.Name, s.Order), ct)
+            : new Dictionary<Guid, (string Name, int Order)>();
+        return new PublicBuildTwinIndexDto(
+            computed.Elements.Where(e => e.StageId is { } id && stages.ContainsKey(id))
+                .GroupBy(e => e.StageId!.Value)
+                .Select(g => new PublicBuildTwinGroupDto(stages[g.Key].Name, Sorted(g.Select(e => e.ExternalId)), stages[g.Key].Order))
+                .OrderBy(g => g.Order).ThenBy(g => g.Name, StringComparer.Ordinal).ToList(),
+            elements.GroupBy(e => e.Category).OrderBy(g => g.Key, StringComparer.Ordinal)
+                .Select(g => new PublicBuildTwinGroupDto(g.Key, Sorted(g.Select(e => e.ExternalId)))).ToList(),
+            elements.Where(e => e.ZoneId is { } z && zoneIds.ContainsKey(z))
+                .GroupBy(e => zoneIds[e.ZoneId!.Value])
+                .ToDictionary(g => g.Key, g => Sorted(g.Select(e => e.ExternalId))));
     }
 
     /// <summary>The state map on a date (time slider): yyyy-MM-dd, not after today nor before the project start.</summary>
@@ -116,16 +148,19 @@ public sealed partial class BuildPublicPortalService
     }
 
     private async Task<PublicBuildTwinStateDto> TwinStateAsync(Ctx ctx, Guid? versionId, DateOnly date, CancellationToken ct)
-    {
-        var r = await _twin.ComputeAsync(ctx.TenantId, ctx.Project.Id, versionId, date, bypass: true, ct);
-        var publicIds = await _db.BldModelZones.IgnoreQueryFilters().AsNoTracking()
-            .Where(z => z.TenantId == ctx.TenantId && z.ProjectId == ctx.Project.Id && (z.ModelVersionId == null || z.ModelVersionId == versionId))
-            .ToListAsync(ct);
-        var map = publicIds.ToDictionary(z => z.Id, PublicZoneId);
-        return new PublicBuildTwinStateDto(r.Date, r.Counts, r.States,
+        => PublicState(await _twin.ComputeAsync(ctx.TenantId, ctx.Project.Id, versionId, date, bypass: true, ct),
+            await PublicZoneIdsAsync(ctx, versionId, ct));
+
+    private async Task<IReadOnlyDictionary<Guid, string>> PublicZoneIdsAsync(Ctx ctx, Guid? versionId, CancellationToken ct)
+        => (await _db.BldModelZones.IgnoreQueryFilters().AsNoTracking()
+                .Where(z => z.TenantId == ctx.TenantId && z.ProjectId == ctx.Project.Id && (z.ModelVersionId == null || z.ModelVersionId == versionId))
+                .ToListAsync(ct))
+            .ToDictionary(z => z.Id, PublicZoneId);
+
+    private static PublicBuildTwinStateDto PublicState(BuildTwinStateEngine.Result r, IReadOnlyDictionary<Guid, string> map)
+        => new(r.Date, r.Counts, r.States,
             r.ZoneStates.ToDictionary(kv => kv.Key, kv => (IReadOnlyList<string>)kv.Value.Where(map.ContainsKey).Select(id => map[id]).ToList()),
             r.Unbound);
-    }
 
     /// <summary>A zone as the portal knows it: its model id (IFC GlobalId) or an opaque id derived from the internal one.</summary>
     private static string PublicZoneId(BuildModelZone z)

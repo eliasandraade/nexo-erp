@@ -2,7 +2,7 @@
   "openapi": "3.0.1",
   "info": {
     "title": "Orken Build — Portal do Cliente (API pública)",
-    "version": "1.5",
+    "version": "1.6",
     "description": "Gerado da API (Swagger) por BuildPortalOpenApiTests. Contrato humano: docs/build/client-portal-contract.md."
   },
   "paths": {
@@ -4304,6 +4304,61 @@
           },
           "disclaimer": {
             "type": "string"
+          },
+          "elementIndex": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicBuildTwinIndexDto"
+              }
+            ],
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublicBuildTwinGroupDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "elementIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "order": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "PublicBuildTwinIndexDto": {
+        "type": "object",
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicBuildTwinGroupDto"
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicBuildTwinGroupDto"
+            }
+          },
+          "zones": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
           }
         },
         "additionalProperties": false

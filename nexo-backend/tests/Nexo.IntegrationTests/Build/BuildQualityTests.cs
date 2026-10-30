@@ -367,7 +367,7 @@ public class BuildQualityTests
         // ── portal: "Meu Imóvel", acceptance ──
         var rawBootstrap = await (await client.GetAsync(portal)).Content.ReadAsStringAsync();
         var bootstrap = JsonDocument.Parse(rawBootstrap).RootElement;
-        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.5");
+        bootstrap.GetProperty("contractVersion").GetString().Should().Be("1.6");
         bootstrap.GetProperty("phase").GetString().Should().Be("delivered");
         bootstrap.GetProperty("sections").EnumerateArray().Select(s => s.GetString()).Should().Contain("postConstruction");
         var property = bootstrap.GetProperty("property");

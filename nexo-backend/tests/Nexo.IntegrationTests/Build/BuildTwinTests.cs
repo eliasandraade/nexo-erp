@@ -366,6 +366,32 @@ public class BuildTwinTests
         twin.GetProperty("disclaimer").GetString().Should().NotBeNullOrWhiteSpace();
         twin.GetProperty("maxDate").GetString().Should().Be(Day(0));
 
+        // v1.6 — the element index: stage from the real bindings, the IFC class, the zone; never from node names
+        static string[] Group(JsonElement groups, string name) => groups.EnumerateArray()
+            .Single(g => g.GetProperty("name").GetString() == name).GetProperty("elementIds").EnumerateArray().Select(i => i.GetString()!).ToArray();
+        var index = twin.GetProperty("elementIndex");
+        index.GetProperty("stages").GetArrayLength().Should().Be(1);
+        Group(index.GetProperty("stages"), "Alvenaria").Should().BeEquivalentTo(groundWalls);
+        index.GetProperty("stages")[0].GetProperty("order").GetInt32().Should().BeGreaterThanOrEqualTo(0);
+        index.GetProperty("categories").EnumerateArray().Select(g => g.GetProperty("name").GetString()).Should().Equal("IfcSlab", "IfcWall");
+        Group(index.GetProperty("categories"), "IfcWall").Should().HaveCount(5);
+        index.GetProperty("zones").GetProperty(Gid("StoreyT")).EnumerateArray().Select(i => i.GetString())
+            .Should().HaveCount(4).And.Contain(groundWalls);
+        // stage names only where the portal already shows stages
+        var portalSlug = portal.Split('/')[^1];
+        await Json(await admin.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal", new
+        {
+            slug = portalSlug, access = "Password", title = "Minha obra",
+            visibility = new { model3d = true, realityCapture = true, stageProgress = false, schedule = false },
+        }), HttpStatusCode.OK);
+        var hidden = await Json(await anonymous.GetAsync($"{portal}/twin"), HttpStatusCode.OK);
+        hidden.GetProperty("elementIndex").GetProperty("stages").GetArrayLength().Should().Be(0);
+        hidden.GetProperty("elementIndex").GetProperty("categories").GetArrayLength().Should().Be(2);
+        await Json(await admin.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal", new
+        {
+            slug = portalSlug, access = "Password", title = "Minha obra", visibility = new { model3d = true, realityCapture = true },
+        }), HttpStatusCode.OK);
+
         Ids(await Json(await anonymous.GetAsync($"{portal}/twin/state?date={Day(-15)}"), HttpStatusCode.OK), "InProgress")
             .Should().BeEquivalentTo(groundWalls);
         (await Code(await anonymous.GetAsync($"{portal}/twin/state?date={Day(1)}"), HttpStatusCode.BadRequest)).Should().Be("invalid_date");

@@ -171,7 +171,9 @@ try
                   // every non-simple request was preceded by a fresh OPTIONS round-trip,
                   // doubling latency on the cold first load.
                   .SetPreflightMaxAge(TimeSpan.FromHours(24))
-                  .WithExposedHeaders("Content-Disposition", "Content-Length", "Retry-After", Nexo.Api.Middleware.CorrelationIdMiddleware.Header);
+                  // ETag: the client portal revalidates GET /twin/state with If-None-Match (contract §2.20); a browser on
+                  // another origin only reads response headers listed here.
+                  .WithExposedHeaders("Content-Disposition", "Content-Length", "Retry-After", "ETag", Nexo.Api.Middleware.CorrelationIdMiddleware.Header);
         });
     });
 

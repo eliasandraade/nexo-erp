@@ -275,7 +275,26 @@ public sealed record PublicBuildTwinDto
     public DateOnly? MinDate { get; init; }
     public DateOnly MaxDate { get; init; }
     public string Disclaimer { get; init; } = string.Empty;
+    /// <summary>v1.6 — what each element of the model really is (null without a model version). See <see cref="PublicBuildTwinIndexDto"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public PublicBuildTwinIndexDto? ElementIndex { get; init; }
 }
+
+/// <summary>A named group of model elements (external ids, sorted). <c>Order</c> only on stages.</summary>
+public sealed record PublicBuildTwinGroupDto(
+    string Name,
+    IReadOnlyList<string> ElementIds,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Order = null);
+
+/// <summary>
+/// v1.6 — the element metadata the viewer filters on, all of it recorded data, never inferred from node names:
+/// <c>Stages</c> = the company's bindings resolved per element (empty when neither stage progress nor schedule is visible),
+/// <c>Categories</c> = the IFC class of each element, <c>Zones</c> = public zone id (as in <see cref="PublicBuildTwinZoneDto.Id"/>)
+/// → the elements directly inside it.
+/// </summary>
+public sealed record PublicBuildTwinIndexDto(
+    IReadOnlyList<PublicBuildTwinGroupDto> Stages,
+    IReadOnlyList<PublicBuildTwinGroupDto> Categories,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> Zones);
 
 public sealed record PublicBuildRealityCaptureDto(
     string Type,

@@ -173,6 +173,40 @@ public class SecurityHeadersTests
     }
 
     [Fact]
+    public async Task CORS_PublicPortalOrigin_CanReadETagAndRetryAfter_AndSendTheSessionHeader()
+    {
+        // the client portal (www.orken.com.br) revalidates /twin/state with If-None-Match and honours Retry-After
+        var actual = await _client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/api/public/build/nao-existe/obra")
+        {
+            Headers = { { "Origin", "https://www.orken.com.br" } },
+        });
+        actual.Headers.GetValues("Access-Control-Allow-Origin").Should().Equal("https://www.orken.com.br");
+        var exposed = string.Join(",", actual.Headers.GetValues("Access-Control-Expose-Headers"))
+            .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        exposed.Should().Contain(["ETag", "Retry-After"]);
+
+        var preflight = await _client.SendAsync(new HttpRequestMessage(HttpMethod.Options, "/api/public/build/nao-existe/obra/twin/state")
+        {
+            Headers = {
+                { "Origin", "https://www.orken.com.br" },
+                { "Access-Control-Request-Method", "GET" },
+                { "Access-Control-Request-Headers", "x-build-portal-session,if-none-match" },
+            },
+        });
+        preflight.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent);
+        string.Join(",", preflight.Headers.GetValues("Access-Control-Allow-Headers")).ToLowerInvariant()
+            .Should().Contain("x-build-portal-session").And.Contain("if-none-match");
+
+        // an origin outside the allow-list still gets nothing it could read
+        var foreign = await _client.SendAsync(new HttpRequestMessage(HttpMethod.Get, "/api/public/build/nao-existe/obra")
+        {
+            Headers = { { "Origin", "https://outro-site.example" } },
+        });
+        foreign.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+        foreign.Headers.Contains("Access-Control-Expose-Headers").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task CORSPreflight_InvalidOrigin_RejectsByDefault()
     {
         var response = await _client.SendAsync(new HttpRequestMessage(HttpMethod.Options, "/api/auth/me")
