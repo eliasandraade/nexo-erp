@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Nexo.Infrastructure.Persistence;
@@ -115,12 +116,12 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
             .Should().Contain(e => e.GetProperty("file").ValueKind == JsonValueKind.Object && e.GetProperty("file").GetProperty("sha256").GetString() == Sha256(bytes),
                 "the dossier points at the exact version of the evidence used");
         var execution = approved.GetProperty("requirements").EnumerateArray().Where(r => r.GetProperty("phase").GetString() == "ExecutionVerification").ToList();
+        var nfe = Encoding.UTF8.GetBytes($"<?xml version=\"1.0\"?><nfeProc><NFe Id=\"{Guid.NewGuid():N}\"/></nfeProc>");
         foreach (var r in execution)
         {
             var reqId = r.GetProperty("id").GetGuid();
             if (r.GetProperty("requiredEvidence").ValueKind == JsonValueKind.String)
-                await UploadEvidenceAsync(gerente, oppId, Encoding.UTF8.GetBytes("<?xml version=\"1.0\"?><nfeProc><NFe/></nfeProc>"), "nfe.xml",
-                    r.GetProperty("requiredEvidence").GetString()!, reqId, "XML autorizado da NF-e");
+                await UploadEvidenceAsync(gerente, oppId, nfe, "nfe.xml", r.GetProperty("requiredEvidence").GetString()!, reqId, "XML autorizado da NF-e");
             await Json(await Post(gerente, $"/api/tax/opportunities/{oppId}/requirements/{reqId}", new { met = true, note = "conferido" }));
         }
         await Json(await Post(pilot, $"/api/tax/opportunities/{oppId}/execution", new
@@ -131,25 +132,74 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
         timeline.EnumerateArray().Select(t => t.GetProperty("action").GetString()).Should()
             .Contain(["tax_opportunity_assigned", "tax_opportunity_approved", "tax_opportunity_execution_verified"]);
 
-        var zip = await pilot.GetAsync($"/api/tax/decisions/{decisionId}/export?includeFiles=true");
-        zip.StatusCode.Should().Be(HttpStatusCode.OK);
-        using var archive = new ZipArchive(await zip.Content.ReadAsStreamAsync(), ZipArchiveMode.Read);
-        var manifest = JsonDocument.Parse(await new StreamReader(archive.GetEntry("manifesto.json")!.Open()).ReadToEndAsync()).RootElement;
-        manifest.GetProperty("problems").GetArrayLength().Should().Be(0);
-        foreach (var f in manifest.GetProperty("files").EnumerateArray())
+        // The package carries the decision's file (A) and the execution verification's file (B), each checked against its frozen hash.
+        var decisionPath = $"evidencias/decisao/{Sha256(bytes)}.pdf";
+        var executionPath = $"evidencias/execucao/{Sha256(nfe)}.xml";
+        var (archive, manifest) = await ExportAsync(pilot, decisionId, includeFiles: true);
+        using (archive)
         {
-            using var s = new MemoryStream();
-            await archive.GetEntry(f.GetProperty("path").GetString()!)!.Open().CopyToAsync(s);
-            Sha256(s.ToArray()).Should().Be(f.GetProperty("sha256").GetString(), "every packaged file matches its manifest hash");
+            manifest.GetProperty("problems").GetArrayLength().Should().Be(0);
+            var listed = manifest.GetProperty("files").EnumerateArray().Select(f => f.GetProperty("path").GetString()).ToList();
+            listed.Should().BeEquivalentTo(archive.Entries.Select(e => e.FullName).Where(n => n != "manifesto.json"), "the manifest covers every packaged file");
+            foreach (var f in manifest.GetProperty("files").EnumerateArray())
+                Sha256(await BytesAsync(archive, f.GetProperty("path").GetString()!)).Should().Be(f.GetProperty("sha256").GetString(), "every packaged file matches its manifest hash");
+            (await BytesAsync(archive, decisionPath)).Should().Equal(bytes);
+            (await BytesAsync(archive, executionPath)).Should().Equal(nfe, "the execution's fiscal document travels with the dossier");
+            archive.GetEntry("evidencias/indice-execucao.json").Should().NotBeNull();
+            manifest.GetProperty("evidenceFiles").EnumerateArray().Select(f => f.GetProperty("path").GetString()).Should().Contain([decisionPath, executionPath]);
+            archive.Entries.Count(e => e.FullName == executionPath).Should().Be(1, "the same bytes are packaged once");
         }
-        archive.Entries.Should().Contain(e => e.FullName == $"evidencias/arquivos/{Sha256(bytes)}.pdf");
+
+        // Without files: not one byte of evidence.
+        var (bare, bareManifest) = await ExportAsync(pilot, decisionId, includeFiles: false);
+        using (bare)
+        {
+            bare.Entries.Should().NotContain(e => e.FullName.StartsWith("evidencias/decisao/") || e.FullName.StartsWith("evidencias/execucao/"));
+            bareManifest.GetProperty("evidenceFiles").GetArrayLength().Should().Be(0);
+        }
+
+        // A fiscal file whose stored bytes changed is reported, never packaged; the decision's file still is.
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var nfeSha = Sha256(nfe);
+            var keys = await scope.ServiceProvider.GetRequiredService<NexoDbContext>().TaxEvidenceFiles.IgnoreQueryFilters()
+                .Where(f => f.Sha256 == nfeSha).Select(f => f.StorageKey).ToListAsync();
+            foreach (var key in keys) Factory.TaxFiles.Corrupt(key);
+        }
+        var (broken, brokenManifest) = await ExportAsync(pilot, decisionId, includeFiles: true);
+        using (broken)
+        {
+            brokenManifest.GetProperty("problems").EnumerateArray().Select(p => p.GetString()).Should().Contain(p => p!.Contains("(execucao)") && p.Contains("SHA-256"));
+            broken.GetEntry(executionPath).Should().BeNull();
+            broken.GetEntry(decisionPath).Should().NotBeNull();
+        }
+
         (await gerente.GetAsync($"/api/tax/decisions/{decisionId}/export")).StatusCode.Should().Be(HttpStatusCode.Forbidden, "exporting is the board's");
+        (await (await OtherCompanyAsync()).GetAsync($"/api/tax/decisions/{decisionId}/export?includeFiles=true")).StatusCode
+            .Should().Be(HttpStatusCode.NotFound, "another company never finds this dossier");
 
         // Shadow mode: the pilot workflow produced nothing fiscal, accounting or financial for this operation.
         var calcId = calc.GetProperty("id").GetGuid();
         (await CountAsync(db => db.TaxCredits.IgnoreQueryFilters().Where(c => c.SourceCalculationId == calcId))).Should().Be(0);
         (await CountAsync(db => db.TaxSplitExpectations.IgnoreQueryFilters().Where(e => e.CalculationId == calcId))).Should().Be(0);
         _ = platform;
+    }
+
+    private static async Task<(ZipArchive Archive, JsonElement Manifest)> ExportAsync(HttpClient c, Guid decisionId, bool includeFiles)
+    {
+        var zip = await c.GetAsync($"/api/tax/decisions/{decisionId}/export?includeFiles={(includeFiles ? "true" : "false")}");
+        zip.StatusCode.Should().Be(HttpStatusCode.OK);
+        var archive = new ZipArchive(new MemoryStream(await zip.Content.ReadAsByteArrayAsync()), ZipArchiveMode.Read);
+        var manifest = JsonDocument.Parse(await BytesAsync(archive, "manifesto.json")).RootElement.Clone();
+        return (archive, manifest);
+    }
+
+    private static async Task<byte[]> BytesAsync(ZipArchive archive, string path)
+    {
+        using var s = new MemoryStream();
+        await using var entry = archive.GetEntry(path)!.Open();
+        await entry.CopyToAsync(s);
+        return s.ToArray();
     }
 
     [Fact]
@@ -309,6 +359,65 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
             .Should().Be("tax_split_provider_missing", "with no provider integrated nothing is ever invented as retained");
     }
 
+    [Fact]
+    public async Task I_The_split_export_carries_every_filtered_row_past_the_page_size_or_refuses_saying_why()
+    {
+        var admin = await AdminWithProfileAsync();
+        const string day = "2026-09-17";   // only this test operates on this date: the date filter isolates its rows
+        var expectationIds = new List<Guid>();
+        for (var i = 0; i < 130; i++)
+        {
+            var calc = await Json(await Post(admin, "/api/tax/calculations", Operation(Unique("SplitLote"), gross: 1000m + i, date: day)));
+            var created = await Json(await Post(admin, $"/api/tax/calculations/{calc.GetProperty("id").GetGuid()}/split-expectations", new { procedure = "Standard" }));
+            expectationIds.AddRange(created.EnumerateArray().Select(e => e.GetProperty("id").GetGuid()));
+        }
+        expectationIds.Count.Should().BeGreaterThan(250, "the export must go past the list's page of 200");
+
+        // A settlement matched on one row, and a wrong one reversed on another: the export shows the reconciliation as it stands.
+        var first = await Json(await admin.GetAsync($"/api/tax/split/expectations?from={day}&to={day}&take=2"));
+        var matched = first.GetProperty("items")[0];
+        await Json(await Post(admin, $"/api/tax/split/expectations/{matched.GetProperty("id").GetGuid()}/settlements",
+            new { actualAmount = matched.GetProperty("expected").GetDecimal(), externalReference = "LOTE-OK", settledAt = "2026-09-18T12:00:00Z" }));
+        var reversedRow = first.GetProperty("items")[1];
+        var wrong = await Json(await Post(admin, $"/api/tax/split/expectations/{reversedRow.GetProperty("id").GetGuid()}/settlements",
+            new { actualAmount = 1m, externalReference = "LOTE-ERRADO", settledAt = "2026-09-18T12:00:00Z" }));
+        await Json(await Post(admin, $"/api/tax/split/settlements/{wrong.GetProperty("settlements")[0].GetProperty("id").GetGuid()}/reverse", new { reason = "valor errado" }));
+
+        async Task<string[]> CsvAsync(HttpClient c, string query)
+        {
+            var r = await c.GetAsync($"/api/tax/split/expectations/export?{query}");
+            r.StatusCode.Should().Be(HttpStatusCode.OK);
+            return (await r.Content.ReadAsStringAsync()).TrimStart('\uFEFF').Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.TrimEnd('\r')).ToArray();
+        }
+
+        var all = await CsvAsync(admin, $"from={day}&to={day}");
+        all.Count(l => l.StartsWith("calculo;")).Should().Be(1, "the header appears once");
+        var lines = all.Skip(1).ToList();
+        lines.Should().HaveCount(expectationIds.Count, "every row the filters match is exported, not one page");
+        lines.Select(l => Col(l, 1)).Should().OnlyContain(d => d == day);
+        lines.Should().ContainSingle(l => l.Contains("LOTE-OK") && Col(l, 7) == "Matched");
+        lines.Should().ContainSingle(l => l.Contains("LOTE-ERRADO") && Col(l, 7) == "Pending", "a reversed retention leaves the expectation pending");
+
+        // The same filters as the list: by status and by tax.
+        var pending = (await CsvAsync(admin, $"from={day}&to={day}&status=Pending")).Skip(1).ToList();
+        pending.Should().HaveCount(expectationIds.Count - 1).And.OnlyContain(l => Col(l, 7) == "Pending");
+        var cbs = (await CsvAsync(admin, $"from={day}&to={day}&tax=Cbs")).Skip(1).ToList();
+        cbs.Should().HaveCount(130).And.OnlyContain(l => Col(l, 2) == "Cbs");
+
+        // Above the configured ceiling the export is refused with the limit stated — never truncated.
+        var capped = Host(admin, b => b.UseSetting("TaxIntelligence:Export:MaxSplitRows", "100"));
+        var refused = await Json(await capped.GetAsync($"/api/tax/split/expectations/export?from={day}&to={day}"), HttpStatusCode.UnprocessableEntity);
+        Code(refused).Should().Be("tax_split_export_too_large");
+
+        // Another company exports nothing of this one.
+        var other = await CsvAsync(await OtherCompanyAsync(), $"from={day}&to={day}");
+        other.Should().HaveCount(1, "only the header: another company's retentions are never exported");
+    }
+
+    private static readonly string[] NfeOnly = ["NF-e"];
+
+    private static string Col(string csvLine, int index) => csvLine.Split(';')[index];
+
     // ── J: emergency ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -448,7 +557,7 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
         await TaxPilotSetup.EnsureObligationAsync(platform, "J-NFE-CAMPOS", "Campos de IBS/CBS na NF-e");
         var free = await Json(await Post(admin, "/api/tax/compliance-assessments", new
         {
-            status = "Verified", periodFrom = "2026-07-01", periodTo = "2026-07-31", scope = "estabelecimento", obligationsChecked = new[] { "NF-e" },
+            status = "Verified", periodFrom = "2026-07-01", periodTo = "2026-07-31", scope = "estabelecimento", obligationsChecked = NfeOnly,
             evidence = "relatório", assessedBy = "Contabilidade", assessedAt = (string?)null, notes = (string?)null, limitations = (string?)null, pnctParticipation = false,
         }), HttpStatusCode.UnprocessableEntity);
         Code(free).Should().Be("tax_compliance_results", "free text alone is not a verification");

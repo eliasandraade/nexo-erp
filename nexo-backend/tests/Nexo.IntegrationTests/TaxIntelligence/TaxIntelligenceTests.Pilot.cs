@@ -352,6 +352,13 @@ public partial class TaxIntelligenceTests
 
         await ApproveAsync(platform, versionId, day, day, "DEC-SIMULATION");
         await Json(await Post(pilot, "/api/tax/simulations", Simulation("Aprovada")));
+        // The pilot follows its own policy: the internal approval is not per regime, so a scenario in another regime runs too.
+        var otherRegime = await Json(await Post(pilot, "/api/tax/simulations", new
+        {
+            name = Unique("Outro regime"), baseline = Operation(Unique("Base"), gross: 1052m),
+            scenarios = new object[] { new { name = "Lucro Real", regime = "LucroReal", referenceDate = day, convertConditionalDiscounts = false, assumeCreditable = false } },
+        }));
+        otherRegime.GetProperty("scenarioGovernance").EnumerateArray().Select(s => s.GetProperty("regime").GetString()).Should().Contain("LucroReal");
         await Json(await Post(pilot, "/api/tax/simulations/supplier-comparison", Comparison()));
 
         await Json(await Post(platform, $"/api/platform/tax/rule-versions/{versionId}/pilot-approval/withdraw",

@@ -9964,6 +9964,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("GovernanceJson")
+                        .HasColumnType("json")
+                        .HasColumnName("governance");
+
                     b.Property<string>("InputJson")
                         .IsRequired()
                         .HasColumnType("json")

@@ -36,6 +36,7 @@ Seção `TaxIntelligence` (variáveis de ambiente no Railway usam `__`, ex.: `Ta
 | `Policy:MaterialityThreshold` | ausente | Padrão da instalação; cada empresa pode ter versão própria |
 | `Evidence:MaxFileSizeMb` | `7` (1–7) | Limite por arquivo privado; a requisição inteira é limitada a 8 MB |
 | `Evidence:RequireScan` | `false` | `true` recusa upload enquanto não houver antivírus configurado |
+| `Export:MaxSplitRows` | `100000` | Teto de linhas de uma exportação CSV do split. Acima dele a exportação é recusada (`tax_split_export_too_large`) pedindo filtros mais estreitos — nunca é truncada |
 
 **Configuração inválida nunca derruba o ERP.** Valores fora do enum, materialidade não positiva ou combinações
 incoerentes viram `ConfigurationProblems`: o módulo recusa trabalho novo com `tax_configuration_invalid`, o

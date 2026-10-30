@@ -12,9 +12,10 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 
 /// <summary>
 /// Exports a decision dossier as a ZIP an auditor can keep: the dossier exactly as frozen (JSON, with its stored hash), a human-readable
-/// version, the execution verification when there is one, the legal sources and the evidence index it froze, the evidence files when
-/// asked for and allowed, and a manifest with the SHA-256 of every file in the package. Only this company's dossiers are found; a file
-/// whose bytes no longer match its recorded hash is reported in the manifest, never silently included.
+/// version, the execution verification when there is one, the legal sources and the evidence indexes they froze, the evidence files when
+/// asked for and allowed — those frozen by the decision and those frozen by the execution verification — and a manifest with the SHA-256
+/// of every file in the package. Only this company's dossiers are found; a file that is missing or whose bytes no longer match the hash
+/// the dossier froze is reported in the manifest, never silently included or left out.
 /// </summary>
 public sealed class TaxDossierExportService
 {
@@ -46,13 +47,18 @@ public sealed class TaxDossierExportService
         if (execution is not null) entries.Add(("dossie/verificacao-execucao.json", Encoding.UTF8.GetBytes(execution.DossierJson)));
         if (root.TryGetProperty("legalSources", out var sources))
             entries.Add(("fontes-juridicas.json", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(sources, Pretty))));
-        var evidence = root.TryGetProperty("evidence", out var ev) && ev.ValueKind == JsonValueKind.Array ? ev : default;
-        if (evidence.ValueKind == JsonValueKind.Array)
-            entries.Add(("evidencias/indice.json", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(evidence, Pretty))));
+        var evidence = ArrayOf(root, "evidence");
+        if (evidence is { } decided)
+            entries.Add(("evidencias/indice.json", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(decided, Pretty))));
+        using var executionDossier = execution is null ? null : JsonDocument.Parse(execution.DossierJson);
+        var fiscal = executionDossier is null ? null : ArrayOf(executionDossier.RootElement, "fiscalDocumentEvidence");
+        if (fiscal is { } executed)
+            entries.Add(("evidencias/indice-execucao.json", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(executed, Pretty))));
 
         var problems = new List<string>();
-        if (includeFiles && evidence.ValueKind == JsonValueKind.Array)
-            await AddFilesAsync(evidence, entries, problems, ct);
+        var evidenceFiles = new List<object>();
+        if (includeFiles)
+            await AddFilesAsync([("decisao", evidence), ("execucao", fiscal)], entries, evidenceFiles, problems, ct);
 
         var manifest = new
         {
@@ -66,6 +72,7 @@ public sealed class TaxDossierExportService
             executionVerificationHash = execution?.DossierHash,
             engineVersion = decision.EngineVersion,
             filesIncluded = includeFiles,
+            evidenceFiles,
             problems,
             notice = TaxOpportunityService.IntegrityNotice,
             files = entries.Select(e => new { path = e.Path, sha256 = Sha(e.Bytes), sizeBytes = e.Bytes.LongLength }).ToList(),
@@ -88,34 +95,83 @@ public sealed class TaxDossierExportService
         return ($"dossie-{decision.Id:N}.zip", zip.ToArray());
     }
 
-    /// <summary>Adds each evidence file the dossier froze, checking its bytes against the SHA-256 recorded at upload.</summary>
-    private async Task AddFilesAsync(JsonElement evidence, List<(string Path, byte[] Bytes)> entries, List<string> problems, CancellationToken ct)
+    private static JsonElement? ArrayOf(JsonElement root, string property)
+        => root.ValueKind == JsonValueKind.Object && root.TryGetProperty(property, out var items) && items.ValueKind == JsonValueKind.Array
+            ? items : null;
+
+    /// <summary>A file reference as a dossier froze it: the file id and the SHA-256 of its bytes at that moment.</summary>
+    private sealed record FrozenFile(Guid Id, string? Sha256, List<string> Phases);
+
+    /// <summary>
+    /// Adds each evidence file the dossiers froze — the decision's first, then the execution verification's — under the folder of the
+    /// phase that first referenced it; a file referenced by both phases is included once and listed with both. Which files belong to the
+    /// package comes from the frozen references, never from the evidence as it stands today; the bytes are checked against the SHA-256 the
+    /// dossier froze and against the one recorded at upload. Files are looked up within this company only.
+    /// </summary>
+    private async Task AddFilesAsync(IReadOnlyList<(string Phase, JsonElement? Evidence)> phases, List<(string Path, byte[] Bytes)> entries,
+        List<object> evidenceFiles, List<string> problems, CancellationToken ct)
     {
-        var ids = evidence.EnumerateArray()
-            .Select(e => e.TryGetProperty("file", out var f) && f.ValueKind == JsonValueKind.Object && f.TryGetProperty("id", out var id) ? id.GetGuid() : (Guid?)null)
-            .Where(id => id is not null).Select(id => id!.Value).Distinct().ToList();
-        var files = await _ctx.Db.TaxEvidenceFiles.AsNoTracking().Where(f => ids.Contains(f.Id)).ToListAsync(ct);
-        foreach (var f in files)
+        var frozen = new Dictionary<Guid, FrozenFile>();
+        foreach (var (phase, evidence) in phases)
         {
-            try
+            if (evidence is not { } items) continue;
+            foreach (var reference in items.EnumerateArray().Select(FileOf).OfType<FrozenFile>())
             {
-                await using var stream = await _files.OpenAsync(f.StorageKey, ct);
-                using var buffer = new MemoryStream();
-                await stream.CopyToAsync(buffer, ct);
-                var bytes = buffer.ToArray();
-                if (!string.Equals(Sha(bytes), f.Sha256, StringComparison.Ordinal))
-                {
-                    problems.Add($"Arquivo {f.Id}: os bytes armazenados não conferem com o SHA-256 registrado — não incluído.");
-                    continue;
-                }
-                entries.Add(($"evidencias/arquivos/{f.Sha256}{f.Extension}", bytes));
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                problems.Add($"Arquivo {f.Id}: não foi possível ler do armazenamento ({ex.GetType().Name}).");
+                if (!frozen.TryGetValue(reference.Id, out var known)) frozen[reference.Id] = known = reference with { Phases = [] };
+                if (!known.Phases.Contains(phase)) known.Phases.Add(phase);
             }
         }
-        problems.AddRange(ids.Except(files.Select(f => f.Id)).Select(id => $"Arquivo {id}: registro não encontrado."));
+        var ids = frozen.Keys.ToList();
+        var files = await _ctx.Db.TaxEvidenceFiles.AsNoTracking().Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
+        foreach (var reference in frozen.Values)
+        {
+            var phase = reference.Phases[0];
+            if (!files.TryGetValue(reference.Id, out var f))
+            {
+                problems.Add($"Arquivo {reference.Id} ({phase}): registro não encontrado — não incluído.");
+                continue;
+            }
+            var expected = reference.Sha256 ?? f.Sha256;
+            if (!string.Equals(expected, f.Sha256, StringComparison.Ordinal))
+            {
+                problems.Add($"Arquivo {f.Id} ({phase}): o SHA-256 registrado não é o que o dossiê congelou — não incluído.");
+                continue;
+            }
+            var bytes = await ReadAsync(f, phase, problems, ct);
+            if (bytes is null) continue;
+            if (!string.Equals(Sha(bytes), expected, StringComparison.Ordinal))
+            {
+                problems.Add($"Arquivo {f.Id} ({phase}): os bytes armazenados não conferem com o SHA-256 congelado — não incluído.");
+                continue;
+            }
+            var path = $"evidencias/{phase}/{expected}{f.Extension}";
+            if (!entries.Exists(e => e.Path == path)) entries.Add((path, bytes));
+            evidenceFiles.Add(new { fileId = f.Id, sha256 = expected, path, phases = reference.Phases });
+        }
+    }
+
+    private static FrozenFile? FileOf(JsonElement e)
+    {
+        if (e.ValueKind != JsonValueKind.Object || !e.TryGetProperty("file", out var f) || f.ValueKind != JsonValueKind.Object
+            || !f.TryGetProperty("id", out var id) || !id.TryGetGuid(out var fileId)) return null;
+        var sha = f.TryGetProperty("sha256", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null;
+        return new FrozenFile(fileId, sha, []);
+    }
+
+    private async Task<byte[]?> ReadAsync(TaxEvidenceFile f, string phase, List<string> problems, CancellationToken ct)
+    {
+        try
+        {
+            await using var stream = await _files.OpenAsync(f.StorageKey, ct);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer, ct);
+            return buffer.ToArray();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            problems.Add($"Arquivo {f.Id} ({phase}): não foi possível ler do armazenamento ({ex.GetType().Name}) — não incluído.");
+            return null;
+        }
     }
 
     private static string Markdown(TaxDecision d, JsonElement root, TaxExecutionVerification? x)

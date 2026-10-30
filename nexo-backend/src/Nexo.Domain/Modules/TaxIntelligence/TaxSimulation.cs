@@ -42,8 +42,12 @@ public class TaxSimulation : StoreEntity
         };
     }
 
-    public void AddScenario(int index, string name, bool isBaseline, string inputJson, string resultJson, decimal totalTax, decimal netCost)
-        => _scenarios.Add(new TaxSimulationScenario(TenantId, Id, index, name, isBaseline, inputJson, resultJson, totalTax, netCost));
+    public TaxSimulationScenario AddScenario(int index, string name, bool isBaseline, string inputJson, string resultJson, decimal totalTax, decimal netCost)
+    {
+        var scenario = new TaxSimulationScenario(TenantId, Id, index, name, isBaseline, inputJson, resultJson, totalTax, netCost);
+        _scenarios.Add(scenario);
+        return scenario;
+    }
 }
 
 public class TaxSimulationScenario : StoreEntity
@@ -72,4 +76,15 @@ public class TaxSimulationScenario : StoreEntity
     public decimal TotalTax { get; private set; }
     /// <summary>What the operation costs after taxes and credits under this scenario.</summary>
     public decimal NetCost { get; private set; }
+    /// <summary>
+    /// The approval governance of this scenario's own date and regime, frozen when it ran. Set once: a later
+    /// review never rewrites it. Null on simulations stored before it was recorded.
+    /// </summary>
+    public string? GovernanceJson { get; private set; }
+
+    public void FreezeGovernance(string governanceJson)
+    {
+        if (GovernanceJson is not null) throw new DomainException("A governança deste cenário já foi registrada e não muda.");
+        GovernanceJson = governanceJson;
+    }
 }

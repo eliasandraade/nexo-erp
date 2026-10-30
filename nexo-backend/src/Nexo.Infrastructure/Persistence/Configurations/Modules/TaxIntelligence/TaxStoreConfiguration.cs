@@ -222,6 +222,7 @@ internal sealed class TaxSimulationScenarioConfiguration : IEntityTypeConfigurat
         b.Property(x => x.ResultJson).HasColumnName("result").HasColumnType("json").IsRequired();
         b.Property(x => x.TotalTax).Money("total_tax");
         b.Property(x => x.NetCost).Money("net_cost");
+        b.Property(x => x.GovernanceJson).HasColumnName("governance").HasColumnType("json");
     }
 }
 

@@ -107,7 +107,14 @@ public sealed record TaxSimulationSummaryDto(Guid Id, string Name, int Scenarios
 /// </summary>
 public sealed record TaxSimulationDto(
     Guid Id, string Name, string EngineVersion, DateTime CreatedAt, IReadOnlyList<ScenarioResult> Scenarios,
-    string? Assumptions = null, string? Caveats = null, string? CreatedByName = null, TaxGovernanceDto? Governance = null);
+    string? Assumptions = null, string? Caveats = null, string? CreatedByName = null, TaxGovernanceDto? Governance = null,
+    IReadOnlyList<TaxScenarioGovernanceDto>? ScenarioGovernance = null);
+
+/// <summary>
+/// The governance one scenario ran under — its own date and its own regime (a scenario that moves to another
+/// regime is checked against the reviews of that regime, never the baseline's) — frozen with the simulation.
+/// </summary>
+public sealed record TaxScenarioGovernanceDto(int ScenarioIndex, string Scenario, DateOnly ReferenceDate, string Regime, TaxGovernanceDto Governance);
 
 /// <summary>Effective cost of buying the same thing from different suppliers (procurement).</summary>
 public sealed record SupplierOfferRequest(string Supplier, TaxRegime? SupplierRegime, IReadOnlyList<TaxLineRequest> Lines);

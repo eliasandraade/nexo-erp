@@ -521,7 +521,10 @@ export interface TaxSimulationDto {
   createdByName: string | null;
   /** The governance the simulation ran under, frozen with it. */
   governance: TaxGovernanceDto | null;
+  /** Each scenario's own governance (its date and regime), frozen with it. Absent on older simulations. */
+  scenarioGovernance?: TaxScenarioGovernanceDto[] | null;
 }
+export interface TaxScenarioGovernanceDto { scenarioIndex: number; scenario: string; referenceDate: string; regime: string; governance: TaxGovernanceDto }
 
 export interface SupplierOfferRequest { supplier: string; supplierRegime: TaxRegime | null; lines: TaxLineRequest[] }
 export interface CompareSuppliersRequest {

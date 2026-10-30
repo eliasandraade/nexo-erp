@@ -289,6 +289,8 @@ public static class DependencyInjection
             o.RequireApprovedRulesForCalculations = !IsDevelopmentOrTesting(configuration);
             configuration.GetSection(Nexo.Infrastructure.TaxIntelligence.TaxIntelligencePolicyOptions.Section).Bind(o);
         });
+        services.Configure<Nexo.Infrastructure.TaxIntelligence.TaxExportOptions>(
+            configuration.GetSection(Nexo.Infrastructure.TaxIntelligence.TaxExportOptions.Section));
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxAuditTrail>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxCatalogService>();
         services.AddScoped<Nexo.Infrastructure.TaxIntelligence.TaxApprovalGate>();

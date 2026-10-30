@@ -156,6 +156,77 @@ public sealed class TaxProfessionalFinalTests : TaxIsolatedSuite
             .Should().BeTrue("a revoked rule never makes history unreadable");
     }
 
+    /// <summary>A simulation whose single scenario runs with <paramref name="regime"/> (null = the baseline's) on <paramref name="date"/>.</summary>
+    private static object Simulation(string name, string? regime, string baselineDate, string? date = null) => new
+    {
+        name = Unique(name), baseline = Operation(Unique("Base"), gross: 1301m, date: baselineDate),
+        scenarios = new object[] { new { name = "Cenário", regime, referenceDate = date, convertConditionalDiscounts = false, assumeCreditable = false } },
+    };
+
+    private static JsonElement ScenarioRule(JsonElement simulation, int index, string key)
+    {
+        var run = simulation.GetProperty("scenarioGovernance").EnumerateArray().Single(s => s.GetProperty("scenarioIndex").GetInt32() == index);
+        return run.GetProperty("governance").GetProperty("rules").EnumerateArray().Single(r => r.GetProperty("key").GetString() == key);
+    }
+
+    [Fact]
+    public async Task A_simulation_is_checked_against_the_review_of_each_scenario_own_regime_and_date()
+    {
+        var platform = await ReadyFinalAsync();
+        var admin = Final(await AdminWithProfileAsync());   // the establishment is Lucro Presumido
+        const string day = "2026-05-04";
+        var (key, id) = await RuleAsync(platform, day, "2026-05-05");
+        await ReviewAsync(platform, id, "Approved", day, "2026-05-05", regimes: ["LucroPresumido"]);
+
+        // Same regime as the review → runs; each scenario's governance is frozen with its regime and date.
+        var same = await Json(await Post(admin, "/api/tax/simulations", Simulation("MesmoRegime", "LucroPresumido", day)));
+        var sameRun = same.GetProperty("scenarioGovernance").EnumerateArray().Single(s => s.GetProperty("scenarioIndex").GetInt32() == 1);
+        sameRun.GetProperty("regime").GetString().Should().Be("LucroPresumido");
+        sameRun.GetProperty("referenceDate").GetString().Should().Be(day);
+        ScenarioRule(same, 1, key).GetProperty("professionallyApproved").GetBoolean().Should().BeTrue();
+
+        // A scenario moved to Lucro Real while the review covers Lucro Presumido only → refused, naming the rule.
+        var refused = await Json(await Post(admin, "/api/tax/simulations", Simulation("OutroRegime", "LucroReal", day)), HttpStatusCode.UnprocessableEntity);
+        Code(refused).Should().Be("tax_professional_review_pending", "the scenario runs as Lucro Real, so the Lucro Real review is the one that counts");
+        refused.GetProperty("details").EnumerateArray().Select(x => x.GetString()).Should().Equal($"{key} v1");
+
+        // A review covering both regimes, with caveats → runs; each scenario carries the review of its own regime.
+        await ReviewAsync(platform, id, "ApprovedWithCaveats", day, "2026-05-05", regimes: ["LucroPresumido", "LucroReal"], caveats: "Ressalva fictícia de teste para os dois regimes");
+        var both = await Json(await Post(admin, "/api/tax/simulations", Simulation("DoisRegimes", "LucroReal", day)));
+        var baseRun = both.GetProperty("scenarioGovernance").EnumerateArray().Single(s => s.GetProperty("scenarioIndex").GetInt32() == 0);
+        baseRun.GetProperty("regime").GetString().Should().Be("LucroPresumido");
+        both.GetProperty("scenarioGovernance").EnumerateArray().Single(s => s.GetProperty("scenarioIndex").GetInt32() == 1)
+            .GetProperty("regime").GetString().Should().Be("LucroReal");
+        var caveated = ScenarioRule(both, 1, key);
+        caveated.GetProperty("professionallyApproved").GetBoolean().Should().BeTrue();
+        caveated.GetProperty("professionalReview").GetString().Should().Be("ApprovedWithCaveats");
+        caveated.GetProperty("professionalCaveats").GetString().Should().Be("Ressalva fictícia de teste para os dois regimes");
+        caveated.GetProperty("professionalReviewRegimes").EnumerateArray().Select(x => x.GetString()).Should().Contain("LucroReal");
+
+        // Another date and another regime: both the baseline's (date, regime) and the scenario's are checked.
+        var (otherKey, otherId) = await RuleAsync(platform, "2026-05-06", "2026-05-06");
+        await ReviewAsync(platform, otherId, "Approved", "2026-05-06", "2026-05-06", regimes: ["LucroPresumido"]);
+        var otherDate = await Json(await Post(admin, "/api/tax/simulations", Simulation("OutraData", "LucroReal", day, "2026-05-06")),
+            HttpStatusCode.UnprocessableEntity);
+        Code(otherDate).Should().Be("tax_professional_review_pending");
+        otherDate.GetProperty("details").EnumerateArray().Select(x => x.GetString()).Should().Equal($"{otherKey} v1");
+        await ReviewAsync(platform, otherId, "Approved", "2026-05-06", "2026-05-06", regimes: ["LucroPresumido", "LucroReal"]);
+        var moved = await Json(await Post(admin, "/api/tax/simulations", Simulation("OutraData", "LucroReal", day, "2026-05-06")));
+        var movedRun = moved.GetProperty("scenarioGovernance").EnumerateArray().Single(s => s.GetProperty("scenarioIndex").GetInt32() == 1);
+        movedRun.GetProperty("referenceDate").GetString().Should().Be("2026-05-06");
+        movedRun.GetProperty("regime").GetString().Should().Be("LucroReal");
+        ScenarioRule(moved, 1, otherKey).GetProperty("professionallyApproved").GetBoolean().Should().BeTrue();
+        ScenarioRule(moved, 0, key).GetProperty("professionallyApproved").GetBoolean().Should().BeTrue("the baseline's date is checked too");
+
+        // A later review never rewrites a stored simulation.
+        await ReviewAsync(platform, id, "ChangesRequired", null, null, notes: "Revisão posterior (fictício).");
+        var stored = await Json(await admin.GetAsync($"/api/tax/simulations/{both.GetProperty("id").GetGuid()}"));
+        ScenarioRule(stored, 1, key).GetProperty("professionalReview").GetString().Should().Be("ApprovedWithCaveats");
+        ScenarioRule(stored, 1, key).GetProperty("professionalCaveats").GetString().Should().Be("Ressalva fictícia de teste para os dois regimes");
+        Code(await Json(await Post(admin, "/api/tax/simulations", Simulation("DepoisDaRevisao", "LucroReal", day)), HttpStatusCode.UnprocessableEntity))
+            .Should().Be("tax_professional_review_pending");
+    }
+
     [Fact]
     public async Task The_definitive_mode_needs_a_professionally_approved_classification_code()
     {

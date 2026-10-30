@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.TaxIntelligence;
@@ -52,16 +53,19 @@ public sealed record SplitFilter(
 public sealed class TaxSplitPaymentService
 {
     private const int MaxList = 200;
+    private const int ExportBatch = 500;
     private const string ExpectationEntity = "SplitExpectation";
 
     private readonly TaxContext _ctx;
     private readonly ISplitPaymentProvider _provider;
+    private readonly TaxExportOptions _export;
     private readonly ILogger<TaxSplitPaymentService> _log;
 
-    public TaxSplitPaymentService(TaxContext ctx, ISplitPaymentProvider provider, ILogger<TaxSplitPaymentService> log)
+    public TaxSplitPaymentService(TaxContext ctx, ISplitPaymentProvider provider, IOptions<TaxExportOptions> export, ILogger<TaxSplitPaymentService> log)
     {
         _ctx = ctx;
         _provider = provider;
+        _export = export.Value;
         _log = log;
     }
 
@@ -137,10 +141,9 @@ public sealed class TaxSplitPaymentService
         };
     }
 
-    public async Task<TaxPage<SplitExpectationDto>> ListAsync(SplitFilter f, CancellationToken ct)
+    /// <summary>The expectations matching the filters — the same query for the list and for the export.</summary>
+    private IQueryable<Row> Filtered(SplitFilter f)
     {
-        var take = Math.Clamp(f.Take, 1, MaxList);
-        var skip = Math.Max(0, f.Skip);
         var q = Rows();
         if (f.CalculationId is not null) q = q.Where(x => x.E.CalculationId == f.CalculationId);
         if (f.Tax is not null) q = q.Where(x => x.E.Tax == f.Tax);
@@ -148,12 +151,25 @@ public sealed class TaxSplitPaymentService
         if (f.To is not null) q = q.Where(x => x.OperationDate <= f.To);
         if (f.MinAgeDays is { } age) q = q.Where(x => x.OperationDate <= Today.AddDays(-age));
         if (f.Status is { } status) q = WithStatus(q, status);
+        return q.OrderByDescending(x => x.E.CreatedAt).ThenByDescending(x => x.E.Id);
+    }
+
+    public async Task<TaxPage<SplitExpectationDto>> ListAsync(SplitFilter f, CancellationToken ct)
+    {
+        var take = Math.Clamp(f.Take, 1, MaxList);
+        var skip = Math.Max(0, f.Skip);
+        var q = Filtered(f);
         var total = await q.CountAsync(ct);
-        var rows = await q.OrderByDescending(x => x.E.CreatedAt).Skip(skip).Take(take).ToListAsync(ct);
+        var rows = await q.Skip(skip).Take(take).ToListAsync(ct);
+        return new TaxPage<SplitExpectationDto>(await MapAsync(rows, ct), total, skip, take);
+    }
+
+    private async Task<List<SplitExpectationDto>> MapAsync(IReadOnlyList<Row> rows, CancellationToken ct)
+    {
         var ids = rows.Select(x => x.E.Id).ToList();
         var settlements = (await _ctx.Db.TaxSplitSettlements.AsNoTracking().Where(s => ids.Contains(s.ExpectationId)).ToListAsync(ct))
             .ToLookup(s => s.ExpectationId);
-        return new TaxPage<SplitExpectationDto>(rows.Select(x => Map(x.E, settlements[x.E.Id].ToList(), x.OperationDate)).ToList(), total, skip, take);
+        return rows.Select(x => Map(x.E, settlements[x.E.Id].ToList(), x.OperationDate)).ToList();
     }
 
     /// <summary>Expectations of the store whose retentions do not match — counted in the database over all of them.</summary>
@@ -247,19 +263,34 @@ public sealed class TaxSplitPaymentService
         return imported;
     }
 
-    /// <summary>The filtered expectations as CSV (status, aging, expected, recorded, difference). Audited.</summary>
+    /// <summary>
+    /// Every expectation matching the filters as CSV (status, aging, expected, recorded, difference) — the list's filters, without its
+    /// page size. The matching set is fixed first (ids only, in the list's order) and read in batches, so memory stays bounded and no row is
+    /// read twice or skipped. Above the configured ceiling (<see cref="TaxExportOptions.MaxSplitRows"/>) the export is refused with that
+    /// limit stated — never truncated. Audited.
+    /// </summary>
     public async Task<(string FileName, byte[] Content)> ExportCsvAsync(SplitFilter f, CancellationToken ct)
     {
-        var page = await ListAsync(f with { Skip = 0, Take = MaxList }, ct);
+        var max = Math.Clamp(_export.MaxSplitRows, 1, 1_000_000);
+        var ids = await Filtered(f).Select(x => x.E.Id).Take(max + 1).ToListAsync(ct);
+        if (ids.Count > max)
+            throw new DomainException(
+                $"Os filtros encontram mais de {max} retenções esperadas, o limite de uma exportação. Restrinja o período, o tributo ou o status e exporte em partes — nenhuma linha é omitida em silêncio.",
+                "tax_split_export_too_large");
         var csv = new StringBuilder();
         csv.AppendLine("calculo;data_operacao;tributo;procedimento;esperado;registrado;diferenca;status;dias_em_aberto;retencoes");
-        foreach (var e in page.Items)
-            csv.AppendLine(string.Join(';', e.CalculationId, e.OperationDate?.ToString("yyyy-MM-dd"), e.Tax, e.Procedure,
-                e.Expected.ToString(CultureInfo.InvariantCulture), e.Actual.ToString(CultureInfo.InvariantCulture),
-                e.Difference.ToString(CultureInfo.InvariantCulture), e.Status, e.AgeDays,
-                TaxSimulationService.Csv(string.Join(" | ", e.Settlements.Select(s => $"{s.ExternalReference} {s.ActualAmount.ToString(CultureInfo.InvariantCulture)}")))));
-        _ctx.Audit.Record(TaxAuditActions.SplitExported, ExpectationEntity, Guid.Empty, $"Retenções de split exportadas (CSV, {page.Items.Count} linhas).",
-            new { f.Status, f.Tax, f.From, f.To, f.MinAgeDays });
+        foreach (var batch in ids.Chunk(ExportBatch))
+        {
+            var rows = await Rows().Where(x => batch.Contains(x.E.Id)).ToListAsync(ct);
+            var byId = (await MapAsync(rows, ct)).ToDictionary(e => e.Id);
+            foreach (var e in batch.Select(id => byId[id]))
+                csv.AppendLine(string.Join(';', e.CalculationId, e.OperationDate?.ToString("yyyy-MM-dd"), e.Tax, e.Procedure,
+                    e.Expected.ToString(CultureInfo.InvariantCulture), e.Actual.ToString(CultureInfo.InvariantCulture),
+                    e.Difference.ToString(CultureInfo.InvariantCulture), e.Status, e.AgeDays,
+                    TaxSimulationService.Csv(string.Join(" | ", e.Settlements.Select(s => $"{s.ExternalReference} {s.ActualAmount.ToString(CultureInfo.InvariantCulture)}")))));
+        }
+        _ctx.Audit.Record(TaxAuditActions.SplitExported, ExpectationEntity, Guid.Empty, $"Retenções de split exportadas (CSV, {ids.Count} linhas).",
+            new { f.Status, f.Tax, f.From, f.To, f.MinAgeDays, rows = ids.Count });
         await _ctx.Db.SaveChangesAsync(ct);
         return ($"split-{Today:yyyyMMdd}.csv", Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(csv.ToString())).ToArray());
     }
