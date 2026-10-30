@@ -137,7 +137,8 @@ storage → 503 `storage_unavailable`; previsões desligadas → método pondera
 
 `b171273` Wave 1 · `5333a03` correções Wave 1 · `65abf8c` Wave 2 · `7dab57e`/`d8e21a0` Wave 3 · `6b58fc6`/`13fe668`
 Wave 4 · `54ec134`/`19de292`/`2084730` Wave 5 · `df7d934` Sonar · `ce0ac36`/`b66733c` Wave 6 · `6cde485` testes ·
-`de4b39b` revisão de segurança · `ab57a36` contrato v1.6 (ETag no CORS, `elementIndex`) · este relatório.
+`de4b39b` revisão de segurança · `ab57a36` contrato v1.6 (ETag no CORS, `elementIndex`) · `7793aea` merge do frontend
+"Minha Obra" (`codex/minha-obra`) · `bfc6f9d` achados de confiabilidade do Sonar · este relatório.
 
 ## 15. Instruções para o Astra (site público)
 
@@ -154,5 +155,6 @@ Wave 4 · `54ec134`/`19de292`/`2084730` Wave 5 · `df7d934` Sonar · `ce0ac36`/`
    em portal com senha; trate 409 (já decidido), 429 (`Retry-After`), 413 e 422 com as mensagens do servidor.
 7. Se o site não for servido por `www.orken.com.br` ou `app.orken.com.br`, peça a inclusão da origem em
    `Cors:AllowedOrigins`.
-8. O frontend "Minha Obra" já integrado está na branch `codex/minha-obra` (`docs/build/client-portal-frontend.md`), com a
-   suíte que roda contra esta API real.
+8. O frontend "Minha Obra" faz parte deste PR (`nexo-main/src/modules/build-portal`, rota `/{empresa}/{obra}`; merge de
+   `codex/minha-obra`). Detalhes em `docs/build/client-portal-frontend.md`, inclusive a suíte que roda contra esta API
+   real (`npx playwright test --config playwright.build-portal.integration.config.ts`, em `nexo-main`).

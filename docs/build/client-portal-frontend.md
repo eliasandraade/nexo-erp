@@ -1,7 +1,8 @@
 # Minha Obra: frontend público integrado ao Orken Build (contrato v1.6)
 
 O portal do cliente (`/{companySlug}/{projectSlug}`, ex.: `www.orken.com.br/solutie/shoppingeusebio`) fala só com a API
-pública do Orken Build descrita em `docs/build/client-portal-contract.md` (branch `feat/build-complete`, PR #90). Não há
+pública do Orken Build descrita em `docs/build/client-portal-contract.md`. Frontend e backend estão no mesmo PR (#90,
+branch `feat/build-complete`), que incorporou a branch `codex/minha-obra`. Não há
 contrato provisório, gateway "indisponível" nem dados simulados em produção: os fixtures de `dev/Review.tsx` só existem em
 DEV com `VITE_BUILD_PORTAL_REVIEW=1`.
 
@@ -72,7 +73,7 @@ estado do servidor. O resultado aparece junto do formulário que o enviou. Uploa
 - Integração real (API real, CORS real, PostgreSQL descartável, Docker):
 
   ```bash
-  BUILD_BACKEND_ROOT=<checkout de feat/build-complete>/nexo-backend npx playwright test --config playwright.build-portal.integration.config.ts
+  npx playwright test --config playwright.build-portal.integration.config.ts   # em nexo-main; usa ../nexo-backend
   ```
 
   O Playwright sobe `e2e/backend-host` (controllers, serviços e política CORS reais sobre Testcontainers, sem nenhuma

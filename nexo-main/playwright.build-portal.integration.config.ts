@@ -1,13 +1,14 @@
 import { defineConfig } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
-// "Minha Obra" against the real Orken Build API. Needs Docker (disposable PostgreSQL) and a checkout of the backend:
-//   BUILD_BACKEND_ROOT=…/nexo-backend npx playwright test --config playwright.build-portal.integration.config.ts
+// "Minha Obra" against the real Orken Build API. Needs Docker (disposable PostgreSQL); run from nexo-main:
+//   npx playwright test --config playwright.build-portal.integration.config.ts
+// The backend is the repository's ../nexo-backend (BUILD_BACKEND_ROOT points elsewhere if needed).
 // Both servers start fresh on every run (decisions in the suite are one-shot).
-const backend = process.env.BUILD_BACKEND_ROOT;
-if (!backend)
-  throw new Error(
-    "Set BUILD_BACKEND_ROOT to the nexo-backend folder of feat/build-complete.",
-  );
+const backend = resolve(process.env.BUILD_BACKEND_ROOT ?? "../nexo-backend");
+if (!existsSync(resolve(backend, "src/Nexo.Api")))
+  throw new Error(`No Orken backend at ${backend}; set BUILD_BACKEND_ROOT to the nexo-backend folder.`);
 
 export default defineConfig({
   testDir: "./e2e",
