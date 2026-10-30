@@ -143,6 +143,11 @@ const FINAL_STEPS = ["Modo", "Pré-condições", "Regras sem aprovação", "Ress
  * the shadow mode (pilot), states the decision reference and reason, and types the exact phrase. The definitive mode stays
  * blocked while any required rule lacks a valid professional review — the server decides, the wizard only shows why.
  */
+function stepTone(index: number, current: number): string {
+  if (index === current) return "bg-primary text-primary-foreground";
+  return index < current ? "bg-muted" : "text-muted-foreground";
+}
+
 function ActivationWizard({ mode, onClose }: Readonly<{ mode: TaxApprovalMode; onClose: () => void }>) {
   const qc = useQueryClient();
   const steps = mode === "ControlledPilot" ? PILOT_STEPS : FINAL_STEPS;
@@ -183,7 +188,7 @@ function ActivationWizard({ mode, onClose }: Readonly<{ mode: TaxApprovalMode; o
         <ol className="flex flex-wrap gap-1" aria-label="Passos">
           {steps.map((s, i) => (
             <li key={s} aria-current={i === step ? "step" : undefined}
-              className={cn("rounded px-2 py-0.5 text-[11px]", i === step ? "bg-primary text-primary-foreground" : i < step ? "bg-muted" : "text-muted-foreground")}>
+              className={cn("rounded px-2 py-0.5 text-[11px]", stepTone(i, step))}>
               {i + 1}. {s}
             </li>
           ))}

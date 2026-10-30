@@ -124,6 +124,7 @@ describe("TaxProfilePage — Simples situation and IBS/CBS regular option", { ti
 
   it("checks the version before sending and explains a refusal", async () => {
     vi.mocked(api.addTaxProfileVersion).mockRejectedValue(new ApiError(422, "Situação não combina com o regime.", "tax_profile_invalid"));
+    const logged = [vi.spyOn(console, "error"), vi.spyOn(console, "warn")];
     show(null);
 
     await screen.findByText("Cadastrar o perfil");
@@ -146,6 +147,9 @@ describe("TaxProfilePage — Simples situation and IBS/CBS regular option", { ti
       simplesSituation: null, ibsCbsRegularRegimeOption: null,
     })));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    // The selects stay controlled from the first render: no "uncontrolled to controlled" warning.
+    expect(logged.flatMap((s) => s.mock.calls.flat()).join(" ")).not.toMatch(/uncontrolled|to be controlled|from controlled/i);
+    logged.forEach((s) => s.mockRestore());
   });
 
   it("says why the profile cannot be loaded", async () => {

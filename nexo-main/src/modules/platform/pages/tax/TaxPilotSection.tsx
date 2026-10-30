@@ -18,6 +18,12 @@ import {
 
 const WHOLE_COMPANY = "__all";
 
+function scopeWindow(scope: TaxPilotScopeDto): string {
+  if (!scope.validFrom) return "";
+  const end = scope.validTo ? ` a ${formatIsoDate(scope.validTo)}` : " em diante";
+  return ` · ${formatIsoDate(scope.validFrom)}${end}`;
+}
+
 /** The controlled pilot's scope: the window and the companies (or stores) admitted. Nothing here activates the module. */
 export function TaxPilotSection() {
   const scope = useQuery({ queryKey: PLATFORM_TAX_KEYS.pilot, queryFn: getPilotScope });
@@ -43,7 +49,7 @@ export function TaxPilotSection() {
           <div className="space-y-4 text-sm">
             <p>
               {scope.data.enabled ? "Escopo ligado" : "Escopo desligado"}
-              {scope.data.validFrom ? ` · ${formatIsoDate(scope.data.validFrom)}${scope.data.validTo ? ` a ${formatIsoDate(scope.data.validTo)}` : " em diante"}` : ""}
+              {scopeWindow(scope.data)}
               {scope.data.decisionReference ? ` · ${scope.data.decisionReference}` : ""}
               {scope.data.activatedByName ? ` · ${scope.data.activatedByName} em ${formatDateTime(scope.data.activatedAt ?? "")}` : ""}
             </p>
@@ -127,7 +133,7 @@ function AddParticipant({ tenants }: Readonly<{ tenants: { id: string; companyNa
   return (
     <form className="grid gap-3 border-t border-border pt-3 sm:grid-cols-3" onSubmit={(e) => { e.preventDefault(); if (tenantId) add.mutate(); }}>
       <Field id="pp-tenant" label="Empresa">
-        <Select value={tenantId || undefined} onValueChange={(v) => { setTenantId(v); setStoreId(WHOLE_COMPANY); }}>
+        <Select value={tenantId} onValueChange={(v) => { setTenantId(v); setStoreId(WHOLE_COMPANY); }}>
           <SelectTrigger id="pp-tenant"><SelectValue placeholder="Escolha" /></SelectTrigger>
           <SelectContent>{tenants.map((t) => <SelectItem key={t.id} value={t.id}>{t.tradeName || t.companyName}</SelectItem>)}</SelectContent>
         </Select>

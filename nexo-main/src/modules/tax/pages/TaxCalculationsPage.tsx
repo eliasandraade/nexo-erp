@@ -56,7 +56,7 @@ export default function TaxCalculationsPage() {
     setNotSupported(null);
     void qc.invalidateQueries({ queryKey: TAX_KEY });
     toast.success(c.reused ? "Mesma operação já calculada: resultado guardado reaproveitado." : "Cálculo feito.");
-    navigate(`/tributos/calculos/${c.id}`);
+    void navigate(`/tributos/calculos/${c.id}`);
   };
   const failed = (e: unknown) => {
     if (isProfileMissing(e)) setProfileMissing(true);

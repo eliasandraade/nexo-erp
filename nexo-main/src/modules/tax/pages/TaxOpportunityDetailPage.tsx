@@ -641,7 +641,7 @@ function ReasonDialog({ kind, id, onClose, onUpdated }: Readonly<{ kind: "reject
         <form id="reason-form" className="space-y-3" onSubmit={(e) => { e.preventDefault(); setTouched(true); if (problems.length === 0) act.mutate(); }}>
           {kind === "block" && (
             <Field id="block-structure" label="Estrutura">
-              <Select value={structure || undefined} onValueChange={(v) => setStructure(v as ProhibitedStructure)}>
+              <Select value={structure} onValueChange={(v) => setStructure(v as ProhibitedStructure)}>
                 <SelectTrigger id="block-structure"><SelectValue placeholder="Escolha" /></SelectTrigger>
                 <SelectContent>{(Object.keys(PROHIBITED_STRUCTURES) as ProhibitedStructure[]).map((s) => <SelectItem key={s} value={s}>{PROHIBITED_STRUCTURES[s]}</SelectItem>)}</SelectContent>
               </Select>

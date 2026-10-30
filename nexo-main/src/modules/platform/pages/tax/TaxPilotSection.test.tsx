@@ -143,6 +143,7 @@ describe("TaxPilotSection", () => {
 
   it("adds a company, whole or one store, only after one is chosen", async () => {
     vi.mocked(api.addPilotParticipant).mockResolvedValue(scope);
+    const logged = [vi.spyOn(console, "error"), vi.spyOn(console, "warn")];
     renderTax(<TaxPilotSection />);
     const add = await screen.findByRole("button", { name: "Incluir no piloto" });
     expect(add).toBeDisabled();
@@ -163,5 +164,8 @@ describe("TaxPilotSection", () => {
     fireEvent.click(await screen.findByRole("option", { name: "Outra Empresa Teste" }));
     fireEvent.click(add);
     await waitFor(() => expect(api.addPilotParticipant).toHaveBeenLastCalledWith("t2", null));
+    // The selects stay controlled from the first render: no "uncontrolled to controlled" warning.
+    expect(logged.flatMap((s) => s.mock.calls.flat()).join(" ")).not.toMatch(/uncontrolled|to be controlled|from controlled/i);
+    logged.forEach((s) => s.mockRestore());
   });
 });

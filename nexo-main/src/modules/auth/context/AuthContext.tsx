@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(fresh);
         // If platform user lands on a non-platform route, redirect them
         if (fresh.type === "platform" && !window.location.pathname.startsWith("/platform")) {
-          navigate("/platform", { replace: true });
+          void navigate("/platform", { replace: true });
         }
       } else {
         // Token rejected by server — force logout. With optimistic render the
@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // validation window before bouncing to /login.
         setSession(null);
         queryClient.clear();
-        navigate("/login", { replace: true });
+        void navigate("/login", { replace: true });
       }
       setIsReady(true);
     }).catch(() => {
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void authService.logout();
     // Go first, then drop the session in a transition: React Router 7 navigates inside one, so both land in the
     // same render and the guard of the page being left never redirects to a bare /login (losing `to`'s reason).
-    navigate(to, { replace: true });
+    void navigate(to, { replace: true });
     startTransition(() => setSession(null));
     // Drop every cached query so the next user on this browser never sees the
     // previous session's data (dashboard, customers, sales, …).

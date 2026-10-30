@@ -10,6 +10,7 @@ import { ApiError } from "@/services/api-client";
 import { downloadFile } from "@/services/pdf.api";
 import { cn } from "@/lib/utils";
 import { REFUSALS, refusalTitle } from "../lib/labels";
+import { errorMessage } from "../lib/forms";
 
 /**
  * A refusal of the server explained: what happened (from the code), the server's own message and each reason it gave
@@ -26,7 +27,7 @@ export function TaxRefusal({ error, className }: Readonly<{ error: unknown; clas
         <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
         {refusalTitle(code)}
       </p>
-      <p className="text-muted-foreground">{error instanceof Error ? error.message : String(error)}</p>
+      <p className="text-muted-foreground">{typeof error === "string" ? error : errorMessage(error)}</p>
       {api && api.details.length > 1 && (
         <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
           {api.details.map((d) => <li key={d}>{d}</li>)}

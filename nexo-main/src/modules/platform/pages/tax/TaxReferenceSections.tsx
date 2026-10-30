@@ -93,7 +93,7 @@ function NewSourceForm() {
     ...(/^[A-Za-z0-9-]{1,60}$/.test(d.code) ? [] : ["Código: letras, números e hífen."]),
     ...(d.title.trim() ? [] : ["Informe o título."]),
     ...(d.reference.trim() ? [] : ["Informe a referência (artigo, inciso…)."]),
-    ...(/^https:\/\//.test(d.url) ? [] : ["Informe o link oficial (https)."]),
+    ...(d.url.startsWith("https://") ? [] : ["Informe o link oficial (https)."]),
     ...(d.excerpt.trim() ? [] : ["Cole o trecho do texto oficial."]),
   ];
   const create = useMutation({
@@ -243,7 +243,8 @@ function ImportForm() {
       return importClassifications({ kind: "CClassTrib", source: source.trim(), sourceVersion: version.trim() || null, sourceDocumentId: doc?.id ?? null, items: parsed.items });
     },
     onSuccess: (r) => {
-      toast.success(`${r.imported} código(s) importado(s) como rascunho.${r.skipped.length ? ` Ignorados: ${r.skipped.join(", ")}.` : ""}`);
+      const skipped = r.skipped.length ? ` Ignorados: ${r.skipped.join(", ")}.` : "";
+      toast.success(`${r.imported} código(s) importado(s) como rascunho.${skipped}`);
       setLines(""); setFile(null); setTouched(false); refresh();
     },
     onError: toastError,

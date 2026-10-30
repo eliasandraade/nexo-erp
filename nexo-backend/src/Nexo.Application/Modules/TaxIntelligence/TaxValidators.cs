@@ -36,11 +36,14 @@ public sealed class TaxLineRequestValidator : AbstractValidator<TaxLineRequest>
             .WithMessage("Os descontos passam do valor da linha.");
         RuleFor(x => x.SpecialTreatment).MaximumLength(60);
         // Formats are checked loosely on purpose: V1 records these codes, it does not interpret them.
-        RuleFor(x => x.Nbs).Must(n => n!.All(c => char.IsAsciiDigit(c) || c == '.') && n.Count(char.IsAsciiDigit) is >= 1 and <= 12)
-            .When(x => !string.IsNullOrEmpty(x.Nbs)).WithMessage("NBS: só números (e pontos).");
-        RuleFor(x => x.CClassTrib).Must(c => c!.All(char.IsAsciiLetterOrDigit) && c.Length <= 10)
-            .When(x => !string.IsNullOrEmpty(x.CClassTrib)).WithMessage("cClassTrib: até 10 letras ou números.");
+        RuleFor(x => x.Nbs).Must(IsNbs).When(x => !string.IsNullOrEmpty(x.Nbs)).WithMessage("NBS: só números (e pontos).");
+        RuleFor(x => x.CClassTrib).Must(IsCClassTrib).When(x => !string.IsNullOrEmpty(x.CClassTrib)).WithMessage("cClassTrib: até 10 letras ou números.");
     }
+
+    private static bool IsNbs(string? nbs)
+        => nbs is not null && nbs.All(c => char.IsAsciiDigit(c) || c == '.') && nbs.Count(char.IsAsciiDigit) is >= 1 and <= 12;
+
+    private static bool IsCClassTrib(string? code) => code is not null && code.All(char.IsAsciiLetterOrDigit) && code.Length <= 10;
 }
 
 public sealed class TaxOperationTimingValidator : AbstractValidator<TaxOperationTiming>

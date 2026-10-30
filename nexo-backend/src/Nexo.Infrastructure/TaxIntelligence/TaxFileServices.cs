@@ -14,6 +14,9 @@ public sealed record TaxFileDownload(Stream Content, string ContentType, string 
 /// <summary>The metadata of an upload, as given by the person uploading.</summary>
 public sealed record TaxUploadMetadata(TaxEvidenceType Type, Guid? RequirementId, string Description, string? DocumentReference, string? Notes);
 
+/// <summary>What a file is evidence of: its owner, the requirement it answers (if any) and its type.</summary>
+internal sealed record TaxFileTarget(TaxFileOwner Owner, Guid OwnerId, Guid? RequirementId, TaxEvidenceType Type);
+
 /// <summary>Platform documents (professional opinions, catalogue sources): private, hashed, revoked on record, downloaded only by the platform.</summary>
 public sealed class TaxDocumentService
 {
@@ -97,15 +100,16 @@ public sealed class TaxEvidenceService
         if (owner == TaxFileOwner.OpportunityEvidence)
             throw new DomainException("Evidência de oportunidade é enviada pela própria oportunidade.", "tax_file_owner");
         await EnsureOwnerAsync(owner, ownerId, ct);
-        var file = await AcceptAsync(owner, ownerId, null, type, description, content, fileName, null, ct);
+        var file = await AcceptAsync(new TaxFileTarget(owner, ownerId, null, type), description, content, fileName, null, ct);
         await _ctx.Db.SaveChangesAsync(ct);
         return Map(file);
     }
 
     /// <summary>Stores the bytes and stages the file record and its audit (the caller saves). Refusals are counted.</summary>
-    internal async Task<TaxEvidenceFile> AcceptAsync(TaxFileOwner owner, Guid ownerId, Guid? requirementId, TaxEvidenceType type, string? description,
-        Stream content, string? fileName, TaxEvidenceFile? replaces, CancellationToken ct)
+    internal async Task<TaxEvidenceFile> AcceptAsync(TaxFileTarget target, string? description, Stream content, string? fileName,
+        TaxEvidenceFile? replaces, CancellationToken ct)
     {
+        var (owner, ownerId, requirementId, type) = target;
         TaxStoredContent stored;
         try
         {
@@ -212,7 +216,7 @@ public sealed class TaxOpportunityEvidenceService
     public async Task<TaxOpportunityDto> UploadAsync(Guid opportunityId, TaxUploadMetadata m, Stream content, string? fileName, CancellationToken ct)
     {
         var o = await _opportunities.LoadForUpdateAsync(opportunityId, ct);
-        var file = await _evidence.AcceptAsync(TaxFileOwner.OpportunityEvidence, o.Id, m.RequirementId, m.Type, m.Description, content, fileName, null, ct);
+        var file = await _evidence.AcceptAsync(new TaxFileTarget(TaxFileOwner.OpportunityEvidence, o.Id, m.RequirementId, m.Type), m.Description, content, fileName, null, ct);
         var e = o.AddEvidence(m.Type, m.RequirementId, m.Description, m.DocumentReference, file.Sha256, m.Notes, _ctx.Audit.UserId, _ctx.Audit.UserName, file);
         _ctx.Db.TaxOpportunityEvidence.Add(e);
         _ctx.Audit.Record(TaxAuditActions.OpportunityEvidenceAdded, AuditEntity, o.Id, $"Evidência anexada com arquivo: {file.OriginalFileName}.",
@@ -230,7 +234,7 @@ public sealed class TaxOpportunityEvidenceService
         var oldFile = old.FileId is null ? null : await _ctx.Db.TaxEvidenceFiles.FirstOrDefaultAsync(f => f.Id == old.FileId, ct);
         TaxEvidenceFile? file = null;
         if (content is not null)
-            file = await _evidence.AcceptAsync(TaxFileOwner.OpportunityEvidence, o.Id, old.RequirementId, old.Type, r.Description, content, fileName,
+            file = await _evidence.AcceptAsync(new TaxFileTarget(TaxFileOwner.OpportunityEvidence, o.Id, old.RequirementId, old.Type), r.Description, content, fileName,
                 oldFile is { Status: TaxFileStatus.Active } ? oldFile : null, ct);
         else if (oldFile is { Status: TaxFileStatus.Active })
             file = oldFile;

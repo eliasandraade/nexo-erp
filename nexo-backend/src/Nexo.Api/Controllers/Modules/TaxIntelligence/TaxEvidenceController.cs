@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Nexo.Api.Authorization;
@@ -12,7 +13,8 @@ namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 public sealed class OpportunityEvidenceUploadForm
 {
     public IFormFile File { get; set; } = null!;
-    public TaxEvidenceType Type { get; set; }
+    /// <summary>Required: a form without it is refused, never read as a default type.</summary>
+    [Required] public TaxEvidenceType? Type { get; set; }
     public Guid? RequirementId { get; set; }
     public string Description { get; set; } = string.Empty;
     public string? DocumentReference { get; set; }
@@ -89,7 +91,7 @@ public class TaxOpportunityEvidenceController : ControllerBase
     {
         await using var stream = form.File.OpenReadStream();
         return Ok(await _evidence.UploadAsync(id,
-            new TaxUploadMetadata(form.Type, form.RequirementId, form.Description, form.DocumentReference, form.Notes), stream, form.File.FileName, ct));
+            new TaxUploadMetadata(form.Type!.Value, form.RequirementId, form.Description, form.DocumentReference, form.Notes), stream, form.File.FileName, ct));
     }
 
     /// <summary>A newer version of a piece of evidence (with a new file, or only new metadata). The old version stays on record.</summary>

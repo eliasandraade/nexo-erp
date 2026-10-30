@@ -10,7 +10,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { useNavigate } from "react-router-dom";
 import { fetchMySessions, revokeAllSessions } from "@/modules/auth/services/authService";
 import { MfaSection } from "../components/MfaSection";
 import {
@@ -96,7 +95,6 @@ function PerfilSkeleton() {
 export default function PerfilPage() {
   const { session, logout } = useAuth();
   const mustChange = !!session?.requirePasswordChange;
-  const navigate = useNavigate();
   const sessionsQ = useQuery({ queryKey: ["auth", "sessions"], queryFn: fetchMySessions });
   const [confirmAll, setConfirmAll] = useState(false);
   const revokeAll = useMutation({

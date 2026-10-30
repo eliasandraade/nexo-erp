@@ -31,6 +31,8 @@ namespace Nexo.IntegrationTests.TaxIntelligence;
 public partial class TaxIntelligenceTests
 {
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
+    private static readonly string[] LucroRealOnly = ["LucroReal"];
+    private static readonly string[] RegularRegimes = ["LucroReal", "LucroPresumido"];
     private readonly TestWebApplicationFactory _factory;
 
     public TaxIntelligenceTests(TestWebApplicationFactory factory) => _factory = factory;
@@ -1209,14 +1211,14 @@ public partial class TaxIntelligenceTests
         var received = await Json(await Post(platform, url, new { status = "ReviewReceived", reviewer = "Escritório de teste", notes = "Parecer recebido: apto após ajustes." }));
         received.GetProperty("professionalReview").GetString().Should().Be("ReviewReceived");
         (await Post(platform, url, new { status = "ApprovedWithCaveats", reviewer = "Contadora", scope = "Operações de saída", validFrom = "2040-01-01",
-                coveredRegimes = new[] { "LucroReal" } }))
+                coveredRegimes = LucroRealOnly }))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest, "an approval with caveats states them");
 
         var approved = await Json(await Post(platform, url, new
         {
             status = "ApprovedWithCaveats", reviewer = "Contadora de teste", professionalReference = "CRC-XX 000000/O-0", scope = "Operações de saída no regime regular",
             validFrom = "2040-01-01", validTo = "2040-12-31", assumptions = "Desconto destacado na NF-e", caveats = "Não cobre regimes específicos", notes = "ok",
-            coveredRegimes = new[] { "LucroReal", "LucroPresumido" },
+            coveredRegimes = RegularRegimes,
         }));
         approved.GetProperty("professionalReview").GetString().Should().Be("ApprovedWithCaveats");
         approved.GetProperty("professionalReviewScope").GetString().Should().Be("Operações de saída no regime regular");

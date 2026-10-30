@@ -22,7 +22,7 @@ public sealed class TaxQueryShapeTests : TaxIsolatedSuite
         "/api/tax/split/expectations?take=50",
     ];
 
-    private async Task SeedAsync(HttpClient admin, int count)
+    private static async Task SeedAsync(HttpClient admin, int count)
     {
         for (var i = 0; i < count; i++)
         {

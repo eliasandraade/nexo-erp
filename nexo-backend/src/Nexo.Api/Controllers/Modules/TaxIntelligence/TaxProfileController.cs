@@ -14,13 +14,8 @@ namespace Nexo.Api.Controllers.Modules.TaxIntelligence;
 public class TaxProfileController : ControllerBase
 {
     private readonly TaxProfileService _profiles;
-    private readonly TaxComplianceService _compliance;
 
-    public TaxProfileController(TaxProfileService profiles, TaxComplianceService compliance)
-    {
-        _profiles = profiles;
-        _compliance = compliance;
-    }
+    public TaxProfileController(TaxProfileService profiles) => _profiles = profiles;
 
     /// <summary>Profile versions of the current establishment, the one in force today and a suggestion from the fiscal profile.</summary>
     [HttpGet("profile")]
@@ -31,6 +26,18 @@ public class TaxProfileController : ControllerBase
     [Authorize(Roles = TaxCapabilities.Policies)]
     public async Task<ActionResult<TaxProfileVersionDto>> AddProfileVersion([FromBody] CreateTaxProfileVersionRequest request, CancellationToken ct)
         => Ok(await _profiles.AddVersionAsync(request, ct));
+}
+
+/// <summary>Ancillary-obligation assessments of the establishment and the obligations it can assess.</summary>
+[ApiController]
+[Route("api/tax")]
+[Authorize(Roles = AppRoles.Management)]
+[Nexo.Api.Filters.ValidateBody]
+public class TaxComplianceController : ControllerBase
+{
+    private readonly TaxComplianceService _compliance;
+
+    public TaxComplianceController(TaxComplianceService compliance) => _compliance = compliance;
 
     /// <summary>Ancillary-obligation assessments of the establishment, by period and scope.</summary>
     [HttpGet("compliance-assessments")]

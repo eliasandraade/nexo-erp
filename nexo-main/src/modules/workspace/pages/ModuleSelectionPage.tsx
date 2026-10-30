@@ -12,7 +12,7 @@ export default function ModuleSelectionPage() {
   if (!session) return <Navigate to="/login" replace />;
   const available = availableWorkspaces(session);
   if (available.length === 1) return <Navigate to={available[0].home} replace />;
-  function enter(workspace: WorkspaceDef) { setActive(workspace.id); navigate(workspace.home, {replace:true}); }
+  function enter(workspace: WorkspaceDef) { setActive(workspace.id); void navigate(workspace.home, {replace:true}); }
   return <div className="min-h-dvh bg-background">
     <header className="flex items-center justify-between border-b border-border px-6 py-6 sm:px-10"><Brand /><Button variant="ghost" onClick={() => logout()}>Sair</Button></header>
     <main className="mx-auto max-w-3xl px-6 py-12 sm:py-20">

@@ -10,7 +10,6 @@ import { SectionCard } from "@/components/shared/SectionCard";
 import { ApiError } from "@/services/api-client";
 import { disableMfa, enableMfa, fetchMfaStatus, startMfaSetup } from "@/modules/auth/services/authService";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { useNavigate } from "react-router-dom";
 
 const KEY = ["auth", "mfa"];
 
@@ -18,7 +17,6 @@ const KEY = ["auth", "mfa"];
 export function MfaSection() {
   const qc = useQueryClient();
   const { logout } = useAuth();
-  const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
   const status = useQuery({ queryKey: KEY, queryFn: fetchMfaStatus });
   const [setup, setSetup] = useState<{ secret: string; otpAuthUri: string } | null>(null);

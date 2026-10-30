@@ -14,7 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
-import { ApiError } from "@/services/api-client";
 import {
   TAX_KEY, TAX_KEYS, getSplitProvider, getTaxCreditTotals, listSplitExpectations, listTaxCredits, moveTaxCredit, registerTaxCredit, splitCsvUrl,
   type CreditMovement, type CreditStage, type CreditTax, type SplitStatus, type TaxCreditDto, type TaxType,
@@ -28,7 +27,7 @@ import {
 } from "../lib/labels";
 import { ToneBadge } from "../components/TaxBadges";
 import {
-  brazilTodayIso, creditProblems, emptyCredit, errorMessage, formatIsoDate, movementProblems, toCreditRequest, toMovementRequest,
+  brazilTodayIso, creditProblems, emptyCredit, formatIsoDate, movementProblems, toCreditRequest, toMovementRequest,
   type CreditDraft, type MovementDraft,
 } from "../lib/forms";
 import { SplitTable } from "../components/SplitTable";
@@ -43,7 +42,7 @@ const STAGES: Record<CreditStage, string> = {
   ToBeAppropriated: "Requisitos confirmados",
   Discarded: "Descartado",
 };
-const LEDGER: CreditMovement[] = ["ConfirmToBeAppropriated", "Appropriate", "Use", "Block", "Unblock", "Reverse", "Expire"];
+const LEDGER = new Set<CreditMovement>(["ConfirmToBeAppropriated", "Appropriate", "Use", "Block", "Unblock", "Reverse", "Expire"]);
 
 /**
  * The movements a credit can take now, by its stage and balance. Reviewing a potential credit is management work; anything that
@@ -59,7 +58,7 @@ export function allowedMovements(c: TaxCreditDto, isDirector: boolean, todayIso:
     if (c.balance.blocked > 0) all.push("Unblock");
     if (c.expiresOn && todayIso > c.expiresOn && c.balance.available > 0) all.push("Expire");
   }
-  return isDirector ? all : all.filter((m) => !LEDGER.includes(m));
+  return isDirector ? all : all.filter((m) => !LEDGER.has(m));
 }
 
 /** Créditos de CBS/IBS (razão por crédito: reconhecido, apropriado, usado, bloqueado) e conferência do split payment. */
@@ -282,7 +281,7 @@ function MovementDialog({ credit, allowed, onClose }: Readonly<{ credit: TaxCred
     return { ...EMPTY_MOVE, movement: allowed.includes(preferred) ? preferred : (allowed[0] ?? preferred) };
   });
   // One key per dialog: a double click or a retried request never writes the movement twice.
-  const [idempotencyKey] = useState(() => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [touched, setTouched] = useState(false);
   const problems = movementProblems(m);
   const close = () => { setM(EMPTY_MOVE); setTouched(false); onClose(); };

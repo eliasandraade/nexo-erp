@@ -18,8 +18,8 @@ public sealed class OpportunityListQuery
     public DateOnly? From { get; set; }
     public DateOnly? To { get; set; }
     public string? Search { get; set; }
-    public int Skip { get; set; }
-    public int Take { get; set; } = 50;
+    public int? Skip { get; set; }
+    public int? Take { get; set; }
 }
 
 /// <summary>Opportunity review workflow: list, timeline, assignment, requirements, evidence review, decision and execution.</summary>
@@ -35,7 +35,7 @@ public class TaxOpportunitiesController : ControllerBase
 
     [HttpGet("opportunities")]
     public async Task<ActionResult<TaxPage<TaxOpportunitySummaryDto>>> List([FromQuery] OpportunityListQuery q, CancellationToken ct)
-        => Ok(await _service.ListAsync(new TaxOpportunityFilter(q.Status, q.Risk, q.Type, q.Open, q.Mine, q.From, q.To, q.Search, q.Skip, q.Take), ct));
+        => Ok(await _service.ListAsync(new TaxOpportunityFilter(q.Status, q.Risk, q.Type, q.Open, q.Mine, q.From, q.To, q.Search, q.Skip ?? 0, q.Take ?? 50), ct));
 
     /// <summary>What happened to the opportunity, from the audit trail (who, when, what).</summary>
     [HttpGet("opportunities/{id:guid}/timeline")]
@@ -96,23 +96,29 @@ public class TaxOpportunitiesController : ControllerBase
         => Ok(await _service.ApproveAsync(id, request, ct));
 }
 
-/// <summary>Frozen decision dossiers: read, and exported as a ZIP with a SHA-256 manifest (the board only).</summary>
+/// <summary>Frozen decision dossiers, as recorded.</summary>
 [ApiController]
 [Route("api/tax")]
 [Authorize(Roles = AppRoles.Management)]
 public class TaxDecisionsController : ControllerBase
 {
     private readonly TaxOpportunityService _service;
-    private readonly TaxDossierExportService _exports;
 
-    public TaxDecisionsController(TaxOpportunityService service, TaxDossierExportService exports)
-    {
-        _service = service;
-        _exports = exports;
-    }
+    public TaxDecisionsController(TaxOpportunityService service) => _service = service;
 
     [HttpGet("decisions/{id:guid}")]
     public async Task<ActionResult<TaxDecisionDto>> Decision(Guid id, CancellationToken ct) => Ok(await _service.GetDecisionAsync(id, ct));
+}
+
+/// <summary>Decision dossiers exported as a ZIP with a SHA-256 manifest (the board only).</summary>
+[ApiController]
+[Route("api/tax")]
+[Authorize(Roles = AppRoles.Management)]
+public class TaxDecisionExportController : ControllerBase
+{
+    private readonly TaxDossierExportService _exports;
+
+    public TaxDecisionExportController(TaxDossierExportService exports) => _exports = exports;
 
     /// <summary>
     /// The decision dossier as a ZIP (JSON exactly as frozen, readable version, sources, evidence index, files when asked for, SHA-256 manifest).

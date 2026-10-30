@@ -16,8 +16,8 @@ public sealed class SplitListQuery
     public DateOnly? From { get; set; }
     public DateOnly? To { get; set; }
     public int? MinAgeDays { get; set; }
-    public int Skip { get; set; }
-    public int Take { get; set; } = 100;
+    public int? Skip { get; set; }
+    public int? Take { get; set; }
 }
 
 /// <summary>Split payment expectations and reconciliation (no provider integrated).</summary>
@@ -42,7 +42,7 @@ public class TaxSplitPaymentController : ControllerBase
     /// <summary>Expectations with their reconciliation (computed in the database), filtered and paged. An expectation is not a retention.</summary>
     [HttpGet("split/expectations")]
     public async Task<ActionResult<TaxPage<SplitExpectationDto>>> SplitExpectations([FromQuery] SplitListQuery q, CancellationToken ct)
-        => Ok(await _split.ListAsync(new SplitFilter(q.CalculationId, q.Status, q.Tax, q.From, q.To, q.MinAgeDays, q.Skip, q.Take), ct));
+        => Ok(await _split.ListAsync(new SplitFilter(q.CalculationId, q.Status, q.Tax, q.From, q.To, q.MinAgeDays, q.Skip ?? 0, q.Take ?? 100), ct));
 
     [HttpGet("split/expectations/export")]
     public async Task<IActionResult> ExportSplit([FromQuery] SplitReconciliationStatus? status, [FromQuery] TaxType? tax, [FromQuery] DateOnly? from,

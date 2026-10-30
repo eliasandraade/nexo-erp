@@ -68,7 +68,7 @@ export function EvidenceFiles({ owner, ownerId, defaultType = "Other" }: Readonl
   return (
     <div className="space-y-3">
       {reasonDialog}
-      {files.data && files.data.length === 0 && <p className="text-xs text-muted-foreground">Nenhum arquivo anexado.</p>}
+      {files.data?.length === 0 && <p className="text-xs text-muted-foreground">Nenhum arquivo anexado.</p>}
       <ul className="space-y-2">
         {files.data?.map((f) => (
           <li key={f.file.id} className="flex flex-col gap-2 rounded-md border border-border p-2 sm:flex-row sm:items-start sm:justify-between">

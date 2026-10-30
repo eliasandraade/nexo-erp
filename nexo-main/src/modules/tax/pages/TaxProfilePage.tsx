@@ -173,7 +173,7 @@ function VersionForm({ profile }: Readonly<{ profile: TaxProfileDto }>) {
           </>
         )}
         <Field id="tp-uf" label="UF">
-          <Select value={draft.state || undefined} onValueChange={(v) => setDraft({ ...draft, state: v })}>
+          <Select value={draft.state} onValueChange={(v) => setDraft({ ...draft, state: v })}>
             <SelectTrigger id="tp-uf"><SelectValue placeholder="Escolha" /></SelectTrigger>
             <SelectContent>{STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
           </Select>

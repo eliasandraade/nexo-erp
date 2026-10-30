@@ -197,9 +197,8 @@ export async function errorOf(res: Response): Promise<ApiError> {
     const explanation: string | undefined = err?.error ?? err?.message;
     const generic = !explanation || explanation === "Validation failed.";
     const extra = generic ? details : details.filter((d) => !explanation.includes(d));
-    message = generic
-      ? (details.join(" | ") || explanation || message)
-      : extra.length > 0 ? `${explanation} ${extra.join(" | ")}` : explanation;
+    if (generic) message = details.join(" | ") || explanation || message;
+    else message = extra.length > 0 ? `${explanation} ${extra.join(" | ")}` : explanation;
     code = err?.code ?? undefined;
     requestId = err?.requestId;
   } catch {

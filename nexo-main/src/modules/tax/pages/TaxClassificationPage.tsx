@@ -24,6 +24,8 @@ import { TaxPager, TaxQueryError, toastError } from "../components/TaxCommon";
 
 const PAGE = 50;
 
+const sourceOf = (c: { source: string; sourceVersion: string | null }) => (c.sourceVersion ? `${c.source} · ${c.sourceVersion}` : c.source);
+
 /**
  * Classificação tributária dos produtos (cClassTrib, NCM/NBS). Um produto sem classificação, ou com um código fora do catálogo
  * ativo na data da operação, fica fora do recorte calculado — o sistema nunca adivinha a classificação.
@@ -169,7 +171,7 @@ function ClassifyDialog({ item, onClose }: Readonly<{ item: TaxItemClassificatio
           <Field id="cl-code" label="cClassTrib escolhido">
             <Input id="cl-code" className="font-mono" maxLength={10} value={code} onChange={(e) => setCode(e.target.value)} />
           </Field>
-          <div className="text-xs text-muted-foreground sm:pt-6">{chosen ? `${chosen.source}${chosen.sourceVersion ? ` · ${chosen.sourceVersion}` : ""}` : "Digite ou escolha da lista."}</div>
+          <div className="text-xs text-muted-foreground sm:pt-6">{chosen ? sourceOf(chosen) : "Digite ou escolha da lista."}</div>
           <Field id="cl-notes" label="Observação (opcional)" className="sm:col-span-2"><Input id="cl-notes" maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
           <div className="sm:col-span-2">{touched && <ProblemList problems={problems} />}</div>
         </form>
