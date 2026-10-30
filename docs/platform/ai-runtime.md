@@ -81,3 +81,28 @@ tentativa), só quando clicado. Grava status, mensagem saneada e horário; nunca
 Cada chamada registra provedor, **modelo**, operação, empresa, duração, tokens, custo estimado (preço por milhão de tokens
 cadastrado no SuperAdmin), sucesso, fallback e erro saneado. Não registra chave, cabeçalho de autorização, prompt nem
 resposta bruta.
+
+## Limites
+
+- **Por empresa (dinheiro, mês civil UTC):** `tenant_ai_limits`, definidos em Custos (`PUT /api/platform/interpreter/costs/{tenantId}/limits`,
+  super_admin com verificação em duas etapas). **Rígido:** antes de cada chamada paga o `AiUsageGuard` reserva o pior caso
+  (tokens de entrada estimados + 1.024 de saída, no preço do provedor) numa transação com *advisory lock* da empresa e do
+  provedor; se gasto do mês + reservas em andamento + esta reserva passarem do limite, a chamada é recusada
+  (`limit_reached`) e, no modo automático, a análise cai para o leitor de regras (sem custo). Várias chamadas simultâneas não
+  passam juntas por um limite que só comporta uma. **Suave:** só registra um aviso no log.
+- **Por provedor (tokens/mês):** `MonthlyTokenLimit` em `ai_providers`, aplicado do mesmo jeito.
+- Depois da chamada a reserva vira o uso real (`ai_usage_reservations`, status `Settled`) ou é liberada (`Released`). Uma
+  reserva sem desfecho há mais de 10 min (processo morto) deixa de contar.
+
+## Prompts
+
+- Só o prompt **`extraction`** é usado hoje (instruções do Claude; o contrato JSON é fixo no código e sempre anexado).
+  `interpretation` e `memory` são versionados, mas nenhum runtime os usa ainda — a tela diz isso.
+- Uma versão nasce inativa (`POST /api/platform/interpreter/prompts`) e só passa a valer quando ativada; a ativação desliga a
+  anterior na mesma transação, e um índice único parcial garante uma ativa por tipo (a concorrente perde com 409).
+- O hash exibido e gravado na telemetria é o SHA-256 do conteúdo (16 primeiros hex).
+
+## Movimentos confirmados
+
+Antes de confirmar, conta, fornecedor, categoria e contexto (obra ou loja) precisam ser da própria empresa
+(`IMovementReferenceGuard`); a IA nunca propõe IDs, e o movimento continua rascunho até uma pessoa confirmar.

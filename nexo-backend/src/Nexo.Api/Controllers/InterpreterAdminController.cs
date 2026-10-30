@@ -19,13 +19,15 @@ namespace Nexo.Api.Controllers;
 [Authorize(Policy = "Platform")]
 public class InterpreterAdminController : ControllerBase
 {
-    private readonly NexoDbContext          _db;
-    private readonly AiProviderAdminService _providers;
+    private readonly NexoDbContext            _db;
+    private readonly AiProviderAdminService   _providers;
+    private readonly AiGovernanceAdminService _governance;
 
-    public InterpreterAdminController(NexoDbContext db, AiProviderAdminService providers)
+    public InterpreterAdminController(NexoDbContext db, AiProviderAdminService providers, AiGovernanceAdminService governance)
     {
-        _db        = db;
-        _providers = providers;
+        _db         = db;
+        _providers  = providers;
+        _governance = governance;
     }
 
     private PlatformActor Actor() => new(GetPlatformUserId(), User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue("email"),
@@ -233,59 +235,44 @@ public class InterpreterAdminController : ControllerBase
     // COSTS (per-tenant aggregation)
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Per company: the last 30 days of calls (telemetry) and this calendar month's spend as the limits count it (settled +
+    /// in-flight reservations), with the limits and whether they are hit. The hard limit blocks paid calls; the soft one warns.
+    /// </summary>
     [HttpGet("costs")]
     public async Task<IActionResult> GetCosts(CancellationToken ct)
     {
-
-        var since30d = DateTime.UtcNow.AddDays(-30);
-
-        var costRows = await _db.InterpreterTelemetry
-            .Where(t => t.CreatedAt >= since30d)
-            .GroupBy(t => t.TenantId)
-            .Select(g => new
-            {
-                TenantId    = g.Key,
-                TotalMicros = g.Sum(t => t.EstimatedCostMicros),
-                TotalCalls  = g.Count(),
-                LlmCalls    = g.Count(t => t.Provider != "RuleBased"),
-            })
-            .OrderByDescending(x => x.TotalMicros)
-            .ToListAsync(ct);
-
-        var tenantIds = costRows.Select(r => r.TenantId).ToList();
-
-        var tenantNames = await _db.Tenants
-            .IgnoreQueryFilters()
-            .Where(t => tenantIds.Contains(t.Id))
-            .Select(t => new { t.Id, t.CompanyName })
-            .ToDictionaryAsync(t => t.Id, t => t.CompanyName, ct);
-
-        var limits = await _db.TenantAiLimits
-            .Where(l => tenantIds.Contains(l.TenantId))
-            .ToDictionaryAsync(l => l.TenantId, ct);
-
-        var items = costRows.Select(r =>
+        var rows = await _governance.CostsAsync(null, ct);
+        return Ok(new
         {
-            limits.TryGetValue(r.TenantId, out var limit);
-            var costUsd = r.TotalMicros / 1_000_000.0;
-            return new
-            {
-                r.TenantId,
-                tenantName     = tenantNames.GetValueOrDefault(r.TenantId, "Unknown"),
-                costUsd        = Math.Round(costUsd, 4),
-                r.TotalCalls,
-                r.LlmCalls,
-                softLimitUsd   = limit?.SoftLimitCents  != null ? (double?)limit.SoftLimitCents  / 100.0 : null,
-                hardLimitUsd   = limit?.HardLimitCents  != null ? (double?)limit.HardLimitCents  / 100.0 : null,
-                softLimitHit   = limit?.SoftLimitCents  != null && costUsd * 100 >= limit.SoftLimitCents,
-                hardLimitHit   = limit?.HardLimitCents  != null && costUsd * 100 >= limit.HardLimitCents,
-            };
-        }).ToList();
-
-        var totalUsd = costRows.Sum(r => r.TotalMicros) / 1_000_000.0;
-
-        return Ok(new { totalUsd = Math.Round(totalUsd, 4), items });
+            totalUsd = Math.Round(rows.Sum(r => r.Cost30dMicros) / 1_000_000.0, 4),
+            monthSpentUsd = Math.Round(rows.Sum(r => r.MonthSpentMicros) / 1_000_000.0, 4),
+            items = rows.Select(CostView),
+        });
     }
+
+    /// <summary>Monthly AI limits of a company, in USD (null clears).</summary>
+    [HttpPut("costs/{tenantId:guid}/limits")]
+    [Authorize(Policy = "PlatformAdmin")]
+    public async Task<IActionResult> SetLimits(Guid tenantId, [FromBody] SetLimitsRequest body, CancellationToken ct)
+        => Ok(CostView(await _governance.SetLimitsAsync(tenantId, body.SoftLimitUsd, body.HardLimitUsd, Actor(), ct)));
+
+    public sealed record SetLimitsRequest(decimal? SoftLimitUsd, decimal? HardLimitUsd);
+
+    private static object CostView(AiTenantCost r) => new
+    {
+        r.TenantId,
+        r.TenantName,
+        costUsd = Math.Round(r.Cost30dMicros / 1_000_000.0, 4),
+        totalCalls = r.Calls30d,
+        llmCalls = r.LlmCalls30d,
+        monthSpentUsd = Math.Round(r.MonthSpentMicros / 1_000_000.0, 4),
+        monthReservedUsd = Math.Round(r.MonthReservedMicros / 1_000_000.0, 4),
+        softLimitUsd = r.SoftLimitMicros / 1_000_000.0,
+        hardLimitUsd = r.HardLimitMicros / 1_000_000.0,
+        softLimitHit = r.SoftExceeded,
+        hardLimitHit = r.HardReached,
+    };
 
     // ─────────────────────────────────────────────────────────────────────────
     // AI PROVIDERS
@@ -413,25 +400,24 @@ public class InterpreterAdminController : ControllerBase
         return Ok(prompts);
     }
 
+    /// <summary>A new prompt version (inactive). The hash is computed from the content; the runtime uses it once activated.</summary>
+    [HttpPost("prompts")]
+    [Authorize(Policy = "PlatformAdmin")]
+    public async Task<IActionResult> CreatePrompt([FromBody] CreatePromptRequest body, CancellationToken ct)
+    {
+        var p = await _governance.CreatePromptAsync(body.PromptType ?? "", body.Version ?? "", body.Content ?? "", body.Description, Actor(), ct);
+        return Ok(new { p.Id, p.PromptType, p.Version, p.Hash, p.IsActive });
+    }
+
+    public sealed record CreatePromptRequest(string? PromptType, string? Version, string? Content, string? Description);
+
+    /// <summary>Makes the version the active one of its type (the previous one is deactivated in the same transaction).</summary>
     [HttpPost("prompts/{id:guid}/activate")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> ActivatePrompt(Guid id, CancellationToken ct)
     {
-
-        var target = await _db.StoredPromptVersions.FindAsync(new object[] { id }, ct);
-        if (target is null) return NotFound();
-
-        // Deactivate all others of the same type
-        var siblings = await _db.StoredPromptVersions
-            .Where(p => p.PromptType == target.PromptType && p.IsActive && p.Id != id)
-            .ToListAsync(ct);
-
-        foreach (var sibling in siblings)
-            sibling.Deactivate();
-
-        target.Activate();
-
-        await _db.SaveChangesAsync(ct);
-        return Ok(new { activated = id, promptType = target.PromptType, version = target.Version });
+        var p = await _governance.ActivatePromptAsync(id, Actor(), ct);
+        return Ok(new { activated = p.Id, promptType = p.PromptType, version = p.Version, hash = p.Hash });
     }
 
     // ─────────────────────────────────────────────────────────────────────────

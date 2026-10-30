@@ -91,3 +91,34 @@ public interface IActivePromptProvider
 {
     Task<ActivePrompt> GetAsync(string promptType, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Monthly limits of paid AI calls, enforced before the call: the company's hard limit (money, <c>tenant_ai_limits</c>) and
+/// the provider's monthly token limit (<c>ai_providers</c>). A reservation for the worst case is taken under a lock — many
+/// concurrent calls can't all pass a hard limit — then settled with the real usage or released. Over a limit →
+/// <see cref="AiProviderCallException"/> with <see cref="AiCallFailure.LimitReached"/> (automatic mode then falls back to a
+/// free provider). Crossing the soft limit only logs a warning.
+/// </summary>
+public interface IAiUsageGuard
+{
+    Task<Guid> ReserveAsync(Guid tenantId, AnalyzerConfig config, long estimatedMicros, long estimatedTokens, CancellationToken ct = default);
+    Task SettleAsync(Guid reservationId, long actualMicros, int inputTokens, int outputTokens, CancellationToken ct = default);
+    Task ReleaseAsync(Guid reservationId, CancellationToken ct = default);
+}
+
+/// <summary>A company's spend this month against its limits (micro-dollars), as the guard counts it.</summary>
+public sealed record AiTenantUsage(Guid TenantId, long SpentMicros, long ReservedMicros, long? SoftLimitMicros, long? HardLimitMicros)
+{
+    public bool SoftExceeded => SoftLimitMicros is { } soft && SpentMicros + ReservedMicros >= soft;
+    public bool HardReached => HardLimitMicros is { } hard && SpentMicros + ReservedMicros >= hard;
+}
+
+/// <summary>
+/// Before a movement is confirmed, every reference it carries (account, supplier, category, obra or store context) must be
+/// one of the current company's — whatever proposed it (a person or an analyzer). Otherwise 422
+/// <c>movement_reference_not_found</c>, without saying whether it exists elsewhere.
+/// </summary>
+public interface IMovementReferenceGuard
+{
+    Task EnsureOwnedAsync(Guid? categoryId, Guid? accountId, FinancialContextType contextType, Guid? contextId, Guid? supplierId, CancellationToken ct = default);
+}

@@ -1,7 +1,9 @@
 import type { ReactElement } from "react";
 import { render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { AiProviderConfig, AiProvidersOverview, PlaygroundResult } from "../types/aiOperations";
+import type {
+  AiCostsOverview, AiProviderConfig, AiProvidersOverview, PlaygroundResult, PromptVersion, TenantCostSummary,
+} from "../types/aiOperations";
 
 export function renderAi(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -59,5 +61,35 @@ export function playgroundResult(over: Partial<PlaygroundResult> = {}): Playgrou
       categoryId: null, catSource: "None", contextType: null, contextId: null, ctxSource: "None", accountId: null, accSource: "None",
     },
     ...over,
+  };
+}
+
+export function costItem(over: Partial<TenantCostSummary> & { tenantId: string; tenantName: string }): TenantCostSummary {
+  return {
+    costUsd: 0, totalCalls: 0, llmCalls: 0, monthSpentUsd: 0, monthReservedUsd: 0,
+    softLimitUsd: null, hardLimitUsd: null, softLimitHit: false, hardLimitHit: false,
+    ...over,
+  };
+}
+
+export function costsOverview(over: Partial<AiCostsOverview> = {}): AiCostsOverview {
+  return {
+    totalUsd: 12.5,
+    monthSpentUsd: 10.75,
+    items: [
+      costItem({ tenantId: "t-acme", tenantName: "Acme Ltda", costUsd: 12, totalCalls: 300, llmCalls: 120,
+        monthSpentUsd: 10.5, monthReservedUsd: 0.25, softLimitUsd: 5, hardLimitUsd: 10, softLimitHit: true, hardLimitHit: true }),
+      costItem({ tenantId: "t-beta", tenantName: "Beta Comércio", costUsd: 0.5, totalCalls: 40, llmCalls: 10,
+        monthSpentUsd: 0.25, softLimitUsd: null, hardLimitUsd: null }),
+      costItem({ tenantId: "t-gama", tenantName: "Gama Serviços", softLimitUsd: 2, hardLimitUsd: 4 }),
+    ],
+    ...over,
+  };
+}
+
+export function promptVersion(over: Partial<PromptVersion> & { id: string; version: string }): PromptVersion {
+  return {
+    promptType: "extraction", hash: "0123456789abcdef", isActive: false, content: "Você extrai valores...",
+    description: "", createdAt: "2026-10-29T12:00:00Z", createdBy: "Operador", ...over,
   };
 }

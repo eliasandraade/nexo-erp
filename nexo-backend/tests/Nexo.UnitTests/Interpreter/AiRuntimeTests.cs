@@ -141,12 +141,50 @@ public sealed class AnalysisRunnerTests
         return a;
     }
 
-    private static (AnalysisRunner Runner, ITelemetryWriter Telemetry) Runner(AnalyzerPlan plan)
+    private static (AnalysisRunner Runner, ITelemetryWriter Telemetry) Runner(AnalyzerPlan plan, IAiUsageGuard? usage = null)
     {
         var selector = Substitute.For<IAnalyzerSelector>();
         selector.PlanAsync(Arg.Any<InputSourceType>(), Arg.Any<Guid>(), Arg.Any<AnalyzerProvider?>(), Arg.Any<CancellationToken>()).Returns(plan);
         var telemetry = Substitute.For<ITelemetryWriter>();
-        return (new AnalysisRunner(selector, telemetry, NullLogger<AnalysisRunner>.Instance), telemetry);
+        return (new AnalysisRunner(selector, telemetry, usage ?? Substitute.For<IAiUsageGuard>(), NullLogger<AnalysisRunner>.Instance), telemetry);
+    }
+
+    [Fact]
+    public async Task A_paid_call_reserves_first_settles_on_success_and_a_reached_limit_falls_back_to_the_free_reader()
+    {
+        var usage = Substitute.For<IAiUsageGuard>();
+        var reservation = Guid.NewGuid();
+        usage.ReserveAsync(Arg.Any<Guid>(), Arg.Any<AnalyzerConfig>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(reservation);
+        var (runner, _) = Runner(new AnalyzerPlan([new AnalyzerStep(Analyzer(AnalyzerProvider.Claude), ClaudeConfig)], Forced: false), usage);
+
+        await runner.RunAsync(Input, null, "Analyze");
+
+        await usage.Received(1).ReserveAsync(Input.TenantId, ClaudeConfig, Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>());
+        await usage.Received(1).SettleAsync(reservation, Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+
+        var limited = Substitute.For<IAiUsageGuard>();
+        limited.ReserveAsync(Arg.Any<Guid>(), Arg.Any<AnalyzerConfig>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new AiProviderCallException(AnalyzerProvider.Claude, AiCallFailure.LimitReached, "limite"));
+        var claude = Analyzer(AnalyzerProvider.Claude);
+        var (fallback, _) = Runner(new AnalyzerPlan([new AnalyzerStep(claude, ClaudeConfig), new AnalyzerStep(Analyzer(AnalyzerProvider.RuleBased), null)], Forced: false), limited);
+
+        var run = await fallback.RunAsync(Input, null, "Analyze");
+
+        run.Provider.Should().Be(AnalyzerProvider.RuleBased);
+        run.Attempts[0].FailureReason.Should().Be("limit_reached");
+        await claude.DidNotReceiveWithAnyArgs().AnalyzeAsync(default!, default, default);
+    }
+
+    [Fact]
+    public async Task A_failed_paid_call_releases_its_reservation()
+    {
+        var usage = Substitute.For<IAiUsageGuard>();
+        var reservation = Guid.NewGuid();
+        usage.ReserveAsync(Arg.Any<Guid>(), Arg.Any<AnalyzerConfig>(), Arg.Any<long>(), Arg.Any<long>(), Arg.Any<CancellationToken>()).Returns(reservation);
+        var (runner, _) = Runner(new AnalyzerPlan([new AnalyzerStep(Analyzer(AnalyzerProvider.Claude, Failure(AiCallFailure.Timeout)), ClaudeConfig)], Forced: true), usage);
+
+        await ((Func<Task>)(() => runner.RunAsync(Input, AnalyzerProvider.Claude, "Playground"))).Should().ThrowAsync<AiProviderCallException>();
+        await usage.Received(1).ReleaseAsync(reservation, Arg.Any<CancellationToken>());
     }
 
     private static AiProviderCallException Failure(AiCallFailure f) => new(AnalyzerProvider.Claude, f, "falhou");

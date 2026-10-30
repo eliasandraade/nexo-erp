@@ -3442,6 +3442,62 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("ai_providers", "nexo");
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Modules.Interpreter.AiUsageReservation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("ActualMicros")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ModelId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateOnly>("MonthStart")
+                        .HasColumnType("date");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<long>("ReservedMicros")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("ReservedTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime?>("SettledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Provider", "MonthStart", "Status")
+                        .HasDatabaseName("ix_ai_usage_provider_month");
+
+                    b.HasIndex("TenantId", "MonthStart", "Status")
+                        .HasDatabaseName("ix_ai_usage_tenant_month");
+
+                    b.ToTable("ai_usage_reservations", "nexo");
+                });
+
             modelBuilder.Entity("Nexo.Domain.Modules.Interpreter.ExtractionResult", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4161,6 +4217,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("PromptType")
+                        .IsUnique()
+                        .HasDatabaseName("ux_stored_prompt_versions_one_active")
+                        .HasFilter("\"IsActive\" = true");
 
                     b.HasIndex("PromptType", "IsActive");
 

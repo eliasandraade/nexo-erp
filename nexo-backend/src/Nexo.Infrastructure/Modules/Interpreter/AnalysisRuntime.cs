@@ -105,14 +105,19 @@ public sealed class AnalyzerSelectorService : IAnalyzerSelector
 /// </summary>
 public sealed class AnalysisRunner : IAnalysisRunner
 {
+    /// <summary>The worst case of one call's answer, reserved against the limits before the call.</summary>
+    public const int MaxOutputTokensEstimate = 1024;
+
     private readonly IAnalyzerSelector _selector;
     private readonly ITelemetryWriter _telemetry;
+    private readonly IAiUsageGuard _usage;
     private readonly ILogger<AnalysisRunner> _logger;
 
-    public AnalysisRunner(IAnalyzerSelector selector, ITelemetryWriter telemetry, ILogger<AnalysisRunner> logger)
+    public AnalysisRunner(IAnalyzerSelector selector, ITelemetryWriter telemetry, IAiUsageGuard usage, ILogger<AnalysisRunner> logger)
     {
         _selector = selector;
         _telemetry = telemetry;
+        _usage = usage;
         _logger = logger;
     }
 
@@ -125,14 +130,25 @@ public sealed class AnalysisRunner : IAnalysisRunner
         foreach (var step in plan.Steps)
         {
             var watch = Stopwatch.StartNew();
+            Guid? reservation = null;
             try
             {
+                // A paid call reserves its worst case against the monthly limits first (over a limit → LimitReached).
+                if (step.Config is { } paid)
+                {
+                    var inputTokens = (paid.Prompt.Content.Length + (input.RawText?.Length ?? 0)) / 3 + 100;
+                    reservation = await _usage.ReserveAsync(input.TenantId, paid,
+                        paid.CostMicros(inputTokens, MaxOutputTokensEstimate), inputTokens + MaxOutputTokensEstimate, ct);
+                }
                 var output = await step.Analyzer.AnalyzeAsync(input, step.Config, ct);
+                if (reservation is { } settled)
+                    await _usage.SettleAsync(settled, output.EstimatedCostMicros, output.InputTokens, output.OutputTokens, CancellationToken.None);
                 attempts.Add(new AnalysisAttempt(step.Provider, step.Config?.ModelId, true, null, (int)watch.ElapsedMilliseconds));
                 return new AnalysisRun(output, step.Provider, step.Config?.ModelId, plan.Forced, attempts, (int)total.ElapsedMilliseconds);
             }
             catch (AiProviderCallException ex)
             {
+                if (reservation is { } released) await _usage.ReleaseAsync(released, CancellationToken.None);
                 last = ex;
                 var ms = (int)watch.ElapsedMilliseconds;
                 attempts.Add(new AnalysisAttempt(step.Provider, step.Config?.ModelId, false, ex.Reason, ms));

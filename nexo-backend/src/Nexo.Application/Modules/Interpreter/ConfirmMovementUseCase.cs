@@ -25,6 +25,7 @@ public class ConfirmMovementUseCase
     private readonly ICurrentUser                        _currentUser;
     private readonly ILogger<ConfirmMovementUseCase>     _logger;
     private readonly VerticalLedgerPostingService        _ledger;
+    private readonly IMovementReferenceGuard?            _references;
 
     public ConfirmMovementUseCase(
         IFinancialMovementRepository        movementRepo,
@@ -37,9 +38,11 @@ public class ConfirmMovementUseCase
         ICurrentTenant                      currentTenant,
         ICurrentUser                        currentUser,
         ILogger<ConfirmMovementUseCase>     logger,
-        VerticalLedgerPostingService        ledger)
+        VerticalLedgerPostingService        ledger,
+        IMovementReferenceGuard?            references = null)
     {
         _ledger         = ledger;
+        _references     = references;
         _movementRepo   = movementRepo;
         _suggestionRepo = suggestionRepo;
         _correctionRepo = correctionRepo;
@@ -69,6 +72,10 @@ public class ConfirmMovementUseCase
 
         var suggestion = await _suggestionRepo.GetByIdAsync(command.OriginalSuggestionId, ct)
             ?? throw new NotFoundException("InterpretationSuggestion", command.OriginalSuggestionId);
+
+        // Every reference must be one of this company's, whoever proposed it.
+        if (_references is not null)
+            await _references.EnsureOwnedAsync(command.CategoryId, command.AccountId, command.ContextType, command.ContextId, command.SupplierId, ct);
 
         // Capture state before mutation for audit log.
         var previousState = SerializeMovement(movement);

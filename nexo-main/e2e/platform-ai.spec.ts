@@ -42,7 +42,34 @@ const playgroundOk = {
     contextType: null, contextId: null, ctxSource: 'None', accountId: null, accSource: 'None' },
 };
 
-interface Fake { providers: Provider[]; keysReceived: string[]; patches: unknown[]; playgroundBodies: unknown[]; failClaude: boolean }
+type CostItem = {
+  tenantId: string; tenantName: string; costUsd: number; totalCalls: number; llmCalls: number; monthSpentUsd: number;
+  monthReservedUsd: number; softLimitUsd: number | null; hardLimitUsd: number | null; softLimitHit: boolean; hardLimitHit: boolean;
+};
+type Prompt = {
+  id: string; promptType: string; version: string; hash: string; isActive: boolean; description: string;
+  createdBy: string; createdAt: string; contentPreview: string;
+};
+
+const tenants = [
+  { id: 't-acme', companyName: 'Acme Ltda', slug: 'acme', status: 'Active', email: 'acme@teste.dev', taxId: '1', createdAt: '2026-01-01T00:00:00Z', modules: [], stores: [], userCount: 1 },
+  { id: 't-nova', companyName: 'Empresa Nova', slug: 'nova', status: 'Active', email: 'nova@teste.dev', taxId: '2', createdAt: '2026-01-01T00:00:00Z', modules: [], stores: [], userCount: 1 },
+];
+
+function initialCosts(): CostItem[] {
+  return [{ tenantId: 't-acme', tenantName: 'Acme Ltda', costUsd: 4.2, totalCalls: 200, llmCalls: 90, monthSpentUsd: 3,
+    monthReservedUsd: 0, softLimitUsd: null, hardLimitUsd: null, softLimitHit: false, hardLimitHit: false }];
+}
+
+function initialPrompts(): Prompt[] {
+  return [{ id: 'pv-1', promptType: 'extraction', version: '1.0.0', hash: 'aaaabbbbccccdddd', isActive: true, description: 'Inicial',
+    createdBy: 'Sistema', createdAt: '2026-10-01T12:00:00Z', contentPreview: 'Você extrai valores...' }];
+}
+
+interface Fake {
+  providers: Provider[]; keysReceived: string[]; patches: unknown[]; playgroundBodies: unknown[]; failClaude: boolean;
+  costs: CostItem[]; limitBodies: unknown[]; prompts: Prompt[]; promptBodies: unknown[]; activations: string[];
+}
 
 function recompute(p: Provider): Provider {
   if (!p.implemented) return p;
@@ -51,7 +78,10 @@ function recompute(p: Provider): Provider {
 }
 
 async function prepare(page: Page, options: { failClaude?: boolean } = {}): Promise<Fake> {
-  const fake: Fake = { providers: initialProviders(), keysReceived: [], patches: [], playgroundBodies: [], failClaude: !!options.failClaude };
+  const fake: Fake = {
+    providers: initialProviders(), keysReceived: [], patches: [], playgroundBodies: [], failClaude: !!options.failClaude,
+    costs: initialCosts(), limitBodies: [], prompts: initialPrompts(), promptBodies: [], activations: [],
+  };
   await page.addInitScript(auth => {
     localStorage.setItem('nexo:session', JSON.stringify(auth)); localStorage.setItem('nexo:access_token', 'qa-only');
   }, session);
@@ -95,6 +125,60 @@ async function prepare(page: Page, options: { failClaude?: boolean } = {}): Prom
         return json(route, fake.providers[idx]);
       }
     }
+    if (path === '/platform/tenants' && method === 'GET') return json(route, tenants);
+
+    if (path === '/platform/interpreter/costs' && method === 'GET') {
+      return json(route, {
+        totalUsd: fake.costs.reduce((s, c) => s + c.costUsd, 0),
+        monthSpentUsd: fake.costs.reduce((s, c) => s + c.monthSpentUsd, 0),
+        items: fake.costs,
+      });
+    }
+    const limits = /^\/platform\/interpreter\/costs\/([^/]+)\/limits$/.exec(path);
+    if (limits && method === 'PUT') {
+      const body = req.postDataJSON() as { softLimitUsd: number | null; hardLimitUsd: number | null };
+      fake.limitBodies.push(body);
+      const tenant = tenants.find(t => t.id === limits[1]);
+      if (!tenant) return json(route, { error: 'Empresa não encontrada.', code: 'not_found' }, 404);
+      const base: CostItem = fake.costs.find(c => c.tenantId === tenant.id) ?? {
+        ...initialCosts()[0], tenantId: tenant.id, tenantName: tenant.companyName, costUsd: 0, totalCalls: 0, llmCalls: 0, monthSpentUsd: 0,
+      };
+      const used = base.monthSpentUsd + base.monthReservedUsd;
+      const item: CostItem = {
+        ...base, ...body,
+        softLimitHit: body.softLimitUsd != null && base.monthSpentUsd >= body.softLimitUsd,
+        hardLimitHit: body.hardLimitUsd != null && used >= body.hardLimitUsd,
+      };
+      fake.costs = [...fake.costs.filter(c => c.tenantId !== tenant.id), item];
+      return json(route, item);
+    }
+
+    if (path === '/platform/interpreter/prompts' && method === 'GET') {
+      const type = new URL(req.url()).searchParams.get('type');
+      return json(route, fake.prompts.filter(p => p.promptType === type));
+    }
+    if (path === '/platform/interpreter/prompts' && method === 'POST') {
+      const body = req.postDataJSON() as { promptType: string; version: string; content: string; description: string };
+      fake.promptBodies.push(body);
+      if (fake.prompts.some(p => p.promptType === body.promptType && p.version === body.version))
+        return json(route, { error: `A versão ${body.version} do prompt ${body.promptType} já existe.`, code: 'conflict' }, 409);
+      const created: Prompt = {
+        id: `pv-${fake.prompts.length + 1}`, promptType: body.promptType, version: body.version, hash: 'eeeeffff00001111',
+        isActive: false, description: body.description, createdBy: 'Operador de teste', createdAt: '2026-10-30T10:00:00Z',
+        contentPreview: body.content.slice(0, 200),
+      };
+      fake.prompts.push(created);
+      return json(route, { id: created.id, promptType: created.promptType, version: created.version, hash: created.hash, isActive: false });
+    }
+    const activation = /^\/platform\/interpreter\/prompts\/([^/]+)\/activate$/.exec(path);
+    if (activation && method === 'POST') {
+      const target = fake.prompts.find(p => p.id === activation[1]);
+      if (!target) return json(route, { error: 'Versão não encontrada.', code: 'not_found' }, 404);
+      fake.activations.push(target.id);
+      fake.prompts = fake.prompts.map(p => (p.promptType === target.promptType ? { ...p, isActive: p.id === target.id } : p));
+      return json(route, { activated: target.id, promptType: target.promptType, version: target.version, hash: target.hash });
+    }
+
     if (path === '/platform/interpreter/playground' && method === 'POST') {
       const body = req.postDataJSON() as { forceProvider: string | null };
       fake.playgroundBodies.push(body);
@@ -191,4 +275,72 @@ test('Playground: falha do Claude forçado vira mensagem controlada', async ({ p
   await expect(alert).toContainText('rate_limited');
   await expect(alert).toContainText('req-e2e-503');
   await expect(page.getByTestId('playground-result')).toHaveCount(0);
+});
+
+test('Custos: limite rígido abaixo do gasto do mês aparece como atingido', async ({ page }) => {
+  const fake = await prepare(page);
+  await page.goto('/platform/ai/costs');
+  await expect(page.getByText(/chamadas pagas são recusadas antes de acontecer/)).toBeVisible();
+  const acme = page.getByRole('row', { name: 'Empresa Acme Ltda' });
+  await expect(acme.getByText('Sem limite')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Editar limites de Acme Ltda' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel(/Limite rígido/).fill('2');
+  await dialog.getByRole('button', { name: /Salvar limites/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  await expect(acme.getByText('Limite rígido atingido')).toBeVisible();
+  await expect(acme.getByText('100% do limite rígido')).toBeVisible();
+  expect(fake.limitBodies).toEqual([{ softLimitUsd: null, hardLimitUsd: 2 }]);
+});
+
+test('Custos: definir limite para empresa ainda sem uso', async ({ page }) => {
+  const fake = await prepare(page);
+  await page.goto('/platform/ai/costs');
+  await page.getByRole('button', { name: /Definir limite para empresa/ }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('combobox', { name: 'Empresa' }).click();
+  await page.getByRole('option', { name: 'Empresa Nova' }).click();
+  await dialog.getByLabel(/Limite suave/).fill('3');
+  await dialog.getByLabel(/Limite rígido/).fill('10');
+  await dialog.getByRole('button', { name: /Salvar limites/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  const nova = page.getByRole('row', { name: 'Empresa Empresa Nova' });
+  await expect(nova.getByText('US$ 10,00')).toBeVisible();
+  await expect(nova.getByText('0% do limite rígido')).toBeVisible();
+  expect(fake.limitBodies).toEqual([{ softLimitUsd: 3, hardLimitUsd: 10 }]);
+});
+
+test('Prompts: criar e ativar uma versão de extração', async ({ page }) => {
+  const fake = await prepare(page);
+  await page.goto('/platform/ai/prompts');
+  await expect(page.getByTestId('prompt-runtime-usage')).toContainText('Usado pelo runtime.');
+
+  await page.getByRole('button', { name: /Nova versão/ }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Versão').fill('1.1.0');
+  await dialog.getByLabel('Descrição').fill('Datas por extenso');
+  await dialog.getByLabel('Conteúdo').fill('Instruções da versão nova');
+  await expect(dialog.getByTestId('prompt-content-counter')).toHaveText('25 / 16.000');
+  await dialog.getByRole('button', { name: /Criar versão/ }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  const row = page.getByRole('row', { name: 'Versão 1.1.0' });
+  await expect(row.getByText('eeeeffff00001111')).toBeVisible();
+  await row.getByRole('button', { name: 'Ativar versão 1.1.0' }).click();
+  const confirm = page.getByRole('alertdialog');
+  await expect(confirm).toContainText('O runtime passa a usar esta versão imediatamente.');
+  await confirm.getByRole('button', { name: 'Ativar versão', exact: true }).click();
+
+  await expect(row.getByText('ATIVA', { exact: true })).toBeVisible();
+  await expect(page.getByRole('row', { name: 'Versão 1.0.0' }).getByText('ATIVA', { exact: true })).toHaveCount(0);
+  expect(fake.promptBodies).toEqual([
+    { promptType: 'extraction', version: '1.1.0', content: 'Instruções da versão nova', description: 'Datas por extenso' },
+  ]);
+  expect(fake.activations).toEqual(['pv-2']);
+
+  await page.getByRole('tab', { name: 'Interpretação' }).click();
+  await expect(page.getByTestId('prompt-runtime-usage')).toContainText('Ainda não usado pelo runtime');
 });

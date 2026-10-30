@@ -186,6 +186,7 @@ public class NexoDbContext : DbContext
     public DbSet<AiProvider>              AiProviders          => Set<AiProvider>();
     public DbSet<InterpreterTelemetry>    InterpreterTelemetry => Set<InterpreterTelemetry>();
     public DbSet<TenantAiLimit>           TenantAiLimits       => Set<TenantAiLimit>();
+    public DbSet<AiUsageReservation>      AiUsageReservations  => Set<AiUsageReservation>();
     public DbSet<StoredPromptVersion>     StoredPromptVersions => Set<StoredPromptVersion>();
 
     protected override void OnModelCreating(ModelBuilder builder)

@@ -79,6 +79,9 @@ public static class AuditActions
     public const string AiProviderKeySet       = "ai_provider_key_set";
     public const string AiProviderKeyRemoved   = "ai_provider_key_removed";
     public const string AiProviderTested       = "ai_provider_tested";
+    public const string AiTenantLimitsChanged  = "ai_tenant_limits_changed";
+    public const string AiPromptCreated        = "ai_prompt_created";
+    public const string AiPromptActivated      = "ai_prompt_activated";
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";
 }
