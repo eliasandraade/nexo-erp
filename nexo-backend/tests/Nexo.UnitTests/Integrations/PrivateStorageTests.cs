@@ -158,6 +158,29 @@ public class PrivateStorageTests
     }
 
     [Fact]
+    public async Task The_private_ping_only_lists_the_private_bucket_and_writes_nothing()
+    {
+        var (provider, s3) = Recording(PrivateBucket);
+        s3.ListObjectsV2Async(Arg.Any<ListObjectsV2Request>(), Arg.Any<CancellationToken>()).Returns(new ListObjectsV2Response());
+
+        await provider.PingPrivateAsync();
+
+        await s3.Received(1).ListObjectsV2Async(Arg.Is<ListObjectsV2Request>(r => r.BucketName == PrivateBucket && r.MaxKeys == 1),
+            Arg.Any<CancellationToken>());
+        s3.ReceivedCalls().Should().HaveCount(1, "a read-only listing, no object written or created");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(PublicBucket)]
+    public async Task Without_a_valid_private_bucket_the_private_ping_fails_before_any_request(string privateBucket)
+    {
+        var (provider, s3) = Recording(privateBucket);
+        await provider.Invoking(p => p.PingPrivateAsync()).Should().ThrowAsync<PrivateStorageUnavailableException>();
+        s3.ReceivedCalls().Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Public_files_keep_using_the_public_bucket_with_or_without_a_private_one()
     {
         var (provider, s3) = Recording("");

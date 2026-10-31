@@ -137,4 +137,11 @@ public sealed class CloudflareR2Provider : IStorageProvider
     {
         await _s3.Value.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _opts.R2.BucketName, MaxKeys = 1 }, ct);
     }
+
+    /// <summary>The same read-only listing against the private bucket; without one it throws before any request.</summary>
+    public async Task PingPrivateAsync(CancellationToken ct = default)
+    {
+        if (!CanStorePrivateFiles) throw new PrivateStorageUnavailableException();
+        await _s3.Value.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _opts.R2.PrivateBucketName.Trim(), MaxKeys = 1 }, ct);
+    }
 }

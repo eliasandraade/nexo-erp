@@ -138,7 +138,7 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
                 await _storage.PingAsync(cancellationToken).WaitAsync(Timeout, cancellationToken);
                 // reachable, but private files are refused (never put in the public bucket) until configured
                 result = _hasPrivateBucket
-                    ? HealthCheckResult.Healthy("reachable")
+                    ? await PrivateAsync(cancellationToken)
                     : HealthCheckResult.Degraded("reachable — private bucket not configured, private files refused");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -156,6 +156,25 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
         finally
         {
             _gate.Release();
+        }
+    }
+
+    /// <summary>The configured private bucket must answer too: a name alone does not prove it exists or that the token reaches it.</summary>
+    private async Task<HealthCheckResult> PrivateAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _storage.PingPrivateAsync(cancellationToken).WaitAsync(Timeout, cancellationToken);
+            return HealthCheckResult.Healthy("reachable — public and private buckets");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Health: private bucket unreachable; private files unavailable.");
+            return HealthCheckResult.Degraded("public bucket reachable — private bucket unreachable, private files unavailable");
         }
     }
 

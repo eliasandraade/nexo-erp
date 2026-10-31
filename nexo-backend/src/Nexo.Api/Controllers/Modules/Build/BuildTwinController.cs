@@ -70,6 +70,17 @@ public class BuildTwinController : ControllerBase
     [HttpGet("models/{modelId:guid}")]
     public async Task<ActionResult<BuildModelDto>> Model(Guid modelId, CancellationToken ct) => Ok(await _models.GetAsync(modelId, ct));
 
+    /// <summary>
+    /// Removes the model, its versions and their private files (204). 409 while processing or once element progress was
+    /// recorded; 503 storage_unavailable when the files cannot be removed (nothing removed — repeat later).
+    /// </summary>
+    [HttpDelete("models/{modelId:guid}")]
+    public async Task<IActionResult> DeleteModel(Guid modelId, CancellationToken ct)
+    {
+        await _models.DeleteModelAsync(modelId, ct);
+        return NoContent();
+    }
+
     /// <summary>New version of a model (multipart <c>file</c>); same rules as the first upload.</summary>
     [HttpPost("models/{modelId:guid}/versions")]
     [BuildUploadLimit(BuildUploadKind.Model)]

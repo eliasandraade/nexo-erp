@@ -19,6 +19,12 @@ public interface IStorageProvider
     Task PingAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Verifies the private place for "private/…" keys is reachable — read-only, nothing written. Providers without a
+    /// separate private bucket have nothing more to check.
+    /// </summary>
+    Task PingPrivateAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <summary>
     /// A signed GET URL for the key, valid for <paramref name="ttl"/>. Computed locally (no request
     /// to the provider). Private keys ("private/…") are signed against the private bucket only.
     /// </summary>

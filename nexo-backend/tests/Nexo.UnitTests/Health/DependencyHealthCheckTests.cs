@@ -17,7 +17,10 @@ public class DependencyHealthCheckTests
     private sealed class FlakyStorage : IStorageProvider
     {
         public int Pings;
+        public int PrivatePings;
         public bool Fail;
+        public bool PrivateFail;
+        public bool PrivateHangs;
         public Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken ct = default) => throw new NotSupportedException();
         public Task DeleteAsync(string key, CancellationToken ct = default) => Task.CompletedTask;
         public string GetSignedUrl(string key, TimeSpan ttl) => "https://signed/" + key;
@@ -26,6 +29,49 @@ public class DependencyHealthCheckTests
             Pings++;
             return Fail ? Task.FromException(new HttpRequestException("r2 down")) : Task.CompletedTask;
         }
+        public Task PingPrivateAsync(CancellationToken ct = default)
+        {
+            PrivatePings++;
+            if (PrivateHangs) return new TaskCompletionSource().Task;
+            return PrivateFail ? Task.FromException(new HttpRequestException("NoSuchBucket orken-private")) : Task.CompletedTask;
+        }
+    }
+
+    private static Task<HealthCheckResult> Check(FlakyStorage storage, IOptions<StorageOptions> options)
+        => new ObjectStorageHealthCheck(storage, Flags(storage: true), options, NullLogger<ObjectStorageHealthCheck>.Instance)
+            .CheckHealthAsync(new HealthCheckContext());
+
+    [Fact]
+    public async Task Both_buckets_reachable_is_healthy()
+    {
+        var storage = new FlakyStorage();
+        var result = await Check(storage, Bucket("orken-private"));
+        result.Status.Should().Be(HealthStatus.Healthy);
+        (storage.Pings, storage.PrivatePings).Should().Be((1, 1));
+    }
+
+    [Fact]
+    public async Task A_configured_but_unreachable_private_bucket_is_degraded_without_naming_it()
+    {
+        var result = await Check(new FlakyStorage { PrivateFail = true }, Bucket("orken-private"));
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("private bucket unreachable").And.NotContain("orken-private");
+    }
+
+    [Fact]
+    public async Task A_private_bucket_that_does_not_answer_in_time_is_degraded()
+    {
+        var result = await Check(new FlakyStorage { PrivateHangs = true }, Bucket("orken-private"));
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("private bucket unreachable");
+    }
+
+    [Fact]
+    public async Task An_unreachable_public_bucket_is_degraded_before_the_private_one_is_tried()
+    {
+        var storage = new FlakyStorage { Fail = true };
+        (await Check(storage, Bucket("orken-private"))).Status.Should().Be(HealthStatus.Degraded);
+        storage.PrivatePings.Should().Be(0);
     }
 
     private static IIntegrationFeatureFlags Flags(bool storage)
@@ -42,18 +88,20 @@ public class DependencyHealthCheckTests
     public async Task The_public_bucket_named_as_the_private_one_is_still_no_private_bucket()
     {
         var sameBucket = Options.Create(new StorageOptions { R2 = new R2Options { BucketName = "orken-assets", PrivateBucketName = "Orken-Assets" } });
-        var result = await new ObjectStorageHealthCheck(new FlakyStorage(), Flags(storage: true), sameBucket, NullLogger<ObjectStorageHealthCheck>.Instance)
-            .CheckHealthAsync(new HealthCheckContext());
+        var storage = new FlakyStorage();
+        var result = await Check(storage, sameBucket);
         result.Status.Should().Be(HealthStatus.Degraded);
+        storage.PrivatePings.Should().Be(0, "the public bucket is never probed as the private one");
     }
 
     [Fact]
     public async Task Reachable_storage_without_a_private_bucket_is_degraded()
     {
-        var result = await new ObjectStorageHealthCheck(new FlakyStorage(), Flags(storage: true), Bucket(""), NullLogger<ObjectStorageHealthCheck>.Instance)
-            .CheckHealthAsync(new HealthCheckContext());
+        var storage = new FlakyStorage();
+        var result = await Check(storage, Bucket(""));
         result.Status.Should().Be(HealthStatus.Degraded);
-        result.Description.Should().Contain("private bucket");
+        result.Description.Should().Contain("private bucket not configured");
+        storage.PrivatePings.Should().Be(0);
     }
 
     [Fact]

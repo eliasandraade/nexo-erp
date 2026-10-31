@@ -111,6 +111,8 @@ public sealed class BuildModelProcessor : IBuildModelProcessor
         var now = DateTime.UtcNow;
         var dead = await _db.BldModelJobs.IgnoreQueryFilters()
             .Where(j => j.Status == BuildModelJobStatus.Running && j.LockedUntil < now && j.Attempts >= BuildModelProcessingJob.MaxAttempts)
+            // the longest-dead first, id as the tie-break: a stable batch when more than 20 are waiting
+            .OrderBy(j => j.LockedUntil).ThenBy(j => j.Id)
             .Select(j => j.Id).Take(20).ToListAsync(ct);
         foreach (var id in dead)
             await FinishAsync(id, "O processamento foi interrompido várias vezes.", permanent: true, ct);

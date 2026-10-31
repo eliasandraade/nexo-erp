@@ -165,6 +165,7 @@ public static class AuditActions
     public const string BuildStageWeatherSensitivity  = "build_stage_weather_sensitivity";
     public const string BuildModelSourceRead          = "build_model_source_read";
     public const string BuildModelJobRetried          = "build_model_job_retried";
+    public const string BuildModelDeleted             = "build_model_deleted";
 
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";
