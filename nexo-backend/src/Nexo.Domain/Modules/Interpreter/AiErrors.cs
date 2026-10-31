@@ -70,6 +70,8 @@ public enum AiCallFailure
     BadRequest = 9,
     UnsupportedInput = 10,
     LimitReached = 11,
+    /// <summary>The answer is JSON but does not satisfy the requested schema (missing/typed/enum fields).</summary>
+    InvalidOutput = 12,
 }
 
 /// <summary>
@@ -103,6 +105,7 @@ public sealed class AiProviderCallException : Exception
         AiCallFailure.BadRequest => "bad_request",
         AiCallFailure.UnsupportedInput => "unsupported_input",
         AiCallFailure.LimitReached => "limit_reached",
+        AiCallFailure.InvalidOutput => "invalid_output",
         _ => "provider_error",
     };
 }

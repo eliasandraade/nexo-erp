@@ -227,7 +227,16 @@ export interface PlaygroundInput {
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
-export type PromptType = "extraction" | "interpretation" | "memory";
+/** The platform types plus the Orken Build ones (`build-*`); the list comes from GET …/prompts/types. */
+export type PromptType = "extraction" | "interpretation" | "memory" | (string & {});
+
+/** GET /platform/interpreter/prompts/types — every versionable type and whether a runtime sends it today. */
+export interface PromptTypeInfo {
+  type:          string;
+  usedByRuntime: boolean;
+  /** Hash of the built-in default (what runs while no version is active); null when the type has none. */
+  builtInHash:   string | null;
+}
 
 export interface PromptVersion {
   id:          string;

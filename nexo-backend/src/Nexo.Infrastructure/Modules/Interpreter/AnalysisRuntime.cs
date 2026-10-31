@@ -40,7 +40,8 @@ public sealed class ActivePromptProvider : IActivePromptProvider
             .FirstOrDefaultAsync(ct);
         if (active is not null && !string.IsNullOrWhiteSpace(active.Content))
             return new ActivePrompt(promptType, active.Version, HashOf(active.Content), active.Content);
-        var content = BuiltIn.GetValueOrDefault(promptType, "");
+        var content = BuiltIn.GetValueOrDefault(promptType)
+                      ?? Nexo.Application.Modules.Build.BuildAiPrompts.Defaults.GetValueOrDefault(promptType, "");
         return new ActivePrompt(promptType, BuiltInVersion, HashOf(content), content);
     }
 

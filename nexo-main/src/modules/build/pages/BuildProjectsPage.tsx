@@ -4,19 +4,12 @@ import { Plus, HardHat, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { toast } from "sonner";
-import { useProjects, useCreateProject } from "../hooks/use-build";
+import { useProjects } from "../hooks/use-build";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { BuildDashboardSection } from "../components/BuildDashboardSection";
-import type { BuildProjectDto, BuildProjectStatus, BuildProjectType } from "../api/build.api";
+import { NewProjectDialog } from "../components/project/NewProjectDialog";
+import type { BuildProjectDto, BuildProjectStatus } from "../api/build.api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -146,158 +139,6 @@ function ProjectCard({ project, onClick }: { project: BuildProjectDto; onClick: 
         )}
       </div>
     </button>
-  );
-}
-
-// ── New project dialog ────────────────────────────────────────────────────────
-
-type ProjectTypeOption = { value: BuildProjectType; label: string };
-const PROJECT_TYPES: ProjectTypeOption[] = [
-  { value: "House",      label: "Residencial" },
-  { value: "Commercial", label: "Comercial" },
-  { value: "Renovation", label: "Reforma" },
-  { value: "Building",   label: "Edifício" },
-  { value: "Other",      label: "Outro" },
-];
-
-function NewProjectDialog({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const navigate = useNavigate();
-  const createMut = useCreateProject();
-
-  const [name,      setName]      = useState("");
-  const [client,    setClient]    = useState("");
-  const [location,  setLocation]  = useState("");
-  const [typeVal,   setTypeVal]   = useState<BuildProjectType>("House");
-  const [budget,    setBudget]    = useState("");
-  const [startDate, setStartDate] = useState("");
-
-  const reset = () => {
-    setName(""); setClient(""); setLocation(""); setTypeVal("House");
-    setBudget(""); setStartDate("");
-  };
-
-  const handleClose = () => { reset(); onClose(); };
-
-  const handleSubmit = () => {
-    if (!name.trim() || !client.trim()) return;
-    createMut.mutate({
-      name:            name.trim(),
-      clientName:      client.trim(),
-      location:        location.trim() || undefined,
-      type:            typeVal,
-      budgetEstimated: budget ? parseFloat(budget) : undefined,
-      startDate:       startDate || undefined,
-    }, {
-      onSuccess: (dto) => {
-        toast.success("Obra criada com sucesso!");
-        handleClose();
-        navigate(`/build/projetos/${dto.id}`);
-      },
-      onError: (err) => {
-        toast.error(err instanceof Error ? err.message : "Erro ao criar obra.");
-      },
-    });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <HardHat className="h-5 w-5 text-primary" />
-            Nova obra
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-3 py-1">
-          <div className="space-y-1">
-            <Label className="text-xs">Nome da obra *</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Residencial Parque Sul"
-              autoFocus
-            />
-          </div>
-
-          <div className="space-y-1">
-            <Label className="text-xs">Cliente *</Label>
-            <Input
-              value={client}
-              onChange={(e) => setClient(e.target.value)}
-              placeholder="Nome do cliente"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Tipo</Label>
-              <Select value={typeVal} onValueChange={(v) => setTypeVal(v as BuildProjectType)}>
-                <SelectTrigger className="text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {PROJECT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Orçamento previsto</Label>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
-                <Input
-                  value={budget}
-                  onChange={(e) => setBudget(e.target.value)}
-                  type="number"
-                  min={0}
-                  className="pl-7 text-sm"
-                  placeholder="0,00"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Data de início</Label>
-              <Input
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                type="date"
-                className="text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Localização</Label>
-              <Input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Endereço / cidade"
-                className="text-sm"
-              />
-            </div>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>Cancelar</Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!name.trim() || !client.trim() || createMut.isPending}
-          >
-            {createMut.isPending ? "Criando…" : "Criar obra"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

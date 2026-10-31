@@ -61,7 +61,7 @@ public class ExceptionHandlingMiddleware
         catch (ForbiddenException ex)
         {
             _logger.LogWarning("Forbidden: {Message}", ex.Message);
-            await WriteErrorAsync(ctx, 403, ex.Message);
+            await WriteErrorAsync(ctx, 403, ex.Message, null, ex.Code);
         }
         catch (Nexo.Domain.Modules.Interpreter.AiProviderCallException ex)
         {

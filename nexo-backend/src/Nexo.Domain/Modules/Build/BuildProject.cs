@@ -32,6 +32,13 @@ public class BuildProject : TenantEntity
     public decimal?            BudgetEstimated   { get; private set; }
     public decimal?            BudgetApproved    { get; private set; }
     public Guid                CreatedBy         { get; private set; }
+    /// <summary>Site coordinates (WGS84) — weather and maps. Optional.</summary>
+    public decimal?            Latitude          { get; private set; }
+    public decimal?            Longitude         { get; private set; }
+    /// <summary>Built area in m². Optional.</summary>
+    public decimal?            AreaM2            { get; private set; }
+    /// <summary>How the project is followed: by stages (Standard) or by a 3D model (ThreeD). Existing rows: Standard.</summary>
+    public BuildTrackingMode   TrackingMode      { get; private set; } = BuildTrackingMode.Standard;
 
     // Navigation (loaded explicitly — no lazy loading)
     public ICollection<BuildStage>    Stages    { get; private set; } = [];
@@ -48,7 +55,8 @@ public class BuildProject : TenantEntity
         string?           location        = null,
         DateOnly?         startDate       = null,
         DateOnly?         expectedEndDate = null,
-        decimal?          budgetEstimated = null)
+        decimal?          budgetEstimated = null,
+        BuildTrackingMode trackingMode    = BuildTrackingMode.Standard)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new DomainException("Project name is required.");
@@ -68,6 +76,8 @@ public class BuildProject : TenantEntity
             ExpectedEndDate = expectedEndDate,
             BudgetEstimated = budgetEstimated,
             CreatedBy       = createdBy,
+            TrackingMode    = Enum.IsDefined(trackingMode) ? trackingMode
+                              : throw new DomainException("Modo de acompanhamento inválido."),
         };
     }
 
@@ -138,11 +148,58 @@ public class BuildProject : TenantEntity
         SetUpdatedAt();
     }
 
+    /// <summary>
+    /// Sets (or clears, with nulls) the site coordinates and the built area. Latitude and longitude go
+    /// together: both or neither.
+    /// </summary>
+    public void SetSite(decimal? latitude, decimal? longitude, decimal? areaM2)
+    {
+        if (latitude.HasValue != longitude.HasValue)
+            throw new DomainException("Informe latitude e longitude juntas (ou nenhuma das duas).");
+        if (latitude is < -90m or > 90m)
+            throw new DomainException("Latitude inválida: use um valor entre -90 e 90.");
+        if (longitude is < -180m or > 180m)
+            throw new DomainException("Longitude inválida: use um valor entre -180 e 180.");
+        if (areaM2 is < 0m)
+            throw new DomainException("A área não pode ser negativa.");
+
+        Latitude  = latitude;
+        Longitude = longitude;
+        AreaM2    = areaM2;
+        SetUpdatedAt();
+    }
+
+    /// <summary>Chooses how the project is followed (by stages or by a 3D model).</summary>
+    public void ChooseTracking(BuildTrackingMode mode)
+    {
+        if (!Enum.IsDefined(mode)) throw new DomainException("Modo de acompanhamento inválido.");
+        TrackingMode = mode;
+        SetUpdatedAt();
+    }
+
+    public bool HasSite => Latitude.HasValue && Longitude.HasValue;
+
     public void ApproveBudget(decimal amount)
     {
         if (amount < 0) throw new DomainException("Budget amount cannot be negative.");
         BudgetApproved = amount;
         SetUpdatedAt();
+    }
+
+    /// <summary>
+    /// An approved change order adds its cost impact (may be negative) to the approved budget — only when the
+    /// project has one. Returns whether it was applied (false: no approved budget yet; the change order still
+    /// counts in the contract total).
+    /// </summary>
+    public bool ApplyChangeOrderCost(decimal costImpact)
+    {
+        if (BudgetApproved is not { } current) return false;
+        var next = current + costImpact;
+        if (next < 0)
+            throw new DomainException("O aditivo deixaria o valor do contrato negativo.", "change_order_negative_contract");
+        BudgetApproved = Math.Round(next, 2, MidpointRounding.AwayFromZero);
+        SetUpdatedAt();
+        return true;
     }
 
     // ── Guards ────────────────────────────────────────────────────────────────

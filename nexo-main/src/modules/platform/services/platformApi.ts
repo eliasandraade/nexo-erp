@@ -264,3 +264,117 @@ export function clientPath(path: string): string {
   if (path === "/api") return "/";
   return path.startsWith("/api/") ? path.slice(4) : path;
 }
+
+// ─── Orken Build feature flags (per company) ──────────────────────────────────
+
+/** Build3D / BuildAI / BuildVision / BuildPredict of a company (GET/PUT /api/platform/tenants/{id}/build-settings). */
+export interface PlatformBuildSettings {
+  tenantId:            string;
+  build3DEnabled:      boolean;
+  buildAiEnabled:      boolean;
+  buildVisionEnabled:  boolean;
+  buildPredictEnabled: boolean;
+  /** False while no row exists (the defaults apply). */
+  customized:          boolean;
+  updatedByName:       string | null;
+  updatedAt:           string | null;
+}
+
+/** Only the flags sent change. */
+export type UpdatePlatformBuildSettings = Partial<Pick<PlatformBuildSettings,
+  "build3DEnabled" | "buildAiEnabled" | "buildVisionEnabled" | "buildPredictEnabled">>;
+
+export async function fetchTenantBuildSettings(tenantId: string): Promise<PlatformBuildSettings> {
+  return apiClient.get<PlatformBuildSettings>(`/platform/tenants/${tenantId}/build-settings`);
+}
+
+export async function updateTenantBuildSettings(tenantId: string, req: UpdatePlatformBuildSettings): Promise<PlatformBuildSettings> {
+  return apiClient.put<PlatformBuildSettings>(`/platform/tenants/${tenantId}/build-settings`, req);
+}
+
+// ─── Orken Build observability (GET /api/platform/build/overview, jobs; POST jobs/{id}/retry) ─────────────
+
+export interface PlatformBuildStorage {
+  modelsBytes:         number;
+  realityCaptureBytes: number;
+  documentsBytes:      number;
+  /** Daily-log photos have no size column: only their count (null). */
+  photosBytes:         number | null;
+  photosCount:         number;
+  totalBytes:          number;
+}
+
+export interface PlatformBuildAiUsage {
+  suggestions:  number;
+  accepted:     number;
+  rejected:     number;
+  acceptedRate: number | null;
+  inputTokens:  number;
+  outputTokens: number;
+  costMicros:   number;
+}
+
+export interface PlatformBuildFlags {
+  build3D: boolean; buildAi: boolean; buildVision: boolean; buildPredict: boolean; customized: boolean;
+}
+
+export interface PlatformBuildTenant {
+  tenantId:              string;
+  companyName:           string;
+  moduleStatus:          string | null;
+  projectsActive:        number;
+  projectsTotal:         number;
+  publishedPortals:      number;
+  modelVersionsByStatus: Record<string, number>;
+  jobsFailed:            number;
+  jobsPending:           number;
+  /** Sanitized by the server: no file names, paths or storage keys. */
+  lastJobError:          string | null;
+  lastJobErrorAt:        string | null;
+  storage:               PlatformBuildStorage;
+  ai30d:                 PlatformBuildAiUsage;
+  flags:                 PlatformBuildFlags;
+}
+
+export interface PlatformBuildTotals {
+  tenants: number; projectsActive: number; projectsTotal: number; publishedPortals: number; jobsFailed: number; jobsPending: number;
+  storageBytes: number; aiSuggestions30d: number; aiCostMicros30d: number;
+}
+
+export interface PlatformBuildOverview {
+  generatedAt: string;
+  tenants:     PlatformBuildTenant[];
+  totals:      PlatformBuildTotals;
+}
+
+export type PlatformBuildJobStatus = "Failed" | "Pending" | "Running" | "Done";
+
+export interface PlatformBuildJob {
+  id:            string;
+  tenantId:      string;
+  companyName:   string;
+  projectId:     string;
+  versionId:     string;
+  versionNumber: number;
+  sourceFormat:  string;
+  kind:          string;
+  status:        string;
+  attempts:      number;
+  /** Sanitized by the server. */
+  error:         string | null;
+  createdAt:     string;
+  finishedAt:    string | null;
+}
+
+export async function fetchPlatformBuildOverview(): Promise<PlatformBuildOverview> {
+  return apiClient.get<PlatformBuildOverview>("/platform/build/overview");
+}
+
+export async function fetchPlatformBuildJobs(status: PlatformBuildJobStatus = "Failed", take = 50): Promise<PlatformBuildJob[]> {
+  return apiClient.get<PlatformBuildJob[]>(`/platform/build/jobs?status=${status}&take=${take}`);
+}
+
+/** Administrative act (super_admin with two-step sign-in): queues a failed job again. */
+export async function retryPlatformBuildJob(jobId: string): Promise<PlatformBuildJob> {
+  return apiClient.post<PlatformBuildJob>(`/platform/build/jobs/${jobId}/retry`);
+}

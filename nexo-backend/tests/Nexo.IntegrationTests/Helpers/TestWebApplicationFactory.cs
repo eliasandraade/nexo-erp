@@ -77,8 +77,11 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
                 });
 
                 var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
-                opts.AddInterceptors(interceptor);
+                opts.AddInterceptors(interceptor, sp.GetRequiredService<SqlCommandCounter>());
             });
+            // Counts SQL commands of requests marked with SqlCommandCounter.Header (N+1 tests).
+            services.AddHttpContextAccessor();
+            services.AddSingleton<SqlCommandCounter>();
 
             // Replace the cache with a faithful in-memory implementation.
             // With no Redis connection string, AddInfrastructure registers NoOpCacheService,
@@ -125,6 +128,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // tests get 429. The policy stays enabled in production (config default true).
         builder.UseSetting("RateLimiting:PublicBooking:Enabled", "false");
         builder.UseSetting("RateLimiting:PublicOrders:Enabled", "false");
+        builder.UseSetting("RateLimiting:BuildPortal:Enabled", "false");
+        builder.UseSetting("RateLimiting:BuildPortalAuth:Enabled", "false");
+        builder.UseSetting("RateLimiting:BuildPortalDecision:Enabled", "false");
         builder.UseSetting("RateLimiting:CredentialCheck:Enabled", "false");
 
         // Tax Intelligence is off unless configured (kill switch). The suite turns it on explicitly and relaxes

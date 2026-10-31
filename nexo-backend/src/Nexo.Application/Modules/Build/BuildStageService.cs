@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Build.Interfaces;
 using Nexo.Domain.Exceptions;
@@ -15,15 +16,21 @@ public class BuildStageService
     private readonly IBuildProjectRepository _projects;
     private readonly IBuildStageRepository   _stages;
     private readonly ICurrentTenant          _currentTenant;
+    private readonly ICurrentUser            _currentUser;
+    private readonly IBuildProgressRecorder  _progress;
 
     public BuildStageService(
         IBuildProjectRepository projects,
         IBuildStageRepository   stages,
-        ICurrentTenant          currentTenant)
+        ICurrentTenant          currentTenant,
+        ICurrentUser            currentUser,
+        IBuildProgressRecorder  progress)
     {
         _projects      = projects;
         _stages        = stages;
         _currentTenant = currentTenant;
+        _currentUser   = currentUser;
+        _progress      = progress;
     }
 
     // ── Queries ───────────────────────────────────────────────────────────────
@@ -61,9 +68,11 @@ public class BuildStageService
             description: request.Description,
             plannedStart: request.PlannedStart,
             plannedEnd:   request.PlannedEnd);
+        if (request.Weight is { } weight) stage.SetWeight(weight);
 
         await _stages.AddAsync(stage, ct);
         await _stages.SaveChangesAsync(ct);
+        await _progress.RefreshTodaySnapshotAsync(projectId, ct);
         return MapToDto(stage);
     }
 
@@ -82,12 +91,18 @@ public class BuildStageService
             order:        request.Order,
             plannedStart: request.PlannedStart,
             plannedEnd:   request.PlannedEnd);
+        if (request.Weight is { } weight) stage.SetWeight(weight);
 
         _stages.Update(stage);
         await _stages.SaveChangesAsync(ct);
+        await _progress.RefreshTodaySnapshotAsync(stage.ProjectId, ct);
         return MapToDto(stage);
     }
 
+    /// <summary>
+    /// Records the stage's real progress and appends it to the progress history (source Manual, the
+    /// optional note and effective date). Today's progress snapshot of the project is refreshed.
+    /// </summary>
     public async Task<BuildStageDto> UpdateProgressAsync(
         Guid                            stageId,
         UpdateBuildStageProgressRequest request,
@@ -96,18 +111,24 @@ public class BuildStageService
         var stage = await _stages.GetByIdAsync(stageId, ct)
             ?? throw new NotFoundException("BuildStage", stageId);
 
-        stage.UpdateProgress(request.ProgressPercent);
+        var effective = request.EffectiveDate ?? BusinessClock.Today();
+        await BuildStageProgressApplier.ApplyAsync(_progress, stage, request.ProgressPercent, effective, BuildProgressSource.Manual,
+            _currentUser.UserId, _currentUser.Name, request.Note, ct: ct);
 
         // Optional explicit status override (e.g. mark InProgress without 100%)
         if (!string.IsNullOrWhiteSpace(request.Status))
         {
             if (!Enum.TryParse<BuildStageStatus>(request.Status, ignoreCase: true, out var s))
                 throw new DomainException($"Invalid stage status: '{request.Status}'.");
+            if (s == BuildStageStatus.Completed && stage.Status != BuildStageStatus.Completed)
+                BuildNonConformity.EnsureStageCanComplete(
+                    await _progress.HasOpenCriticalNonConformityAsync(stage.TenantId, stage.Id, ct));
             stage.UpdateStatus(s);
         }
 
         _stages.Update(stage);
         await _stages.SaveChangesAsync(ct);
+        await _progress.RefreshTodaySnapshotAsync(stage.ProjectId, ct);
         return MapToDto(stage);
     }
 
@@ -143,6 +164,7 @@ public class BuildStageService
 
         _stages.Remove(stage);
         await _stages.SaveChangesAsync(ct);
+        await _progress.RefreshTodaySnapshotAsync(stage.ProjectId, ct);
     }
 
     /// <summary>Stages of a cancelled or completed project are history: no edits (same rule as delete).</summary>
@@ -169,5 +191,6 @@ public class BuildStageService
         ActualStartDate:  s.ActualStartDate,
         ActualEndDate:    s.ActualEndDate,
         CreatedAt:        s.CreatedAt,
-        UpdatedAt:        s.UpdatedAt);
+        UpdatedAt:        s.UpdatedAt,
+        Weight:           s.Weight);
 }

@@ -16,7 +16,10 @@ public sealed record AiTenantCost(Guid TenantId, string TenantName, long Cost30d
 /// </summary>
 public sealed class AiGovernanceAdminService
 {
-    public static readonly string[] PromptTypes = ["extraction", "interpretation", "memory"];
+    public static readonly string[] PromptTypes = ["extraction", "interpretation", "memory", .. Nexo.Application.Modules.Build.BuildAiPrompts.Types];
+
+    /// <summary>The prompt types a runtime actually sends (the others are versioned but unused yet).</summary>
+    public static readonly string[] RuntimePromptTypes = ["extraction", .. Nexo.Application.Modules.Build.BuildAiPrompts.Types];
     public const int MaxPromptLength = 16000;
 
     private readonly NexoDbContext _db;

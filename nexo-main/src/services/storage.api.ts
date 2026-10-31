@@ -6,10 +6,18 @@ export type StorageContext =
   | "restaurant-logo"
   | "restaurant-cover"
   | "service-portal-logo"
-  | "service-portal-cover";
+  | "service-portal-cover"
+  | "build-portal-logo"
+  | "build-portal-cover";
 
 /** Private files (service records, site photos): only short-lived signed URLs, never a public one. */
-export type PrivateStorageContext = "build-daily-log" | "service-record";
+export type PrivateStorageContext =
+  | "build-daily-log"
+  | "build-selection-option"
+  | "build-quality"
+  | "build-handover"
+  | "build-assistance"
+  | "service-record";
 
 export interface StorageUploadResult {
   key: string;

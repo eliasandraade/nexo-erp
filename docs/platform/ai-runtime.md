@@ -96,8 +96,10 @@ resposta bruta.
 
 ## Prompts
 
-- Só o prompt **`extraction`** é usado hoje (instruções do Claude; o contrato JSON é fixo no código e sempre anexado).
-  `interpretation` e `memory` são versionados, mas nenhum runtime os usa ainda — a tela diz isso.
+- Usados pelo runtime: **`extraction`** (instruções do Claude no interpretador financeiro) e os oito **`build-*`** da IA do
+  Orken Build (via `IAiStructuredCompletion`, ver `docs/build/ai.md`); o contrato JSON é fixo no código e sempre anexado.
+  `interpretation` e `memory` são versionados, mas nenhum runtime os usa ainda — a tela diz isso
+  (`GET /api/platform/interpreter/prompts/types` informa `usedByRuntime` e o hash do embutido).
 - Uma versão nasce inativa (`POST /api/platform/interpreter/prompts`) e só passa a valer quando ativada; a ativação desliga a
   anterior na mesma transação, e um índice único parcial garante uma ativa por tipo (a concorrente perde com 409).
 - O hash exibido e gravado na telemetria é o SHA-256 do conteúdo (16 primeiros hex).

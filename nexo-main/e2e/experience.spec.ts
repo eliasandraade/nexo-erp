@@ -545,6 +545,7 @@ test('Build: etapas reordenadas e editadas, desvio com sinal certo e estorno de 
  await page.route(`${API}/v1/build/projects/b1/stages`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(stages)}));
  await page.route(`${API}/v1/build/stages/s1`,r=>{stageBody=r.request().postDataJSON();return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(stages[0])});});
  await page.route(`${API}/v1/build/projects/b1/financial-summary`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({projectId:'b1',estimatedBudget:1000,approvedBudget:1000,totalRealizedExpenses:1200,movementCount:1,lastMovementDate:null,varianceAmount:-200,variancePercent:-20})}));
+ await page.route(`${API}/v1/build/projects/b1/cost-by-stage`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({projectId:'b1',totalBudgeted:1000,totalRealized:1200,totalVariance:-200,stages:[{stageId:'s1',stageName:'Fundação',order:0,budgeted:1000,realized:0,variance:1000,movementCount:0},{stageId:null,stageName:'Sem etapa',order:null,budgeted:0,realized:1200,variance:-1200,movementCount:1}]})}));
  await page.route(/\/v1\/movements\/m1\/void/,r=>{voided='m1';return r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'m1',status:'Voided',voidedAt:now})});});
  await page.route(/\/v1\/movements\?/,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[{id:'m1',direction:'Out',nature:'Expense',amount:1200,date:'2026-10-10',description:'Cimento',contextType:'Obra',contextId:'b1',supplierId:null,status:'Confirmed',createdAt:now}],totalCount:1,page:1,pageSize:30})}));
  await page.route(`${API}/v1/build/projects/b1/daily-logs**`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],total:0,page:1,pageSize:30})}));
@@ -564,6 +565,130 @@ test('Build: etapas reordenadas e editadas, desvio com sinal certo e estorno de 
  await page.getByRole('button',{name:'Confirmar estorno de Cimento'}).click();
  await expect.poll(()=>voided).toBe('m1');
  await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});
+test('Build: Qualidade e Entrega e pós-obra abrem numa obra sem dados',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api'; const now=new Date().toISOString();
+ const project={id:'b1',name:'Casa QA',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:null,expectedEndDate:null,actualEndDate:null,budgetEstimated:1000,budgetApproved:1000,stages:[],recentLogs:[],createdAt:now,updatedAt:now,stageCount:0,completedStageCount:0,logCount:0};
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify(project)}));
+ await page.route(`${API}/v1/build/projects/b1/handover`,r=>r.fulfill({status:404,contentType:'application/json',body:JSON.stringify({error:'Entrega não agendada.'})}));
+ await page.goto('/build/projetos/b1');
+ await page.getByRole('button',{name:'Qualidade'}).click();
+ await expect(page.getByText('Nenhuma vistoria de qualidade nesta obra.')).toBeVisible();
+ await page.getByRole('tab',{name:'Não conformidades'}).click();
+ await expect(page.getByText(/impede concluir a etapa \(100%\)/)).toBeVisible();
+ await page.getByRole('button',{name:'Entrega e pós-obra'}).click();
+ await expect(page.getByText('A entrega do imóvel ainda não foi agendada.')).toBeVisible();
+ await page.getByRole('tab',{name:'Garantias'}).click();
+ await expect(page.getByTestId('warranty-disclaimer')).toContainText('não é orientação jurídica');
+ await page.setViewportSize({width:390,height:900});await noOverflow(page);
+});
+test('Build: Riscos e previsões e Documentos abrem com a IA desligada, sem quebrar (390px)',async({page})=>{
+ await prepare(page);
+ const API='http://localhost:5000/api'; const now=new Date().toISOString(); const json=(b:unknown)=>({status:200,contentType:'application/json',body:JSON.stringify(b)});
+ const project={id:'b1',name:'Casa QA',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:null,expectedEndDate:null,actualEndDate:null,budgetEstimated:1000,budgetApproved:1000,stages:[],recentLogs:[],createdAt:now,updatedAt:now,stageCount:0,completedStageCount:0,logCount:0};
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill(json(project)));
+ await page.route(`${API}/v1/build/settings`,r=>r.fulfill(json({tenantId:'qa',build3DEnabled:true,buildAiEnabled:false,buildVisionEnabled:false,buildPredictEnabled:true,customized:false,updatedByName:null,updatedAt:null})));
+ await page.route(`${API}/v1/build/projects/b1/risk/delay`,r=>r.fulfill(json({projectId:'b1',kind:'delay',asOf:'2026-10-30',level:'medium',methodology:'build-risk/1',metrics:{spi:0.85,actualPercent:34,plannedPercent:40,delayedStages:1,forecastSlipDays:12,lateMaterials:0,pendingChangeOrders:0,openCriticalNonConformities:0},items:[{key:'spi_low',kind:'spi_low',severity:'medium',title:'Ritmo abaixo do plano',evidence:'SPI 0,85',metrics:{spi:0.85},refs:[]}]})));
+ await page.route(`${API}/v1/build/projects/b1/documents**`,r=>r.fulfill(json([{id:'d1',projectId:'b1',category:'Alvara',title:'Alvará de construção com um título bem comprido para testar quebra',fileName:'alvara.pdf',contentType:'application/pdf',sizeBytes:120000,sha256:'x',clientVisible:false,validUntil:'2020-01-01',extracted:null,suggestionId:null,uploadedByName:'Ana',url:null,urlExpiresAt:null,createdAt:now}])));
+ await page.setViewportSize({width:390,height:900});
+ await page.goto('/build/projetos/b1');
+ await page.getByRole('button',{name:'Riscos e previsões'}).click();
+ await expect(page.getByTestId('risk-delay')).toContainText('Ritmo abaixo do plano');
+ await expect(page.getByTestId('risk-delay')).toContainText('calculados, sem IA');
+ await expect(page.getByRole('button',{name:/Explicar com IA/}).first()).toBeDisabled();
+ await expect(page.getByTestId('risk-cost')).toContainText('Análise indisponível.');
+ await noOverflow(page);
+ await page.getByRole('button',{name:'Documentos'}).click();
+ await expect(page.getByTestId('document-row')).toContainText('Vencido');
+ await expect(page.getByRole('button',{name:/Analisar com IA/})).toBeDisabled();
+ await noOverflow(page);
+});
+test('Build: Gêmeo digital com IFC pronto sem visualização e representação simplificada (390px)',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.setViewportSize({width:390,height:844});await prepare(page);
+ const API='http://localhost:5000/api'; const now=new Date().toISOString();
+ const stages=[{id:'s1',projectId:'b1',name:'Fundação',description:null,order:0,status:'InProgress',progressPercent:40,plannedStartDate:'2026-09-01',plannedEndDate:'2027-01-01',actualStartDate:null,actualEndDate:null}];
+ const project={id:'b1',name:'Casa QA 3D',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:'2026-09-01',expectedEndDate:null,actualEndDate:null,budgetEstimated:1000,budgetApproved:1000,stages,recentLogs:[],createdAt:now,updatedAt:now,stageCount:1,completedStageCount:0,logCount:0,trackingMode:'ThreeD'};
+ const version={id:'v1',modelId:'m1',number:1,sourceFormat:'Ifc',sourceFileName:'casa-qa-projeto-arquitetonico-com-nome-bem-comprido.ifc',sizeBytes:5242880,sha256:null,geometrySource:'NativeBim',viewerSource:'None',hasViewer:false,status:'Ready',statusMessage:'Modelo lido: 120 elementos.',elementCount:120,storeyCount:2,schema:'IFC4',layers:null,processedAt:now,createdAt:now};
+ const model={id:'m1',projectId:'b1',name:'Projeto arquitetônico',discipline:'Arquitetura',currentVersionId:'v1',versions:[version],createdAt:now};
+ const box=(id:string,name:string,elevation:number)=>({id,modelVersionId:null,kind:'Floor',name,externalId:null,parentZoneId:null,elevation:null,order:0,outline:null,sheetVersionId:null,simplifiedBox:{width:12,depth:10,height:3,elevation},elementCount:0});
+ const json=(body:unknown)=>({status:200,contentType:'application/json',body:JSON.stringify(body)});
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill(json(project)));
+ await page.route(`${API}/v1/build/settings`,r=>r.fulfill(json({tenantId:'qa',build3DEnabled:true,buildAiEnabled:false,buildVisionEnabled:false,buildPredictEnabled:true,customized:false,updatedByName:null,updatedAt:null})));
+ await page.route(`${API}/v1/build/projects/b1/twin`,r=>r.fulfill(json({projectId:'b1',build3DEnabled:true,geometrySource:'NativeBim',models:[model],manualZones:2,totalElements:120,boundElements:30,bindingCoveragePercent:25,pendingJobs:0,stages:[]})));
+ await page.route(`${API}/v1/build/projects/b1/models`,r=>r.fulfill(json([model])));
+ await page.route(`${API}/v1/build/projects/b1/zones`,r=>r.fulfill(json([box('z1','Térreo',0),box('z2','Pavimento superior',3)])));
+ await page.route(`${API}/v1/build/projects/b1/twin/bindings`,r=>r.fulfill(json([{id:'b1',stageId:'s1',stageName:'Fundação',scope:'Zone',modelVersionId:null,elementExternalId:null,zoneId:'z1',category:null,source:'Manual',createdAt:now}])));
+ await page.route(/\/v1\/build\/models\/versions\/v1\/state/,r=>r.fulfill(json({date:'2026-10-30',counts:{InProgress:30},states:{InProgress:['a']},zoneStates:{InProgress:['z1']},unbound:90,total:120})));
+ await page.goto('/build/projetos/b1');
+ await page.getByRole('button',{name:/Gêmeo digital/}).click();
+ await expect(page.getByRole('button',{name:'Gerar visualização 3D no navegador'})).toBeVisible();
+ await expect(page.getByTestId('twin-legend')).toContainText('Sem vínculo');
+ await noOverflow(page);
+ await page.getByRole('tab',{name:'Zonas e planta'}).click();
+ await expect(page.getByText('Representação simplificada — não corresponde ao projeto arquitetônico')).toBeVisible();
+ await expect(page.getByTestId('simplified-representation')).toContainText('Térreo');
+ await noOverflow(page);
+ expect(errors).toEqual([]);
+});
+test('Build: painel com carteira de obras, filtro de atrasadas e risco que abre a previsão (390px)',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.setViewportSize({width:390,height:844});await prepare(page);
+ const API='http://localhost:5000/api'; const now=new Date().toISOString(); const json=(b:unknown)=>({status:200,contentType:'application/json',body:JSON.stringify(b)});
+ const row=(over:Record<string,unknown>)=>({projectId:'b1',name:'Residencial Jardim das Acácias — torre B com nome comprido',clientName:'Cliente com nome bem comprido para testar quebra',status:'InProgress',actualPercent:42,plannedPercent:55,expectedEnd:'2027-01-20',forecastDelivery:'2027-02-15',daysLate:26,forecastMethodology:'productivity/1',costRealized:1234567,contractTotal:9876543,cpiLike:0.82,openNonConformities:{Low:1,Medium:0,High:0,Critical:0},openAssistance:1,pendingChangeOrders:2,lateMaterials:1,portalPublished:true,lastDailyLogDate:'2026-10-29',pendingAiSuggestions:3,...over});
+ const dashboard={totalProjects:2,planningCount:0,inProgressCount:2,pausedCount:0,completedCount:0,cancelledCount:0,overdueCount:1,totalEstimated:2000000,totalApproved:1500000,totalRealized:1300000,balance:200000,avgStageProgress:40,recentExpenses:[],asOf:'2026-10-30',
+  projects:[row({}),row({projectId:'b2',name:'Casa Beta',daysLate:-2,cpiLike:1.05,openNonConformities:{Low:0,Medium:0,High:0,Critical:2},portalPublished:false,lastDailyLogDate:null})],
+  totals:{activeProjects:2,lateProjects:1,costRealized:1300000,contractTotal:12000000,openNonConformities:3,openCriticalNonConformities:2,openAssistance:1,pendingChangeOrders:4,lateMaterials:2,publishedPortals:1,pendingAiSuggestions:6},
+  topRisks:[{projectId:'b1',projectName:'Residencial Jardim das Acácias — torre B com nome comprido',kind:'forecast_late',severity:'medium',message:'Entrega prevista 26 dias depois do término contratado.',value:26},{projectId:'b2',projectName:'Casa Beta',kind:'critical_nonconformity',severity:'high',message:'2 não conformidade(s) crítica(s) aberta(s).',value:2}]};
+ const project={id:'b1',name:'Residencial Jardim das Acácias',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:'2026-09-01',expectedEndDate:'2027-01-20',actualEndDate:null,budgetEstimated:1000,budgetApproved:1000,stages:[],recentLogs:[],createdAt:now,updatedAt:now,stageCount:0,completedStageCount:0,logCount:0};
+ const forecast={id:'f1',projectId:'b1',date:'2026-10-30',generatedAt:now,source:'Scheduled',stored:true,methodology:'productivity/1',version:1,forecastDelivery:'2027-02-15',plannedDelivery:'2027-01-31',delayDays:15,expectedEnd:'2027-01-20',daysLateVsContract:26,confidence:0.62,
+  stages:[{stageId:'s1',name:'Alvenaria do pavimento térreo e superior',order:0,weight:2,status:'InProgress',actualPercent:40,method:'window',ratePerWorkingDay:1.5,plannedRatePerWorkingDay:2.25,dataPoints:6,plannedStart:'2026-09-01',plannedEnd:'2026-12-10',forecastStart:'2026-09-01',forecastEnd:'2026-12-30',delayDays:20,inheritedDelayDays:0,confidence:0.7}],
+  factors:[{key:'w',kind:'weather_risk',severity:'low',title:'Chuva prevista na concretagem',evidence:'15 mm em 04/11',stageId:'s1',days:null}],calendar:{workingDays:['seg','ter','qua','qui','sex','sáb'],holidays:'feriados nacionais',windowDays:21},createdByName:null};
+ await page.route(`${API}/v1/build/dashboard`,r=>r.fulfill(json(dashboard)));
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill(json(project)));
+ await page.route(`${API}/v1/build/settings`,r=>r.fulfill(json({tenantId:'qa',build3DEnabled:true,buildAiEnabled:false,buildVisionEnabled:false,buildPredictEnabled:true,customized:false,updatedByName:null,updatedAt:null})));
+ await page.route(`${API}/v1/build/projects/b1/forecast`,r=>r.fulfill(json(forecast)));
+ await page.route(/\/v1\/build\/projects\/b1\/forecast\/history/,r=>r.fulfill(json([])));
+ await page.goto('/build');
+ const cards=page.getByTestId('portfolio-card');
+ await expect(cards).toHaveCount(2);
+ await expect(page.getByTestId('portfolio-table')).toBeHidden();
+ await expect(page.getByTestId('portfolio-totals')).toContainText('Atrasadas (previsão)');
+ await expect(cards.filter({hasText:'Residencial Jardim'})).toContainText('26 dias de atraso');
+ await noOverflow(page);
+ await page.getByRole('button',{name:'Atrasadas',exact:true}).click();
+ await expect(cards).toHaveCount(1);
+ await expect(cards.first()).toContainText('Residencial Jardim');
+ await page.getByRole('button',{name:'Com NC crítica'}).click();
+ await expect(cards).toHaveCount(1);
+ await expect(cards.first()).toContainText('Casa Beta');
+ await noOverflow(page);
+ await page.getByTestId('portfolio-risks').getByRole('button',{name:/Residencial Jardim/}).click();
+ await expect(page).toHaveURL(/\/build\/projetos\/b1\?aba=riscos$/);
+ await expect(page.getByTestId('forecast-kpis')).toContainText('+26 dias vs. contrato');
+ await expect(page.getByTestId('forecast-factors')).toContainText('Risco — não aplicado às datas');
+ await noOverflow(page);
+ expect(errors).toEqual([]);
+});
+test('Build: visualizador 3D sem WebGL ou sem arquivo mostra aviso amigável, sem quebrar a aba',async({page})=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await prepare(page);
+ const API='http://localhost:5000/api'; const now=new Date().toISOString();
+ const project={id:'b1',name:'Casa QA 3D',clientName:'Cliente',location:null,status:'InProgress',type:'House',startDate:'2026-09-01',expectedEndDate:null,actualEndDate:null,budgetEstimated:null,budgetApproved:null,stages:[],recentLogs:[],createdAt:now,updatedAt:now,stageCount:0,completedStageCount:0,logCount:0,trackingMode:'ThreeD'};
+ const version={id:'v2',modelId:'m1',number:1,sourceFormat:'Glb',sourceFileName:'casa.glb',sizeBytes:1024,sha256:null,geometrySource:'Converted3D',viewerSource:'Uploaded',hasViewer:true,status:'Ready',statusMessage:null,elementCount:3,storeyCount:0,schema:null,layers:null,processedAt:now,createdAt:now};
+ const model={id:'m1',projectId:'b1',name:'Modelo',discipline:'Arquitetura',currentVersionId:'v2',versions:[version],createdAt:now};
+ const json=(body:unknown)=>({status:200,contentType:'application/json',body:JSON.stringify(body)});
+ await page.route(`${API}/v1/build/projects/b1/details`,r=>r.fulfill(json(project)));
+ await page.route(`${API}/v1/build/projects/b1/models`,r=>r.fulfill(json([model])));
+ await page.route(`${API}/v1/build/models/versions/v2/viewer`,r=>r.fulfill(json({versionId:'v2',viewerUrl:`${API}/qa-missing-viewer.glb`,expiresAt:now,geometrySource:'Converted3D',viewerSource:'Uploaded'})));
+ await page.route(`${API}/qa-missing-viewer.glb`,r=>r.fulfill({status:404,body:''}));
+ await page.route(/\/v1\/build\/models\/versions\/v2\/state/,r=>r.fulfill(json({date:'2026-10-30',counts:{},states:{},zoneStates:{},unbound:3,total:3})));
+ await page.goto('/build/projetos/b1');
+ await page.getByRole('button',{name:/Gêmeo digital/}).click();
+ await expect(page.getByTestId('viewer-fallback')).toBeVisible({timeout:15000});
+ await expect(page.getByTestId('twin-legend')).toContainText('Sem vínculo');
+ expect(errors).toEqual([]);
 });
 test('Conta: esqueci a senha e redefinição pelo link',async({page})=>{
  let asked: Json=null, reset: Json=null;

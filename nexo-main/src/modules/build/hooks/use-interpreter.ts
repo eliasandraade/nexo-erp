@@ -48,6 +48,7 @@ export function useConfirmMovement(projectId: string) {
       qc.invalidateQueries({ queryKey: BUILD_KEYS.projectFinancial(projectId) });
       qc.invalidateQueries({ queryKey: MOVEMENT_KEYS.projectMovements(projectId) });
       qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.progressAll(projectId) });   // cost per stage
     },
   });
 }
@@ -61,6 +62,7 @@ export function useVoidMovement(projectId: string) {
       qc.invalidateQueries({ queryKey: BUILD_KEYS.projectFinancial(projectId) });
       qc.invalidateQueries({ queryKey: MOVEMENT_KEYS.projectMovements(projectId) });
       qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.progressAll(projectId) });   // cost per stage
     },
   });
 }

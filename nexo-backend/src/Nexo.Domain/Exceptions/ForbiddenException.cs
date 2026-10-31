@@ -8,4 +8,6 @@ public class ForbiddenException : DomainException
 {
     public ForbiddenException(string message = "You do not have permission to perform this action.")
         : base(message) { }
+
+    public ForbiddenException(string message, string code) : base(message, code) { }
 }

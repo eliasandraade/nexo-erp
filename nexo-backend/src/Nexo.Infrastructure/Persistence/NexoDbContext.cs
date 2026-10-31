@@ -123,6 +123,46 @@ public class NexoDbContext : DbContext
     public DbSet<BuildBudgetItem>     BldBudgetItems   => Set<BuildBudgetItem>();
     public DbSet<BuildDailyLog>       BldDailyLogs     => Set<BuildDailyLog>();
     public DbSet<BuildDailyLogPhoto>  BldDailyLogPhotos => Set<BuildDailyLogPhoto>();
+    public DbSet<BuildStageProgressEvent> BldStageProgressEvents => Set<BuildStageProgressEvent>();
+    public DbSet<BuildScheduleRevision>   BldScheduleRevisions   => Set<BuildScheduleRevision>();
+    public DbSet<BuildProgressSnapshot>   BldProgressSnapshots   => Set<BuildProgressSnapshot>();
+    public DbSet<BuildPortalCompany>      BldPortalCompanies     => Set<BuildPortalCompany>();
+    public DbSet<BuildProjectPortal>      BldProjectPortals      => Set<BuildProjectPortal>();
+    public DbSet<BuildPortalSession>      BldPortalSessions      => Set<BuildPortalSession>();
+    public DbSet<BuildClientUpdate>       BldClientUpdates       => Set<BuildClientUpdate>();
+    public DbSet<BuildBudgetTemplate>     BldBudgetTemplates     => Set<BuildBudgetTemplate>();
+    public DbSet<BuildBudgetTemplateItem> BldBudgetTemplateItems => Set<BuildBudgetTemplateItem>();
+    public DbSet<BuildChangeOrder>        BldChangeOrders        => Set<BuildChangeOrder>();
+    public DbSet<BuildChangeOrderItem>    BldChangeOrderItems    => Set<BuildChangeOrderItem>();
+    public DbSet<BuildSelection>          BldSelections          => Set<BuildSelection>();
+    public DbSet<BuildSelectionOption>    BldSelectionOptions    => Set<BuildSelectionOption>();
+    public DbSet<BuildMaterialRequest>    BldMaterialRequests    => Set<BuildMaterialRequest>();
+    public DbSet<BuildMaterialDelivery>   BldMaterialDeliveries  => Set<BuildMaterialDelivery>();
+    public DbSet<BuildMeasurement>        BldMeasurements        => Set<BuildMeasurement>();
+    public DbSet<BuildMeasurementItem>    BldMeasurementItems    => Set<BuildMeasurementItem>();
+    public DbSet<BuildChecklistTemplate>     BldChecklistTemplates     => Set<BuildChecklistTemplate>();
+    public DbSet<BuildChecklistTemplateItem> BldChecklistTemplateItems => Set<BuildChecklistTemplateItem>();
+    public DbSet<BuildInspection>            BldInspections            => Set<BuildInspection>();
+    public DbSet<BuildInspectionItem>        BldInspectionItems        => Set<BuildInspectionItem>();
+    public DbSet<BuildNonConformity>         BldNonConformities        => Set<BuildNonConformity>();
+    public DbSet<BuildHandover>              BldHandovers              => Set<BuildHandover>();
+    public DbSet<BuildWarrantyTerm>          BldWarrantyTerms          => Set<BuildWarrantyTerm>();
+    public DbSet<BuildAssistanceRequest>     BldAssistanceRequests     => Set<BuildAssistanceRequest>();
+    // Wave 4 — digital twin
+    public DbSet<BuildTenantSettings>        BldTenantSettings         => Set<BuildTenantSettings>();
+    public DbSet<BuildModel>                 BldModels                 => Set<BuildModel>();
+    public DbSet<BuildModelVersion>          BldModelVersions          => Set<BuildModelVersion>();
+    public DbSet<BuildModelProcessingJob>    BldModelJobs              => Set<BuildModelProcessingJob>();
+    public DbSet<BuildModelZone>             BldModelZones             => Set<BuildModelZone>();
+    public DbSet<BuildModelElement>          BldModelElements          => Set<BuildModelElement>();
+    public DbSet<BuildModelStageBinding>     BldModelBindings          => Set<BuildModelStageBinding>();
+    public DbSet<BuildElementProgressEvent>  BldElementEvents          => Set<BuildElementProgressEvent>();
+    public DbSet<BuildRealityCapture>        BldRealityCaptures        => Set<BuildRealityCapture>();
+    // Wave 5 — AI
+    public DbSet<BuildAiSuggestion>          BldAiSuggestions          => Set<BuildAiSuggestion>();
+    public DbSet<BuildDocument>              BldDocuments              => Set<BuildDocument>();
+    // Wave 6 — forecasts
+    public DbSet<BuildForecast>              BldForecasts              => Set<BuildForecast>();
 
     // ── Service module (Orken Service — motor de serviços) ───────────────────
     public DbSet<SvcProfessional>     SvcProfessionals => Set<SvcProfessional>();

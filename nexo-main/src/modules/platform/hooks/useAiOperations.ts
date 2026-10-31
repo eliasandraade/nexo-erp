@@ -6,6 +6,7 @@ import {
   fetchAiTelemetry,
   fetchAiCosts,
   fetchPromptVersions,
+  fetchPromptTypes,
   runPlayground,
   updateAiProvider,
   setAiProviderKey,
@@ -99,6 +100,10 @@ export function useSetTenantAiLimits() {
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
 const promptsKey = (promptType: string) => ["platform", "ai", "prompts", promptType] as const;
+
+export function usePromptTypes() {
+  return useQuery({ queryKey: ["platform", "ai", "prompt-types"] as const, queryFn: fetchPromptTypes, staleTime: 5 * 60_000 });
+}
 
 export function usePromptVersions(promptType: string) {
   return useQuery({

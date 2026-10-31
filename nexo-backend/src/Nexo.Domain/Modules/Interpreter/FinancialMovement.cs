@@ -21,6 +21,11 @@ public class FinancialMovement : TenantEntity
     /// <summary>Optional link to a registered Supplier (counterparty). Additive — null for legacy movements.</summary>
     public Guid?                SupplierId            { get; private set; }
     public MovementStatus       Status                { get; private set; }
+    /// <summary>
+    /// Optional stage of the construction project (ContextType Obra) this cost belongs to — cost per stage
+    /// without a parallel ledger. Additive: null for legacy movements and for every other context.
+    /// </summary>
+    public Guid?                StageId               { get; private set; }
     public Guid                 CreatedBy             { get; private set; }
 
     public static FinancialMovement CreateDraft(
@@ -122,6 +127,20 @@ public class FinancialMovement : TenantEntity
         CategoryId            = categoryId;
         AccountId             = accountId;
         SupplierId            = supplierId;
+        SetUpdatedAt();
+    }
+
+    /// <summary>
+    /// Assigns (or clears, with null) the project stage of a construction cost. Allowed on draft and
+    /// confirmed movements of a project (ContextType Obra); the amount and the ledger are untouched.
+    /// </summary>
+    public void AssignStage(Guid? stageId)
+    {
+        if (ContextType != FinancialContextType.Obra || ContextId is null)
+            throw new DomainException("Só lançamentos de uma obra podem ser ligados a uma etapa.");
+        if (Status == MovementStatus.Voided)
+            throw new DomainException("Este lançamento foi estornado e não pode mais ser ligado a uma etapa.");
+        StageId = stageId == Guid.Empty ? null : stageId;
         SetUpdatedAt();
     }
 }

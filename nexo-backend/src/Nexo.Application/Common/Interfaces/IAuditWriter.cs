@@ -82,6 +82,90 @@ public static class AuditActions
     public const string AiTenantLimitsChanged  = "ai_tenant_limits_changed";
     public const string AiPromptCreated        = "ai_prompt_created";
     public const string AiPromptActivated      = "ai_prompt_activated";
+    // Orken Build — progress, cost per stage, client portal
+    public const string BuildScheduleFrozen          = "build_schedule_frozen";
+    public const string BuildMovementStageAssigned   = "build_movement_stage_assigned";
+    public const string BuildPortalCompanyUpdated    = "build_portal_company_updated";
+    public const string BuildPortalUpdated           = "build_portal_updated";
+    public const string BuildPortalPasswordSet       = "build_portal_password_set";
+    public const string BuildPortalPasswordRemoved   = "build_portal_password_removed";
+    public const string BuildPortalPublished         = "build_portal_published";
+    public const string BuildPortalUnpublished       = "build_portal_unpublished";
+    public const string BuildPortalLocked            = "build_portal_locked";
+    public const string BuildDailyLogClientVisibility = "build_daily_log_client_visibility";
+    public const string BuildPhotoClientVisibility   = "build_photo_client_visibility";
+    public const string BuildClientUpdateCreated     = "build_client_update_created";
+    public const string BuildClientUpdateEdited      = "build_client_update_edited";
+    public const string BuildClientUpdatePublished   = "build_client_update_published";
+    public const string BuildClientUpdateArchived    = "build_client_update_archived";
+    // Orken Build — Wave 2 commercial
+    public const string BuildBudgetTermsSet          = "build_budget_terms_set";
+    public const string BuildBudgetDuplicated        = "build_budget_duplicated";
+    public const string BuildBudgetVersionCreated    = "build_budget_version_created";
+    public const string BuildBudgetTemplateSaved     = "build_budget_template_saved";
+    public const string BuildBudgetTemplateDeleted   = "build_budget_template_deleted";
+    public const string BuildBudgetFromTemplate      = "build_budget_from_template";
+    public const string BuildChangeOrderSaved        = "build_change_order_saved";
+    public const string BuildChangeOrderSent         = "build_change_order_sent";
+    public const string BuildChangeOrderApproved     = "build_change_order_approved";
+    public const string BuildChangeOrderRejected     = "build_change_order_rejected";
+    public const string BuildChangeOrderCancelled    = "build_change_order_cancelled";
+    public const string BuildSelectionSaved          = "build_selection_saved";
+    public const string BuildSelectionChosen         = "build_selection_chosen";
+    public const string BuildSelectionConfirmed      = "build_selection_confirmed";
+    public const string BuildSelectionCancelled      = "build_selection_cancelled";
+    public const string BuildMaterialSaved           = "build_material_saved";
+    public const string BuildMaterialStatusChanged   = "build_material_status_changed";
+    public const string BuildMaterialDelivered       = "build_material_delivered";
+    public const string BuildMaterialMovementLinked  = "build_material_movement_linked";
+    public const string BuildMeasurementSaved        = "build_measurement_saved";
+    public const string BuildMeasurementSubmitted    = "build_measurement_submitted";
+    public const string BuildMeasurementApproved     = "build_measurement_approved";
+    public const string BuildMeasurementRejected     = "build_measurement_rejected";
+    // Orken Build — Wave 3 quality and post-construction
+    public const string BuildChecklistTemplateSaved   = "build_checklist_template_saved";
+    public const string BuildChecklistTemplateDeleted = "build_checklist_template_deleted";
+    public const string BuildInspectionSaved          = "build_inspection_saved";
+    public const string BuildInspectionCompleted      = "build_inspection_completed";
+    public const string BuildInspectionCancelled      = "build_inspection_cancelled";
+    public const string BuildNonConformitySaved       = "build_non_conformity_saved";
+    public const string BuildNonConformityStatusChanged = "build_non_conformity_status_changed";
+    public const string BuildHandoverSaved            = "build_handover_saved";
+    public const string BuildHandoverDelivered        = "build_handover_delivered";
+    public const string BuildHandoverAccepted         = "build_handover_accepted";
+    public const string BuildWarrantyTermSaved        = "build_warranty_term_saved";
+    public const string BuildWarrantyTermDeleted      = "build_warranty_term_deleted";
+    public const string BuildAssistanceOpened         = "build_assistance_opened";
+    public const string BuildAssistanceStatusChanged  = "build_assistance_status_changed";
+    public const string BuildAssistancePhotoAdded     = "build_assistance_photo_added";
+    public const string BuildAssistanceFeedback       = "build_assistance_feedback";
+    // Wave 4 — digital twin
+    public const string BuildTenantSettingsChanged    = "build_tenant_settings_changed";
+    public const string BuildModelUploaded            = "build_model_uploaded";
+    public const string BuildModelRejected            = "build_model_rejected";
+    public const string BuildModelViewerAttached      = "build_model_viewer_attached";
+    public const string BuildModelReprocessed         = "build_model_reprocessed";
+    public const string BuildModelZoneSaved           = "build_model_zone_saved";
+    public const string BuildModelZoneDeleted         = "build_model_zone_deleted";
+    public const string BuildModelBindingSaved        = "build_model_binding_saved";
+    public const string BuildModelBindingDeleted      = "build_model_binding_deleted";
+    public const string BuildElementStateRecorded     = "build_element_state_recorded";
+    public const string BuildRealityCaptureSaved      = "build_reality_capture_saved";
+    public const string BuildRealityCaptureVisibility = "build_reality_capture_visibility";
+    public const string BuildRealityCaptureDeleted    = "build_reality_capture_deleted";
+    // Build Wave 5 — AI suggestions and documents
+    public const string BuildAiSuggestionGenerated    = "build_ai_suggestion_generated";
+    public const string BuildAiSuggestionAccepted     = "build_ai_suggestion_accepted";
+    public const string BuildAiSuggestionRejected     = "build_ai_suggestion_rejected";
+    public const string BuildDocumentSaved            = "build_document_saved";
+    public const string BuildDocumentVisibility       = "build_document_visibility";
+    public const string BuildDocumentDeleted          = "build_document_deleted";
+    // Build Wave 6 — forecast, weather, platform observability, source file reads
+    public const string BuildForecastRecomputed       = "build_forecast_recomputed";
+    public const string BuildStageWeatherSensitivity  = "build_stage_weather_sensitivity";
+    public const string BuildModelSourceRead          = "build_model_source_read";
+    public const string BuildModelJobRetried          = "build_model_job_retried";
+
     public const string TenantUpdated          = "tenant_updated";
     public const string TenantStatusChanged    = "tenant_status_changed";
 }

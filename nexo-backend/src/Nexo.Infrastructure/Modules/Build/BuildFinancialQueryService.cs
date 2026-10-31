@@ -57,6 +57,12 @@ public class BuildFinancialQueryService : IBuildFinancialQueryService
             ? varianceAmount / approvedBudget.Value * 100m
             : 0m;
 
+        var changeOrders = await _context.BldChangeOrders
+            .Where(c => c.ProjectId == projectId && c.Status == Nexo.Domain.Modules.Build.BuildChangeOrderStatus.Approved)
+            .GroupBy(c => c.AppliedToBudget)
+            .Select(g => new { Applied = g.Key, Total = g.Sum(c => c.CostImpact) })
+            .ToListAsync(ct);
+
         return new BuildFinancialSnapshot(
             TotalRealizedExpenses: totalExpenses,
             MovementCount:         movementCount,
@@ -64,6 +70,8 @@ public class BuildFinancialQueryService : IBuildFinancialQueryService
             EstimatedBudget:       estimatedBudget,
             ApprovedBudget:        approvedBudget,
             VarianceAmount:        varianceAmount,
-            VariancePercent:       variancePercent);
+            VariancePercent:       variancePercent,
+            ApprovedChangeOrdersTotal:  changeOrders.Sum(c => c.Total),
+            UnappliedChangeOrdersTotal: changeOrders.Where(c => !c.Applied).Sum(c => c.Total));
     }
 }

@@ -161,6 +161,42 @@ public static class DependencyInjection
         services.AddScoped<IBuildDailyLogPhotoRepository, BuildDailyLogPhotoRepository>();
         services.AddScoped<IBuildFinancialQueryService, BuildFinancialQueryService>();
         services.AddScoped<IBuildDashboardQueryService, BuildDashboardQueryService>();
+        // Wave 1: weighted progress + snapshots, cost per stage, client portal (internal + public)
+        services.AddScoped<BuildAuditTrail>();
+        services.AddScoped<BuildPortalMedia>();
+        services.AddScoped<BuildProgressEngine>();
+        services.AddScoped<BuildProgressService>();
+        services.AddScoped<Nexo.Application.Modules.Build.IBuildProgressRecorder>(sp => sp.GetRequiredService<BuildProgressService>());
+        services.AddScoped<BuildCostService>();
+        services.AddScoped<BuildPortalAdminService>();
+        services.AddScoped<BuildPublicPortalService>();
+        services.AddSingleton<BuildPortalPasswordGuard>();   // caps concurrent BCrypt checks of portal passwords
+        // Wave 2 — commercial (templates, versions, PDF, change orders, selections, materials, measurements)
+        services.AddScoped<BuildBudgetCommercialService>();
+        services.AddHttpClient(BuildBudgetCommercialService.LogoHttpClient, c => c.Timeout = TimeSpan.FromSeconds(5));
+        services.AddScoped<BuildChangeOrderEffects>();
+        services.AddScoped<BuildChangeOrderService>();
+        services.AddScoped<BuildSelectionService>();
+        services.AddScoped<BuildMaterialService>();
+        services.AddScoped<BuildMeasurementService>();
+        services.AddScoped<BuildQualityService>();
+        services.AddScoped<BuildPostConstructionService>();
+        // Wave 4 — digital twin
+        services.AddSingleton<BuildTwinOptions>();
+        services.AddScoped<BuildTenantSettingsService>();
+        services.AddScoped<BuildTwinStateReader>();
+        services.AddScoped<BuildModelService>();
+        services.AddScoped<BuildTwinService>();
+        services.AddScoped<BuildRealityCaptureService>();
+        services.AddScoped<IBuildModelProcessor, BuildModelProcessor>();
+        // Wave 5 — AI (reuses the platform AI runtime), deterministic risk, project documents
+        services.AddScoped<BuildRiskService>();
+        services.AddScoped<BuildDocumentService>();
+        services.AddScoped<BuildAiService>();
+        // Wave 6 — forecast (productivity/1), weather per activity, platform observability
+        services.AddSingleton<BuildForecastOptions>();
+        services.AddScoped<BuildForecastService>();
+        services.AddScoped<BuildPlatformObservabilityService>();
 
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();
@@ -208,6 +244,7 @@ public static class DependencyInjection
         services.AddScoped<IAiProviderRegistry, AiProviderRegistry>();
         services.AddScoped<IAnalyzerSelector, AnalyzerSelectorService>();
         services.AddScoped<IAnalysisRunner, AnalysisRunner>();
+        services.AddScoped<IAiStructuredCompletion, AiStructuredCompletion>();
         services.AddSingleton<IAiUsageGuard, AiUsageGuard>();
         services.AddScoped<AiProviderAdminService>();
         services.AddScoped<AiGovernanceAdminService>();

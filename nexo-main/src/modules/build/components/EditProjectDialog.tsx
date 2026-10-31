@@ -11,15 +11,11 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { useUpdateProject } from "../hooks/use-build";
-import type { BuildProjectDto, BuildProjectType } from "../api/build.api";
-
-const PROJECT_TYPES: Array<{ value: BuildProjectType; label: string }> = [
-  { value: "House",      label: "Residencial" },
-  { value: "Commercial", label: "Comercial" },
-  { value: "Renovation", label: "Reforma" },
-  { value: "Building",   label: "Edifício" },
-  { value: "Other",      label: "Outro" },
-];
+import type { BuildProjectDto, BuildProjectType, BuildTrackingMode } from "../api/build.api";
+import { PROJECT_TYPES } from "../lib/project-types";
+import { TrackingModeChoice } from "./project/TrackingModeChoice";
+import { ProjectSiteFields } from "./project/ProjectSiteFields";
+import { parseSite, siteFromProject, type SiteFieldsValue } from "../lib/site";
 
 interface Props {
   project: BuildProjectDto;
@@ -39,6 +35,9 @@ export function EditProjectDialog({ project, open, onClose }: Props) {
   const [budgetApr, setBudgetApr] = useState(project.budgetApproved != null ? String(project.budgetApproved) : "");
   const [startDate, setStartDate] = useState(project.startDate ?? "");
   const [endDate,   setEndDate]   = useState(project.expectedEndDate ?? "");
+  const [tracking,  setTracking]  = useState<BuildTrackingMode>(project.trackingMode ?? "Standard");
+  const [site,      setSite]      = useState<SiteFieldsValue>(() => siteFromProject(project));
+  const parsedSite = parseSite(site);
 
   // Reset local state to the project whenever the dialog is (re)opened.
   const handleOpenChange = (v: boolean) => {
@@ -47,6 +46,8 @@ export function EditProjectDialog({ project, open, onClose }: Props) {
 
   const handleSubmit = () => {
     if (!name.trim() || !client.trim()) return;
+    if (!("value" in parsedSite)) { toast.error(parsedSite.error); return; }
+    // PUT is a full replace: the site fields always go back (null clears), the tracking mode too.
     updateMut.mutate({
       name:            name.trim(),
       clientName:      client.trim(),
@@ -56,6 +57,10 @@ export function EditProjectDialog({ project, open, onClose }: Props) {
       budgetApproved:  budgetApr ? parseFloat(budgetApr) : undefined,
       startDate:       startDate || undefined,
       expectedEndDate: endDate || undefined,
+      trackingMode:    tracking,
+      latitude:        parsedSite.value.latitude,
+      longitude:       parsedSite.value.longitude,
+      areaM2:          parsedSite.value.areaM2,
     }, {
       onSuccess: () => { toast.success("Obra atualizada!"); onClose(); },
       onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar obra."),
@@ -64,7 +69,7 @@ export function EditProjectDialog({ project, open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <HardHat className="h-5 w-5 text-primary" />
@@ -133,12 +138,15 @@ export function EditProjectDialog({ project, open, onClose }: Props) {
                 type="date" className="text-sm" />
             </div>
           </div>
+
+          <TrackingModeChoice value={tracking} onChange={setTracking} />
+          <ProjectSiteFields idPrefix={`edit-project-${project.id}`} value={site} onChange={setSite} />
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleSubmit}
-            disabled={!name.trim() || !client.trim() || updateMut.isPending}>
+            disabled={!name.trim() || !client.trim() || !("value" in parsedSite) || updateMut.isPending}>
             {updateMut.isPending ? "Salvando…" : "Salvar alterações"}
           </Button>
         </DialogFooter>

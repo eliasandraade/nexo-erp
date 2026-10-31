@@ -28,5 +28,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
     <PackageReference Include="AWSSDK.S3" Version="3.7.414.0" />
+    <!-- Wave 4 (Digital Twin): IFC reading only — managed, in-memory model; no Esent, no native geometry engine. CDDL-1.0. -->
+    <PackageReference Include="Xbim.IO.MemoryModel" Version="6.0.587" />
   </ItemGroup>
 </Project>

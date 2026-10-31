@@ -9,6 +9,7 @@ import { renderAi, polyfillRadix, promptVersion } from "../../test/aiFixtures";
 vi.mock("../../services/interpreterAdminApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../services/interpreterAdminApi")>()),
   fetchPromptVersions: vi.fn(),
+  fetchPromptTypes: vi.fn(),
   createPromptVersion: vi.fn(),
   activatePromptVersion: vi.fn(),
 }));
@@ -20,7 +21,10 @@ const active = promptVersion({ id: "pv-1", version: "1.0.0", hash: "aaaabbbbcccc
 const draft  = promptVersion({ id: "pv-2", version: "1.1.0", hash: "1111222233334444" });
 
 describe("AiPromptsPage", () => {
-  beforeEach(() => { vi.mocked(api.fetchPromptVersions).mockResolvedValue([active, draft]); });
+  beforeEach(() => {
+    vi.mocked(api.fetchPromptVersions).mockResolvedValue([active, draft]);
+    vi.mocked(api.fetchPromptTypes).mockResolvedValue([]);   // the fallback list (platform types only)
+  });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
   it("says extraction is used by the runtime and the other types are not, with the full hash", async () => {
@@ -38,6 +42,31 @@ describe("AiPromptsPage", () => {
     }
     await waitFor(() => expect(api.fetchPromptVersions).toHaveBeenCalledWith("memory"));
     expect(api.fetchPromptVersions).toHaveBeenCalledWith("interpretation");
+  });
+
+  it("lists the types from GET …/prompts/types, with the Build ones by friendly name and their runtime use", async () => {
+    vi.mocked(api.fetchPromptTypes).mockResolvedValue([
+      { type: "extraction", usedByRuntime: true, builtInHash: null },
+      { type: "interpretation", usedByRuntime: false, builtInHash: null },
+      { type: "memory", usedByRuntime: false, builtInHash: null },
+      { type: "build-daily-log-copilot", usedByRuntime: true, builtInHash: "aaaa1111bbbb2222" },
+      { type: "build-progress-interpreter", usedByRuntime: true, builtInHash: "cccc3333dddd4444" },
+      { type: "build-something-new", usedByRuntime: true, builtInHash: null },
+    ]);
+    renderAi(<AiPromptsPage />);
+
+    const copilot = await screen.findByRole("tab", { name: "Build · Copiloto do diário" });
+    expect(screen.getByRole("tab", { name: "Build · Interpretação do progresso" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "build-something-new" })).toBeInTheDocument();
+    fireEvent.click(copilot);
+    const usage = screen.getByTestId("prompt-runtime-usage");
+    expect(usage).toHaveTextContent("Usado pelo runtime.");
+    expect(usage).toHaveTextContent("Orken Build");
+    expect(usage).toHaveTextContent("aaaa1111bbbb2222");
+    await waitFor(() => expect(api.fetchPromptVersions).toHaveBeenCalledWith("build-daily-log-copilot"));
+
+    fireEvent.click(screen.getByRole("tab", { name: "Memória" }));
+    expect(screen.getByTestId("prompt-runtime-usage")).toHaveTextContent("Ainda não usado pelo runtime");
   });
 
   it("creates a new version with POST, with a character counter", async () => {

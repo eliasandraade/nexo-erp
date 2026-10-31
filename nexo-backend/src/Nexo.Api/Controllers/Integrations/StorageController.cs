@@ -40,6 +40,13 @@ public class StorageController : ControllerBase
             ["service-portal-logo"]  = new("service/portal/logo", false, Management),
             ["service-portal-cover"] = new("service/portal/cover", false, Management),
             ["build-daily-log"]      = new("build/daily-logs", true, Management),
+            ["build-portal-logo"]    = new("build/portal/logo", false, Management),
+            ["build-portal-cover"]   = new("build/portal/cover", false, Management),
+            ["build-selection-option"] = new("build/selections", true, Management),
+            ["build-quality"]        = new("build/quality", true, Management),
+            ["build-handover"]       = new("build/handover", true, Management),
+            ["build-assistance"]     = new("build/assistance", true, Management),
+            ["build-reality"]        = new("build/reality", true, Management),
             ["service-record"]       = new("service/records", true, Management, NeedsPrivateBucket: true),
         };
 
@@ -214,6 +221,10 @@ internal static class FileSignature
         ["image/webp"]      = b => b.Length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F'
                                    && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P',
         ["application/pdf"] = b => b.Length >= 5 && b[0] == '%' && b[1] == 'P' && b[2] == 'D' && b[3] == 'F' && b[4] == '-',
+        // video (Build reality capture): ISO BMFF 'ftyp' box at offset 4 (MP4 and QuickTime), EBML header (WebM)
+        ["video/mp4"]       = b => b.Length >= 8 && b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p',
+        ["video/quicktime"] = b => b.Length >= 8 && b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p',
+        ["video/webm"]      = b => b.Length >= 4 && b[0] == 0x1A && b[1] == 0x45 && b[2] == 0xDF && b[3] == 0xA3,
     };
 
     public static bool Matches(byte[] head, string contentType)

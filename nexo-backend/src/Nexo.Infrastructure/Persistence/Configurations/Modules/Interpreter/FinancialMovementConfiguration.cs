@@ -25,6 +25,7 @@ public class FinancialMovementConfiguration : IEntityTypeConfiguration<Financial
         builder.Property(x => x.ContextId).HasColumnName("context_id");
         builder.Property(x => x.AccountId).HasColumnName("account_id");
         builder.Property(x => x.SupplierId).HasColumnName("supplier_id");
+        builder.Property(x => x.StageId).HasColumnName("stage_id");
         builder.Property(x => x.Status).HasColumnName("status").HasConversion<int>().IsRequired();
         builder.Property(x => x.CreatedBy).HasColumnName("created_by").IsRequired();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
@@ -42,5 +43,6 @@ public class FinancialMovementConfiguration : IEntityTypeConfiguration<Financial
         builder.HasIndex(x => new { x.TenantId, x.Status }).HasDatabaseName("ix_int_movements_tenant_status");
         builder.HasIndex(x => x.CreatedBy).HasDatabaseName("ix_int_movements_created_by");
         builder.HasIndex(x => x.SupplierId).HasDatabaseName("ix_int_movements_supplier_id");
+        builder.HasIndex(x => x.StageId).HasDatabaseName("ix_int_movements_stage_id");
     }
 }

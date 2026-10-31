@@ -153,6 +153,14 @@ async function prepare(page: Page, options: { failClaude?: boolean } = {}): Prom
       return json(route, item);
     }
 
+    if (path === '/platform/interpreter/prompts/types' && method === 'GET') {
+      return json(route, [
+        { type: 'extraction', usedByRuntime: true, builtInHash: null },
+        { type: 'interpretation', usedByRuntime: false, builtInHash: null },
+        { type: 'memory', usedByRuntime: false, builtInHash: null },
+        { type: 'build-daily-log-copilot', usedByRuntime: true, builtInHash: 'aaaa1111bbbb2222' },
+      ]);
+    }
     if (path === '/platform/interpreter/prompts' && method === 'GET') {
       const type = new URL(req.url()).searchParams.get('type');
       return json(route, fake.prompts.filter(p => p.promptType === type));
@@ -343,4 +351,6 @@ test('Prompts: criar e ativar uma versão de extração', async ({ page }) => {
 
   await page.getByRole('tab', { name: 'Interpretação' }).click();
   await expect(page.getByTestId('prompt-runtime-usage')).toContainText('Ainda não usado pelo runtime');
+  await page.getByRole('tab', { name: 'Build · Copiloto do diário' }).click();
+  await expect(page.getByTestId('prompt-runtime-usage')).toContainText('Usado pelo runtime.');
 });

@@ -1,5 +1,6 @@
+import { resolveBuildPortal, BUILD_PORTAL_ROUTE } from '@/modules/build-portal/route';
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/modules/auth/context/AuthContext";
 import { WorkspaceProvider } from "@/modules/workspace/WorkspaceContext";
 import { AppErrorBoundary } from "@/components/shared/AppErrorBoundary";
@@ -30,6 +31,7 @@ import NotFoundPage   from "@/pages/NotFoundPage";
 // all authenticated app pages. Each group becomes its own chunk.
 
 // Public — lazy because app users never visit these
+const BuildPortalPage = lazy(() => import('@/modules/build-portal/PortalPage'));
 const LandingPage        = lazy(() => import("@/modules/landing/pages/LandingPage"));
 const PortalMenuPage     = lazy(() => import("@/modules/portal/pages/PortalMenuPage"));
 const PortalTrackingPage = lazy(() => import("@/modules/portal/pages/PortalTrackingPage"));
@@ -125,6 +127,7 @@ const PlatformSystemPage       = lazy(() => import("@/modules/platform/pages/Pla
 const PlatformActivityPage     = lazy(() => import("@/modules/platform/pages/PlatformActivityPage"));
 const PlatformTrialPage        = lazy(() => import("@/modules/platform/pages/PlatformTrialPage"));
 const PlatformSecurityPage     = lazy(() => import("@/modules/platform/pages/PlatformSecurityPage"));
+const PlatformBuildPage        = lazy(() => import("@/modules/platform/pages/PlatformBuildPage"));
 const AiDashboardPage          = lazy(() => import("@/modules/platform/pages/ai/AiDashboardPage"));
 const AiPlaygroundPage         = lazy(() => import("@/modules/platform/pages/ai/AiPlaygroundPage"));
 const AiProvidersPage          = lazy(() => import("@/modules/platform/pages/ai/AiProvidersPage"));
@@ -163,9 +166,14 @@ export function legacyMenuTarget(slug: string | undefined): string {
  *   ModuleRoute    → verifies module subscription
  *   RoleRoute      → verifies role-based access, redirects to homeRoute on failure
  */
-export function AppRouter() {
+export function AppRouter() { return <BrowserRouter><RouterSurface /></BrowserRouter>; }
+const BuildReview = import.meta.env.DEV && import.meta.env.VITE_BUILD_PORTAL_REVIEW === '1' ? lazy(() => import('@/modules/build-portal/dev/Review')) : null;
+function RouterSurface() {
+  const { pathname } = useLocation();
+  if (BuildReview && pathname === '/__review/minha-obra') return <Suspense fallback={<PageLoader />}><BuildReview /></Suspense>;
+  if (resolveBuildPortal(pathname)) return <Suspense fallback={<PageLoader />}><Routes><Route path={BUILD_PORTAL_ROUTE} element={<BuildPortalPage />} /></Routes></Suspense>;
   return (
-    <BrowserRouter>
+    <>
       <AuthProvider>
         <ImpersonationBanner />
         <WorkspaceProvider>
@@ -374,6 +382,7 @@ export function AppRouter() {
                 <Route path="/platform/activity"                 element={<PlatformActivityPage />} />
                 <Route path="/platform/system"                   element={<PlatformSystemPage />} />
                 <Route path="/platform/seguranca"                element={<PlatformSecurityPage />} />
+                <Route path="/platform/build"                    element={<PlatformBuildPage />} />
                 {/* AI Operations */}
                 <Route path="/platform/ai"                       element={<AiDashboardPage />} />
                 <Route path="/platform/ai/playground"            element={<AiPlaygroundPage />} />
@@ -390,6 +399,6 @@ export function AppRouter() {
         </AppErrorBoundary>
         </WorkspaceProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </>
   );
 }

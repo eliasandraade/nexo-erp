@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ApiError } from "@/services/api-client";
-import { useActivatePromptVersion, useCreatePromptVersion, usePromptVersions } from "../../hooks/useAiOperations";
+import { useActivatePromptVersion, useCreatePromptVersion, usePromptTypes, usePromptVersions } from "../../hooks/useAiOperations";
 import type { PromptType, PromptVersion } from "../../types/aiOperations";
 import { ApiErrorPanel, formatDateTime, governedErrorText } from "./aiShared";
 
@@ -31,11 +31,31 @@ const CONTENT_MAX = 16_000;
 const VERSION_MAX = 20;
 const VERSION_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-";
 
-const PROMPT_TYPES: { value: PromptType; label: string; usedByRuntime: boolean }[] = [
-  { value: "extraction",     label: "Extração",      usedByRuntime: true  },
-  { value: "interpretation", label: "Interpretação", usedByRuntime: false },
-  { value: "memory",         label: "Memória",       usedByRuntime: false },
+interface PromptTypeOption { value: PromptType; label: string; usedByRuntime: boolean; builtInHash: string | null }
+
+/** Friendly names; a type the endpoint lists and this map does not know shows its raw key. */
+const PROMPT_TYPE_LABEL: Record<string, string> = {
+  extraction:                    "Extração",
+  interpretation:                "Interpretação",
+  memory:                        "Memória",
+  "build-daily-log-copilot":     "Build · Copiloto do diário",
+  "build-progress-interpreter":  "Build · Interpretação do progresso",
+  "build-model-mapper":          "Build · Vínculos do modelo",
+  "build-client-update":         "Build · Atualização ao cliente",
+  "build-weekly-digest":         "Build · Resumo semanal",
+  "build-delay-risk":            "Build · Risco de prazo",
+  "build-cost-risk":             "Build · Risco de custo",
+  "build-document-intelligence": "Build · Análise de documentos",
+};
+
+/** Used only while GET …/prompts/types has not answered (or failed): the platform types as they were before. */
+const FALLBACK_TYPES: PromptTypeOption[] = [
+  { value: "extraction",     label: "Extração",      usedByRuntime: true,  builtInHash: null },
+  { value: "interpretation", label: "Interpretação", usedByRuntime: false, builtInHash: null },
+  { value: "memory",         label: "Memória",       usedByRuntime: false, builtInHash: null },
 ];
+
+const isBuildType = (t: string) => t.startsWith("build-");
 
 const CONCURRENT_ACTIVATION = "Outra versão deste prompt acabou de ser ativada. A lista foi atualizada.";
 
@@ -53,7 +73,7 @@ function NewVersionDialog({
   type,
   open,
   onClose,
-}: Readonly<{ type: (typeof PROMPT_TYPES)[number]; open: boolean; onClose: () => void }>) {
+}: Readonly<{ type: PromptTypeOption; open: boolean; onClose: () => void }>) {
   const create = useCreatePromptVersion();
   const [version, setVersion] = useState("");
   const [description, setDescription] = useState("");
@@ -95,7 +115,7 @@ function NewVersionDialog({
             </DialogTitle>
             <DialogDescription>
               A versão nasce inativa. Nada muda até alguém ativá-la.
-              {type.value === "extraction" && " O contrato de saída em JSON é fixo no código e sempre anexado: escreva só as instruções."}
+              {(type.value === "extraction" || isBuildType(type.value)) && " O contrato de saída em JSON é fixo no código e sempre anexado: escreva só as instruções."}
             </DialogDescription>
           </DialogHeader>
 
@@ -227,8 +247,12 @@ function VersionRow({
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function AiPromptsPage() {
+  const typesQuery = usePromptTypes();
+  const promptTypes: PromptTypeOption[] = typesQuery.data && typesQuery.data.length > 0
+    ? typesQuery.data.map(t => ({ value: t.type, label: PROMPT_TYPE_LABEL[t.type] ?? t.type, usedByRuntime: t.usedByRuntime, builtInHash: t.builtInHash }))
+    : FALLBACK_TYPES;
   const [selected, setSelected] = useState<PromptType>("extraction");
-  const type = PROMPT_TYPES.find(t => t.value === selected) ?? PROMPT_TYPES[0];
+  const type = promptTypes.find(t => t.value === selected) ?? promptTypes[0];
   const { data: versions, isLoading, isError, error } = usePromptVersions(selected);
   const activate = useActivatePromptVersion();
   const [creating, setCreating] = useState(false);
@@ -267,7 +291,7 @@ export default function AiPromptsPage() {
       <div className="bg-card border border-border rounded-lg p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div role="tablist" aria-label="Tipo de prompt" className="flex flex-wrap gap-2">
-            {PROMPT_TYPES.map(pt => (
+            {promptTypes.map(pt => (
               <button
                 key={pt.value}
                 type="button"
@@ -294,8 +318,16 @@ export default function AiPromptsPage() {
           <div data-testid="prompt-runtime-usage" className="flex items-start gap-2 rounded-md border border-green-500/30 bg-green-500/5 px-3 py-2">
             <Zap className="h-3.5 w-3.5 text-green-700 shrink-0 mt-0.5" />
             <p className="text-xs text-foreground">
-              <span className="font-medium">Usado pelo runtime.</span> A versão ativa é o texto de instruções enviado ao
-              analisador Claude. O contrato de saída em JSON é fixo no código e sempre anexado ao final.
+              <span className="font-medium">Usado pelo runtime.</span>{" "}
+              {isBuildType(type.value)
+                ? "A versão ativa é o texto de instruções que o Orken Build envia ao provedor de IA nesta capacidade (sem versão ativa, vale o texto embutido)."
+                : "A versão ativa é o texto de instruções enviado ao analisador Claude."}
+              {" "}O contrato de saída em JSON é fixo no código e sempre anexado ao final.
+              {type.builtInHash && (
+                <span className="block mt-0.5 text-muted-foreground">
+                  Hash do texto embutido: <span className="font-mono">{type.builtInHash}</span>
+                </span>
+              )}
             </p>
           </div>
         ) : (

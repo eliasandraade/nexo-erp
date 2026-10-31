@@ -15,6 +15,7 @@ import type {
   CreatePromptVersionInput,
   CreatedPromptVersion,
   PromptActivation,
+  PromptTypeInfo,
 } from "../types/aiOperations";
 
 const BASE = "/platform/interpreter";
@@ -255,6 +256,19 @@ function mapPromptVersion(r: RawPromptVersion): PromptVersion {
     createdAt:   r.createdAt,
     createdBy:   r.createdBy,
   };
+}
+
+/** Every prompt type the SuperAdmin can version and whether a runtime uses it (`usedByRuntime`). */
+export async function fetchPromptTypes(): Promise<PromptTypeInfo[]> {
+  const raw = await apiClient.get<unknown>(`${BASE}/prompts/types`);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object" && typeof (r as { type?: unknown }).type === "string")
+    .map(r => ({
+      type:          r.type as string,
+      usedByRuntime: r.usedByRuntime === true,
+      builtInHash:   typeof r.builtInHash === "string" ? r.builtInHash : null,
+    }));
 }
 
 export async function fetchPromptVersions(promptType: string): Promise<PromptVersion[]> {

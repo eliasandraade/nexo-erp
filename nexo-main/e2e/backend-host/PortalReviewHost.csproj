@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><StartupObject>PortalReviewHost</StartupObject></PropertyGroup>
+  <ItemGroup><ProjectReference Include="$(BuildBackendRoot)/tests/Nexo.IntegrationTests/Nexo.IntegrationTests.csproj" /></ItemGroup>
+  <Target Name="RequireBackend" BeforeTargets="PrepareForBuild" Condition="'$(BuildBackendRoot)' == ''"><Error Text="Pass -p:BuildBackendRoot=path/to/feat-build-complete/nexo-backend" /></Target>
+</Project>
