@@ -121,13 +121,12 @@ storage → 503 `storage_unavailable`; previsões desligadas → método pondera
 
 ## 13. Pendências reais
 
-- **Bloqueio antes do merge: domínio do portal.** `www.orken.com.br` não existe no DNS, mas é a origem dos links que o
-  admin gera (`PORTAL_PUBLIC_ORIGIN`). Criar o `www` apontando para o mesmo frontend (com TLS e fallback do SPA), ou
-  decidir usar `app.orken.com.br` nos links (§16).
+- Domínio do portal: resolvido em 2026-10-31. `www.orken.com.br` ativo na Railway com DNS e TLS válidos (§16).
 - **Merge e deploy** (decisão do Elias); depois, smoke em produção das rotas novas.
 - CORS: `https://www.orken.com.br` e `https://app.orken.com.br` já estão na lista fixa; outra origem do site entra em
   `Cors:AllowedOrigins`. Desde a v1.6 `ETag` e `Retry-After` são expostos ao navegador.
-- Confirmar em produção qual cabeçalho traz o IP real na Railway e ajustar `RateLimiting:ClientIpSource` se preciso.
+- Smoke pós-deploy (não bloqueia o merge): confirmar em produção qual cabeçalho traz o IP real na Railway e ajustar
+  `RateLimiting:ClientIpSource` se preciso.
 - Ligar BuildAI/BuildVision por empresa e revisar limites de custo antes de liberar IA aos clientes.
 - QA manual com arquivos IFC/GLB reais e grandes num navegador com WebGL (os testes usam um IFC pequeno de exemplo).
 - Uploads grandes passam pela API (sem PUT pré-assinado direto no R2); vídeos e nuvens de pontos grandes pesam no servidor.
@@ -208,7 +207,7 @@ itens abertos (184 BUG, 5 VULNERABILITY) que não são deste PR.
 
 | Migration | Operações | Em tabelas existentes | Risco |
 |---|---|---|---|
-| BuildWave1Portal | 7 tabelas, 9 colunas, 16 índices | `int_movements.stage_id` (nulo) + índice não concorrente; `bld_stages.weight` (default 1); `bld_projects` área/lat/long (nulos), `tracking_mode` (default 1 = Standard); `bld_daily_logs`/`_photos` `client_visible` (default false) | **MEDIUM** |
+| BuildWave1Portal | 7 tabelas, 9 colunas, 16 índices | `int_movements.stage_id` (nulo) + índice não concorrente; `bld_stages.weight` (default 1); `bld_projects` área/lat/long (nulos), `tracking_mode` (default 1 = Standard); `bld_daily_logs`/`_photos` `client_visible` (default false) | LOW |
 | BuildWave2Commercial | 10 tabelas, 17 colunas, 30 índices, 1 FK | `bld_budgets` 15 colunas (nulas, `version` default 1), índice único filtrado por `root_budget_id IS NOT NULL` (sem conflito: coluna nova toda nula), FK `SetNull` para modelos; `bld_budget_items.kind` default 5 = Other | LOW |
 | BuildWave3Quality | 8 tabelas, 27 índices | nenhuma | LOW |
 | BuildWave4DigitalTwin | 9 tabelas, 30 índices | nenhuma | LOW |
@@ -216,12 +215,17 @@ itens abertos (184 BUG, 5 VULNERABILITY) que não são deste PR.
 | BuildWave6Forecast | 1 tabela, 1 coluna, 3 índices | `bld_stages.weather_sensitive` (nula) | LOW |
 
 Observações:
-- **Por que MEDIUM na Wave 1:** `int_movements` é o livro financeiro compartilhado entre módulos. O `CREATE INDEX` não
-  concorrente bloqueia escrita nessa tabela enquanto o índice é construído. As migrations rodam no boot
-  (`MigrateAsync`, em transação, sem `CONCURRENTLY`). O tempo depende do número de linhas em produção, que não foi
-  medido. Antes do merge: `SELECT count(*) FROM nexo.int_movements;` (até centenas de milhares = segundos).
+- **Evidência de produção (2026-10-31, consulta somente leitura, sessão com `default_transaction_read_only=on`):**
+  - PostgreSQL 18.6;
+  - `nexo.int_movements`: 2 linhas, cerca de 128 kB;
+  - nenhuma transação aberta há mais de 1 min;
+  - nenhuma Wave do Build aplicada; última migration em produção: `20261030063024_AiGovernance`;
+  - as 6 Waves são exatamente as próximas migrations, na ordem.
+- **Wave 1 reavaliada de MEDIUM para LOW:** `int_movements` é o livro financeiro compartilhado entre módulos, e o
+  `CREATE INDEX` não concorrente bloqueia escrita nela enquanto o índice é construído. As migrations rodam no boot
+  (`MigrateAsync`, em transação, sem `CONCURRENTLY`). Com 2 linhas, isso leva milissegundos.
 - **Defaults:** `NOT NULL` com default constante só altera metadado no PostgreSQL 11 ou mais novo, sem reescrever a
-  tabela. O dev usa o 16; a versão de produção deve ser conferida com `SELECT version();`.
+  tabela; produção está no 18.6. Os testes usam o 16, e as migrations só usam recursos presentes nas duas versões.
 - **Efeito dos defaults nos dados existentes:**
   - etapas existentes com peso 1 (peso igual);
   - diário e fotos antigos ocultos do portal até a construtora liberar;
@@ -249,18 +253,22 @@ register relatorios reset-password restaurante service static tributos usuarios 
 
 ### Configuração e ambiente
 
-- **Domínio (bloqueio):** `www.orken.com.br` não existe no DNS (NXDOMAIN em 2026-10-30), e `orken.com.br` redireciona
-  para `http://app.orken.com.br`. O admin monta o link do cliente com `PORTAL_PUBLIC_ORIGIN = "https://www.orken.com.br"`
-  (`nexo-main/src/modules/build/api/build-portal.api.ts`). Hoje `https://app.orken.com.br/solutie/shoppingeusebio`
-  serve o SPA com fallback, mas o link gerado pelo admin não abriria.
+- **Domínio:** `www.orken.com.br` está ativo na Railway, com DNS e TLS válidos (conferido em 2026-10-31; em
+  2026-10-30 ainda não existia no DNS). É a origem dos links que o admin gera (`PORTAL_PUBLIC_ORIGIN`, em
+  `nexo-main/src/modules/build/api/build-portal.api.ts`).
+  - `https://www.orken.com.br/` e `https://www.orken.com.br/solutie/shoppingeusebio` respondem 200 com certificado
+    válido e o mesmo bundle do `app`: a rota de dois segmentos chega ao SPA. Antes do deploy deste PR ela mostra o 404
+    interno do Orken, como esperado.
+  - A API de produção responde ao preflight CORS da origem `https://www.orken.com.br` com 204 e
+    `Access-Control-Allow-Origin: https://www.orken.com.br`.
 - **CORS:** `https://app.orken.com.br` e `https://www.orken.com.br` estão fixos no código para todos os ambientes;
   `Cors:AllowedOrigins` só acrescenta. Observação antiga, não deste PR: as origens `localhost` também valem em produção.
 - **IP do cliente:**
   - A API de produção responde direto da borda da Railway (`Server: railway-hikari`, sem CDN).
   - O padrão do código é o primeiro valor de `X-Forwarded-For`, com base em resposta de fórum.
   - A documentação oficial da Railway aponta `X-Real-IP`, e o fórum tem respostas conflitantes.
-  - Não confirmado sem ambiente: **bloqueio do smoke**. Registrar os dois headers numa requisição de IP conhecido e,
-    se preciso, ajustar `RateLimiting:ClientIpSource=RealIp`.
+  - Não confirmado sem ambiente: item do **smoke pós-deploy**, não bloqueia o merge. Registrar os dois headers numa
+    requisição de IP conhecido e, se preciso, ajustar `RateLimiting:ClientIpSource=RealIp`.
   - Mesmo com o header errado, o bloqueio global por portal (`Too_many_wrong_passwords_from_anywhere_lock_the_whole_portal`)
     limita a força bruta.
 - **IA:**
@@ -309,8 +317,39 @@ register relatorios reset-password restaurante service static tributos usuarios 
 - Limite conhecido: `Build:Models:MaxElements` = 200.000 e upload de 150 MB. O maior modelo testado é o IFC de exemplo
   e o GLB sintético da suíte. Desempenho com modelos grandes não foi medido.
 
-### Manual / smoke pós-merge (não testados)
+### Manual / smoke pós-deploy (não testados)
 
-iPhone físico · Android físico · leitor de tela · IFC grande · GLB grande · Core Web Vitals · Railway real · CORS real
-no domínio do portal · IP real (`X-Forwarded-For` × `X-Real-IP`) · storage real (R2) · provider real de IA ·
-`count(*)` de `int_movements` e `SELECT version()` antes do merge.
+- Validação do IP real na Railway (`X-Forwarded-For` × `X-Real-IP`).
+- iPhone físico.
+- Android físico.
+- Leitor de tela.
+- IFC e GLB grandes.
+- Storage real (R2).
+- Provider real de IA.
+- Core Web Vitals.
+
+### Tabela final de release
+
+| Item | Status | Evidência | Blocker? |
+|---|---|---|---|
+| Backend build | ✅ | 0 erros | Não |
+| Backend unit | ✅ | 980/980 | Não |
+| Backend integração | ✅ | 711/711 (local e CI) | Não |
+| Typecheck | ✅ | limpo | Não |
+| Lint | ✅ | 0 erros (22 avisos antigos) | Não |
+| Vitest | ✅ | 917/917 | Não |
+| Build do frontend | ✅ | OK; `three` só ao abrir o modelo | Não |
+| Playwright (app) | ✅ | 76/76 | Não |
+| Portal visual | ✅ | 11/11 | Não |
+| E2E com backend real | ✅ | 19/19 | Não |
+| Sonar | ✅ | gate aprovado; 0 bug, vulnerabilidade ou hotspot; 543 code smells explicados acima | Não |
+| GitGuardian | ✅ | check verde | Não |
+| Conversas de revisão | ✅ | 0 | Não |
+| Migrations | ✅ LOW | as 6 só acrescentam; evidência de produção acima | Não |
+| Domínio do portal | ✅ | `www` com DNS e TLS ativos, SPA na rota de dois segmentos | Não |
+| CORS | ✅ | origens fixas no código; preflight de produção válido para `www` | Não |
+| Rate limit / IP | ⏳ | header real só observável em produção | Não (smoke pós-deploy) |
+| Storage | ✅ código / ⏳ R2 real | URL de 15 min com escopo por tenant | Não (smoke pós-deploy) |
+| Digital Twin | ✅ | testes e E2E; modelos grandes não medidos | Não (manual) |
+| IA | ✅ | desligada por padrão; falta de provider tratada | Não |
+| Produção | **READY FOR MERGE** | merge e deploy aguardam a autorização do Elias | — |
