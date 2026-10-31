@@ -611,4 +611,53 @@ public class BuildTwinTests
         (await Code(await anonymous.GetAsync($"{portal}/twin/state"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
         (await Code(await anonymous.GetAsync($"{portal}/reality-captures"), HttpStatusCode.NotFound)).Should().Be("portal_section_disabled");
     }
+
+    [Fact]
+    public async Task Without_private_storage_private_uploads_fail_closed_and_public_branding_still_works()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var platform = await PlatformAuthorizationTests.PlatformClientAsync(_factory);
+        var projectId = await ProjectAsync(admin, "Obra sem bucket privado");
+        var tenant = await TenantOfAsync(projectId);
+        await Json(await platform.PutAsJsonAsync($"/api/platform/tenants/{tenant}/build-settings", new { build3DEnabled = true }),
+            HttpStatusCode.OK);
+
+        // the object store with no private bucket: "private/…" is refused, never put in the public bucket
+        var storage = new InMemoryStorageProvider { RefusePrivate = true };
+        await using var host = _factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Integrations:Features:StorageEnabled", "true");
+            b.ConfigureTestServices(s =>
+            {
+                s.RemoveAll<IStorageProvider>();
+                s.AddSingleton<IStorageProvider>(storage);
+            });
+        });
+        var api = As(host, admin);
+
+        // original BIM, reality capture and site photo: 503 storage_unavailable
+        (await Code(await api.PostAsync($"/api/v1/build/projects/{projectId}/models",
+            File(Ifc(), "casa.ifc", ("name", "Arquitetura"), ("discipline", "Arquitetura"))), HttpStatusCode.ServiceUnavailable))
+            .Should().Be("storage_unavailable");
+        (await Code(await api.PostAsync($"/api/v1/build/projects/{projectId}/reality-captures",
+            File(Png, "drone.png", ("type", "Drone"), ("title", "Drone"))), HttpStatusCode.ServiceUnavailable))
+            .Should().Be("storage_unavailable");
+        static MultipartFormDataContent Image(string context)
+        {
+            var form = new MultipartFormDataContent();
+            var file = new ByteArrayContent(Png);
+            file.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+            form.Add(file, "file", "foto.png");
+            form.Add(new StringContent(context), "context");
+            return form;
+        }
+        (await Code(await api.PostAsync("/api/integrations/storage/upload", Image("build-daily-log")), HttpStatusCode.ServiceUnavailable))
+            .Should().Be("storage_unavailable");
+        storage.Objects.Should().BeEmpty("nothing private was written anywhere");
+
+        // public branding keeps its public URL
+        var logo = await Json(await api.PostAsync("/api/integrations/storage/upload", Image("build-portal-logo")), HttpStatusCode.OK);
+        logo.GetProperty("publicUrl").GetString().Should().StartWith(InMemoryStorageProvider.Host + $"tenants/{tenant}/build/portal/logo/");
+        storage.Objects.Keys.Should().ContainSingle().Which.Should().NotStartWith(StorageKeys.PrivatePrefix);
+    }
 }

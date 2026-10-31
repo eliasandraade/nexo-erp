@@ -119,7 +119,7 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
     {
         _storage = storage;
         _flags   = flags;
-        _hasPrivateBucket = !string.IsNullOrWhiteSpace(options.Value.R2.PrivateBucketName);
+        _hasPrivateBucket = Nexo.Infrastructure.Integrations.Storage.CloudflareR2Provider.HasPrivateBucket(options.Value.R2);
         _logger  = logger;
     }
 
@@ -136,10 +136,10 @@ public sealed class ObjectStorageHealthCheck : IHealthCheck
             try
             {
                 await _storage.PingAsync(cancellationToken).WaitAsync(Timeout, cancellationToken);
-                // reachable, but private files would sit in the public bucket: say so until configured
+                // reachable, but private files are refused (never put in the public bucket) until configured
                 result = _hasPrivateBucket
                     ? HealthCheckResult.Healthy("reachable")
-                    : HealthCheckResult.Degraded("reachable — private bucket not configured");
+                    : HealthCheckResult.Degraded("reachable — private bucket not configured, private files refused");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

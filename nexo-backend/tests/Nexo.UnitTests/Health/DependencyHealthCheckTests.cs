@@ -39,6 +39,15 @@ public class DependencyHealthCheckTests
         => Options.Create(new StorageOptions { R2 = new R2Options { PrivateBucketName = privateBucket } });
 
     [Fact]
+    public async Task The_public_bucket_named_as_the_private_one_is_still_no_private_bucket()
+    {
+        var sameBucket = Options.Create(new StorageOptions { R2 = new R2Options { BucketName = "orken-assets", PrivateBucketName = "Orken-Assets" } });
+        var result = await new ObjectStorageHealthCheck(new FlakyStorage(), Flags(storage: true), sameBucket, NullLogger<ObjectStorageHealthCheck>.Instance)
+            .CheckHealthAsync(new HealthCheckContext());
+        result.Status.Should().Be(HealthStatus.Degraded);
+    }
+
+    [Fact]
     public async Task Reachable_storage_without_a_private_bucket_is_degraded()
     {
         var result = await new ObjectStorageHealthCheck(new FlakyStorage(), Flags(storage: true), Bucket(""), NullLogger<ObjectStorageHealthCheck>.Instance)

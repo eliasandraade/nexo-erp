@@ -20,9 +20,15 @@ public interface IStorageProvider
 
     /// <summary>
     /// A signed GET URL for the key, valid for <paramref name="ttl"/>. Computed locally (no request
-    /// to the provider). Private keys ("private/…") are signed against the private bucket.
+    /// to the provider). Private keys ("private/…") are signed against the private bucket only.
     /// </summary>
     string GetSignedUrl(string key, TimeSpan ttl);
+
+    /// <summary>
+    /// Whether private keys ("private/…") have a private place to go. When false, every operation on a private key
+    /// throws <see cref="PrivateStorageUnavailableException"/> — private content never falls back to a public bucket.
+    /// </summary>
+    bool CanStorePrivateFiles => true;
 
     /// <summary>
     /// Opens a stored object for reading (server-side processing, e.g. a BIM model). The caller disposes the stream.
