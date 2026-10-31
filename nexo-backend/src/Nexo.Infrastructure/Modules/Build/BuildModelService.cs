@@ -251,6 +251,54 @@ public sealed class BuildModelService
         return BuildTwinMap.Version(v);
     }
 
+    // ── Removal ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Removes a model with all its versions. The private files go first — only keys under this model's own private folder of
+    /// this tenant, through the private bucket alone —, then the records: versions, jobs, zones and elements (database cascade)
+    /// and the stage bindings that name a version. A storage failure answers 503 with nothing removed, so the call can simply
+    /// be repeated (a file already gone counts as removed). 409 while a version is still processing (a worker could write a file
+    /// after the removal) and once execution progress was recorded on its elements (that history is never erased).
+    /// </summary>
+    public async Task DeleteModelAsync(Guid modelId, CancellationToken ct)
+    {
+        var model = await _db.BldModels.FirstOrDefaultAsync(m => m.TenantId == Tid && m.Id == modelId, ct)
+            ?? throw new NotFoundException("BuildModel", modelId);
+        await BuildScope.EnsureProjectAsync(_db, Tid, model.ProjectId, ct);
+        var versions = await _db.BldModelVersions.AsNoTracking().Where(v => v.TenantId == Tid && v.ModelId == modelId).ToListAsync(ct);
+        var versionIds = versions.Select(v => v.Id).ToList();
+
+        if (versions.Any(v => v.Status is BuildModelVersionStatus.Queued or BuildModelVersionStatus.Processing)
+            || await _db.BldModelJobs.AnyAsync(j => j.TenantId == Tid && versionIds.Contains(j.VersionId)
+                && (j.Status == BuildModelJobStatus.Pending || j.Status == BuildModelJobStatus.Running), ct))
+            throw new ConflictException("O modelo ainda está sendo processado. Aguarde terminar para excluí-lo.");
+        if (await _db.BldElementEvents.AnyAsync(e => e.TenantId == Tid && versionIds.Contains(e.ModelVersionId), ct))
+            throw new ConflictException("Este modelo já tem avanço de execução registrado nos elementos; esse histórico não pode ser apagado.");
+
+        var folder = $"{Folder}/{modelId}";
+        var keys = versions.SelectMany(v => new[] { v.SourceFileKey, v.ViewerFileKey })
+            .Where(k => StorageKeys.IsPrivateOf(k, Tid, folder)).Select(k => k!).Distinct().ToList();
+        if (keys.Count > 0 && !_flags.StorageEnabled)
+            throw new BuildStorageUnavailableException("O armazenamento de arquivos está indisponível. Tente novamente.");
+        foreach (var key in keys)
+        {
+            try { await _storage.DeleteAsync(key, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError(ex, "[Build] Model file removal failed — model={ModelId}", modelId);
+                throw new BuildStorageUnavailableException("Não foi possível remover os arquivos do modelo agora. Nada foi excluído; tente novamente.", ex);
+            }
+        }
+
+        var bindings = await _db.BldModelBindings
+            .Where(b => b.TenantId == Tid && b.ModelVersionId != null && versionIds.Contains(b.ModelVersionId.Value)).ToListAsync(ct);
+        _db.BldModelBindings.RemoveRange(bindings);
+        _db.BldModels.Remove(model);
+        _audit.Record(AuditActions.BuildModelDeleted, "Model", model.Id, $"Modelo excluído: {model.Name}.",
+            new { projectId = model.ProjectId, versions = versionIds.Count, files = keys.Count });
+        await _db.SaveBuildAsync(ct);
+    }
+
     private async Task<BuildModelVersion> LoadVersionAsync(Guid versionId, bool tracking, CancellationToken ct)
     {
         var q = _db.BldModelVersions.Where(v => v.TenantId == Tid && v.Id == versionId);

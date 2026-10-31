@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Domain.Entities;
+using Nexo.Domain.Modules.Build;
 using Nexo.Infrastructure.Modules.Build;
 using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
@@ -659,5 +660,162 @@ public class BuildTwinTests
         var logo = await Json(await api.PostAsync("/api/integrations/storage/upload", Image("build-portal-logo")), HttpStatusCode.OK);
         logo.GetProperty("publicUrl").GetString().Should().StartWith(InMemoryStorageProvider.Host + $"tenants/{tenant}/build/portal/logo/");
         storage.Objects.Keys.Should().ContainSingle().Which.Should().NotStartWith(StorageKeys.PrivatePrefix);
+    }
+
+    // ── Model removal ─────────────────────────────────────────────────────────
+
+    private async Task<(Guid ProjectId, Guid TenantId, WebApplicationFactory<Program> Host, HttpClient Api, HttpClient Admin)> ModelHostAsync(
+        InMemoryStorageProvider storage, string projectName)
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var platform = await PlatformAuthorizationTests.PlatformClientAsync(_factory);
+        var projectId = await ProjectAsync(admin, projectName);
+        var tenant = await TenantOfAsync(projectId);
+        await Json(await platform.PutAsJsonAsync($"/api/platform/tenants/{tenant}/build-settings", new { build3DEnabled = true }),
+            HttpStatusCode.OK);
+        var host = _factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Integrations:Features:StorageEnabled", "true");
+            b.ConfigureTestServices(s =>
+            {
+                s.RemoveAll<IStorageProvider>();
+                s.AddSingleton<IStorageProvider>(storage);
+            });
+        });
+        return (projectId, tenant, host, As(host, admin), admin);
+    }
+
+    private static async Task<(Guid Model, Guid Version)> UploadModelAsync(HttpClient api, Guid projectId, string name)
+    {
+        var upload = await Json(await api.PostAsync($"/api/v1/build/projects/{projectId}/models",
+            File(Ifc(), "casa.ifc", ("name", name), ("discipline", "Arquitetura"))), HttpStatusCode.Created);
+        return (upload.GetProperty("model").GetProperty("id").GetGuid(), upload.GetProperty("version").GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task A_model_is_removed_with_its_private_files_only_by_a_manager_of_its_own_company()
+    {
+        var storage = new InMemoryStorageProvider();
+        var (projectId, tenant, host, api, admin) = await ModelHostAsync(storage, "Obra exclusão de modelo");
+        await using var _h = host;
+
+        var (modelId, versionId) = await UploadModelAsync(api, projectId, "Modelo descartável");
+        var (keptId, keptVersionId) = await UploadModelAsync(api, projectId, "Modelo mantido");
+        await DrainAsync(host);
+        var ids = (await Json(await api.GetAsync($"/api/v1/build/models/versions/{versionId}/elements?take=50"), HttpStatusCode.OK))
+            .GetProperty("items").EnumerateArray().Select(e => e.GetProperty("externalId").GetString()!).ToList();
+        await Json(await api.PutAsync($"/api/v1/build/models/versions/{versionId}/viewer", File(Glb(ids), "casa.glb")), HttpStatusCode.OK);
+        var stageId = await StageAsync(admin, projectId, "Alvenaria");
+        await Json(await api.PostAsJsonAsync($"/api/v1/build/projects/{projectId}/twin/bindings/bulk", new
+        {
+            stageId, modelVersionId = versionId, externalIds = ids.Take(2).ToArray(),
+        }), HttpStatusCode.OK);
+
+        var source = BuildModelService.SourceKey(tenant, modelId, versionId, ".ifc");
+        var viewer = BuildModelService.ViewerKey(tenant, modelId, versionId);
+        var keptSource = BuildModelService.SourceKey(tenant, keptId, keptVersionId, ".ifc");
+        storage.Objects.Keys.Should().Contain([source, viewer, keptSource]);
+
+        // a seller is not a manager
+        var tag = Guid.NewGuid().ToString("N")[..8];
+        var password = "t" + Guid.NewGuid().ToString("N")[..12];
+        await Json(await admin.PostAsJsonAsync("/api/users", new
+        {
+            fullName = "Vendedor Obra", email = $"md{tag}@teste.dev", login = $"md{tag}", password, role = "vendedor",
+            phone = (string?)null, notes = (string?)null,
+        }), HttpStatusCode.Created);
+        var seller = As(host, await AuthClientFactory.LoginAsync(_factory, $"md{tag}", password));
+        (await seller.DeleteAsync($"/api/v1/build/models/{modelId}")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        // another company never reaches it
+        var (other, _) = await OtherTenantWithBuildAsync();
+        (await As(host, other).DeleteAsync($"/api/v1/build/models/{modelId}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // the private bucket does not answer: 503, nothing removed — the call can be repeated
+        storage.PrivateDown = true;
+        (await Code(await api.DeleteAsync($"/api/v1/build/models/{modelId}"), HttpStatusCode.ServiceUnavailable)).Should().Be("storage_unavailable");
+        storage.PrivateDown = false;
+        await Json(await api.GetAsync($"/api/v1/build/models/{modelId}"), HttpStatusCode.OK);
+        storage.Objects.Keys.Should().Contain([source, viewer, keptSource], "nothing was touched by the refused attempt");
+
+        // a file already gone from the store still counts as removed
+        storage.Objects.TryRemove(viewer, out _);
+        (await api.DeleteAsync($"/api/v1/build/models/{modelId}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        storage.Objects.Keys.Should().NotContain(source).And.NotContain(viewer).And.Contain(keptSource, "only this model's own files");
+        (await api.GetAsync($"/api/v1/build/models/{modelId}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await api.GetAsync($"/api/v1/build/models/versions/{versionId}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await api.DeleteAsync($"/api/v1/build/models/{modelId}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await Json(await api.GetAsync($"/api/v1/build/models/{keptId}"), HttpStatusCode.OK);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        (await db.BldModelVersions.IgnoreQueryFilters().AnyAsync(v => v.ModelId == modelId)).Should().BeFalse();
+        (await db.BldModelElements.IgnoreQueryFilters().AnyAsync(e => e.ModelVersionId == versionId)).Should().BeFalse();
+        (await db.BldModelZones.IgnoreQueryFilters().AnyAsync(z => z.ModelVersionId == versionId)).Should().BeFalse();
+        (await db.BldModelJobs.IgnoreQueryFilters().AnyAsync(j => j.VersionId == versionId)).Should().BeFalse();
+        (await db.BldModelBindings.IgnoreQueryFilters().AnyAsync(b => b.ModelVersionId == versionId)).Should().BeFalse();
+        (await db.BldModelElements.IgnoreQueryFilters().AnyAsync(e => e.ModelVersionId == keptVersionId)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_model_still_processing_or_with_recorded_progress_is_not_removed()
+    {
+        var storage = new InMemoryStorageProvider();
+        var (projectId, tenant, host, api, _) = await ModelHostAsync(storage, "Obra modelo com histórico");
+        await using var _h = host;
+
+        var (queuedId, queuedVersionId) = await UploadModelAsync(api, projectId, "Na fila");
+        (await api.DeleteAsync($"/api/v1/build/models/{queuedId}")).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        storage.Objects.Keys.Should().Contain(BuildModelService.SourceKey(tenant, queuedId, queuedVersionId, ".ifc"));
+
+        await DrainAsync(host);
+        await Json(await api.PostAsJsonAsync($"/api/v1/build/projects/{projectId}/twin/element-events", new
+        {
+            modelVersionId = queuedVersionId, externalIds = new[] { Gid("WallT2") }, state = "NeedsReview", note = "Fissura", effectiveDate = Day(-1),
+        }), HttpStatusCode.Created);
+        (await api.DeleteAsync($"/api/v1/build/models/{queuedId}")).StatusCode.Should().Be(HttpStatusCode.Conflict);
+        storage.Objects.Keys.Should().Contain(BuildModelService.SourceKey(tenant, queuedId, queuedVersionId, ".ifc"),
+            "the execution history and its model stay");
+    }
+
+    [Fact]
+    public async Task Abandoned_jobs_are_failed_oldest_first_in_a_stable_batch()
+    {
+        var storage = new InMemoryStorageProvider();
+        var (projectId, tenant, host, api, _) = await ModelHostAsync(storage, "Obra jobs abandonados");
+        await using var _h = host;
+        var (_, versionId) = await UploadModelAsync(api, projectId, "Modelo");
+        await DrainAsync(host);
+
+        // 22 jobs whose worker died on the last attempt, each abandoned a minute apart (the newest two outside the batch of 20)
+        var jobIds = new List<Guid>();
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            for (var i = 0; i < 22; i++)
+            {
+                var job = BuildModelProcessingJob.Enqueue(tenant, versionId, BuildModelJobKind.Convert);
+                db.BldModelJobs.Add(job);
+                jobIds.Add(job.Id);
+            }
+            await db.SaveChangesAsync();
+            for (var i = 0; i < 22; i++)
+                await db.Database.ExecuteSqlRawAsync(
+                    "UPDATE nexo.bld_model_processing_jobs SET status = 2, attempts = {0}, locked_until = now() - make_interval(mins => {1}) WHERE id = {2}",
+                    BuildModelProcessingJob.MaxAttempts, 100 - i, jobIds[i]);
+        }
+
+        using (var scope = host.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<IBuildModelProcessor>().ProcessNextAsync(CancellationToken.None);
+
+        using (var scope = host.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            var statuses = await db.BldModelJobs.IgnoreQueryFilters().Where(j => jobIds.Contains(j.Id))
+                .ToDictionaryAsync(j => j.Id, j => j.Status);
+            jobIds.Take(20).Select(id => statuses[id]).Should().AllBeEquivalentTo(BuildModelJobStatus.Failed, "the 20 longest-dead");
+            jobIds.Skip(20).Select(id => statuses[id]).Should().AllBeEquivalentTo(BuildModelJobStatus.Running, "the newest wait for the next batch");
+        }
     }
 }

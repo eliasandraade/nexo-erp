@@ -17,11 +17,15 @@ public sealed class InMemoryStorageProvider : IStorageProvider
     /// <summary>Behaves like the object store with no private bucket: every "private/…" operation fails closed.</summary>
     public bool RefusePrivate { get; init; }
 
+    /// <summary>A configured private bucket that does not answer (network/provider failure): private operations throw.</summary>
+    public bool PrivateDown { get; set; }
+
     public bool CanStorePrivateFiles => !RefusePrivate;
 
     private void Guard(string key)
     {
         if (RefusePrivate && StorageKeys.IsPrivate(key)) throw new PrivateStorageUnavailableException();
+        if (PrivateDown && StorageKeys.IsPrivate(key)) throw new HttpRequestException("private bucket unreachable");
     }
 
     public async Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken ct = default)

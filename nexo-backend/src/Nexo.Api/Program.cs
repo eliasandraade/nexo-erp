@@ -210,6 +210,8 @@ try
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        // Every policy is a fixed window: Retry-After is the time left in the caller's window (exposed by CORS).
+        options.OnRejected = (context, ct) => Nexo.Api.Middleware.RateLimitRejection.WriteAsync(context.HttpContext, context.Lease, ct);
 
         options.AddPolicy("auth-login", httpContext =>
         {
