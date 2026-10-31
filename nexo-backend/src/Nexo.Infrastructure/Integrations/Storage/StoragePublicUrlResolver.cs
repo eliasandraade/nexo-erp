@@ -7,7 +7,8 @@ namespace Nexo.Infrastructure.Integrations.Storage;
 /// <summary>
 /// Composes a public URL as {StorageOptions.R2.PublicUrl}/{storageKey} at read time —
 /// the same shape produced by <see cref="CloudflareR2Provider"/> on upload.
-/// Returns null when the public base is unset (storage disabled / not configured).
+/// Returns null when the public base is unset (storage disabled / not configured) and, always, for a private key:
+/// "private/…" files are only ever handed out as signed URLs, never through the public base.
 /// </summary>
 public sealed class StoragePublicUrlResolver : IStoragePublicUrlResolver
 {
@@ -19,9 +20,12 @@ public sealed class StoragePublicUrlResolver : IStoragePublicUrlResolver
     {
         if (string.IsNullOrWhiteSpace(storageKey)) return null;
 
+        var key = storageKey.TrimStart('/');
+        if (StorageKeys.IsPrivate(key)) return null;
+
         var baseUrl = _opts.R2.PublicUrl;
         if (string.IsNullOrWhiteSpace(baseUrl)) return null;
 
-        return $"{baseUrl.TrimEnd('/')}/{storageKey.TrimStart('/')}";
+        return $"{baseUrl.TrimEnd('/')}/{key}";
     }
 }

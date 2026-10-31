@@ -14,8 +14,19 @@ public sealed class InMemoryStorageProvider : IStorageProvider
 
     public ConcurrentDictionary<string, (byte[] Bytes, string ContentType)> Objects { get; } = new();
 
+    /// <summary>Behaves like the object store with no private bucket: every "private/…" operation fails closed.</summary>
+    public bool RefusePrivate { get; init; }
+
+    public bool CanStorePrivateFiles => !RefusePrivate;
+
+    private void Guard(string key)
+    {
+        if (RefusePrivate && StorageKeys.IsPrivate(key)) throw new PrivateStorageUnavailableException();
+    }
+
     public async Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken ct = default)
     {
+        Guard(request.ObjectKey);
         using var buffer = new MemoryStream();
         await request.Content.CopyToAsync(buffer, ct);
         Objects[request.ObjectKey] = (buffer.ToArray(), request.ContentType);
@@ -24,6 +35,7 @@ public sealed class InMemoryStorageProvider : IStorageProvider
 
     public Task DeleteAsync(string key, CancellationToken ct = default)
     {
+        Guard(key);
         Objects.TryRemove(key, out _);
         return Task.CompletedTask;
     }
@@ -31,9 +43,16 @@ public sealed class InMemoryStorageProvider : IStorageProvider
     public Task PingAsync(CancellationToken ct = default) => Task.CompletedTask;
 
     public Task<Stream> OpenReadAsync(string key, CancellationToken ct = default)
-        => Objects.TryGetValue(key, out var o)
+    {
+        Guard(key);
+        return Objects.TryGetValue(key, out var o)
             ? Task.FromResult<Stream>(new MemoryStream(o.Bytes, writable: false))
             : throw new FileNotFoundException("Object not found.", key);
+    }
 
-    public string GetSignedUrl(string key, TimeSpan ttl) => $"{Host}{key}?signature=test&ttl={(int)ttl.TotalSeconds}";
+    public string GetSignedUrl(string key, TimeSpan ttl)
+    {
+        Guard(key);
+        return $"{Host}{key}?signature=test&ttl={(int)ttl.TotalSeconds}";
+    }
 }

@@ -54,6 +54,7 @@ public sealed class BuildPortalMedia
     {
         if (string.IsNullOrWhiteSpace(key) || !_flags.StorageEnabled) return null;
         if (!IsSignable(key, tenantId, expectedFolder)) return null;
+        if (!_storage.CanStorePrivateFiles) return null;   // no private bucket: unavailable, never the public one
         try
         {
             return _storage.GetSignedUrl(key, SignedUrlTtl);
