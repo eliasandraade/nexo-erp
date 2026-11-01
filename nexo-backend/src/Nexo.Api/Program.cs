@@ -152,7 +152,7 @@ try
                 "http://localhost:3000",
                 "http://localhost:8080",
                 "http://localhost:5173",
-                "https://app.orken.com.br",
+                "https://erp.orken.com.br",
                 "https://www.orken.com.br",
             };
 
@@ -167,7 +167,7 @@ try
                   .AllowAnyHeader()
                   .AllowCredentials()
                   // Cache the CORS preflight (OPTIONS) for 24h. The SPA lives on a
-                  // different origin (app.orken.com.br) than the API, so without this
+                  // different origin (erp.orken.com.br) than the API, so without this
                   // every non-simple request was preceded by a fresh OPTIONS round-trip,
                   // doubling latency on the cold first load.
                   .SetPreflightMaxAge(TimeSpan.FromHours(24))

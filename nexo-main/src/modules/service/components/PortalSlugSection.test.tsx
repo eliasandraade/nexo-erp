@@ -18,7 +18,7 @@ function renderWithClient(ui: ReactNode) {
 
 describe("publicBookingUrl / normalizeSlug", () => {
   it("builds the /agendar/ url", () => {
-    expect(publicBookingUrl("minha-clinica")).toBe("app.orken.com.br/agendar/minha-clinica");
+    expect(publicBookingUrl("minha-clinica")).toBe("erp.orken.com.br/agendar/minha-clinica");
   });
   it("normalizes accents and spaces", () => {
     expect(normalizeSlug("Minha Clínica  Nova!")).toBe("minha-clinica-nova");
@@ -28,7 +28,7 @@ describe("publicBookingUrl / normalizeSlug", () => {
 describe("PortalSlugSection", () => {
   it("with a saved slug shows the public link and a copy button", () => {
     renderWithClient(<PortalSlugSection storeId="s1" currentSlug="minha-clinica" />);
-    expect(screen.getByText("app.orken.com.br/agendar/minha-clinica")).toBeInTheDocument();
+    expect(screen.getByText("erp.orken.com.br/agendar/minha-clinica")).toBeInTheDocument();
     expect(screen.getByTitle("Copiar link")).toBeInTheDocument();
   });
 
