@@ -111,9 +111,9 @@ public class AuthController : ControllerBase
         {
             HttpOnly = true,
             Secure   = isSecure,
-            // SameSite=None required for cross-site cookies (frontend on orken.com.br, backend on railway.app)
-            // Strict would silently drop cookies on cross-origin requests even with credentials:include
-            SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+            // The app (erp.orken.com.br, www.orken.com.br) and this API (api.erp.orken.com.br) are one site, so Lax
+            // reaches every fetch with credentials and keeps the cookies off cross-site requests (CSRF).
+            SameSite = isSecure ? SameSiteMode.Lax : SameSiteMode.Strict,
             Path     = "/",
             Domain   = null
         };
@@ -273,7 +273,7 @@ public class AuthController : ControllerBase
         {
             HttpOnly = true,
             Secure   = isSecure,
-            SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+            SameSite = isSecure ? SameSiteMode.Lax : SameSiteMode.Strict,
             Path     = "/",
             Domain   = null
         };
@@ -372,7 +372,7 @@ public class AuthController : ControllerBase
         {
             HttpOnly = true,
             Secure   = isSecure,
-            SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+            SameSite = isSecure ? SameSiteMode.Lax : SameSiteMode.Strict,
             Path     = "/",
             Domain   = null
         };
@@ -446,7 +446,7 @@ public class AuthController : ControllerBase
         {
             HttpOnly = true,
             Secure   = isSecure,
-            SameSite = isSecure ? SameSiteMode.None : SameSiteMode.Strict,
+            SameSite = isSecure ? SameSiteMode.Lax : SameSiteMode.Strict,
             Path     = "/",
             Domain   = null,
             Expires  = DateTimeOffset.UtcNow.AddSeconds(-1)
@@ -501,14 +501,14 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> RevokeAllSessions(
         [FromBody] RevokeAllSessionsRequest request, [FromServices] AccountSecurityService accounts, CancellationToken ct)
     {
-        // The JSON body is the CSRF guard: with SameSite=None cookies, a cross-site <form> could
-        // otherwise sign the user out everywhere; it can't send application/json without preflight.
+        // The JSON body is a second CSRF guard besides SameSite=Lax: a cross-site <form> can't send
+        // application/json without a preflight, so it can't sign the user out everywhere.
         _ = request;
         await accounts.SignOutEverywhereAsync(_currentUser.UserId, ct);
         // Secure is fine on localhost too (browsers treat it as a secure context)
         var expired = new CookieOptions
         {
-            HttpOnly = true, Secure = true, SameSite = SameSiteMode.None,
+            HttpOnly = true, Secure = true, SameSite = SameSiteMode.Lax,
             Path = "/", Expires = DateTimeOffset.UtcNow.AddSeconds(-1),
         };
         Response.Cookies.Append("nexo_access", "", expired);
