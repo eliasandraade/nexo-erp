@@ -52,7 +52,7 @@ public class CookieSecurityTests
     }
 
     [Fact]
-    public async Task Login_SetsCookies_WithSameSiteNone()
+    public async Task Login_SetsCookies_WithSameSiteLax()
     {
         var response = await _client.PostAsJsonAsync("/api/auth/login",
             TestCredentials.AdminLoginPayload());
@@ -63,19 +63,11 @@ public class CookieSecurityTests
         var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
         var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
 
-        // SameSite=None is REQUIRED and correct for the production topology: the SPA is
-        // served from app.orken.com.br and calls the API on *.up.railway.app — a different
-        // registrable domain, i.e. a CROSS-SITE request. Browsers only attach cookies to
-        // cross-site fetches when SameSite=None; Secure. Strict/Lax would silently drop the
-        // auth cookies and break the session. CSRF is mitigated by (1) Bearer-header auth
-        // being the primary scheme — the Authorization header is immune to CSRF and always
-        // wins over the cookie, (2) the cookies being HttpOnly + Secure, and (3) the CORS
-        // allow-list with credentials. (If the API later moves to api.orken.com.br — same
-        // site — this should be tightened to SameSite=Lax/Strict.)
-        accessCookie.Should().ContainEquivalentOf("SameSite=None",
-            "cross-site (app.orken.com.br ↔ *.railway.app) cookies require SameSite=None");
-        refreshCookie.Should().ContainEquivalentOf("SameSite=None",
-            "cross-site refresh-token rotation requires SameSite=None");
+        // The SPA (erp.orken.com.br, www.orken.com.br) and the API (api.erp.orken.com.br) share the registrable domain
+        // orken.com.br: every call is same-site, so Lax reaches them all while browsers keep the cookies off
+        // cross-site requests (CSRF), on top of the Bearer header, HttpOnly + Secure and the CORS allow-list.
+        accessCookie.Should().ContainEquivalentOf("SameSite=Lax", "same-site API calls only need Lax");
+        refreshCookie.Should().ContainEquivalentOf("SameSite=Lax", "refresh-token rotation is same-site too");
     }
 
     [Fact]
@@ -179,13 +171,13 @@ public class CookieSecurityTests
         var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
 
         // Deleted cookies must have the same flags (for browser to match and replace).
-        // Case-insensitive checks + SameSite=None — see Login_SetsCookies_WithSameSiteNone.
+        // Case-insensitive checks + SameSite=Lax — see Login_SetsCookies_WithSameSiteLax.
         accessCookie.Should().ContainEquivalentOf("HttpOnly");
-        accessCookie.Should().ContainEquivalentOf("SameSite=None");
+        accessCookie.Should().ContainEquivalentOf("SameSite=Lax");
         accessCookie.Should().ContainEquivalentOf("Path=/");
 
         refreshCookie.Should().ContainEquivalentOf("HttpOnly");
-        refreshCookie.Should().ContainEquivalentOf("SameSite=None");
+        refreshCookie.Should().ContainEquivalentOf("SameSite=Lax");
         refreshCookie.Should().ContainEquivalentOf("Path=/");
     }
 
@@ -236,13 +228,13 @@ public class CookieSecurityTests
         var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
 
         // Verify security flags are still correct after rotation.
-        // Case-insensitive checks + SameSite=None — see Login_SetsCookies_WithSameSiteNone.
+        // Case-insensitive checks + SameSite=Lax — see Login_SetsCookies_WithSameSiteLax.
         accessCookie.Should().ContainEquivalentOf("HttpOnly");
-        accessCookie.Should().ContainEquivalentOf("SameSite=None");
+        accessCookie.Should().ContainEquivalentOf("SameSite=Lax");
         accessCookie.Should().ContainEquivalentOf("Path=/");
 
         refreshCookie.Should().ContainEquivalentOf("HttpOnly");
-        refreshCookie.Should().ContainEquivalentOf("SameSite=None");
+        refreshCookie.Should().ContainEquivalentOf("SameSite=Lax");
         refreshCookie.Should().ContainEquivalentOf("Path=/");
     }
 
