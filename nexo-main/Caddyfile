@@ -14,6 +14,18 @@
 	# plugin; zstd+gzip covers all browsers and is built in.
 	encode zstd gzip
 
+	# Security headers on every response (the app on erp.orken.com.br and the Build portal on www.orken.com.br). No
+	# full CSP: the app embeds PDFs (<object>) and runs WebAssembly (IFC viewer). Framing is refused; geolocation stays
+	# allowed for the app itself (project page), camera, microphone and USB are not used.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "frame-ancestors 'none'"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), usb=(), geolocation=(self)"
+	}
+
 	# Hashed asset filenames (e.g. index-BJE3iSeJ.js) change on every build, so
 	# they can be cached forever. This is the big first-vs-repeat-load win.
 	@assets path /assets/*

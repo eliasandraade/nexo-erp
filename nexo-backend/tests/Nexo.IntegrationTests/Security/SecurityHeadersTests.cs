@@ -77,6 +77,15 @@ public class SecurityHeadersTests
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task AllResponses_IncludeStrictTransportSecurity()
+    {
+        var response = await _client.GetAsync("/health");
+
+        response.Headers.GetValues("Strict-Transport-Security").First()
+            .Should().Be("max-age=31536000; includeSubDomains", "browsers must keep using HTTPS for the API host");
+    }
+
+    [Fact]
     public async Task AllResponses_IncludeXFrameOptions()
     {
         var response = await _client.GetAsync("/health");

@@ -515,6 +515,9 @@ try
     // Security headers
     app.Use(async (context, next) =>
     {
+        // HTTPS only from the first visit on (TLS ends at the Railway edge, so the app never redirects itself)
+        context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+
         // Prevent clickjacking
         context.Response.Headers["X-Frame-Options"] = "DENY";
         
