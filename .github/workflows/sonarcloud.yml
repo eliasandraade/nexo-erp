@@ -72,8 +72,10 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         run: dotnet tool install --global dotnet-sonarscanner --version 11.3.0
 
-      # sonar.qualitygate.wait: "end" waits for SonarCloud to compute the Quality Gate and fails this
-      # job when the gate is red — so a red gate means a red `sonarcloud` check, and green means green.
+      # sonar.qualitygate.wait: on pull requests the job waits for the Quality Gate of the new code and fails
+      # when it is red, so it gates the merge. On pushes to master the analysis is uploaded without waiting:
+      # the master gate covers the whole history, and Railway deploys master only after every check passes
+      # (Wait for CI), so a red overall gate would block every deploy for findings that predate the change.
       - name: Begin analysis
         if: steps.gate.outputs.enabled == 'true'
         run: >-
@@ -86,7 +88,7 @@ jobs:
           /d:sonar.javascript.lcov.reportPaths="nexo-main/coverage/lcov.info"
           /d:sonar.coverage.exclusions="**/Persistence/Migrations/**,nexo-main/e2e/**,**/*.test.ts,**/*.test.tsx,nexo-main/src/**/test/**,nexo-backend/tools/**"
           /d:sonar.cpd.exclusions="**/Persistence/Migrations/**"
-          /d:sonar.qualitygate.wait=true
+          /d:sonar.qualitygate.wait=${{ github.event_name == 'pull_request' }}
           /d:sonar.qualitygate.timeout=300
 
       - name: Build backend
