@@ -197,6 +197,8 @@ public static class DependencyInjection
         services.AddSingleton<BuildForecastOptions>();
         services.AddScoped<BuildForecastService>();
         services.AddScoped<BuildPlatformObservabilityService>();
+        // Contrato de agregados lido pela Orken Platform (GET /api/orken/v1/operations).
+        services.AddScoped<Nexo.Infrastructure.Orken.OrkenOperationsQuery>();
 
         // ── Service module (Orken Service) repositories ──────────────────────
         services.AddScoped<ISvcProfessionalRepository, SvcProfessionalRepository>();

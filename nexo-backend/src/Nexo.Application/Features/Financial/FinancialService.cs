@@ -148,6 +148,17 @@ public class FinancialService
         return MapTransactionToDto(tx);
     }
 
+    /// <summary>
+    /// A loja informada tem de ser da própria empresa. A busca de loja por id ignora o filtro de empresa (as lojas são
+    /// resolvidas antes de existir o contexto), então a posse é conferida aqui: uma loja de outra empresa responde como
+    /// inexistente (404) e nunca fica gravada num lançamento desta.
+    /// </summary>
+    internal static async Task EnsureOwnStoreAsync(IStoreRepository stores, Guid storeId, Guid tenantId, CancellationToken ct)
+    {
+        var store = await stores.GetByIdAsync(storeId, ct);
+        if (store is null || store.TenantId != tenantId) throw new NotFoundException("Store", storeId);
+    }
+
     public async Task<FinancialTransactionDto> CreateTransactionAsync(CreateTransactionRequest request, CancellationToken ct = default)
     {
         _ = await _financial.GetAccountByIdAsync(request.FinancialAccountId, ct)
@@ -168,7 +179,7 @@ public class FinancialService
             throw new DomainException("Esta categoria não combina com o tipo do lançamento.");
 
         if (request.StoreId is { } storeId)
-            _ = await _stores.GetByIdAsync(storeId, ct) ?? throw new NotFoundException("Store", storeId);
+            await EnsureOwnStoreAsync(_stores, storeId, _currentTenant.Id, ct);
         if (request.CustomerId is { } customerId)
             _ = await _customers.GetByIdAsync(customerId, ct) ?? throw new NotFoundException("Customer", customerId);
         if (request.SupplierId is { } supplierId)
@@ -386,7 +397,7 @@ public class FinancialService
         if (request.SupplierId is { } supplierId)
             _ = await _suppliers.GetByIdAsync(supplierId, ct) ?? throw new NotFoundException("Supplier", supplierId);
         if (request.StoreId is { } storeId)
-            _ = await _stores.GetByIdAsync(storeId, ct) ?? throw new NotFoundException("Store", storeId);
+            await EnsureOwnStoreAsync(_stores, storeId, _currentTenant.Id, ct);
 
         Guid accountId;
         if (request.FinancialAccountId is { } given)

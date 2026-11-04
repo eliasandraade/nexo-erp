@@ -141,6 +141,9 @@ try
                   .RequireAssertion(ctx => !adminNeedsMfa || ctx.User.HasClaim("platform_mfa", "true")));
     });
 
+    // Tokens de serviço do Orken ID (leitura de agregados pela Orken Platform). Desligado sem OrkenId:Issuer.
+    Nexo.Api.Orken.OrkenOperationsEndpoints.AddOrkenServiceAuthentication(builder);
+
     // ── CORS ──────────────────────────────────────────────────────────────────
     builder.Services.AddCors(options =>
     {
@@ -546,6 +549,7 @@ try
     app.MapHub<RestaurantHub>("/hubs/restaurant");
     app.MapControllers();
     Nexo.Api.Health.HealthEndpoints.MapOrkenHealth(app);
+    Nexo.Api.Orken.OrkenOperationsEndpoints.MapOrkenOperations(app);
 
     Log.Information("Nexo API starting on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();

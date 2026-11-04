@@ -10,6 +10,10 @@ namespace Nexo.Api.Controllers;
 
 [ApiController]
 [Route("api/users")]
+// Durante o acesso da plataforma a uma empresa (impersonação), nenhum ato sobre as contas dos usuários: criar, editar
+// (e-mail, papel), redefinir senha, reenviar convite ou desligar a verificação em duas etapas. Cada um deles transforma o
+// acesso temporário e auditado numa credencial que sobrevive a ele — a própria troca de senha já era bloqueada, mas a
+// redefinição pelo administrador, no próprio id, a contornava. A plataforma tem as suas ferramentas para esses casos.
 [Authorize]
 public class UsersController : ControllerBase
 {
@@ -53,6 +57,7 @@ public class UsersController : ControllerBase
     /// <summary>Creates a new user. Diretoria only.</summary>
     [HttpPost]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<UserDto>> Create(
         [FromBody] CreateUserRequest request,
         CancellationToken ct)
@@ -65,6 +70,7 @@ public class UsersController : ControllerBase
     /// <summary>Updates a user's profile and role. Diretoria only.</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<UserDto>> Update(
         Guid id,
         [FromBody] UpdateUserRequest request,
@@ -104,6 +110,7 @@ public class UsersController : ControllerBase
     /// </summary>
     [HttpPost("{id:guid}/admin-reset-password")]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<IActionResult> AdminResetPassword(
         Guid id,
         [FromBody] AdminChangePasswordRequest request,
@@ -123,6 +130,7 @@ public class UsersController : ControllerBase
     /// <summary>E-mails a fresh invite link to choose the password. Diretoria only.</summary>
     [HttpPost("{id:guid}/resend-invite")]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<IActionResult> ResendInvite(Guid id, CancellationToken ct)
     {
         await _userService.ResendInviteAsync(id, ct);
@@ -132,6 +140,7 @@ public class UsersController : ControllerBase
     /// <summary>Turns off two-step verification for someone who lost the phone and the codes. Diretoria only.</summary>
     [HttpPost("{id:guid}/mfa/disable")]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<IActionResult> DisableMfa(Guid id, [FromServices] Nexo.Application.Features.Auth.MfaService mfa, CancellationToken ct)
     {
         await mfa.AdminDisableAsync(id, _currentUser.UserId, _currentUser.Name, ct);

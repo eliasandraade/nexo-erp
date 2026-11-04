@@ -71,7 +71,7 @@ public class FinancialRecurrenceService
             _ = await _customers.GetByIdAsync(customerId, ct) ?? throw new NotFoundException("Customer", customerId);
         _ = await DefaultAccountIdAsync(type, ct);   // generation needs it: fail now, not on every read
         if (request.StoreId is { } storeId)
-            _ = await _stores.GetByIdAsync(storeId, ct) ?? throw new NotFoundException("Store", storeId);
+            await FinancialService.EnsureOwnStoreAsync(_stores, storeId, _currentTenant.Id, ct);
 
         var recurrence = FinancialRecurrence.Create(
             _currentTenant.Id, type, category, request.Description, request.Amount, request.DayOfMonth,
