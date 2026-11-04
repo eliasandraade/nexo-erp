@@ -41,6 +41,30 @@ public class TotpTests
     }
 
     [Fact]
+    public void A_code_read_before_the_step_boundary_signs_in_once_and_a_recomputed_one_is_a_new_code()
+    {
+        // Mesma sequência de MfaTests.Sign_in_takes_a_code_once_the_second_step_is_on (issue #82), com relógio fixo:
+        // o código do próximo passo é lido no último milissegundo de um passo de 30 s e conferido já no passo seguinte.
+        var lastInstant = new DateTime(2026, 10, 30, 12, 0, 29, 999, DateTimeKind.Utc);
+        var step = Totp.StepAt(lastInstant);
+        Totp.StepAt(lastInstant.AddMilliseconds(1)).Should().Be(step + 1, "a fronteira do passo cai entre as duas leituras do relógio");
+
+        var enabledAt = step - 1;                                     // passo consumido ao ligar a verificação
+        var code = Totp.Code(RfcSecret, step + 1);                    // CodeAt(secret, 1), lido antes da fronteira
+        var signIn = lastInstant.AddSeconds(1);                       // o servidor confere no passo seguinte
+
+        var used = Totp.Verify(RfcSecret, code, signIn, enabledAt);
+        used.Should().Be(step + 1, "o código continua dentro da janela de um passo");
+        Totp.Verify(RfcSecret, code, signIn.AddSeconds(2), used).Should().BeNull("o mesmo código só vale uma vez");
+
+        // O teste antigo recalculava CodeAt(secret, 1) depois da fronteira. O resultado é o código de outro passo,
+        // novo e válido, e não uma reutilização: por isso o login voltava 200 em vez de 401.
+        var recomputed = Totp.Code(RfcSecret, Totp.StepAt(signIn) + 1);
+        recomputed.Should().NotBe(code);
+        Totp.Verify(RfcSecret, recomputed, signIn.AddSeconds(2), used).Should().Be(step + 2);
+    }
+
+    [Fact]
     public void Secrets_are_encrypted_and_tamper_evident()
     {
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Jwt:Secret"] = new string('k', 64) }).Build();
