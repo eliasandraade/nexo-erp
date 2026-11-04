@@ -33,7 +33,6 @@ import NotFoundPage   from "@/pages/NotFoundPage";
 
 // Public — lazy because app users never visit these
 const BuildPortalPage = lazy(() => import('@/modules/build-portal/PortalPage'));
-const LandingPage        = lazy(() => import("@/modules/landing/pages/LandingPage"));
 const PortalMenuPage     = lazy(() => import("@/modules/portal/pages/PortalMenuPage"));
 const PortalTrackingPage = lazy(() => import("@/modules/portal/pages/PortalTrackingPage"));
 const ServiceBookingPage = lazy(() => import("@/modules/service-portal/pages/BookingPage"));
@@ -150,6 +149,15 @@ function PageLoader() {
  * Redirects legacy /menu/:slug links to /:slug. The slug is reduced to a single path segment (no slash or
  * backslash), so a crafted link such as /menu/%5Cexample.com can never become a redirect to another origin.
  */
+/**
+ * The root of the ERP: the sign-in page with the query string, as the server answers on erp.orken.com.br
+ * (Caddyfile). AuthLayout sends a signed-in user on to their own destination.
+ */
+function ErpEntry() {
+  const { search } = useLocation();
+  return <Navigate to={`/login${search}`} replace />;
+}
+
 function MenuSlugRedirect() {
   const { slug } = useParams<{ slug: string }>();
   return <Navigate to={legacyMenuTarget(slug)} replace />;
@@ -188,8 +196,8 @@ function RouterSurface() {
         <AppErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            {/* Public: landing page */}
-            <Route path="/" element={<LandingPage />} />
+            {/* The root is the entry of the ERP (the Orken institutional page is app.orken.com.br) */}
+            <Route path="/" element={<ErpEntry />} />
 
             {/* Public: Orken Service booking portal — distinct prefix (restaurant owns root /:slug;
                 React Router ranks the static "agendar" segment above the dynamic :slug). */}

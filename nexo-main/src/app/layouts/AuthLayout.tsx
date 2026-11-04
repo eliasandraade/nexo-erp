@@ -1,9 +1,12 @@
 import { Link, Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { Brand } from "@/components/shared/Brand";
+import { resolvePostLogin } from "@/modules/workspace/resolvePostLogin";
+import { readLastWorkspace } from "@/modules/workspace/persistence";
 export function AuthLayout() {
   const { session } = useAuth();
-  if (session) return <Navigate to="/dashboard" replace />;
+  // Already signed in (the root of the ERP sends everyone here): the same destination as right after signing in.
+  if (session) return <Navigate to={resolvePostLogin(session, readLastWorkspace(session))} replace />;
   return <div className="flex min-h-dvh flex-col bg-background">
     <header className="flex items-center justify-between border-b border-border px-6 py-6 sm:px-10"><Link to="/" aria-label="ORKEN, início"><Brand /></Link><span className="text-xs text-muted-foreground">Acesso à sua empresa</span></header>
     <main className="mx-auto grid w-full max-w-5xl flex-1 items-center gap-12 px-6 py-12 md:grid-cols-2 md:gap-20">

@@ -4,27 +4,39 @@ O serviço `main` do projeto `nexoerp` (Railway, produção) atende dois hosts c
 
 | Host | O que serve |
 |---|---|
-| `erp.orken.com.br` | O Orken ERP inteiro, inclusive a raiz. Links de e-mail saem com este host (`App__FrontendUrl`) |
+| `erp.orken.com.br` | O Orken ERP. A raiz é a entrada do produto: o login, ou o destino de quem já entrou. Links de e-mail saem com este host (`App__FrontendUrl`) |
 | `www.orken.com.br` | Links públicos de clientes (abaixo). A raiz leva ao Portal Orken |
 
-A topologia de toda a Orken (conta, portal, produtos) está em `orken-platform/docs/estado.md`, seção "Domínios".
+A topologia de toda a Orken (conta, portal, produtos) está em `orken-platform/docs/estado.md`, seção "Domínios". A
+única página institucional é o Portal Orken em `app.orken.com.br`. A landing antiga do ERP foi removida do app e não
+existe mais em nenhum endereço.
 
 ## Raiz de `www`
 
-O Portal Orken em `app.orken.com.br` é a entrada institucional. Antes, `www.orken.com.br/` mostrava a landing antiga
-do ERP, uma segunda página institucional com conteúdo diferente. Agora a raiz de `www` responde 307 para
-`https://app.orken.com.br/`, mantendo a query string (`?utm_source=…`).
+A raiz de `www` responde 307 para `https://app.orken.com.br/`, mantendo a query string (`?utm_source=…`).
 
 - **Servidor:** o `Caddyfile` faz o redirecionamento só em visitas (`GET` e `HEAD`) ao host `www.orken.com.br` no
   caminho `/`, antes do fallback da SPA. O Caddy normaliza o caminho antes, então `//` e `/./` também contam como raiz.
   O destino é sempre `https://app.orken.com.br/`. Um `POST` na raiz continua com o 405 de antes. Os seis cabeçalhos de
   segurança saem também no 307.
-- **Cliente:** links internos para `/` não passam pelo servidor (o logo das telas de login, a página de rastreio de
-  pedido). Para eles, o roteador faz a mesma coisa (`src/app/router/institutionalEntry.ts`).
-- **307 por enquanto:** o navegador não guarda o redirecionamento, então a raiz pode voltar a `www` se o portal
-  institucional passar a ser servido lá.
+- **Cliente:** links internos para `/` não passam pelo servidor (o logo das telas de login). Para eles, o roteador faz a
+  mesma coisa (`src/app/router/institutionalEntry.ts`).
 
-## Caminhos de `www` que continuam aqui
+## Raiz de `erp`
+
+A raiz de `erp` responde 307 para `/login`, mantendo a query string. Isso também vale só para `GET` e `HEAD`, com os
+mesmos cabeçalhos.
+
+- **Sessão:** a sessão do ERP fica no cookie da API (`api.erp.orken.com.br`), e o servidor do frontend não a vê. Por
+  isso o servidor manda todos ao login. O `AuthLayout` leva quem já tem sessão ao mesmo destino de logo depois de
+  entrar (`resolvePostLogin`: `/platform`, a última área de trabalho guardada, a área única, `/workspaces` ou a casa do
+  papel). Nenhum desses destinos é `/`, então não há laço.
+- **Cliente:** no roteador, `/` em qualquer host que não seja `www` é `/login` com a query (`ErpEntry`). O logo das telas
+  de login leva ao login.
+- **Rastreio de pedido:** "← Voltar ao cardápio" aparece quando o carrinho abriu a página e leva ao cardápio da loja.
+  Aberta por um link compartilhado, a página não tem link de volta.
+
+## Caminhos que continuam como estavam
 
 | Caminho | O que é |
 |---|---|
@@ -32,18 +44,24 @@ do ERP, uma segunda página institucional com conteúdo diferente. Agora a raiz 
 | `/{slug}` e `/menu/{slug}` | Cardápio público do restaurante |
 | `/agendar/{slug}` e `/agendar/{slug}/reserva/{token}` | Agendamento e gerenciamento da reserva |
 | `/rastrear/{token}` | Acompanhamento do pedido |
-| `/login`, `/redefinir-senha`, `/verify-email` e as demais rotas do app | O mesmo app do ERP, como antes |
+| `/login`, `/redefinir-senha`, `/verify-email` e as demais rotas do app | O app do ERP, nos dois hosts |
 
-`erp.orken.com.br/` não muda, assim como a raiz de qualquer outro host. Isso inclui o healthcheck do Railway, que chama
-`/` com outro host.
+A raiz de qualquer outro host continua sendo servida pela SPA. Isso inclui o healthcheck do Railway, que chama `/` com
+outro host e precisa de 200.
 
 ## Testes
 
-- `scripts/check-public-hosts.sh <origem>`: matriz de rotas por host contra o Caddy de produção. O CI
-  (`frontend-ci`, passo "Public hosts") roda a matriz sobre o build do PR, com `caddy:2-alpine`, como o Dockerfile.
-- `src/app/router/institutionalEntry.test.ts`: a mesma regra no roteador.
+- **`scripts/check-public-hosts.sh <origem>`:** matriz de rotas por host contra o Caddy de produção, incluindo:
+  - a cadeia de redirecionamentos (um salto, sem laço);
+  - os cabeçalhos nos dois 307.
+
+  O CI (`frontend-ci`, passo "Public hosts") roda a matriz sobre o build do PR, com `caddy:2-alpine`, como o Dockerfile.
+- **`e2e/experience.spec.ts`:**
+  - `/` sem sessão abre o login com a query;
+  - `/` e `/login` com sessão levam ao destino do ERP (estoquista, diretoria com e sem área guardada, plataforma).
+- **`src/app/router/institutionalEntry.test.ts`:** a regra de `www` no roteador.
+- **`src/modules/portal/pages/PortalTrackingPage.test.tsx`:** o link de volta ao cardápio.
 
 ## Reverter
 
-Reverta o commit do `Caddyfile` e do roteador: o próximo deploy volta a servir a landing em `www.orken.com.br/`. Como
-o código é 307, nenhum navegador fica preso ao redirecionamento.
+Reverta os commits do `Caddyfile` e do roteador. Como o código é 307, nenhum navegador fica preso ao redirecionamento.

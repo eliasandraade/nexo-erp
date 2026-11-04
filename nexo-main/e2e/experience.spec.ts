@@ -76,8 +76,21 @@ test('Login, senha por teclado e movimento reduzido',async({page})=>{
   await page.getByRole('button',{name:'Mostrar senha'}).focus();await page.keyboard.press('Enter');await expect(page.getByLabel('Senha',{exact:true})).toHaveAttribute('type','text');
   await expect(page.getByText('Sistema operando')).toHaveCount(0);await expect(page.getByText('Venda finalizada',{exact:false})).toHaveCount(0);
 });
-test('Landing: seleção de operação com teclado e mobile',async({page})=>{
-  await page.setViewportSize({width:390,height:844});await page.goto('/');await page.getByRole('tab',{name:'Varejo',exact:true}).focus();await page.keyboard.press('ArrowRight');await expect(page.getByRole('tabpanel')).toContainText('Do horário ao recebimento.');await noOverflow(page);
+// The root is the entry of the ERP (docs/engineering/public-hosts.md): the sign-in page without a session, the
+// ERP's own post-login destination with one, from "/" and from "/login" alike.
+test('Raiz sem sessão abre o login e mantém a query',async({page})=>{
+  await page.goto('/');await expect(page).toHaveURL(/\/login$/);await expect(page.getByRole('button',{name:'Entrar',exact:true})).toBeVisible();
+  await page.goto('/?origem=portal&x=1');await expect(page).toHaveURL(/\/login\?origem=portal&x=1$/);
+});
+for(const [label,options,lastWorkspace,home] of [
+  ['estoquista',{role:'estoquista'},null,'/estoque'],
+  ['diretoria sem área guardada',{},null,'/workspaces'],
+  ['diretoria com a última área guardada',{},'build','/build'],
+  ['plataforma',{platform:true},null,'/platform'],
+] as const) test('Raiz e login com sessão levam ao destino do ERP: '+label,async({page})=>{
+  await prepare(page,options);
+  if(lastWorkspace) await page.addInitScript(id=>localStorage.setItem('orken:last-module:qa:qa',id),lastWorkspace);
+  for(const entry of ['/','/login']){await page.goto(entry);await expect(page).toHaveURL(new RegExp(home.replace(/\//g,'\\/')+'$'));}
 });
 test('Service preserva contexto no celular',async({page})=>{
   await page.setViewportSize({width:390,height:844});await prepare(page);await page.goto('/service');await expect(page.getByRole('heading',{name:'Serviços',exact:true})).toBeVisible();await noOverflow(page);

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Route matrix of the production server (Caddyfile) by Host header, against a running Caddy over a built dist
-# (docs/engineering/public-hosts.md). The root of www goes to the Orken portal (307, query string kept); every client
-# path on www, the whole erp host and any other host (Railway's healthcheck) are served by the SPA as before.
+# (docs/engineering/public-hosts.md). The root of www goes to the Orken portal and the root of erp to the ERP's
+# sign-in page (307, query string kept); every other path on both hosts, and the root of any other host (Railway's
+# healthcheck), are served by the SPA as before.
 #   scripts/check-public-hosts.sh http://localhost:8099
 set -u
 BASE="${1:-http://localhost:8080}"
@@ -42,20 +43,35 @@ check "www e-mail confirmation link" "$WWW" "/verify-email?token=abc" 200
 check "www /index.html is not the root" "$WWW" "/index.html" 200
 check "www robots.txt" "$WWW" "/robots.txt" 200
 
-# erp and any other host keep the SPA at the root.
-check "erp /" "$ERP" "/" 200
-check "erp / with a query string" "$ERP" "/?x=1" 200
+# The root of erp is the ERP's entry; its other paths and any other host's root stay on the SPA.
+check "erp / -> sign-in page" "$ERP" "/" 307 "$BASE/login"
+check "erp / keeps the query string" "$ERP" "/?origem=portal&x=1" 307 "$BASE/login?origem=portal&x=1"
+check "erp HEAD / -> sign-in page" "$ERP" "/" 307 "$BASE/login" -I
+check "erp POST / is not redirected (405 as before)" "$ERP" "/" 405 "" -X POST
 check "erp /login" "$ERP" "/login" 200
+check "erp /login with its notice" "$ERP" "/login?motivo=sessao-encerrada" 200
+check "erp /dashboard" "$ERP" "/dashboard" 200
+check "erp /workspaces" "$ERP" "/workspaces" 200
+check "erp menu /{slug}" "$ERP" "/cantina-da-ana" 200
+check "erp booking /agendar/{slug}" "$ERP" "/agendar/barbearia" 200
+check "erp order tracking /rastrear/{token}" "$ERP" "/rastrear/abc123" 200
+check "erp Build portal /{company}/{project}" "$ERP" "/solutie/shoppingeusebio" 200
 check "Railway healthcheck host /" "healthcheck.railway.app" "/" 200
 
+# No redirect loop: each root ends in one hop, on a page this server serves or on the portal.
+end=$(curl -s -o /dev/null -L --max-redirs 5 -w '%{http_code} %{num_redirects} %{url_effective}' -H "Host: $ERP" "$BASE/?x=1")
+if [[ "$end" == "200 1 $BASE/login?x=1" ]]; then echo "ok   erp / ends on /login?x=1 in one hop"; else echo "FAIL erp / chain: $end"; fail=1; fi
+
 # Security headers also on the redirect, assets still cached for good.
-headers=$(curl -s -o /dev/null -D - -H "Host: $WWW" "$BASE/" | tr -d '\r')
-for h in "Strict-Transport-Security: max-age=31536000; includeSubDomains" "X-Content-Type-Options: nosniff" "X-Frame-Options: DENY" \
-  "Content-Security-Policy: frame-ancestors 'none'" "Referrer-Policy: strict-origin-when-cross-origin" \
-  "Permissions-Policy: camera=(), microphone=(), usb=(), geolocation=(self)"; do
-  if [[ "${headers,,}" == *"${h,,}"* ]]; then echo "ok   www / redirect sends $h"; else echo "FAIL www / redirect without $h"; fail=1; fi
+for host in "$WWW" "$ERP"; do
+  headers=$(curl -s -o /dev/null -D - -H "Host: $host" "$BASE/" | tr -d '\r')
+  for h in "Strict-Transport-Security: max-age=31536000; includeSubDomains" "X-Content-Type-Options: nosniff" "X-Frame-Options: DENY" \
+    "Content-Security-Policy: frame-ancestors 'none'" "Referrer-Policy: strict-origin-when-cross-origin" \
+    "Permissions-Policy: camera=(), microphone=(), usb=(), geolocation=(self)"; do
+    if [[ "${headers,,}" == *"${h,,}"* ]]; then echo "ok   $host / redirect sends $h"; else echo "FAIL $host / redirect without $h"; fail=1; fi
+  done
 done
-asset=$(curl -s -H "Host: $ERP" "$BASE/" | grep -oE '/assets/[^"]+\.js' | head -n 1)
+asset=$(curl -s -H "Host: $ERP" "$BASE/login" | grep -oE '/assets/[^"]+\.js' | head -n 1)
 cache=$(curl -s -o /dev/null -D - -H "Host: $WWW" "$BASE$asset" | tr -d '\r')
 if [[ -n "$asset" && "${cache,,}" == *"cache-control: public, max-age=31536000, immutable"* ]]; then
   echo "ok   www $asset cached as immutable"
