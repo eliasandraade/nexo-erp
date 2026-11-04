@@ -378,7 +378,18 @@ public class AuthService
         if (spent is null || spent.UserId != userId || spent.TenantId != tenantId)
             return SwitchStoreOutcome.Fail(RefreshErrors.Invalid);
         var entry = await _cache.GetAsync<RefreshTokenEntry>($"refresh:valid:{spent.Jti}", ct);
-        if (entry is null || entry.UserId != userId
+        if (entry is null)
+        {
+            // Mesma leitura da renovação. Sem ela, quem perdia a corrida para outra troca de loja (ou renovação) da mesma
+            // sessão e chegava depois de a vencedora concluir recebia 401 em vez de 409, e o SPA, ao repetir a troca com
+            // o token já gasto, encerrava a sessão de todas as abas. Dentro da carência → 409; fora dela, ou um token
+            // mais antigo → a família é encerrada, como na renovação.
+            var refused = await RefuseSpentTokenAsync(spent, ct);
+            return SwitchStoreOutcome.Fail(refused.ErrorCode == RefreshErrors.AlreadyRotated
+                ? RefreshErrors.AlreadyRotated
+                : RefreshErrors.Invalid);
+        }
+        if (entry.UserId != userId
             || (entry.SecurityStamp is not null && entry.SecurityStamp != user.SecurityStamp)
             || await IsFamilyRevokedAsync(spent.Family, ct))
             return SwitchStoreOutcome.Fail(RefreshErrors.Invalid);

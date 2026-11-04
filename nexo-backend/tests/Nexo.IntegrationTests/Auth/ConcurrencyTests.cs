@@ -261,9 +261,20 @@ public class ConcurrencyTests
 
         var results = await Task.WhenAll(switchTasks);
 
-        results.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
+        // o código de cada resposta vai na mensagem: uma falha aqui precisa dizer qual ramo recusou
+        // (só status e código, nunca o corpo: o da vencedora traz tokens)
+        var outcomes = await Task.WhenAll(results.Select(async r => r.IsSuccessStatusCode
+            ? $"{(int)r.StatusCode}"
+            : $"{(int)r.StatusCode} {(await r.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString()}"));
+        results.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1, string.Join(" | ", outcomes));
         results.Where(r => r.StatusCode != HttpStatusCode.OK).Should().AllSatisfy(response =>
-            response.StatusCode.Should().Be(HttpStatusCode.Conflict));
+            response.StatusCode.Should().Be(HttpStatusCode.Conflict,
+                "quem perde a corrida, chegando antes ou depois da vencedora concluir, recebe 409 — nunca 401: "
+                + string.Join(" | ", outcomes)));
+
+        // e a corrida não encerra a família: a sessão segue com o par da vencedora
+        var winner = await results.Single(r => r.StatusCode == HttpStatusCode.OK).Content.ReadFromJsonAsync<SwitchStoreResponse>();
+        (await RefreshAsync(winner!.RefreshToken)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
