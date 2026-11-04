@@ -24,25 +24,30 @@ public class PlatformTaxCatalogController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<TaxLegalSourceDto>>> LegalSources(CancellationToken ct) => Ok(await _catalog.GetLegalSourcesAsync(ct));
 
     [HttpPost("legal-sources")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxLegalSourceDto>> CreateLegalSource([FromBody] CreateLegalSourceRequest request, CancellationToken ct)
         => Ok(await _catalog.CreateLegalSourceAsync(request, ct));
 
     /// <summary>Records that the excerpt was compared with the official text.</summary>
     [HttpPost("legal-sources/{code}/verify")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxLegalSourceDto>> VerifyLegalSource(string code, [FromBody] VerifyLegalSourceRequest request, CancellationToken ct)
         => Ok(await _catalog.VerifyLegalSourceAsync(code, request, ct));
 
     [HttpPost("rules")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxRuleDto>> CreateRule([FromBody] CreateTaxRuleRequest request, CancellationToken ct)
         => Ok(await _catalog.CreateRuleAsync(request, ct));
 
     /// <summary>Creates a new version as a draft (content fixed and fingerprinted).</summary>
     [HttpPost("rules/{key}/versions")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxRuleVersionDto>> CreateVersion(string key, [FromBody] CreateTaxRuleVersionRequest request, CancellationToken ct)
         => Ok(await _catalog.CreateVersionAsync(key, request, ct));
 
     /// <summary>Moves a version's status. Activation requires verified legal sources and supersedes fully covered older versions.</summary>
     [HttpPost("rule-versions/{id:guid}/status")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxRuleVersionDto>> ChangeStatus(Guid id, [FromBody] ChangeTaxRuleVersionStatusRequest request, CancellationToken ct)
         => Ok(await _catalog.ChangeStatusAsync(id, request, ct));
 
@@ -51,6 +56,7 @@ public class PlatformTaxCatalogController : ControllerBase
     /// Separate from the technical status: it never activates or deactivates anything. Audited.
     /// </summary>
     [HttpPost("rule-versions/{id:guid}/professional-review")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxRuleVersionDto>> RecordProfessionalReview(Guid id, [FromBody] RecordProfessionalReviewRequest request, CancellationToken ct)
         => Ok(await _catalog.RecordProfessionalReviewAsync(id, request, ct));
 
@@ -60,6 +66,7 @@ public class PlatformTaxCatalogController : ControllerBase
     /// unverified source cannot be approved. Audited.
     /// </summary>
     [HttpPost("rule-versions/{id:guid}/pilot-approval")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxRuleVersionDto>> ApproveForPilot(Guid id, [FromBody] ApproveRuleForPilotRequest request, CancellationToken ct)
         => Ok(await _catalog.ApproveForPilotAsync(id, request, ct));
 
@@ -70,21 +77,25 @@ public class PlatformTaxCatalogController : ControllerBase
 
     /// <summary>Opens or changes the pilot window. Who and when come from the authenticated request. Audited.</summary>
     [HttpPut("pilot")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxPilotScopeDto>> ConfigurePilotScope([FromBody] ConfigurePilotScopeRequest request, CancellationToken ct)
         => Ok(await _catalog.ConfigurePilotScopeAsync(request, ct));
 
     /// <summary>Adds a tenant (or one of its stores) to the pilot. No tenant takes part by default. Audited.</summary>
     [HttpPost("pilot/participants")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxPilotScopeDto>> AddPilotParticipant([FromBody] AddPilotParticipantRequest request, CancellationToken ct)
         => Ok(await _catalog.AddPilotParticipantAsync(request, ct));
 
     /// <summary>Removes a participant: its new work is refused from then on; what it recorded stays readable. Audited.</summary>
     [HttpPost("pilot/participants/{id:guid}/remove")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxPilotScopeDto>> RemovePilotParticipant(Guid id, [FromBody] RemovePilotParticipantRequest request, CancellationToken ct)
         => Ok(await _catalog.RemovePilotParticipantAsync(id, request, ct));
 
     /// <summary>Withdraws the internal pilot approval of a version (e.g. a suspension criterion was met). Audited.</summary>
     [HttpPost("rule-versions/{id:guid}/pilot-approval/withdraw")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<ActionResult<TaxRuleVersionDto>> WithdrawPilotApproval(Guid id, [FromBody] WithdrawPilotApprovalRequest request, CancellationToken ct)
         => Ok(await _catalog.WithdrawPilotApprovalAsync(id, request, ct));
 }
