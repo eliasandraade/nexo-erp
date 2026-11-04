@@ -66,8 +66,8 @@ jobs:
         run: |
           docker run -d --name caddy -p 8099:8080 -e PORT=8080 \
             -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" -v "$PWD/dist:/srv:ro" caddy:2-alpine
-          trap 'docker rm -f caddy >/dev/null' EXIT
-          for i in $(seq 1 30); do curl -fsS -o /dev/null http://localhost:8099/ && break; sleep 1; done
+          trap 'docker logs caddy 2>&1 | tail -n 20; docker rm -f caddy >/dev/null' EXIT
+          for i in $(seq 1 30); do curl -fs -o /dev/null http://localhost:8099/ && break; sleep 1; done
           bash scripts/check-public-hosts.sh http://localhost:8099
 
       - name: Playwright browsers

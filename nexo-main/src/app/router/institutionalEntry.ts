@@ -7,8 +7,11 @@ export const INSTITUTIONAL_ENTRY = "https://app.orken.com.br/";
 
 const INSTITUTIONAL_HOSTS: ReadonlySet<string> = new Set(["www.orken.com.br"]);
 
-/** Where the root of this host goes, with its query string; null when the app serves the path. */
-export function institutionalEntry(hostname: string, pathname: string, search: string): string | null {
+/**
+ * Where the root of this host goes, with its query string and fragment (as after the 307); null when the app serves
+ * the path.
+ */
+export function institutionalEntry(hostname: string, pathname: string, search: string, hash = ""): string | null {
   if (pathname !== "/" || !INSTITUTIONAL_HOSTS.has(hostname.toLowerCase())) return null;
-  return `${INSTITUTIONAL_ENTRY}${search}`;
+  return `${INSTITUTIONAL_ENTRY}${search}${hash}`;
 }

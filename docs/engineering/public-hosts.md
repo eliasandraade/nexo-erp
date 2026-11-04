@@ -15,8 +15,10 @@ O Portal Orken em `app.orken.com.br` é a entrada institucional. Antes, `www.ork
 do ERP, uma segunda página institucional com conteúdo diferente. Agora a raiz de `www` responde 307 para
 `https://app.orken.com.br/`, mantendo a query string (`?utm_source=…`).
 
-- **Servidor:** o `Caddyfile` faz o redirecionamento só para o host `www.orken.com.br` e o caminho exato `/`, antes do
-  fallback da SPA.
+- **Servidor:** o `Caddyfile` faz o redirecionamento só em visitas (`GET` e `HEAD`) ao host `www.orken.com.br` no
+  caminho `/`, antes do fallback da SPA. O Caddy normaliza o caminho antes, então `//` e `/./` também contam como raiz.
+  O destino é sempre `https://app.orken.com.br/`. Um `POST` na raiz continua com o 405 de antes. Os seis cabeçalhos de
+  segurança saem também no 307.
 - **Cliente:** links internos para `/` não passam pelo servidor (o logo das telas de login, a página de rastreio de
   pedido). Para eles, o roteador faz a mesma coisa (`src/app/router/institutionalEntry.ts`).
 - **307 por enquanto:** o navegador não guarda o redirecionamento, então a raiz pode voltar a `www` se o portal

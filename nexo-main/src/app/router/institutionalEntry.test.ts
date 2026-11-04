@@ -8,6 +8,7 @@ describe("institutionalEntry", () => {
       "https://app.orken.com.br/?utm_source=jornal&b=1",
     );
     expect(institutionalEntry("WWW.Orken.com.br", "/", "")).toBe(INSTITUTIONAL_ENTRY);
+    expect(institutionalEntry("www.orken.com.br", "/", "?a=1", "#produtos")).toBe("https://app.orken.com.br/?a=1#produtos");
   });
 
   it("keeps every client path on www", () => {
