@@ -36,6 +36,17 @@
 	@html path / /index.html
 	header @html Cache-Control "no-cache"
 
+	# The Orken institutional entry is the portal on app.orken.com.br (docs/engineering/public-hosts.md). Only a visit
+	# (GET or HEAD) to the root of www goes there, with its query string; every other path on www (Build portals, menus,
+	# booking, tracking, account links) is still served below, and erp.orken.com.br keeps its own root. 307: browsers
+	# do not cache it, so the root can come back to www later.
+	@institutional {
+		host www.orken.com.br
+		method GET HEAD
+		path /
+	}
+	redir @institutional https://app.orken.com.br{uri} 307
+
 	# SPA fallback: client-side routes (/dashboard, /vendas, …) resolve to the
 	# app shell; real files (assets, favicon) are served directly.
 	try_files {path} /index.html
