@@ -1128,14 +1128,8 @@ public class PlatformController : ControllerBase
         {
             if (!definitions.TryGetValue(sub.ModuleKey, out var def)) continue;
 
-            decimal monthlyEquivalent = sub.PlanType switch
-            {
-                PlanType.Monthly    => def.PriceMonthly    ?? 0m,
-                PlanType.Quarterly  => (def.PriceQuarterly ?? 0m) / 3m,
-                PlanType.Semiannual => (def.PriceSemiannual ?? 0m) / 6m,
-                PlanType.Annual     => (def.PriceAnnual    ?? 0m) / 12m,
-                _                   => 0m,   // Lifetime, AdminGrant, Trial
-            };
+            // Lifetime, AdminGrant e Trial valem zero (mesma conta do contrato de operações da Orken).
+            var monthlyEquivalent = def.MonthlyReferencePrice(sub.PlanType);
 
             totalMrr += monthlyEquivalent;
             byModule[sub.ModuleKey] = byModule.GetValueOrDefault(sub.ModuleKey) + monthlyEquivalent;
