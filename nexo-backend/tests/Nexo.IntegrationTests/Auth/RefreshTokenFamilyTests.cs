@@ -157,6 +157,54 @@ public class RefreshTokenFamilyTests
             "uma família encerrada não volta, nem por um token que nasceu depois do encerramento");
     }
 
+    // A troca de loja que perde a corrida e chega DEPOIS de a vencedora concluir (o caso que o CI pegou na execução
+    // com cobertura, mais lenta) precisa receber o mesmo 409 da renovação, não 401: com 401 o SPA repetia a troca com
+    // o token já gasto e encerrava a sessão de todas as abas.
+
+    [Fact]
+    public async Task A_switch_store_arriving_after_another_switch_spent_the_token_gets_409_and_the_session_survives()
+    {
+        var (client, login) = await AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
+        var body = new { storeId = login.Session.StoreId, refreshToken = login.RefreshToken };
+
+        var winner = await client.PostAsJsonAsync("/api/auth/switch-store", body);
+        winner.StatusCode.Should().Be(HttpStatusCode.OK, await winner.Content.ReadAsStringAsync());
+        var next = (await winner.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("refreshToken").GetString()!;
+
+        var late = await client.PostAsJsonAsync("/api/auth/switch-store", body);
+        late.StatusCode.Should().Be(HttpStatusCode.Conflict, await late.Content.ReadAsStringAsync());
+        (await late.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString().Should().Be("refresh_already_rotated");
+
+        (await RefreshAsync(next)).StatusCode.Should().Be(HttpStatusCode.OK, "perder a corrida não encerra a sessão");
+    }
+
+    [Fact]
+    public async Task A_switch_store_arriving_after_a_refresh_spent_the_token_gets_409_and_the_session_survives()
+    {
+        var (client, login) = await AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
+        var rotated = await RefreshOkAsync(login.RefreshToken);   // outra aba renovou
+
+        var late = await client.PostAsJsonAsync("/api/auth/switch-store",
+            new { storeId = login.Session.StoreId, refreshToken = login.RefreshToken });
+        late.StatusCode.Should().Be(HttpStatusCode.Conflict, await late.Content.ReadAsStringAsync());
+
+        (await RefreshAsync(rotated.RefreshToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_switch_store_with_a_token_spent_before_the_grace_window_ends_the_family_like_a_refresh()
+    {
+        var (client, login) = await AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
+        var rotated = await RefreshOkAsync(login.RefreshToken);
+        await AgeLastRotationAsync(rotated.RefreshToken, AuthService.RotationGrace + TimeSpan.FromSeconds(1));
+
+        (await client.PostAsJsonAsync("/api/auth/switch-store",
+                new { storeId = login.Session.StoreId, refreshToken = login.RefreshToken }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await RefreshAsync(rotated.RefreshToken)).StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "um token já usado, fora da carência, encerra a família também pela troca de loja");
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     private async Task<LoginResponse> LoginAsync()
