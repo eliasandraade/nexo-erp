@@ -12,6 +12,9 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
+    <!-- Alinhado ao Microsoft.IdentityModel.Tokens 7.5.2 do Infrastructure: o JwtBearer 8.0.11 puxaria o 7.1.2, e a mistura
+         faz a validação não achar as chaves vindas do JWKS ("The signature key was not found"). -->
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="7.5.2" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
