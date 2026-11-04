@@ -3,7 +3,8 @@ import { screen, cleanup, fireEvent, waitFor, within } from "@testing-library/re
 import { ApiError } from "@/services/api-client";
 import AiPlaygroundPage from "./AiPlaygroundPage";
 import * as api from "../../services/interpreterAdminApi";
-import { renderAi, polyfillRadix, overview, playgroundResult } from "../../test/aiFixtures";
+import * as platformApi from "../../services/platformApi";
+import { renderAi, polyfillRadix, overview, platformTenant, playgroundResult } from "../../test/aiFixtures";
 
 vi.mock("../../services/interpreterAdminApi", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../services/interpreterAdminApi")>()),
@@ -11,18 +12,75 @@ vi.mock("../../services/interpreterAdminApi", async (importOriginal) => ({
   runPlayground: vi.fn(),
 }));
 
+vi.mock("../../services/platformApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../services/platformApi")>()),
+  fetchPlatformTenants: vi.fn(),
+}));
+
 polyfillRadix();
 
 const TEXT = "Pix enviado em 07/05/2026 R$ 850,00";
 
-async function typeAndRun() {
+/** "0000 Primeira" sorts first on purpose: the page must never fall back to it. */
+const TENANTS = [platformTenant("t-first", "0000 Primeira Empresa"), platformTenant("t-acme", "Acme Ltda")];
+
+async function pickCompany(name = "Acme Ltda") {
+  const company = await screen.findByRole("combobox", { name: "Empresa" });
+  await waitFor(() => expect(company).toBeEnabled());
+  fireEvent.click(company);
+  fireEvent.click(await screen.findByRole("option", { name }));
+  await waitFor(() => expect(company).toHaveTextContent(name));
+}
+
+function typeText() {
   fireEvent.change(screen.getByLabelText("Texto do movimento"), { target: { value: TEXT } });
+}
+
+async function typeAndRun() {
+  await pickCompany();
+  typeText();
   fireEvent.click(screen.getByRole("button", { name: /Analisar/ }));
 }
 
 describe("AiPlaygroundPage", () => {
-  beforeEach(() => { vi.mocked(api.fetchAiProviders).mockResolvedValue(overview()); });
+  beforeEach(() => {
+    vi.mocked(api.fetchAiProviders).mockResolvedValue(overview());
+    vi.mocked(platformApi.fetchPlatformTenants).mockResolvedValue(TENANTS);
+  });
   afterEach(() => { cleanup(); vi.clearAllMocks(); });
+
+  it("keeps Analisar disabled until a company is chosen, and never picks one by itself", async () => {
+    renderAi(<AiPlaygroundPage />);
+    await screen.findByRole("radio", { name: "Claude" });
+    await waitFor(() => expect(platformApi.fetchPlatformTenants).toHaveBeenCalled());
+
+    typeText();
+    const run = screen.getByRole("button", { name: /Analisar/ });
+    expect(run).toBeDisabled();
+    fireEvent.click(run);
+    expect(api.runPlayground).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox", { name: "Empresa" })).toHaveTextContent("Escolha a empresa");
+    expect(screen.queryByText(/padrão/i)).not.toBeInTheDocument();
+
+    await pickCompany("Acme Ltda");
+    expect(run).toBeEnabled();
+    fireEvent.click(run);
+    await waitFor(() => expect(api.runPlayground).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(api.runPlayground).mock.calls[0][0]).toEqual({ text: TEXT, forceProvider: null, tenantId: "t-acme" });
+  });
+
+  it("cannot run at all when there is no company to choose", async () => {
+    vi.mocked(platformApi.fetchPlatformTenants).mockResolvedValue([]);
+    renderAi(<AiPlaygroundPage />);
+    await screen.findByRole("radio", { name: "Claude" });
+
+    const company = screen.getByRole("combobox", { name: "Empresa" });
+    await waitFor(() => expect(company).toHaveTextContent("Nenhuma empresa cadastrada"));
+    expect(company).toBeDisabled();
+    typeText();
+    expect(screen.getByRole("button", { name: /Analisar/ })).toBeDisabled();
+    expect(api.runPlayground).not.toHaveBeenCalled();
+  });
 
   it("never offers an unavailable provider as a normal option, and says why", async () => {
     renderAi(<AiPlaygroundPage />);
@@ -35,14 +93,14 @@ describe("AiPlaygroundPage", () => {
     expect(screen.getByText("Usa: Claude → RuleBased")).toBeInTheDocument();
   });
 
-  it("sends forceProvider null in automatic mode", async () => {
+  it("sends forceProvider null in automatic mode, with the chosen company", async () => {
     vi.mocked(api.runPlayground).mockResolvedValue(playgroundResult({ forced: false }));
     renderAi(<AiPlaygroundPage />);
     await screen.findByRole("radio", { name: "Claude" });
 
     await typeAndRun();
     await waitFor(() => expect(api.runPlayground).toHaveBeenCalled());
-    expect(vi.mocked(api.runPlayground).mock.calls[0][0]).toEqual({ text: TEXT, forceProvider: null, tenantId: null });
+    expect(vi.mocked(api.runPlayground).mock.calls[0][0]).toEqual({ text: TEXT, forceProvider: null, tenantId: "t-acme" });
     expect(await screen.findByText("Automático", { selector: "span.rounded-full" })).toBeInTheDocument();
   });
 

@@ -64,8 +64,22 @@ public sealed class AiProviderRuntimeTests : IClassFixture<TestWebApplicationFac
     private static Task<HttpResponseMessage> Patch(HttpClient c, Guid id, object body)
         => c.PatchAsJsonAsync($"/api/platform/interpreter/providers/{id}", body);
 
-    private static Task<HttpResponseMessage> Playground(HttpClient c, string? force, Guid? tenantId = null)
-        => c.PostAsJsonAsync("/api/platform/interpreter/playground", new { text = "Abasteci R$ 87,90 no Posto Avenida em 02/10/2026 no cartão", forceProvider = force, tenantId });
+    private const string PlaygroundText = "Abasteci R$ 87,90 no Posto Avenida em 02/10/2026 no cartão";
+    private Guid? _seededTenant;
+
+    /// <summary>The seeded company, read from its admin's session.</summary>
+    private async Task<Guid> SeededTenantAsync()
+    {
+        if (_seededTenant is { } known) return known;
+        var tenant = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        _seededTenant = Guid.Parse((await Json(await tenant.GetAsync("/api/auth/me"))).GetProperty("tenantId").GetString()!);
+        return _seededTenant.Value;
+    }
+
+    /// <summary>A playground run always names its company: the seeded one unless the test chooses another.</summary>
+    private async Task<HttpResponseMessage> Playground(HttpClient c, string? force, Guid? tenantId = null)
+        => await c.PostAsJsonAsync("/api/platform/interpreter/playground",
+            new { text = PlaygroundText, forceProvider = force, tenantId = tenantId ?? await SeededTenantAsync() });
 
     /// <summary>Claude enabled, with key and model, RuleBased as the default.</summary>
     private async Task<(HttpClient Admin, Dictionary<string, Guid> Ids)> ClaudeReadyAsync(string model = "claude-haiku-5-5")
@@ -238,6 +252,112 @@ public sealed class AiProviderRuntimeTests : IClassFixture<TestWebApplicationFac
             stored.Should().StartWith("s1.").And.NotContain(Key);
             secrets.Unprotect(stored, AiProviderRegistry.KeyPurpose(ids["Claude"])).Should().Be(Key, "the same key, now really encrypted");
         }
+    }
+
+    /// <summary>
+    /// A company whose name sorts before every other one, so it is the one an automatic choice would take. The newest one
+    /// always sorts first, so each test gets its own.
+    /// </summary>
+    private async Task<Guid> CompanyThatSortsFirstAsync()
+    {
+        var order = (long.MaxValue - DateTime.UtcNow.Ticks).ToString("D19");
+        var digits = string.Concat(Guid.NewGuid().ToByteArray().Take(14).Select(b => (b % 10).ToString()));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        var tenant = Tenant.Create($"0000 {order} Empresa que ordena primeiro", digits, $"primeira-{order}@nexo.test");
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+        (await db.Tenants.IgnoreQueryFilters().OrderBy(t => t.CompanyName).Select(t => t.Id).FirstAsync())
+            .Should().Be(tenant.Id, "precondition: this is the company an automatic choice would take");
+        return tenant.Id;
+    }
+
+    /// <summary>Telemetry rows and cost reservations, of one company or of all.</summary>
+    private async Task<(int Telemetry, int Reservations)> TraceAsync(Guid? tenantId = null)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return (await db.InterpreterTelemetry.IgnoreQueryFilters().CountAsync(t => tenantId == null || t.TenantId == tenantId),
+            await db.AiUsageReservations.IgnoreQueryFilters().CountAsync(r => tenantId == null || r.TenantId == tenantId));
+    }
+
+    [Fact]
+    public async Task Without_a_chosen_company_the_playground_is_refused_before_any_provider_call_and_never_picks_one()
+    {
+        var (admin, _) = await ClaudeReadyAsync();
+        var first = await CompanyThatSortsFirstAsync();
+        var before = await TraceAsync();
+        _factory.Anthropic.Reset();
+
+        foreach (var force in new[] { "Claude", "auto", null })
+            foreach (var body in new object[]
+            {
+                new { text = PlaygroundText, forceProvider = force },
+                new { text = PlaygroundText, forceProvider = force, tenantId = (Guid?)null },
+                new { text = PlaygroundText, forceProvider = force, tenantId = Guid.Empty },
+            })
+            {
+                var refused = await Json(await admin.PostAsJsonAsync("/api/platform/interpreter/playground", body), HttpStatusCode.BadRequest);
+                refused.GetProperty("code").GetString().Should().Be("ai_playground_tenant_required", $"{force ?? "null"}: {JsonSerializer.Serialize(body)}");
+            }
+
+        _factory.Anthropic.Requests.Should().BeEmpty("no provider is called without a company");
+        (await TraceAsync()).Should().Be(before, "no telemetry and no cost reservation without a company");
+        (await TraceAsync(first)).Should().Be((0, 0), "the company that sorts first is never used by default");
+    }
+
+    [Fact]
+    public async Task An_unknown_company_is_404_and_leaves_no_trace()
+    {
+        var (admin, _) = await ClaudeReadyAsync();
+        var before = await TraceAsync();
+        _factory.Anthropic.Reset();
+
+        (await Playground(admin, "Claude", Guid.NewGuid())).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        _factory.Anthropic.Requests.Should().BeEmpty();
+        (await TraceAsync()).Should().Be(before);
+    }
+
+    [Fact]
+    public async Task A_run_is_charged_to_exactly_the_chosen_company_and_never_to_the_one_that_sorts_first()
+    {
+        var (admin, _) = await ClaudeReadyAsync();
+        var first = await CompanyThatSortsFirstAsync();
+        var chosen = await SeededTenantAsync();
+        chosen.Should().NotBe(first);
+        var all = await TraceAsync();
+        var mine = await TraceAsync(chosen);
+        _factory.Anthropic.Reset();
+
+        var run = await Json(await Playground(admin, "Claude", chosen));
+
+        run.GetProperty("tenantId").GetGuid().Should().Be(chosen);
+        _factory.Anthropic.Requests.Should().HaveCount(1);
+        var allAfter = await TraceAsync();
+        var mineAfter = await TraceAsync(chosen);
+        (mineAfter.Telemetry - mine.Telemetry).Should().Be(1, "one telemetry row, for the chosen company");
+        (allAfter.Telemetry - all.Telemetry).Should().Be(1, "and for no other company");
+        (allAfter.Reservations - all.Reservations).Should().Be(mineAfter.Reservations - mine.Reservations, "every cost reservation is the chosen company's");
+        (await TraceAsync(first)).Should().Be((0, 0), "the company that sorts first is never touched");
+    }
+
+    [Fact]
+    public async Task The_service_itself_refuses_a_run_without_a_company()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<AiProviderAdminService>();
+        _factory.Anthropic.Reset();
+        var before = await TraceAsync();
+
+        foreach (var tenantId in new Guid?[] { null, Guid.Empty })
+        {
+            var act = () => service.PlaygroundAsync(new AiPlaygroundRequest(PlaygroundText, null, tenantId), new PlatformActor(null, "suite", "", ""), CancellationToken.None);
+            (await act.Should().ThrowAsync<Nexo.Domain.Exceptions.DomainException>()).Which.Code.Should().Be("ai_playground_tenant_required");
+        }
+
+        _factory.Anthropic.Requests.Should().BeEmpty();
+        (await TraceAsync()).Should().Be(before);
     }
 
     private async Task<HttpClient> SupportClientAsync()

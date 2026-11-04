@@ -188,8 +188,12 @@ async function prepare(page: Page, options: { failClaude?: boolean } = {}): Prom
     }
 
     if (path === '/platform/interpreter/playground' && method === 'POST') {
-      const body = req.postDataJSON() as { forceProvider: string | null };
+      const body = req.postDataJSON() as { forceProvider: string | null; tenantId?: string | null };
       fake.playgroundBodies.push(body);
+      // like the API: no company, no run (it is never picked automatically)
+      if (!body.tenantId)
+        return json(route, { error: 'Escolha a empresa que servirá de contexto para o teste.', code: 'ai_playground_tenant_required',
+          requestId: 'req-e2e-400' }, 400);
       if (fake.failClaude && body.forceProvider === 'Claude')
         return json(route, { error: 'O Claude limitou as requisições. Tente de novo em instantes.', code: 'ai_provider_failed',
           details: ['rate_limited'], requestId: 'req-e2e-503' }, 503);
@@ -201,6 +205,13 @@ async function prepare(page: Page, options: { failClaude?: boolean } = {}): Prom
 }
 
 const card = (page: Page, name: string) => page.getByRole('region', { name: `Provedor ${name}` });
+
+/** The playground always runs for a chosen company. */
+async function chooseCompany(page: Page, name: string) {
+  await page.getByRole('combobox', { name: 'Empresa' }).click();
+  await page.getByRole('option', { name }).click();
+  await expect(page.getByRole('combobox', { name: 'Empresa' })).toContainText(name);
+}
 
 test('Provedores: Claude disponível com modelo e OpenAI indisponível nesta versão', async ({ page }) => {
   await prepare(page);
@@ -261,13 +272,15 @@ test('Playground: Claude forçado mostra o resultado com modelo, tokens e custo'
   await page.getByRole('radio', { name: 'Claude' }).click();
   await expect(page.getByRole('radio', { name: 'OpenAI' })).toBeDisabled();
   await page.getByLabel('Texto do movimento').fill('Pix enviado em 07/05/2026 R$ 850,00');
+  await expect(page.getByRole('button', { name: /Analisar/ }), 'no company chosen yet').toBeDisabled();
+  await chooseCompany(page, 'Acme Ltda');
   await page.getByRole('button', { name: /Analisar/ }).click();
   const result = page.getByTestId('playground-result');
   await expect(result).toContainText('Executado por Claude');
   await expect(result).toContainText('claude-modelo-e2e');
   await expect(result).toContainText('Tokens: 380 entrada / 90 saída');
   await expect(result).toContainText('Custo: US$ 0,00249');
-  expect(fake.playgroundBodies).toEqual([{ text: 'Pix enviado em 07/05/2026 R$ 850,00', forceProvider: 'Claude', tenantId: null }]);
+  expect(fake.playgroundBodies).toEqual([{ text: 'Pix enviado em 07/05/2026 R$ 850,00', forceProvider: 'Claude', tenantId: 't-acme' }]);
 });
 
 test('Playground: falha do Claude forçado vira mensagem controlada', async ({ page }) => {
@@ -275,6 +288,7 @@ test('Playground: falha do Claude forçado vira mensagem controlada', async ({ p
   await page.goto('/platform/ai/playground');
   await page.getByRole('radio', { name: 'Claude' }).click();
   await page.getByLabel('Texto do movimento').fill('Recebimento de cliente R$2500');
+  await chooseCompany(page, 'Empresa Nova');
   await page.getByRole('button', { name: /Analisar/ }).click();
   const alert = page.getByRole('alert');
   await expect(alert).toContainText('O provedor falhou');

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type {
   AiCostsOverview, AiProviderConfig, AiProvidersOverview, PlaygroundResult, PromptVersion, TenantCostSummary,
 } from "../types/aiOperations";
+import type { PlatformTenant } from "../types";
 
 export function renderAi(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -42,6 +43,13 @@ export const openAi: AiProviderConfig = {
 
 export function overview(over: Partial<AiProvidersOverview> = {}): AiProvidersOverview {
   return { providers: [claude, ruleBased, openAi], secretStorageAvailable: true, automaticOrder: ["Claude", "RuleBased"], ...over };
+}
+
+export function platformTenant(id: string, companyName: string, over: Partial<PlatformTenant> = {}): PlatformTenant {
+  return {
+    id, companyName, slug: id, status: "Active", email: `${id}@empresa.test`, taxId: "00000000000000",
+    createdAt: "2026-01-01T00:00:00Z", modules: [], stores: [], userCount: 1, ...over,
+  };
 }
 
 export function playgroundResult(over: Partial<PlaygroundResult> = {}): PlaygroundResult {

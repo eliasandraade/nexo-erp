@@ -441,12 +441,20 @@ public class InterpreterAdminController : ControllerBase
     /// <summary>
     /// Runs the same analysis the companies use. "auto" (or empty) follows the automatic order with fallback; a named
     /// provider runs alone: unavailable means 422 ai_provider_unavailable, failing means 503 ai_provider_failed, never a 500
-    /// and never another provider in its place. Writes telemetry; never returns the provider's raw answer.
+    /// and never another provider in its place. Writes telemetry; never returns the provider's raw answer. The company is
+    /// required (400 ai_playground_tenant_required): none is ever picked automatically.
     /// </summary>
     [HttpPost("playground")]
     [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> Playground([FromBody] PlaygroundRequest body, CancellationToken ct)
     {
+        if (body.TenantId is not { } tenantId || tenantId == Guid.Empty)
+            return BadRequest(new
+            {
+                error = AiProviderAdminService.PlaygroundTenantRequiredMessage, code = AiProviderAdminService.PlaygroundTenantRequiredCode,
+                requestId = HttpContext.TraceIdentifier,
+            });
+
         AnalyzerProvider? force = null;
         if (!string.IsNullOrWhiteSpace(body.ForceProvider) && !string.Equals(body.ForceProvider, "auto", StringComparison.OrdinalIgnoreCase))
         {

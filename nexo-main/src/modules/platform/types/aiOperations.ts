@@ -222,7 +222,8 @@ export interface PlaygroundInput {
   text:          string;
   /** null = automatic mode. */
   forceProvider: AnalyzerProvider | null;
-  tenantId:      string | null;
+  /** Required: the company the run is charged to and whose context it reads. Never chosen automatically. */
+  tenantId:      string;
 }
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
