@@ -19,7 +19,6 @@
     "e2e:critical": "playwright test"
   },
   "dependencies": {
-    "@hookform/resolvers": "^3.10.0",
     "@microsoft/signalr": "^8.0.17",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
@@ -75,7 +74,6 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@playwright/test": "^1.57.0",
-    "@tailwindcss/typography": "^0.5.16",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",
     "@types/node": "^22.16.5",
