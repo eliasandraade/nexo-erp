@@ -221,7 +221,10 @@ export async function setTenantAiLimits(tenantId: string, limits: TenantAiLimits
 
 // ── Playground ────────────────────────────────────────────────────────────────
 
-/** super_admin only. forceProvider null = automatic mode. Errors (422/503/400/404) surface as ApiError. */
+/**
+ * super_admin only. forceProvider null = automatic mode. tenantId is required (400 ai_playground_tenant_required without it).
+ * Errors (422/503/400/404) surface as ApiError.
+ */
 export function runPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
   return apiClient.post<PlaygroundResult>(`${BASE}/playground`, {
     text:          input.text,

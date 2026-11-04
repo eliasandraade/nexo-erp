@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { FlaskConical, Send, RotateCcw, Zap, Clock, Hash, CheckCircle2, XCircle, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAiProviders, usePlayground } from "../../hooks/useAiOperations";
+import { usePlatformTenants } from "../../hooks/usePlatformTenants";
 import type { AnalyzerProvider, FieldStatus, PlaygroundResult } from "../../types/aiOperations";
-import { ApiErrorPanel, ProviderStatusBadge, formatUsd, reasonLabel } from "./aiShared";
+import { ApiErrorPanel, ProviderStatusBadge, formatUsd, governedErrorText, reasonLabel } from "./aiShared";
 
 const TEXT_MAX = 1000;
 
@@ -175,22 +176,31 @@ export default function AiPlaygroundPage() {
   const [tenantId, setTenantId] = useState("");
   const [choice, setChoice]     = useState<string>(AUTO);
   const providersQuery = useAiProviders();
+  const tenantsQuery = usePlatformTenants();
   const { analyze, isPending, result, error, reset } = usePlayground();
 
   const providers = providersQuery.data?.providers ?? [];
   const automaticOrder = providersQuery.data?.automaticOrder ?? [];
+  const tenants = tenantsQuery.data ?? [];
   const chosen = providers.find(p => p.provider === choice);
   // a provider that is not available is never a valid choice, even if it was picked before it changed
   const choiceValid = choice === AUTO || chosen?.status === "available";
+  // the run is charged to a company and reads its context: there is no default company, it is always chosen here
+  const tenantChosen = tenants.some(t => t.id === tenantId);
+  const canRun = !!text.trim() && choiceValid && tenantChosen;
 
   const handleAnalyze = () => {
-    if (!text.trim() || !choiceValid) return;
+    if (!canRun) return;
     analyze({
       text,
       forceProvider: choice === AUTO ? null : (choice as AnalyzerProvider),
-      tenantId: tenantId.trim() || null,
+      tenantId,
     });
   };
+
+  let tenantPlaceholder = "Escolha a empresa";
+  if (tenantsQuery.isLoading) tenantPlaceholder = "Carregando empresas...";
+  else if (tenantsQuery.isSuccess && tenants.length === 0) tenantPlaceholder = "Nenhuma empresa cadastrada";
 
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-6xl">
@@ -238,9 +248,21 @@ export default function AiPlaygroundPage() {
           </div>
 
           <div>
-            <label htmlFor="playground-tenant" className="text-xs text-muted-foreground block mb-1">ID do tenant (opcional)</label>
-            <Input id="playground-tenant" value={tenantId} onChange={e => setTenantId(e.target.value)}
-              placeholder="Vazio = tenant padrão do playground" className="h-8 text-xs font-mono" />
+            <label htmlFor="playground-tenant" className="text-xs text-muted-foreground block mb-1">Empresa</label>
+            <Select value={tenantId} onValueChange={setTenantId} disabled={tenants.length === 0}>
+              <SelectTrigger id="playground-tenant" aria-label="Empresa" className="h-8 text-xs">
+                <SelectValue placeholder={tenantPlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                {tenants.map(t => (
+                  <SelectItem key={t.id} value={t.id}>{t.tradeName || t.companyName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">O custo e a telemetria do teste ficam registrados nesta empresa.</p>
+            {tenantsQuery.isError && (
+              <p className="text-[11px] text-destructive">{governedErrorText(tenantsQuery.error, "Não foi possível carregar as empresas.")}</p>
+            )}
           </div>
 
           <fieldset className="space-y-2">
@@ -284,7 +306,7 @@ export default function AiPlaygroundPage() {
           </fieldset>
 
           <div className="flex gap-2">
-            <Button onClick={handleAnalyze} disabled={isPending || !text.trim() || !choiceValid} className="flex-1" size="sm">
+            <Button onClick={handleAnalyze} disabled={isPending || !canRun} className="flex-1" size="sm">
               {isPending ? (
                 <span className="flex items-center gap-2">
                   <span className="h-3 w-3 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />

@@ -185,25 +185,22 @@ public sealed class AiProviderAdminService
         return result;
     }
 
+    public const string PlaygroundTenantRequiredCode = "ai_playground_tenant_required";
+    public const string PlaygroundTenantRequiredMessage = "Escolha a empresa que servirá de contexto para o teste.";
+
     /// <summary>
-    /// The Playground: the same runner the tenants use, for a chosen (or the first) company. Forced provider → that one or a
-    /// controlled error; automatic → the normal order with fallback. Writes telemetry; never returns a provider's raw answer.
+    /// The Playground: the same runner the tenants use, for the company the operator chose. There is no default company: the
+    /// cost, the telemetry and the memory context belong to that company, so without one the request is refused before any
+    /// provider call, telemetry or memory read. Forced provider → that one or a controlled error; automatic → the normal order
+    /// with fallback. Writes telemetry; never returns a provider's raw answer.
     /// </summary>
     public async Task<AiPlaygroundResult> PlaygroundAsync(AiPlaygroundRequest request, PlatformActor actor, CancellationToken ct)
     {
+        if (request.TenantId is not { } tenantId || tenantId == Guid.Empty)
+            throw new DomainException(PlaygroundTenantRequiredMessage, PlaygroundTenantRequiredCode);
         var text = request.Text?.Trim() ?? "";
         if (text.Length is 0 or > 1000) throw new DomainException("Escreva um texto de até 1000 caracteres.", "ai_playground_text");
-        Guid tenantId;
-        if (request.TenantId is { } chosen)
-        {
-            if (!await _db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.Id == chosen, ct)) throw new NotFoundException("Empresa", chosen);
-            tenantId = chosen;
-        }
-        else
-        {
-            tenantId = await _db.Tenants.IgnoreQueryFilters().OrderBy(t => t.CompanyName).Select(t => t.Id).FirstOrDefaultAsync(ct);
-            if (tenantId == Guid.Empty) throw new DomainException("Nenhuma empresa cadastrada para servir de contexto.", "ai_playground_no_tenant");
-        }
+        if (!await _db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.Id == tenantId, ct)) throw new NotFoundException("Empresa", tenantId);
         var userId = actor.Id ?? Guid.Empty;
         var input = new AnalysisInput(InputSourceType.Text, text, null, tenantId, userId);
         var run = await _runner.RunAsync(input, request.ForceProvider, "Playground", ct);
