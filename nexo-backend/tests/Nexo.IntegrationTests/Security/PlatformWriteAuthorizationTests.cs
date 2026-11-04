@@ -102,7 +102,7 @@ public sealed class PlatformWriteAuthorizationTests : IClassFixture<TestWebAppli
         return email;
     }
 
-    /// <summary>A signed-in platform client with a fresh account of the given role (password generated per run).</summary>
+    /// <summary>A signed-in platform client with a fresh account of the given role (a new random password on each run).</summary>
     private async Task<HttpClient> PlatformClientAsync(string role, Func<HttpClient>? create = null)
     {
         create ??= _factory.CreateApiClient;
