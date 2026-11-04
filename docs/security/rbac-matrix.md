@@ -68,9 +68,9 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Tax Intelligence: classificação de produtos | Management | Management | Management | — | — |
 | Tax Intelligence: responsável pela análise | Management | Management (o nome vem do cadastro; só Gerente/Diretoria ativos da empresa) | — | — | — |
 | Tax Intelligence: exportação (dossiê ZIP, CSV de split e de simulação) | — | — | — | — | dossiê: Directors; CSVs: Management |
-| Tax Intelligence: módulo na plataforma (estado, prontidão, recusas, auditoria) | policy Platform | — | ativar/desativar: policy PlatformAdmin (super_admin) | — | suspender: qualquer operador da plataforma (freio de emergência), com frase |
+| Tax Intelligence: módulo na plataforma (estado, prontidão, recusas, auditoria) | policy Platform | — | ativar/desativar: policy PlatformAdmin (super_admin com verificação em duas etapas) | — | suspender: qualquer operador da plataforma (freio de emergência), com frase, sem exigir verificação em duas etapas — decisão pendente do dono |
 | Tax Intelligence: catálogos da plataforma (cClassTrib, obrigações, retenção padrão, documentos) | policy Platform | policy PlatformAdmin | policy PlatformAdmin | revogar documento: PlatformAdmin | revisão profissional registrada: PlatformAdmin, separada de quem registra |
-| Tax Intelligence: catálogo de regras e fontes jurídicas | Management (leitura) | policy Platform | só status, policy Platform | — | ativar regra exige fontes conferidas; revisão profissional, aprovação interna para piloto e sua retirada, janela e participantes do piloto: policy Platform, auditadas |
+| Tax Intelligence: catálogo de regras e fontes jurídicas | Management (leitura); plataforma: policy Platform | policy PlatformAdmin | só status, policy PlatformAdmin | — | ativar regra exige fontes conferidas; revisão profissional, aprovação interna para piloto e sua retirada, janela e participantes do piloto: policy PlatformAdmin (super_admin com verificação em duas etapas), auditadas |
 | Platform admin | policy Platform | policy Platform | policy Platform | policy Platform | policy Platform |
 | Público (cardápio, agendamento, login) | anônimo, com rate limit | anônimo, com rate limit | — | — | — |
 

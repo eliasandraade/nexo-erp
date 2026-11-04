@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using System.Text;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.DTOs;
@@ -52,25 +51,21 @@ public interface ITaxFileStorage
 }
 
 /// <summary>
-/// The ORKEN object storage (R2), private keys only. In production a private bucket is mandatory — the same rule
-/// as the other sensitive uploads; without it, upload and download refuse instead of falling back to the public bucket.
+/// The ORKEN object storage (R2), private keys only. A private bucket is mandatory in every environment — the same rule
+/// as the other sensitive uploads (<see cref="IStorageProvider.CanStorePrivateFiles"/>): without one, or with the public
+/// bucket under the private name, upload and download refuse instead of falling back to the public bucket.
 /// </summary>
 public sealed class PrivateTaxFileStorage : ITaxFileStorage
 {
     private readonly IStorageProvider _storage;
     private readonly IStorageObjectReader _reader;
     private readonly IIntegrationFeatureFlags _flags;
-    private readonly StorageOptions _options;
-    private readonly IHostEnvironment _env;
 
-    public PrivateTaxFileStorage(IStorageProvider storage, IStorageObjectReader reader, IIntegrationFeatureFlags flags,
-        IOptions<StorageOptions> options, IHostEnvironment env)
+    public PrivateTaxFileStorage(IStorageProvider storage, IStorageObjectReader reader, IIntegrationFeatureFlags flags)
     {
         _storage = storage;
         _reader = reader;
         _flags = flags;
-        _options = options.Value;
-        _env = env;
     }
 
     public TaxFileStorageState State
@@ -78,8 +73,8 @@ public sealed class PrivateTaxFileStorage : ITaxFileStorage
         get
         {
             if (!_flags.StorageEnabled) return TaxFileStorageState.Disabled;
-            // In production a missing private bucket would put tax files in the public one: refuse instead.
-            if (_env.IsProduction() && string.IsNullOrWhiteSpace(_options.R2.PrivateBucketName)) return TaxFileStorageState.PrivateBucketMissing;
+            // No usable private bucket: refuse here, with the module's message, before the provider throws.
+            if (!_storage.CanStorePrivateFiles) return TaxFileStorageState.PrivateBucketMissing;
             return TaxFileStorageState.Available;
         }
     }
