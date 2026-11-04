@@ -25,6 +25,8 @@ public interface IJwtTokenService
     /// <summary>
     /// Generates an access token (15min) + refresh token (7d) for the given user.
     /// The access token includes: userId, tenantId, tenantSlug, role, activeModules, storeId, store[].
+    /// <paramref name="refreshFamilyId"/>: a família (sessão) a que o refresh token novo pertence — nula num login
+    /// (o token abre uma família nova, identificada pelo próprio jti); na rotação, a família do token trocado.
     /// </summary>
     TokenPair GenerateTokenPair(
         User user,
@@ -32,7 +34,8 @@ public interface IJwtTokenService
         string companyName,
         IReadOnlyList<string> activeModules,
         Guid storeId,
-        IReadOnlyList<Guid> accessibleStoreIds);
+        IReadOnlyList<Guid> accessibleStoreIds,
+        string? refreshFamilyId = null);
 
     /// <summary>
     /// Validates a refresh token signature and returns its claims.
@@ -59,4 +62,9 @@ public interface IJwtTokenService
 public record RefreshTokenClaims(
     string Jti,
     Guid UserId,
-    Guid TenantId);
+    Guid TenantId,
+    string? FamilyId = null)
+{
+    /// <summary>A família do token (claim "fid"); tokens emitidos antes dela formam uma família própria, pelo jti.</summary>
+    public string Family => string.IsNullOrEmpty(FamilyId) ? Jti : FamilyId;
+}

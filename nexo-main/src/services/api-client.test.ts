@@ -158,6 +158,39 @@ describe("api-client", () => {
       expect(authHeader(fetchMock.mock.calls[2]).Authorization).toBe("Bearer late-access");
     });
 
+    it("sessão de empresa: no 409 refresh_already_rotated usa o par que a outra aba gravou, sem deslogar", async () => {
+      // o servidor da empresa segue a mesma regra da plataforma: o token é de uso único e quem perde a corrida
+      // entre abas recebe 409 sem tokens
+      localStorage.setItem(TOKEN_KEYS.access, "tenant-access");
+      localStorage.setItem(TOKEN_KEYS.refresh, "tenant-refresh");
+      fetchMock
+        .mockResolvedValueOnce(json({}, 401))
+        .mockImplementationOnce(async () => {
+          localStorage.setItem(TOKEN_KEYS.access, "tenant-winner-access");
+          localStorage.setItem(TOKEN_KEYS.refresh, "tenant-winner-refresh");
+          return json({ error: "Esta sessão acabou de ser renovada em outra aba.", code: "refresh_already_rotated" }, 409);
+        })
+        .mockResolvedValueOnce(json({ ok: true }));
+
+      await expect(apiClient.get("/products")).resolves.toEqual({ ok: true });
+      expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)).toEqual({ refreshToken: "tenant-refresh" });
+      expect(authHeader(fetchMock.mock.calls[2]).Authorization).toBe("Bearer tenant-winner-access");
+      expect(getRefreshToken()).toBe("tenant-winner-refresh");
+      expect(ended).toEqual([]);
+    });
+
+    it("sessão de empresa: renovação recusada (família encerrada) limpa os tokens", async () => {
+      localStorage.setItem(TOKEN_KEYS.access, "tenant-access");
+      localStorage.setItem(TOKEN_KEYS.refresh, "tenant-refresh");
+      fetchMock
+        .mockResolvedValueOnce(json({}, 401))
+        .mockResolvedValueOnce(json({ error: "Invalid or expired refresh token.", code: "session_ended" }, 401));
+
+      await expect(apiClient.get("/products")).rejects.toBeInstanceOf(ApiError);
+      expect(getAccessToken()).toBeNull();
+      expect(getRefreshToken()).toBeNull();
+    });
+
     it("retries with the token another tab already renewed, without refreshing again", async () => {
       signInAdmin();
       fetchMock
