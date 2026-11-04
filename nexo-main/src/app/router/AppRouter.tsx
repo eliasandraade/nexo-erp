@@ -1,5 +1,5 @@
 import { resolveBuildPortal, BUILD_PORTAL_ROUTE } from '@/modules/build-portal/route';
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/modules/auth/context/AuthContext";
 import { WorkspaceProvider } from "@/modules/workspace/WorkspaceContext";
@@ -9,6 +9,7 @@ import { MainAppLayout } from "@/app/layouts/MainAppLayout";
 import { PosLayout } from "@/app/layouts/PosLayout";
 import { PlatformLayout } from "@/app/layouts/PlatformLayout";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
+import { institutionalEntry } from "./institutionalEntry";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ModuleRoute } from "./ModuleRoute";
 import { PlatformRoute } from "./PlatformRoute";
@@ -168,8 +169,15 @@ export function legacyMenuTarget(slug: string | undefined): string {
  */
 export function AppRouter() { return <BrowserRouter><RouterSurface /></BrowserRouter>; }
 const BuildReview = import.meta.env.DEV && import.meta.env.VITE_BUILD_PORTAL_REVIEW === '1' ? lazy(() => import('@/modules/build-portal/dev/Review')) : null;
+/** Leaves the app for the Orken portal: an in-app link to the root of www (the server does the same for a visit). */
+function InstitutionalEntryRedirect({ to }: { to: string }) {
+  useEffect(() => { window.location.replace(to); }, [to]);
+  return <PageLoader />;
+}
 function RouterSurface() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
+  const entry = institutionalEntry(window.location.hostname, pathname, search);
+  if (entry) return <InstitutionalEntryRedirect to={entry} />;
   if (BuildReview && pathname === '/__review/minha-obra') return <Suspense fallback={<PageLoader />}><BuildReview /></Suspense>;
   if (resolveBuildPortal(pathname)) return <Suspense fallback={<PageLoader />}><Routes><Route path={BUILD_PORTAL_ROUTE} element={<BuildPortalPage />} /></Routes></Suspense>;
   return (
