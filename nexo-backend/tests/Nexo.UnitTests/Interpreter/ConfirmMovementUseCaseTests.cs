@@ -255,8 +255,7 @@ public class ConfirmMovementUseCaseTests
 
     // ── Memory rebuild ────────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task Execute_TriggersMemoryRebuildAfterCommit()
+    private void ArrangeConfirmable(out Guid draftId, out Guid suggestionId)
     {
         var draft      = F.BuildDraftMovement();
         var suggestion = F.BuildSuggestion(draft.Id);
@@ -264,17 +263,53 @@ public class ConfirmMovementUseCaseTests
         _movRepo.GetDraftByIdAsync(draft.Id, Arg.Any<CancellationToken>()).Returns(draft);
         _sugRepo.GetByIdAsync(suggestion.Id, Arg.Any<CancellationToken>()).Returns(suggestion);
         _norm.Normalize(Arg.Any<string>(), Arg.Any<Guid>()).Returns("pagamento");
+        draftId      = draft.Id;
+        suggestionId = suggestion.Id;
+    }
 
-        // Ensure the fire-and-forget doesn't throw
+    [Fact]
+    public async Task Execute_RebuildsTheMemoryProfileAfterCommit()
+    {
+        ArrangeConfirmable(out var draftId, out var suggestionId);
         _memory.RebuildProfileAsync(Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
                .Returns(Task.CompletedTask);
 
-        var sut = BuildSut();
-        await sut.ExecuteAsync(BuildCommand(draft.Id, suggestion.Id));
+        await BuildSut().ExecuteAsync(BuildCommand(draftId, suggestionId));
 
-        // Small delay to let fire-and-forget task start
-        await Task.Delay(10);
+        Received.InOrder(() =>
+        {
+            _movRepo.SaveChangesAsync(Arg.Any<CancellationToken>());
+            _memory.RebuildProfileAsync(F.TenantId, Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
+        });
+    }
 
-        await _memory.Received().RebuildProfileAsync(F.TenantId, Arg.Any<Guid?>(), Arg.Any<CancellationToken>());
+    [Fact]
+    public async Task Execute_WaitsForMemoryRebuildBeforeReturning()
+    {
+        // Issue #100: the rebuild runs on the request's DbContext. Left running after the request ended, it raced the
+        // DbContext disposal and returned a connection to the pool mid-command — the next request that took it failed.
+        ArrangeConfirmable(out var draftId, out var suggestionId);
+        var rebuild = new TaskCompletionSource();
+        _memory.RebuildProfileAsync(Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+               .Returns(rebuild.Task);
+
+        var confirm = BuildSut().ExecuteAsync(BuildCommand(draftId, suggestionId));
+
+        confirm.IsCompleted.Should().BeFalse("the confirmation must not return while the rebuild still uses the DbContext");
+        rebuild.SetResult();
+        (await confirm).Status.Should().Be("Confirmed");
+    }
+
+    [Fact]
+    public async Task Execute_MemoryRebuildFails_MovementStaysConfirmed()
+    {
+        ArrangeConfirmable(out var draftId, out var suggestionId);
+        _memory.RebuildProfileAsync(Arg.Any<Guid>(), Arg.Any<Guid?>(), Arg.Any<CancellationToken>())
+               .Returns(Task.FromException(new InvalidOperationException("profile store unavailable")));
+
+        var response = await BuildSut().ExecuteAsync(BuildCommand(draftId, suggestionId));
+
+        response.Status.Should().Be("Confirmed");
+        await _movRepo.Received(1).SaveChangesAsync(Arg.Any<CancellationToken>());
     }
 }
