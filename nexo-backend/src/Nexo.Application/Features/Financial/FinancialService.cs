@@ -316,6 +316,9 @@ public class FinancialService
     /// <summary>Most títulos a listing carries; the aging always covers every open título.</summary>
     public const int TitleListLimit = 500;
 
+    /// <summary>Máximo de parcelas mensais de um título manual.</summary>
+    public const int MaxInstallments = 60;
+
     public async Task<TitlesDto> GetTitlesAsync(TitlesFilter filter, CancellationToken ct = default)
     {
         await EnsureRecurrencesAsync(ct);   // recurring títulos of this and next month exist
@@ -379,9 +382,12 @@ public class FinancialService
     {
         if (!Enum.TryParse<TransactionType>(request.TransactionType, ignoreCase: true, out var type) || !Enum.IsDefined(type))
             throw new DomainException("Tipo de lançamento inválido: use Receivable ou Payable.");
-        if (request.Installments is < 1 or > 60)
-            throw new DomainException("Parcele em 1 a 60 vezes.");
-        if (decimal.Round(request.TotalAmount, 2) != request.TotalAmount || request.TotalAmount < 0.01m * request.Installments)
+        // A quantidade de parcelas vem da requisição e é o limite do laço abaixo. A comparação explícita com a
+        // constante valida a entrada e deixa o limite visível para a análise de fluxo (Sonar S6680).
+        var installments = request.Installments;
+        if (installments < 1 || installments > MaxInstallments)
+            throw new DomainException($"Parcele em 1 a {MaxInstallments} vezes.");
+        if (decimal.Round(request.TotalAmount, 2) != request.TotalAmount || request.TotalAmount < 0.01m * installments)
             throw new DomainException("O total precisa estar em centavos e cobrir ao menos R$ 0,01 por parcela.");
         if (string.IsNullOrWhiteSpace(request.Description))
             throw new DomainException("O lançamento precisa de uma descrição.");
@@ -412,16 +418,16 @@ public class FinancialService
             accountId = await DefaultAccountIdAsync(type, ct);
 
         var cents = (long)(request.TotalAmount * 100);
-        var each = cents / request.Installments;
+        var each = cents / installments;
         var first = Utc(request.FirstDueDate);
         var created = new List<FinancialTransaction>();
-        for (var i = 0; i < request.Installments; i++)
+        for (var i = 0; i < installments; i++)
         {
-            var amount = (i == request.Installments - 1 ? cents - each * (request.Installments - 1) : each) / 100m;
+            var amount = (i == installments - 1 ? cents - each * (installments - 1) : each) / 100m;
             var due = first.AddMonths(i);
-            var description = request.Installments == 1
+            var description = installments == 1
                 ? request.Description.Trim()
-                : $"{request.Description.Trim()} ({i + 1}/{request.Installments})";
+                : $"{request.Description.Trim()} ({i + 1}/{installments})";
             var tx = FinancialTransaction.Create(
                 _currentTenant.Id, accountId, type, category, amount, description, due, _currentUser.UserId,
                 storeId: request.StoreId, competenceDate: request.CompetenceDate is { } c ? Utc(c) : due,
