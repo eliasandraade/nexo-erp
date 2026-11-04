@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, useLocation, Link } from "react-router-dom";
 import { RefreshCw, CheckCircle2, XCircle, Clock, Package, Truck, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useOrderTracking } from "../hooks/useOrderTracking";
@@ -34,8 +34,15 @@ const STATUS_COLOR: Record<string, string> = {
   Cancelled:      "text-gray-400",
 };
 
+/** The menu the order came from, when the cart opened this page; a link opened from elsewhere has none. */
+function menuSlugFrom(state: unknown): string | null {
+  const slug = (state as { menuSlug?: unknown } | null)?.menuSlug;
+  return typeof slug === "string" && slug.length > 0 ? slug : null;
+}
+
 export default function PortalTrackingPage() {
   const { token = "" } = useParams<{ token: string }>();
+  const menuSlug = menuSlugFrom(useLocation().state);
   const { data, isLoading, isError, isFetching, refetch } = useOrderTracking(token);
 
   const isTerminal = data && ["Delivered", "Rejected", "Cancelled"].includes(data.status);
@@ -114,12 +121,15 @@ export default function PortalTrackingPage() {
           </>
         )}
 
-        <Link
-          to="/"
-          className="text-sm text-muted-foreground hover:text-foreground text-center transition-colors"
-        >
-          ← Voltar ao início
-        </Link>
+        {/* Back to the store's menu, never to the ERP's root (the sign-in page) or the Orken portal. */}
+        {menuSlug && (
+          <Link
+            to={`/${encodeURIComponent(menuSlug)}`}
+            className="text-sm text-muted-foreground hover:text-foreground text-center transition-colors"
+          >
+            ← Voltar ao cardápio
+          </Link>
+        )}
       </div>
     </div>
   );

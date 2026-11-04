@@ -172,7 +172,7 @@ export function CartSheet({
 
   const mut = useMutation({
     mutationFn: (req: CreatePortalOrderRequest) => createPortalOrder(req),
-    onSuccess:  (data) => { onClose(); navigate(`/rastrear/${data.trackingToken}`); },
+    onSuccess:  (data) => { onClose(); navigate(`/rastrear/${data.trackingToken}`, { state: { menuSlug: slug } }); },
   });
 
   const canSubmit =

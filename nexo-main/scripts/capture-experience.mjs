@@ -19,9 +19,6 @@ await page.route('http://localhost:5000/api/**', route => {
 await page.goto(base + '/login', {waitUntil: 'domcontentloaded'});
 await page.getByRole('button', { name: 'Entrar', exact: true }).waitFor();
 await page.screenshot({path: `${folder}/login-1440.png`, fullPage: true});
-await page.goto(base + '/', {waitUntil: 'domcontentloaded'});
-await page.waitForTimeout(500);
-await page.screenshot({path: `${folder}/landing-1440.png`, fullPage: true});
 await page.evaluate(() => {
   localStorage.setItem('nexo:session', JSON.stringify({userId:'qa',tenantId:'qa', name:'Revisão local',role:'diretoria',modules:['varejo'],companyName:'Ambiente de teste',storeIds:[],type:'tenant'}));
   localStorage.setItem('nexo:access_token', 'local-test-only');
