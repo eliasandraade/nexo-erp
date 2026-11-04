@@ -260,10 +260,14 @@ public class AuthController : ControllerBase
                 : (ActionResult)PlatformAuthController.RefreshRefusedResult(this, error);
         }
 
-        var result = await _authService.RefreshAsync(new RefreshTokenRequest(refreshToken), ct);
+        var outcome = await _authService.RefreshAsync(new RefreshTokenRequest(refreshToken), ct);
 
-        if (result is null)
-            return Unauthorized(new { error = "Invalid or expired refresh token." });
+        // 409: outra aba trocou este token há instantes e grava o par novo no armazenamento compartilhado — o
+        // cliente usa esse par em vez de encerrar a sessão. Qualquer outra recusa é 401.
+        if (outcome.ErrorCode == RefreshErrors.AlreadyRotated)
+            return Conflict(new { error = "Esta sessão acabou de ser renovada em outra aba.", code = outcome.ErrorCode });
+        if (outcome.Tokens is not { } result)
+            return Unauthorized(new { error = "Invalid or expired refresh token.", code = outcome.ErrorCode ?? RefreshErrors.Invalid });
 
         // Update cookies — same Secure/SameSite logic as login
         var isSecure = !string.Equals(
@@ -354,14 +358,19 @@ public class AuthController : ControllerBase
         if (string.IsNullOrWhiteSpace(refreshToken))
             refreshToken = Request.Cookies["nexo_refresh"] ?? "";
 
-        var result = await _authService.SwitchStoreAsync(
+        var outcome = await _authService.SwitchStoreAsync(
             _currentUser.UserId,
             _currentUser.TenantId,
             storeId,
             refreshToken,
             ct);
 
-        if (result is null)
+        if (outcome.ErrorCode == RefreshErrors.AlreadyRotated)
+            return Conflict(new { error = "Esta sessão acabou de ser renovada em outra aba. Tente de novo.", code = outcome.ErrorCode });
+        // sem o refresh token válido da própria sessão não há par novo (o access token sozinho não abre sessão)
+        if (outcome.ErrorCode == RefreshErrors.Invalid)
+            return Unauthorized(new { error = "Sessão inválida ou encerrada. Entre de novo.", code = outcome.ErrorCode });
+        if (outcome.Response is not { } result)
             return Forbid();
 
         // Issue new cookies so the SPA immediately uses the store-scoped tokens

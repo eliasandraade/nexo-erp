@@ -47,7 +47,7 @@ public class StoreIsolationTests
 
         // Switch to Store B → fresh token pair scoped to storeB
         var switchResponse = await loginClient.WithBearer(storeAToken)
-            .PostAsJsonAsync("/api/auth/switch-store", new { storeId = storeBId.ToString() });
+            .PostAsJsonAsync("/api/auth/switch-store", new { storeId = storeBId.ToString(), refreshToken = loginBody.RefreshToken });
         switchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var switchBody = await switchResponse.Content.ReadFromJsonAsync<SwitchStoreResponse>();
         var storeBAccessToken = switchBody!.AccessToken;
@@ -107,7 +107,7 @@ public class StoreIsolationTests
 
         // Switch to Store B
         var switchResponse = await client.WithBearer(storeAToken)
-            .PostAsJsonAsync("/api/auth/switch-store", new { storeId = storeBId.ToString() });
+            .PostAsJsonAsync("/api/auth/switch-store", new { storeId = storeBId.ToString(), refreshToken = loginBody.RefreshToken });
 
         switchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var switchBody = await switchResponse.Content.ReadFromJsonAsync<SwitchStoreResponse>();

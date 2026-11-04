@@ -29,13 +29,14 @@ public class JwtTokenService : IJwtTokenService
         string companyName,
         IReadOnlyList<string> activeModules,
         Guid storeId,
-        IReadOnlyList<Guid> accessibleStoreIds)
+        IReadOnlyList<Guid> accessibleStoreIds,
+        string? refreshFamilyId = null)
     {
         var accessExpiry = GetAccessTokenExpiration();
         var refreshExpiry = GetRefreshTokenExpiration();
 
         var accessToken = BuildAccessToken(user, tenantSlug, companyName, activeModules, storeId, accessibleStoreIds, accessExpiry);
-        var refreshToken = BuildRefreshToken(user, refreshExpiry);
+        var refreshToken = BuildRefreshToken(user, refreshExpiry, refreshFamilyId);
 
         return new TokenPair(accessToken, refreshToken, accessExpiry, refreshExpiry);
     }
@@ -68,7 +69,8 @@ public class JwtTokenService : IJwtTokenService
             return new RefreshTokenClaims(
                 Jti:      jti,
                 UserId:   Guid.Parse(userId),
-                TenantId: Guid.Parse(tenantId));
+                TenantId: Guid.Parse(tenantId),
+                FamilyId: principal.FindFirstValue("fid"));
         }
         catch
         {
@@ -146,14 +148,18 @@ public class JwtTokenService : IJwtTokenService
         return new PlatformTokenResult(BuildToken(claims, GetAudience(), grant.ExpiresAt), grant.ExpiresAt);
     }
 
-    private string BuildRefreshToken(User user, DateTime expiry)
+    private string BuildRefreshToken(User user, DateTime expiry, string? familyId)
     {
+        var jti = Guid.NewGuid().ToString();
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new(JwtRegisteredClaimNames.Jti, jti),
             new("userId",   user.Id.ToString()),
             new("tenantId", user.TenantId.ToString()),
+            // família da sessão: todos os tokens de uma mesma sessão (login → rotações) a compartilham,
+            // para que um token reapresentado ou um logout encerre a sessão inteira
+            new("fid",      familyId ?? jti),
         };
 
         return BuildToken(claims, GetRefreshAudience(), expiry);

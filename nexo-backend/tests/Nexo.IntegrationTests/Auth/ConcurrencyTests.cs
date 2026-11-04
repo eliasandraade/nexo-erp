@@ -30,7 +30,7 @@ public class ConcurrencyTests
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ConcurrentRefresh_WithSameToken_AllSucceed()
+    public async Task ConcurrentRefresh_WithSameToken_ExactlyOneRotates()
     {
         var client = _factory.CreateApiClient();
 
@@ -47,16 +47,20 @@ public class ConcurrencyTests
 
         var results = await Task.WhenAll(tasks);
 
-        // All should succeed (no server-side race condition crashes)
-        results.Should().AllSatisfy(response =>
-        {
-            response.StatusCode.Should().Be(HttpStatusCode.OK,
-                "concurrent refresh requests should all succeed");
-        });
+        // Uso único: exatamente uma requisição troca o token; as demais recebem 409 "refresh_already_rotated"
+        // (a outra aba já tem o par novo). Antes, cada requisição sobreposta emitia um refresh token irmão (só um
+        // deles seguido pela sessão registrada) e uma que chegasse logo depois recebia 401 — o teste instável no CI.
+        results.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1, "um token gera exatamente um sucessor");
+        results.Where(r => r.StatusCode != HttpStatusCode.OK).Should().AllSatisfy(response =>
+            response.StatusCode.Should().Be(HttpStatusCode.Conflict, "quem perde a corrida não é deslogado"));
+
+        var winner = await results.Single(r => r.StatusCode == HttpStatusCode.OK).Content.ReadFromJsonAsync<RefreshResponse>();
+        (await RefreshAsync(winner!.RefreshToken)).StatusCode.Should().Be(HttpStatusCode.OK,
+            "o sucessor único segue válido");
     }
 
     [Fact]
-    public async Task ConcurrentRefresh_MultipleClients_EachGetValidToken()
+    public async Task ConcurrentRefresh_MultipleClients_OnlyTheWinnerGetsAValidToken()
     {
         // 1. Login once
         var mainClient = _factory.CreateApiClient();
@@ -75,14 +79,11 @@ public class ConcurrencyTests
 
         var validTokens = await Task.WhenAll(refreshTasks);
 
-        // 3. Each should have a valid new access token
-        validTokens.Should().AllSatisfy(token =>
-        {
-            token.Should().NotBeNullOrEmpty();
-        });
+        // 3. Só a vencedora recebe tokens; as outras leem o par dela (no navegador, o armazenamento compartilhado)
+        validTokens.Count(t => !string.IsNullOrEmpty(t)).Should().Be(1, "nenhum token irmão é emitido");
 
-        // 4. Each token should be able to access /me
-        foreach (var token in validTokens)
+        // 4. O access token emitido funciona de imediato
+        foreach (var token in validTokens.Where(t => !string.IsNullOrEmpty(t)))
         {
             var client = _factory.CreateApiClient();
             client.DefaultRequestHeaders.Authorization =
@@ -200,7 +201,7 @@ public class ConcurrencyTests
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task RefreshTokenReplay_OldTokenAfterRotation_MayBePrevented()
+    public async Task RefreshTokenReplay_OldTokenAfterTwoRotations_IsRejected()
     {
         var client = _factory.CreateApiClient();
 
@@ -220,21 +221,15 @@ public class ConcurrencyTests
         var refresh2 = await client.PostAsJsonAsync("/api/auth/refresh",
             TestCredentials.RefreshPayload(newRefreshToken1));
         var body2 = await refresh2.Content.ReadFromJsonAsync<RefreshResponse>();
-        _ = body2; // consumed
 
         // Try to replay the OLD refresh token (before rotation)
         var replayResponse = await client.PostAsJsonAsync("/api/auth/refresh",
             TestCredentials.RefreshPayload(originalRefreshToken));
 
-        // Implementation choice:
-        // Option A: Reject (secure - prevents replay): 401
-        // Option B: Allow (simpler - accepts multiple valid refresh tokens): 200
-        if (replayResponse.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            // Good: Token rotation prevents replay
-            replayResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        }
-        // If 200, that's OK too (depends on refresh token strategy)
+        // um token já trocado duas vezes não é corrida de aba: é recusado e encerra a família
+        replayResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await client.PostAsJsonAsync("/api/auth/refresh", TestCredentials.RefreshPayload(body2!.RefreshToken)))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a sessão inteira termina quando um token antigo volta");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -242,7 +237,7 @@ public class ConcurrencyTests
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ConcurrentSwitchStore_WithDifferentStores_AllSucceed()
+    public async Task ConcurrentSwitchStore_SameSession_ExactlyOneSwitchWins()
     {
         // Login
         var (mainClient, loginBody) = await AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
@@ -252,29 +247,23 @@ public class ConcurrencyTests
         var session = await meResponse.Content.ReadFromJsonAsync<SessionDto>();
         var storeIds = session!.StoreIds;
 
-        if (storeIds.Count <= 1)
-            return; // Need multiple stores for this test
-
-        // Attempt concurrent switch-store requests
-        var switchTasks = storeIds
-            .Take(Math.Min(storeIds.Count, 3))
-            .Select(storeId =>
+        // A troca de loja também gasta o refresh token da sessão (uso único): com o mesmo token, só uma troca
+        // concorrente vence; as outras recebem 409 — nunca 500, nunca dois pares vivos para a mesma sessão.
+        var switchTasks = Enumerable.Range(0, 3)
+            .Select(i =>
             {
                 var client = _factory.CreateApiClient();
                 return client.WithBearer(loginBody.AccessToken)
                     .PostAsJsonAsync("/api/auth/switch-store",
-                        new { storeId });
+                        new { storeId = storeIds[i % storeIds.Count], refreshToken = loginBody.RefreshToken });
             })
             .ToList();
 
         var results = await Task.WhenAll(switchTasks);
 
-        // All should succeed without race conditions
-        results.Should().AllSatisfy(response =>
-        {
-            response.StatusCode.Should().Be(HttpStatusCode.OK,
-                "concurrent switch-store should not cause race conditions");
-        });
+        results.Count(r => r.StatusCode == HttpStatusCode.OK).Should().Be(1);
+        results.Where(r => r.StatusCode != HttpStatusCode.OK).Should().AllSatisfy(response =>
+            response.StatusCode.Should().Be(HttpStatusCode.Conflict));
     }
 
     // ────────────────────────────────────────────────────────────────────────────
