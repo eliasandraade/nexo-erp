@@ -105,9 +105,9 @@ public class BuildPortalTests
     private async Task<HttpClient> OtherTenantWithBuildAsync()
     {
         var email = $"bld-{Guid.NewGuid():N}"[..16] + "@" + TestCredentials.TestDomain;
-        var reg = await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/register",
-            new { name = "Outra Construtora", email, password = TestCredentials.AdminPassword });
-        reg.StatusCode.Should().Be(HttpStatusCode.OK, await reg.Content.ReadAsStringAsync());
+        await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/register",
+            new { name = "Outra Construtora", email, password = TestCredentials.AdminPassword })
+            .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
@@ -630,28 +630,25 @@ public class BuildPortalTests
         }), HttpStatusCode.OK);
 
         var other = await OtherTenantWithBuildAsync();
-        (await other.GetAsync($"/api/v1/build/projects/{projectId}/portal")).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await other.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal", new { slug = Slug("hack") }))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await other.PostAsync($"/api/v1/build/projects/{projectId}/portal/unpublish", null))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await other.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal/password", new { password = PortalPassword() }))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await other.GetAsync($"/api/v1/build/projects/{projectId}/cost-by-stage")).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await other.GetAsync($"/api/v1/build/projects/{projectId}/progress")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        // A failed status shows the body and the server log of that request (issue #100: a 500 seen once in CI).
+        Task NotFound(Task<HttpResponseMessage> request) => request.ShouldHaveStatusAsync(HttpStatusCode.NotFound, _factory);
+        await NotFound(other.GetAsync($"/api/v1/build/projects/{projectId}/portal"));
+        await NotFound(other.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal", new { slug = Slug("hack") }));
+        await NotFound(other.PostAsync($"/api/v1/build/projects/{projectId}/portal/unpublish", null));
+        await NotFound(other.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/portal/password", new { password = PortalPassword() }));
+        await NotFound(other.GetAsync($"/api/v1/build/projects/{projectId}/cost-by-stage"));
+        await NotFound(other.GetAsync($"/api/v1/build/projects/{projectId}/progress"));
 
         var ownProject = await ProjectAsync(other);
         var ownStage = await StageAsync(other, ownProject, "Etapa B");
-        (await other.PutAsJsonAsync($"/api/v1/build/projects/{ownProject}/movements/{movement}/stage", new { stageId = ownStage }))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await other.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/movements/{movement}/stage", new { stageId = ownStage }))
-            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await NotFound(other.PutAsJsonAsync($"/api/v1/build/projects/{ownProject}/movements/{movement}/stage", new { stageId = ownStage }));
+        await NotFound(other.PutAsJsonAsync($"/api/v1/build/projects/{projectId}/movements/{movement}/stage", new { stageId = ownStage }));
 
         // B's company slug never opens A's project, and A's portal never shows B's data
         var (companyB, projectB) = await PublishedPortalAsync(other, ownProject);
         var anon = Anonymous();
-        (await anon.GetAsync($"/api/public/build/{companyB}/{projectA}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
-        (await anon.GetAsync($"/api/public/build/{companyA}/{projectB}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await NotFound(anon.GetAsync($"/api/public/build/{companyB}/{projectA}"));
+        await NotFound(anon.GetAsync($"/api/public/build/{companyA}/{projectB}"));
         var a = await anon.GetStringAsync($"/api/public/build/{companyA}/{projectA}");
         a.Should().NotContain("Etapa B").And.NotContain("Outra Construtora");
 

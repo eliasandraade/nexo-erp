@@ -34,6 +34,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
     /// <summary>The fake Anthropic API every Claude call of this host goes to (nothing leaves the test host).</summary>
     public FakeAnthropicHandler Anthropic { get; } = new();
 
+    /// <summary>The host's latest warnings and errors, so an unexpected status in a test shows the server exception.</summary>
+    public ServerLogCapture ServerLog { get; } = new();
+
     /// <summary>A test-only master key (base64 of 32 fixed bytes) so AI provider keys are really encrypted in the tests.</summary>
     public static readonly string TestMasterKey = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes("test-only-master-key-32-bytes!!!"));
 
@@ -84,6 +87,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
             // Counts SQL commands of requests marked with SqlCommandCounter.Header (N+1 tests).
             services.AddHttpContextAccessor();
             services.AddSingleton<SqlCommandCounter>();
+            // Serilog sink (Program reads sinks from the container): unexpected statuses can show the server exception.
+            services.AddSingleton<Serilog.Core.ILogEventSink>(ServerLog);
 
             // Replace the cache with a faithful in-memory implementation.
             // With no Redis connection string, AddInfrastructure registers NoOpCacheService,
