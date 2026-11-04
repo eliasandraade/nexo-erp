@@ -25,7 +25,8 @@ namespace Nexo.IntegrationTests.Helpers;
 /// </summary>
 public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
+    // A imagem que o construtor sem parâmetros usava (obsoleto no Testcontainers 4.x): fixada para o banco de teste não mudar.
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:15.1")
         .WithDatabase("nexo_test")
         .WithUsername("nexo_test")
         .WithPassword("nexo_test")
