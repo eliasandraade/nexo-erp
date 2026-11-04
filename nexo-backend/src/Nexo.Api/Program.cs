@@ -533,7 +533,7 @@ try
         // Content Security Policy da API: as respostas são JSON, arquivos para download e o hub do SignalR, nunca
         // uma página. Nada pode ser carregado, embutido ou enviado a partir delas. A CSP do app fica no Caddyfile
         // do frontend, e o Swagger (fora de produção) responde antes deste middleware.
-        context.Response.Headers["Content-Security-Policy"] =
+        context.Response.Headers.ContentSecurityPolicy =
             "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
         
         await next();
