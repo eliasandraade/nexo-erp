@@ -54,6 +54,19 @@ public class ModuleDefinition : BaseEntity
         };
     }
 
+    /// <summary>
+    /// Preço de tabela em valor mensal para um tipo de plano: mensal; trimestral / 3; semestral / 6; anual / 12. Vitalício,
+    /// avaliação e cortesia valem zero. É a base do MRR estimado (painel da plataforma e contrato da Orken), nunca fatura.
+    /// </summary>
+    public decimal MonthlyReferencePrice(Nexo.Domain.Enums.PlanType planType) => planType switch
+    {
+        Nexo.Domain.Enums.PlanType.Monthly    => PriceMonthly ?? 0m,
+        Nexo.Domain.Enums.PlanType.Quarterly  => (PriceQuarterly ?? 0m) / 3m,
+        Nexo.Domain.Enums.PlanType.Semiannual => (PriceSemiannual ?? 0m) / 6m,
+        Nexo.Domain.Enums.PlanType.Annual     => (PriceAnnual ?? 0m) / 12m,
+        _                                     => 0m,
+    };
+
     public void Publish() { IsPublished = true; SetUpdatedAt(); }
     public void Unpublish() { IsPublished = false; SetUpdatedAt(); }
 
