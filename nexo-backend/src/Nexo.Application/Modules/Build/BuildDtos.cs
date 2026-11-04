@@ -22,7 +22,11 @@ public record BuildProjectDto(
     int                CompletedStageCount,
     int                LogCount,
     DateTimeOffset     CreatedAt,
-    DateTimeOffset     UpdatedAt);
+    DateTimeOffset     UpdatedAt,
+    decimal?           Latitude     = null,
+    decimal?           Longitude    = null,
+    decimal?           AreaM2       = null,
+    string             TrackingMode = "Standard");
 
 public readonly record struct BuildProjectCounts(int Stages, int CompletedStages, int Logs);
 
@@ -41,7 +45,11 @@ public record BuildProjectDetailsDto(
     IReadOnlyList<BuildStageDto> Stages,
     IReadOnlyList<BuildDailyLogDto> RecentLogs,   // last 5 logs
     DateTimeOffset              CreatedAt,
-    DateTimeOffset              UpdatedAt);
+    DateTimeOffset              UpdatedAt,
+    decimal?                    Latitude     = null,
+    decimal?                    Longitude    = null,
+    decimal?                    AreaM2       = null,
+    string                      TrackingMode = "Standard");
 
 public record BuildStageDto(
     Guid            Id,
@@ -56,7 +64,8 @@ public record BuildStageDto(
     DateOnly?       ActualStartDate,
     DateOnly?       ActualEndDate,
     DateTimeOffset  CreatedAt,
-    DateTimeOffset  UpdatedAt);
+    DateTimeOffset  UpdatedAt,
+    decimal         Weight = 1m);
 
 public record BuildBudgetDto(
     Guid                          Id,
@@ -68,7 +77,25 @@ public record BuildBudgetDto(
     decimal                       FinalPrice,
     IReadOnlyList<BuildBudgetItemDto> Items,
     DateTimeOffset                CreatedAt,
-    DateTimeOffset                UpdatedAt);
+    DateTimeOffset                UpdatedAt,
+    // ── Wave 2 (additive) ──
+    DateOnly?                     ValidUntil       = null,
+    bool                          IsExpired        = false,
+    string?                       Notes            = null,
+    string?                       InternalNotes    = null,
+    decimal?                      AreaM2           = null,
+    decimal?                      CostPerM2        = null,   // TotalCost / AreaM2
+    decimal?                      PricePerM2       = null,   // FinalPrice / AreaM2
+    int                           Version          = 1,
+    Guid?                         ParentBudgetId   = null,
+    Guid?                         RootBudgetId     = null,   // version family (first budget's id)
+    Guid?                         SourceTemplateId = null,
+    BuildBudgetTotalsDto?         Totals           = null,
+    DateTimeOffset?               ApprovedAt       = null,
+    string?                       ApprovedByName   = null,
+    DateTimeOffset?               RejectedAt       = null,
+    string?                       RejectedByName   = null,
+    string?                       RejectionReason  = null);
 
 public record BuildBudgetItemDto(
     Guid           Id,
@@ -81,7 +108,9 @@ public record BuildBudgetItemDto(
     decimal        UnitCost,
     decimal        TotalCost,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    string         Kind      = "Other",   // BuildCostKind
+    string?        StageName = null);
 
 public record BuildDailyLogDto(
     Guid                             Id,
@@ -92,7 +121,9 @@ public record BuildDailyLogDto(
     int                              PhotoCount,
     IReadOnlyList<BuildDailyLogPhotoDto> Photos,
     DateTimeOffset                   CreatedAt,
-    DateTimeOffset                   UpdatedAt);
+    DateTimeOffset                   UpdatedAt,
+    bool                             ClientVisible = false,
+    string?                          ClientSummary = null);
 
 public record BuildDailyLogPhotoDto(
     Guid           Id,
@@ -100,7 +131,8 @@ public record BuildDailyLogPhotoDto(
     string         StorageKey,
     string?        Url,            // composed at read time from StorageKey — NOT persisted
     string?        Caption,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    bool           ClientVisible = false);
 
 public record BuildProjectFinancialSummaryDto(
     Guid     ProjectId,
@@ -110,7 +142,11 @@ public record BuildProjectFinancialSummaryDto(
     int      MovementCount,
     DateOnly? LastMovementDate,
     decimal  VarianceAmount,
-    decimal  VariancePercent);
+    decimal  VariancePercent,
+    // Wave 2: Σ cost impact of approved change orders, and the contract total = approved budget (which already
+    // includes the change orders approved while it existed) + approved change orders not yet in it.
+    decimal  ApprovedChangeOrdersTotal = 0m,
+    decimal? ContractTotal             = null);
 
 // ═══════════════════════════════════════════════════════════════════════
 // DASHBOARD
@@ -129,7 +165,12 @@ public record BuildDashboardDto(
     decimal  TotalRealized,          // Σ confirmed Obra Out movements (Core)
     decimal  Balance,                // TotalApproved - TotalRealized
     double   AvgStageProgress,       // mean of all stages' ProgressPercent (0-100)
-    IReadOnlyList<BuildRecentExpenseDto> RecentExpenses);
+    IReadOnlyList<BuildRecentExpenseDto> RecentExpenses,
+    // ── Wave 6 (additive): portfolio of the active projects, totals and top risks ──
+    IReadOnlyList<BuildDashboardProjectDto>? Projects = null,
+    BuildDashboardTotalsDto? Totals = null,
+    IReadOnlyList<BuildDashboardRiskDto>? TopRisks = null,
+    DateOnly? AsOf = null);
 
 public record BuildRecentExpenseDto(
     Guid     ProjectId,
@@ -161,7 +202,11 @@ public record CreateBuildProjectRequest(
     string?          Location          = null,
     DateOnly?        StartDate         = null,
     DateOnly?        ExpectedEndDate   = null,
-    decimal?         BudgetEstimated   = null);
+    decimal?         BudgetEstimated   = null,
+    string?          TrackingMode      = null,   // BuildTrackingMode name; default Standard
+    decimal?         Latitude          = null,
+    decimal?         Longitude         = null,
+    decimal?         AreaM2            = null);
 
 public record UpdateBuildProjectRequest(
     string           Name,
@@ -171,7 +216,11 @@ public record UpdateBuildProjectRequest(
     DateOnly?        StartDate,
     DateOnly?        ExpectedEndDate,
     decimal?         BudgetEstimated,
-    decimal?         BudgetApproved);
+    decimal?         BudgetApproved,
+    string?          TrackingMode      = null,   // null keeps the current mode
+    decimal?         Latitude          = null,   // site fields are replaced as sent (null clears), like the others
+    decimal?         Longitude         = null,
+    decimal?         AreaM2            = null);
 
 // ── Stages ────────────────────────────────────────────────────────────
 
@@ -179,18 +228,22 @@ public record CreateBuildStageRequest(
     string    Name,
     string?   Description    = null,
     DateOnly? PlannedStart   = null,
-    DateOnly? PlannedEnd     = null);
+    DateOnly? PlannedEnd     = null,
+    decimal?  Weight         = null);   // default 1
 
 public record UpdateBuildStageRequest(
     string    Name,
     string?   Description,
     int       Order,
     DateOnly? PlannedStart,
-    DateOnly? PlannedEnd);
+    DateOnly? PlannedEnd,
+    decimal?  Weight = null);   // null keeps the current weight
 
 public record UpdateBuildStageProgressRequest(
-    int     ProgressPercent,
-    string? Status = null);   // optional explicit BuildStageStatus override
+    int       ProgressPercent,
+    string?   Status        = null,   // optional explicit BuildStageStatus override
+    string?   Note          = null,   // recorded in the progress history
+    DateOnly? EffectiveDate = null);  // day the progress refers to (default today, Brazil)
 
 public record ReorderBuildStagesRequest(
     IReadOnlyList<StageOrderEntry> Entries);
@@ -200,9 +253,13 @@ public record StageOrderEntry(Guid StageId, int Order);
 // ── Budgets ───────────────────────────────────────────────────────────
 
 public record CreateBuildBudgetRequest(
-    string   Name,
-    Guid?    ProjectId     = null,
-    decimal  MarginPercent = 0m);
+    string    Name,
+    Guid?     ProjectId     = null,
+    decimal   MarginPercent = 0m,
+    DateOnly? ValidUntil    = null,
+    string?   Notes         = null,
+    string?   InternalNotes = null,
+    decimal?  AreaM2        = null);
 
 public record AddBuildBudgetItemRequest(
     string   Name,
@@ -210,7 +267,9 @@ public record AddBuildBudgetItemRequest(
     decimal  Quantity,
     string   Unit,
     decimal  UnitCost,
-    Guid?    StageId = null);
+    Guid?    StageId   = null,
+    string?  Kind      = null,    // BuildCostKind name; default Other
+    string?  StageName = null);
 
 public record UpdateBuildBudgetItemRequest(
     string   Name,
@@ -218,7 +277,9 @@ public record UpdateBuildBudgetItemRequest(
     decimal  Quantity,
     string   Unit,
     decimal  UnitCost,
-    Guid?    StageId);
+    Guid?    StageId,
+    string?  Kind      = null,    // null keeps the current kind
+    string?  StageName = null);   // null keeps; "" clears
 
 public record SetBudgetMarginRequest(decimal MarginPercent);
 

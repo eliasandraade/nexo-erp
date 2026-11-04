@@ -14,7 +14,7 @@ namespace Nexo.Application.Modules.Interpreter;
 // Original results are never overwritten (append-only for traceability).
 public class ReprocessMovementUseCase
 {
-    private readonly IAnalyzerSelector                   _analyzerSelector;
+    private readonly IAnalysisRunner                   _runner;
     private readonly IInterpretationService              _interpretationService;
     private readonly IMovementMemoryService              _memoryService;
     private readonly IDescriptionNormalizer              _normalizer;
@@ -31,7 +31,7 @@ public class ReprocessMovementUseCase
     private readonly VerticalLedgerPostingService        _ledger;
 
     public ReprocessMovementUseCase(
-        IAnalyzerSelector                    analyzerSelector,
+        IAnalysisRunner                    runner,
         IInterpretationService               interpretationService,
         IMovementMemoryService               memoryService,
         IDescriptionNormalizer               normalizer,
@@ -48,7 +48,7 @@ public class ReprocessMovementUseCase
         ITelemetryWriter?                    telemetry = null)
     {
         _ledger                = ledger;
-        _analyzerSelector      = analyzerSelector;
+        _runner                = runner;
         _interpretationService = interpretationService;
         _memoryService         = memoryService;
         _normalizer            = normalizer;
@@ -89,17 +89,6 @@ public class ReprocessMovementUseCase
         var previousExtractionSnapshot = SnapshotExtraction(previousExtraction);
         var previousSuggestionSnapshot = SnapshotSuggestion(previousSuggestion);
 
-        // Begin reprocess log before running pipeline.
-        var reprocessLog = ReprocessLog.Start(
-            tenantId:                  tenantId,
-            movementId:                movement.Id,
-            triggeredBy:               userId,
-            reason:                    command.Reason,
-            previousExtractionResultId: previousExtraction.Id,
-            previousSuggestionId:      previousSuggestion.Id,
-            analyzerProvider:          command.ForceAnalyzer ?? AnalyzerProvider.RuleBased,
-            promptVersion:             "current");
-
         // Reset to Draft — human must re-confirm (a confirmed one leaves the livro until then).
         var wasConfirmed = movement.Status == MovementStatus.Confirmed;
         movement.ResetToDraft();
@@ -111,8 +100,6 @@ public class ReprocessMovementUseCase
             storageKey = attachments[0].StorageKey;
 
         var inputSource = storageKey is not null ? InputSourceType.File : InputSourceType.Text;
-        var analyzer    = _analyzerSelector.Select(inputSource, tenantId, command.ForceAnalyzer);
-
         var analysisInput = new AnalysisInput(
             Source:     inputSource,
             RawText:    movement.Description,
@@ -120,7 +107,20 @@ public class ReprocessMovementUseCase
             TenantId:   tenantId,
             UserId:     userId);
 
-        var analysisOutput = await analyzer.AnalyzeAsync(analysisInput, ct);
+        // A forced provider runs alone (no silent substitute); otherwise the usable providers in order, with fallback.
+        var run = await _runner.RunAsync(analysisInput, command.ForceAnalyzer, "Reprocess", ct);
+        var analysisOutput = run.Output;
+
+        // The log records the analyzer and prompt that actually ran.
+        var reprocessLog = ReprocessLog.Start(
+            tenantId:                  tenantId,
+            movementId:                movement.Id,
+            triggeredBy:               userId,
+            reason:                    command.Reason,
+            previousExtractionResultId: previousExtraction.Id,
+            previousSuggestionId:      previousSuggestion.Id,
+            analyzerProvider:          run.Provider,
+            promptVersion:             string.IsNullOrEmpty(analysisOutput.Prompt.PromptVersion) ? "-" : analysisOutput.Prompt.PromptVersion);
         var memoryContext  = await _memoryService.GetCompactContextAsync(tenantId, userId, ct);
         var interpretation = await _interpretationService.SuggestAsync(
             analysisOutput, memoryContext, tenantId, userId, ct);
@@ -173,7 +173,7 @@ public class ReprocessMovementUseCase
         _logger.LogInformation(
             "Interpreter.Reprocess completed. MovementId={MovementId} ReprocessLogId={LogId} " +
             "Provider={Provider} ElapsedMs={ElapsedMs:F0}",
-            movement.Id, reprocessLog.Id, analyzer.Provider, elapsedMs);
+            movement.Id, reprocessLog.Id, run.Provider, elapsedMs);
 
         if (_telemetry is not null)
         {
@@ -182,22 +182,24 @@ public class ReprocessMovementUseCase
                 UserId:               userId,
                 MovementId:           movement.Id,
                 OperationType:        "Reprocess",
-                Provider:             analyzer.Provider.ToString(),
+                Provider:             run.Provider.ToString(),
                 PromptType:           analysisOutput.PromptMetadata.PromptType,
                 PromptVersion:        analysisOutput.PromptMetadata.PromptVersion,
                 PromptHash:           analysisOutput.PromptMetadata.PromptHash,
                 InputTokens:          analysisOutput.InputTokens,
                 OutputTokens:         analysisOutput.OutputTokens,
                 EstimatedCostMicros:  analysisOutput.EstimatedCostMicros,
-                DurationMs:           elapsedMs,
+                DurationMs:           run.DurationMs,
                 Success:              true,
                 ErrorMessage:         null,
-                FallbackUsed:         false,
-                FallbackFromProvider: null,
-                AnalyzerChain:        [analyzer.Provider.ToString()],
-                RequiresInputCount:   0,
+                FallbackUsed:         run.FallbackUsed,
+                FallbackFromProvider: run.FallbackFrom?.ToString(),
+                AnalyzerChain:        run.Chain,
+                RequiresInputCount:   new[] { analysisOutput.Amount.Status, analysisOutput.Date.Status, analysisOutput.Payee.Status, analysisOutput.Account.Status }
+                                          .Count(s => s == FieldStatus.RequiresInput),
                 AmountConfidence:     analysisOutput.Amount.Confidence,
-                DateConfidence:       analysisOutput.Date.Confidence));
+                DateConfidence:       analysisOutput.Date.Confidence,
+                ModelId:              run.ModelId));
         }
 
         var analyzeResponse = AnalyzeMovementUseCase.BuildResponse(

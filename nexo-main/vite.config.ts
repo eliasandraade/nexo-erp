@@ -11,6 +11,8 @@ export default defineConfig({
     },
   },
   plugins: [react()],
+  // the IFC → GLB worker (web-ifc) is an ES module worker: web-ifc uses import.meta.url
+  worker: { format: "es" },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

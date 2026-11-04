@@ -21,5 +21,7 @@ public class StoredPromptVersionConfiguration : IEntityTypeConfiguration<StoredP
 
         b.HasIndex(x => new { x.PromptType, x.IsActive });
         b.HasIndex(x => new { x.PromptType, x.Version }).IsUnique();
+        // At most one active version per type, whatever the concurrency of the SuperAdmin's activations.
+        b.HasIndex(x => x.PromptType).IsUnique().HasFilter("\"IsActive\" = true").HasDatabaseName("ux_stored_prompt_versions_one_active");
     }
 }

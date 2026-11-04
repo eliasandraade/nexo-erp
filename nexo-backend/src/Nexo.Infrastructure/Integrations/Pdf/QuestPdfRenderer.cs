@@ -25,6 +25,21 @@ public sealed class QuestPdfRenderer : IPdfRenderer
         return new PdfRenderResult(bytes, $"fechamento-caixa-{request.Session.Id:N}.pdf");
     }
 
+    public PdfRenderResult RenderBuildBudget(Nexo.Application.Modules.Build.BuildBudgetPdfModel model)
+    {
+        byte[] bytes;
+        try
+        {
+            bytes = new BuildBudgetDocument(model).GeneratePdf();
+        }
+        catch (Exception) when (model.CompanyLogo is not null)
+        {
+            // an unreadable logo never blocks the budget: render it without the image
+            bytes = new BuildBudgetDocument(model with { CompanyLogo = null }).GeneratePdf();
+        }
+        return new PdfRenderResult(bytes, model.FileName);
+    }
+
     public PdfRenderResult RenderProductSheet(ProductSheetRequest request)
     {
         var doc   = new ProductSheetDocument(request);

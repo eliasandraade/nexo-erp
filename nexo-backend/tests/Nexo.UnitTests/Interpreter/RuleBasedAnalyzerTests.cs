@@ -31,7 +31,7 @@ public class RuleBasedAnalyzerTests
     [InlineData("total 1234.56",                             1234.56)]
     public async Task Analyze_ExtractsAmount_FromBrazilianFormats(string text, decimal expected)
     {
-        var result = await _sut.AnalyzeAsync(TextInput(text));
+        var result = await _sut.AnalyzeAsync(TextInput(text), null);
 
         result.Amount.Value.Should().BeApproximately(expected, 0.01m);
         result.Amount.Status.Should().NotBe(FieldStatus.RequiresInput);
@@ -40,8 +40,8 @@ public class RuleBasedAnalyzerTests
     [Fact]
     public async Task Analyze_AmountWithCurrencySymbol_HasHigherConfidence()
     {
-        var withSymbol    = await _sut.AnalyzeAsync(TextInput("R$ 100,00 pagamento"));
-        var withoutSymbol = await _sut.AnalyzeAsync(TextInput("pagamento 100,00"));
+        var withSymbol    = await _sut.AnalyzeAsync(TextInput("R$ 100,00 pagamento"), null);
+        var withoutSymbol = await _sut.AnalyzeAsync(TextInput("pagamento 100,00"), null);
 
         withSymbol.Amount.Confidence.Should().BeGreaterThan(withoutSymbol.Amount.Confidence);
         withSymbol.Amount.Status.Should().Be(FieldStatus.AutoFilled);
@@ -50,7 +50,7 @@ public class RuleBasedAnalyzerTests
     [Fact]
     public async Task Analyze_NoAmount_ReturnsUnknown()
     {
-        var result = await _sut.AnalyzeAsync(TextInput("sem valor aqui, apenas texto"));
+        var result = await _sut.AnalyzeAsync(TextInput("sem valor aqui, apenas texto"), null);
 
         result.Amount.Value.Should().BeNull();
         result.Amount.Status.Should().Be(FieldStatus.RequiresInput);
@@ -65,7 +65,7 @@ public class RuleBasedAnalyzerTests
     [InlineData("comprovante 31/03/2026",         2026, 3, 31)]
     public async Task Analyze_ExtractsDate_BrazilianFormat(string text, int year, int month, int day)
     {
-        var result = await _sut.AnalyzeAsync(TextInput(text));
+        var result = await _sut.AnalyzeAsync(TextInput(text), null);
 
         result.Date.Value.Should().Be(new DateOnly(year, month, day));
         result.Date.Status.Should().NotBe(FieldStatus.RequiresInput);
@@ -76,7 +76,7 @@ public class RuleBasedAnalyzerTests
     [InlineData("2025-01-31 transferência",        2025, 1, 31)]
     public async Task Analyze_ExtractsDate_IsoFormat_HasHighestConfidence(string text, int year, int month, int day)
     {
-        var result = await _sut.AnalyzeAsync(TextInput(text));
+        var result = await _sut.AnalyzeAsync(TextInput(text), null);
 
         result.Date.Value.Should().Be(new DateOnly(year, month, day));
         result.Date.Confidence.Should().BeGreaterThanOrEqualTo(0.90f);
@@ -86,7 +86,7 @@ public class RuleBasedAnalyzerTests
     [Fact]
     public async Task Analyze_InvalidDate_ReturnsUnknown()
     {
-        var result = await _sut.AnalyzeAsync(TextInput("data 32/13/2026 invalida"));
+        var result = await _sut.AnalyzeAsync(TextInput("data 32/13/2026 invalida"), null);
 
         result.Date.Value.Should().BeNull();
         result.Date.Status.Should().Be(FieldStatus.RequiresInput);
@@ -95,7 +95,7 @@ public class RuleBasedAnalyzerTests
     [Fact]
     public async Task Analyze_NoDate_ReturnsUnknown()
     {
-        var result = await _sut.AnalyzeAsync(TextInput("pagamento sem data R$ 50,00"));
+        var result = await _sut.AnalyzeAsync(TextInput("pagamento sem data R$ 50,00"), null);
 
         result.Date.Value.Should().BeNull();
         result.Date.Status.Should().Be(FieldStatus.RequiresInput);
@@ -110,7 +110,7 @@ public class RuleBasedAnalyzerTests
     [InlineData("Payee: Maria Luiza",                       "Maria Luiza")]
     public async Task Analyze_ExtractsPayee_FromPrefixedFormats(string text, string expectedPayee)
     {
-        var result = await _sut.AnalyzeAsync(TextInput(text));
+        var result = await _sut.AnalyzeAsync(TextInput(text), null);
 
         result.Payee.Value.Should().Be(expectedPayee);
         result.Payee.Status.Should().NotBe(FieldStatus.RequiresInput);
@@ -119,7 +119,7 @@ public class RuleBasedAnalyzerTests
     [Fact]
     public async Task Analyze_NoPayeePrefix_ReturnsUnknown()
     {
-        var result = await _sut.AnalyzeAsync(TextInput("R$ 100,00 em 05/05/2026"));
+        var result = await _sut.AnalyzeAsync(TextInput("R$ 100,00 em 05/05/2026"), null);
 
         result.Payee.Value.Should().BeNull();
         result.Payee.Status.Should().Be(FieldStatus.RequiresInput);
@@ -133,7 +133,7 @@ public class RuleBasedAnalyzerTests
     [InlineData("cartao: Nubank",            "Nubank")]
     public async Task Analyze_ExtractsAccount_FromPrefixedFormats(string text, string expectedAccount)
     {
-        var result = await _sut.AnalyzeAsync(TextInput(text));
+        var result = await _sut.AnalyzeAsync(TextInput(text), null);
 
         result.Account.Value.Should().Be(expectedAccount);
         result.Account.Status.Should().NotBe(FieldStatus.RequiresInput);
@@ -149,7 +149,7 @@ public class RuleBasedAnalyzerTests
                             "R$ 850,00\n" +
                             "conta: Banco Nubank";
 
-        var result = await _sut.AnalyzeAsync(TextInput(text));
+        var result = await _sut.AnalyzeAsync(TextInput(text), null);
 
         result.Amount.Value.Should().Be(850m);
         result.Date.Value.Should().Be(new DateOnly(2026, 5, 7));
@@ -162,7 +162,7 @@ public class RuleBasedAnalyzerTests
     {
         const string text = "algum texto aqui sem estrutura nenhuma";
 
-        var result = await _sut.AnalyzeAsync(TextInput(text));
+        var result = await _sut.AnalyzeAsync(TextInput(text), null);
 
         result.Amount.Status.Should().Be(FieldStatus.RequiresInput);
         result.Date.Status.Should().Be(FieldStatus.RequiresInput);
@@ -172,7 +172,7 @@ public class RuleBasedAnalyzerTests
     [Fact]
     public async Task Analyze_EmptyText_ReturnsAllUnknown()
     {
-        var result = await _sut.AnalyzeAsync(TextInput(""));
+        var result = await _sut.AnalyzeAsync(TextInput(""), null);
 
         result.Amount.Status.Should().Be(FieldStatus.RequiresInput);
         result.Date.Status.Should().Be(FieldStatus.RequiresInput);
@@ -190,7 +190,7 @@ public class RuleBasedAnalyzerTests
 
         var input = TextInput("R$ 150,00 pagamento") with { KnownFields = known };
 
-        var result = await _sut.AnalyzeAsync(input);
+        var result = await _sut.AnalyzeAsync(input, null);
 
         // Should NOT override the known AutoFilled amount
         result.Amount.Value.Should().Be(999m);
@@ -205,7 +205,7 @@ public class RuleBasedAnalyzerTests
 
         var input = TextInput("R$ 200,00 pagamento") with { KnownFields = known };
 
-        var result = await _sut.AnalyzeAsync(input);
+        var result = await _sut.AnalyzeAsync(input, null);
 
         result.Date.Value.Should().Be(new DateOnly(2026, 1, 1));   // preserved
         result.Amount.Value.Should().Be(200m);                       // extracted
@@ -216,14 +216,14 @@ public class RuleBasedAnalyzerTests
     [Fact]
     public async Task Analyze_AmountWithCurrencySymbol_IsAutoFilled()
     {
-        var result = await _sut.AnalyzeAsync(TextInput("R$ 500,00"));
+        var result = await _sut.AnalyzeAsync(TextInput("R$ 500,00"), null);
         result.Amount.Status.Should().Be(FieldStatus.AutoFilled);
     }
 
     [Fact]
     public async Task Analyze_PromptMetadata_IsRuleBasedProvider()
     {
-        var result = await _sut.AnalyzeAsync(TextInput("R$ 100,00"));
+        var result = await _sut.AnalyzeAsync(TextInput("R$ 100,00"), null);
         result.Prompt.PromptType.Should().Be("rule-based");
         result.Prompt.PromptVersion.Should().Be("1.0.0");
         result.Prompt.PromptHash.Should().NotBeNullOrWhiteSpace();

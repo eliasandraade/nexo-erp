@@ -32,6 +32,7 @@ public sealed class PrivateFileUrls : IPrivateFileUrls
     {
         if (string.IsNullOrWhiteSpace(storageKey) || !_flags.StorageEnabled) return null;
         if (!StorageKeys.IsOfTenant(storageKey, _tenant.Id)) return null;
+        if (StorageKeys.IsPrivate(storageKey) && !_storage.CanStorePrivateFiles) return null;   // no private bucket: unavailable
         try
         {
             return _storage.GetSignedUrl(storageKey, Ttl);

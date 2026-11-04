@@ -21,6 +21,8 @@ public class BuildDailyLogPhoto : TenantEntity
     /// </summary>
     public string  StorageKey  { get; private set; } = string.Empty;
     public string? Caption     { get; private set; }
+    /// <summary>Shown in the client portal (default false). Only counts when its daily log is client-visible too.</summary>
+    public bool    ClientVisible { get; private set; }
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
@@ -46,6 +48,12 @@ public class BuildDailyLogPhoto : TenantEntity
     public void UpdateCaption(string? caption)
     {
         Caption = caption?.Trim();
+        SetUpdatedAt();
+    }
+
+    public void SetClientVisible(bool visible)
+    {
+        ClientVisible = visible;
         SetUpdatedAt();
     }
 }

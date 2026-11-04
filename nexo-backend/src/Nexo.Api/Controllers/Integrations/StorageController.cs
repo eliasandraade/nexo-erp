@@ -14,8 +14,8 @@ namespace Nexo.Api.Controllers.Integrations;
 /// <list type="bullet">
 /// <item>public (branding, product images shown on the public menu/portal): stored under the tenant
 /// folder and served by the public base URL;</item>
-/// <item>private (service records, site photos): stored under <c>private/</c> — in the private bucket
-/// when one is configured — and only ever handed out as signed URLs that expire in minutes.</item>
+/// <item>private (service records, site photos): stored under <c>private/</c> in the private bucket only — refused with
+/// 503 storage_unavailable while none is configured — and only ever handed out as signed URLs that expire in minutes.</item>
 /// </list>
 /// The file's first bytes must match its declared type; the original name is never used in the key.
 /// </summary>
@@ -24,9 +24,7 @@ namespace Nexo.Api.Controllers.Integrations;
 [Authorize]
 public class StorageController : ControllerBase
 {
-    /// <param name="NeedsPrivateBucket">Too sensitive to sit in a public bucket even unlisted (clinical-like
-    /// records): in production, refused until the private bucket is configured.</param>
-    private sealed record UploadContext(string Folder, bool IsPrivate, string[] Roles, bool NeedsPrivateBucket = false);
+    private sealed record UploadContext(string Folder, bool IsPrivate, string[] Roles);
 
     private static readonly string[] Stock = AppRoles.Stock.Split(',');
     private static readonly string[] Management = AppRoles.Management.Split(',');
@@ -40,7 +38,14 @@ public class StorageController : ControllerBase
             ["service-portal-logo"]  = new("service/portal/logo", false, Management),
             ["service-portal-cover"] = new("service/portal/cover", false, Management),
             ["build-daily-log"]      = new("build/daily-logs", true, Management),
-            ["service-record"]       = new("service/records", true, Management, NeedsPrivateBucket: true),
+            ["build-portal-logo"]    = new("build/portal/logo", false, Management),
+            ["build-portal-cover"]   = new("build/portal/cover", false, Management),
+            ["build-selection-option"] = new("build/selections", true, Management),
+            ["build-quality"]        = new("build/quality", true, Management),
+            ["build-handover"]       = new("build/handover", true, Management),
+            ["build-assistance"]     = new("build/assistance", true, Management),
+            ["build-reality"]        = new("build/reality", true, Management),
+            ["service-record"]       = new("service/records", true, Management),
         };
 
     // MIME type → file extension
@@ -58,7 +63,6 @@ public class StorageController : ControllerBase
     private readonly IIntegrationFeatureFlags _flags;
     private readonly StorageOptions           _opts;
     private readonly ICurrentTenant           _tenant;
-    private readonly IHostEnvironment         _env;
     private readonly ILogger<StorageController> _logger;
 
     public StorageController(
@@ -67,7 +71,6 @@ public class StorageController : ControllerBase
         IIntegrationFeatureFlags flags,
         IOptions<StorageOptions> opts,
         ICurrentTenant tenant,
-        IHostEnvironment env,
         ILogger<StorageController> logger)
     {
         _storage     = storage;
@@ -75,7 +78,6 @@ public class StorageController : ControllerBase
         _flags       = flags;
         _opts        = opts.Value;
         _tenant      = tenant;
-        _env         = env;
         _logger      = logger;
     }
 
@@ -101,8 +103,9 @@ public class StorageController : ControllerBase
         if (!target.Roles.Any(User.IsInRole))
             return Forbid();
 
-        if (target.NeedsPrivateBucket && string.IsNullOrWhiteSpace(_opts.R2.PrivateBucketName) && _env.IsProduction())
-            return StatusCode(503, new { error = "Armazenamento privado ainda não configurado. Anexos de prontuário ficam indisponíveis até lá." });
+        // private content never goes to the public bucket: refused before the file is even read
+        if (target.IsPrivate && !_storage.CanStorePrivateFiles)
+            return StatusCode(503, new { error = "Armazenamento privado ainda não configurado. Arquivos privados ficam indisponíveis até lá.", code = "storage_unavailable" });
 
         var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
         if (!_opts.AllowedContentTypes.Contains(contentType) || !Extensions.TryGetValue(contentType, out var ext))
@@ -214,6 +217,10 @@ internal static class FileSignature
         ["image/webp"]      = b => b.Length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F'
                                    && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P',
         ["application/pdf"] = b => b.Length >= 5 && b[0] == '%' && b[1] == 'P' && b[2] == 'D' && b[3] == 'F' && b[4] == '-',
+        // video (Build reality capture): ISO BMFF 'ftyp' box at offset 4 (MP4 and QuickTime), EBML header (WebM)
+        ["video/mp4"]       = b => b.Length >= 8 && b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p',
+        ["video/quicktime"] = b => b.Length >= 8 && b[4] == 'f' && b[5] == 't' && b[6] == 'y' && b[7] == 'p',
+        ["video/webm"]      = b => b.Length >= 4 && b[0] == 0x1A && b[1] == 0x45 && b[2] == 0xDF && b[3] == 0xA3,
     };
 
     public static bool Matches(byte[] head, string contentType)

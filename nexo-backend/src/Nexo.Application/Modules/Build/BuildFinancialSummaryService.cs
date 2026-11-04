@@ -23,6 +23,15 @@ public class BuildFinancialSummaryService
         _financial = financial;
     }
 
+    /// <summary>
+    /// Contract total: the approved budget (already including the change orders approved while it existed) plus
+    /// the approved change orders that could not be added to it. Null when there is neither.
+    /// </summary>
+    public static decimal? ContractTotal(decimal? budgetApproved, BuildFinancialSnapshot s)
+        => budgetApproved is null && s.ApprovedChangeOrdersTotal == 0m
+            ? null
+            : (budgetApproved ?? 0m) + s.UnappliedChangeOrdersTotal;
+
     public async Task<BuildProjectFinancialSummaryDto> GetAsync(
         Guid              projectId,
         CancellationToken ct = default)
@@ -40,6 +49,8 @@ public class BuildFinancialSummaryService
             MovementCount:          snapshot.MovementCount,
             LastMovementDate:       snapshot.LastMovementDate,
             VarianceAmount:         snapshot.VarianceAmount,
-            VariancePercent:        snapshot.VariancePercent);
+            VariancePercent:        snapshot.VariancePercent,
+            ApprovedChangeOrdersTotal: snapshot.ApprovedChangeOrdersTotal,
+            ContractTotal:          ContractTotal(project.BudgetApproved, snapshot));
     }
 }

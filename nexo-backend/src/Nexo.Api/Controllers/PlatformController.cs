@@ -225,6 +225,7 @@ public class PlatformController : ControllerBase
 
     /// <summary>Creates a new tenant with an initial Diretoria admin user and module grants.</summary>
     [HttpPost("tenants")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> CreateTenant([FromBody] CreateTenantRequest req, CancellationToken ct)
     {
 
@@ -234,6 +235,14 @@ public class PlatformController : ControllerBase
             .AnyAsync(t => t.Email == req.Email.Trim().ToLowerInvariant(), ct);
         if (emailExists)
             return Conflict(new { error = "E-mail já cadastrado para outro tenant." });
+        var taxId = new string((req.TaxId ?? "").Where(char.IsAsciiDigit).ToArray());
+        if (taxId.Length > 0 && await _db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.TaxId == req.TaxId || t.TaxId == taxId, ct))
+            return Conflict(new { error = "CNPJ/CPF já cadastrado para outra empresa.", code = "tenant_tax_id_taken" });
+        // Sign-in looks users up across every company: a login must be unique everywhere, or one of them can't enter.
+        var login = (req.AdminLogin ?? "").Trim().ToLowerInvariant();
+        if (await _db.Users.IgnoreQueryFilters().AnyAsync(u => u.Login == login, ct)
+            || await _db.PlatformUsers.AnyAsync(u => u.Email == login, ct))
+            return Conflict(new { error = "Este login já é usado por outra conta.", code = "login_taken" });
 
         var platformUserId = GetPlatformUserId();
 
@@ -338,6 +347,7 @@ public class PlatformController : ControllerBase
         string? BusinessType);
 
     [HttpPut("tenants/{tenantId:guid}")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> UpdateTenant(Guid tenantId, [FromBody] UpdateTenantRequest req, CancellationToken ct)
     {
 
@@ -363,13 +373,15 @@ public class PlatformController : ControllerBase
     public record SetTenantStatusRequest(string Status);
 
     [HttpPut("tenants/{tenantId:guid}/status")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> SetTenantStatus(Guid tenantId, [FromBody] SetTenantStatusRequest req, CancellationToken ct)
     {
 
         var tenant = await _db.Tenants.IgnoreQueryFilters().FirstOrDefaultAsync(t => t.Id == tenantId, ct);
         if (tenant is null) return NotFound();
 
-        if (!Enum.TryParse<TenantStatus>(req.Status, true, out var newStatus))
+        if (string.IsNullOrWhiteSpace(req.Status) || int.TryParse(req.Status, out _)
+            || !Enum.TryParse<TenantStatus>(req.Status, true, out var newStatus) || !Enum.IsDefined(newStatus))
             return BadRequest(new { error = "Status inválido." });
 
         var oldStatus = tenant.Status;
@@ -381,6 +393,7 @@ public class PlatformController : ControllerBase
             metadata: new { tenantName = tenant.CompanyName, oldValue = oldStatus.ToString(), newValue = newStatus.ToString() });
 
         await _db.SaveChangesAsync(ct);
+        await ForgetTenantCachesAsync(tenantId, null, ct);   // suspension applies now, not in 5 minutes
 
         return NoContent();
     }
@@ -392,6 +405,7 @@ public class PlatformController : ControllerBase
     public record GrantModuleRequest(string ModuleKey, DateTime? ExpiresAt, string? Notes);
 
     [HttpPost("tenants/{tenantId:guid}/modules")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> GrantModule(Guid tenantId, [FromBody] GrantModuleRequest req, CancellationToken ct)
     {
 
@@ -436,10 +450,12 @@ public class PlatformController : ControllerBase
             metadata: new { moduleKey = req.ModuleKey, newValue = eventType, expiresAt = req.ExpiresAt });
 
         await _db.SaveChangesAsync(ct);
+        await ForgetTenantCachesAsync(tenantId, req.ModuleKey, ct);
         return NoContent();
     }
 
     [HttpDelete("tenants/{tenantId:guid}/modules/{moduleKey}")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> RevokeModule(Guid tenantId, string moduleKey, CancellationToken ct)
     {
 
@@ -464,6 +480,7 @@ public class PlatformController : ControllerBase
             metadata: new { moduleKey });
 
         await _db.SaveChangesAsync(ct);
+        await ForgetTenantCachesAsync(tenantId, moduleKey, ct);   // access ends now, not in 5 minutes
 
         return NoContent();
     }
@@ -473,18 +490,25 @@ public class PlatformController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Generates a token pair for the tenant's first Diretoria user so the platform
-    /// admin can enter the tenant's session.
+    /// Opens a tenant session as the tenant's first active Diretoria user, for support. Super administrators only, with
+    /// a stated reason. The token says who really acts (every audit record of the session names the administrator), lasts
+    /// <see cref="ImpersonationLifetime"/> and comes with no refresh token, so it can never become a normal session.
     /// </summary>
     [HttpPost("tenants/{tenantId:guid}/impersonate")]
-    public async Task<IActionResult> Impersonate(Guid tenantId, CancellationToken ct)
+    [Authorize(Policy = "PlatformAdmin")]
+    public async Task<IActionResult> Impersonate(Guid tenantId, [FromBody] ImpersonateRequest? body, CancellationToken ct)
     {
+        var reason = body?.Reason?.Trim() ?? "";
+        if (reason.Length is < 10 or > 300)
+            return UnprocessableEntity(new { error = "Diga o motivo do acesso (de 10 a 300 caracteres): fica na auditoria.", code = "impersonation_reason_required" });
 
         var tenant = await _db.Tenants
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(t => t.Id == tenantId, ct);
 
         if (tenant is null) return NotFound();
+        if (tenant.Status != TenantStatus.Active)
+            return UnprocessableEntity(new { error = "A empresa não está ativa: reative-a antes de entrar como ela.", code = "impersonation_tenant_inactive" });
 
         // Find first Diretoria user
         var adminUser = await _db.Users
@@ -515,26 +539,24 @@ public class PlatformController : ControllerBase
         var primaryStore = stores.First();
         var storeIds     = stores.Select(s => s.Id).ToList();
 
-        var tokens = _jwt.GenerateTokenPair(
-            user:                adminUser,
-            tenantSlug:          tenant.Slug,
-            companyName:         tenant.CompanyName,
-            activeModules:       activeModules,
-            storeId:             primaryStore.Id,
-            accessibleStoreIds:  storeIds);
+        var actorEmail = User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue("email") ?? "";
+        var token = _jwt.GenerateImpersonationToken(new ImpersonationGrant(adminUser, tenant.Slug, tenant.CompanyName, activeModules,
+            primaryStore.Id, storeIds, GetPlatformUserId() ?? Guid.Empty, actorEmail, reason, DateTime.UtcNow.Add(ImpersonationLifetime)));
 
         // Impersonation MUST be audited. This action is otherwise read-only, so persist
         // the staged audit record explicitly (no other SaveChanges in this method).
         StageAudit(AuditActions.PlatformImpersonation, AuditSeverity.Critical, "Tenant", tenantId.ToString(),
-            $"Platform admin impersonated tenant '{tenant.CompanyName}' as user '{adminUser.Login}'.",
+            $"Platform admin {actorEmail} impersonated tenant '{tenant.CompanyName}' as user '{adminUser.Login}': {reason}",
             tenantId: tenantId,
-            metadata: new { tenantName = tenant.CompanyName, targetUserId = adminUser.Id, targetUserEmail = adminUser.Email, targetStoreId = primaryStore.Id });
+            metadata: new { tenantName = tenant.CompanyName, targetUserId = adminUser.Id, targetUserEmail = adminUser.Email, targetStoreId = primaryStore.Id,
+                reason, expiresAt = token.ExpiresAt });
         await _db.SaveChangesAsync(ct);
 
         return Ok(new
         {
-            accessToken  = tokens.AccessToken,
-            refreshToken = tokens.RefreshToken,
+            accessToken  = token.AccessToken,
+            refreshToken = (string?)null,
+            expiresAt    = token.ExpiresAt,
             session = new
             {
                 userId      = adminUser.Id,
@@ -551,6 +573,10 @@ public class PlatformController : ControllerBase
             }
         });
     }
+
+    public static readonly TimeSpan ImpersonationLifetime = TimeSpan.FromMinutes(30);
+
+    public sealed record ImpersonateRequest(string? Reason);
 
     // ─────────────────────────────────────────────────────────────────────────
     // STATS
@@ -584,7 +610,7 @@ public class PlatformController : ControllerBase
         {
             tenantCount,
             activeCount,
-            suspendedCount = tenantCount - activeCount,
+            suspendedCount = await _db.Tenants.IgnoreQueryFilters().CountAsync(t => t.Status == TenantStatus.Suspended, ct),
             storeCount,
             userCount,
             activeSubscriptions = moduleCount,
@@ -619,33 +645,50 @@ public class PlatformController : ControllerBase
     // HEALTH
     // ─────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Real checks only: the database (connect + latency) and the cache (a write/read round trip, or "not_configured" when
+    /// no Redis is set). Nothing is reported healthy without being checked.
+    /// </summary>
     [HttpGet("health")]
     public async Task<IActionResult> GetHealth(CancellationToken ct)
     {
-
-        // DB check
         var dbOk    = false;
         var dbLatMs = 0L;
         try
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             dbOk = await _db.Database.CanConnectAsync(ct);
-            sw.Stop();
             dbLatMs = sw.ElapsedMilliseconds;
         }
-        catch { /* dbOk stays false */ }
+        catch (Exception ex) when (ex is not OperationCanceledException) { /* dbOk stays false */ }
+
+        string cacheStatus;
+        var cacheLatMs = 0L;
+        if (_cache is Nexo.Infrastructure.Cache.NoOpCacheService) cacheStatus = "not_configured";
+        else
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var probe = $"health:probe:{Guid.NewGuid():N}";
+            await _cache.SetAsync(probe, new HealthProbe(DateTime.UtcNow), TimeSpan.FromSeconds(30), ct);
+            var read = await _cache.GetAsync<HealthProbe>(probe, ct);
+            await _cache.RemoveAsync(probe, ct);
+            cacheLatMs = sw.ElapsedMilliseconds;
+            cacheStatus = read is null ? "unhealthy" : "healthy";
+        }
 
         return Ok(new
         {
-            status    = dbOk ? "healthy" : "degraded",
+            status    = dbOk && cacheStatus != "unhealthy" ? "healthy" : "degraded",
             timestamp = DateTime.UtcNow,
             checks = new[]
             {
                 new { name = "database", status = dbOk ? "healthy" : "unhealthy", latencyMs = dbLatMs },
-                new { name = "api",      status = "healthy",                       latencyMs = 1L      },
+                new { name = "cache",    status = cacheStatus,                     latencyMs = cacheLatMs },
             }
         });
     }
+
+    public sealed record HealthProbe(DateTime At);
 
     // ─────────────────────────────────────────────────────────────────────────
     // SYSTEM ENDPOINTS
@@ -674,7 +717,8 @@ public class PlatformController : ControllerBase
                 return new
                 {
                     method      = methods.FirstOrDefault() ?? "GET",
-                    path        = "/api/" + d.AttributeRouteInfo!.Template,
+                    path        = "/" + d.AttributeRouteInfo!.Template!.TrimStart('/'),
+                    hasParameters = d.AttributeRouteInfo.Template!.Contains('{'),
                     controller  = d.ControllerName,
                     action      = d.ActionName,
                     description = xmlDoc,
@@ -792,12 +836,15 @@ public class PlatformController : ControllerBase
 
         var note = TenantNote.Create(tenantId, req.Content, platformUserId, platformUserEmail, req.IsPinned);
         _db.TenantNotes.Add(note);
+        StageAudit(AuditActions.PlatformNoteCreated, AuditSeverity.Info, "TenantNote", note.Id.ToString(),
+            $"Platform note added to the tenant.", tenantId: tenantId, metadata: new { noteId = note.Id, pinned = req.IsPinned });
         await _db.SaveChangesAsync(ct);
 
         return CreatedAtAction(nameof(GetNotes), new { tenantId }, new { id = note.Id });
     }
 
     [HttpDelete("tenants/{tenantId:guid}/notes/{noteId:guid}")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> DeleteNote(Guid tenantId, Guid noteId, CancellationToken ct)
     {
 
@@ -805,6 +852,8 @@ public class PlatformController : ControllerBase
         if (note is null) return NotFound();
 
         _db.TenantNotes.Remove(note);
+        StageAudit(AuditActions.PlatformNoteDeleted, AuditSeverity.Warning, "TenantNote", noteId.ToString(),
+            "Platform note deleted.", tenantId: tenantId, metadata: new { noteId });
         await _db.SaveChangesAsync(ct);
 
         return NoContent();
@@ -818,6 +867,8 @@ public class PlatformController : ControllerBase
         if (note is null) return NotFound();
 
         note.TogglePin();
+        StageAudit(AuditActions.PlatformNotePinned, AuditSeverity.Info, "TenantNote", noteId.ToString(),
+            "Platform note pin toggled.", tenantId: tenantId, metadata: new { noteId, pinned = note.IsPinned });
         await _db.SaveChangesAsync(ct);
 
         return NoContent();
@@ -830,14 +881,15 @@ public class PlatformController : ControllerBase
     public record ResetPasswordRequest(string NewPassword);
 
     [HttpPost("tenants/{tenantId:guid}/users/{userId:guid}/reset-password")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> ResetPassword(
         Guid tenantId, Guid userId,
         [FromBody] ResetPasswordRequest req,
         CancellationToken ct)
     {
 
-        if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 6)
-            return BadRequest(new { error = "Senha deve ter pelo menos 6 caracteres." });
+        if (string.IsNullOrWhiteSpace(req.NewPassword) || req.NewPassword.Length < 8)
+            return BadRequest(new { error = "A senha provisória precisa ter pelo menos 8 caracteres." });
 
         var user = await _db.Users
             .IgnoreQueryFilters()
@@ -847,6 +899,7 @@ public class PlatformController : ControllerBase
 
         var hash = _hasher.Hash(req.NewPassword);
         user.ChangePasswordHash(hash, clearRequireChange: false);
+        user.RequirePasswordChangeOnNextLogin();   // the temporary password works once: the user picks a new one
         user.BumpSecurityStamp();
 
         // Purge all active sessions for this user from Redis + DB
@@ -867,6 +920,7 @@ public class PlatformController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────
 
     [HttpPost("tenants/{tenantId:guid}/users/{userId:guid}/force-logout")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> ForceLogout(Guid tenantId, Guid userId, CancellationToken ct)
     {
 
@@ -924,6 +978,7 @@ public class PlatformController : ControllerBase
     /// from Redis, and marks DB session rows as revoked.
     /// </summary>
     [HttpDelete("tenants/{tenantId:guid}/users/{userId:guid}/sessions")]
+    [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> RevokeAllSessions(Guid tenantId, Guid userId, CancellationToken ct)
     {
 
@@ -1180,5 +1235,14 @@ public class PlatformController : ControllerBase
 
         // Clear stamp cache so middleware reloads the new stamp from DB on next request
         await _cache.RemoveAsync($"user:stamp:{userId}", ct);
+    }
+
+    /// <summary>Drops the cached tenant info and module access so a suspension or a module change applies at once.</summary>
+    private async Task ForgetTenantCachesAsync(Guid tenantId, string? moduleKey, CancellationToken ct)
+    {
+        await _cache.RemoveAsync($"tenant:{tenantId}:info", ct);
+        await _cache.RemoveAsync($"tenant:{tenantId}:modules", ct);
+        if (moduleKey is not null)
+            HttpContext.RequestServices.GetRequiredService<IModuleAccessService>().InvalidateCache(tenantId, moduleKey);
     }
 }

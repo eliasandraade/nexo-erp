@@ -4,6 +4,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useBuildDashboard } from "../hooks/use-build";
+import { BuildPortfolio } from "./dashboard/BuildPortfolio";
 
 function fmt(v: number | null | undefined): string {
   if (v == null) return "—";
@@ -68,7 +69,9 @@ export function BuildDashboardSection() {
         ))}
       </div>
 
-      {data.recentExpenses.length > 0 && (
+      {Array.isArray(data.projects) && <BuildPortfolio data={data} />}
+
+      {(data.recentExpenses ?? []).length > 0 && (
         <div className="rounded-md border border-border bg-card p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
             Despesas recentes

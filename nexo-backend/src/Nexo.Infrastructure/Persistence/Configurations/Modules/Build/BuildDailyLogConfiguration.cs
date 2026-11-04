@@ -18,6 +18,8 @@ public class BuildDailyLogConfiguration : IEntityTypeConfiguration<BuildDailyLog
         builder.Property(x => x.WeatherSummary).HasColumnName("weather_summary").HasMaxLength(200);
         builder.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(5000).IsRequired();
         builder.Property(x => x.CreatedBy).HasColumnName("created_by").IsRequired();
+        builder.Property(x => x.ClientVisible).HasColumnName("client_visible").IsRequired();
+        builder.Property(x => x.ClientSummary).HasColumnName("client_summary").HasMaxLength(2000);
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 

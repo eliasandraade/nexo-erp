@@ -87,6 +87,31 @@ public class RateLimitingTests : IDisposable
     }
 
     [Fact]
+    public async Task RateLimited_Response_HasRetryAfter_JsonBody_And_ExposesItThroughCors()
+    {
+        var client = NewClient(forwardedFor: "203.0.113.9");
+        client.DefaultRequestHeaders.Add("Origin", "https://www.orken.com.br");
+
+        HttpResponseMessage response = null!;
+        for (int i = 0; i < 6; i++)
+            response = await client.PostAsJsonAsync("/api/auth/login",
+                TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrongpass"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        response.Headers.RetryAfter.Should().NotBeNull();
+        var retryAfter = (int)response.Headers.RetryAfter!.Delta!.Value.TotalSeconds;
+        retryAfter.Should().BeInRange(1, 900, "the time left in the 900 s window of this policy");
+
+        var body = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("rate_limited");
+        body.GetProperty("retryAfterSeconds").GetInt32().Should().Be(retryAfter);
+        body.GetProperty("error").GetString().Should().NotBeNullOrWhiteSpace();
+
+        response.Headers.GetValues("Access-Control-Allow-Origin").Should().Equal("https://www.orken.com.br");
+        string.Join(",", response.Headers.GetValues("Access-Control-Expose-Headers")).Should().Contain("Retry-After");
+    }
+
+    [Fact]
     public async Task Login_RateLimitIncludesIpAddress()
     {
         // Two clients with DISTINCT X-Forwarded-For values land in distinct

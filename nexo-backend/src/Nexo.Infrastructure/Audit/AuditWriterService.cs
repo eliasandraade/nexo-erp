@@ -63,6 +63,11 @@ public class AuditWriterService : IAuditWriter
             metadataJson: metadataJson,
             ipAddress:    ipAddress);
 
+        // During an impersonation every record also names the platform administrator who really acted.
+        var user = _httpContextAccessor.HttpContext?.User;
+        if (Guid.TryParse(user?.FindFirst(ImpersonationClaims.ActorId)?.Value, out var impersonatorId))
+            record.AttributeToImpersonator(impersonatorId, user!.FindFirst(ImpersonationClaims.ActorEmail)?.Value);
+
         _context.AuditRecords.Add(record);
     }
 }

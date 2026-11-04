@@ -68,6 +68,7 @@ public class BuildProjectService
     {
         if (!Enum.TryParse<BuildProjectType>(request.Type, ignoreCase: true, out var type))
             throw new DomainException($"Invalid project type: '{request.Type}'.");
+        var mode = ParseTrackingMode(request.TrackingMode) ?? BuildTrackingMode.Standard;
 
         var project = BuildProject.Create(
             tenantId:        _currentTenant.Id,
@@ -78,7 +79,10 @@ public class BuildProjectService
             location:        request.Location,
             startDate:       request.StartDate,
             expectedEndDate: request.ExpectedEndDate,
-            budgetEstimated: request.BudgetEstimated);
+            budgetEstimated: request.BudgetEstimated,
+            trackingMode:    mode);
+        if (request.Latitude.HasValue || request.Longitude.HasValue || request.AreaM2.HasValue)
+            project.SetSite(request.Latitude, request.Longitude, request.AreaM2);
 
         await _projects.AddAsync(project, ct);
         await _projects.SaveChangesAsync(ct);
@@ -105,6 +109,9 @@ public class BuildProjectService
             expectedEndDate: request.ExpectedEndDate,
             budgetEstimated: request.BudgetEstimated,
             budgetApproved:  request.BudgetApproved);
+        project.SetSite(request.Latitude, request.Longitude, request.AreaM2);
+        if (ParseTrackingMode(request.TrackingMode) is { } mode)
+            project.ChooseTracking(mode);
 
         _projects.Update(project);
         await _projects.SaveChangesAsync(ct);
@@ -153,6 +160,14 @@ public class BuildProjectService
         return await ToDtoAsync(project, ct);
     }
 
+    private static BuildTrackingMode? ParseTrackingMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (!Enum.TryParse<BuildTrackingMode>(value, ignoreCase: true, out var mode) || !Enum.IsDefined(mode))
+            throw new DomainException("Modo de acompanhamento inválido: use Standard ou ThreeD.");
+        return mode;
+    }
+
     // ── Mappers ───────────────────────────────────────────────────────────────
 
     private async Task<BuildProjectDto> ToDtoAsync(BuildProject p, CancellationToken ct)
@@ -174,7 +189,11 @@ public class BuildProjectService
         CompletedStageCount: counts.CompletedStages,
         LogCount:            counts.Logs,
         CreatedAt:           p.CreatedAt,
-        UpdatedAt:           p.UpdatedAt);
+        UpdatedAt:           p.UpdatedAt,
+        Latitude:            p.Latitude,
+        Longitude:           p.Longitude,
+        AreaM2:              p.AreaM2,
+        TrackingMode:        p.TrackingMode.ToString());
 
     private static BuildProjectDetailsDto MapToDetailsDto(BuildProject p) => new(
         Id:              p.Id,
@@ -196,5 +215,9 @@ public class BuildProjectService
                                     .Select(BuildDailyLogService.MapToDtoNoPhotos)
                                     .ToList(),
         CreatedAt:       p.CreatedAt,
-        UpdatedAt:       p.UpdatedAt);
+        UpdatedAt:       p.UpdatedAt,
+        Latitude:        p.Latitude,
+        Longitude:       p.Longitude,
+        AreaM2:          p.AreaM2,
+        TrackingMode:    p.TrackingMode.ToString());
 }

@@ -13,8 +13,7 @@ public class AnalyzeMovementUseCaseTests
 {
     // ── Mocks ─────────────────────────────────────────────────────────────────
 
-    private readonly IAnalyzerSelector              _selector   = Substitute.For<IAnalyzerSelector>();
-    private readonly IDocumentAnalyzer              _analyzer   = Substitute.For<IDocumentAnalyzer>();
+    private readonly IAnalysisRunner                _runner     = Substitute.For<IAnalysisRunner>();
     private readonly IInterpretationService         _interp     = Substitute.For<IInterpretationService>();
     private readonly IMovementMemoryService         _memory     = Substitute.For<IMovementMemoryService>();
     private readonly IDescriptionNormalizer         _normalizer = Substitute.For<IDescriptionNormalizer>();
@@ -27,7 +26,7 @@ public class AnalyzeMovementUseCaseTests
     private readonly ICurrentUser                   _user       = F.CurrentUser();
 
     private AnalyzeMovementUseCase BuildSut() => new(
-        _selector, _interp, _memory, _normalizer,
+        _runner, _interp, _memory, _normalizer,
         _movRepo, _extRepo, _sugRepo, _attRepo,
         _uow, _tenant, _user,
         NullLogger<AnalyzeMovementUseCase>.Instance);
@@ -36,11 +35,9 @@ public class AnalyzeMovementUseCaseTests
 
     private void SetupHappyPath(string? text = "Pagamento R$ 100,00")
     {
-        _selector.Select(Arg.Any<InputSourceType>(), Arg.Any<Guid>(), Arg.Any<AnalyzerProvider?>())
-                 .Returns(_analyzer);
-
-        _analyzer.AnalyzeAsync(Arg.Any<AnalysisInput>(), Arg.Any<CancellationToken>())
-                 .Returns(F.BuildAnalysisOutput(100m, DateOnly.FromDateTime(DateTime.UtcNow)));
+        _runner.RunAsync(Arg.Any<AnalysisInput>(), Arg.Any<AnalyzerProvider?>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+                 .Returns(new AnalysisRun(F.BuildAnalysisOutput(100m, DateOnly.FromDateTime(DateTime.UtcNow)), AnalyzerProvider.RuleBased, null, false,
+                     [new AnalysisAttempt(AnalyzerProvider.RuleBased, null, true, null, 1)], 1));
 
         _memory.GetCompactContextAsync(F.TenantId, F.UserId, Arg.Any<CancellationToken>())
                .Returns("{}");
@@ -169,9 +166,6 @@ public class AnalyzeMovementUseCaseTests
     [Fact]
     public async Task Execute_AttachmentNotFound_ThrowsNotFoundException()
     {
-        _selector.Select(Arg.Any<InputSourceType>(), Arg.Any<Guid>(), Arg.Any<AnalyzerProvider?>())
-                 .Returns(_analyzer);
-
         var missingId = Guid.NewGuid();
         _attRepo.GetByIdAsync(missingId, Arg.Any<CancellationToken>())
                 .Returns((MovementAttachment?)null);
@@ -196,7 +190,7 @@ public class AnalyzeMovementUseCaseTests
 
         await sut.ExecuteAsync(cmd);
 
-        _selector.Received(1).Select(InputSourceType.Text, F.TenantId, null);
+        await _runner.Received(1).RunAsync(Arg.Is<AnalysisInput>(i => i.Source == InputSourceType.Text && i.TenantId == F.TenantId), null, "Analyze", Arg.Any<CancellationToken>());
     }
 
     // ── Response shape ────────────────────────────────────────────────────────

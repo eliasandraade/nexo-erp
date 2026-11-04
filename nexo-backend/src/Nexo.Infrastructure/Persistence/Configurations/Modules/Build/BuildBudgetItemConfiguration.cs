@@ -21,6 +21,8 @@ public class BuildBudgetItemConfiguration : IEntityTypeConfiguration<BuildBudget
         builder.Property(x => x.Unit).HasColumnName("unit").HasMaxLength(20).IsRequired();
         builder.Property(x => x.UnitCost).HasColumnName("unit_cost").HasColumnType("numeric(18,2)").IsRequired();
         builder.Property(x => x.TotalCost).HasColumnName("total_cost").HasColumnType("numeric(18,2)").IsRequired();
+        builder.Property(x => x.Kind).HasColumnName("kind").HasConversion<int>().IsRequired();   // legacy rows: 5 (Other)
+        builder.Property(x => x.StageName).HasColumnName("stage_name").HasMaxLength(200);
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 

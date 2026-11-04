@@ -27,6 +27,9 @@ public class AuditRecordConfiguration : IEntityTypeConfiguration<AuditRecord>
             .HasMaxLength(20)
             .IsRequired();
 
+        builder.Property(x => x.ImpersonatorId).HasColumnName("impersonator_id");
+        builder.Property(x => x.ImpersonatorEmail).HasColumnName("impersonator_email").HasMaxLength(200);
+
         builder.Property(x => x.ActorId)
             .HasColumnName("actor_id");
 

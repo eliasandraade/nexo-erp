@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Suspense, lazy, useEffect, useState } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Trash2, Pencil, ArrowUp, ArrowDown, SlidersHorizontal, Undo2,
+  ArrowLeft, Play, Pause, CheckCircle, XCircle, Plus, Pencil, Undo2,
   Check, X, Camera, TrendingUp, TrendingDown, FileText, Calendar,
-  MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2,
+  MapPin, User, DollarSign, BarChart2, BookOpen, HardHat, Cloud, Loader2, Globe,
+  FilePlus2, ListChecks, Package, Ruler, ShieldCheck, KeyRound, Box, Gauge, FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -13,21 +14,34 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 
 import {
-  useProjectDetails, useProjectFinancial,
+  useProjectDetails, useProjectFinancial, useStages,
   useStartProject, usePauseProject, useCompleteProject, useCancelProject,
-  useStages, useCreateStage, useUpdateStageProgress, useDeleteStage, useUpdateStage, useReorderStages,
-  useBudgets, useBudget, useCreateBudget,
-  useSendBudget, useApproveBudget, useRejectBudget,
-  useAddBudgetItem, useUpdateBudgetItem, useRemoveBudgetItem, useSetBudgetMargin,
   useDailyLogs, useCreateDailyLog, useAddDailyLogPhoto, useRemoveDailyLogPhoto,
 } from "../hooks/use-build";
 import { useProjectMovements, useVoidMovement } from "../hooks/use-interpreter";
 import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
-import { BudgetStatusBadge } from "../components/BudgetStatusBadge";
 import { BuildExpenseDialog } from "../components/BuildExpenseDialog";
 import { EditProjectDialog } from "../components/EditProjectDialog";
+import { BuildStagesTab } from "../components/stages/BuildStagesTab";
+import { localToday } from "../lib/format";
+import { BuildProgressTab } from "../components/progress/BuildProgressTab";
+import { CostByStageSection } from "../components/finance/CostByStageSection";
+import { MovementStageSelect } from "../components/finance/MovementStageSelect";
+import { BuildPortalTab } from "../components/portal/BuildPortalTab";
+import { BuildBudgetTab } from "../components/budget/BuildBudgetTab";
+import { ChangeOrdersTab } from "../components/change-orders/ChangeOrdersTab";
+import { SelectionsTab } from "../components/selections/SelectionsTab";
+import { MaterialsTab } from "../components/materials/MaterialsTab";
+import { MeasurementsTab } from "../components/measurements/MeasurementsTab";
+import { QualityTab } from "../components/quality/QualityTab";
+import { PostConstructionTab } from "../components/post-construction/PostConstructionTab";
+import { DailyLogClientVisibility, PhotoClientVisibilityToggle } from "../components/diary/DailyLogClientVisibility";
+import { DailyLogCopilot } from "../components/ai/DailyLogCopilot";
+import { RiskTab } from "../components/risk/RiskTab";
+import { DocumentsTab } from "../components/documents/DocumentsTab";
+import { WeatherCard } from "../components/weather/WeatherCard";
 import type {
-  BuildProjectDetailsDto, BuildStageDto, BuildBudgetDto, BuildDailyLogDto,
+  BuildProjectDetailsDto, BuildDailyLogDto,
 } from "../api/build.api";
 import {
   getWeatherCurrent, getWeatherHistory,
@@ -37,6 +51,9 @@ import { uploadPrivateFile } from "@/services/storage.api";
 import { ApiError } from "@/services/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
+
+// "Gêmeo digital" in its own chunk (the 3D viewer inside it is a further lazy chunk)
+const DigitalTwinTab = lazy(() => import("../components/twin/DigitalTwinTab").then((m) => ({ default: m.DigitalTwinTab })));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -56,17 +73,40 @@ function fmtPct(v: number) {
   return `${v.toFixed(1)}%`;
 }
 
-type Tab = "geral" | "etapas" | "orcamento" | "diario" | "financeiro";
+type Tab =
+  | "geral" | "etapas" | "progresso" | "riscos" | "gemeo" | "orcamento" | "aditivos" | "escolhas" | "materiais" | "medicoes"
+  | "qualidade" | "pos-obra" | "diario" | "documentos" | "financeiro" | "portal";
+
+const TABS: readonly Tab[] = [
+  "geral", "etapas", "progresso", "riscos", "gemeo", "orcamento", "aditivos", "escolhas", "materiais", "medicoes",
+  "qualidade", "pos-obra", "diario", "documentos", "financeiro", "portal",
+];
+
+/** `?aba=riscos` (links from the Build dashboard) → that tab; anything else → Geral. */
+function tabFrom(raw: string | null): Tab {
+  return TABS.find((t) => t === raw) ?? "geral";
+}
 
 // ── Tab selector ──────────────────────────────────────────────────────────────
 
-function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function TabBar({ active, onChange, threeD }: { active: Tab; onChange: (t: Tab) => void; threeD?: boolean }) {
   const tabs: Array<{ key: Tab; label: string; icon: React.ElementType }> = [
     { key: "geral",      label: "Geral",       icon: HardHat },
     { key: "etapas",     label: "Etapas",      icon: CheckCircle },
+    { key: "progresso",  label: "Progresso",   icon: TrendingUp },
+    { key: "riscos",     label: "Riscos e previsões", icon: Gauge },
+    { key: "gemeo",      label: "Gêmeo digital", icon: Box },
     { key: "orcamento",  label: "Orçamento",   icon: FileText },
+    { key: "aditivos",   label: "Aditivos",    icon: FilePlus2 },
+    { key: "escolhas",   label: "Escolhas do cliente", icon: ListChecks },
+    { key: "materiais",  label: "Materiais",   icon: Package },
+    { key: "medicoes",   label: "Medições",    icon: Ruler },
+    { key: "qualidade",  label: "Qualidade",   icon: ShieldCheck },
+    { key: "pos-obra",   label: "Entrega e pós-obra", icon: KeyRound },
     { key: "diario",     label: "Diário",      icon: BookOpen },
+    { key: "documentos", label: "Documentos",  icon: FolderOpen },
     { key: "financeiro", label: "Financeiro",  icon: BarChart2 },
+    { key: "portal",     label: "Portal do cliente", icon: Globe },
   ];
 
   return (
@@ -84,6 +124,9 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
         >
           <Icon className="h-3.5 w-3.5" />
           {label}
+          {key === "gemeo" && threeD && (
+            <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground">3D</span>
+          )}
         </button>
       ))}
     </div>
@@ -155,6 +198,9 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
           </div>
         ))}
       </div>
+
+      {/* Clima na obra (Wave 6) — sem coordenadas, leva a editar a obra */}
+      <WeatherCard projectId={project.id} onEditSite={isActive ? () => setEditOpen(true) : undefined} />
 
       {/* Etapas recentes */}
       {project.stages.length > 0 && (
@@ -241,643 +287,6 @@ function TabGeral({ project }: { project: BuildProjectDetailsDto }) {
       )}
 
       <EditProjectDialog project={project} open={editOpen} onClose={() => setEditOpen(false)} />
-    </div>
-  );
-}
-
-// ── Tab: Etapas ───────────────────────────────────────────────────────────────
-
-/** Today's date in the user's calendar (not UTC — after 9 pm in Brazil UTC is already tomorrow). */
-function localToday() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-const fmtDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-
-function TabEtapas({ projectId }: { projectId: string }) {
-  const { data: stages = [], isLoading } = useStages(projectId);
-  const createMut   = useCreateStage(projectId);
-  const progressMut = useUpdateStageProgress(projectId);
-  const deleteMut   = useDeleteStage(projectId);
-  const updateMut   = useUpdateStage(projectId);
-  const reorderMut  = useReorderStages(projectId);
-  const [details, setDetails] = useState<{ id: string; name: string; description: string; start: string; end: string } | null>(null);
-
-  const saveDetails = (stage: BuildStageDto) => {
-    if (!details || !details.name.trim()) return;
-    if (details.start && details.end && details.end < details.start) { toast.error("O fim previsto precisa ser depois do início."); return; }
-    updateMut.mutate({ id: stage.id, req: {
-      name: details.name.trim(), description: details.description.trim() || null, order: stage.order,
-      plannedStart: details.start || null, plannedEnd: details.end || null,
-    } }, {
-      onSuccess: () => { setDetails(null); toast.success("Etapa atualizada."); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar etapa."),
-    });
-  };
-
-  // swap with the neighbour and renumber everything 0..n-1 (gaps or duplicates heal themselves)
-  const move = (index: number, delta: -1 | 1) => {
-    const order = [...stages];
-    const target = index + delta;
-    if (target < 0 || target >= order.length) return;
-    [order[index], order[target]] = [order[target], order[index]];
-    reorderMut.mutate({ entries: order.map((st, i) => ({ stageId: st.id, order: i })) }, {
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao reordenar."),
-    });
-  };
-
-  const [adding, setAdding]   = useState(false);
-  const [newName, setNewName] = useState("");
-  const [editId,  setEditId]  = useState<string | null>(null);
-  const [editPct, setEditPct] = useState(0);
-
-  const handleAddStage = () => {
-    if (!newName.trim()) return;
-    createMut.mutate({ name: newName.trim() }, {
-      onSuccess: () => { setAdding(false); setNewName(""); toast.success("Etapa adicionada!"); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao criar etapa."),
-    });
-  };
-
-  const handleUpdateProgress = (stage: BuildStageDto) => {
-    progressMut.mutate({ id: stage.id, req: { progressPercent: editPct } }, {
-      onSuccess: () => { setEditId(null); toast.success("Progresso atualizado!"); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar."),
-    });
-  };
-
-  const handleDelete = (id: string) => {
-    if (!confirm("Remover esta etapa?")) return;
-    deleteMut.mutate(id, {
-      onSuccess: () => toast.success("Etapa removida."),
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao remover."),
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          {stages.length} etapa{stages.length !== 1 ? "s" : ""}
-        </p>
-        {!adding && (
-          <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar etapa
-          </Button>
-        )}
-      </div>
-
-      {adding && (
-        <div className="flex items-center gap-2 p-3 rounded-md border border-dashed border-primary/40">
-          <Input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Nome da etapa…"
-            className="flex-1 text-sm"
-            autoFocus
-            onKeyDown={(e) => e.key === "Enter" && handleAddStage()}
-          />
-          <button onClick={handleAddStage} disabled={!newName.trim() || createMut.isPending}
-            className="text-primary disabled:opacity-40">
-            <Check className="h-4 w-4" />
-          </button>
-          <button onClick={() => { setAdding(false); setNewName(""); }}
-            className="text-muted-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-16 rounded-md bg-muted animate-pulse" />
-          ))}
-        </div>
-      ) : stages.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border p-8 text-center">
-          <p className="text-sm text-muted-foreground">Nenhuma etapa cadastrada.</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => setAdding(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar primeira etapa
-          </Button>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {stages.map((stage, index) => (
-            <div key={stage.id} className="rounded-md border border-border bg-card p-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0 flex-1 basis-40">
-                  <p className="font-medium text-sm truncate">{stage.name}</p>
-                  {stage.description && (
-                    <p className="text-xs text-muted-foreground truncate">{stage.description}</p>
-                  )}
-                  {(stage.plannedStartDate || stage.plannedEndDate) && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Previsto: {stage.plannedStartDate ? fmtDay(stage.plannedStartDate) : "—"} a {stage.plannedEndDate ? fmtDay(stage.plannedEndDate) : "—"}
-                    </p>
-                  )}
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className={cn(
-                    "text-xs px-2 py-0.5 rounded-full font-medium",
-                    stage.status === "Completed" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" :
-                    stage.status === "InProgress" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" :
-                    "bg-muted text-muted-foreground",
-                  )}>
-                    {stage.status === "Completed" ? "Concluída" :
-                     stage.status === "InProgress" ? "Em andamento" : "Pendente"}
-                  </span>
-                  <button
-                    onClick={() => move(index, -1)} disabled={index === 0 || reorderMut.isPending}
-                    aria-label={`Subir ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-2 disabled:opacity-30"
-                  >
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => move(index, 1)} disabled={index === stages.length - 1 || reorderMut.isPending}
-                    aria-label={`Descer ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-2 disabled:opacity-30"
-                  >
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => { setEditId(stage.id); setEditPct(stage.progressPercent); }}
-                    aria-label={`Atualizar progresso de ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-2"
-                  >
-                    <SlidersHorizontal className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setDetails({ id: stage.id, name: stage.name, description: stage.description ?? "",
-                      start: stage.plannedStartDate ?? "", end: stage.plannedEndDate ?? "" })}
-                    aria-label={`Editar ${stage.name}`}
-                    className="text-muted-foreground hover:text-foreground transition-colors p-2"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(stage.id)}
-                    aria-label={`Remover ${stage.name}`}
-                    className="text-muted-foreground hover:text-destructive transition-colors p-2"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {details?.id === stage.id && (
-                <div className="grid gap-2 rounded-md border border-dashed border-primary/40 p-3 sm:grid-cols-2">
-                  <div className="space-y-1 sm:col-span-2">
-                    <Label htmlFor={`stage-name-${stage.id}`} className="text-xs">Nome</Label>
-                    <Input id={`stage-name-${stage.id}`} value={details.name} maxLength={200}
-                      onChange={(e) => setDetails({ ...details, name: e.target.value })} className="text-sm" />
-                  </div>
-                  <div className="space-y-1 sm:col-span-2">
-                    <Label htmlFor={`stage-desc-${stage.id}`} className="text-xs">Descrição</Label>
-                    <Input id={`stage-desc-${stage.id}`} value={details.description} maxLength={1000}
-                      onChange={(e) => setDetails({ ...details, description: e.target.value })} className="text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor={`stage-start-${stage.id}`} className="text-xs">Início previsto</Label>
-                    <Input id={`stage-start-${stage.id}`} type="date" value={details.start}
-                      onChange={(e) => setDetails({ ...details, start: e.target.value })} className="text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor={`stage-end-${stage.id}`} className="text-xs">Fim previsto</Label>
-                    <Input id={`stage-end-${stage.id}`} type="date" value={details.end}
-                      onChange={(e) => setDetails({ ...details, end: e.target.value })} className="text-sm" />
-                  </div>
-                  <div className="flex gap-2 sm:col-span-2">
-                    <Button size="sm" onClick={() => saveDetails(stage)} disabled={!details.name.trim() || updateMut.isPending}>Salvar etapa</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setDetails(null)}>Cancelar</Button>
-                  </div>
-                </div>
-              )}
-
-              {/* Progress bar + inline edit */}
-              {editId === stage.id ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min={0}
-                    max={100}
-                    value={editPct}
-                    onChange={(e) => setEditPct(Number(e.target.value))}
-                    className="flex-1 accent-primary"
-                  />
-                  <span className="text-sm tabular-nums w-10 text-right">{editPct}%</span>
-                  <button onClick={() => handleUpdateProgress(stage)} disabled={progressMut.isPending}
-                    className="text-primary disabled:opacity-40">
-                    <Check className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => setEditId(null)} className="text-muted-foreground">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Progresso</span>
-                    <span className="tabular-nums">{stage.progressPercent}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className={cn(
-                        "h-full rounded-full transition-all",
-                        stage.progressPercent === 100 ? "bg-emerald-500" :
-                        stage.progressPercent > 0 ? "bg-primary" : "bg-muted-foreground/20",
-                      )}
-                      style={{ width: `${stage.progressPercent}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Tab: Orçamento ────────────────────────────────────────────────────────────
-
-function TabOrcamento({ project }: { project: BuildProjectDetailsDto }) {
-  const { data: budgets, isLoading } = useBudgets(project.id);
-  const createBudgetMut = useCreateBudget();
-  const sendMut    = useSendBudget(project.id);
-  const approveMut = useApproveBudget(project.id);
-  const rejectMut  = useRejectBudget(project.id);
-
-  const [selectedBudgetId, setSelectedBudgetId] = useState<string | null>(null);
-  const [addingBudget, setAddingBudget] = useState(false);
-  const [budgetName, setBudgetName]     = useState("");
-  const [budgetMargin, setBudgetMargin] = useState("15");
-
-  // Item form (shared between add + edit)
-  const [addingItem, setAddingItem]     = useState(false);
-  const [editingItemId, setEditingItemId]           = useState<string | null>(null);
-  const [editingItemStageId, setEditingItemStageId] = useState<string | undefined>(undefined);
-  const [itemName, setItemName]         = useState("");
-  const [itemCat, setItemCat]           = useState("Materiais");
-  const [itemQty, setItemQty]           = useState("1");
-  const [itemUnit, setItemUnit]         = useState("un");
-  const [itemCost, setItemCost]         = useState("");
-
-  // Margin edit
-  const [editingMargin, setEditingMargin] = useState(false);
-  const [marginInput, setMarginInput]     = useState("");
-
-  const items = budgets?.items ?? [];
-  const selectedBudget = items.find((b) => b.id === selectedBudgetId) ?? items[0];
-
-  const { data: budgetDetail } = useBudget(selectedBudget?.id ?? "");
-  const budget = budgetDetail ?? selectedBudget;
-
-  const addItemMut    = useAddBudgetItem(budget?.id ?? "");
-  const updateItemMut = useUpdateBudgetItem(budget?.id ?? "");
-  const removeItemMut = useRemoveBudgetItem(budget?.id ?? "");
-  const setMarginMut  = useSetBudgetMargin();
-
-  const handleCreateBudget = () => {
-    if (!budgetName.trim()) return;
-    createBudgetMut.mutate({
-      name:          budgetName.trim(),
-      projectId:     project.id,
-      marginPercent: parseFloat(budgetMargin) || 15,
-    }, {
-      onSuccess: (dto) => {
-        setAddingBudget(false); setBudgetName(""); setBudgetMargin("15");
-        setSelectedBudgetId(dto.id);
-        toast.success("Orçamento criado!");
-      },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Erro ao criar orçamento."),
-    });
-  };
-
-  const resetItemForm = () => {
-    setAddingItem(false); setEditingItemId(null); setEditingItemStageId(undefined);
-    setItemName(""); setItemCat("Materiais"); setItemQty("1"); setItemUnit("un"); setItemCost("");
-  };
-
-  const handleSaveItem = () => {
-    if (!itemName.trim() || !itemCost) return;
-    const req = {
-      name:     itemName.trim(),
-      category: itemCat,
-      quantity: parseFloat(itemQty) || 1,
-      unit:     itemUnit,
-      unitCost: parseFloat(itemCost) || 0,
-    };
-    if (editingItemId) {
-      updateItemMut.mutate({ id: editingItemId, req: { ...req, stageId: editingItemStageId } }, {
-        onSuccess: () => { resetItemForm(); toast.success("Item atualizado!"); },
-        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar item."),
-      });
-    } else {
-      addItemMut.mutate(req, {
-        onSuccess: () => { resetItemForm(); toast.success("Item adicionado!"); },
-        onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao adicionar item."),
-      });
-    }
-  };
-
-  const startEditItem = (item: BuildBudgetDto["items"][number]) => {
-    setEditingItemId(item.id);
-    setEditingItemStageId(item.stageId ?? undefined);
-    setItemName(item.name); setItemCat(item.category);
-    setItemQty(String(item.quantity)); setItemUnit(item.unit);
-    setItemCost(String(item.unitCost));
-    setAddingItem(true);
-  };
-
-  const handleRemoveItem = (itemId: string) => {
-    if (!confirm("Remover este item do orçamento?")) return;
-    removeItemMut.mutate(itemId, {
-      onSuccess: () => toast.success("Item removido."),
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao remover item."),
-    });
-  };
-
-  const handleSaveMargin = () => {
-    if (!budget) return;
-    const m = parseFloat(marginInput);
-    if (isNaN(m) || m < 0) { toast.error("Margem inválida."); return; }
-    setMarginMut.mutate({ id: budget.id, req: { marginPercent: m } }, {
-      onSuccess: () => { setEditingMargin(false); toast.success("Margem atualizada!"); },
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro ao atualizar margem."),
-    });
-  };
-
-  const handleTransition = (
-    mut: ReturnType<typeof useSendBudget>,
-    id: string,
-    label: string,
-  ) => {
-    mut.mutate(id, {
-      onSuccess: () => toast.success(`Orçamento ${label}!`),
-      onError:   (e) => toast.error(e instanceof Error ? e.message : "Erro."),
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      {isLoading ? (
-        <div className="h-20 rounded-md bg-muted animate-pulse" />
-      ) : items.length === 0 && !addingBudget ? (
-        <div className="rounded-md border border-dashed border-border p-8 text-center">
-          <FileText className="h-8 w-8 mx-auto text-muted-foreground opacity-40 mb-2" />
-          <p className="text-sm text-muted-foreground">Nenhum orçamento criado.</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => setAddingBudget(true)}>
-            <Plus className="h-3.5 w-3.5 mr-1" /> Criar orçamento
-          </Button>
-        </div>
-      ) : (
-        <>
-          {/* Budget selector */}
-          <div className="flex items-center justify-between">
-            <div className="flex gap-1.5 flex-wrap">
-              {items.map((b) => (
-                <button
-                  key={b.id}
-                  onClick={() => setSelectedBudgetId(b.id)}
-                  className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
-                    (selectedBudget?.id === b.id)
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {b.name}
-                </button>
-              ))}
-            </div>
-            {!addingBudget && (
-              <Button size="sm" variant="outline" onClick={() => setAddingBudget(true)}>
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
-
-          {/* Budget summary */}
-          {budget && (
-            <div className="rounded-md border border-border bg-card p-4 space-y-4">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-sm">{budget.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Margem {fmtPct(budget.marginPercent)}
-                  </p>
-                </div>
-                <BudgetStatusBadge status={budget.status} />
-              </div>
-
-              {/* KPIs */}
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Custo total</p>
-                  <p className="text-sm font-bold tabular-nums">{fmt(budget.totalCost)}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margem</p>
-                  {editingMargin ? (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Input value={marginInput} onChange={(e) => setMarginInput(e.target.value)}
-                        type="number" min={0} className="h-7 w-16 text-sm" autoFocus />
-                      <button onClick={handleSaveMargin} disabled={setMarginMut.isPending}
-                        className="text-primary disabled:opacity-40"><Check className="h-4 w-4" /></button>
-                      <button onClick={() => setEditingMargin(false)}
-                        className="text-muted-foreground"><X className="h-4 w-4" /></button>
-                    </div>
-                  ) : (
-                    <p className="text-sm font-bold tabular-nums flex items-center gap-1">
-                      {fmtPct(budget.marginPercent)}
-                      {(budget.status === "Draft" || budget.status === "Sent") && (
-                        <button onClick={() => { setMarginInput(String(budget.marginPercent)); setEditingMargin(true); }}
-                          className="text-muted-foreground hover:text-foreground">
-                          <Pencil className="h-3 w-3" />
-                        </button>
-                      )}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Preço final</p>
-                  <p className="text-sm font-bold tabular-nums text-primary">{fmt(budget.finalPrice)}</p>
-                </div>
-              </div>
-
-              {/* Actions */}
-              {budget.status !== "Rejected" && budget.status !== "Converted" && (
-                <div className="flex gap-2 flex-wrap">
-                  {budget.status === "Draft" && (
-                    <Button size="sm" variant="outline"
-                      onClick={() => handleTransition(sendMut, budget.id, "enviado")}
-                      disabled={sendMut.isPending}>
-                      Marcar como enviado
-                    </Button>
-                  )}
-                  {(budget.status === "Draft" || budget.status === "Sent") && (
-                    <>
-                      <Button size="sm" variant="outline"
-                        className="text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-800"
-                        onClick={() => handleTransition(approveMut, budget.id, "aprovado")}
-                        disabled={approveMut.isPending}>
-                        <Check className="h-3.5 w-3.5 mr-1" /> Aprovar
-                      </Button>
-                      <Button size="sm" variant="outline"
-                        className="text-destructive border-destructive/30 hover:bg-destructive/5"
-                        onClick={() => handleTransition(rejectMut, budget.id, "rejeitado")}
-                        disabled={rejectMut.isPending}>
-                        <X className="h-3.5 w-3.5 mr-1" /> Rejeitar
-                      </Button>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Items */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Itens</p>
-                  {(budget.status === "Draft" || budget.status === "Sent") && !addingItem && (
-                    <button onClick={() => { resetItemForm(); setAddingItem(true); }}
-                      className="text-xs text-primary hover:underline">
-                      + Adicionar item
-                    </button>
-                  )}
-                </div>
-
-                {addingItem && (
-                  <div className="p-3 rounded-md border border-dashed border-primary/40 space-y-2">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <Label className="text-xs">Descrição</Label>
-                        <Input value={itemName} onChange={(e) => setItemName(e.target.value)}
-                          placeholder="Ex: Cimento CP II" className="h-8 text-sm mt-0.5" autoFocus />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Categoria</Label>
-                        <Input value={itemCat} onChange={(e) => setItemCat(e.target.value)}
-                          placeholder="Materiais" className="h-8 text-sm mt-0.5" />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <Label className="text-xs">Qtd</Label>
-                        <Input value={itemQty} onChange={(e) => setItemQty(e.target.value)}
-                          type="number" min={0} className="h-8 text-sm mt-0.5" />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Unidade</Label>
-                        <Input value={itemUnit} onChange={(e) => setItemUnit(e.target.value)}
-                          placeholder="m³, kg, un…" className="h-8 text-sm mt-0.5" />
-                      </div>
-                      <div>
-                        <Label className="text-xs">Custo unit.</Label>
-                        <div className="relative mt-0.5">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">R$</span>
-                          <Input value={itemCost} onChange={(e) => setItemCost(e.target.value)}
-                            type="number" min={0} className="h-8 text-sm pl-6" placeholder="0,00" />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5 justify-end">
-                      <button onClick={handleSaveItem}
-                        disabled={!itemName.trim() || !itemCost || addItemMut.isPending || updateItemMut.isPending}
-                        className="text-primary disabled:opacity-40">
-                        <Check className="h-4 w-4" />
-                      </button>
-                      <button onClick={resetItemForm}
-                        className="text-muted-foreground">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {budget.items.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-2 text-center">
-                    Nenhum item no orçamento.
-                  </p>
-                ) : (
-                  <div className="rounded-md border border-border overflow-hidden">
-                    <table className="w-full text-sm min-w-[480px]">
-                      <thead className="bg-muted/40 border-b border-border">
-                        <tr>
-                          <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2">Descrição</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Qtd</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Unit.</th>
-                          <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Total</th>
-                          <th className="px-3 py-2" />
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {budget.items.map((item) => (
-                          <tr key={item.id} className="hover:bg-muted/20">
-                            <td className="px-3 py-2">
-                              <p className="font-medium">{item.name}</p>
-                              <p className="text-xs text-muted-foreground">{item.category}</p>
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">
-                              {item.quantity} {item.unit}
-                            </td>
-                            <td className="px-3 py-2 text-right tabular-nums">{fmt(item.unitCost)}</td>
-                            <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(item.totalCost)}</td>
-                            <td className="px-2 py-2 text-right whitespace-nowrap">
-                              {(budget.status === "Draft" || budget.status === "Sent") && (
-                                <div className="flex items-center justify-end gap-1">
-                                  <button onClick={() => startEditItem(item)}
-                                    className="text-muted-foreground hover:text-foreground p-1">
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button onClick={() => handleRemoveItem(item.id)}
-                                    disabled={removeItemMut.isPending}
-                                    className="text-muted-foreground hover:text-destructive p-1 disabled:opacity-40">
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* New budget form */}
-      {addingBudget && (
-        <div className="rounded-md border border-dashed border-primary/40 p-4 space-y-3">
-          <p className="text-sm font-medium">Novo orçamento</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs">Nome do orçamento</Label>
-              <Input value={budgetName} onChange={(e) => setBudgetName(e.target.value)}
-                placeholder="Ex: Orçamento V1" className="mt-0.5" autoFocus />
-            </div>
-            <div>
-              <Label className="text-xs">Margem (%)</Label>
-              <Input value={budgetMargin} onChange={(e) => setBudgetMargin(e.target.value)}
-                type="number" min={0} max={100} className="mt-0.5" />
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" onClick={() => setAddingBudget(false)}>Cancelar</Button>
-            <Button size="sm"
-              disabled={!budgetName.trim() || createBudgetMut.isPending}
-              onClick={handleCreateBudget}>
-              {createBudgetMut.isPending ? "Criando…" : "Criar"}
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1028,6 +437,8 @@ function TabDiario({ projectId }: { projectId: string }) {
           </Button>
         )}
       </div>
+
+      <DailyLogCopilot projectId={projectId} logs={logs} />
 
       {adding && (
         <div className="rounded-md border border-dashed border-primary/40 p-4 space-y-3">
@@ -1250,10 +661,13 @@ function TabDiario({ projectId }: { projectId: string }) {
                       >
                         <X className="h-2.5 w-2.5" />
                       </button>
+                      <PhotoClientVisibilityToggle projectId={projectId} photo={photo} logVisible={!!log.clientVisible} />
                     </div>
                   ))}
                 </div>
               )}
+
+              <DailyLogClientVisibility projectId={projectId} log={log} />
             </div>
           ))}
         </div>
@@ -1279,6 +693,7 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
   const { data: movementsData, isLoading: movLoading, hasNextPage, fetchNextPage, isFetchingNextPage } =
     useProjectMovements(projectId);
   const voidMut = useVoidMovement(projectId);
+  const { data: stages = [] } = useStages(projectId);
   const [confirmVoid, setConfirmVoid] = useState<string | null>(null);
 
   const movements = movementsData?.pages.flatMap((pg) => pg.items) ?? [];
@@ -1457,6 +872,8 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
         </div>
       )}
 
+      <CostByStageSection projectId={projectId} />
+
       {/* ── CTA: registrar despesa ─────────────────────────────────────── */}
       <Button
         className="w-full"
@@ -1512,6 +929,8 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  <MovementStageSelect projectId={projectId} movementId={m.id} description={m.description}
+                    stageId={m.stageId} stages={stages} />
                   <p className="text-sm font-bold tabular-nums text-red-600 dark:text-red-400">
                     -{fmt(m.amount)}
                   </p>
@@ -1553,7 +972,8 @@ function TabFinanceiro({ projectId }: { projectId: string }) {
 export default function BuildProjectDetailPage() {
   const { id = "" }   = useParams<{ id: string }>();
   const navigate      = useNavigate();
-  const [tab, setTab] = useState<Tab>("geral");
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(() => tabFrom(searchParams.get("aba")));
 
   const { data: project, isLoading, isError } = useProjectDetails(id);
 
@@ -1602,16 +1022,31 @@ export default function BuildProjectDetailPage() {
           <ProjectStatusBadge status={project.status} />
         </div>
 
-        <TabBar active={tab} onChange={setTab} />
+        <TabBar active={tab} onChange={setTab} threeD={project.trackingMode === "ThreeD"} />
       </div>
 
       {/* Tab content */}
       <div className="flex-1 overflow-auto p-6">
         {tab === "geral"      && <TabGeral project={project} />}
-        {tab === "etapas"     && <TabEtapas projectId={project.id} />}
-        {tab === "orcamento"  && <TabOrcamento project={project} />}
+        {tab === "etapas"     && <BuildStagesTab projectId={project.id} />}
+        {tab === "progresso"  && <BuildProgressTab projectId={project.id} />}
+        {tab === "riscos"     && <RiskTab projectId={project.id} />}
+        {tab === "gemeo"      && (
+          <Suspense fallback={<div className="h-40 rounded-md bg-muted animate-pulse" />}>
+            <DigitalTwinTab project={project} />
+          </Suspense>
+        )}
+        {tab === "orcamento"  && <BuildBudgetTab project={project} />}
+        {tab === "aditivos"   && <ChangeOrdersTab projectId={project.id} />}
+        {tab === "escolhas"   && <SelectionsTab projectId={project.id} onOpenChangeOrders={() => setTab("aditivos")} />}
+        {tab === "materiais"  && <MaterialsTab projectId={project.id} />}
+        {tab === "medicoes"   && <MeasurementsTab projectId={project.id} />}
+        {tab === "qualidade"  && <QualityTab projectId={project.id} />}
+        {tab === "pos-obra"   && <PostConstructionTab projectId={project.id} />}
         {tab === "diario"     && <TabDiario projectId={project.id} />}
+        {tab === "documentos" && <DocumentsTab projectId={project.id} />}
         {tab === "financeiro" && <TabFinanceiro projectId={project.id} />}
+        {tab === "portal"     && <BuildPortalTab projectId={project.id} />}
       </div>
     </div>
   );

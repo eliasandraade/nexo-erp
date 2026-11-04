@@ -23,6 +23,16 @@ public class BuildStage : TenantEntity
     public DateOnly?        ActualStartDate  { get; private set; }
     public DateOnly?        ActualEndDate    { get; private set; }
     public int              ProgressPercent  { get; private set; } // 0-100
+    /// <summary>
+    /// Relative weight of the stage in the project's overall progress (overall = Σ(weight·%) / Σweight).
+    /// Must be &gt; 0; existing rows default to 1 (all stages equal).
+    /// </summary>
+    public decimal          Weight           { get; private set; } = 1m;
+    /// <summary>
+    /// Whether the stage's work is sensitive to the weather (rain, wind) — Wave 6. Null = decided by the configurable keyword
+    /// list on the stage name (concretagem, fundação, cobertura…); true/false = set explicitly by the company.
+    /// </summary>
+    public bool?            WeatherSensitive { get; private set; }
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
@@ -80,14 +90,58 @@ public class BuildStage : TenantEntity
         SetUpdatedAt();
     }
 
-    public void UpdateProgress(int percent)
+    /// <summary>
+    /// Records the stage's real progress. The first progress above zero marks the actual start (on
+    /// <paramref name="effectiveDate"/>, default today) and moves a pending stage to in progress; 100%
+    /// completes it and marks the actual end.
+    /// </summary>
+    public void UpdateProgress(int percent, DateOnly? effectiveDate = null)
     {
         if (percent < 0 || percent > 100)
             throw new DomainException("Progress must be between 0 and 100.");
+        var day = effectiveDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
         ProgressPercent = percent;
+        if (percent > 0 && ActualStartDate is null)
+            ActualStartDate = day;
+        if (percent > 0 && percent < 100 && Status == BuildStageStatus.Pending)
+            Status = BuildStageStatus.InProgress;
         // Auto-transition: 100% → Completed if not already
-        if (percent == 100 && Status != BuildStageStatus.Completed)
-            Status = BuildStageStatus.Completed;
+        if (percent == 100)
+        {
+            if (Status != BuildStageStatus.Completed) Status = BuildStageStatus.Completed;
+            ActualEndDate ??= day;
+        }
+        SetUpdatedAt();
+    }
+
+    /// <summary>Sets the stage's weight in the overall progress (must be greater than zero).</summary>
+    public void SetWeight(decimal weight)
+    {
+        if (weight <= 0m) throw new DomainException("O peso da etapa precisa ser maior que zero.");
+        if (weight > 1_000_000m) throw new DomainException("Peso da etapa muito alto.");
+        Weight = weight;
+        SetUpdatedAt();
+    }
+
+    /// <summary>
+    /// Moves the planned end by <paramref name="days"/> (an approved change order's schedule impact). Only this
+    /// stage moves — later stages are not shifted. Returns false when the stage has no planned end.
+    /// </summary>
+    public bool ShiftPlannedEnd(int days)
+    {
+        if (days == 0 || PlannedEndDate is not { } end) return false;
+        var next = end.AddDays(days);
+        if (PlannedStartDate is { } start && next < start)
+            throw new DomainException($"O prazo deixaria a etapa {Name} terminando antes de começar.", "stage_end_before_start");
+        PlannedEndDate = next;
+        SetUpdatedAt();
+        return true;
+    }
+
+    /// <summary>Sets (true/false) or clears (null = keyword default) the weather sensitivity of the stage.</summary>
+    public void SetWeatherSensitive(bool? sensitive)
+    {
+        WeatherSensitive = sensitive;
         SetUpdatedAt();
     }
 

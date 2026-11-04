@@ -19,8 +19,27 @@ public interface IStorageProvider
     Task PingAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Verifies the private place for "private/…" keys is reachable — read-only, nothing written. Providers without a
+    /// separate private bucket have nothing more to check.
+    /// </summary>
+    Task PingPrivateAsync(CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <summary>
     /// A signed GET URL for the key, valid for <paramref name="ttl"/>. Computed locally (no request
-    /// to the provider). Private keys ("private/…") are signed against the private bucket.
+    /// to the provider). Private keys ("private/…") are signed against the private bucket only.
     /// </summary>
     string GetSignedUrl(string key, TimeSpan ttl);
+
+    /// <summary>
+    /// Whether private keys ("private/…") have a private place to go. When false, every operation on a private key
+    /// throws <see cref="PrivateStorageUnavailableException"/> — private content never falls back to a public bucket.
+    /// </summary>
+    bool CanStorePrivateFiles => true;
+
+    /// <summary>
+    /// Opens a stored object for reading (server-side processing, e.g. a BIM model). The caller disposes the stream.
+    /// Providers that cannot read back throw <see cref="NotSupportedException"/>.
+    /// </summary>
+    Task<Stream> OpenReadAsync(string key, CancellationToken ct = default)
+        => throw new NotSupportedException("Este armazenamento não permite ler arquivos de volta.");
 }

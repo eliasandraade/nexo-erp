@@ -165,7 +165,7 @@ public class BuildDailyLogService
 
     // ── Mappers ───────────────────────────────────────────────────────────────
 
-    internal static BuildDailyLogDto MapToDto(
+    public static BuildDailyLogDto MapToDto(
         BuildDailyLog log,
         IEnumerable<BuildDailyLogPhoto> photos,
         IPrivateFileUrls? urls = null)
@@ -180,7 +180,9 @@ public class BuildDailyLogService
             PhotoCount:     photoList.Count,
             Photos:         photoList,
             CreatedAt:      log.CreatedAt,
-            UpdatedAt:      log.UpdatedAt);
+            UpdatedAt:      log.UpdatedAt,
+            ClientVisible:  log.ClientVisible,
+            ClientSummary:  log.ClientSummary);
     }
 
     /// <summary>
@@ -196,5 +198,6 @@ public class BuildDailyLogService
         StorageKey: p.StorageKey,
         Url:        urls?.For(p.StorageKey),
         Caption:    p.Caption,
-        CreatedAt:  p.CreatedAt);
+        CreatedAt:  p.CreatedAt,
+        ClientVisible: p.ClientVisible);
 }

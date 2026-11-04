@@ -45,7 +45,7 @@ import type {
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import type { UpdatePortalInfoRequest } from "../types";
 
-const PORTAL_BASE = "app.orken.com.br";
+const PORTAL_BASE = "erp.orken.com.br";
 
 // ── Fortaleza neighborhoods ────────────────────────────────────────────────────
 const FORTALEZA_NEIGHBORHOODS = [

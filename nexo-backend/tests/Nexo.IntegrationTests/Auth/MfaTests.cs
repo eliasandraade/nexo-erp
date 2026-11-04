@@ -90,7 +90,7 @@ public class MfaTests
 
         var challenge = await FirstStepAsync(user.Login, user.Password);
         (await SecondStepAsync(challenge, "000000")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        // One code, taken once: recomputing it later could cross a 30 s step and yield the next (valid) code.
+        // one code for the whole test: recomputing it could cross a 30 s step and test a different, fresh code
         var code = CodeAt(secret, 1);
         var ok = await SecondStepAsync(challenge, code);
         ok.StatusCode.Should().Be(HttpStatusCode.OK, await ok.Content.ReadAsStringAsync());

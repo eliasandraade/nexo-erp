@@ -1,5 +1,6 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
+import { resolveBuildPortal, BUILD_PORTAL_ROUTE } from '@/modules/build-portal/route';
+import { lazy, Suspense, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/modules/auth/context/AuthContext";
 import { WorkspaceProvider } from "@/modules/workspace/WorkspaceContext";
 import { AppErrorBoundary } from "@/components/shared/AppErrorBoundary";
@@ -8,6 +9,7 @@ import { MainAppLayout } from "@/app/layouts/MainAppLayout";
 import { PosLayout } from "@/app/layouts/PosLayout";
 import { PlatformLayout } from "@/app/layouts/PlatformLayout";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
+import { institutionalEntry } from "./institutionalEntry";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { ModuleRoute } from "./ModuleRoute";
 import { PlatformRoute } from "./PlatformRoute";
@@ -30,13 +32,14 @@ import NotFoundPage   from "@/pages/NotFoundPage";
 // all authenticated app pages. Each group becomes its own chunk.
 
 // Public — lazy because app users never visit these
-const LandingPage        = lazy(() => import("@/modules/landing/pages/LandingPage"));
+const BuildPortalPage = lazy(() => import('@/modules/build-portal/PortalPage'));
 const PortalMenuPage     = lazy(() => import("@/modules/portal/pages/PortalMenuPage"));
 const PortalTrackingPage = lazy(() => import("@/modules/portal/pages/PortalTrackingPage"));
 const ServiceBookingPage = lazy(() => import("@/modules/service-portal/pages/BookingPage"));
 const ServiceManageBookingPage = lazy(() => import("@/modules/service-portal/pages/ManageBookingPage"));
 
 const ImpersonatePage       = lazy(() => import("@/pages/ImpersonatePage"));
+const ImpersonationEndedPage = lazy(() => import("@/pages/ImpersonationEndedPage"));
 const PerfilPage            = lazy(() => import("@/modules/profile/pages/PerfilPage"));
 const ModuleSelectionPage   = lazy(() => import("@/modules/workspace/pages/ModuleSelectionPage"));
 
@@ -125,6 +128,8 @@ const PlatformTenantDetailPage = lazy(() => import("@/modules/platform/pages/Pla
 const PlatformSystemPage       = lazy(() => import("@/modules/platform/pages/PlatformSystemPage"));
 const PlatformActivityPage     = lazy(() => import("@/modules/platform/pages/PlatformActivityPage"));
 const PlatformTrialPage        = lazy(() => import("@/modules/platform/pages/PlatformTrialPage"));
+const PlatformSecurityPage     = lazy(() => import("@/modules/platform/pages/PlatformSecurityPage"));
+const PlatformBuildPage        = lazy(() => import("@/modules/platform/pages/PlatformBuildPage"));
 const PlatformTaxPage          = lazy(() => import("@/modules/platform/pages/PlatformTaxPage"));
 const AiDashboardPage          = lazy(() => import("@/modules/platform/pages/ai/AiDashboardPage"));
 const AiPlaygroundPage         = lazy(() => import("@/modules/platform/pages/ai/AiPlaygroundPage"));
@@ -147,6 +152,15 @@ function PageLoader() {
  * Redirects legacy /menu/:slug links to /:slug. The slug is reduced to a single path segment (no slash or
  * backslash), so a crafted link such as /menu/%5Cexample.com can never become a redirect to another origin.
  */
+/**
+ * The root of the ERP: the sign-in page with the query string, as the server answers on erp.orken.com.br
+ * (Caddyfile). AuthLayout sends a signed-in user on to their own destination.
+ */
+function ErpEntry() {
+  const { search } = useLocation();
+  return <Navigate to={`/login${search}`} replace />;
+}
+
 function MenuSlugRedirect() {
   const { slug } = useParams<{ slug: string }>();
   return <Navigate to={legacyMenuTarget(slug)} replace />;
@@ -164,17 +178,29 @@ export function legacyMenuTarget(slug: string | undefined): string {
  *   ModuleRoute    → verifies module subscription
  *   RoleRoute      → verifies role-based access, redirects to homeRoute on failure
  */
-export function AppRouter() {
+export function AppRouter() { return <BrowserRouter><RouterSurface /></BrowserRouter>; }
+const BuildReview = import.meta.env.DEV && import.meta.env.VITE_BUILD_PORTAL_REVIEW === '1' ? lazy(() => import('@/modules/build-portal/dev/Review')) : null;
+/** Leaves the app for the Orken portal: an in-app link to the root of www (the server does the same for a visit). */
+function InstitutionalEntryRedirect({ to }: Readonly<{ to: string }>) {
+  useEffect(() => { window.location.replace(to); }, [to]);
+  return <PageLoader />;
+}
+function RouterSurface() {
+  const { pathname, search, hash } = useLocation();
+  const entry = institutionalEntry(window.location.hostname, pathname, search, hash);
+  if (entry) return <InstitutionalEntryRedirect to={entry} />;
+  if (BuildReview && pathname === '/__review/minha-obra') return <Suspense fallback={<PageLoader />}><BuildReview /></Suspense>;
+  if (resolveBuildPortal(pathname)) return <Suspense fallback={<PageLoader />}><Routes><Route path={BUILD_PORTAL_ROUTE} element={<BuildPortalPage />} /></Routes></Suspense>;
   return (
-    <BrowserRouter>
+    <>
       <AuthProvider>
         <ImpersonationBanner />
         <WorkspaceProvider>
         <AppErrorBoundary>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            {/* Public: landing page */}
-            <Route path="/" element={<LandingPage />} />
+            {/* The root is the entry of the ERP (the Orken institutional page is app.orken.com.br) */}
+            <Route path="/" element={<ErpEntry />} />
 
             {/* Public: Orken Service booking portal — distinct prefix (restaurant owns root /:slug;
                 React Router ranks the static "agendar" segment above the dynamic :slug). */}
@@ -190,6 +216,7 @@ export function AppRouter() {
 
             {/* Public: impersonation entry (opened in new tab by platform admin) */}
             <Route path="/impersonate" element={<ImpersonatePage />} />
+            <Route path="/acesso-encerrado" element={<ImpersonationEndedPage />} />
 
             {/* Public: auth pages */}
             <Route element={<AuthLayout />}>
@@ -375,6 +402,8 @@ export function AppRouter() {
                 <Route path="/platform/trial"                    element={<PlatformTrialPage />} />
                 <Route path="/platform/activity"                 element={<PlatformActivityPage />} />
                 <Route path="/platform/system"                   element={<PlatformSystemPage />} />
+                <Route path="/platform/seguranca"                element={<PlatformSecurityPage />} />
+                <Route path="/platform/build"                    element={<PlatformBuildPage />} />
                 <Route path="/platform/tributos"                 element={<PlatformTaxPage />} />
                 {/* AI Operations */}
                 <Route path="/platform/ai"                       element={<AiDashboardPage />} />
@@ -392,6 +421,6 @@ export function AppRouter() {
         </AppErrorBoundary>
         </WorkspaceProvider>
       </AuthProvider>
-    </BrowserRouter>
+    </>
   );
 }

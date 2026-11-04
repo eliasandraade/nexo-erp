@@ -31,5 +31,4 @@ public sealed record TelemetryEntry(
     int     RequiresInputCount,
     double  AmountConfidence,
     double  DateConfidence,
-    string? RawPrompt   = null,
-    string? RawResponse = null);
+    string? ModelId     = null);

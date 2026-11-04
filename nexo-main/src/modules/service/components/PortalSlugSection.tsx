@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { setPublicSlug, checkSlugAvailability } from "@/modules/stores/services/storesApi";
 
-const PORTAL_BASE = "app.orken.com.br";
+const PORTAL_BASE = "erp.orken.com.br";
 const BOOKING_PREFIX = "agendar";
 
 /** Preview-only normalization; the backend is authoritative (Store.NormalizeSlug). */

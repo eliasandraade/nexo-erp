@@ -11,6 +11,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import * as authService from "../services/authService";
+import { apiClient, clearTokens, endImpersonationSession, isImpersonating, onSessionEnded } from "@/services/api-client";
 import type { AuthSession, LoginInput } from "../types";
 
 interface AuthContextValue {
@@ -22,8 +23,16 @@ interface AuthContextValue {
    * Also returns the session type so the caller can redirect appropriately.
    */
   login: (input: LoginInput) => Promise<{ error: string | null; type: "tenant" | "platform" | null }>;
-  /** Signs out locally and goes to `to` (the login page by default; a reason can ride in its query). */
+  /**
+   * Signs out and goes to `to` (the login page by default; a reason can ride in its query). In a platform access
+   * tab it leaves the access instead.
+   */
   logout: (to?: string) => void;
+  /**
+   * Drops the local session without asking the server (it already ended it: two-step verification turned on,
+   * sessions revoked…) and goes to `to` (default /login).
+   */
+  endLocalSession: (to?: string) => void;
   /** Switch the active store. Issues new JWT pair scoped to the given store. */
   switchStore: (storeId: string) => Promise<void>;
   /** Set session after successful email verification (auto-login). */
@@ -32,10 +41,16 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+/**
+ * The entry page of an impersonation tab: it starts from no session at all (the token arrives from the platform
+ * tab) — never from the administrator's own stored session, which this tab must not validate nor redirect with.
+ */
+const isImpersonationEntry = () => globalThis.location?.pathname === "/impersonate";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Populate synchronously from localStorage for instant render
+  // Populate synchronously from storage for instant render
   const [session, setSession] = useState<AuthSession | null>(
-    () => authService.getCurrentSession()
+    () => (isImpersonationEntry() ? null : authService.getCurrentSession())
   );
   const [isReady, setIsReady] = useState(false);
   const navigate = useNavigate();
@@ -43,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Background validation: confirm the stored session is still valid
   useEffect(() => {
-    const storedSession = authService.getCurrentSession();
+    const storedSession = isImpersonationEntry() ? null : authService.getCurrentSession();
     if (!storedSession) {
       setIsReady(true);
       return;
@@ -81,6 +96,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback((to = "/login") => {
+    // In a platform access tab, "Sair" leaves the access (audited) — the administrator's own session stays.
+    if (isImpersonating()) {
+      apiClient.post("/auth/impersonation/end").catch(() => undefined).finally(() => endImpersonationSession("impersonation_left"));
+      return;
+    }
     // Server-side revocation is best effort; the local session is cleared regardless.
     void authService.logout();
     // Go first, then drop the session in a transition: React Router 7 navigates inside one, so both land in the
@@ -91,6 +111,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // previous session's data (dashboard, customers, sales, …).
     queryClient.clear();
   }, [navigate, queryClient]);
+
+  const endLocalSession = useCallback((to = "/login") => {
+    clearTokens();
+    // Same order as logout: navigate first, drop the session in a transition, so `to`'s reason survives the guard.
+    void navigate(to, { replace: true });
+    startTransition(() => setSession(null));
+    queryClient.clear();
+  }, [navigate, queryClient]);
+
+  // The API client dropped the session on its own (revoked platform session, ended tenant access): leave the page.
+  useEffect(() => onSessionEnded((reason) => {
+    setSession(null);
+    queryClient.clear();
+    if (reason === "platform_session_ended") void navigate("/login?motivo=sessao-encerrada", { replace: true });
+    else void navigate(`/acesso-encerrado${reason === "impersonation_left" ? "?motivo=saiu" : ""}`, { replace: true });
+  }), [navigate, queryClient]);
 
   const switchStore = useCallback(async (storeId: string): Promise<void> => {
     const fresh = await authService.switchStore(storeId);
@@ -105,8 +141,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ session, isReady, login, logout, switchStore, setSessionFromVerify }),
-    [session, isReady, login, logout, switchStore, setSessionFromVerify]
+    () => ({ session, isReady, login, logout, endLocalSession, switchStore, setSessionFromVerify }),
+    [session, isReady, login, logout, endLocalSession, switchStore, setSessionFromVerify]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

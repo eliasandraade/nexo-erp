@@ -1,8 +1,13 @@
 import {
   apiClient,
+  beginImpersonation,
   clearTokens,
+  getImpersonation,
+  leaveImpersonation,
+  getRefreshToken,
+  getStoredSession,
+  setStoredSession,
   setTokens,
-  TOKEN_KEYS,
 } from "@/services/api-client";
 import type {
   AuthSession,
@@ -38,13 +43,14 @@ function toAuthSession(dto: BackendSessionDto): AuthSession {
   };
 }
 
+// The session lives next to the tokens: localStorage, or this tab's sessionStorage in an impersonation tab.
 function persistSession(session: AuthSession): void {
-  localStorage.setItem(TOKEN_KEYS.session, JSON.stringify(session));
+  setStoredSession(JSON.stringify(session));
 }
 
 export function getCurrentSession(): AuthSession | null {
   try {
-    const raw = localStorage.getItem(TOKEN_KEYS.session);
+    const raw = getStoredSession();
     if (!raw) return null;
     return JSON.parse(raw) as AuthSession;
   } catch {
@@ -55,6 +61,8 @@ export function getCurrentSession(): AuthSession | null {
 // ── Auth operations ───────────────────────────────────────────────────────────
 
 export async function login(input: LoginInput): Promise<LoginResponse> {
+  // signing in from a tab whose platform access ended: it becomes a normal tab again
+  if (getImpersonation()?.ended) leaveImpersonation();
   try {
     const data = await apiClient.post<BackendLoginResponse | { mfaRequired: true; mfaChallenge: string }>("/auth/login", {
       login:    input.login,
@@ -79,7 +87,7 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
 
 export async function logout(): Promise<void> {
   try {
-    const refreshToken = localStorage.getItem(TOKEN_KEYS.refresh);
+    const refreshToken = getRefreshToken();
     apiClient.post("/auth/logout", { refreshToken: refreshToken ?? "" }).catch(() => undefined);
   } finally {
     clearTokens();
@@ -91,7 +99,7 @@ export async function logout(): Promise<void> {
  * Updates stored tokens and session on success.
  */
 export async function switchStore(storeId: string): Promise<AuthSession> {
-  const refreshToken = localStorage.getItem(TOKEN_KEYS.refresh) ?? "";
+  const refreshToken = getRefreshToken() ?? "";
   const data = await apiClient.post<BackendSwitchStoreResponse>("/auth/switch-store", { storeId, refreshToken });
   const session = toAuthSession(data.session);
   setTokens(data.accessToken, data.refreshToken);
@@ -114,6 +122,28 @@ export async function validateSession(): Promise<AuthSession | null> {
     clearTokens();
     return null;
   }
+}
+
+/** What the platform tab hands to the impersonation tab (never through any storage). */
+export interface ImpersonationGrant {
+  accessToken: string;
+  /** When the access ends (ISO). */
+  expiresAt: string | null;
+  session: BackendSessionDto;
+}
+
+/**
+ * Starts the tenant session of an impersonation tab: token and session in this tab's sessionStorage only,
+ * never in localStorage (the administrator's own session there stays untouched).
+ */
+export function startImpersonationSession(grant: ImpersonationGrant): AuthSession {
+  const session = toAuthSession(grant.session);
+  beginImpersonation(grant.accessToken, JSON.stringify(session), {
+    tenant: session.companyName,
+    user: session.name,
+    expiresAt: grant.expiresAt,
+  });
+  return session;
 }
 
 // ── Registration / Email verification ────────────────────────────────────────

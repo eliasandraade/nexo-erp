@@ -76,9 +76,7 @@ public class ExtractionResult : TenantEntity
             AccountConfidence  = output.Account.Confidence,
             AccountStatus      = output.Account.Status,
 
-            AnalyzerProvider   = output.Prompt.PromptType == string.Empty
-                                     ? AnalyzerProvider.RuleBased
-                                     : AnalyzerProvider.Claude,
+            AnalyzerProvider   = output.Provider,
             PromptType         = output.Prompt.PromptType,
             PromptVersion      = output.Prompt.PromptVersion,
             PromptHash         = output.Prompt.PromptHash,

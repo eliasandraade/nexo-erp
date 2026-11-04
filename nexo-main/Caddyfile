@@ -14,6 +14,18 @@
 	# plugin; zstd+gzip covers all browsers and is built in.
 	encode zstd gzip
 
+	# Security headers on every response (the app on erp.orken.com.br and the Build portal on www.orken.com.br). No
+	# full CSP: the app embeds PDFs (<object>) and runs WebAssembly (IFC viewer). Framing is refused; geolocation stays
+	# allowed for the app itself (project page), camera, microphone and USB are not used.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Content-Security-Policy "frame-ancestors 'none'"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), usb=(), geolocation=(self)"
+	}
+
 	# Hashed asset filenames (e.g. index-BJE3iSeJ.js) change on every build, so
 	# they can be cached forever. This is the big first-vs-repeat-load win.
 	@assets path /assets/*
@@ -23,6 +35,28 @@
 	# reload instead of serving a stale shell that references deleted chunks.
 	@html path / /index.html
 	header @html Cache-Control "no-cache"
+
+	# The Orken institutional entry is the portal on app.orken.com.br (docs/engineering/public-hosts.md). Only a visit
+	# (GET or HEAD) to the root of www goes there, with its query string; every other path on www (Build portals, menus,
+	# booking, tracking, account links) is still served below, and erp.orken.com.br keeps its own root. 307: browsers
+	# do not cache it, so the root can come back to www later.
+	@institutional {
+		host www.orken.com.br
+		method GET HEAD
+		path /
+	}
+	redir @institutional https://app.orken.com.br{uri} 307
+
+	# The root of erp.orken.com.br is the entry of the ERP, not another institutional page: a visit goes to the sign-in
+	# page with its query string. The session lives in the API's cookie, so it is not visible here; the sign-in page
+	# sends a signed-in user on to their own destination (AuthLayout). Any other host keeps the SPA at the root, so
+	# Railway's healthcheck still gets a 200.
+	@erpEntry {
+		host erp.orken.com.br
+		method GET HEAD
+		path /
+	}
+	redir @erpEntry /login{?query} 307
 
 	# SPA fallback: client-side routes (/dashboard, /vendas, …) resolve to the
 	# app shell; real files (assets, favicon) are served directly.

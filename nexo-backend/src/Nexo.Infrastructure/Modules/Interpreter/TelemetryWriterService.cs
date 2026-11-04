@@ -54,8 +54,7 @@ public sealed class TelemetryWriterService : ITelemetryWriter
                 requiresInputCount:   e.RequiresInputCount,
                 amountConfidence:     e.AmountConfidence,
                 dateConfidence:       e.DateConfidence,
-                rawPrompt:            e.RawPrompt,
-                rawResponse:          e.RawResponse);
+                modelId:              e.ModelId);
 
             db.InterpreterTelemetry.Add(row);
             await db.SaveChangesAsync(ct);

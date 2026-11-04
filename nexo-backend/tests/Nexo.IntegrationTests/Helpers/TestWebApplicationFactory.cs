@@ -32,6 +32,15 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         .WithPassword("nexo_test")
         .Build();
 
+    /// <summary>The fake Anthropic API every Claude call of this host goes to (nothing leaves the test host).</summary>
+    public FakeAnthropicHandler Anthropic { get; } = new();
+
+    /// <summary>The host's latest warnings and errors, so an unexpected status in a test shows the server exception.</summary>
+    public ServerLogCapture ServerLog { get; } = new();
+
+    /// <summary>A test-only master key (base64 of 32 fixed bytes) so AI provider keys are really encrypted in the tests.</summary>
+    public static readonly string TestMasterKey = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes("test-only-master-key-32-bytes!!!"));
+
     public async Task InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -99,8 +108,15 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
                 });
 
                 var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
-                opts.AddInterceptors(interceptor, TaxQueries);
+                opts.AddInterceptors(interceptor, TaxQueries, sp.GetRequiredService<SqlCommandCounter>());
+                // a page or batch without an order is nondeterministic: fail the test instead of logging a warning
+                opts.ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.RowLimitingOperationWithoutOrderByWarning));
             });
+            // Counts SQL commands of requests marked with SqlCommandCounter.Header (N+1 tests).
+            services.AddHttpContextAccessor();
+            services.AddSingleton<SqlCommandCounter>();
+            // Serilog sink (Program reads sinks from the container): unexpected statuses can show the server exception.
+            services.AddSingleton<Serilog.Core.ILogEventSink>(ServerLog);
 
             // Replace the cache with a faithful in-memory implementation.
             // With no Redis connection string, AddInfrastructure registers NoOpCacheService,
@@ -120,6 +136,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
             // Private tax files live in memory: the test host has no object store.
             services.RemoveAll<Nexo.Infrastructure.TaxIntelligence.Files.ITaxFileStorage>();
             services.AddSingleton<Nexo.Infrastructure.TaxIntelligence.Files.ITaxFileStorage>(TaxFiles);
+            // Claude calls go to an in-process fake: the suite never reaches Anthropic.
+            services.AddHttpClient(Nexo.Infrastructure.Modules.Interpreter.AnthropicClientFactory.HttpClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => Anthropic);
         });
 
         // JWT overrides so test tokens validate against the test server.
@@ -147,12 +166,19 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // tests get 429. The policy stays enabled in production (config default true).
         builder.UseSetting("RateLimiting:PublicBooking:Enabled", "false");
         builder.UseSetting("RateLimiting:PublicOrders:Enabled", "false");
+        builder.UseSetting("RateLimiting:BuildPortal:Enabled", "false");
+        builder.UseSetting("RateLimiting:BuildPortalAuth:Enabled", "false");
+        builder.UseSetting("RateLimiting:BuildPortalDecision:Enabled", "false");
         builder.UseSetting("RateLimiting:CredentialCheck:Enabled", "false");
 
         // Tax Intelligence is off unless configured (kill switch). The suite turns it on explicitly and relaxes
         // only the approval enforcement — the Mode stays unconfigured (Disabled) — so tests can use rules created
         // on the fly. TaxIntelligenceTests turns enforcement, the mode and the pilot scope on in derived hosts to
         // prove what each configuration accepts and refuses.
+        builder.UseSetting("Secrets:MasterKey", TestMasterKey);
+        // Admin acts normally require a sign-in with two-step verification; most suites sign in with the password only.
+        // PlatformSecurityTests turns the requirement back on in its own host.
+        builder.UseSetting("Platform:RequireMfaForAdmin", "false");
         builder.UseSetting("TaxIntelligence:Policy:Enabled", "true");
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForDecisions", "false");
         builder.UseSetting("TaxIntelligence:Policy:RequireApprovedRulesForCalculations", "false");

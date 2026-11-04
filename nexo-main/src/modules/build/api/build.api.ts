@@ -21,6 +21,12 @@ export type BuildStageStatus =
   | "InProgress"
   | "Completed";
 
+/** How the construtora follows the project: standard tracking, or 3D (model onboarding in the "Gêmeo digital" tab). */
+export type BuildTrackingMode = "Standard" | "ThreeD";
+
+/** Kind of a budget / change-order line (BuildCostKind). Old items come as "Other". */
+export type BuildCostKind = "Material" | "Labor" | "Service" | "Equipment" | "Other";
+
 export type BuildBudgetStatus =
   | "Draft"
   | "Sent"
@@ -47,6 +53,10 @@ export interface BuildProjectDto {
   logCount:             number;
   createdAt:            string;
   updatedAt:            string;
+  latitude?:            number | null;
+  longitude?:           number | null;
+  areaM2?:              number | null;
+  trackingMode?:        BuildTrackingMode;
 }
 
 export interface BuildStageDto {
@@ -61,6 +71,8 @@ export interface BuildStageDto {
   actualStartDate:  string | null;
   actualEndDate:    string | null;
   progressPercent:  number;
+  /** Relative weight in the overall progress (> 0, default 1). */
+  weight?:          number;
 }
 
 export interface BuildBudgetItemDto {
@@ -73,6 +85,26 @@ export interface BuildBudgetItemDto {
   unit:      string;
   unitCost:  number;
   totalCost: number;
+  /** Wave 2 — absent on old servers (treat as "Other"). */
+  kind?:      BuildCostKind;
+  /** Stage name for budgets without an obra (or from a template). */
+  stageName?: string | null;
+}
+
+/** Totals per kind, margin applied, per m² when the area is known (Wave 2). */
+export interface BuildBudgetTotalsDto {
+  material:      number;
+  labor:         number;
+  service:       number;
+  equipment:     number;
+  other:         number;
+  subtotal:      number;
+  marginPercent: number;
+  marginValue:   number;
+  total:         number;
+  areaM2:        number | null;
+  costPerM2:     number | null;
+  totalPerM2:    number | null;
 }
 
 export interface BuildBudgetDto {
@@ -86,6 +118,27 @@ export interface BuildBudgetDto {
   createdAt:     string;
   updatedAt:     string;
   items:         BuildBudgetItemDto[];
+  // ── Wave 2 (additive) ──
+  validUntil?:       string | null;
+  /** Sent with validUntil before today (Brazil) — approving answers 422 budget_expired. */
+  isExpired?:        boolean;
+  /** Goes to the client / PDF. */
+  notes?:            string | null;
+  /** Never leaves the company. */
+  internalNotes?:    string | null;
+  areaM2?:           number | null;
+  costPerM2?:        number | null;
+  pricePerM2?:       number | null;
+  version?:          number;
+  parentBudgetId?:   string | null;
+  rootBudgetId?:     string | null;
+  sourceTemplateId?: string | null;
+  totals?:           BuildBudgetTotalsDto | null;
+  approvedAt?:       string | null;
+  approvedByName?:   string | null;
+  rejectedAt?:       string | null;
+  rejectedByName?:   string | null;
+  rejectionReason?:  string | null;
 }
 
 export interface BuildDailyLogPhotoDto {
@@ -95,6 +148,7 @@ export interface BuildDailyLogPhotoDto {
   url:        string | null;
   caption:    string | null;
   createdAt:  string;
+  clientVisible?: boolean;
 }
 
 export interface BuildDailyLogDto {
@@ -107,6 +161,9 @@ export interface BuildDailyLogDto {
   createdAt:      string;
   updatedAt:      string;
   photos:         BuildDailyLogPhotoDto[];
+  /** Shown on the client portal (only `clientSummary`, never the internal notes). */
+  clientVisible?: boolean;
+  clientSummary?: string | null;
 }
 
 export interface BuildProjectDetailsDto extends BuildProjectDto {
@@ -123,6 +180,10 @@ export interface BuildProjectFinancialSummaryDto {
   lastMovementDate:      string | null;
   varianceAmount:        number;
   variancePercent:       number;
+  /** Wave 2: Σ cost impact of the approved change orders. */
+  approvedChangeOrdersTotal?: number;
+  /** Wave 2: approved budget (with the change orders applied) + approved change orders not in it; null without either. */
+  contractTotal?:             number | null;
 }
 
 export interface BuildPagedResult<T> {
@@ -156,6 +217,63 @@ export interface BuildDashboardDto {
   balance:          number;
   avgStageProgress: number;
   recentExpenses:   BuildRecentExpenseDto[];
+  // ── Wave 6 (additive): portfolio of the active projects, totals and top risks ──
+  projects?:        BuildDashboardProjectDto[] | null;
+  totals?:          BuildDashboardTotalsDto | null;
+  topRisks?:        BuildDashboardRiskDto[] | null;
+  asOf?:            string | null;
+}
+
+/** One active project (planning, in progress, paused) of the portfolio. */
+export interface BuildDashboardProjectDto {
+  projectId:            string;
+  name:                 string;
+  clientName:           string;
+  status:               BuildProjectStatus;
+  actualPercent:        number;
+  plannedPercent:       number | null;
+  expectedEnd:          string | null;
+  forecastDelivery:     string | null;
+  /** Forecast − contractual end (calendar days, positive = late); null without both dates. */
+  daysLate:             number | null;
+  forecastMethodology:  string;
+  costRealized:         number;
+  contractTotal:        number | null;
+  /** (actual % × contract) ÷ realized; null without realized cost or contract. */
+  cpiLike:              number | null;
+  /** Keys Low, Medium, High, Critical. */
+  openNonConformities:  Record<string, number>;
+  openAssistance:       number;
+  pendingChangeOrders:  number;
+  lateMaterials:        number;
+  portalPublished:      boolean;
+  lastDailyLogDate:     string | null;
+  pendingAiSuggestions: number;
+}
+
+export interface BuildDashboardTotalsDto {
+  activeProjects:              number;
+  lateProjects:                number;
+  costRealized:                number;
+  contractTotal:               number;
+  openNonConformities:         number;
+  openCriticalNonConformities: number;
+  openAssistance:              number;
+  pendingChangeOrders:         number;
+  lateMaterials:               number;
+  publishedPortals:            number;
+  pendingAiSuggestions:        number;
+}
+
+export type BuildDashboardRiskKind = "forecast_late" | "critical_nonconformity" | "cost_performance" | "late_material" | (string & {});
+
+export interface BuildDashboardRiskDto {
+  projectId:   string;
+  projectName: string;
+  kind:        BuildDashboardRiskKind;
+  severity:    "high" | "medium" | (string & {});
+  message:     string;
+  value:       number | null;
 }
 
 // ── Request types ─────────────────────────────────────────────────────────────
@@ -168,8 +286,13 @@ export interface CreateBuildProjectRequest {
   budgetEstimated?: number;
   startDate?:       string;
   expectedEndDate?: string;
+  trackingMode?:    BuildTrackingMode;
+  latitude?:        number | null;
+  longitude?:       number | null;
+  areaM2?:          number | null;
 }
 
+/** PUT is a full replace: site fields sent as null are cleared, so always send the current values back. */
 export interface UpdateBuildProjectRequest {
   name:             string;
   clientName:       string;
@@ -179,6 +302,10 @@ export interface UpdateBuildProjectRequest {
   budgetApproved?:  number;
   startDate?:       string;
   expectedEndDate?: string;
+  trackingMode?:    BuildTrackingMode;
+  latitude:         number | null;
+  longitude:        number | null;
+  areaM2:           number | null;
 }
 
 export interface CreateBuildStageRequest {
@@ -186,6 +313,7 @@ export interface CreateBuildStageRequest {
   description?:  string;
   plannedStart?: string;   // yyyy-MM-dd
   plannedEnd?:   string;
+  weight?:       number;
 }
 
 export interface UpdateBuildStageRequest {
@@ -194,11 +322,16 @@ export interface UpdateBuildStageRequest {
   order:        number;
   plannedStart: string | null;
   plannedEnd:   string | null;
+  weight?:      number;
 }
 
 export interface UpdateBuildStageProgressRequest {
   progressPercent: number;
   status?:         BuildStageStatus;
+  /** Recorded in the progress history. */
+  note?:           string;
+  /** Day the progress refers to (yyyy-MM-dd; default today). */
+  effectiveDate?:  string;
 }
 
 export interface ReorderBuildStagesRequest {
@@ -206,9 +339,13 @@ export interface ReorderBuildStagesRequest {
 }
 
 export interface CreateBuildBudgetRequest {
-  name:          string;
-  projectId?:    string;
+  name:           string;
+  projectId?:     string;
   marginPercent?: number;
+  validUntil?:    string;
+  notes?:         string;
+  internalNotes?: string;
+  areaM2?:        number;
 }
 
 export interface AddBuildBudgetItemRequest {
@@ -218,6 +355,8 @@ export interface AddBuildBudgetItemRequest {
   unit:      string;
   unitCost:  number;
   stageId?:  string;
+  kind?:     BuildCostKind;
+  stageName?: string;
 }
 
 export interface UpdateBuildBudgetItemRequest {
@@ -227,6 +366,10 @@ export interface UpdateBuildBudgetItemRequest {
   unit:     string;
   unitCost: number;
   stageId?: string;
+  /** null/omitted keeps the current kind. */
+  kind?:     BuildCostKind;
+  /** omitted keeps; "" clears. */
+  stageName?: string;
 }
 
 export interface SetBudgetMarginRequest {
@@ -344,8 +487,9 @@ export const sendBudget     = (id: string): Promise<BuildBudgetDto> =>
   apiClient.post(`/v1/build/budgets/${id}/send`);
 export const approveBudget  = (id: string): Promise<BuildBudgetDto> =>
   apiClient.post(`/v1/build/budgets/${id}/approve`);
-export const rejectBudget   = (id: string): Promise<BuildBudgetDto> =>
-  apiClient.post(`/v1/build/budgets/${id}/reject`);
+/** Optional reason (Wave 2), recorded with who/when. */
+export const rejectBudget   = (id: string, reason?: string): Promise<BuildBudgetDto> =>
+  apiClient.post(`/v1/build/budgets/${id}/reject`, reason ? { reason } : undefined);
 export const convertBudget  = (id: string, req: ConvertBudgetToProjectRequest): Promise<BuildBudgetDto> =>
   apiClient.post(`/v1/build/budgets/${id}/convert`, req);
 export const setBudgetMargin = (id: string, req: SetBudgetMarginRequest): Promise<BuildBudgetDto> =>

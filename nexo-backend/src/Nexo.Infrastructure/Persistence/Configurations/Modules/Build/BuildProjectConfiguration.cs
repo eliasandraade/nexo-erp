@@ -25,6 +25,11 @@ public class BuildProjectConfiguration : IEntityTypeConfiguration<BuildProject>
         builder.Property(x => x.BudgetEstimated).HasColumnName("budget_estimated").HasColumnType("numeric(18,2)");
         builder.Property(x => x.BudgetApproved).HasColumnName("budget_approved").HasColumnType("numeric(18,2)");
         builder.Property(x => x.CreatedBy).HasColumnName("created_by").IsRequired();
+        builder.Property(x => x.Latitude).HasColumnName("latitude").HasColumnType("numeric(9,6)");
+        builder.Property(x => x.Longitude).HasColumnName("longitude").HasColumnType("numeric(9,6)");
+        builder.Property(x => x.AreaM2).HasColumnName("area_m2").HasColumnType("numeric(14,2)");
+        builder.Property(x => x.TrackingMode).HasColumnName("tracking_mode").HasConversion<int>()
+            .HasDefaultValue(BuildTrackingMode.Standard).HasSentinel((BuildTrackingMode)0).IsRequired();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
 

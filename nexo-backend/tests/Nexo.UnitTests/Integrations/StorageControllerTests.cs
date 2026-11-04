@@ -2,7 +2,6 @@ using FluentAssertions;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
@@ -31,9 +30,10 @@ public class StorageControllerTests
         IPrivateFileUrls  PrivateUrls);
 
     private static Sut Build(bool storageEnabled = true, int maxFileSizeMb = 5, string role = "Gerente",
-        string environment = "Development", string privateBucket = "")
+        bool privateStorage = true)
     {
         var provider = Substitute.For<IStorageProvider>();
+        provider.CanStorePrivateFiles.Returns(privateStorage);
         var privateUrls = Substitute.For<IPrivateFileUrls>();
         privateUrls.For(Arg.Any<string?>()).Returns(c => "https://signed.example/" + c.Arg<string?>());
         var flags    = Substitute.For<IIntegrationFeatureFlags>();
@@ -47,7 +47,6 @@ public class StorageControllerTests
         {
             MaxFileSizeMb     = maxFileSizeMb,
             AllowedContentTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"],
-            R2 = new R2Options { PrivateBucketName = privateBucket },
         });
 
         var controller = new StorageController(
@@ -56,7 +55,6 @@ public class StorageControllerTests
             flags,
             opts,
             tenant,
-            Env(environment),
             NullLogger<StorageController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -296,27 +294,41 @@ public class StorageControllerTests
         result.Should().BeOfType<NoContentResult>();
         await sut.Provider.Received(1).DeleteAsync(key, Arg.Any<CancellationToken>());
     }
-    private static IHostEnvironment Env(string name)
+    [Theory]
+    [InlineData("service-record")]
+    [InlineData("build-daily-log")]
+    [InlineData("build-selection-option")]
+    [InlineData("build-quality")]
+    [InlineData("build-handover")]
+    [InlineData("build-assistance")]
+    [InlineData("build-reality")]
+    public async Task Without_private_storage_every_private_context_fails_closed_and_nothing_is_written(string context)
     {
-        var env = Substitute.For<IHostEnvironment>();
-        env.EnvironmentName.Returns(name);
-        return env;
+        var sut = Build(privateStorage: false);
+
+        var result = await sut.Controller.Upload(MakeFile(), context, CancellationToken.None);
+
+        var refused = result.Should().BeOfType<ObjectResult>().Subject;
+        refused.StatusCode.Should().Be(503);
+        refused.Value!.GetType().GetProperty("code")!.GetValue(refused.Value).Should().Be("storage_unavailable");
+        await sut.Provider.DidNotReceiveWithAnyArgs().UploadAsync(default!, default);
     }
 
-    [Fact]
-    public async Task In_production_records_wait_for_the_private_bucket_but_site_photos_do_not()
+    [Theory]
+    [InlineData("product-image")]
+    [InlineData("build-portal-logo")]
+    [InlineData("build-portal-cover")]
+    public async Task Without_private_storage_public_contexts_keep_working(string context)
     {
-        var noBucket = Build(environment: "Production");
-        noBucket.Provider.UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>())
-            .Returns(c => new StorageUploadResult(c.Arg<StorageUploadRequest>().ObjectKey, string.Empty));
-        var record = await noBucket.Controller.Upload(MakeFile(), "service-record", CancellationToken.None);
-        record.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(503);
-        (await noBucket.Controller.Upload(MakeFile(), "build-daily-log", CancellationToken.None)).Should().BeOfType<OkObjectResult>();
+        var sut = Build(privateStorage: false);
+        sut.Provider.UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>())
+            .Returns(c => new StorageUploadResult(c.Arg<StorageUploadRequest>().ObjectKey, "https://assets.example/x"));
 
-        var withBucket = Build(environment: "Production", privateBucket: "orken-private");
-        withBucket.Provider.UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>())
-            .Returns(c => new StorageUploadResult(c.Arg<StorageUploadRequest>().ObjectKey, string.Empty));
-        (await withBucket.Controller.Upload(MakeFile(), "service-record", CancellationToken.None)).Should().BeOfType<OkObjectResult>();
+        var result = await sut.Controller.Upload(MakeFile(), context, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        await sut.Provider.Received(1).UploadAsync(
+            Arg.Is<StorageUploadRequest>(r => !r.ObjectKey.StartsWith(StorageKeys.PrivatePrefix)), Arg.Any<CancellationToken>());
     }
 
     [Fact]

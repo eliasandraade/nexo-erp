@@ -22,10 +22,11 @@ import {
   fetchMrr,
   fetchChurn,
 } from "../services/platformApi";
+import { platformErrorMessage, toastPlatformError } from "../services/platformErrors";
 import type { CreateTenantInput } from "../types";
 
-/** Consistent error message for failed platform mutations. */
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : "Erro ao executar a ação.");
+/** Consistent error message for failed platform mutations (403 explains the two-step requirement). */
+const errMsg = (e: unknown) => platformErrorMessage(e);
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
@@ -64,6 +65,7 @@ export function useUpdateTenant(tenantId: string) {
       qc.invalidateQueries({ queryKey: ["platform", "tenants"] });
       qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
     },
+    onError: toastPlatformError,
   });
 }
 
@@ -107,7 +109,7 @@ export function useRevokeModule(tenantId: string) {
 
 export function useImpersonate() {
   return useMutation({
-    mutationFn: (tenantId: string) => impersonateTenant(tenantId),
+    mutationFn: ({ tenantId, reason }: { tenantId: string; reason: string }) => impersonateTenant(tenantId, reason),
   });
 }
 
@@ -127,6 +129,7 @@ export function useCreateNote(tenantId: string) {
     mutationFn: ({ content, isPinned }: { content: string; isPinned: boolean }) =>
       createTenantNote(tenantId, content, isPinned),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "notes"] }),
+    onError: toastPlatformError,
   });
 }
 
@@ -135,6 +138,7 @@ export function useDeleteNote(tenantId: string) {
   return useMutation({
     mutationFn: (noteId: string) => deleteTenantNote(tenantId, noteId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "notes"] }),
+    onError: toastPlatformError,
   });
 }
 
@@ -143,6 +147,7 @@ export function useToggleNotePin(tenantId: string) {
   return useMutation({
     mutationFn: (noteId: string) => toggleNotePin(tenantId, noteId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "notes"] }),
+    onError: toastPlatformError,
   });
 }
 
@@ -160,6 +165,7 @@ export function useResetUserPassword(tenantId: string) {
 export function useForceLogout(tenantId: string) {
   return useMutation({
     mutationFn: (userId: string) => forceLogout(tenantId, userId),
+    onError: toastPlatformError,
   });
 }
 

@@ -11,7 +11,7 @@ namespace Nexo.Application.Modules.Interpreter;
 // Rule: confirmation is the ONLY way a movement leaves Draft status.
 // Any field that differs from the original suggestion is recorded as a UserCorrection
 // and used as dataset for future interpretation improvement.
-// Memory profile rebuild is triggered asynchronously AFTER commit — never blocks UX.
+// Memory profile rebuild runs AFTER commit, awaited and best effort (see ExecuteAsync).
 public class ConfirmMovementUseCase
 {
     private readonly IFinancialMovementRepository        _movementRepo;
@@ -25,6 +25,7 @@ public class ConfirmMovementUseCase
     private readonly ICurrentUser                        _currentUser;
     private readonly ILogger<ConfirmMovementUseCase>     _logger;
     private readonly VerticalLedgerPostingService        _ledger;
+    private readonly IMovementReferenceGuard?            _references;
 
     public ConfirmMovementUseCase(
         IFinancialMovementRepository        movementRepo,
@@ -37,9 +38,11 @@ public class ConfirmMovementUseCase
         ICurrentTenant                      currentTenant,
         ICurrentUser                        currentUser,
         ILogger<ConfirmMovementUseCase>     logger,
-        VerticalLedgerPostingService        ledger)
+        VerticalLedgerPostingService        ledger,
+        IMovementReferenceGuard?            references = null)
     {
         _ledger         = ledger;
+        _references     = references;
         _movementRepo   = movementRepo;
         _suggestionRepo = suggestionRepo;
         _correctionRepo = correctionRepo;
@@ -69,6 +72,10 @@ public class ConfirmMovementUseCase
 
         var suggestion = await _suggestionRepo.GetByIdAsync(command.OriginalSuggestionId, ct)
             ?? throw new NotFoundException("InterpretationSuggestion", command.OriginalSuggestionId);
+
+        // Every reference must be one of this company's, whoever proposed it.
+        if (_references is not null)
+            await _references.EnsureOwnedAsync(command.CategoryId, command.AccountId, command.ContextType, command.ContextId, command.SupplierId, ct);
 
         // Capture state before mutation for audit log.
         var previousState = SerializeMovement(movement);
@@ -128,9 +135,20 @@ public class ConfirmMovementUseCase
             "Corrections={CorrectionCount} ElapsedMs={ElapsedMs:F0}",
             movement.Id, corrections.Count == 0, corrections.Count, elapsedMs);
 
-        // Async rebuild: decoupled from UX — fires after commit, does not block response.
-        // In production this should be dispatched via a background job / domain event.
-        _ = _memoryService.RebuildProfileAsync(tenantId, userId);
+        // Memory profile refresh, after the commit. Awaited, never fire-and-forget: it runs on this request's DbContext,
+        // and a query still running when the request ended raced the DbContext disposal — the pooled connection went back
+        // to the pool in the middle of a command, and the next request that took it failed (a 500 on an unrelated
+        // endpoint, or a 30 s hang; issue #100). Best effort: the movement is already confirmed, so a failure here is
+        // logged, not returned (unless the caller went away).
+        try
+        {
+            await _memoryService.RebuildProfileAsync(tenantId, userId, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex,
+                "Interpreter.Confirm: memory profile refresh failed after commit. DraftId={DraftId}", movement.Id);
+        }
 
         var correctionSummaries = corrections
             .Select(c => new CorrectionSummaryDto(

@@ -60,6 +60,12 @@ try
     {
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.OverdueTitlesJob>();
         builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.ServiceCustomerEmailsJob>();
+        builder.Services.AddHostedService<Nexo.Infrastructure.Jobs.BuildProgressSnapshotJob>();
+        builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Build.BuildModelProcessingJobRunner>();
+        // Weekly client digest suggestions (Build:Ai:WeeklyDigestJob:Enabled, default false): never publishes.
+        builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Build.BuildWeeklyDigestJob>();
+        // Re-seals AI provider keys still in the legacy Base64 form once a master key is configured (after migrations).
+        builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Interpreter.AiKeyUpgradeHostedService>();
     }
 
     // ── JWT Authentication ────────────────────────────────────────────────────
@@ -127,8 +133,12 @@ try
         options.AddPolicy("Platform", policy =>
             policy.RequireAuthenticatedUser().RequireClaim("type", "platform"));
         // Platform administrators only (super_admin): acts that change what tenants can do (activation, approvals, catalogues).
+        // Admin acts also require a sign-in that passed two-step verification (Platform:RequireMfaForAdmin, default true):
+        // a stolen password alone can't change tenants, keys or impersonate.
+        var adminNeedsMfa = builder.Configuration.GetValue("Platform:RequireMfaForAdmin", true);
         options.AddPolicy("PlatformAdmin", policy =>
-            policy.RequireAuthenticatedUser().RequireClaim("type", "platform").RequireRole("super_admin"));
+            policy.RequireAuthenticatedUser().RequireClaim("type", "platform").RequireRole("super_admin")
+                  .RequireAssertion(ctx => !adminNeedsMfa || ctx.User.HasClaim("platform_mfa", "true")));
     });
 
     // ── CORS ──────────────────────────────────────────────────────────────────
@@ -142,7 +152,7 @@ try
                 "http://localhost:3000",
                 "http://localhost:8080",
                 "http://localhost:5173",
-                "https://app.orken.com.br",
+                "https://erp.orken.com.br",
                 "https://www.orken.com.br",
             };
 
@@ -157,11 +167,13 @@ try
                   .AllowAnyHeader()
                   .AllowCredentials()
                   // Cache the CORS preflight (OPTIONS) for 24h. The SPA lives on a
-                  // different origin (app.orken.com.br) than the API, so without this
+                  // different origin (erp.orken.com.br) than the API, so without this
                   // every non-simple request was preceded by a fresh OPTIONS round-trip,
                   // doubling latency on the cold first load.
                   .SetPreflightMaxAge(TimeSpan.FromHours(24))
-                  .WithExposedHeaders("Content-Disposition", "Content-Length", Nexo.Api.Middleware.CorrelationIdMiddleware.Header);
+                  // ETag: the client portal revalidates GET /twin/state with If-None-Match (contract §2.20); a browser on
+                  // another origin only reads response headers listed here.
+                  .WithExposedHeaders("Content-Disposition", "Content-Length", "Retry-After", "ETag", Nexo.Api.Middleware.CorrelationIdMiddleware.Header);
         });
     });
 
@@ -198,6 +210,8 @@ try
     builder.Services.AddRateLimiter(options =>
     {
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        // Every policy is a fixed window: Retry-After is the time left in the caller's window (exposed by CORS).
+        options.OnRejected = (context, ct) => Nexo.Api.Middleware.RateLimitRejection.WriteAsync(context.HttpContext, context.Lease, ct);
 
         options.AddPolicy("auth-login", httpContext =>
         {
@@ -307,6 +321,45 @@ try
         });
     });
 
+    // Orken Build client portal (public, per client IP): "build-portal" for reads, "build-portal-auth" for
+    // password attempts (on top of the per-client and per-portal password locks). Overridable via
+    // RateLimiting:BuildPortal:* and RateLimiting:BuildPortalAuth:*. The client IP comes from ClientIpResolver
+    // (RateLimiting:ClientIpSource — see the class for why X-Forwarded-For is trusted behind Railway's edge); the
+    // controller uses the same resolver for the per-client password lockout.
+    var buildPortalClientIp = new Nexo.Api.Middleware.ClientIpResolver(builder.Configuration);
+    builder.Services.AddSingleton(buildPortalClientIp);
+    builder.Services.Configure<RateLimiterOptions>(options =>
+    {
+        void AddIpPolicy(string policy, string section, int defaultPermit, int defaultWindow)
+        {
+            var enabled = builder.Configuration.GetValue($"RateLimiting:{section}:Enabled", true);
+            var permit  = builder.Configuration.GetValue($"RateLimiting:{section}:PermitLimit", defaultPermit);
+            var window  = builder.Configuration.GetValue($"RateLimiting:{section}:WindowSeconds", defaultWindow);
+
+            options.AddPolicy(policy, httpContext =>
+            {
+                if (!enabled)
+                    return RateLimitPartition.GetNoLimiter($"{policy}:disabled");
+
+                var clientIp = buildPortalClientIp.Resolve(httpContext);
+
+                return RateLimitPartition.GetFixedWindowLimiter($"{policy}|{clientIp}", _ =>
+                    new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit          = permit,
+                        Window               = TimeSpan.FromSeconds(window),
+                        QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                        QueueLimit           = 0,
+                    });
+            });
+        }
+
+        AddIpPolicy("build-portal", "BuildPortal", 120, 60);
+        AddIpPolicy("build-portal-auth", "BuildPortalAuth", 10, 300);
+        // client decisions (change orders, selections): writes, so tighter than reads
+        AddIpPolicy("build-portal-decision", "BuildPortalDecision", 30, 300);
+    });
+
     // ── Controllers ───────────────────────────────────────────────────────────
     // JsonStringEnumConverter: serializes all enums as their string names
     // ("Planning" instead of 0, "Draft" instead of 0, etc.).
@@ -342,6 +395,14 @@ try
         // Nested request records (e.g. PlatformController.ResetPasswordRequest) clashed with top-level
         // types of the same name and broke the whole document; nested types are now qualified.
         opts.CustomSchemaIds(Nexo.Api.OpenApiSchemaIds.For);
+
+        // Non-nullable reference types (string, DTOs) are not "nullable" in the document — the public portal contract
+        // (docs/build/openapi-portal.json) and its TypeScript types rely on it.
+        opts.SupportNonNullableReferenceTypes();
+        // nullable DTO properties keep their "nullable" flag (a bare $ref cannot carry it)
+        opts.UseAllOfToExtendReferenceSchemas();
+        // uploads that read the form themselves (after authorizing) still document their multipart body
+        opts.OperationFilter<Nexo.Api.Filters.MultipartFileBodyOperationFilter>();
 
         // Enable Bearer token in Swagger UI
         opts.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -455,6 +516,9 @@ try
     // Security headers
     app.Use(async (context, next) =>
     {
+        // HTTPS only from the first visit on (TLS ends at the Railway edge, so the app never redirects itself)
+        context.Response.Headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+
         // Prevent clickjacking
         context.Response.Headers["X-Frame-Options"] = "DENY";
         

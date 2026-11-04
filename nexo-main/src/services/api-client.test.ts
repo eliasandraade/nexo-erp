@@ -1,105 +1,209 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { ApiError, apiClient, errorOf } from "./api-client";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  apiClient,
+  ApiError,
+  beginImpersonation,
+  clearTokens,
+  getAccessToken,
+  getImpersonation,
+  getRefreshToken,
+  getStoredSession,
+  IMPERSONATION_KEY,
+  onSessionEnded,
+  setStoredSession,
+  setTokens,
+  TOKEN_KEYS,
+  type SessionEndReason,
+} from "./api-client";
 
-const json = (status: number, body: unknown, statusText = "Erro") =>
-  new Response(JSON.stringify(body), { status, statusText, headers: { "Content-Type": "application/json" } });
+const API = "http://localhost:5000/api";
 
-describe("errorOf", () => {
-  it("keeps the server's explanation and adds each reason after it", async () => {
-    const e = await errorOf(json(422, {
-      error: "Operação recusada.", code: "tax_pilot_approval_missing", details: ["Regra A sem aprovação", "Regra B sem aprovação"],
-    }));
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-    expect(e).toBeInstanceOf(ApiError);
-    expect(e.status).toBe(422);
-    expect(e.code).toBe("tax_pilot_approval_missing");
-    expect(e.message).toBe("Operação recusada. Regra A sem aprovação | Regra B sem aprovação");
-    expect(e.details).toEqual(["Regra A sem aprovação", "Regra B sem aprovação"]);
-  });
+/** The administrator's own (platform) session in localStorage. */
+function signInAdmin() {
+  localStorage.setItem(TOKEN_KEYS.access, "admin-access");
+  localStorage.setItem(TOKEN_KEYS.refresh, "p.admin-refresh");
+  localStorage.setItem(TOKEN_KEYS.session, JSON.stringify({ type: "platform", name: "Admin" }));
+}
 
-  it("does not repeat a reason the explanation already contains", async () => {
-    const e = await errorOf(json(422, { error: "Recusada: Regra A sem aprovação.", details: ["Regra A sem aprovação", "Regra B sem aprovação"] }));
-    expect(e.message).toBe("Recusada: Regra A sem aprovação. Regra B sem aprovação");
-
-    const all = await errorOf(json(422, { error: "Recusada: Regra A sem aprovação.", details: ["Regra A sem aprovação"] }));
-    expect(all.message).toBe("Recusada: Regra A sem aprovação.");
-    expect(all.details).toEqual(["Regra A sem aprovação"]);
-  });
-
-  it("shows only the details of a bare validation failure", async () => {
-    const e = await errorOf(json(400, { error: "Validation failed.", details: ["Nome é obrigatório.", "Valor deve ser positivo."] }));
-    expect(e.message).toBe("Nome é obrigatório. | Valor deve ser positivo.");
-
-    const noDetails = await errorOf(json(400, { error: "Validation failed." }));
-    expect(noDetails.message).toBe("Validation failed.");
-  });
-
-  it("uses the message field, ignores non-text details and falls back to the status text", async () => {
-    const e = await errorOf(json(409, { message: "Alterado por outra pessoa.", code: null, details: [42, "Recarregue.", null] }));
-    expect(e.message).toBe("Alterado por outra pessoa. Recarregue.");
-    expect(e.details).toEqual(["Recarregue."]);
-    expect(e.code).toBeUndefined();
-
-    const bare = await errorOf(json(404, {}, "Not Found"));
-    expect(bare.message).toBe("Not Found");
-    expect(bare.details).toEqual([]);
-  });
-
-  it("carries the request id of an unexpected error, for support", async () => {
-    const e = await errorOf(json(500, { error: "Erro inesperado.", requestId: "req-123" }));
-    expect(e.message).toBe("Erro inesperado. (código: req-123)");
-    expect(e.requestId).toBe("req-123");
-
-    const client = await errorOf(json(422, { error: "Recusado.", requestId: "req-9" }));
-    expect(client.message).toBe("Recusado.");
-    expect(client.requestId).toBe("req-9");
-  });
-
-  it("survives an empty or non-JSON body", async () => {
-    const e = await errorOf(new Response("<html>", { status: 502, statusText: "Bad Gateway" }));
-    expect(e.message).toBe("Bad Gateway");
-    expect(e.code).toBeUndefined();
-    expect(e.details).toEqual([]);
-  });
-
-  it("explains a rate limit without a message", async () => {
-    const e = await errorOf(new Response("", { status: 429, statusText: "" }));
-    expect(e.message).toBe("Muitas tentativas. Aguarde alguns minutos.");
-  });
+const adminStorage = () => ({
+  access: localStorage.getItem(TOKEN_KEYS.access),
+  refresh: localStorage.getItem(TOKEN_KEYS.refresh),
+  session: localStorage.getItem(TOKEN_KEYS.session),
 });
 
-describe("apiClient failures", () => {
-  afterEach(() => vi.unstubAllGlobals());
+const authHeader = (call: unknown[]) => (call[1] as RequestInit).headers as Record<string, string>;
 
-  it("turns a refused JSON request into an ApiError with the details", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(422, { error: "Fora do recorte.", code: "tax_operation_not_supported", details: ["Linha 1: falta NCM."] })));
+describe("api-client", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let ended: SessionEndReason[];
+  let unsubscribe: () => void;
 
-    const e = await apiClient.post("/tax/calculations", {}).catch((x: unknown) => x);
-    expect(e).toBeInstanceOf(ApiError);
-    expect(e).toMatchObject({ status: 422, code: "tax_operation_not_supported", details: ["Linha 1: falta NCM."], message: "Fora do recorte. Linha 1: falta NCM." });
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    ended = [];
+    unsubscribe = onSessionEnded(r => ended.push(r));
   });
 
-  it("turns a refused upload into an ApiError with the code, the request id and the details", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(503, {
-      error: "Armazenamento indisponível.", code: "tax_file_storage_unavailable", requestId: "req-7", details: ["Bucket fora do ar"],
-    })));
+  afterEach(() => {
+    unsubscribe();
+    vi.unstubAllGlobals();
+  });
 
-    const e = await apiClient.postForm("/tax/evidence-files", new FormData()).catch((x: unknown) => x);
-    expect(e).toBeInstanceOf(ApiError);
-    expect(e).toMatchObject({
-      status: 503, code: "tax_file_storage_unavailable", requestId: "req-7", details: ["Bucket fora do ar"],
-      message: "Armazenamento indisponível. Bucket fora do ar (código: req-7)",
+  describe("impersonation mode (tab-scoped)", () => {
+    beforeEach(() => {
+      signInAdmin();
+      beginImpersonation("imp-access", JSON.stringify({ type: "tenant", name: "Ana" }),
+        { tenant: "Padaria", user: "Ana", expiresAt: "2026-10-30T12:30:00Z" });
+    });
+
+    it("reads and writes the token and the session only in sessionStorage", () => {
+      expect(getAccessToken()).toBe("imp-access");
+      expect(getStoredSession()).toContain("Ana");
+      expect(getRefreshToken()).toBeNull();
+
+      setTokens("imp-access-2", "should-be-ignored");
+      setStoredSession(JSON.stringify({ name: "Ana 2" }));
+
+      expect(sessionStorage.getItem(TOKEN_KEYS.access)).toBe("imp-access-2");
+      expect(sessionStorage.getItem(TOKEN_KEYS.refresh)).toBeNull();
+      expect(adminStorage()).toEqual({
+        access: "admin-access",
+        refresh: "p.admin-refresh",
+        session: JSON.stringify({ type: "platform", name: "Admin" }),
+      });
+    });
+
+    it("clearTokens clears only this tab's keys and keeps the administrator's localStorage session", () => {
+      clearTokens();
+      expect(sessionStorage.getItem(TOKEN_KEYS.access)).toBeNull();
+      expect(sessionStorage.getItem(TOKEN_KEYS.session)).toBeNull();
+      expect(getImpersonation()?.ended).toBe(true);
+      // the ended tab never falls back to the admin's token
+      expect(getAccessToken()).toBeNull();
+      expect(adminStorage().access).toBe("admin-access");
+      expect(adminStorage().refresh).toBe("p.admin-refresh");
+    });
+
+    it("sends the impersonation token and never tries to refresh on 401", async () => {
+      fetchMock.mockResolvedValueOnce(json({ error: "O acesso terminou.", code: "impersonation_ended" }, 401));
+
+      await expect(apiClient.get("/products")).rejects.toMatchObject({ status: 401, code: "impersonation_ended" });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);   // no /auth/refresh call
+      expect(authHeader(fetchMock.mock.calls[0]).Authorization).toBe("Bearer imp-access");
+      expect(ended).toEqual(["impersonation_ended"]);
+      expect(sessionStorage.getItem(TOKEN_KEYS.access)).toBeNull();
+      expect(adminStorage().access).toBe("admin-access");
+      expect(adminStorage().refresh).toBe("p.admin-refresh");
     });
   });
 
-  it("still returns the body of a successful request, and nothing for 204", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json(200, { ok: true })).mockResolvedValueOnce(new Response(null, { status: 204 })));
-    await expect(apiClient.get("/tax/overview")).resolves.toEqual({ ok: true });
-    await expect(apiClient.delete("/tax/x")).resolves.toBeUndefined();
+  describe("refresh", () => {
+    it("rotates the pair on 401 and retries the request once", async () => {
+      signInAdmin();
+      fetchMock
+        .mockResolvedValueOnce(json({}, 401))
+        .mockResolvedValueOnce(json({ accessToken: "admin-access-2", refreshToken: "p.admin-refresh-2" }))
+        .mockResolvedValueOnce(json({ ok: true }));
+
+      await expect(apiClient.get("/platform/stats")).resolves.toEqual({ ok: true });
+
+      expect(fetchMock.mock.calls[1][0]).toBe(`${API}/auth/refresh`);
+      expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)).toEqual({ refreshToken: "p.admin-refresh" });
+      expect(authHeader(fetchMock.mock.calls[2]).Authorization).toBe("Bearer admin-access-2");
+      expect(adminStorage().refresh).toBe("p.admin-refresh-2");
+    });
+
+    it("on 409 refresh_already_rotated uses the pair the other tab stored and retries instead of logging out", async () => {
+      signInAdmin();
+      fetchMock
+        .mockResolvedValueOnce(json({}, 401))
+        .mockImplementationOnce(async () => {
+          // the winner tab stores the new pair while this tab's refresh is refused
+          localStorage.setItem(TOKEN_KEYS.access, "winner-access");
+          localStorage.setItem(TOKEN_KEYS.refresh, "p.winner-refresh");
+          return json({ error: "Renovada em outra aba.", code: "refresh_already_rotated" }, 409);
+        })
+        .mockResolvedValueOnce(json({ ok: true }));
+
+      await expect(apiClient.get("/platform/stats")).resolves.toEqual({ ok: true });
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(authHeader(fetchMock.mock.calls[2]).Authorization).toBe("Bearer winner-access");
+      expect(adminStorage().access).toBe("winner-access");
+      expect(adminStorage().refresh).toBe("p.winner-refresh");
+      expect(ended).toEqual([]);
+    });
+
+    it("waits for the winner tab when its new pair arrives after the 409", async () => {
+      signInAdmin();
+      fetchMock
+        .mockResolvedValueOnce(json({}, 401))
+        .mockImplementationOnce(async () => {
+          setTimeout(() => {
+            localStorage.setItem(TOKEN_KEYS.access, "late-access");
+            localStorage.setItem(TOKEN_KEYS.refresh, "p.late-refresh");
+          }, 150);
+          return json({ code: "refresh_already_rotated" }, 409);
+        })
+        .mockResolvedValueOnce(json({ ok: true }));
+
+      await expect(apiClient.get("/platform/stats")).resolves.toEqual({ ok: true });
+      expect(authHeader(fetchMock.mock.calls[2]).Authorization).toBe("Bearer late-access");
+    });
+
+    it("retries with the token another tab already renewed, without refreshing again", async () => {
+      signInAdmin();
+      fetchMock
+        .mockImplementationOnce(async () => {
+          localStorage.setItem(TOKEN_KEYS.access, "renewed-elsewhere");
+          return json({}, 401);
+        })
+        .mockResolvedValueOnce(json({ ok: true }));
+
+      await expect(apiClient.get("/platform/stats")).resolves.toEqual({ ok: true });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(authHeader(fetchMock.mock.calls[1]).Authorization).toBe("Bearer renewed-elsewhere");
+    });
+
+    it("a refused platform refresh ends the session and tells the app", async () => {
+      signInAdmin();
+      fetchMock
+        .mockResolvedValueOnce(json({}, 401))
+        .mockResolvedValueOnce(json({ error: "Sessão encerrada.", code: "session_ended" }, 401));
+
+      await expect(apiClient.get("/platform/stats")).rejects.toBeInstanceOf(ApiError);
+      expect(adminStorage()).toEqual({ access: null, refresh: null, session: null });
+      expect(ended).toEqual(["platform_session_ended"]);
+    });
   });
 
-  it("still returns the body of a successful upload", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(200, { id: "f1" })));
-    await expect(apiClient.postForm("/tax/evidence-files", new FormData())).resolves.toEqual({ id: "f1" });
+  it("401 platform_session_ended clears the tokens and ends the session without refreshing", async () => {
+    signInAdmin();
+    fetchMock.mockResolvedValueOnce(json({ error: "Sessão da plataforma encerrada.", code: "platform_session_ended" }, 401));
+
+    await expect(apiClient.get("/platform/tenants")).rejects.toMatchObject({ status: 401, code: "platform_session_ended" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(adminStorage()).toEqual({ access: null, refresh: null, session: null });
+    expect(ended).toEqual(["platform_session_ended"]);
+  });
+
+  it("a wrong password on sign-in keeps the session and never refreshes", async () => {
+    signInAdmin();
+    fetchMock.mockResolvedValueOnce(json({ error: "Credenciais inválidas." }, 401));
+    await expect(apiClient.post("/auth/login", { login: "x", password: "y" })).rejects.toMatchObject({ status: 401 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(adminStorage().access).toBe("admin-access");
+  });
+
+  it("keeps the marker key name the banner and the router rely on", () => {
+    expect(IMPERSONATION_KEY).toBe("orken:impersonation");
   });
 });

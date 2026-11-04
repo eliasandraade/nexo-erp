@@ -1,85 +1,54 @@
 import { apiClient } from "@/services/api-client";
 import type {
   AiProviderConfig,
+  AiProviderPatch,
+  AiProvidersOverview,
+  AiProviderTestResult,
   AiDashboardStats,
   AiTelemetryRecord,
+  AiCostsOverview,
   TenantCostSummary,
+  TenantAiLimits,
+  PlaygroundInput,
   PlaygroundResult,
   PromptVersion,
-  AnalyzerProvider,
-  FieldStatus,
+  CreatePromptVersionInput,
+  CreatedPromptVersion,
+  PromptActivation,
+  PromptTypeInfo,
 } from "../types/aiOperations";
 
 const BASE = "/platform/interpreter";
 
 // ── Providers ─────────────────────────────────────────────────────────────────
+// The backend computes each provider's status and never returns the key (nor its ciphertext): only the last four.
 
-interface RawProvider {
-  id: string;
-  name: string;
-  provider: string;
-  isEnabled: boolean;
-  isDefault: boolean;
-  modelId: string | null;
-  apiKeyLastFour: string | null;
-  hasApiKey: boolean;
-  monthlyTokenLimit: number | null;
-  costPerInputToken: number;   // USD per token (backend divides micros by 1M)
-  costPerOutputToken: number;
-  priority: number;
-  updatedAt: string;
-}
-
-function mapProvider(r: RawProvider): AiProviderConfig {
+export async function fetchAiProviders(): Promise<AiProvidersOverview> {
+  const raw = await apiClient.get<AiProvidersOverview>(`${BASE}/providers`);
   return {
-    id:                       r.id,
-    name:                     r.name,
-    provider:                 r.provider as AiProviderConfig["provider"],
-    isEnabled:                r.isEnabled,
-    isDefault:                r.isDefault,
-    apiKeyLastFour:           r.apiKeyLastFour,
-    modelId:                  r.modelId,
-    monthlyTokenLimit:        r.monthlyTokenLimit,
-    costPerInputTokenMicros:  Math.round(r.costPerInputToken  * 1_000_000),
-    costPerOutputTokenMicros: Math.round(r.costPerOutputToken * 1_000_000),
-    fallbackProviderId:       null,   // not exposed from backend yet
-    priority:                 r.priority,
-    updatedAt:                r.updatedAt,
+    providers:              raw.providers ?? [],
+    secretStorageAvailable: raw.secretStorageAvailable ?? false,
+    automaticOrder:         raw.automaticOrder ?? [],
   };
 }
 
-export async function fetchAiProviders(): Promise<AiProviderConfig[]> {
-  const raw = await apiClient.get<RawProvider[]>(`${BASE}/providers`);
-  return raw.map(mapProvider);
+/** super_admin only. Sends only the fields given; answers the updated provider. */
+export function updateAiProvider(id: string, patch: AiProviderPatch): Promise<AiProviderConfig> {
+  return apiClient.patch<AiProviderConfig>(`${BASE}/providers/${id}`, patch);
 }
 
-export async function updateAiProvider(
-  id: string,
-  patch: {
-    isEnabled?:              boolean;
-    isDefault?:              boolean;
-    monthlyTokenLimit?:      number | null;
-    costPerInputTokenMicros?:  number;
-    costPerOutputTokenMicros?: number;
-  }
-): Promise<void> {
-  await apiClient.patch<void>(`${BASE}/providers/${id}`, {
-    isEnabled:              patch.isEnabled,
-    isDefault:              patch.isDefault,
-    monthlyTokenLimit:      patch.monthlyTokenLimit,
-    costPerInputTokenMicros:  patch.costPerInputTokenMicros,
-    costPerOutputTokenMicros: patch.costPerOutputTokenMicros,
-  });
+/** Stores a new key (encrypted server-side). The answer carries only the last four characters. */
+export function setAiProviderKey(id: string, apiKey: string): Promise<AiProviderConfig> {
+  return apiClient.put<AiProviderConfig>(`${BASE}/providers/${id}/api-key`, { apiKey });
 }
 
-export async function rotateAiProviderKey(
-  id: string,
-  apiKey?: string
-): Promise<{ lastFour: string | null }> {
-  return apiClient.post<{ lastFour: string | null }>(
-    `${BASE}/providers/${id}/rotate-key`,
-    { apiKey: apiKey ?? null }
-  );
+export function clearAiProviderKey(id: string): Promise<AiProviderConfig> {
+  return apiClient.delete<AiProviderConfig>(`${BASE}/providers/${id}/api-key`);
+}
+
+/** One minimal (paid, for external providers) call to the provider. Only when the operator clicks. */
+export function testAiProvider(id: string): Promise<AiProviderTestResult> {
+  return apiClient.post<AiProviderTestResult>(`${BASE}/providers/${id}/test`, {});
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -155,6 +124,7 @@ interface RawTelemetryRow {
   requiresInputCount:   number;
   amountConfidence:     number;
   dateConfidence:       number;
+  modelId?:             string | null;
   createdAt:            string;
 }
 
@@ -190,8 +160,7 @@ function mapTelemetryRow(r: RawTelemetryRow): AiTelemetryRecord {
     requiresInputCount:   r.requiresInputCount,
     amountConfidence:     r.amountConfidence,
     dateConfidence:       r.dateConfidence,
-    rawPrompt:            null,
-    rawResponse:          null,
+    modelId:              r.modelId ?? null,
     createdAt:            r.createdAt,
   };
 }
@@ -215,109 +184,53 @@ export async function fetchAiTelemetry(
 
 // ── Costs ─────────────────────────────────────────────────────────────────────
 
-interface RawCostItem {
-  tenantId:      string;
-  tenantName:    string;
-  costUsd:       number;
-  totalCalls:    number;
-  llmCalls:      number;
-  softLimitUsd:  number | null;
-  hardLimitUsd:  number | null;
-  softLimitHit:  boolean;
-  hardLimitHit:  boolean;
-}
-
-interface RawCostsResponse {
-  totalUsd: number;
-  items:    RawCostItem[];
-}
-
-function mapCostItem(r: RawCostItem): TenantCostSummary {
+function mapCostItem(r: Partial<TenantCostSummary> & { tenantId: string }): TenantCostSummary {
   return {
-    tenantId:           r.tenantId,
-    tenantName:         r.tenantName,
-    requests:           r.totalCalls,
-    inputTokens:        0,   // not aggregated separately in backend yet
-    outputTokens:       0,
-    estimatedCostMicros: Math.round(r.costUsd * 1_000_000),
-    softLimitCents:     r.softLimitUsd != null ? Math.round(r.softLimitUsd * 100) : null,
-    hardLimitCents:     r.hardLimitUsd != null ? Math.round(r.hardLimitUsd * 100) : null,
-    spentCents:         Math.round(r.costUsd * 100),
+    tenantId:         r.tenantId,
+    tenantName:       r.tenantName ?? r.tenantId,
+    costUsd:          r.costUsd ?? 0,
+    totalCalls:       r.totalCalls ?? 0,
+    llmCalls:         r.llmCalls ?? 0,
+    monthSpentUsd:    r.monthSpentUsd ?? 0,
+    monthReservedUsd: r.monthReservedUsd ?? 0,
+    softLimitUsd:     r.softLimitUsd ?? null,
+    hardLimitUsd:     r.hardLimitUsd ?? null,
+    softLimitHit:     r.softLimitHit ?? false,
+    hardLimitHit:     r.hardLimitHit ?? false,
   };
 }
 
-export async function fetchAiCosts(): Promise<TenantCostSummary[]> {
-  const raw = await apiClient.get<RawCostsResponse>(`${BASE}/costs`);
-  return raw.items.map(mapCostItem);
+/** Month spend (calendar month, UTC) and limits per company, plus the last 30 days of telemetry. */
+export async function fetchAiCosts(): Promise<AiCostsOverview> {
+  const raw = await apiClient.get<Partial<AiCostsOverview>>(`${BASE}/costs`);
+  return {
+    totalUsd:      raw.totalUsd ?? 0,
+    monthSpentUsd: raw.monthSpentUsd ?? 0,
+    items:         (raw.items ?? []).map(mapCostItem),
+  };
+}
+
+/** super_admin with two-step sign-in only. null clears a limit. Answers the updated company. */
+export async function setTenantAiLimits(tenantId: string, limits: TenantAiLimits): Promise<TenantCostSummary> {
+  const raw = await apiClient.put<TenantCostSummary>(`${BASE}/costs/${tenantId}/limits`, {
+    softLimitUsd: limits.softLimitUsd,
+    hardLimitUsd: limits.hardLimitUsd,
+  });
+  return mapCostItem(raw);
 }
 
 // ── Playground ────────────────────────────────────────────────────────────────
 
-interface RawPlaygroundResponse {
-  provider:   string;
-  elapsedMs:  number;
-  extraction: {
-    amount:       { value: number | null;  confidence: number; status: string };
-    date:         { value: string | null;  confidence: number; status: string };
-    payee:        { value: string | null;  confidence: number; status: string };
-    account:      { value: string | null;  confidence: number; status: string };
-    inputTokens:  number;
-    outputTokens: number;
-    costUsd:      number;
-  };
-  interpretation: {
-    direction:   string;
-    dirSource:   string;
-    nature:      string;
-    natureSource: string;
-    categoryId:  string | null;
-    catSource:   string;
-    contextType: string | null;
-    contextId:   string | null;
-    ctxSource:   string;
-    accountId:   string | null;
-    accSource:   string;
-  };
-  rawProviderResponse: string;
-}
-
-export async function runPlayground(input: {
-  text?:     string;
-  provider?: string;
-  tenantId?: string;
-}): Promise<PlaygroundResult> {
-  const raw = await apiClient.post<RawPlaygroundResponse>(`${BASE}/playground`, {
+/**
+ * super_admin only. forceProvider null = automatic mode. tenantId is required (400 ai_playground_tenant_required without it).
+ * Errors (422/503/400/404) surface as ApiError.
+ */
+export function runPlayground(input: PlaygroundInput): Promise<PlaygroundResult> {
+  return apiClient.post<PlaygroundResult>(`${BASE}/playground`, {
     text:          input.text,
-    forceProvider: input.provider ?? null,
-    tenantId:      input.tenantId ?? null,
+    forceProvider: input.forceProvider,
+    tenantId:      input.tenantId,
   });
-
-  const e = raw.extraction;
-  const i = raw.interpretation;
-
-  return {
-    draftId:       null,   // playground never creates a draft
-    analyzerChain: [raw.provider as PlaygroundResult["analyzerChain"][0]],
-    extraction: {
-      amount:  { value: e.amount.value,  confidence: e.amount.confidence,  status: e.amount.status  as FieldStatus, provider: raw.provider as AnalyzerProvider },
-      date:    { value: e.date.value,    confidence: e.date.confidence,    status: e.date.status    as FieldStatus, provider: raw.provider as AnalyzerProvider },
-      payee:   { value: e.payee.value,   confidence: e.payee.confidence,   status: e.payee.status   as FieldStatus, provider: raw.provider as AnalyzerProvider },
-      account: { value: e.account.value, confidence: e.account.confidence, status: e.account.status as FieldStatus, provider: raw.provider as AnalyzerProvider },
-      analyzerUsed: raw.provider as AnalyzerProvider,
-    },
-    suggestion: {
-      direction: { value: i.direction,   source: i.dirSource },
-      nature:    { value: i.nature,      source: i.natureSource },
-      category:  { value: i.categoryId,  source: i.catSource },
-      context:   { contextType: i.contextType, contextId: i.contextId, source: i.ctxSource },
-    },
-    rawPrompt:   null,
-    rawResponse: raw.rawProviderResponse || null,
-    tokenUsage:  e.inputTokens > 0
-      ? { input: e.inputTokens, output: e.outputTokens }
-      : null,
-    durationMs: raw.elapsedMs,
-  };
 }
 
 // ── Prompt versions ───────────────────────────────────────────────────────────
@@ -348,6 +261,19 @@ function mapPromptVersion(r: RawPromptVersion): PromptVersion {
   };
 }
 
+/** Every prompt type the SuperAdmin can version and whether a runtime uses it (`usedByRuntime`). */
+export async function fetchPromptTypes(): Promise<PromptTypeInfo[]> {
+  const raw = await apiClient.get<unknown>(`${BASE}/prompts/types`);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object" && typeof (r as { type?: unknown }).type === "string")
+    .map(r => ({
+      type:          r.type as string,
+      usedByRuntime: r.usedByRuntime === true,
+      builtInHash:   typeof r.builtInHash === "string" ? r.builtInHash : null,
+    }));
+}
+
 export async function fetchPromptVersions(promptType: string): Promise<PromptVersion[]> {
   const raw = await apiClient.get<RawPromptVersion[]>(
     `${BASE}/prompts?type=${encodeURIComponent(promptType)}`
@@ -355,6 +281,17 @@ export async function fetchPromptVersions(promptType: string): Promise<PromptVer
   return raw.map(mapPromptVersion);
 }
 
-export async function setActivePrompt(id: string): Promise<void> {
-  await apiClient.post<void>(`${BASE}/prompts/${id}/activate`, {});
+/** super_admin with two-step sign-in only. The new version is created inactive. 409 = the version already exists. */
+export function createPromptVersion(input: CreatePromptVersionInput): Promise<CreatedPromptVersion> {
+  return apiClient.post<CreatedPromptVersion>(`${BASE}/prompts`, {
+    promptType:  input.promptType,
+    version:     input.version,
+    content:     input.content,
+    description: input.description,
+  });
+}
+
+/** super_admin with two-step sign-in only. 409 = another activation of the same type won concurrently. */
+export function activatePromptVersion(id: string): Promise<PromptActivation> {
+  return apiClient.post<PromptActivation>(`${BASE}/prompts/${id}/activate`, {});
 }

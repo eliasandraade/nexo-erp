@@ -11,6 +11,7 @@ public sealed class OpenMeteoProvider : IWeatherProvider
 {
     private static readonly TimeSpan CurrentCacheTtl = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan HistoryCacheTtl = TimeSpan.FromDays(365);
+    private static readonly TimeSpan DailyCacheTtl   = TimeSpan.FromHours(1);
 
     private static readonly Dictionary<int, string> WmoDescriptions = new()
     {
@@ -111,6 +112,46 @@ public sealed class OpenMeteoProvider : IWeatherProvider
         return result;
     }
 
+    /// <summary>
+    /// Daily forecast (Open-Meteo forecast endpoint, free, no key): precipitation_sum, precipitation_probability_max,
+    /// wind_speed_10m_max, temperature_2m_max/min, weathercode. Cached 1 h per rounded coordinate; the HTTP client has the
+    /// integration timeout/retry/circuit breaker of the provider.
+    /// </summary>
+    public async Task<IReadOnlyList<WeatherDailyForecast>> GetDailyForecastAsync(double latitude, double longitude, int days,
+        CancellationToken ct = default)
+    {
+        var n = Math.Clamp(days, 1, 16);
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var cacheKey = string.Create(inv, $"weather:daily:{latitude:F2}:{longitude:F2}:{n}");
+        var cached = await _cache.GetAsync<List<WeatherDailyForecast>>(cacheKey, ct);
+        if (cached is not null) return cached;
+
+        var url = string.Create(inv, $"{_opts.ForecastBaseUrl}/forecast?latitude={latitude:0.####}&longitude={longitude:0.####}")
+                  + "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,weathercode"
+                  + "&wind_speed_unit=kmh"
+                  + $"&timezone={Uri.EscapeDataString(_opts.Timezone)}"
+                  + string.Create(inv, $"&forecast_days={n}");
+
+        var response = await _http.GetFromJsonAsync<MeteoDailyResponse>(url, ct);
+        var daily = response?.Daily;
+        var list = new List<WeatherDailyForecast>();
+        if (daily?.Time is { Length: > 0 } dates)
+        {
+            for (var i = 0; i < dates.Length; i++)
+            {
+                if (!DateOnly.TryParseExact(dates[i], "yyyy-MM-dd", inv, System.Globalization.DateTimeStyles.None, out var date)) continue;
+                int? code = At(daily.WmoCodes, i);
+                list.Add(new WeatherDailyForecast(date, At(daily.TempMax, i), At(daily.TempMin, i), At(daily.Precip, i),
+                    At(daily.PrecipProbability, i), At(daily.WindMax, i), code,
+                    code is { } c ? (WmoDescriptions.TryGetValue(c, out var d) ? d : $"Código climático {c}") : null));
+            }
+        }
+        if (list.Count > 0) await _cache.SetAsync(cacheKey, list, DailyCacheTtl, ct);
+        return list;
+    }
+
+    private static T? At<T>(T?[]? values, int i) where T : struct => values is not null && i < values.Length ? values[i] : null;
+
     private static WeatherResult? MapToResult(double latitude, double longitude, DateOnly date, MeteoResponse? response)
     {
         var daily = response?.Daily;
@@ -155,5 +196,22 @@ public sealed class OpenMeteoProvider : IWeatherProvider
         [JsonPropertyName("temperature_2m_min")]  public double[]? TempMin  { get; init; }
         [JsonPropertyName("precipitation_sum")]   public double[]? Precip   { get; init; }
         [JsonPropertyName("weathercode")]         public int[]?    WmoCodes { get; init; }
+    }
+
+    /// <summary>Daily forecast payload — every value nullable (Open-Meteo sends null for missing values).</summary>
+    private sealed class MeteoDailyResponse
+    {
+        [JsonPropertyName("daily")] public MeteoDailyForecastData? Daily { get; init; }
+    }
+
+    private sealed class MeteoDailyForecastData
+    {
+        [JsonPropertyName("time")]                          public string[]?  Time              { get; init; }
+        [JsonPropertyName("temperature_2m_max")]            public double?[]? TempMax           { get; init; }
+        [JsonPropertyName("temperature_2m_min")]            public double?[]? TempMin           { get; init; }
+        [JsonPropertyName("precipitation_sum")]             public double?[]? Precip            { get; init; }
+        [JsonPropertyName("precipitation_probability_max")] public int?[]?    PrecipProbability { get; init; }
+        [JsonPropertyName("wind_speed_10m_max")]            public double?[]? WindMax           { get; init; }
+        [JsonPropertyName("weathercode")]                   public int?[]?    WmoCodes          { get; init; }
     }
 }

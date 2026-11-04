@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Build.Interfaces;
 using Nexo.Domain.Exceptions;
@@ -21,6 +22,7 @@ public class BuildBudgetService
     private readonly IBuildBudgetRepository     _budgets;
     private readonly IBuildBudgetItemRepository _items;
     private readonly IBuildProjectRepository    _projects;
+    private readonly IBuildStageRepository      _stages;
     private readonly ICurrentTenant             _currentTenant;
     private readonly ICurrentUser               _currentUser;
 
@@ -28,12 +30,14 @@ public class BuildBudgetService
         IBuildBudgetRepository     budgets,
         IBuildBudgetItemRepository items,
         IBuildProjectRepository    projects,
+        IBuildStageRepository      stages,
         ICurrentTenant             currentTenant,
         ICurrentUser               currentUser)
     {
         _budgets       = budgets;
         _items         = items;
         _projects      = projects;
+        _stages        = stages;
         _currentTenant = currentTenant;
         _currentUser   = currentUser;
     }
@@ -84,6 +88,9 @@ public class BuildBudgetService
             name:          request.Name,
             projectId:     request.ProjectId,
             marginPercent: request.MarginPercent);
+        if (request.ValidUntil is not null || request.Notes is not null || request.InternalNotes is not null
+            || request.AreaM2 is not null)
+            budget.SetTerms(request.ValidUntil, request.Notes, request.InternalNotes, request.AreaM2);
 
         await _budgets.AddAsync(budget, ct);
         await _budgets.SaveChangesAsync(ct);
@@ -109,7 +116,9 @@ public class BuildBudgetService
             quantity:  request.Quantity,
             unit:      request.Unit,
             unitCost:  request.UnitCost,
-            stageId:   request.StageId);
+            stageId:   request.StageId,
+            kind:      BuildBudgetCalculator.ParseKind(request.Kind),
+            stageName: request.StageName);
 
         await _items.AddAsync(item, ct);
 
@@ -142,7 +151,9 @@ public class BuildBudgetService
             quantity: request.Quantity,
             unit:     request.Unit,
             unitCost: request.UnitCost,
-            stageId:  request.StageId);
+            stageId:  request.StageId,
+            kind:     request.Kind is null ? null : BuildBudgetCalculator.ParseKind(request.Kind),
+            stageName: request.StageName);
 
         _items.Update(item);
 
@@ -199,7 +210,7 @@ public class BuildBudgetService
     {
         var budget = await _budgets.GetByIdWithItemsAsync(budgetId, ct)
             ?? throw new NotFoundException("BuildBudget", budgetId);
-        budget.Approve();
+        budget.Approve(BusinessClock.Today(), _currentUser.UserId, _currentUser.Name);
         _budgets.Update(budget);
 
         // When the budget is already linked to a project, approving it sets the
@@ -219,11 +230,11 @@ public class BuildBudgetService
         return MapToDto(budget, budget.Items);
     }
 
-    public async Task<BuildBudgetDto> RejectBudgetAsync(Guid budgetId, CancellationToken ct = default)
+    public async Task<BuildBudgetDto> RejectBudgetAsync(Guid budgetId, string? reason = null, CancellationToken ct = default)
     {
         var budget = await _budgets.GetByIdWithItemsAsync(budgetId, ct)
             ?? throw new NotFoundException("BuildBudget", budgetId);
-        budget.Reject();
+        budget.Reject(_currentUser.UserId, _currentUser.Name, reason);
         _budgets.Update(budget);
         await _budgets.SaveChangesAsync(ct);
         return MapToDto(budget, budget.Items);
@@ -263,34 +274,42 @@ public class BuildBudgetService
         project.ApproveBudget(budget.FinalPrice);
         _projects.Update(project);
 
+        await CreateStagesFromItemsAsync(project, budget.Items, ct);
+
         await _budgets.SaveChangesAsync(ct);
         return MapToDto(budget, budget.Items);
     }
 
+    /// <summary>
+    /// A project without stages gets one stage per distinct item stage name (in item order), and the items with
+    /// that name are linked to it — so cost per stage and measurements work right after the conversion. A
+    /// project that already has stages is left as it is.
+    /// </summary>
+    private async Task CreateStagesFromItemsAsync(BuildProject project, IEnumerable<BuildBudgetItem> items, CancellationToken ct)
+    {
+        var named = items.Where(i => i.StageId is null && !string.IsNullOrWhiteSpace(i.StageName))
+            .OrderBy(i => i.CreatedAt).ToList();
+        if (named.Count == 0) return;
+        if ((await _stages.GetByProjectAsync(project.Id, ct)).Count > 0) return;
+
+        var created = new Dictionary<string, BuildStage>(StringComparer.OrdinalIgnoreCase);
+        var order = 0;
+        foreach (var item in named)
+        {
+            var name = item.StageName!.Trim();
+            if (!created.TryGetValue(name, out var stage))
+            {
+                stage = BuildStage.Create(project.TenantId, project.Id, name, ++order);
+                created[name] = stage;
+                await _stages.AddAsync(stage, ct);
+            }
+            item.LinkStage(stage.Id);
+            _items.Update(item);
+        }
+    }
+
     // ── Mapper ────────────────────────────────────────────────────────────────
 
-    private static BuildBudgetDto MapToDto(BuildBudget b, IEnumerable<BuildBudgetItem> items) => new(
-        Id:            b.Id,
-        ProjectId:     b.ProjectId,
-        Name:          b.Name,
-        Status:        b.Status.ToString(),
-        TotalCost:     b.TotalCost,
-        MarginPercent: b.MarginPercent,
-        FinalPrice:    b.FinalPrice,
-        Items:         items.Select(MapItemToDto).ToList(),
-        CreatedAt:     b.CreatedAt,
-        UpdatedAt:     b.UpdatedAt);
-
-    private static BuildBudgetItemDto MapItemToDto(BuildBudgetItem i) => new(
-        Id:        i.Id,
-        BudgetId:  i.BudgetId,
-        StageId:   i.StageId,
-        Name:      i.Name,
-        Category:  i.Category,
-        Quantity:  i.Quantity,
-        Unit:      i.Unit,
-        UnitCost:  i.UnitCost,
-        TotalCost: i.TotalCost,
-        CreatedAt: i.CreatedAt,
-        UpdatedAt: i.UpdatedAt);
+    private static BuildBudgetDto MapToDto(BuildBudget b, IEnumerable<BuildBudgetItem> items)
+        => BuildBudgetCalculator.ToDto(b, items, BusinessClock.Today());
 }

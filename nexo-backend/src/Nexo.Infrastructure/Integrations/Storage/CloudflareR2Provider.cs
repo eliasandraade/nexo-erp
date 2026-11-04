@@ -11,11 +11,15 @@ namespace Nexo.Infrastructure.Integrations.Storage;
 
 public sealed class CloudflareR2Provider : IStorageProvider, IStorageObjectReader
 {
-    private readonly Lazy<AmazonS3Client> _s3;
+    private readonly Lazy<IAmazonS3> _s3;
     private readonly StorageOptions  _opts;
     private readonly ILogger<CloudflareR2Provider> _logger;
 
     public CloudflareR2Provider(IOptions<StorageOptions> opts, ILogger<CloudflareR2Provider> logger)
+        : this(opts, logger, null) { }
+
+    /// <summary>Tests hand in their own S3 client to see which bucket each call goes to.</summary>
+    internal CloudflareR2Provider(IOptions<StorageOptions> opts, ILogger<CloudflareR2Provider> logger, Func<IAmazonS3>? client)
     {
         _opts   = opts.Value;
         _logger = logger;
@@ -27,10 +31,10 @@ public sealed class CloudflareR2Provider : IStorageProvider, IStorageObjectReade
         // StorageController BEFORE its StorageEnabled feature-flag gate could return 404.
         // Deferring construction keeps the controller constructable, so a disabled/misconfigured
         // store yields a controlled response (404 when off, 503 when on-but-unreachable).
-        _s3 = new Lazy<AmazonS3Client>(CreateClient);
+        _s3 = new Lazy<IAmazonS3>(client ?? CreateClient);
     }
 
-    private AmazonS3Client CreateClient()
+    private IAmazonS3 CreateClient()
     {
         var config = new AmazonS3Config
         {
@@ -44,12 +48,14 @@ public sealed class CloudflareR2Provider : IStorageProvider, IStorageObjectReade
 
     public async Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken ct = default)
     {
+        // resolved before anything is sent: a private key without a private bucket stops here, nothing is written
+        var bucket = BucketFor(request.ObjectKey);
         _logger.LogInformation("[Storage] Uploading {Key} ({ContentType}, {Length}B)",
             request.ObjectKey, request.ContentType, request.ContentLength);
 
         var putRequest = new PutObjectRequest
         {
-            BucketName            = BucketFor(request.ObjectKey),
+            BucketName            = bucket,
             Key                   = request.ObjectKey,
             InputStream           = request.Content,
             ContentType           = request.ContentType,
@@ -71,10 +77,11 @@ public sealed class CloudflareR2Provider : IStorageProvider, IStorageObjectReade
 
     public async Task DeleteAsync(string key, CancellationToken ct = default)
     {
+        var bucket = BucketFor(key);
         _logger.LogInformation("[Storage] Deleting {Key}", key);
         try
         {
-            await _s3.Value.DeleteObjectAsync(BucketFor(key), key, ct);
+            await _s3.Value.DeleteObjectAsync(bucket, key, ct);
             _logger.LogInformation("[Storage] Deleted {Key}", key);
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -84,28 +91,56 @@ public sealed class CloudflareR2Provider : IStorageProvider, IStorageObjectReade
     }
 
     public string GetSignedUrl(string key, TimeSpan ttl)
-        => _s3.Value.GetPreSignedURL(new GetPreSignedUrlRequest
+    {
+        var bucket = BucketFor(key);
+        return _s3.Value.GetPreSignedURL(new GetPreSignedUrlRequest
         {
-            BucketName = BucketFor(key),
+            BucketName = bucket,
             Key        = key,
             Verb       = HttpVerb.GET,
             Expires    = DateTime.UtcNow.Add(ttl),
             Protocol   = Protocol.HTTPS,
         });
+    }
 
+    /// <summary>Streams the object (the S3 response stream; disposing it releases the connection).</summary>
     public async Task<Stream> OpenReadAsync(string key, CancellationToken ct = default)
     {
-        using var response = await _s3.Value.GetObjectAsync(BucketFor(key), key, ct);
+        var bucket = BucketFor(key);
+        var response = await _s3.Value.GetObjectAsync(bucket, key, ct);
+        return response.ResponseStream;
+    }
+
+    /// <summary>
+    /// Tax files (<see cref="IStorageObjectReader"/>): the object's bytes read fully into memory, so the response is
+    /// released before the caller streams them back. Sizes are bounded when the files are stored.
+    /// </summary>
+    async Task<Stream> IStorageObjectReader.OpenReadAsync(string key, CancellationToken ct)
+    {
+        await using var source = await OpenReadAsync(key, ct);
         var buffer = new MemoryStream();
-        await response.ResponseStream.CopyToAsync(buffer, ct);
+        await source.CopyToAsync(buffer, ct);
         buffer.Position = 0;
         return buffer;
     }
 
+    public bool CanStorePrivateFiles => HasPrivateBucket(_opts.R2);
+
+    /// <summary>A private bucket that is set and is not the public one (a public bucket under another name is still public).</summary>
+    internal static bool HasPrivateBucket(R2Options r2)
+        => !string.IsNullOrWhiteSpace(r2.PrivateBucketName)
+           && !string.Equals(r2.PrivateBucketName.Trim(), r2.BucketName?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The only bucket a key may touch. Private keys go to the private bucket or nowhere: without one, every operation
+    /// on them throws <see cref="PrivateStorageUnavailableException"/> before any request — never the public bucket.
+    /// </summary>
     private string BucketFor(string key)
-        => StorageKeys.IsPrivate(key) && !string.IsNullOrWhiteSpace(_opts.R2.PrivateBucketName)
-            ? _opts.R2.PrivateBucketName
-            : _opts.R2.BucketName;
+    {
+        if (!StorageKeys.IsPrivate(key)) return _opts.R2.BucketName;
+        if (!CanStorePrivateFiles) throw new PrivateStorageUnavailableException();
+        return _opts.R2.PrivateBucketName.Trim();
+    }
 
     /// <summary>
     /// Lists at most one object of the app's bucket — what its token is allowed to do. (Listing all
@@ -114,5 +149,12 @@ public sealed class CloudflareR2Provider : IStorageProvider, IStorageObjectReade
     public async Task PingAsync(CancellationToken ct = default)
     {
         await _s3.Value.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _opts.R2.BucketName, MaxKeys = 1 }, ct);
+    }
+
+    /// <summary>The same read-only listing against the private bucket; without one it throws before any request.</summary>
+    public async Task PingPrivateAsync(CancellationToken ct = default)
+    {
+        if (!CanStorePrivateFiles) throw new PrivateStorageUnavailableException();
+        await _s3.Value.ListObjectsV2Async(new ListObjectsV2Request { BucketName = _opts.R2.PrivateBucketName.Trim(), MaxKeys = 1 }, ct);
     }
 }

@@ -68,12 +68,25 @@ public class ExceptionHandlingMiddleware
         catch (ForbiddenException ex)
         {
             _logger.LogWarning("Forbidden: {Message}", ex.Message);
-            await WriteErrorAsync(ctx, 403, ex.Message);
+            await WriteErrorAsync(ctx, 403, ex.Message, null, ex.Code);
+        }
+        catch (Nexo.Domain.Modules.Interpreter.AiProviderCallException ex)
+        {
+            // An expected provider failure (credentials, rate limit, timeout, provider down, invalid output): answered with a
+            // sanitized message and the reason, logged as a warning — not an unexpected error, not tracked as one.
+            _logger.LogWarning("AI provider {Provider} call failed: {Reason}.", ex.Provider, ex.Reason);
+            await WriteErrorAsync(ctx, 503, ex.Message, [ex.Reason], Nexo.Domain.Modules.Interpreter.AiProviderCallException.ErrorCode);
         }
         catch (DomainException ex)
         {
             _logger.LogWarning("Domain rule violation: {Message}", ex.Message);
             await WriteErrorAsync(ctx, 422, ex.Message, ex.Details.Count > 0 ? ex.Details.ToArray() : null, ex.Code);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (ex.InnerException is Npgsql.PostgresException { SqlState: Npgsql.PostgresErrorCodes.UniqueViolation })
+        {
+            // Two requests creating the same thing (a duplicate document, module, login…): a conflict, not a bug.
+            _logger.LogInformation("Unique constraint hit: {Constraint}.", ((Npgsql.PostgresException)ex.InnerException).ConstraintName);
+            await WriteErrorAsync(ctx, 409, "Já existe um registro com estes dados.", null, "duplicate");
         }
         catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
         {

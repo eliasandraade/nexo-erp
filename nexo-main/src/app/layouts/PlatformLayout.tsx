@@ -5,9 +5,10 @@ import { Brand } from "@/components/shared/Brand";
 import { Sheet, SheetContent, SheetTitle, SheetDescription, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { cn } from "@/lib/utils";
+import { AdminMfaBanner } from "@/modules/platform/components/AdminMfaBanner";
 
 const groups = [
-  { label: "Plataforma", links: [["/platform", "Visão geral"], ["/platform/tenants", "Empresas"], ["/platform/trial", "Períodos de teste"], ["/platform/activity", "Atividade"], ["/platform/system", "Sistema"], ["/platform/tributos", "Inteligência tributária"]] },
+  { label: "Plataforma", links: [["/platform", "Visão geral"], ["/platform/tenants", "Empresas"], ["/platform/trial", "Períodos de teste"], ["/platform/activity", "Atividade"], ["/platform/system", "Sistema"], ["/platform/seguranca", "Segurança"], ["/platform/build", "Orken Build"], ["/platform/tributos", "Inteligência tributária"]] },
   { label: "Operações de IA", links: [["/platform/ai", "Visão geral de IA"], ["/platform/ai/playground", "Testar interpretação"], ["/platform/ai/providers", "Provedores"], ["/platform/ai/telemetry", "Telemetria"], ["/platform/ai/costs", "Custos"], ["/platform/ai/prompts", "Instruções"]] },
 ];
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
@@ -35,6 +36,7 @@ export function PlatformLayout() {
         </Sheet>
         <span className="text-sm font-medium">Plataforma</span><span className="text-xs text-muted-foreground">Administração global</span>
       </header>
+      <AdminMfaBanner />
       <main id="platform-content" tabIndex={-1} className="min-w-0"><Outlet /></main>
     </div>
   </div>;

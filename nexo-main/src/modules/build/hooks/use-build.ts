@@ -35,6 +35,8 @@ export const BUILD_KEYS = {
   budget:            (id: string)                  => ["build", "budget", id] as const,
   dailyLogs:         (projectId: string)           => ["build", "daily-logs", projectId] as const,
   dailyLog:          (id: string)                  => ["build", "daily-log", id] as const,
+  /** Progress, snapshots, revisions and cost per stage of a project (prefix). */
+  progressAll:       (projectId: string)           => ["build", "progress", projectId] as const,
 } as const;
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -150,6 +152,7 @@ function invalidateStages(qc: ReturnType<typeof useQueryClient>, projectId: stri
     qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(projectId) }),
     qc.invalidateQueries({ queryKey: ["build", "projects"] }),
     qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() }),
+    qc.invalidateQueries({ queryKey: BUILD_KEYS.progressAll(projectId) }),
   ]);
 }
 
@@ -250,8 +253,8 @@ export function useApproveBudget(projectId?: string) {
 export function useRejectBudget(projectId?: string) {
   const { invalidate } = useBudgetMutation(projectId);
   return useMutation({
-    mutationFn: (id: string) => rejectBudget(id),
-    onSuccess:  (_, id)      => invalidate(id),
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => rejectBudget(id, reason),
+    onSuccess:  (_, { id })  => invalidate(id),
   });
 }
 

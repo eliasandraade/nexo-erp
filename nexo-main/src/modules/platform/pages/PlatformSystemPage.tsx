@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { useApiEndpoints, usePlatformHealth } from "../hooks/usePlatformSystem";
 import { apiClient } from "@/services/api-client";
 import type { ApiEndpoint } from "../types";
+import { clientPath } from "../services/platformApi";
+import { HealthCheckRow, StatusDot } from "../components/HealthCheckRow";
 import { RecentErrors } from "../components/RecentErrors";
 
 // ─── Method badge ─────────────────────────────────────────────────────────────
@@ -27,16 +29,6 @@ function MethodBadge({ method }: { method: string }) {
   );
 }
 
-// ─── Status dot ───────────────────────────────────────────────────────────────
-
-function StatusDot({ status }: { status: string }) {
-  const color =
-    status === "healthy"   ? "bg-green-500" :
-    status === "degraded"  ? "bg-amber-500" :
-    "bg-red-500";
-  return <span className={`inline-block w-2 h-2 rounded-full ${color} shrink-0 animate-pulse`} />;
-}
-
 // ─── Endpoint row ─────────────────────────────────────────────────────────────
 
 function EndpointRow({ endpoint }: { endpoint: ApiEndpoint }) {
@@ -44,7 +36,8 @@ function EndpointRow({ endpoint }: { endpoint: ApiEndpoint }) {
   const [running, setRunning]   = useState(false);
   const [result, setResult]     = useState<{ status: number; body: string; latencyMs: number } | null>(null);
 
-  const canRun = endpoint.method === "GET";
+  // only GET routes without {parameters} can be called as they are
+  const canRun = endpoint.method === "GET" && !endpoint.hasParameters;
 
   const run = async () => {
     if (!canRun || running) return;
@@ -52,9 +45,7 @@ function EndpointRow({ endpoint }: { endpoint: ApiEndpoint }) {
     setResult(null);
     const t0 = Date.now();
     try {
-      // apiClient prepends the base URL which already has /api — strip it
-      const relPath = endpoint.path.replace(/^\/api/, "");
-      const body = await apiClient.get<unknown>(relPath);
+      const body = await apiClient.get<unknown>(clientPath(endpoint.path));
       setResult({ status: 200, body: JSON.stringify(body, null, 2), latencyMs: Date.now() - t0 });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -72,6 +63,9 @@ function EndpointRow({ endpoint }: { endpoint: ApiEndpoint }) {
         <code className="flex-1 text-xs text-foreground font-mono truncate">{endpoint.path}</code>
         <span className="text-xs text-muted-foreground hidden sm:block">{endpoint.controller}</span>
         <div className="flex items-center gap-2">
+          {endpoint.method === "GET" && endpoint.hasParameters && (
+            <span className="text-[10px] text-muted-foreground" title="Rota com parâmetros: não pode ser executada daqui">com parâmetros</span>
+          )}
           {canRun && (
             <button
               onClick={run}
@@ -173,11 +167,9 @@ export default function PlatformSystemPage() {
                 <StatusDot status={health.status} />
                 <span className={cn(
                   "text-sm font-medium",
-                  health.status === "healthy" ? "text-green-600" :
-                  health.status === "degraded" ? "text-amber-600" : "text-red-600"
+                  health.status === "healthy" ? "text-green-600" : "text-amber-600"
                 )}>
-                  {health.status === "healthy"  ? "Todos os sistemas operacionais" :
-                   health.status === "degraded" ? "Sistema degradado" : "Instabilidade detectada"}
+                  {health.status === "healthy" ? "Todos os sistemas operacionais" : "Sistema degradado"}
                 </span>
               </div>
               <div className="text-xs text-muted-foreground">
@@ -185,15 +177,7 @@ export default function PlatformSystemPage() {
               </div>
               <div className="space-y-2 pt-1">
                 {health.checks.map(c => (
-                  <div key={c.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <StatusDot status={c.status} />
-                      <span className="text-sm text-foreground capitalize">{c.name}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {c.latencyMs > 1 ? `${c.latencyMs}ms` : c.latencyMs === 1 ? "< 1ms" : "—"}
-                    </span>
-                  </div>
+                  <HealthCheckRow key={c.name} check={c} />
                 ))}
               </div>
             </div>

@@ -33,6 +33,8 @@ public class CreateBuildProjectRequestValidator : AbstractValidator<CreateBuildP
         RuleFor(x => x)
             .Must(x => x.StartDate is null || x.ExpectedEndDate is null || x.StartDate <= x.ExpectedEndDate)
             .WithMessage("A previsão de término precisa ser depois do início.");
+
+        BuildSiteRules.Apply(this, x => x.TrackingMode, x => x.Latitude, x => x.Longitude, x => x.AreaM2);
     }
 }
 
@@ -68,6 +70,8 @@ public class UpdateBuildProjectRequestValidator : AbstractValidator<UpdateBuildP
         RuleFor(x => x)
             .Must(x => x.StartDate is null || x.ExpectedEndDate is null || x.StartDate <= x.ExpectedEndDate)
             .WithMessage("A previsão de término precisa ser depois do início.");
+
+        BuildSiteRules.Apply(this, x => x.TrackingMode, x => x.Latitude, x => x.Longitude, x => x.AreaM2);
     }
 }
 
@@ -88,6 +92,9 @@ public class CreateBuildStageRequestValidator : AbstractValidator<CreateBuildSta
         RuleFor(x => x)
             .Must(x => x.PlannedStart is null || x.PlannedEnd is null || x.PlannedStart <= x.PlannedEnd)
             .WithMessage("O fim previsto precisa ser depois do início previsto.");
+
+        RuleFor(x => x.Weight).GreaterThan(0m).When(x => x.Weight.HasValue)
+            .WithMessage("O peso da etapa precisa ser maior que zero.");
     }
 }
 
@@ -103,6 +110,10 @@ public class CreateBuildBudgetRequestValidator : AbstractValidator<CreateBuildBu
 
         RuleFor(x => x.MarginPercent)
             .GreaterThanOrEqualTo(0m).WithMessage("A margem não pode ser negativa.");
+
+        RuleFor(x => x.Notes).MaximumLength(4000).WithMessage("As observações podem ter até 4000 caracteres.");
+        RuleFor(x => x.InternalNotes).MaximumLength(4000).WithMessage("As observações internas podem ter até 4000 caracteres.");
+        RuleFor(x => x.AreaM2).GreaterThanOrEqualTo(0m).When(x => x.AreaM2.HasValue).WithMessage("A área não pode ser negativa.");
     }
 }
 
@@ -127,6 +138,10 @@ public class AddBuildBudgetItemRequestValidator : AbstractValidator<AddBuildBudg
 
         RuleFor(x => x.UnitCost)
             .GreaterThanOrEqualTo(0m).WithMessage("O custo unitário não pode ser negativo.");
+
+        RuleFor(x => x.Kind).Must(BuildEnumRules.Valid<BuildCostKind>)
+            .WithMessage("Tipo inválido: use Material, Labor, Service, Equipment ou Other.");
+        RuleFor(x => x.StageName).MaximumLength(200).WithMessage("O nome da etapa pode ter até 200 caracteres.");
     }
 }
 
@@ -161,6 +176,8 @@ public class UpdateBuildStageRequestValidator : AbstractValidator<UpdateBuildSta
             .MaximumLength(1000).WithMessage("A descrição pode ter até 1000 caracteres.")
             .When(x => x.Description is not null);
         RuleFor(x => x.Order).GreaterThanOrEqualTo(0).WithMessage("Ordem inválida.");
+        RuleFor(x => x.Weight).GreaterThan(0m).When(x => x.Weight.HasValue)
+            .WithMessage("O peso da etapa precisa ser maior que zero.");
         RuleFor(x => x)
             .Must(x => x.PlannedStart is null || x.PlannedEnd is null || x.PlannedStart <= x.PlannedEnd)
             .WithMessage("O fim previsto precisa ser depois do início previsto.");
@@ -187,6 +204,9 @@ public class UpdateBuildBudgetItemRequestValidator : AbstractValidator<UpdateBui
             .MaximumLength(20).WithMessage("A unidade pode ter até 20 caracteres.");
         RuleFor(x => x.Quantity).GreaterThan(0m).WithMessage("A quantidade precisa ser maior que zero.");
         RuleFor(x => x.UnitCost).GreaterThanOrEqualTo(0m).WithMessage("O custo unitário não pode ser negativo.");
+        RuleFor(x => x.Kind).Must(BuildEnumRules.Valid<BuildCostKind>)
+            .WithMessage("Tipo inválido: use Material, Labor, Service, Equipment ou Other.");
+        RuleFor(x => x.StageName).MaximumLength(200).WithMessage("O nome da etapa pode ter até 200 caracteres.");
     }
 }
 

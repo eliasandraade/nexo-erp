@@ -10,7 +10,7 @@ namespace Nexo.Application.Modules.Interpreter;
 // Frontend receives FieldStatus per field and renders accordingly.
 public class AnalyzeMovementUseCase
 {
-    private readonly IAnalyzerSelector              _analyzerSelector;
+    private readonly IAnalysisRunner                _runner;
     private readonly IInterpretationService         _interpretationService;
     private readonly IMovementMemoryService         _memoryService;
     private readonly IDescriptionNormalizer         _normalizer;
@@ -25,7 +25,7 @@ public class AnalyzeMovementUseCase
     private readonly ITelemetryWriter? _telemetry;
 
     public AnalyzeMovementUseCase(
-        IAnalyzerSelector                    analyzerSelector,
+        IAnalysisRunner                      runner,
         IInterpretationService               interpretationService,
         IMovementMemoryService               memoryService,
         IDescriptionNormalizer               normalizer,
@@ -39,7 +39,7 @@ public class AnalyzeMovementUseCase
         ILogger<AnalyzeMovementUseCase>      logger,
         ITelemetryWriter?                    telemetry = null)
     {
-        _analyzerSelector      = analyzerSelector;
+        _runner                = runner;
         _interpretationService = interpretationService;
         _memoryService         = memoryService;
         _normalizer            = normalizer;
@@ -74,13 +74,7 @@ public class AnalyzeMovementUseCase
             storageKey = attachment.StorageKey;
         }
 
-        // 2. Select analyzer: RuleBased first for text-only (zero cost),
-        //    LLM for files or when rule extraction is insufficient.
-        var analyzer = _analyzerSelector.Select(command.InputSource, tenantId);
-
-        _logger.LogInformation(
-            "Interpreter.Analyze started. Source={Source} Analyzer={Analyzer} TenantId={TenantId}",
-            command.InputSource, analyzer.Provider, tenantId);
+        _logger.LogInformation("Interpreter.Analyze started. Source={Source} TenantId={TenantId}", command.InputSource, tenantId);
 
         var analysisInput = new AnalysisInput(
             Source:     command.InputSource,
@@ -89,8 +83,10 @@ public class AnalyzeMovementUseCase
             TenantId:   tenantId,
             UserId:     userId);
 
-        // 3. Extract raw data from document/text.
-        var analysisOutput = await analyzer.AnalyzeAsync(analysisInput, ct);
+        // 2–3. The providers the SuperAdmin made usable, in order (default first, then priority); an expected failure
+        //      of one moves on to the next. Nothing usable → ai_provider_unavailable (422), all failing → ai_provider_failed (503).
+        var run = await _runner.RunAsync(analysisInput, null, "Analyze", ct);
+        var analysisOutput = run.Output;
 
         var requiresInputCount = new[] {
             analysisOutput.Amount.Status, analysisOutput.Date.Status,
@@ -98,10 +94,10 @@ public class AnalyzeMovementUseCase
         }.Count(s => s == FieldStatus.RequiresInput);
 
         _logger.LogInformation(
-            "Interpreter.Extraction done. Provider={Provider} Amount={Amount} AmountConf={AmountConf:F2} " +
+            "Interpreter.Extraction done. Provider={Provider} AmountFound={AmountFound} AmountConf={AmountConf:F2} " +
             "DateConf={DateConf:F2} PayeeConf={PayeeConf:F2} RequiresInput={RequiresInput}",
-            analyzer.Provider,
-            analysisOutput.Amount.Value,
+            run.Provider,
+            analysisOutput.Amount.Value is not null,
             analysisOutput.Amount.Confidence,
             analysisOutput.Date.Confidence,
             analysisOutput.Payee.Confidence,
@@ -171,22 +167,23 @@ public class AnalyzeMovementUseCase
                 UserId:               userId,
                 MovementId:           movement.Id,
                 OperationType:        "Analyze",
-                Provider:             analyzer.Provider.ToString(),
+                Provider:             run.Provider.ToString(),
                 PromptType:           analysisOutput.PromptMetadata.PromptType,
                 PromptVersion:        analysisOutput.PromptMetadata.PromptVersion,
                 PromptHash:           analysisOutput.PromptMetadata.PromptHash,
                 InputTokens:          analysisOutput.InputTokens,
                 OutputTokens:         analysisOutput.OutputTokens,
                 EstimatedCostMicros:  analysisOutput.EstimatedCostMicros,
-                DurationMs:           elapsedMs,
+                DurationMs:           run.DurationMs,
                 Success:              true,
                 ErrorMessage:         null,
-                FallbackUsed:         false,
-                FallbackFromProvider: null,
-                AnalyzerChain:        [analyzer.Provider.ToString()],
+                FallbackUsed:         run.FallbackUsed,
+                FallbackFromProvider: run.FallbackFrom?.ToString(),
+                AnalyzerChain:        run.Chain,
                 RequiresInputCount:   requiresInputCount,
                 AmountConfidence:     analysisOutput.Amount.Confidence,
-                DateConfidence:       analysisOutput.Date.Confidence));
+                DateConfidence:       analysisOutput.Date.Confidence,
+                ModelId:              run.ModelId));
         }
 
         return BuildResponse(movement.Id, analysisOutput, extractionResult, interpretation, suggestion);

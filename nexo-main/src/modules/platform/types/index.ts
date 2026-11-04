@@ -88,12 +88,13 @@ export interface PlatformStats {
 
 export interface HealthCheck {
   name: string;
-  status: "healthy" | "unhealthy" | "degraded";
+  /** not_configured: the piece is not set up in this deployment (e.g. no cache server) — neither good nor bad. */
+  status: "healthy" | "unhealthy" | "not_configured";
   latencyMs: number;
 }
 
 export interface PlatformHealth {
-  status: "healthy" | "degraded" | "unhealthy";
+  status: "healthy" | "degraded";
   timestamp: string;
   checks: HealthCheck[];
 }
@@ -102,7 +103,10 @@ export interface PlatformHealth {
 
 export interface ApiEndpoint {
   method: string;
+  /** Full route, already starting with "/api/…". */
   path: string;
+  /** The route has {parameters}: it cannot be called as it is. */
+  hasParameters: boolean;
   controller: string;
   action: string;
   description: string;
@@ -112,7 +116,10 @@ export interface ApiEndpoint {
 
 export interface ImpersonateResult {
   accessToken: string;
-  refreshToken: string;
+  /** Never a refresh token: the access ends at expiresAt. */
+  refreshToken: null;
+  /** When the access ends (30 minutes). */
+  expiresAt: string;
   session: {
     userId: string;
     tenantId: string;
@@ -126,4 +133,37 @@ export interface ImpersonateResult {
     activeModules: string[];
     type: "tenant";
   };
+}
+
+// ─── Security of the platform administrator ─────────────────────────────────
+
+export interface PlatformMfaStatus {
+  enabled: boolean;
+  setupPending: boolean;
+  recoveryCodesLeft: number;
+}
+
+export interface PlatformSession {
+  id: string;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  mfaVerified: boolean;
+  ipAddress: string | null;
+  userAgent: string | null;
+  /** The session making this request. */
+  current: boolean;
+}
+
+export interface PlatformSecurity {
+  mfa: PlatformMfaStatus;
+  /** This sign-in passed two-step verification (required for administrative acts). */
+  currentSessionMfaVerified: boolean;
+  sessions: PlatformSession[];
+}
+
+export interface PlatformMfaSetup {
+  /** Base32 key to type in the authenticator app. */
+  secret: string;
+  otpauthUri: string;
 }

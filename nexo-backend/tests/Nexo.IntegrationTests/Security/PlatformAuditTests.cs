@@ -26,8 +26,8 @@ public class PlatformAuditTests
         var tenants = await client.GetFromJsonAsync<List<TenantRow>>("/api/platform/tenants");
         var tenantId = tenants!.First().Id;
 
-        var resp = await client.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate", new { });
-        resp.IsSuccessStatusCode.Should().BeTrue();
+        var resp = await client.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate", new { reason = "Suporte: conferir configuração da loja" });
+        resp.IsSuccessStatusCode.Should().BeTrue(await resp.Content.ReadAsStringAsync());
 
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();

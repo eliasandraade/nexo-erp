@@ -6,25 +6,73 @@ export type FieldStatus      = "AutoFilled" | "NeedsAttention" | "RequiresInput"
 
 // ── Provider management ───────────────────────────────────────────────────────
 
-export interface AiProviderConfig {
-  id:                      string;
-  name:                    string;
-  provider:                AnalyzerProvider;
-  isEnabled:               boolean;
-  isDefault:               boolean;
-  apiKeyLastFour:          string | null;
-  modelId:                 string | null;
-  monthlyTokenLimit:       number | null;
-  costPerInputTokenMicros: number;   // microdollars per token
-  costPerOutputTokenMicros: number;
-  fallbackProviderId:      string | null;
-  priority:                number;   // lower = higher priority in chain
-  updatedAt:               string;
+/** Why a provider can (or cannot) run right now, as the backend computes it. */
+export type AiProviderStatus =
+  | "available"
+  | "disabled"
+  | "blocked_by_deployment"
+  | "missing_key"
+  | "missing_model"
+  | "implementation_missing"
+  | "secret_unavailable"
+  | "invalid_credentials"
+  | "rate_limited"
+  | "unhealthy";
+
+export interface AiProviderLastTest {
+  status:  string;
+  message: string;
+  at:      string;
 }
 
-export interface RotateKeyResult {
-  newKeyPrefix: string;   // first 8 chars for display
-  newKeyLastFour: string;
+/** A provider as GET /platform/interpreter/providers returns it. The key itself never leaves the server. */
+export interface AiProviderConfig {
+  id:                        string;
+  name:                      string;
+  provider:                  AnalyzerProvider;
+  status:                    AiProviderStatus;
+  statusMessage:             string;
+  implemented:               boolean;
+  requiresKey:               boolean;
+  allowedByDeployment:       boolean;
+  isEnabled:                 boolean;
+  isDefault:                 boolean;
+  priority:                  number;   // 1..100, lower runs first after the default
+  modelId:                   string | null;
+  hasApiKey:                 boolean;
+  apiKeyLastFour:            string | null;
+  apiKeyUpdatedAt:           string | null;
+  monthlyTokenLimit:         number | null;
+  inputUsdPerMillionTokens:  number;
+  outputUsdPerMillionTokens: number;
+  lastTest:                  AiProviderLastTest | null;
+}
+
+export interface AiProvidersOverview {
+  providers:              AiProviderConfig[];
+  /** False when the deployment has no master key: no API key can be stored. */
+  secretStorageAvailable: boolean;
+  /** Providers the automatic mode would use, in order. */
+  automaticOrder:         string[];
+}
+
+export interface AiProviderPatch {
+  isEnabled?:                 boolean;
+  isDefault?:                 boolean;
+  modelId?:                   string;   // "" clears
+  priority?:                  number;
+  monthlyTokenLimit?:         number;
+  clearMonthlyTokenLimit?:    boolean;
+  inputUsdPerMillionTokens?:  number;
+  outputUsdPerMillionTokens?: number;
+}
+
+export interface AiProviderTestResult {
+  status:    string;   // "ok" | "invalid_credentials" | "rate_limited" | "model_not_found" | "timeout" | …
+  message:   string;
+  modelId:   string | null;
+  latencyMs: number;
+  testedAt:  string;
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -77,23 +125,47 @@ export interface AiTelemetryRecord {
   requiresInputCount:    number;
   amountConfidence:      number;
   dateConfidence:        number;
-  rawPrompt:             string | null;   // null unless EnablePromptLogging
-  rawResponse:           string | null;   // null unless EnableRawResponseStorage
+  modelId?:              string | null;
   createdAt:             string;
 }
 
 // ── Costs ─────────────────────────────────────────────────────────────────────
 
+/**
+ * One company in GET /platform/interpreter/costs. Two windows that must not be mixed:
+ * the last 30 days come from telemetry; the month (calendar month, UTC) is what the limits count.
+ */
 export interface TenantCostSummary {
-  tenantId:          string;
-  tenantName:        string;
-  requests:          number;
-  inputTokens:       number;
-  outputTokens:      number;
-  estimatedCostMicros: number;
-  softLimitCents:    number | null;
-  hardLimitCents:    number | null;
-  spentCents:        number;
+  tenantId:         string;
+  tenantName:       string;
+  /** Last 30 days, telemetry. */
+  costUsd:          number;
+  totalCalls:       number;
+  llmCalls:         number;
+  /** This calendar month (UTC), settled calls. */
+  monthSpentUsd:    number;
+  /** Paid calls in flight right now: reserved against the hard limit before they happen. */
+  monthReservedUsd: number;
+  /** USD per calendar month; null = no limit. */
+  softLimitUsd:     number | null;
+  hardLimitUsd:     number | null;
+  softLimitHit:     boolean;
+  hardLimitHit:     boolean;
+}
+
+export interface AiCostsOverview {
+  /** Last 30 days, telemetry, every company. */
+  totalUsd:      number;
+  /** This calendar month (UTC), settled, every company. */
+  monthSpentUsd: number;
+  /** Companies with usage or with a limit (a limit shows up even with zero usage). */
+  items:         TenantCostSummary[];
+}
+
+/** PUT /platform/interpreter/costs/{tenantId}/limits — USD per calendar month; null clears. */
+export interface TenantAiLimits {
+  softLimitUsd: number | null;
+  hardLimitUsd: number | null;
 }
 
 // ── Playground ────────────────────────────────────────────────────────────────
@@ -102,41 +174,105 @@ export interface PlaygroundExtractionField<T> {
   value:      T;
   confidence: number;
   status:     FieldStatus;
-  provider:   AnalyzerProvider;
 }
 
+export interface PlaygroundAttempt {
+  provider:      string;
+  modelId:       string | null;
+  succeeded:     boolean;
+  failureReason: string | null;
+  durationMs:    number;
+}
+
+/** POST /platform/interpreter/playground. There is deliberately no raw provider answer. */
 export interface PlaygroundResult {
-  draftId:     string | null;
-  analyzerChain: AnalyzerProvider[];
+  tenantId:     string;
+  provider:     string;          // the provider that actually ran
+  modelId:      string | null;
+  forced:       boolean;
+  fallbackUsed: boolean;
+  attempts:     PlaygroundAttempt[];
+  elapsedMs:    number;
+  prompt:       { type: string; version: string; hash: string };
   extraction: {
-    amount:      PlaygroundExtractionField<number | null>;
-    date:        PlaygroundExtractionField<string | null>;
-    payee:       PlaygroundExtractionField<string | null>;
-    account:     PlaygroundExtractionField<string | null>;
-    analyzerUsed: AnalyzerProvider;
+    amount:       PlaygroundExtractionField<number | null>;
+    date:         PlaygroundExtractionField<string | null>;
+    payee:        PlaygroundExtractionField<string | null>;
+    account:      PlaygroundExtractionField<string | null>;
+    inputTokens:  number;
+    outputTokens: number;
+    costUsd:      number;
   };
-  suggestion: {
-    direction: { value: string; source: string };
-    nature:    { value: string; source: string };
-    category:  { value: string | null; source: string };
-    context:   { contextType: string | null; contextId: string | null; source: string };
+  interpretation: {
+    direction:    string;
+    dirSource:    string;
+    nature:       string;
+    natureSource: string;
+    categoryId:   string | null;
+    catSource:    string;
+    contextType:  string | null;
+    contextId:    string | null;
+    ctxSource:    string;
+    accountId:    string | null;
+    accSource:    string;
   };
-  rawPrompt:   string | null;
-  rawResponse: string | null;
-  tokenUsage:  { input: number; output: number } | null;
-  durationMs:  number;
+}
+
+export interface PlaygroundInput {
+  text:          string;
+  /** null = automatic mode. */
+  forceProvider: AnalyzerProvider | null;
+  /** Required: the company the run is charged to and whose context it reads. Never chosen automatically. */
+  tenantId:      string;
 }
 
 // ── Prompts ───────────────────────────────────────────────────────────────────
 
+/** The platform types plus the Orken Build ones (`build-*`); the list comes from GET …/prompts/types. */
+export type PromptType = "extraction" | "interpretation" | "memory" | (string & {});
+
+/** GET /platform/interpreter/prompts/types — every versionable type and whether a runtime sends it today. */
+export interface PromptTypeInfo {
+  type:          string;
+  usedByRuntime: boolean;
+  /** Hash of the built-in default (what runs while no version is active); null when the type has none. */
+  builtInHash:   string | null;
+}
+
 export interface PromptVersion {
   id:          string;
-  promptType:  string;  // "extraction" | "interpretation" | "memory"
+  promptType:  string;  // PromptType
   version:     string;
+  /** SHA-256 of the content, first 16 hex characters — what telemetry records. */
   hash:        string;
   isActive:    boolean;
+  /** The list only carries a preview of the content. */
   content:     string;
   description: string;
   createdAt:   string;
   createdBy:   string;
+}
+
+/** POST /platform/interpreter/prompts. Created inactive. */
+export interface CreatePromptVersionInput {
+  promptType:  PromptType;
+  version:     string;
+  content:     string;
+  description: string;
+}
+
+export interface CreatedPromptVersion {
+  id:         string;
+  promptType: string;
+  version:    string;
+  hash:       string;
+  isActive:   boolean;
+}
+
+/** POST /platform/interpreter/prompts/{id}/activate. */
+export interface PromptActivation {
+  activated:  string;
+  promptType: string;
+  version:    string;
+  hash:       string;
 }
