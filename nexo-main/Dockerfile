@@ -18,7 +18,13 @@ RUN npm run build
 
 # ── Runtime stage — Caddy serves the static bundle ────────────────────────────
 FROM caddy:2-alpine
+# O Caddy roda sem root: a porta é alta ($PORT, 8080 por padrão), o admin está desligado e só /config e /data
+# (autosave da configuração e estado do Caddy) precisam de escrita. O bundle e o Caddyfile ficam somente leitura.
+RUN addgroup -S -g 10001 caddy \
+    && adduser -S -D -H -u 10001 -G caddy caddy \
+    && chown -R caddy:caddy /config /data
 COPY Caddyfile /etc/caddy/Caddyfile
 COPY --from=build /app/dist /srv
 # Railway injects $PORT at runtime; the Caddyfile listens on it.
 EXPOSE 8080
+USER caddy

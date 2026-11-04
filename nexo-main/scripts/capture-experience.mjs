@@ -2,6 +2,8 @@ import { chromium } from '@playwright/test';
 import fs from 'node:fs';
 const base = process.env.REVIEW_URL || 'http://127.0.0.1:5179';
 const phase = process.argv[2] ?? 'after';
+// A fase dá nome a uma pasta em docs/orken-experience/screenshots: só um nome simples, nunca um caminho.
+if (!/^[a-z0-9-]{1,40}$/.test(phase)) throw new Error(`Fase inválida "${phase}": use só letras minúsculas, dígitos e hífen.`);
 const folder = `../docs/orken-experience/screenshots/${phase}`;
 fs.mkdirSync(folder, { recursive: true });
 const browser = await chromium.launch({ headless: true, channel: "msedge" });
