@@ -160,3 +160,113 @@ Pela data de criação na API, **nenhum dos 183 bugs, 6 vulnerabilidades e 17 ho
 - **`docs/engineering/SONARCLOUD_COVERAGE.md` está defasado.** A seção "O que falta" e o comentário de `sonarcloud.yml` dizem que a análise pelo CI depende de ação do dono. O job do `a8303f8` terminou com "ANALYSIS SUCCESSFUL" e a cobertura já chega ao SonarCloud, então essa etapa parece concluída.
 - **CNPJ alfanumérico (fora do escopo).** O filtro de `LookupController` só mantém dígitos, e não há tratamento de CNPJ alfanumérico no código. Se esse formato for suportado, a validação deve continuar como lista de caracteres permitidos (`0-9` e `A-Z`) para manter o veredito de `S7044`.
 - **Limites desta revisão.** Não houve acesso a produção nem ao Railway: os valores reais de `MaxFileSizeMb` e `Jwt__Secret` não foram conferidos. Os números são da análise de `a8303f8`, antes do merge de qualquer PR desta rodada.
+
+## 7. Atualização em 05/11/2026
+
+Dados da API pública do SonarCloud, na análise do `master` em `650b397` (05/11, 18:37 UTC). Ela inclui #138, #140, #142, #143 e #145, desta rodada, e #141, feita em paralelo. Esta seção substitui a seção 5 no que diverge dela.
+
+### 7.1 Estado do gate
+
+**Quality Gate: ERROR**, com as mesmas 4 condições falhando. O gate não ficou verde, e nenhuma regra, limite, supressão ou exclusão foi alterada.
+
+| Condição (código novo) | `a8303f8` | `650b397` | Limite | Situação |
+|---|---|---|---|---|
+| Confiabilidade | C | C | A | Falha |
+| Segurança | C | C | A | Falha: resta só o `S5144` do ViaCEP no período |
+| Hotspots revisados | 0% | 0% | 100% | Falha: só o painel resolve |
+| Cobertura | 72,1% | 73,9% | 80% | Falha |
+| Manutenibilidade | A | A | A | Passa |
+| Duplicação | 0,8% | 0,8% | 3% | Passa |
+
+| Métrica geral | `a8303f8` | `650b397` |
+|---|---:|---:|
+| Vulnerabilidades | 6 | 3 |
+| Bugs | 183 | 168 |
+| Bugs no período | 56 | 52 |
+| Hotspots sem revisão | 17 | 17 |
+| Cobertura geral | 61,9% | 64,8% |
+
+As PRs abertas (7.2) não entram nesses números. Os 183 bugs do início caíram com #121, #122 e #123 (6) e com as PRs abaixo.
+
+### 7.2 O que foi resolvido em código
+
+| PR | Corrige | Na análise do `master` |
+|---|---|---|
+| #138 | `Uri.EscapeDataString` nos 4 provedores | `S7044` ×3 **saíram**. `S5144` no ViaCEP **continua** |
+| #140 | `AsSplitQuery` no detalhe da obra; projeção na lista de vendas | `S8733` ×2 **saíram**. `SaleRepository.cs:54` continua, como previsto |
+| #143 | Linha clicável vira link; painel de novo cliente com teclado e foco | `S1082` ×2 **saíram** |
+| #145 | Documentação da análise pelo CI | Só texto |
+| #141 (paralela) | Sessão encerrada ao mudar o papel; já repassa `RequestAborted` em `SecurityStampValidationMiddleware` | `S8949` nesse arquivo caiu de 6 para 1 |
+
+PRs abertas quando esta seção foi escrita, cada uma com o gate da própria análise verde. O efeito delas no `master` só se confirma depois do merge:
+
+| PR | Corrige | Análise da PR |
+|---|---|---|
+| #148 | `S2699` ×7: testes de `auth.e2e.spec.ts` reescritos e executados contra a pilha real | Gate OK, nenhum achado novo |
+| #149 | `S8949` ×16: `TenantResolutionMiddleware` (15) e `SecurityStampValidationMiddleware` (1) | Gate OK, 86,4% de cobertura, nenhum achado novo |
+| #151 | `S9383` ×5: as linhas cobertas por teste | Gate OK, nenhum achado novo |
+| #152 | Endereços de CEP e CNPJ; deve resolver o `S5144` do ViaCEP | Gate OK, nenhum achado novo |
+
+**Limite da evidência:** a análise de uma PR lista só os achados novos, e não mostra se um achado antigo foi embora. A #138 tinha 0 achados na PR e ainda assim o `S5144` continuou. Só a análise do `master` depois do merge confirma a saída de um achado.
+
+### 7.3 Defeitos reais achados nesta rodada, fora da contagem do SonarCloud
+
+| PR | Defeito | Como apareceu |
+|---|---|---|
+| #142 | `GET /api/sales/paged` com `status` ou `paymentMethod` respondia 500 em qualquer valor: os filtros da tela de vendas não funcionavam | Teste da lista, na #140 |
+| #152 | Consulta de CEP e CNPJ pela API chamava endereço errado e recebia 404, tratado como "não encontrado", desde 15/06. Não conferido em produção | Investigação do `S5144` que continuou aberto |
+| #149 | Cancelamento pelo cliente abria o circuito do Redis, que vale para o processo inteiro por 10 s. Nesse tempo, a renovação de sessão é recusada e o bloqueio de login por tentativas não vale. Já acontecia em janela menor, e repassar `RequestAborted` no middleware teria agravado | Análise antes de repassar `RequestAborted` |
+| #148 | Sem rede, a tela de login mostrava "Failed to fetch" | Reescrita dos testes `S2699` |
+
+### 7.4 O que sobra em código
+
+| Item | Qtd. | Motivo |
+|---|---:|---|
+| `S9383` | 137 | Bloqueado pelo gate de cobertura: ver 7.5, decisão 2 |
+| Testes de `auth.e2e.spec.ts` sem relação com `S2699` | 9 | Falham porque procuram `input[name="login"]`, que não existe mais. O arquivo não roda no CI. Sem issue aberta ainda |
+
+### 7.5 O que depende do painel
+
+As decisões são do dono do projeto. Em ordem de efeito no gate.
+
+**1. Período de "código novo"** (*Administration → New Code*)
+
+- **Hoje:** `previous_version` desde 11/05/2026. A versão do projeto é sempre "not provided", então o período nunca anda.
+- **Sugestão:** data de referência 26/10/2026 (merge da #78).
+- **Efeito:** a API não mostra nenhum bug nem vulnerabilidade criados de 26/10 em diante (`createdAfter=2026-10-26`; há 712 code smells, e a nota de manutenibilidade está em A). Os 17 hotspots têm data de 12/05 a 15/06. Confiabilidade, segurança e hotspots tendem a ficar verdes.
+- **Ressalvas:** os itens antigos continuam abertos nas notas gerais. A cobertura passa a medir só o código recente, e esse valor só se conhece depois da troca.
+
+**2. `S9383` nas 137 ocorrências restantes.** Escolher uma das opções:
+
+- **A (recomendada): marcar em lote como False Positive.** Justificativa para colar:
+
+  > A promessa não rejeita neste contexto. `invalidateQueries` passa por `refetchQueries`, que aplica `.catch(noop)` quando `throwOnError` não está ligado, e o projeto não usa `throwOnError`. As demais funções tratam a própria falha. Não aguardar é intencional.
+
+- **B: aceitar as PRs de `void` com o gate vermelho.** Só o dono pode, porque `ci-gate` reprova. A #147 (Build ×38) está em rascunho e mostrou o motivo: 13,2% de cobertura no código novo. Prefixar `void` não muda comportamento, mas a linha alterada conta como nova, e só 5 das 142 ocorrências estão em linha executada por teste. Essas 5 estão na #151. As demais estão prontas, sem PR aberta: `fix/promessas-sem-rejeicao-comercial` (33), `fix/promessas-sem-rejeicao-restaurante-servico` (44), `fix/promessas-sem-rejeicao-catalogo-plataforma` (27).
+- **C: escrever testes para esses `onSuccess`.** A regra do projeto proíbe teste só pelo percentual, e estes testes apenas repetiriam a lista de chaves do código. Não recomendado.
+
+**3. Falsos positivos de vulnerabilidade**
+
+| Item | Marcar como | Justificativa para colar |
+|---|---|---|
+| `S2068` em `CreateTenantDrawer.tsx:64` | False Positive | "Mensagem de validação do campo de senha, não uma senha." |
+| `S6781` em `JwtTokenService.cs:192` | False Positive | "O segredo vem de `Jwt__Secret`; `JwtSecretPolicy` recusa na partida o valor público." |
+| `S5144` em `ViaCepProvider.cs:30` | **Aguardar a #152.** Se continuar na análise do `master` depois dela: False Positive | "O controller só deixa passar 8 dígitos ASCII, o valor é escapado com `Uri.EscapeDataString` e o caminho tem prefixo fixo; o host vem de configuração." |
+
+**Não** marcar `S7044` ×3: já saíram.
+
+**4. Hotspots**
+
+| Item | Marcar como | Justificativa para colar |
+|---|---|---|
+| `S2092` ×10 e `S3330` ×6 em `AuthController.cs` | Safe | "`HttpOnly` sempre; `Secure` fora de Development, com TLS terminando no proxy." |
+| `S5693` em `StorageController.cs:91` | Safe, depois de confirmar `MaxFileSizeMb` em produção. A alternativa é reduzir o limite, decisão de produto | "Upload autenticado e restrito por papel; arquivo limitado a 10 MB." |
+
+**5. Falsos positivos de confiabilidade.** Os 9 são anteriores ao período sugerido e não afetam o gate com a nova data.
+
+| Item | Marcar como | Justificativa para colar |
+|---|---|---|
+| `S8949` em `ExceptionHandlingMiddleware`, `AnalyzeMovementUseCase`, `ReprocessMovementUseCase` e `OrderService` ×6 | False Positive | "Passar o token do pedido aqui causaria perda de trabalho: a escrita do erro ou a tarefa disparada sem aguardar seria cancelada ao fim da resposta." |
+| `S8733` em `SaleRepository.cs:54` | Accept | "Também usado em fluxos de escrita; produto cartesiano pequeno, e dividir a consulta troca uma leitura única por várias." |
+
+**Sem ação no painel:** `S8949` em `TenantResolutionMiddleware` (15) e `SecurityStampValidationMiddleware` (1), resolvidos em código pela #149 quando ela entrar.
