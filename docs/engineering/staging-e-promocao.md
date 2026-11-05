@@ -11,15 +11,19 @@ PR ──(ci-gate)──> master ──(CI completo)──> staging ──(valid
 | Etapa | O que acontece | Quem garante |
 |---|---|---|
 | PR para `master` | Roda `ci.yml`: o que o diff tocou, mais o SonarCloud. O merge exige `ci-gate` verde | Proteção da branch `master` |
-| Push em `master` | Roda tudo, sem pular nada. Railway publica no **staging** depois do CI | `ci.yml` e "Wait for CI" do Railway |
+| Push em `master` | Roda `master.yml`: tudo, sem pular nada. Railway publica no **staging** depois do CI | `master.yml` e "Wait for CI" do Railway |
 | Promoção | `production` avança para um SHA com `master-gate` verde. Railway publica em **produção** | Proteção da branch `production` |
 
 ## Os dois checks
 
-- **`ci-gate`:** veredito de uma execução, em PR e em `master`. Sempre reporta, então nunca fica pendente por causa de um
-  job que o diff pulou. Um job pulado só vale se o diff não tocou aquela área; falha ou cancelamento reprova.
-- **`master-gate`:** só existe em commit que chegou à `master` e passou em tudo (backend, frontend e SonarCloud), sem nada
-  pulado. Execuções de PR não o produzem, então a ponta de uma branch não mesclada não chega à produção.
+- **`ci-gate`** (`ci.yml`): veredito de uma PR. Sempre reporta, então nunca fica pendente por causa de um job que o diff
+  pulou. Um job pulado só vale se o diff não tocou aquela área; falha ou cancelamento reprova.
+- **`master-gate`** (`master.yml`): só existe em commit que chegou à `master` e passou em tudo (backend, frontend e
+  SonarCloud), sem nada pulado.
+
+O `master-gate` fica num workflow próprio de propósito. Para checks obrigatórios, o GitHub trata como sucesso um job pulado
+por condição. Se ele fosse um job que a PR apenas pula, a ponta de uma branch não mesclada passaria pela proteção de
+`production`. Assim, uma PR nunca produz esse check.
 
 ## O que resolve os problemas antigos
 
@@ -46,6 +50,17 @@ recusado, inclusive para administradores.
 Depois da promoção, confira no Railway que `backend` e `main` estão em `SUCCESS` com esse SHA, e rode o production-watch
 da Platform.
 
+### O que foi testado na trava
+
+Tentativas reais contra o GitHub, todas recusadas:
+
+| Tentativa | Resposta |
+|---|---|
+| Commit sem check em `production` | `Required status check "master-gate" is expected` |
+| Force push para um commit antigo em `production` | `Cannot force-push to this branch` |
+| Apagar `production` | `protected branch hook declined` |
+| Ponta de branch de PR no script | `master-gate ... is 'skipped'` |
+
 ## Rollback
 
 - **Mais rápido:** no painel do Railway, em Deployments do serviço, use "Redeploy" na versão anterior. Não muda nenhuma
@@ -58,6 +73,18 @@ da Platform.
 ## Staging
 
 Ambiente `staging` no projeto `nexoerp` do Railway, descrito em [`.railway/railway.ts`](../../.railway/railway.ts).
+
+- **Frontend:** https://main-staging-22f4.up.railway.app
+- **API:** https://backend-staging-d8d0.up.railway.app (Swagger em `/swagger`)
+
+Para validar um deploy, rode o teste de fumaça. Ele cria registros sintéticos, cobre login, sessões, núcleo do ERP, Build,
+isolamento entre empresas e o destino do bundle, e recusa hosts de produção. A senha é a `Seed__AdminPassword` do serviço
+`backend` no ambiente `staging` do Railway. O limite de login é de 5 por 15 minutos por IP, então rode no máximo uma vez a
+cada 15 minutos.
+
+```bash
+STAGING_API=https://backend-staging-d8d0.up.railway.app STAGING_WEB=https://main-staging-22f4.up.railway.app STAGING_ADMIN_PASSWORD=... python scripts/staging_smoke.py
+```
 
 | Item | Staging | Produção |
 |---|---|---|
@@ -76,7 +103,8 @@ justamente para não herdar a chave live do Stripe, a chave do Resend ou o R2.
 ### Segredos
 
 Gerados só para o staging, guardados só no Railway: `Jwt__Secret`, `Secrets__MasterKey`, `Seed__AdminPassword`,
-`Seed__PlatformPassword` e as senhas do Postgres e do Redis. Os usuários sintéticos do `DataSeeder` têm senhas fixas no
+`Seed__PlatformPassword` e as senhas do Postgres e do Redis. A comparação com produção confirmou que todos são diferentes.
+O `apply` do IaC não cria variáveis para o Redis: `REDIS_PASSWORD` foi criada à parte, e um staging recriado precisa dela. Os usuários sintéticos do `DataSeeder` têm senhas fixas no
 código; valem só para dados de teste, e por isso nada real pode entrar neste ambiente.
 
 ### Segredos externos que dependem do dono

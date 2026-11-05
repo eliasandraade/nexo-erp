@@ -1,0 +1,46 @@
+name: master
+
+# Full verification of every commit that reaches master (docs/engineering/staging-e-promocao.md). Its master-gate job is the
+# only proof a promotion accepts, and the `production` branch protection requires it.
+#
+# This is a workflow of its own on purpose. GitHub treats a job skipped by a condition as a success for required checks, so
+# a master-gate job that pull requests merely skip would let the head of an unmerged branch into `production`. Here a pull
+# request never produces the check at all.
+on:
+  push:
+    branches: [master]
+
+# Each commit is its own group: a later push never cancels or replaces this verdict.
+concurrency:
+  group: master-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Everything runs, always: a commit that only touches docs must not earn a green verdict over a broken commit before it.
+  backend:
+    uses: ./.github/workflows/backend-tests.yml
+
+  frontend:
+    uses: ./.github/workflows/frontend-ci.yml
+
+  sonarcloud:
+    uses: ./.github/workflows/sonarcloud.yml
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  master-gate:
+    if: always()
+    needs: [backend, frontend, sonarcloud]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verdict
+        env:
+          BACKEND: ${{ needs.backend.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+          SONAR: ${{ needs.sonarcloud.result }}
+        run: |
+          echo "backend=$BACKEND frontend=$FRONTEND sonarcloud=$SONAR"
+          [ "$BACKEND" = "success" ] && [ "$FRONTEND" = "success" ] && [ "$SONAR" = "success" ]

@@ -133,6 +133,11 @@ public class SaleRepository : ISaleRepository
 
     public async Task<int> GetNextNumberAsync(CancellationToken ct = default)
     {
+        // O número é max+1 por loja, e a venda criada numa transação (o fechamento da comanda) só aparece no commit. A trava
+        // dura até lá: quem vem depois espera e lê o máximo certo, em vez de pegar o mesmo número e receber 409.
+        var numbering = $"sale-number:{_context.CurrentTenantIdForFilter}:{_context.CurrentStoreIdForFilter}";
+        await _context.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({numbering}))", ct);
+
         var max = await _context.Sales.MaxAsync(x => (int?)x.Number, ct);
         return (max ?? 0) + 1;
     }

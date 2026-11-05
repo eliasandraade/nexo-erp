@@ -45,10 +45,12 @@ public class TaxOpportunitiesController : ControllerBase
 
     /// <summary>
     /// After the operation: records whether it happened as the scenario was approved (authorised fiscal
-    /// document, final amounts) or diverged. Diretoria only; sealed with its own dossier hash.
+    /// document, final amounts) or diverged. Diretoria only; sealed with its own dossier hash. Never during an
+    /// impersonation: the dossier would be sealed in the owner's name.
     /// </summary>
     [HttpPost("opportunities/{id:guid}/execution")]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<TaxOpportunityDto>> VerifyExecution(Guid id, [FromBody] VerifyExecutionRequest request, CancellationToken ct)
         => Ok(await _service.VerifyExecutionAsync(id, request, ct));
 
@@ -64,10 +66,12 @@ public class TaxOpportunitiesController : ControllerBase
     /// Approves the scenario and records the decision dossier — it does not execute any commercial or fiscal
     /// change. Diretoria only; high risk must be acknowledged; the maker-checker requirement follows risk and
     /// materiality; with the approval policy on, every rule behind it must be approved for the mode —
-    /// internally for the controlled pilot, professionally in the definitive mode.
+    /// internally for the controlled pilot, professionally in the definitive mode. Never during an impersonation: the
+    /// decision would be recorded in the owner's name.
     /// </summary>
     [HttpPost("opportunities/{id:guid}/approve")]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<TaxOpportunityDto>> Approve(Guid id, [FromBody] ApproveOpportunityRequest request, CancellationToken ct)
         => Ok(await _service.ApproveAsync(id, request, ct));
 

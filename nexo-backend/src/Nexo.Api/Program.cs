@@ -544,6 +544,10 @@ try
         
         await next();
     });
+
+    // After the security headers, so a refused write carries them too.
+    app.UseMiddleware<TenantAccessMiddleware>();
+
     app.MapHub<RestaurantHub>("/hubs/restaurant");
     app.MapControllers();
     Nexo.Api.Health.HealthEndpoints.MapOrkenHealth(app);

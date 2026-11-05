@@ -1,6 +1,8 @@
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { isImpersonating } from "@/services/api-client";
+import { canAccessPath } from "@/modules/auth/hooks/useRoleAccess";
+import { isImpersonating, onSubscriptionRequired } from "@/services/api-client";
 
 /**
  * Wraps all authenticated routes.
@@ -24,6 +26,15 @@ import { isImpersonating } from "@/services/api-client";
 export function ProtectedRoute() {
   const { session, isReady } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // A write refused for lack of a subscription (402): the session stays, and whoever can open the subscription page goes
+  // there. The other roles stay put, since that page would only send them back home: the failed call's message tells them.
+  const role = session?.role;
+  const modules = session?.modules;
+  useEffect(() => onSubscriptionRequired(() => {
+    if (role && canAccessPath(role, modules ?? [], "/assinatura")) navigate("/assinatura?motivo=somente-leitura");
+  }), [role, modules, navigate]);
 
   if (!session) return isReady ? <Navigate to="/login" replace /> : null;
 

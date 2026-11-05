@@ -11,10 +11,13 @@ public class OrderRepository : IOrderRepository
 
     public OrderRepository(NexoDbContext context) => _context = context;
 
+    public async Task LockAsync(Guid id, CancellationToken ct = default)
+        => await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM nexo.rest_orders WHERE id = {id} FOR UPDATE", ct);
+
     public async Task<RestOrderStatus?> LockAndGetStatusAsync(Guid id, CancellationToken ct = default)
     {
-        await _context.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM nexo.rest_orders WHERE id = {id} FOR UPDATE", ct);
+        await LockAsync(id, ct);
         return await _context.RestOrders.AsNoTracking()
             .Where(x => x.Id == id)
             .Select(x => (RestOrderStatus?)x.Status)
