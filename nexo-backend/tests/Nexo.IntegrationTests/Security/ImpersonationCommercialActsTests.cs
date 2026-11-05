@@ -178,7 +178,7 @@ public class ImpersonationCommercialActsTests
         })).StatusCode.Should().Be(HttpStatusCode.Created);
         (await imp.PostAsJsonAsync("/api/financial/accounts", new
         {
-            code = $"S{Guid.NewGuid():N}"[..8], name = "Conta do suporte", accountType = "Revenue",
+            code = $"S{Guid.NewGuid():N}"[..8], name = "Conta do suporte", accountType = "Cash",
         })).StatusCode.Should().Be(HttpStatusCode.Created);
         (await imp.PutAsJsonAsync("/api/settings", new
         {

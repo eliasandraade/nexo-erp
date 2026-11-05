@@ -103,13 +103,18 @@ public class BuildCommercialController : ControllerBase
     public async Task<ActionResult<BuildChangeOrderDto>> SendChangeOrder(Guid id, CancellationToken ct)
         => Ok(await _changeOrders.SendAsync(id, ct));
 
-    /// <summary>Internal approval (channel Internal): contract value, stage end and schedule revision updated.</summary>
+    /// <summary>
+    /// Internal approval (channel Internal): contract value, stage end and schedule revision updated. The decision is final
+    /// and carries the owner's name, so never during an impersonation (same for the refusal).
+    /// </summary>
     [HttpPost("change-orders/{id:guid}/approve")]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<BuildChangeOrderDto>> ApproveChangeOrder(Guid id,
         [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] DecideBuildChangeOrderRequest? request, CancellationToken ct)
         => Ok(await _changeOrders.ApproveAsync(id, request?.Comment, ct));
 
     [HttpPost("change-orders/{id:guid}/reject")]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<BuildChangeOrderDto>> RejectChangeOrder(Guid id,
         [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] DecideBuildChangeOrderRequest? request, CancellationToken ct)
         => Ok(await _changeOrders.RejectAsync(id, request?.Comment, ct));
