@@ -110,7 +110,7 @@ public class SecurityStampValidationMiddleware
         if (stamp is null)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "User not found." });
+            await context.Response.WriteAsJsonAsync(new { error = "User not found." }, context.RequestAborted);
             return;
         }
 
@@ -120,7 +120,7 @@ public class SecurityStampValidationMiddleware
                 "SecurityStamp mismatch for user {UserId} — session revoked.",
                 userId);
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "Sua sessão foi encerrada. Entre de novo.", code = "session_revoked" });
+            await context.Response.WriteAsJsonAsync(new { error = "Sua sessão foi encerrada. Entre de novo.", code = "session_revoked" }, context.RequestAborted);
             return;
         }
 
