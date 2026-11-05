@@ -128,20 +128,27 @@ public class ImpersonationCommercialActsTests
         var (tenantId, email) = await NewTenantAsync();
         var imp = await ImpersonateAsync(tenantId);
         var owner = await AuthClientFactory.LoginAsync(_factory, email, TestCredentials.AdminPassword);
-        var body = new
+        object Assessment(string status) => new
         {
-            status = "Verified", periodFrom = "2026-06-01", periodTo = "2026-06-30", scope = "NF-e de saída do período",
+            status, periodFrom = "2026-06-01", periodTo = "2026-06-30", scope = "NF-e de saída do período",
             obligationsChecked = new[] { "Emissão de NF-e" }, evidence = "Relatório de conferência", assessedBy = "Contabilidade",
             assessedAt = (string?)null, notes = (string?)null, limitations = (string?)null, pnctParticipation = false,
         };
 
-        await ExpectForbiddenAsync(imp.PostAsJsonAsync("/api/tax/compliance-assessments", body));
+        await ExpectForbiddenAsync(imp.PostAsJsonAsync("/api/tax/compliance-assessments", Assessment("Verified")));
+        await ExpectForbiddenAsync(imp.PostAsJsonAsync("/api/tax/compliance-assessments", Assessment("Declared")));
 
         var assessments = await (await imp.GetAsync("/api/tax/compliance-assessments")).Content.ReadFromJsonAsync<JsonElement>();
         assessments.GetArrayLength().Should().Be(0, "nenhuma conferência foi registrada; e a leitura segue liberada");
 
-        var own = await owner.PostAsJsonAsync("/api/tax/compliance-assessments", body);
-        own.StatusCode.Should().Be(HttpStatusCode.OK, await own.Content.ReadAsStringAsync());
+        // o dono continua chegando à ação: a verificação só com texto livre é recusada pela regra dela, não pelo bloqueio, e a declaração é gravada
+        var verified = await owner.PostAsJsonAsync("/api/tax/compliance-assessments", Assessment("Verified"));
+        var refusal = await verified.Content.ReadAsStringAsync();
+        verified.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, refusal);
+        JsonDocument.Parse(refusal).RootElement.GetProperty("code").GetString().Should().Be("tax_compliance_results");
+
+        var declared = await owner.PostAsJsonAsync("/api/tax/compliance-assessments", Assessment("Declared"));
+        declared.StatusCode.Should().Be(HttpStatusCode.OK, await declared.Content.ReadAsStringAsync());
     }
 
     // ── Tax Intelligence: políticas e razão, só da Diretoria ─────────────────
