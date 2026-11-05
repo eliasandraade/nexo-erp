@@ -31,15 +31,24 @@ export interface ProductsPagedParams {
   pageSize?: number;
   search?: string;
   includeInactive?: boolean;
+  onlyInactive?: boolean;
   isIngredient?: boolean;
   categoryId?: string;
   unit?: string;
 }
 
+/** What each status of the product list asks the server for: "active" is the API's default. */
+export function productStatusParams(status: string): Pick<ProductsPagedParams, "includeInactive" | "onlyInactive"> {
+  if (status === "all") return { includeInactive: true };
+  if (status === "inactive") return { onlyInactive: true };
+  return {};
+}
+
 export function fetchProductsPaged(params: ProductsPagedParams = {}): Promise<PagedResult<ProductDto>> {
-  const { page = 1, pageSize = 50, search, includeInactive = false, isIngredient, categoryId, unit } = params;
+  const { page = 1, pageSize = 50, search, includeInactive = false, onlyInactive = false, isIngredient, categoryId, unit } = params;
   const qs = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
   if (includeInactive) qs.set("includeInactive", "true");
+  if (onlyInactive) qs.set("onlyInactive", "true");
   if (isIngredient !== undefined) qs.set("isIngredient", String(isIngredient));
   if (search) qs.set("search", search);
   if (categoryId) qs.set("categoryId", categoryId);

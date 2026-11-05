@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { CalendarPlus, Check, CheckCircle2, Clock, Copy, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
+import { copyToClipboard } from "@/lib/clipboard";
 import type { PublicAppointmentCreated } from "../api/booking.api";
 import { formatSlotLabel } from "../lib/booking-format";
 import { buildIcs, downloadIcs } from "../lib/ics";
@@ -32,7 +34,7 @@ export function SuccessCard({ created, storeName, manageUrl, onRestart }: Succes
     downloadIcs(`agendamento-${storeName.toLowerCase().replace(/\s+/g, "-")}`, ics);
   }
 
-  function copyDetails() {
+  async function copyDetails() {
     const text =
       `Agendamento — ${storeName}\n` +
       `${created.serviceName}\n` +
@@ -40,10 +42,12 @@ export function SuccessCard({ created, storeName, manageUrl, onRestart }: Succes
       `${when}\n` +
       `Em nome de: ${created.customerName}` +
       (manageHref ? `\nVer ou cancelar: ${manageHref}` : "");
-    navigator.clipboard.writeText(text).then(() => {
+    if (await copyToClipboard(text)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    } else {
+      toast.error("Não foi possível copiar. Anote os dados do agendamento.");
+    }
   }
 
   return (

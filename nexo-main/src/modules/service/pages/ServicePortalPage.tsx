@@ -5,7 +5,9 @@ import {
   AlertCircle, AlertTriangle, Check, CheckCircle2, ChevronRight, Clock4, Copy,
   ExternalLink, Loader2, Rocket,
 } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { copyToClipboard } from "@/lib/clipboard";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { PageSkeleton } from "@/components/shared/PageSkeleton";
 import { Button } from "@/components/ui/button";
@@ -156,7 +158,10 @@ export default function ServicePortalPage() {
                 </a>
               </Button>
               <Button size="sm" variant="outline"
-                onClick={() => navigator.clipboard.writeText(`https://${publicBookingUrl(slug)}`)}>
+                onClick={async () => {
+                  if (await copyToClipboard(`https://${publicBookingUrl(slug)}`)) toast.success("Link copiado.");
+                  else toast.error("Não foi possível copiar o link.");
+                }}>
                 <Copy className="mr-1.5 h-3.5 w-3.5" /> Copiar link
               </Button>
             </div>

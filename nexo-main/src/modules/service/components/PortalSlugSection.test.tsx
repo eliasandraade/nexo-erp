@@ -1,8 +1,11 @@
 import { type ReactNode } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { PortalSlugSection, publicBookingUrl, normalizeSlug } from "./PortalSlugSection";
+
+vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 vi.mock("@/modules/stores/services/storesApi", () => ({
   checkSlugAvailability: vi.fn().mockResolvedValue({ available: true, normalized: "x" }),
@@ -36,5 +39,15 @@ describe("PortalSlugSection", () => {
     renderWithClient(<PortalSlugSection storeId="s1" currentSlug={null} />);
     expect(screen.getByText(/Defina um endereço/)).toBeInTheDocument();
     expect(screen.queryByTitle("Copiar link")).not.toBeInTheDocument();
+  });
+
+  it("tells the user when the browser refuses to copy the link", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockRejectedValue(new DOMException("denied", "NotAllowedError")) },
+      configurable: true,
+    });
+    renderWithClient(<PortalSlugSection storeId="s1" currentSlug="minha-clinica" />);
+    fireEvent.click(screen.getByTitle("Copiar link"));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Não foi possível copiar o link."));
   });
 });

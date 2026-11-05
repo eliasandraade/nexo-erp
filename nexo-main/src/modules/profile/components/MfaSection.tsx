@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SectionCard } from "@/components/shared/SectionCard";
+import { copyToClipboard } from "@/lib/clipboard";
 import { ApiError } from "@/services/api-client";
 import { disableMfa, enableMfa, fetchMfaStatus, startMfaSetup } from "@/modules/auth/services/authService";
 import { useAuth } from "@/modules/auth/context/AuthContext";
@@ -32,6 +33,10 @@ export function MfaSection() {
   }, [setup]);
 
   const fail = (e: unknown, fallback: string) => toast.error(e instanceof ApiError ? e.message : fallback);
+  const copyRecovery = async (codes: string[]) => {
+    if (await copyToClipboard(codes.join("\n"))) toast.success("Códigos copiados.");
+    else toast.error("Não foi possível copiar. Selecione e copie os códigos manualmente.");
+  };
   const start = useMutation({
     mutationFn: () => startMfaSetup(password),
     onSuccess: (d) => { setSetup(d); setCode(""); setPassword(""); setStarting(false); },
@@ -60,7 +65,7 @@ export function MfaSection() {
             {recovery.map((c) => <li key={c}>{c}</li>)}
           </ul>
           <div className="mt-3 flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => { void navigator.clipboard.writeText(recovery.join("\n")); toast.success("Códigos copiados."); }}>
+            <Button size="sm" variant="outline" onClick={() => copyRecovery(recovery)}>
               <Copy className="mr-2 h-4 w-4" /> Copiar
             </Button>
             <Button size="sm" onClick={() => { setRecovery(null); logout("/login?motivo=mfa"); }}>Já guardei — entrar de novo</Button>
