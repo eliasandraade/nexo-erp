@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { toast } from "sonner";
 import PortalSetupPage from "./PortalSetupPage";
+import { getRestauranteDeliveryZones } from "../api/restaurante.api";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("@/modules/auth/context/AuthContext", () => ({ useAuth: () => ({ session: { storeId: "s1" } }) }));
@@ -30,14 +31,26 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  // The page re-renders without end while the zones query has no data, and act() never returns.
-  // Known defect, recorded in docs/audits/2026-11-04-sonarcloud-revalidacao.md: seeded here to test the copy button.
-  qc.setQueryData(["delivery-zones"], []);
   return <QueryClientProvider client={qc}><MemoryRouter>{children}</MemoryRouter></QueryClientProvider>;
 }
 
 beforeEach(() => vi.mocked(toast.error).mockClear());
 afterEach(cleanup);
+
+describe("PortalSetupPage delivery zones", () => {
+  // Without a stable default the page re-rendered without end here: act() never returned and the run ran out of memory.
+  it("settles while the zones query is still loading", async () => {
+    vi.mocked(getRestauranteDeliveryZones).mockReturnValueOnce(new Promise(() => {}));
+    render(<PortalSetupPage />, { wrapper });
+    expect(await screen.findByTitle("Copiar link")).toBeTruthy();
+  });
+
+  it("settles when the zones query fails", async () => {
+    vi.mocked(getRestauranteDeliveryZones).mockRejectedValueOnce(new Error("indisponível"));
+    render(<PortalSetupPage />, { wrapper });
+    expect(await screen.findByTitle("Copiar link")).toBeTruthy();
+  });
+});
 
 describe("PortalSetupPage copy link", () => {
   it("copies the portal link without an error", async () => {
