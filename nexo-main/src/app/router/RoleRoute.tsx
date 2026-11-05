@@ -1,6 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { canAccessPath, homeRoute } from "@/modules/auth/hooks/useRoleAccess";
+import { canAccessPath, homeRoute, readableModules } from "@/modules/auth/hooks/useRoleAccess";
 
 interface RoleRouteProps {
   /**
@@ -23,7 +23,7 @@ export function RoleRoute({ path }: RoleRouteProps) {
 
   if (!session) return <Navigate to="/login" replace />;
 
-  if (!canAccessPath(session.role, session.modules, path)) {
+  if (!canAccessPath(session.role, readableModules(session), path)) {
     return <Navigate to={homeRoute(session)} replace />;
   }
 

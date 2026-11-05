@@ -18,6 +18,8 @@ public interface ITenantRepository
     Task<Tenant?> GetBySlugAsync(string slug, CancellationToken ct = default);
     Task<IReadOnlyList<Tenant>> GetAllAsync(CancellationToken ct = default);
     Task<IReadOnlyList<string>> GetActiveModuleKeysAsync(Guid tenantId, CancellationToken ct = default);
+    /// <summary>The modules the tenant had and has no access to now (ModuleSubscription.ExpiredKeys): read-only.</summary>
+    Task<IReadOnlyList<string>> GetExpiredModuleKeysAsync(Guid tenantId, CancellationToken ct = default);
     Task<DateTime?> GetTrialEndsAtAsync(Guid tenantId, CancellationToken ct = default);
     Task AddAsync(Tenant tenant, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);

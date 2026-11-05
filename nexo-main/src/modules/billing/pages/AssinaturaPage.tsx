@@ -211,7 +211,7 @@ export default function AssinaturaPage() {
         <div role="status" className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
           <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
           <div className="text-sm">
-            <p className="font-medium text-foreground">Sua empresa está em modo somente leitura</p>
+            <p className="font-medium text-foreground">Modo somente leitura</p>
             <p className="text-muted-foreground mt-0.5">
               Sem assinatura ativa, você pode ver e exportar os dados, mas não registrar nem alterar.{" "}
               {checkoutsOpen

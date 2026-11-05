@@ -130,7 +130,8 @@ public class TenantResolutionMiddleware
         var cacheKey  = $"tenant:{tenantId}:info";
         var tenantInfo = await cache.GetAsync<TenantCacheEntry>(cacheKey);
 
-        if (tenantInfo is null)
+        // An entry written before ExpiredModules existed, still in Redis during a deploy, is read again.
+        if (tenantInfo?.ExpiredModules is null)
         {
             var tenant = await tenantRepository.GetByIdAsync(tenantId);
             if (tenant is null)
@@ -142,10 +143,12 @@ public class TenantResolutionMiddleware
             }
 
             var moduleKeys = await tenantRepository.GetActiveModuleKeysAsync(tenantId);
+            var expiredKeys = await tenantRepository.GetExpiredModuleKeysAsync(tenantId, context.RequestAborted);
             tenantInfo = new TenantCacheEntry(
                 tenant.Slug,
                 tenant.Status.ToString(),
-                moduleKeys.ToList());
+                moduleKeys.ToList(),
+                expiredKeys.ToList());
 
             await cache.SetAsync(cacheKey, tenantInfo, TimeSpan.FromMinutes(5));
         }
@@ -163,14 +166,14 @@ public class TenantResolutionMiddleware
         }
 
         // 4. Populate ICurrentTenant for this request scope
-        currentTenant.Set(tenantId, tenantInfo.Slug, tenantInfo.ActiveModules);
+        currentTenant.Set(tenantId, tenantInfo.Slug, tenantInfo.ActiveModules, tenantInfo.ExpiredModules);
 
         await _next(context);
     }
 }
 
 /// <summary>Serializable cache entry for tenant info.</summary>
-internal record TenantCacheEntry(string Slug, string Status, List<string> ActiveModules);
+internal record TenantCacheEntry(string Slug, string Status, List<string> ActiveModules, List<string>? ExpiredModules = null);
 
 /// <summary>Serializable cache entry for user info.</summary>
 internal record UserCacheEntry(Guid TenantId, string Status);

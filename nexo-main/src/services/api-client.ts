@@ -109,15 +109,15 @@ export function endImpersonationSession(reason: "impersonation_ended" | "imperso
 
 // ── Subscription required ─────────────────────────────────────────────────────
 
-/** Code of the 402 a company without any module with access gets on a write (it stays read-only). */
+/** Code of the 402 of a write on an expired module, or by a company without any module with access (it stays read-only). */
 export const SUBSCRIPTION_REQUIRED_CODE = "subscription_required";
 
 /**
- * Promises no purchase on purpose: not every module is for sale, and whoever tried one with no price has nothing to buy.
- * See docs/engineering/tenant-access-enforcement.md.
+ * Says "this area": another module of the company may be working normally. Promises no purchase on purpose: not every module
+ * is for sale, and whoever tried one with no price has nothing to buy. See docs/engineering/tenant-access-enforcement.md.
  */
 export const SUBSCRIPTION_REQUIRED_MESSAGE =
-  "Sua empresa está sem assinatura ativa e o sistema ficou somente para consulta: você pode ver e exportar os dados, " +
+  "Esta área está sem assinatura ativa e ficou somente para consulta: você pode ver e exportar os dados, " +
   "mas não registrar nem alterar. Quem administra a conta pode ver as opções na tela Assinatura ou falar com o suporte Orken.";
 
 const SUBSCRIPTION_REQUIRED_EVENT = "orken:subscription-required";
@@ -129,7 +129,7 @@ export function onSubscriptionRequired(handler: () => void): () => void {
 }
 
 /**
- * The error of a write refused for lack of a subscription, with the app told so it can open the subscription page.
+ * The error of a write refused for lack of a subscription, with the app told so it can show a notice.
  * Null for any other response. The session is valid: nothing here touches it.
  */
 function subscriptionRequiredError(status: number, body: ErrorBody | null): ApiError | null {

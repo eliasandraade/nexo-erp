@@ -4,8 +4,8 @@ namespace Nexo.Api.Middleware;
 
 /// <summary>
 /// A company with no module with access now (the single rule, ModuleSubscription.HasAccessAt) is read-only: it keeps reading
-/// and exporting its data, and writes answer 402 <c>subscription_required</c>. With any module with access, nothing changes.
-/// What stays open is in <see cref="TenantAccessPolicy"/>.
+/// and exporting its data, and writes answer 402 <c>subscription_required</c>. With any module with access, the routes of a
+/// module without it are the gates' to answer (<see cref="ExpiredModuleGate"/>). What stays open is in <see cref="TenantAccessPolicy"/>.
 ///
 /// Reads <see cref="ICurrentTenant.ActiveModules"/>, which tenant resolution loads from the tenant cache (invalidated by the
 /// Stripe webhook and by platform grants; a Redis failure falls back to the database): no query of its own per request.

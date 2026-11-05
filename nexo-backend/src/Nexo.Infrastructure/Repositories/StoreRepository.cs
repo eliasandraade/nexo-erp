@@ -43,6 +43,16 @@ public class TenantRepository : ITenantRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>Called by TenantResolutionMiddleware on a cache miss and when a session is built, never on every request.</summary>
+    public async Task<IReadOnlyList<string>> GetExpiredModuleKeysAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var rows = await _context.ModuleSubscriptions
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId)
+            .ToListAsync(ct);
+        return ModuleSubscription.ExpiredKeys(rows, DateTime.UtcNow);
+    }
+
     public async Task<DateTime?> GetTrialEndsAtAsync(Guid tenantId, CancellationToken ct = default)
     {
         return await _context.ModuleSubscriptions
