@@ -43,6 +43,8 @@ import type {
   CreateCouponRequest,
 } from "../api/restaurante.api";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { copyToClipboard } from "@/lib/clipboard";
+import { toast } from "sonner";
 import type { UpdatePortalInfoRequest } from "../types";
 
 const PORTAL_BASE = "erp.orken.com.br";
@@ -554,11 +556,13 @@ export default function PortalSetupPage() {
     });
   }
 
-  function copyUrl() {
-    navigator.clipboard.writeText(`https://${portalUrl}`).then(() => {
+  async function copyUrl() {
+    if (await copyToClipboard(`https://${portalUrl}`)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    } else {
+      toast.error("Não foi possível copiar o link.");
+    }
   }
 
   // ── Delivery zones state ──────────────────────────────────────────────────

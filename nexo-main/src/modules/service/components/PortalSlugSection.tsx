@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Check, Copy, ExternalLink, Globe, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { copyToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 import { setPublicSlug, checkSlugAvailability } from "@/modules/stores/services/storesApi";
 
@@ -65,11 +67,13 @@ export function PortalSlugSection({ storeId, currentSlug }: PortalSlugSectionPro
   const taken = slugCheck?.available === false;
   const available = slugCheck?.available === true;
 
-  function copy() {
-    navigator.clipboard.writeText(`https://${url}`).then(() => {
+  async function copy() {
+    if (await copyToClipboard(`https://${url}`)) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    } else {
+      toast.error("Não foi possível copiar o link.");
+    }
   }
 
   return (
