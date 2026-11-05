@@ -156,7 +156,7 @@ public class ImpersonationCommercialActsTests
 
         var read = await imp.GetAsync($"/api/v1/build/change-orders/{changeOrder}");
         read.StatusCode.Should().Be(HttpStatusCode.OK, "a leitura segue liberada");
-        (await read.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString().Should().Be("Sent", "o aditivo continua à espera da decisão");
+        (await read.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString().Should().Be("SentToClient", "o aditivo continua à espera da decisão");
 
         var own = await owner.PostAsync($"/api/v1/build/change-orders/{changeOrder}/{decision}", null);
         own.StatusCode.Should().Be(HttpStatusCode.OK, await own.Content.ReadAsStringAsync());
