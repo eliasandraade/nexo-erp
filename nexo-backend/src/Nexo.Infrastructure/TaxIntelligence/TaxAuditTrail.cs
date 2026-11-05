@@ -93,4 +93,30 @@ public static class TaxAuditActions
     public const string OpportunityEvidenceReviewed = "tax_opportunity_evidence_reviewed";
     public const string OpportunityExecutionVerified = "tax_opportunity_execution_verified";
     public const string CreditStageChanged = "tax_credit_stage_changed";
+    public const string ModuleActivated = "tax_module_activated";
+    public const string ModuleSuspended = "tax_module_suspended";
+    public const string ModuleDeactivated = "tax_module_deactivated";
+    public const string PlatformDocumentUploaded = "tax_platform_document_uploaded";
+    public const string PlatformDocumentRevoked = "tax_platform_document_revoked";
+    public const string EvidenceFileUploaded = "tax_evidence_file_uploaded";
+    public const string EvidenceFileRevoked = "tax_evidence_file_revoked";
+    public const string EvidenceFileDownloaded = "tax_evidence_file_downloaded";
+    public const string EvidenceFileLegalHold = "tax_evidence_file_legal_hold";
+    public const string OpportunityEvidenceReplaced = "tax_opportunity_evidence_replaced";
+    public const string OpportunityEvidenceRevoked = "tax_opportunity_evidence_revoked";
+    public const string OpportunityAssigned = "tax_opportunity_assigned";
+    public const string MaterialityConfigured = "tax_materiality_configured";
+    public const string RetentionConfigured = "tax_retention_configured";
+    public const string ClassificationImported = "tax_classification_imported";
+    public const string ClassificationStatusChanged = "tax_classification_status_changed";
+    public const string ClassificationReviewed = "tax_classification_reviewed";
+    public const string ItemClassificationSet = "tax_item_classification_set";
+    public const string ObligationDefined = "tax_obligation_defined";
+    public const string ObligationActiveChanged = "tax_obligation_active_changed";
+    public const string DossierExported = "tax_dossier_exported";
+    public const string SplitExported = "tax_split_exported";
+    public const string SimulationExported = "tax_simulation_exported";
+
+    /// <summary>Every refusal of new work — what the "recent refusals" views list.</summary>
+    public static readonly string[] Refusals = [CalculationRefused, SimulationRefused, DetectionRefused, DecisionRefused];
 }

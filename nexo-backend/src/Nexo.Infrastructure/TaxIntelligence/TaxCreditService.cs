@@ -21,38 +21,59 @@ public sealed class TaxCreditService
 {
     private const int MaxList = 200;
 
+    private readonly TaxContext _ctx;
     private readonly NexoDbContext _db;
     private readonly ICurrentTenant _tenant;
     private readonly TaxAuditTrail _audit;
     private readonly ILogger<TaxCreditService> _log;
 
-    public TaxCreditService(NexoDbContext db, ICurrentTenant tenant, TaxAuditTrail audit, ILogger<TaxCreditService> log)
+    public TaxCreditService(TaxContext ctx, ILogger<TaxCreditService> log)
     {
-        _db = db;
-        _tenant = tenant;
-        _audit = audit;
+        _ctx = ctx;
+        _db = ctx.Db;
+        _tenant = ctx.Tenant;
+        _audit = ctx.Audit;
         _log = log;
     }
 
-    public async Task<IReadOnlyList<TaxCreditDto>> ListAsync(int take, CancellationToken ct)
+    /// <summary>Credits with filters and paging, newest acquisition first.</summary>
+    public async Task<TaxPage<TaxCreditDto>> ListAsync(CreditTax? tax, TaxCreditStage? stage, bool? expiringOnly, int skip, int take, DateOnly today,
+        CancellationToken ct)
     {
         take = Math.Clamp(take, 1, MaxList);
-        var credits = await _db.TaxCredits.AsNoTracking().Include(c => c.Entries)
-            .OrderByDescending(c => c.AcquiredOn).ThenByDescending(c => c.CreatedAt).Take(take)
+        skip = Math.Max(0, skip);
+        var q = _db.TaxCredits.AsNoTracking();
+        if (tax is not null) q = q.Where(c => c.Tax == tax);
+        if (stage is not null) q = q.Where(c => c.Stage == stage);
+        if (expiringOnly == true) q = q.Where(c => c.ExpiresOn != null && c.ExpiresOn <= today.AddDays(60));
+        var total = await q.CountAsync(ct);
+        var credits = await q.Include(c => c.Entries)
+            .OrderByDescending(c => c.AcquiredOn).ThenByDescending(c => c.CreatedAt).Skip(skip).Take(take)
             .AsSplitQuery().ToListAsync(ct);
-        return credits.Select(Map).ToList();
+        return new TaxPage<TaxCreditDto>(credits.Select(Map).ToList(), total, skip, take);
     }
 
+    /// <summary>
+    /// Totals per tax, summed in the database: the potential estimate (outside the ledger) apart from every ledger balance. The same
+    /// arithmetic as <see cref="TaxCreditBalance"/>, never loading the credits into memory.
+    /// </summary>
     public async Task<IReadOnlyList<TaxCreditTotalsDto>> TotalsAsync(CancellationToken ct)
     {
-        var credits = await _db.TaxCredits.AsNoTracking().Include(c => c.Entries).AsSplitQuery().ToListAsync(ct);
-        return credits.GroupBy(c => c.Tax).OrderBy(g => g.Key).Select(g =>
+        var potential = await _db.TaxCredits.AsNoTracking()
+            .Where(c => c.Stage == TaxCreditStage.PotentialIdentified || c.Stage == TaxCreditStage.RequirementsUnderReview)
+            .GroupBy(c => c.Tax).Select(g => new { g.Key, Sum = g.Sum(c => c.PotentialAmount) }).ToDictionaryAsync(x => x.Key, x => x.Sum, ct);
+        var sums = await _db.TaxCreditLedgerEntries.AsNoTracking()
+            .Join(_db.TaxCredits.AsNoTracking(), e => e.CreditId, c => c.Id, (e, c) => new { c.Tax, e.Type, e.Amount })
+            .GroupBy(x => new { x.Tax, x.Type }).Select(g => new { g.Key.Tax, g.Key.Type, Sum = g.Sum(x => x.Amount) }).ToListAsync(ct);
+        return potential.Keys.Concat(sums.Select(s => s.Tax)).Distinct().Order().Select(tax =>
         {
-            var b = g.Select(c => c.Balance()).ToList();
-            var live = g.Where(c => c.Stage != TaxCreditStage.Discarded).ToList();
-            return new TaxCreditTotalsDto(g.Key,
-                live.Where(c => c.Stage is TaxCreditStage.PotentialIdentified or TaxCreditStage.RequirementsUnderReview).Sum(c => c.PotentialAmount),
-                b.Sum(x => x.ToBeAppropriated), b.Sum(x => x.Appropriated), b.Sum(x => x.Used), b.Sum(x => x.Blocked), b.Sum(x => x.Available));
+            decimal Sum(TaxCreditEntryType type) => sums.Where(s => s.Tax == tax && s.Type == type).Sum(s => s.Sum);
+            var appropriatedGross = Sum(TaxCreditEntryType.Appropriated);
+            var appropriated = appropriatedGross - Sum(TaxCreditEntryType.Reversed);
+            var used = Sum(TaxCreditEntryType.Used);
+            var blocked = Sum(TaxCreditEntryType.Blocked) - Sum(TaxCreditEntryType.Unblocked);
+            return new TaxCreditTotalsDto(tax, potential.GetValueOrDefault(tax), Sum(TaxCreditEntryType.Recognized) - appropriatedGross,
+                appropriated, used, blocked, appropriated - used - blocked - Sum(TaxCreditEntryType.Expired));
         }).ToList();
     }
 
@@ -64,7 +85,7 @@ public sealed class TaxCreditService
     {
         var key = string.IsNullOrWhiteSpace(r.SourceDocumentKey) ? null : r.SourceDocumentKey.Trim();
         if (key is not null && await _db.TaxCredits.AnyAsync(c => c.Tax == r.Tax && c.SourceDocumentKey == key, ct))
-            throw new ConflictException("Já existe um crédito deste tributo para este documento.");
+            throw new ConflictException("Já existe um crédito deste tributo para este documento.", "tax_credit_duplicate_document");
         var credit = TaxCredit.Register(_tenant.Id, r.Tax, r.SourceDocumentType,
             key, r.SupplierDocument,
             r.AcquiredOn, r.ExpiresOn, r.OriginalAmount, r.PotentialAmount, r.PotentialBasis, null);
@@ -78,7 +99,7 @@ public sealed class TaxCreditService
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            throw new ConflictException("Já existe um crédito deste tributo para este documento.");
+            throw new ConflictException("Já existe um crédito deste tributo para este documento.", "tax_credit_duplicate_document");
         }
         return Map(credit);
     }
@@ -96,25 +117,59 @@ public sealed class TaxCreditService
             $"SELECT 1 FROM nexo.tax_credits WHERE id = {id} AND tenant_id = {_tenant.Id} FOR UPDATE", ct);
         var credit = await _db.TaxCredits.Include(c => c.Entries).FirstOrDefaultAsync(c => c.Id == id, ct)
             ?? throw new NotFoundException("Crédito", id);
+        // A retried request (same key) finds its movement already recorded: nothing is written twice.
+        var key = string.IsNullOrWhiteSpace(r.IdempotencyKey) ? null : r.IdempotencyKey.Trim();
+        if (key is not null && credit.Entries.Any(e => e.IdempotencyKey == key)) return Map(credit);
 
         var before = credit.Balance();
         var stageBefore = credit.Stage;
         // Expiry always writes off the whole available balance — a partial amount is never silently ignored.
         if (r.Movement == TaxCreditMovement.Expire && r.Amount is not null)
             throw new DomainException("O vencimento dá baixa em todo o saldo disponível; não informe valor.", "tax_credit_expire_whole_balance");
-        var amount = r.Amount ?? 0m;
         var reason = r.Reason?.Trim() ?? string.Empty;
         if (r.Movement is TaxCreditMovement.StartRequirementsReview or TaxCreditMovement.Discard)
         {
-            if (r.Movement == TaxCreditMovement.StartRequirementsReview) credit.StartRequirementsReview();
-            else credit.Discard(reason);
-            _audit.Record(TaxAuditActions.CreditStageChanged, "Credit", credit.Id,
-                $"Crédito de {credit.Tax}: {stageBefore} → {credit.Stage}.", new { before = stageBefore.ToString(), after = credit.Stage.ToString(), reason });
+            ChangeStage(credit, r.Movement, reason, stageBefore);
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return Map(credit);
         }
-        var entry = r.Movement switch
+        var entry = Append(credit, r, r.Amount ?? 0m, reason, onDate, today);
+        if (key is not null) entry.KeyedBy(key);
+        _db.TaxCreditLedgerEntries.Add(entry);
+        var after = credit.Balance();
+        _audit.Record(TaxAuditActions.CreditMovement, "Credit", credit.Id,
+            $"Crédito de {credit.Tax}: {entry.Type} de {entry.Amount:N2}.",
+            new { entryId = entry.Id, type = entry.Type.ToString(), entry.Amount, entry.ObligationReference, before, after,
+                stageBefore = stageBefore.ToString(), stageAfter = credit.Stage.ToString() });
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg)
+        {
+            throw pg.ConstraintName == "ux_tax_credit_ledger_entries_credit_idempotency"
+                ? new ConflictException("Este movimento já foi registrado (mesma chave de requisição).", "tax_credit_duplicate_request")
+                : new ConflictException("Este crédito já foi usado nesta obrigação.", "tax_credit_obligation_used");
+        }
+        await tx.CommitAsync(ct);
+        _ctx.Metrics.CreditTransition(entry.Type.ToString());
+        _log.LogInformation("Tax credit {CreditId} movement {Type}", credit.Id, entry.Type);
+        return Map(credit);
+    }
+
+    private void ChangeStage(TaxCredit credit, TaxCreditMovement movement, string reason, TaxCreditStage stageBefore)
+    {
+        if (movement == TaxCreditMovement.StartRequirementsReview) credit.StartRequirementsReview();
+        else credit.Discard(reason);
+        _ctx.Metrics.CreditTransition(credit.Stage.ToString());
+        _audit.Record(TaxAuditActions.CreditStageChanged, "Credit", credit.Id,
+            $"Crédito de {credit.Tax}: {stageBefore} → {credit.Stage}.", new { before = stageBefore.ToString(), after = credit.Stage.ToString(), reason });
+    }
+
+    /// <summary>The ledger entry of a movement. Only a use may carry an earlier date; the rest are dated today.</summary>
+    private TaxCreditLedgerEntry Append(TaxCredit credit, TaxCreditMovementRequest r, decimal amount, string reason, DateOnly onDate, DateOnly today)
+        => r.Movement switch
         {
             TaxCreditMovement.ConfirmToBeAppropriated => credit.ConfirmToBeAppropriated(amount, reason, today, _audit.UserId, _audit.UserName),
             TaxCreditMovement.Appropriate => credit.Appropriate(amount, reason.Length > 0 ? reason : "Apropriação.", today, _audit.UserId, _audit.UserName),
@@ -126,24 +181,6 @@ public sealed class TaxCreditService
             TaxCreditMovement.Expire => credit.Expire(today, _audit.UserId, _audit.UserName),
             _ => throw new DomainException("Movimento desconhecido."),
         };
-        _db.TaxCreditLedgerEntries.Add(entry);
-        var after = credit.Balance();
-        _audit.Record(TaxAuditActions.CreditMovement, "Credit", credit.Id,
-            $"Crédito de {credit.Tax}: {entry.Type} de {entry.Amount:N2}.",
-            new { entryId = entry.Id, type = entry.Type.ToString(), entry.Amount, entry.ObligationReference, before, after,
-                stageBefore = stageBefore.ToString(), stageAfter = credit.Stage.ToString() });
-        try
-        {
-            await _db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
-        {
-            throw new ConflictException("Este crédito já foi usado nesta obrigação.");
-        }
-        await tx.CommitAsync(ct);
-        _log.LogInformation("Tax credit {CreditId} movement {Type}", credit.Id, entry.Type);
-        return Map(credit);
-    }
 
     private static TaxCreditDto Map(TaxCredit c) => new(
         c.Id, c.Tax, c.SourceDocumentType, c.SourceDocumentKey, c.SupplierDocument, c.AcquiredOn, c.ExpiresOn, c.OriginalAmount,

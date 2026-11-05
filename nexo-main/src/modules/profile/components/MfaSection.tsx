@@ -11,7 +11,6 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { ApiError } from "@/services/api-client";
 import { disableMfa, enableMfa, fetchMfaStatus, startMfaSetup } from "@/modules/auth/services/authService";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { useNavigate } from "react-router-dom";
 
 const KEY = ["auth", "mfa"];
 
@@ -19,7 +18,6 @@ const KEY = ["auth", "mfa"];
 export function MfaSection() {
   const qc = useQueryClient();
   const { logout } = useAuth();
-  const navigate = useNavigate();
   const [starting, setStarting] = useState(false);
   const status = useQuery({ queryKey: KEY, queryFn: fetchMfaStatus });
   const [setup, setSetup] = useState<{ secret: string; otpAuthUri: string } | null>(null);
@@ -70,7 +68,7 @@ export function MfaSection() {
             <Button size="sm" variant="outline" onClick={() => copyRecovery(recovery)}>
               <Copy className="mr-2 h-4 w-4" /> Copiar
             </Button>
-            <Button size="sm" onClick={() => { setRecovery(null); logout(); navigate("/login?motivo=mfa", { replace: true }); }}>Já guardei — entrar de novo</Button>
+            <Button size="sm" onClick={() => { setRecovery(null); logout("/login?motivo=mfa"); }}>Já guardei — entrar de novo</Button>
           </div>
         </div>
       )}

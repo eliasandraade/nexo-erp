@@ -10,7 +10,8 @@ namespace Nexo.Application.Modules.TaxIntelligence;
 public sealed record TaxProfileVersionDto(
     Guid Id, int VersionNumber, DateOnly ValidFrom, TaxRegime Regime, string State, string CityIbgeCode,
     string PrimaryCnae, IReadOnlyList<string> SecondaryCnaes, IReadOnlyList<string> SpecialRegimes,
-    IReadOnlyList<string> Benefits, string Reason, string CreatedByName, DateTime CreatedAt);
+    IReadOnlyList<string> Benefits, string Reason, string CreatedByName, DateTime CreatedAt,
+    TaxSimplesSituation SimplesSituation = TaxSimplesSituation.Unknown, bool? IbsCbsRegularRegimeOption = null);
 
 /// <summary>Facts already known from the fiscal profile (issuer data), offered to prefill a version.</summary>
 public sealed record TaxProfileSuggestionDto(TaxRegime Regime, string State, string CityIbgeCode);
@@ -23,15 +24,17 @@ public sealed record TaxProfileDto(
 public sealed record TaxComplianceAssessmentDto(
     Guid Id, ComplianceAssessmentStatus Status, DateOnly PeriodFrom, DateOnly PeriodTo, string Scope, IReadOnlyList<string> ObligationsChecked,
     string? Evidence, string AssessedBy, DateTime AssessedAt, string? Notes, string? Limitations, bool PnctParticipation,
-    string RecordedByName, DateTime CreatedAt);
+    string RecordedByName, DateTime CreatedAt, IReadOnlyList<TaxObligationResultDto>? Results = null, Guid? SupersedesAssessmentId = null);
 
 public sealed record RecordComplianceAssessmentRequest(
     ComplianceAssessmentStatus Status, DateOnly PeriodFrom, DateOnly PeriodTo, string? Scope, IReadOnlyList<string>? ObligationsChecked,
-    string? Evidence, string AssessedBy, DateTime? AssessedAt, string? Notes, string? Limitations, bool PnctParticipation);
+    string? Evidence, string AssessedBy, DateTime? AssessedAt, string? Notes, string? Limitations, bool PnctParticipation,
+    IReadOnlyList<TaxObligationResultRequest>? Obligations = null, Guid? SupersedesAssessmentId = null);
 
 public sealed record CreateTaxProfileVersionRequest(
     DateOnly ValidFrom, TaxRegime Regime, string State, string CityIbgeCode, string PrimaryCnae,
-    IReadOnlyList<string>? SecondaryCnaes, IReadOnlyList<string>? SpecialRegimes, IReadOnlyList<string>? Benefits, string Reason);
+    IReadOnlyList<string>? SecondaryCnaes, IReadOnlyList<string>? SpecialRegimes, IReadOnlyList<string>? Benefits, string Reason,
+    TaxSimplesSituation? SimplesSituation = null, bool? IbsCbsRegularRegimeOption = null);
 
 // ── Transactions and calculations ────────────────────────────────────────────
 
@@ -53,9 +56,14 @@ public sealed record TaxOperationTiming(
     TaxSupplyPattern SupplyPattern, DateOnly? DocumentDate = null, DateOnly? SupplyDate = null, DateOnly? PaymentOrAdvanceDate = null,
     string? CompetencePeriod = null, DateOnly? ExecutionFrom = null, DateOnly? ExecutionTo = null);
 
+/// <summary>
+/// An operation described by its facts. For a Simples supplier, its situation (MEI, SIMEI, sub-limit…) and whether it
+/// opted for the regular IBS/CBS regime are informed separately — an unknown answer is never read as either one.
+/// </summary>
 public sealed record TaxOperationRequest(
     DateOnly OperationDate, TaxDirection Direction, TaxRegime? CounterpartyRegime, string? CounterpartyState,
-    string? Description, IReadOnlyList<TaxLineRequest> Lines, TaxOperationTiming? Timing = null);
+    string? Description, IReadOnlyList<TaxLineRequest> Lines, TaxOperationTiming? Timing = null,
+    TaxSimplesSituation? CounterpartySimplesSituation = null, bool? CounterpartyRegularRegimeOption = null);
 
 public sealed record TaxCalculationSummaryDto(
     Guid Id, DateOnly ReferenceDate, TaxTransactionSource Source, Guid? SourceId, TaxDirection Direction, string? Description,
@@ -88,11 +96,25 @@ public sealed record TaxScenarioRequest(
     IReadOnlyList<TaxLineRequest>? Lines, bool ConvertConditionalDiscounts, IReadOnlyList<RateHypothesisRequest>? RateHypotheses,
     bool AssumeCreditable);
 
-public sealed record CreateTaxSimulationRequest(string Name, TaxOperationRequest Baseline, IReadOnlyList<TaxScenarioRequest> Scenarios);
+public sealed record CreateTaxSimulationRequest(
+    string Name, TaxOperationRequest Baseline, IReadOnlyList<TaxScenarioRequest> Scenarios, string? Assumptions = null, string? Caveats = null);
 
-public sealed record TaxSimulationSummaryDto(Guid Id, string Name, int Scenarios, DateTime CreatedAt);
+public sealed record TaxSimulationSummaryDto(Guid Id, string Name, int Scenarios, DateTime CreatedAt, string? CreatedByName = null);
 
-public sealed record TaxSimulationDto(Guid Id, string Name, string EngineVersion, DateTime CreatedAt, IReadOnlyList<ScenarioResult> Scenarios);
+/// <summary>
+/// A stored simulation: its scenarios, what the person took as given, its caveats and the governance it ran under.
+/// A lower calculated tax in a scenario is a calculated reduction — never presented as a saving.
+/// </summary>
+public sealed record TaxSimulationDto(
+    Guid Id, string Name, string EngineVersion, DateTime CreatedAt, IReadOnlyList<ScenarioResult> Scenarios,
+    string? Assumptions = null, string? Caveats = null, string? CreatedByName = null, TaxGovernanceDto? Governance = null,
+    IReadOnlyList<TaxScenarioGovernanceDto>? ScenarioGovernance = null);
+
+/// <summary>
+/// The governance one scenario ran under — its own date and its own regime (a scenario that moves to another
+/// regime is checked against the reviews of that regime, never the baseline's) — frozen with the simulation.
+/// </summary>
+public sealed record TaxScenarioGovernanceDto(int ScenarioIndex, string Scenario, DateOnly ReferenceDate, string Regime, TaxGovernanceDto Governance);
 
 /// <summary>Effective cost of buying the same thing from different suppliers (procurement).</summary>
 public sealed record SupplierOfferRequest(string Supplier, TaxRegime? SupplierRegime, IReadOnlyList<TaxLineRequest> Lines);
@@ -111,9 +133,15 @@ public sealed record TaxOpportunityRequirementDto(
     Guid Id, string Code, string Text, string? LegalSourceCode, bool? Met, string? Note, string? AnsweredByName, DateTime? AnsweredAt,
     RequirementPhase Phase, TaxEvidenceType? RequiredEvidence, bool HasRequiredEvidence);
 
+/// <summary>
+/// A piece of evidence. <see cref="HashKind"/> says what <see cref="ContentHash"/> fingerprints: the uploaded file's bytes
+/// ("sha256-file") or only the reference ("reference"). Superseded and revoked versions stay listed (history).
+/// </summary>
 public sealed record TaxOpportunityEvidenceDto(
     Guid Id, TaxEvidenceType Type, Guid? RequirementId, string Description, string? DocumentReference, string ContentHash, string? Notes,
-    TaxEvidenceStatus Status, string AddedByName, DateTime CreatedAt, string? ReviewedByName, DateTime? ReviewedAt, string? ReviewNotes);
+    TaxEvidenceStatus Status, string AddedByName, DateTime CreatedAt, string? ReviewedByName, DateTime? ReviewedAt, string? ReviewNotes,
+    string HashKind = "reference", TaxStoredFileDto? File = null, int Version = 1, Guid? SupersedesEvidenceId = null,
+    Guid? SupersededByEvidenceId = null, DateTime? RevokedAt = null, string? RevokedByName = null, string? RevocationReason = null);
 
 /// <summary>The second milestone: whether the operation really happened as the scenario was approved.</summary>
 public sealed record TaxExecutionVerificationDto(
@@ -139,11 +167,13 @@ public sealed record TaxOpportunityDto(
     bool ProfessionalReviewPending, ApprovalRequirement RequiredApproval,
     IReadOnlyList<TaxOpportunityRequirementDto> Requirements, IReadOnlyList<TaxOpportunityEvidenceDto> Evidence,
     ScenarioResult? Current, ScenarioResult? Proposed, TaxDecisionDto? Decision, TaxExecutionVerificationDto? Execution,
-    TaxGovernanceDto Governance);
+    TaxGovernanceDto Governance, Guid? AssignedToId = null, string? AssignedToName = null, DateTime? AssignedAt = null,
+    TaxMaterialityPolicyDto? Materiality = null);
 
 public sealed record TaxOpportunitySummaryDto(
     Guid Id, TaxOpportunityType Type, TaxImpactNature ImpactNature, TaxOpportunityStatus Status, string Title,
-    decimal? EstimatedImpact, TaxRiskLevel Risk, int Confidence, DateTime CreatedAt);
+    decimal? EstimatedImpact, TaxRiskLevel Risk, int Confidence, DateTime CreatedAt, string? AssignedToName = null,
+    string DetectorKey = "", int RequirementsTotal = 0, int RequirementsMet = 0);
 
 public sealed record AnswerRequirementRequest(bool? Met, string? Note);
 public sealed record AddEvidenceRequest(
@@ -184,7 +214,8 @@ public enum TaxCreditMovement
 }
 
 public sealed record TaxCreditMovementRequest(
-    TaxCreditMovement Movement, decimal? Amount, string? Reason, CreditTax? ObligationTax, string? ObligationReference, DateOnly? OnDate);
+    TaxCreditMovement Movement, decimal? Amount, string? Reason, CreditTax? ObligationTax, string? ObligationReference, DateOnly? OnDate,
+    string? IdempotencyKey = null);
 
 public sealed record TaxCreditEntryDto(Guid Id, TaxCreditEntryType Type, decimal Amount, string? ObligationReference, string Reason, DateOnly OccurredOn, string ActorName, DateTime CreatedAt);
 
@@ -203,9 +234,14 @@ public sealed record SplitSettlementDto(
     Guid Id, decimal ActualAmount, SplitSettlementSource Source, string ExternalReference, DateTime SettledAt,
     Guid? ReversesSettlementId, bool Reversed, string? Reason);
 
+/// <summary>
+/// Expected vs recorded retention of one tax of a calculation. <see cref="AgeDays"/> counts from the operation date while
+/// nothing (or not enough) was recorded. An expectation alone never means anything was retained or paid.
+/// </summary>
 public sealed record SplitExpectationDto(
     Guid Id, Guid CalculationId, TaxType Tax, SplitProcedure Procedure, decimal Expected, decimal Actual, decimal Difference,
-    SplitReconciliationStatus Status, IReadOnlyList<SplitSettlementDto> Settlements, DateTime CreatedAt);
+    SplitReconciliationStatus Status, IReadOnlyList<SplitSettlementDto> Settlements, DateTime CreatedAt,
+    DateOnly? OperationDate = null, int? AgeDays = null);
 
 public sealed record CreateSplitExpectationsRequest(SplitProcedure Procedure);
 public sealed record RecordSplitSettlementRequest(decimal ActualAmount, string ExternalReference, DateTime SettledAt);
@@ -216,7 +252,8 @@ public sealed record SplitProviderStatusDto(bool Configured, string Message);
 
 public sealed record TaxLegalSourceDto(
     Guid Id, string Code, LegalSourceKind Kind, string Title, string Reference, string Url, string Excerpt,
-    DateOnly? PublishedOn, TextVerificationStatus TextVerification, DateTime? VerifiedAt, string? VerifiedBy, string? Notes);
+    DateOnly? PublishedOn, TextVerificationStatus TextVerification, DateTime? VerifiedAt, string? VerifiedBy, string? Notes,
+    string? VerificationRecordedBy = null, int RulesUsing = 0);
 
 public sealed record TaxRuleVersionDto(
     Guid Id, int Version, TaxRuleStatus Status, DateOnly ValidFrom, DateOnly? ValidTo, int Priority,
@@ -225,7 +262,8 @@ public sealed record TaxRuleVersionDto(
     ProfessionalReviewStatus ProfessionalReview, string? ProfessionalReviewedBy, DateTime? ProfessionalReviewedAt,
     string? ProfessionalReviewNotes, string? ProfessionalReference, string? ProfessionalReviewScope, DateOnly? ProfessionalReviewValidFrom,
     DateOnly? ProfessionalReviewValidTo, string? ProfessionalReviewAssumptions, string? ProfessionalReviewCaveats,
-    TaxInternalApprovalDto InternalApproval);
+    TaxInternalApprovalDto InternalApproval, IReadOnlyList<string>? ProfessionalReviewRegimes = null, DateOnly? ProfessionalReviewedOn = null,
+    string? ProfessionalReviewRecordedBy = null, string? ProfessionalReviewRecordedByRole = null, Guid? ProfessionalReviewDocumentId = null);
 
 /// <summary>
 /// The internal product/governance approval of a version for the controlled pilot — shown beside the
@@ -253,9 +291,15 @@ public sealed record CreateTaxRuleVersionRequest(
 public sealed record ChangeTaxRuleVersionStatusRequest(TaxRuleStatus Status);
 
 /// <summary>A tax professional's review of a rule version's interpretation (separate from its technical status).</summary>
+/// <summary>
+/// A professional review as received. <c>Reviewer</c> and <c>ProfessionalReference</c> are the professional as informed; who records
+/// it in the system is the authenticated user, kept apart. An approval states its scope, the establishment regimes it covers and
+/// from when it holds; <c>SupportingDocumentId</c> points at the opinion stored privately.
+/// </summary>
 public sealed record RecordProfessionalReviewRequest(
     ProfessionalReviewStatus Status, string Reviewer, string? Notes, string? ProfessionalReference = null, string? Scope = null,
-    DateOnly? ValidFrom = null, DateOnly? ValidTo = null, string? Assumptions = null, string? Caveats = null);
+    DateOnly? ValidFrom = null, DateOnly? ValidTo = null, string? Assumptions = null, string? Caveats = null,
+    IReadOnlyList<TaxRegime>? CoveredRegimes = null, DateOnly? ReviewedOn = null, Guid? SupportingDocumentId = null);
 
 /// <summary>
 /// Internal pilot approval of an active rule version. Who approves is never taken from the request: it is
@@ -294,4 +338,8 @@ public sealed record TaxOverviewDto(
     bool ProfileConfigured, DateOnly PeriodFrom, DateOnly PeriodTo, int Calculations, decimal TaxedBase, decimal EstimatedTax,
     decimal? EffectiveRatePercent, decimal CreditsPotential, decimal CreditsToBeAppropriated, decimal CreditsAvailable, decimal CreditsBlocked,
     int OpenOpportunities, decimal PotentialSavings, decimal PotentialCalculatedTaxReductions, decimal PotentialDeferrals, decimal PotentialCashFlow, decimal PotentialCredits,
-    int OpenHighRisk, int BlockedOpportunities, int SplitDivergences, int ActiveRulesToday, int PendingRulesToday);
+    int OpenHighRisk, int BlockedOpportunities, int SplitDivergences, int ActiveRulesToday, int PendingRulesToday,
+    decimal OutboundTax = 0, decimal InboundTax = 0, decimal CreditsAppropriated = 0, decimal CreditsUsed = 0,
+    int ApprovedAwaitingExecution = 0, int UnverifiedRulesToday = 0, int RulesPendingProfessionalReview = 0,
+    ComplianceAssessmentStatus? ComplianceInForce = null, DateOnly? ComplianceInForceTo = null,
+    int CoverageRefusals = 0, IReadOnlyDictionary<string, int>? CoverageRefusalsByStatus = null, int GovernanceRefusals = 0);

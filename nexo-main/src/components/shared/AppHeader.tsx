@@ -61,7 +61,7 @@ export function AppHeader() {
               Meu perfil
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive cursor-pointer">
+            <DropdownMenuItem onClick={() => logout()} className="text-destructive focus:text-destructive cursor-pointer">
               <LogOut className="h-4 w-4 mr-2" />
               Sair
             </DropdownMenuItem>

@@ -437,6 +437,7 @@ try
 
     // ─────────────────────────────────────────────────────────────────────────
     var app = builder.Build();
+    Nexo.Infrastructure.TaxIntelligence.TaxConfigurationStartupLog.Write(app.Services);
 
     // ── Run migrations and seed on startup ────────────────────────────────────
     // Skipped in "Testing" — the WebApplicationFactory.InitializeAsync handles

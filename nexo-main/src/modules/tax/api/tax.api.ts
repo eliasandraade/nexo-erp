@@ -41,6 +41,19 @@ export type ProfessionalReviewStatus = "Pending" | "ReviewReceived" | "Approved"
 export type InternalApprovalStatus = "NotApproved" | "ApprovedForControlledPilot" | "Withdrawn";
 /** Disabled is the default: no approval mode configured, so nothing runs where approval is enforced. */
 export type TaxApprovalMode = "Disabled" | "ControlledPilot" | "ProfessionalFinal";
+/** Runtime state kept by the platform on top of the configuration: new work runs only with the configured mode Active. */
+export type TaxModuleStatus = "Inactive" | "Active" | "Suspended";
+/** Simples Nacional situation as declared; Unknown is never read as the regular regime. */
+export type SimplesSituation = "NotOptant" | "WithinSublimit" | "AboveSublimit" | "Mei" | "Simei" | "Unknown";
+export type FileStatus = "Active" | "Replaced" | "Revoked";
+export type FileScanStatus = "NotScanned" | "Clean" | "Rejected";
+export type FileOwner = "OpportunityEvidence" | "Credit" | "ComplianceAssessment" | "SplitSettlement";
+export type RetentionStart = "UploadDate" | "EndOfUploadYear";
+export type ClassificationKind = "CClassTrib" | "Ncm" | "Nbs";
+export type ClassificationStatus = "Draft" | "Active" | "Inactive";
+
+/** One page of a list: the items, how many exist in total and where the page starts. */
+export interface Page<T> { items: T[]; total: number; skip: number; take: number }
 
 export interface TaxInternalApprovalDto {
   status: InternalApprovalStatus;
@@ -83,6 +96,13 @@ export interface TaxRuleGovernanceDto {
   professionallyApproved: boolean;
   professionalReviewScope: string | null;
   professionalCaveats: string | null;
+  /** The exact review record frozen with the work (null for older snapshots). */
+  professionalReviewRecordId?: string | null;
+  professionalReviewer?: string | null;
+  professionalReference?: string | null;
+  professionalReviewValidFrom?: string | null;
+  professionalReviewValidTo?: string | null;
+  professionalReviewRegimes?: string[] | null;
 }
 
 export interface TaxPilotScopeSnapshotDto {
@@ -120,6 +140,8 @@ export interface TaxGovernanceStatusDto {
   refusalMessage: string | null;
   effectsNotice: string | null;
   pilotScope: TaxPilotScopeSnapshotDto | null;
+  /** The platform's runtime state of the module (activation / suspension). */
+  moduleStatus?: TaxModuleStatus;
 }
 /** Only "Verified" satisfies a rule that needs compliance; a declaration, a remediation or PNCT participation never does. */
 export type ComplianceAssessmentStatus =
@@ -128,7 +150,7 @@ export type CoverageStatus = "Supported" | "Unsupported" | "RequiresClassificati
 export type SupplyPattern = "SingleSupply" | "ContinuedSupply" | "AdvancePayment" | "FutureDelivery" | "PublicProcurement" | "Other";
 export type RequirementPhase = "ScenarioApproval" | "ExecutionVerification";
 export type EvidenceType = "CommercialInstrument" | "FiscalDocument" | "FiscalDocumentEvent" | "PaymentRecord" | "Other";
-export type EvidenceStatus = "Submitted" | "Accepted" | "Rejected";
+export type EvidenceStatus = "Submitted" | "Accepted" | "Rejected" | "Superseded" | "Revoked";
 export type ApprovalRequirement = "SelfApprovalWithJustification" | "IdentifiedReviewer" | "IndependentApprover";
 
 // ── Overview ─────────────────────────────────────────────────────────────────
@@ -158,6 +180,22 @@ export interface TaxOverviewDto {
   splitDivergences: number;
   activeRulesToday: number;
   pendingRulesToday: number;
+  /** Tax of the establishment's own operations (outbound) and tax stated by suppliers (inbound) — never added up. */
+  outboundTax: number;
+  inboundTax: number;
+  creditsAppropriated: number;
+  creditsUsed: number;
+  approvedAwaitingExecution: number;
+  unverifiedRulesToday: number;
+  /** Active versions today without a professional approval. */
+  rulesPendingProfessionalReview: number;
+  complianceInForce: ComplianceAssessmentStatus | null;
+  complianceInForceTo: string | null;
+  /** Operations refused by the coverage matrix in the period, by status. */
+  coverageRefusals: number;
+  coverageRefusalsByStatus: Record<string, number> | null;
+  /** Refused by governance (module off, suspended, not in the pilot, rules not approved). */
+  governanceRefusals: number;
 }
 
 // ── Profile ──────────────────────────────────────────────────────────────────
@@ -176,6 +214,9 @@ export interface TaxProfileVersionDto {
   reason: string;
   createdByName: string;
   createdAt: string;
+  simplesSituation: SimplesSituation;
+  /** Whether a Simples optant chose the regular IBS/CBS regime; null = not informed (the operation is not calculated). */
+  ibsCbsRegularRegimeOption: boolean | null;
 }
 
 export interface TaxProfileDto {
@@ -201,7 +242,26 @@ export interface TaxComplianceAssessmentDto {
   pnctParticipation: boolean;
   recordedByName: string;
   createdAt: string;
+  /** Each obligation assessed, with its own status, evidence and remediation. */
+  results: TaxObligationResultDto[] | null;
+  supersedesAssessmentId: string | null;
 }
+
+export interface TaxObligationResultDto {
+  obligationCode: string;
+  obligationName: string;
+  status: ComplianceAssessmentStatus;
+  evidenceReference: string | null;
+  evidenceFileId: string | null;
+  remediation: string | null;
+  remediationVerifiedOn: string | null;
+  remediationVerifiedBy: string | null;
+  notes: string | null;
+}
+
+export type TaxObligationResultRequest = Omit<TaxObligationResultDto, "obligationName">;
+
+export interface TaxObligationDefinitionDto { id: string; code: string; name: string; description: string; reference: string; active: boolean; createdByName: string }
 
 export interface RecordComplianceAssessmentRequest {
   status: ComplianceAssessmentStatus;
@@ -215,6 +275,8 @@ export interface RecordComplianceAssessmentRequest {
   notes: string | null;
   limitations: string | null;
   pnctParticipation: boolean;
+  obligations?: TaxObligationResultRequest[];
+  supersedesAssessmentId?: string | null;
 }
 
 export interface CreateTaxProfileVersionRequest {
@@ -227,6 +289,8 @@ export interface CreateTaxProfileVersionRequest {
   specialRegimes: string[];
   benefits: string[];
   reason: string;
+  simplesSituation?: SimplesSituation | null;
+  ibsCbsRegularRegimeOption?: boolean | null;
 }
 
 // ── Operations and calculations ──────────────────────────────────────────────
@@ -279,6 +343,9 @@ export interface TaxOperationRequest {
   description: string | null;
   lines: TaxLineRequest[];
   timing?: TaxOperationTiming | null;
+  /** Inbound from a Simples supplier: its situation and whether it opted for the regular regime (null = not informed). */
+  counterpartySimplesSituation?: SimplesSituation | null;
+  counterpartyRegularRegimeOption?: boolean | null;
 }
 
 export interface TaxCalculationSummaryDto {
@@ -418,7 +485,14 @@ export interface TaxScenarioRequest {
   assumeCreditable: boolean;
 }
 
-export interface CreateTaxSimulationRequest { name: string; baseline: TaxOperationRequest; scenarios: TaxScenarioRequest[] }
+export interface CreateTaxSimulationRequest {
+  name: string;
+  baseline: TaxOperationRequest;
+  scenarios: TaxScenarioRequest[];
+  /** What the person took as given (prices, dates, supplier conditions). */
+  assumptions?: string | null;
+  caveats?: string | null;
+}
 
 export interface ScenarioResult {
   name: string;
@@ -435,8 +509,22 @@ export interface ScenarioResult {
   hypotheses: string[];
 }
 
-export interface TaxSimulationSummaryDto { id: string; name: string; scenarios: number; createdAt: string }
-export interface TaxSimulationDto { id: string; name: string; engineVersion: string; createdAt: string; scenarios: ScenarioResult[] }
+export interface TaxSimulationSummaryDto { id: string; name: string; scenarios: number; createdAt: string; createdByName: string | null }
+export interface TaxSimulationDto {
+  id: string;
+  name: string;
+  engineVersion: string;
+  createdAt: string;
+  scenarios: ScenarioResult[];
+  assumptions: string | null;
+  caveats: string | null;
+  createdByName: string | null;
+  /** The governance the simulation ran under, frozen with it. */
+  governance: TaxGovernanceDto | null;
+  /** Each scenario's own governance (its date and regime), frozen with it. Absent on older simulations. */
+  scenarioGovernance?: TaxScenarioGovernanceDto[] | null;
+}
+export interface TaxScenarioGovernanceDto { scenarioIndex: number; scenario: string; referenceDate: string; regime: string; governance: TaxGovernanceDto }
 
 export interface SupplierOfferRequest { supplier: string; supplierRegime: TaxRegime | null; lines: TaxLineRequest[] }
 export interface CompareSuppliersRequest {
@@ -468,6 +556,10 @@ export interface TaxOpportunitySummaryDto {
   risk: RiskLevel;
   confidence: number;
   createdAt: string;
+  assignedToName?: string | null;
+  detectorKey?: string;
+  requirementsTotal?: number;
+  requirementsMet?: number;
 }
 
 export interface TaxRequirementDto {
@@ -498,7 +590,43 @@ export interface TaxEvidenceDto {
   reviewedByName: string | null;
   reviewedAt: string | null;
   reviewNotes: string | null;
+  /** "sha256-file": the hash is the SHA-256 of the uploaded file's bytes; "reference": it only fingerprints the reference. */
+  hashKind: "sha256-file" | "reference";
+  file: TaxStoredFileDto | null;
+  version: number;
+  supersedesEvidenceId: string | null;
+  supersededByEvidenceId: string | null;
+  revokedAt: string | null;
+  revokedByName: string | null;
+  revocationReason: string | null;
 }
+
+/** A private file as measured on upload — never a URL; downloads go through the authorised endpoint. */
+export interface TaxStoredFileDto {
+  id: string;
+  originalFileName: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+  scanStatus: FileScanStatus;
+  status: FileStatus;
+  version: number;
+  replacesFileId: string | null;
+  description: string | null;
+  uploadedByName: string;
+  uploadedAt: string;
+  revokedByName: string | null;
+  revokedAt: string | null;
+  revocationReason: string | null;
+  legalHold: boolean;
+  legalHoldReason: string | null;
+}
+
+export interface TaxEvidenceFileDto { file: TaxStoredFileDto; owner: FileOwner; ownerId: string; requirementId: string | null; evidenceType: EvidenceType }
+
+export interface TaxFileStorageStatusDto { available: boolean; state: string; message: string; maxBytes: number; acceptedExtensions: string[]; scannerConfigured: boolean }
+
+export interface TaxTimelineEventDto { action: string; description: string; actorName: string; at: string; severity: string }
 
 /** Whether the operation really happened as the scenario was approved — sealed onto the decision. */
 export interface TaxExecutionVerificationDto {
@@ -553,6 +681,11 @@ export interface TaxOpportunityDto extends TaxOpportunitySummaryDto {
   requiredApproval: ApprovalRequirement;
   /** The rules behind it under the configured approval mode: internal pilot approval beside the professional review. */
   governance: TaxGovernanceDto;
+  assignedToId: string | null;
+  assignedToName: string | null;
+  assignedAt: string | null;
+  /** The company's materiality version in force today (null = installation default or none). */
+  materiality: TaxMaterialityPolicyDto | null;
 }
 
 // ── Credits and split payment ────────────────────────────────────────────────
@@ -602,6 +735,8 @@ export interface CreditMovementRequest {
   obligationTax: CreditTax | null;
   obligationReference: string | null;
   onDate: string | null;
+  /** Same key on a retried request = the movement is not written twice. */
+  idempotencyKey?: string | null;
 }
 
 /** A retention recorded for an expectation. A reversal has a negative amount and points at the entry it cancels. */
@@ -627,6 +762,9 @@ export interface SplitExpectationDto {
   status: SplitStatus;
   settlements: SplitSettlementDto[];
   createdAt: string;
+  operationDate: string | null;
+  /** Days since the operation while nothing (or not enough) was recorded. */
+  ageDays: number | null;
 }
 
 // ── Catalogue ────────────────────────────────────────────────────────────────
@@ -658,6 +796,12 @@ export interface TaxRuleVersionDto {
   professionalReviewAssumptions: string | null;
   professionalReviewCaveats: string | null;
   internalApproval: TaxInternalApprovalDto;
+  professionalReviewRegimes: string[] | null;
+  professionalReviewedOn: string | null;
+  /** The authenticated user who recorded the current review — never the professional. */
+  professionalReviewRecordedBy: string | null;
+  professionalReviewRecordedByRole: string | null;
+  professionalReviewDocumentId: string | null;
 }
 
 export interface TaxRuleDto { id: string; key: string; name: string; description: string; versions: TaxRuleVersionDto[] }
@@ -675,25 +819,121 @@ export interface TaxLegalSourceDto {
   verifiedAt: string | null;
   verifiedBy: string | null;
   notes: string | null;
+  verificationRecordedBy: string | null;
+  rulesUsing: number;
 }
+
+// ── Policies and classification ──────────────────────────────────────────────
+
+export interface TaxMaterialityPolicyDto {
+  id: string;
+  version: number;
+  threshold: number;
+  currency: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  rationale: string;
+  decisionReference: string;
+  configuredByName: string;
+  configuredAt: string;
+}
+export interface TaxMaterialityDto { inForce: TaxMaterialityPolicyDto | null; installationDefault: number | null; history: TaxMaterialityPolicyDto[] }
+export interface ConfigureMaterialityRequest {
+  threshold: number; currency: string; effectiveFrom: string; effectiveTo: string | null; rationale: string; decisionReference: string;
+}
+
+export interface TaxRetentionPolicyDto {
+  id: string;
+  tenantId: string | null;
+  version: number;
+  evidenceType: EvidenceType | null;
+  retentionMonths: number;
+  startsAt: RetentionStart;
+  enabled: boolean;
+  allowTenantOverride: boolean;
+  rationale: string;
+  reference: string;
+  configuredByName: string;
+  configuredAt: string;
+  supersededAt: string | null;
+}
+export interface ConfigureRetentionRequest {
+  evidenceType: EvidenceType | null; retentionMonths: number; startsAt: RetentionStart; enabled: boolean; allowTenantOverride: boolean;
+  rationale: string; reference: string;
+}
+export interface TaxRetentionPreviewDto {
+  asOf: string;
+  automaticDisposal: boolean;
+  filesConsidered: number;
+  onLegalHold: number;
+  withoutPolicy: number;
+  eligible: { fileId: string; originalFileName: string; evidenceType: EvidenceType; uploadedAt: string; eligibleFrom: string; policyVersion: number; sha256: string }[];
+  notice: string;
+}
+
+export interface TaxClassificationCodeDto {
+  id: string;
+  kind: ClassificationKind;
+  code: string;
+  description: string;
+  source: string;
+  sourceVersion: string | null;
+  validFrom: string;
+  validTo: string | null;
+  status: ClassificationStatus;
+  professionalReview: ProfessionalReviewStatus;
+  professionalReviewNotes: string | null;
+  notes: string | null;
+  importBatchId: string | null;
+  sourceDocumentId: string | null;
+  createdByName: string;
+  createdAt: string;
+  statusChangedByName: string | null;
+  statusChangedAt: string | null;
+}
+
+export interface TaxItemClassificationDto {
+  id: string | null;
+  productId: string;
+  productName: string;
+  productNcm: string | null;
+  itemKind: TaxItemKind | null;
+  ncm: string | null;
+  nbs: string | null;
+  cClassTrib: string | null;
+  catalogStatus: ClassificationStatus | null;
+  notes: string | null;
+  setByName: string | null;
+  updatedAt: string | null;
+}
+export interface SetItemClassificationRequest { itemKind: TaxItemKind; ncm: string | null; nbs: string | null; cClassTrib: string; notes: string | null }
 
 // ── Calls ────────────────────────────────────────────────────────────────────
 
 export const TAX_KEY = ["tax"] as const;
 export const TAX_KEYS = {
+  storage: [...TAX_KEY, "evidence", "storage"] as const,
+  materiality: [...TAX_KEY, "materiality"] as const,
+  retention: [...TAX_KEY, "retention"] as const,
+  retentionPreview: [...TAX_KEY, "retention", "preview"] as const,
+  items: (search: string, onlyMissing: boolean, skip: number) => [...TAX_KEY, "classification", "items", search, onlyMissing, skip] as const,
+  codes: (search: string) => [...TAX_KEY, "classification", "codes", search] as const,
+  obligations: [...TAX_KEY, "obligations"] as const,
+  timeline: (id: string) => [...TAX_KEY, "opportunity", id, "timeline"] as const,
+  files: (owner: FileOwner, ownerId: string) => [...TAX_KEY, "files", owner, ownerId] as const,
   overview: [...TAX_KEY, "overview"] as const,
   profile: [...TAX_KEY, "profile"] as const,
   calculations: [...TAX_KEY, "calculations"] as const,
   calculation: (id: string) => [...TAX_KEY, "calculations", id] as const,
   simulations: [...TAX_KEY, "simulations"] as const,
   simulation: (id: string) => [...TAX_KEY, "simulations", id] as const,
-  opportunities: (status: string) => [...TAX_KEY, "opportunities", status] as const,
+  opportunities: (filter: unknown) => [...TAX_KEY, "opportunities", filter] as const,
   opportunity: (id: string) => [...TAX_KEY, "opportunity", id] as const,
   credits: [...TAX_KEY, "credits"] as const,
   creditTotals: [...TAX_KEY, "credits", "totals"] as const,
   splitProvider: [...TAX_KEY, "split", "provider"] as const,
   governance: [...TAX_KEY, "governance"] as const,
-  splitExpectations: (calculationId: string) => [...TAX_KEY, "split", "expectations", calculationId] as const,
+  splitExpectations: (filter: unknown) => [...TAX_KEY, "split", "expectations", filter] as const,
   rules: [...TAX_KEY, "rules"] as const,
   legalSources: [...TAX_KEY, "legal-sources"] as const,
 };
@@ -705,25 +945,56 @@ export const addTaxProfileVersion = (body: CreateTaxProfileVersionRequest) => ap
 export const recordComplianceAssessment = (body: RecordComplianceAssessmentRequest) =>
   apiClient.post<TaxComplianceAssessmentDto>("/tax/compliance-assessments", body);
 
-export const listTaxCalculations = (take = 50) => apiClient.get<TaxCalculationSummaryDto[]>(`/tax/calculations?take=${take}`);
+export interface CalculationFilter { direction?: TaxDirection | ""; source?: TaxTransactionSource | ""; from?: string; to?: string; skip?: number; take?: number }
+export const listTaxCalculations = (f: CalculationFilter = {}) =>
+  apiClient.get<Page<TaxCalculationSummaryDto>>(`/tax/calculations${qs(f)}`);
 export const createTaxCalculation = (body: TaxOperationRequest) => apiClient.post<TaxCalculationDto>("/tax/calculations", body);
 export const previewTaxCoverage = (body: TaxOperationRequest) => apiClient.post<TaxCoverageDecision>("/tax/calculations/coverage", body);
 export const calculateSale = (saleId: string) => apiClient.post<TaxCalculationDto>(`/tax/calculations/from-sale/${encodeURIComponent(saleId)}`);
 export const getTaxCalculation = (id: string) => apiClient.get<TaxCalculationDto>(`/tax/calculations/${id}`);
 export const verifyTaxCalculation = (id: string) => apiClient.post<TaxVerificationDto>(`/tax/calculations/${id}/verify`);
+export const detectOpportunitiesAgain = (id: string) => apiClient.post<string[]>(`/tax/calculations/${id}/opportunities/detect`);
 export const createSplitExpectations = (id: string, procedure: SplitProcedure) =>
   apiClient.post<SplitExpectationDto[]>(`/tax/calculations/${id}/split-expectations`, { procedure });
 
-export const listTaxSimulations = () => apiClient.get<TaxSimulationSummaryDto[]>("/tax/simulations");
+export const listTaxSimulations = (search = "", skip = 0, take = 50) =>
+  apiClient.get<Page<TaxSimulationSummaryDto>>(`/tax/simulations${qs({ search, skip, take })}`);
+export const simulationCsvUrl = (id: string) => `/tax/simulations/${id}/export`;
 export const getTaxSimulation = (id: string) => apiClient.get<TaxSimulationDto>(`/tax/simulations/${id}`);
 export const createTaxSimulation = (body: CreateTaxSimulationRequest) => apiClient.post<TaxSimulationDto>("/tax/simulations", body);
 export const compareSuppliers = (body: CompareSuppliersRequest) => apiClient.post<SupplierOfferResultDto[]>("/tax/simulations/supplier-comparison", body);
 
-export function listTaxOpportunities(status: OpportunityStatus | "" = "", take = 100) {
-  const qs = new URLSearchParams({ take: String(take) });
-  if (status) qs.set("status", status);
-  return apiClient.get<TaxOpportunitySummaryDto[]>(`/tax/opportunities?${qs.toString()}`);
+export interface OpportunityFilter {
+  status?: OpportunityStatus | ""; risk?: RiskLevel | ""; type?: OpportunityType | ""; open?: boolean; mine?: boolean; search?: string;
+  skip?: number; take?: number;
 }
+export const listTaxOpportunities = (f: OpportunityFilter = {}) =>
+  apiClient.get<Page<TaxOpportunitySummaryDto>>(`/tax/opportunities${qs(f)}`);
+export const getOpportunityTimeline = (id: string) => apiClient.get<TaxTimelineEventDto[]>(`/tax/opportunities/${id}/timeline`);
+/** Who moves the analysis forward — the server takes the name from the user record of this company. */
+export const assignOpportunity = (id: string, userId: string | null) =>
+  apiClient.post<TaxOpportunityDto>(`/tax/opportunities/${id}/assign`, { userId });
+/** Evidence with its file (PDF, image or XML). The hash becomes the SHA-256 of the file's bytes. */
+export function uploadOpportunityEvidence(id: string, file: File, body: AddEvidenceRequest) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("type", body.type);
+  if (body.requirementId) form.append("requirementId", body.requirementId);
+  form.append("description", body.description);
+  if (body.documentReference) form.append("documentReference", body.documentReference);
+  if (body.notes) form.append("notes", body.notes);
+  return apiClient.postForm<TaxOpportunityDto>(`/tax/opportunities/${id}/evidence/files`, form);
+}
+/** A newer version of a piece of evidence (new file optional); the old version stays on record. */
+export function replaceOpportunityEvidence(id: string, evidenceId: string, description: string, documentReference: string | null, file?: File | null) {
+  const form = new FormData();
+  if (file) form.append("file", file);
+  form.append("description", description);
+  if (documentReference) form.append("documentReference", documentReference);
+  return apiClient.postForm<TaxOpportunityDto>(`/tax/opportunities/${id}/evidence/${evidenceId}/replace`, form);
+}
+export const revokeOpportunityEvidence = (id: string, evidenceId: string, reason: string) =>
+  apiClient.post<TaxOpportunityDto>(`/tax/opportunities/${id}/evidence/${evidenceId}/revoke`, { reason });
 export const getTaxOpportunity = (id: string) => apiClient.get<TaxOpportunityDto>(`/tax/opportunities/${id}`);
 export const startOpportunityReview = (id: string) => apiClient.post<TaxOpportunityDto>(`/tax/opportunities/${id}/review`, {});
 export const answerRequirement = (id: string, requirementId: string, met: boolean, note: string | null) =>
@@ -751,15 +1022,65 @@ export const approveOpportunity = (id: string, acknowledgeHighRisk: boolean, sel
     selfApprovalJustification: selfApprovalJustification?.trim() || null,
   });
 export const getTaxDecision = (id: string) => apiClient.get<TaxDecisionDto>(`/tax/decisions/${id}`);
+export const decisionExportUrl = (id: string, includeFiles: boolean) => `/tax/decisions/${id}/export?includeFiles=${includeFiles}`;
 
-export const listTaxCredits = () => apiClient.get<TaxCreditDto[]>("/tax/credits");
+// ── Private files ────────────────────────────────────────────────────────────
+
+export const getEvidenceStorage = () => apiClient.get<TaxFileStorageStatusDto>("/tax/evidence/storage");
+export const evidenceFileUrl = (fileId: string) => `/tax/evidence-files/${fileId}/content`;
+export const listEvidenceFiles = (owner: FileOwner, ownerId: string) =>
+  apiClient.get<TaxEvidenceFileDto[]>(`/tax/evidence-files?owner=${owner}&ownerId=${encodeURIComponent(ownerId)}`);
+export function uploadEvidenceFile(owner: FileOwner, ownerId: string, type: EvidenceType, file: File, description: string | null) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("owner", owner);
+  form.append("ownerId", ownerId);
+  form.append("type", type);
+  if (description) form.append("description", description);
+  return apiClient.postForm<TaxEvidenceFileDto>("/tax/evidence-files", form);
+}
+export const revokeEvidenceFile = (id: string, reason: string) => apiClient.post<TaxEvidenceFileDto>(`/tax/evidence-files/${id}/revoke`, { reason });
+export const setLegalHold = (id: string, hold: boolean, reason: string) =>
+  apiClient.post<TaxEvidenceFileDto>(`/tax/evidence-files/${id}/legal-hold`, { hold, reason });
+
+// ── Policies and classification ──────────────────────────────────────────────
+
+export const getMateriality = () => apiClient.get<TaxMaterialityDto>("/tax/materiality");
+export const configureMateriality = (body: ConfigureMaterialityRequest) => apiClient.put<TaxMaterialityDto>("/tax/materiality", body);
+export const listRetentionPolicies = () => apiClient.get<TaxRetentionPolicyDto[]>("/tax/retention-policies");
+export const configureRetention = (body: ConfigureRetentionRequest) => apiClient.put<TaxRetentionPolicyDto>("/tax/retention-policies", body);
+export const getRetentionPreview = () => apiClient.get<TaxRetentionPreviewDto>("/tax/retention-policies/preview");
+export const listItemClassifications = (search = "", onlyMissing = false, skip = 0, take = 50) =>
+  apiClient.get<Page<TaxItemClassificationDto>>(`/tax/classifications/items${qs({ search, onlyMissing, skip, take })}`);
+export const setItemClassification = (productId: string, body: SetItemClassificationRequest) =>
+  apiClient.put<TaxItemClassificationDto>(`/tax/classifications/items/${productId}`, body);
+export const listClassificationCodes = (search = "") =>
+  apiClient.get<Page<TaxClassificationCodeDto>>(`/tax/classifications/codes${qs({ search, take: 50 })}`);
+export const listObligations = () => apiClient.get<TaxObligationDefinitionDto[]>("/tax/obligations");
+
+/** "?a=1&b=2" from the defined, non-empty values, or "" when there are none. */
+export function qs(values: object): string {
+  const s = query(values);
+  return s ? `?${s}` : "";
+}
+
+/** A query string from the defined, non-empty values (false and 0 are kept). */
+export function query(values: object): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(values)) if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+  return qs.toString();
+}
+
+export interface CreditFilter { tax?: CreditTax | ""; stage?: CreditStage | ""; expiring?: boolean; skip?: number; take?: number }
+export const listTaxCredits = (f: CreditFilter = {}) => apiClient.get<Page<TaxCreditDto>>(`/tax/credits${qs(f)}`);
 export const getTaxCreditTotals = () => apiClient.get<TaxCreditTotalsDto[]>("/tax/credits/totals");
 export const registerTaxCredit = (body: RegisterTaxCreditRequest) => apiClient.post<TaxCreditDto>("/tax/credits", body);
 export const moveTaxCredit = (id: string, body: CreditMovementRequest) => apiClient.post<TaxCreditDto>(`/tax/credits/${id}/movements`, body);
 
 export const getSplitProvider = () => apiClient.get<{ configured: boolean; message: string }>("/tax/split/provider");
-export const listSplitExpectations = (calculationId?: string) =>
-  apiClient.get<SplitExpectationDto[]>(calculationId ? `/tax/split/expectations?calculationId=${encodeURIComponent(calculationId)}` : "/tax/split/expectations");
+export interface SplitFilter { calculationId?: string; status?: SplitStatus | ""; tax?: TaxType | ""; minAgeDays?: number | ""; skip?: number; take?: number }
+export const listSplitExpectations = (f: SplitFilter = {}) => apiClient.get<Page<SplitExpectationDto>>(`/tax/split/expectations${qs(f)}`);
+export const splitCsvUrl = (f: SplitFilter = {}) => `/tax/split/expectations/export${qs({ ...f, skip: undefined, take: undefined, calculationId: undefined })}`;
 export const recordSplitSettlement = (id: string, actualAmount: number, externalReference: string, settledAt: string) =>
   apiClient.post<SplitExpectationDto>(`/tax/split/expectations/${id}/settlements`, { actualAmount, externalReference, settledAt });
 

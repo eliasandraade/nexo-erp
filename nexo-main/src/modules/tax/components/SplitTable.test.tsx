@@ -21,7 +21,7 @@ const expectation = (over: Partial<SplitExpectationDto> = {}): SplitExpectationD
   id: "e1", calculationId: "c1", tax: "Cbs", procedure: "Standard", expected: 7.56, actual: 8.56, difference: 1,
   status: "Excess",
   settlements: [settlement("s1", 7.56, "psp-1"), settlement("s2", 1, "psp-2")],
-  createdAt: "2026-10-27T11:00:00Z", ...over,
+  createdAt: "2026-10-27T11:00:00Z", operationDate: "2026-10-27", ageDays: null, ...over,
 });
 
 describe("SplitTable", () => {
@@ -85,6 +85,21 @@ describe("SplitTable", () => {
     fireEvent.change(screen.getByLabelText("Referência"), { target: { value: "psp-9" } });
     fireEvent.click(screen.getByRole("button", { name: "Registrar" }));
     await waitFor(() => expect(api.recordSplitSettlement).toHaveBeenCalledWith("e1", 7.56, "psp-9", expect.stringMatching(/T12:00:00Z$/)));
+  });
+
+  it("says how long an unreconciled retention has been waiting, never for a matched one", () => {
+    renderTax(<SplitTable showCalculation items={[
+      expectation({ id: "e1", status: "Pending", settlements: [], ageDays: 12 }),
+      expectation({ id: "e2", tax: "IbsState", status: "Matched", ageDays: 30 }),
+      expectation({ id: "e3", tax: "IbsMunicipal", status: "Insufficient", ageDays: null }),
+    ]} />);
+
+    expect(screen.getByText("12 dia(s) desde a operação")).toBeInTheDocument();
+    expect(screen.queryByText("30 dia(s) desde a operação")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/dia\(s\) desde a operação/)).toHaveLength(1);
+    // The actions column is named for screen readers, and each row links back to its calculation.
+    expect(screen.getByRole("columnheader", { name: "Ações" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Abrir" })[0]).toHaveAttribute("href", "/tributos/calculos/c1");
   });
 });
 

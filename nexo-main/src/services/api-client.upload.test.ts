@@ -90,7 +90,8 @@ describe("apiClient.upload (XMLHttpRequest)", () => {
 
     const e1 = await apiClient.upload("POST", "/v1/u", new FormData()).catch((e) => e);
     expect(e1).toBeInstanceOf(ApiError);
-    expect(e1).toMatchObject({ status: 422, message: "a | 2", code: "viewer_mismatch", details: ["a", "2"], serverMessage: "Inválido" });
+    // the explanation stays first and the text details follow it (a non-text detail is dropped)
+    expect(e1).toMatchObject({ status: 422, message: "Inválido a", code: "viewer_mismatch", details: ["a"], serverMessage: "Inválido" });
 
     const e2 = await apiClient.upload("POST", "/v1/u", new FormData()).catch((e) => e);
     expect(e2).toMatchObject({ status: 413, message: "Grande demais", serverMessage: "Grande demais" });
@@ -195,7 +196,7 @@ describe("apiClient.postForm and request error mapping", () => {
       .mockResolvedValueOnce(json({ details: ["x", "y"], error: "Falhou" }, 502))
       .mockResolvedValueOnce(new Response("", { status: 429, statusText: "" }));
     await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 500, message: "Erro interno (código: abc)", requestId: "abc" });
-    await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 502, message: "x | y", details: ["x", "y"], serverMessage: "Falhou" });
+    await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 502, message: "Falhou x | y", details: ["x", "y"], serverMessage: "Falhou" });
     await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 429, message: "Muitas tentativas. Aguarde alguns minutos." });
   });
 

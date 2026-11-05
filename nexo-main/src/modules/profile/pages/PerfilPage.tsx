@@ -10,7 +10,6 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { useNavigate } from "react-router-dom";
 import { fetchMySessions, revokeAllSessions } from "@/modules/auth/services/authService";
 import { MfaSection } from "../components/MfaSection";
 import {
@@ -100,12 +99,11 @@ export default function PerfilPage() {
   const mustChange = !!session?.requirePasswordChange;
   // A platform administrator acting as this user cannot change the password, the two-step verification or the sessions.
   const platformAccess = isImpersonating();
-  const navigate = useNavigate();
   const sessionsQ = useQuery({ queryKey: ["auth", "sessions"], queryFn: fetchMySessions });
   const [confirmAll, setConfirmAll] = useState(false);
   const revokeAll = useMutation({
     mutationFn: revokeAllSessions,
-    onSuccess: () => { logout(); navigate("/login?motivo=sessoes", { replace: true }); },
+    onSuccess: () => logout("/login?motivo=sessoes"),
     onError: () => toast.error("Não foi possível encerrar as sessões agora."),
   });
 
@@ -132,8 +130,7 @@ export default function PerfilPage() {
       }),
     onSuccess: () => {
       // the server ended every session (this one too): sign in again with the new password
-      logout();
-      navigate("/login?motivo=senha", { replace: true });
+      logout("/login?motivo=senha");
     },
     onError: (err: Error) => {
       toast.error(err.message);

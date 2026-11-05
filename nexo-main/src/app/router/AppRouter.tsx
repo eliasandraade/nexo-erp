@@ -72,6 +72,8 @@ const TaxOpportunitiesPage  = lazy(() => import("@/modules/tax/pages/TaxOpportun
 const TaxOpportunityDetailPage = lazy(() => import("@/modules/tax/pages/TaxOpportunityDetailPage"));
 const TaxCreditsPage        = lazy(() => import("@/modules/tax/pages/TaxCreditsPage"));
 const TaxRulesPage          = lazy(() => import("@/modules/tax/pages/TaxRulesPage"));
+const TaxClassificationPage = lazy(() => import("@/modules/tax/pages/TaxClassificationPage"));
+const TaxSettingsPage       = lazy(() => import("@/modules/tax/pages/TaxSettingsPage"));
 const ClientesPage          = lazy(() => import("@/modules/customers/pages/ClientesPage"));
 const CustomerFormPage      = lazy(() => import("@/modules/customers/pages/CustomerFormPage"));
 const FornecedoresPage      = lazy(() => import("@/modules/suppliers/pages/FornecedoresPage"));
@@ -128,6 +130,7 @@ const PlatformActivityPage     = lazy(() => import("@/modules/platform/pages/Pla
 const PlatformTrialPage        = lazy(() => import("@/modules/platform/pages/PlatformTrialPage"));
 const PlatformSecurityPage     = lazy(() => import("@/modules/platform/pages/PlatformSecurityPage"));
 const PlatformBuildPage        = lazy(() => import("@/modules/platform/pages/PlatformBuildPage"));
+const PlatformTaxPage          = lazy(() => import("@/modules/platform/pages/PlatformTaxPage"));
 const AiDashboardPage          = lazy(() => import("@/modules/platform/pages/ai/AiDashboardPage"));
 const AiPlaygroundPage         = lazy(() => import("@/modules/platform/pages/ai/AiPlaygroundPage"));
 const AiProvidersPage          = lazy(() => import("@/modules/platform/pages/ai/AiProvidersPage"));
@@ -338,6 +341,8 @@ function RouterSurface() {
                   <Route path="/tributos/oportunidades/:id" element={<TaxOpportunityDetailPage />} />
                   <Route path="/tributos/creditos"       element={<TaxCreditsPage />} />
                   <Route path="/tributos/regras"         element={<TaxRulesPage />} />
+                  <Route path="/tributos/classificacao"  element={<TaxClassificationPage />} />
+                  <Route path="/tributos/politicas"      element={<TaxSettingsPage />} />
                   <Route path="/listas-de-preco" element={<ListasDePrecoPage />} />
                   <Route path="/configuracoes" element={<ConfiguracoesPage />} />
                   <Route path="/assinatura"   element={<AssinaturaPage />} />
@@ -399,6 +404,7 @@ function RouterSurface() {
                 <Route path="/platform/system"                   element={<PlatformSystemPage />} />
                 <Route path="/platform/seguranca"                element={<PlatformSecurityPage />} />
                 <Route path="/platform/build"                    element={<PlatformBuildPage />} />
+                <Route path="/platform/tributos"                 element={<PlatformTaxPage />} />
                 {/* AI Operations */}
                 <Route path="/platform/ai"                       element={<AiDashboardPage />} />
                 <Route path="/platform/ai/playground"            element={<AiPlaygroundPage />} />

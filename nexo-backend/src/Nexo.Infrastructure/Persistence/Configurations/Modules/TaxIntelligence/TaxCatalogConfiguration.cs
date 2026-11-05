@@ -26,6 +26,8 @@ internal sealed class TaxLegalSourceConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.VerifiedAt).HasColumnName("verified_at").HasColumnType("timestamptz");
         b.Property(x => x.VerifiedBy).HasColumnName("verified_by").HasMaxLength(200);
         b.Property(x => x.Notes).HasColumnName("notes").HasMaxLength(1000);
+        b.Property(x => x.VerificationRecordedById).HasColumnName("verification_recorded_by_id");
+        b.Property(x => x.VerificationRecordedBy).HasColumnName("verification_recorded_by").HasMaxLength(200);
         b.Property(x => x.CreatedAt).HasColumnName("created_at").HasColumnType("timestamptz").IsRequired();
         b.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasColumnType("timestamptz").IsRequired();
         b.Ignore(x => x.IsTextVerified);
@@ -85,6 +87,13 @@ internal sealed class TaxRuleVersionConfiguration : IEntityTypeConfiguration<Tax
         b.Property(x => x.ProfessionalReviewValidTo).HasColumnName("professional_review_valid_to");
         b.Property(x => x.ProfessionalReviewAssumptions).HasColumnName("professional_review_assumptions").HasMaxLength(4000);
         b.Property(x => x.ProfessionalReviewCaveats).HasColumnName("professional_review_caveats").HasMaxLength(4000);
+        b.Property(x => x.ProfessionalReviewRegimes).HasColumnName("professional_review_regimes").HasColumnType("text[]").IsRequired();
+        b.Property(x => x.ProfessionalReviewedOn).HasColumnName("professional_reviewed_on");
+        b.Property(x => x.ProfessionalReviewRecordedById).HasColumnName("professional_review_recorded_by_id");
+        b.Property(x => x.ProfessionalReviewRecordedBy).HasColumnName("professional_review_recorded_by").HasMaxLength(200);
+        b.Property(x => x.ProfessionalReviewRecordedByRole).HasColumnName("professional_review_recorded_by_role").HasMaxLength(60);
+        b.Property(x => x.ProfessionalReviewRecordId).HasColumnName("professional_review_record_id");
+        b.Property(x => x.ProfessionalReviewDocumentId).HasColumnName("professional_review_document_id");
         // Internal pilot approval: a separate dimension, never a professional review.
         b.Property(x => x.InternalApproval).HasColumnName("internal_approval").HasConversion<string>().HasMaxLength(40).IsRequired();
         b.Property(x => x.InternalApprovalPolicy).HasColumnName("internal_approval_policy").HasMaxLength(60);

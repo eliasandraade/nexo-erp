@@ -2,7 +2,7 @@ import { ApiError } from "@/services/api-client";
 import { onlyDigits } from "@/lib/fiscal-codes";
 import type {
   ComplianceAssessmentStatus, CompareSuppliersRequest, RecordComplianceAssessmentRequest, SupplyPattern, CreateTaxProfileVersionRequest, CreditMovement, CreditMovementRequest, CreditTax, RegisterTaxCreditRequest, TaxDirection, TaxItemKind, TaxLineRequest, TaxOperationRequest,
-  TaxRegime, TaxScenarioRequest, TaxType,
+  SimplesSituation, TaxRegime, TaxScenarioRequest, TaxType,
 } from "../api/tax.api";
 
 // ── Numbers and dates ────────────────────────────────────────────────────────
@@ -202,7 +202,23 @@ export interface ProfileDraft {
   specialRegimes: string;
   benefits: string;
   reason: string;
+  /** "" = derived from the regime by the server. */
+  simplesSituation: SimplesSituation | "";
+  /** Whether a Simples optant chose the regular IBS/CBS regime: "" = not informed (operations are not calculated). */
+  regularOption: "" | "yes" | "no";
 }
+
+/** The Simples situations that agree with a regime (the server refuses any other combination). */
+export function simplesSituationsFor(regime: TaxRegime): SimplesSituation[] {
+  switch (regime) {
+    case "SimplesNacional": return ["WithinSublimit", "Unknown"];
+    case "SimplesNacionalExcessoSublimite": return ["AboveSublimit", "Unknown"];
+    case "Mei": return ["Mei", "Simei", "Unknown"];
+    default: return ["NotOptant"];
+  }
+}
+
+export const isSimplesRegime = (regime: TaxRegime) => simplesSituationsFor(regime)[0] !== "NotOptant";
 
 export function profileDraftProblems(d: ProfileDraft): string[] {
   const p: string[] = [];
@@ -213,6 +229,8 @@ export function profileDraftProblems(d: ProfileDraft): string[] {
   if (splitList(d.secondaryCnaes).some((c) => onlyDigits(c).length !== 7)) p.push("Cada CNAE secundário tem 7 números.");
   if (!d.reason.trim()) p.push("Diga o motivo da nova versão.");
   if (d.reason.length > 500) p.push("Motivo até 500 caracteres.");
+  if (d.simplesSituation && !simplesSituationsFor(d.regime).includes(d.simplesSituation)) p.push("A situação no Simples não combina com o regime.");
+  if (!isSimplesRegime(d.regime) && d.regularOption) p.push("A opção pelo regime regular do IBS/CBS só existe para optantes do Simples.");
   return p;
 }
 
@@ -227,6 +245,8 @@ export function toProfileVersionRequest(d: ProfileDraft): CreateTaxProfileVersio
     specialRegimes: splitList(d.specialRegimes),
     benefits: splitList(d.benefits),
     reason: d.reason.trim(),
+    simplesSituation: d.simplesSituation || null,
+    ibsCbsRegularRegimeOption: d.regularOption === "" ? null : d.regularOption === "yes",
   };
 }
 
@@ -244,12 +264,41 @@ export interface ComplianceDraft {
   notes: string;
   limitations: string;
   pnctParticipation: boolean;
+  /** One per obligation of the catalogue the assessor chose to assess ("" status = not assessed). */
+  results: ObligationResultDraft[];
 }
+
+export interface ObligationResultDraft {
+  code: string;
+  name: string;
+  status: ComplianceAssessmentStatus | "";
+  evidenceReference: string;
+  remediation: string;
+  remediationVerifiedOn: string;
+  remediationVerifiedBy: string;
+  notes: string;
+}
+
+export const emptyResult = (code: string, name: string): ObligationResultDraft => ({
+  code, name, status: "", evidenceReference: "", remediation: "", remediationVerifiedOn: "", remediationVerifiedBy: "", notes: "",
+});
 
 export const emptyCompliance = (): ComplianceDraft => ({
   status: "Declared", periodFrom: "", periodTo: "", scope: "", obligationsChecked: "", evidence: "", assessedBy: "", notes: "",
-  limitations: "", pnctParticipation: false,
+  limitations: "", pnctParticipation: false, results: [],
 });
+
+/** The same per-obligation rules the server applies. */
+export function resultProblems(r: ObligationResultDraft): string[] {
+  const p: string[] = [];
+  const evidence = r.evidenceReference.trim() !== "";
+  if (r.status === "Verified" && !evidence) p.push(`${r.name}: verificada sem evidência.`);
+  if ((r.status === "InconsistencyIdentified" || r.status === "NonCompliant") && !r.notes.trim()) p.push(`${r.name}: descreva a inconsistência.`);
+  if (r.status === "UnderRemediation" && !r.remediation.trim()) p.push(`${r.name}: descreva o que está sendo regularizado.`);
+  if (r.status === "RemediationVerified" && (!r.remediation.trim() || !r.remediationVerifiedOn || !r.remediationVerifiedBy.trim() || !evidence))
+    p.push(`${r.name}: a regularização verificada diz o que foi regularizado, quando, por quem e com qual evidência.`);
+  return p;
+}
 
 /** The same rules the server applies: a verification states period, scope, what was checked and the evidence. */
 export function complianceProblems(d: ComplianceDraft): string[] {
@@ -259,8 +308,16 @@ export function complianceProblems(d: ComplianceDraft): string[] {
   else if (d.periodTo < d.periodFrom) p.push("O fim do período é anterior ao início.");
   if (d.status !== "Unknown" && !d.scope.trim()) p.push("Informe o escopo (o que a avaliação cobre).");
   if (!d.assessedBy.trim()) p.push("Informe quem avaliou.");
-  if ((d.status === "Verified" || d.status === "RemediationVerified") && (splitList(d.obligationsChecked).length === 0 || !d.evidence.trim()))
-    p.push("Para verificar, diga quais obrigações foram conferidas e com qual evidência.");
+  const assessed = d.results.filter((r) => r.status !== "");
+  for (const r of assessed) p.push(...resultProblems(r));
+  if (d.status === "Verified" || d.status === "RemediationVerified") {
+    if (assessed.length === 0) p.push("Uma verificação lista cada obrigação conferida, com sua evidência — não só texto livre.");
+    else if (d.status === "Verified" && (assessed.some((r) => r.status !== "Verified" && r.status !== "NotApplicable") || assessed.every((r) => r.status === "NotApplicable")))
+      p.push("Verificada só quando cada obrigação foi verificada (ou não se aplica).");
+    else if (d.status === "RemediationVerified"
+      && (assessed.some((r) => !["Verified", "RemediationVerified", "NotApplicable"].includes(r.status)) || !assessed.some((r) => r.status === "RemediationVerified")))
+      p.push("Regularização verificada exige ao menos uma regularização verificada e nenhuma obrigação em aberto.");
+  }
   if (["InconsistencyIdentified", "UnderRemediation", "NonCompliant"].includes(d.status) && !d.notes.trim())
     p.push("Descreva a inconsistência ou o que está sendo regularizado.");
   return p;
@@ -272,6 +329,11 @@ export function toComplianceRequest(d: ComplianceDraft): RecordComplianceAssessm
     status: d.status, periodFrom: d.periodFrom, periodTo: d.periodTo, scope: opt(d.scope), obligationsChecked: splitList(d.obligationsChecked),
     evidence: opt(d.evidence), assessedBy: d.assessedBy.trim(), assessedAt: null, notes: opt(d.notes), limitations: opt(d.limitations),
     pnctParticipation: d.pnctParticipation,
+    obligations: d.results.filter((r) => r.status !== "").map((r) => ({
+      obligationCode: r.code, status: r.status as ComplianceAssessmentStatus, evidenceReference: opt(r.evidenceReference), evidenceFileId: null,
+      remediation: opt(r.remediation), remediationVerifiedOn: r.remediationVerifiedOn || null, remediationVerifiedBy: opt(r.remediationVerifiedBy),
+      notes: opt(r.notes),
+    })),
   };
 }
 

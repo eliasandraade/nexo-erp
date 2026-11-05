@@ -4,6 +4,7 @@ import type {
   RequirementPhase, SupplyPattern, CreditEntryType, CreditMovement, CreditTax, ImpactNature, OpportunityStatus,
   InternalApprovalStatus, OpportunityType, ProfessionalReviewStatus, ProhibitedStructure, RiskLevel, RuleStatus, SplitProcedure, SplitStatus, TaxDirection,
   TaxApprovalMode, TaxItemKind, TaxRegime, TaxTransactionSource, TaxType, TaxVerificationDto, TextVerificationStatus,
+  SimplesSituation, TaxModuleStatus, FileStatus, ClassificationStatus, RetentionStart,
 } from "../api/tax.api";
 
 /** Visual tone of a badge: each impact nature has its own, so they are never read as the same thing. */
@@ -14,7 +15,7 @@ export interface ToneLabel { label: string; tone: Tone }
 export const IMPACT_NATURES: Record<ImpactNature, ToneLabel & { hint: string }> = {
   DefinitiveSaving: { label: "Economia", tone: "saving", hint: "Imposto que deixa de ser pago de vez." },
   CalculatedTaxReduction: {
-    label: "Redução simulada do IBS/CBS calculado",
+    label: "Redução do IBS/CBS calculado — não é economia",
     tone: "reduction",
     hint: "O tributo calculado no documento diminui. Se isso vira economia depende do período (em 2026 é compensável ou dispensado) e de revisão profissional.",
   },
@@ -35,7 +36,7 @@ export const OPPORTUNITY_STATUS: Record<OpportunityStatus, ToneLabel> = {
 };
 
 export const OPPORTUNITY_TYPES: Record<OpportunityType, string> = {
-  TaxSaving: "Redução de imposto",
+  TaxSaving: "Economia definitiva de imposto",
   CreditOptimization: "Aproveitamento de crédito",
   TaxDeferral: "Adiamento de imposto",
   CashFlowOptimization: "Caixa",
@@ -166,6 +167,8 @@ export const EVIDENCE_STATUS: Record<EvidenceStatus, ToneLabel> = {
   Submitted: { label: "Enviada", tone: "neutral" },
   Accepted: { label: "Aceita", tone: "success" },
   Rejected: { label: "Recusada", tone: "danger" },
+  Superseded: { label: "Substituída por versão nova", tone: "neutral" },
+  Revoked: { label: "Revogada", tone: "danger" },
 };
 
 export const APPROVAL_REQUIREMENTS: Record<ApprovalRequirement, string> = {
@@ -282,3 +285,82 @@ export function verificationHeadline(v: TaxVerificationDto): string {
   if (v.reproducible) return "Reproduzido: o mesmo motor, as mesmas regras e a mesma entrada dão exatamente o mesmo resultado.";
   return "Não reproduziu: o resultado recalculado é diferente do guardado.";
 }
+
+export const SIMPLES_SITUATIONS: Record<SimplesSituation, string> = {
+  NotOptant: "Não optante do Simples",
+  WithinSublimit: "Simples Nacional dentro do sublimite",
+  AboveSublimit: "Simples acima do sublimite",
+  Mei: "MEI",
+  Simei: "SIMEI",
+  Unknown: "Situação no Simples não informada",
+};
+
+export const MODULE_STATUS: Record<TaxModuleStatus, ToneLabel> = {
+  Inactive: { label: "Inativo", tone: "neutral" },
+  Active: { label: "Ativo", tone: "success" },
+  Suspended: { label: "Suspenso", tone: "danger" },
+};
+
+export const FILE_STATUS: Record<FileStatus, ToneLabel> = {
+  Active: { label: "Em vigor", tone: "success" },
+  Replaced: { label: "Substituído", tone: "neutral" },
+  Revoked: { label: "Revogado", tone: "danger" },
+};
+
+export const CLASSIFICATION_STATUS: Record<ClassificationStatus, ToneLabel> = {
+  Draft: { label: "Rascunho", tone: "neutral" },
+  Active: { label: "Ativo", tone: "success" },
+  Inactive: { label: "Inativo", tone: "warning" },
+};
+
+export const RETENTION_START: Record<RetentionStart, string> = {
+  UploadDate: "Da data do envio",
+  EndOfUploadYear: "Do fim do ano do envio",
+};
+
+/**
+ * What each refusal of new work means, in plain words, and what to do. The server message stays the source of truth (it names the
+ * rules or reasons); this only frames it. Codes the frontend does not know fall back to a neutral title.
+ */
+export const REFUSALS: Record<string, { title: string; action?: string }> = {
+  tax_intelligence_disabled: { title: "Inteligência tributária desligada nesta instalação", action: "Só a plataforma liga o módulo." },
+  tax_configuration_invalid: { title: "Configuração inválida", action: "A plataforma precisa corrigir a configuração." },
+  tax_module_suspended: { title: "Módulo suspenso pela plataforma", action: "O histórico continua disponível para consulta e verificação." },
+  tax_module_not_activated: { title: "Modo ainda não ativado pela plataforma" },
+  tax_approval_mode_disabled: { title: "Nenhum modo de aprovação configurado" },
+  tax_pilot_scope_missing: { title: "Piloto controlado não aberto" },
+  tax_pilot_scope_disabled: { title: "Piloto controlado inativo" },
+  tax_pilot_scope_expired: { title: "Fora da janela do piloto controlado" },
+  tax_pilot_scope_tenant: { title: "Esta empresa não participa do piloto controlado" },
+  tax_pilot_scope_store: { title: "Esta loja não participa do piloto controlado" },
+  tax_pilot_approval_missing: { title: "Regras sem aprovação interna válida para o piloto" },
+  tax_professional_review_pending: { title: "Regras sem revisão profissional aprovada" },
+  tax_calculation_not_reproducible: { title: "O cálculo de origem não reproduz mais" },
+  tax_engine_unavailable: { title: "Motor de cálculo indisponível nesta versão" },
+  tax_operation_not_supported: { title: "Operação fora do recorte suportado" },
+  tax_profile_missing: { title: "Sem perfil tributário" },
+  tax_file_storage_unavailable: { title: "Armazenamento privado indisponível", action: "Registre a evidência por referência por enquanto." },
+  tax_file_type: { title: "Tipo de arquivo não aceito" },
+  tax_file_extension: { title: "Extensão não corresponde ao conteúdo" },
+  tax_file_active_content: { title: "Arquivo com conteúdo ativo recusado" },
+  tax_file_too_large: { title: "Arquivo grande demais" },
+  concurrency_conflict: { title: "Alterado por outra pessoa", action: "Recarregue e tente de novo." },
+  tax_credit_obligation_used: { title: "Este crédito já foi usado nessa obrigação." },
+  tax_credit_duplicate_request: { title: "Pedido repetido com dados diferentes", action: "Abra o movimento de novo para gerar um pedido novo." },
+  tax_split_duplicate_reference: { title: "Referência de liquidação já registrada" },
+  tax_evidence_state: { title: "Esta evidência já não está em vigor", action: "Revise a versão atual." },
+};
+
+/** Title (and the server's own explanation) of a refusal, for an error state or a toast. */
+export function refusalTitle(code: string | undefined | null): string {
+  return (code && REFUSALS[code]?.title) || "Não foi possível concluir";
+}
+
+/** Coverage findings by status — what the operation needs before it can be calculated. */
+export const COVERAGE_ADVICE: Record<CoverageStatus, string> = {
+  Supported: "Dentro do recorte suportado.",
+  Unsupported: "O padrão da operação não é modelado pela versão atual: não há cálculo, nem zero.",
+  RequiresClassification: "Falta classificação (NCM/NBS e cClassTrib ativo no catálogo) — classifique o item e calcule de novo.",
+  RequiresProfessionalReview: "A situação (regime, Simples, datas ou código) depende de revisão profissional: o sistema não presume.",
+  PendingRegulation: "Depende de regulamentação ainda não refletida no catálogo.",
+};

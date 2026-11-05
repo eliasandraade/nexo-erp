@@ -36,11 +36,14 @@ public sealed class TaxLineRequestValidator : AbstractValidator<TaxLineRequest>
             .WithMessage("Os descontos passam do valor da linha.");
         RuleFor(x => x.SpecialTreatment).MaximumLength(60);
         // Formats are checked loosely on purpose: V1 records these codes, it does not interpret them.
-        RuleFor(x => x.Nbs).Must(n => n!.All(c => char.IsAsciiDigit(c) || c == '.') && n.Count(char.IsAsciiDigit) is >= 1 and <= 12)
-            .When(x => !string.IsNullOrEmpty(x.Nbs)).WithMessage("NBS: só números (e pontos).");
-        RuleFor(x => x.CClassTrib).Must(c => c!.All(char.IsAsciiLetterOrDigit) && c.Length <= 10)
-            .When(x => !string.IsNullOrEmpty(x.CClassTrib)).WithMessage("cClassTrib: até 10 letras ou números.");
+        RuleFor(x => x.Nbs).Must(IsNbs).When(x => !string.IsNullOrEmpty(x.Nbs)).WithMessage("NBS: só números (e pontos).");
+        RuleFor(x => x.CClassTrib).Must(IsCClassTrib).When(x => !string.IsNullOrEmpty(x.CClassTrib)).WithMessage("cClassTrib: até 10 letras ou números.");
     }
+
+    private static bool IsNbs(string? nbs)
+        => nbs is not null && nbs.All(c => char.IsAsciiDigit(c) || c == '.') && nbs.Count(char.IsAsciiDigit) is >= 1 and <= 12;
+
+    private static bool IsCClassTrib(string? code) => code is not null && code.All(char.IsAsciiLetterOrDigit) && code.Length <= 10;
 }
 
 public sealed class TaxOperationTimingValidator : AbstractValidator<TaxOperationTiming>
@@ -62,6 +65,7 @@ public sealed class TaxOperationRequestValidator : AbstractValidator<TaxOperatio
         RuleFor(x => x.Direction).IsInEnum();
         RuleFor(x => x.CounterpartyRegime).IsInEnum().When(x => x.CounterpartyRegime is not null);
         RuleFor(x => x.CounterpartyState).Length(2).When(x => !string.IsNullOrEmpty(x.CounterpartyState));
+        RuleFor(x => x.CounterpartySimplesSituation).IsInEnum().When(x => x.CounterpartySimplesSituation is not null);
         RuleFor(x => x.Description).MaximumLength(300);
         RuleFor(x => x.OperationDate).Must(d => d.Year is >= 2000 and <= 2100).WithMessage("Data da operação inválida.");
         RuleFor(x => x.Lines).NotEmpty().Must(l => l.Count <= TaxValidation.MaxLines).WithMessage($"No máximo {TaxValidation.MaxLines} linhas.");
@@ -84,6 +88,17 @@ public sealed class RecordComplianceAssessmentRequestValidator : AbstractValidat
         RuleFor(x => x.AssessedBy).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Notes).MaximumLength(2000);
         RuleFor(x => x.Limitations).MaximumLength(2000);
+        RuleFor(x => x.Obligations).Must(l => l is null || l.Count <= 60).WithMessage("No máximo 60 obrigações por avaliação.");
+        RuleForEach(x => x.Obligations).ChildRules(o =>
+        {
+            o.RuleFor(x => x.ObligationCode).NotEmpty().MaximumLength(60);
+            o.RuleFor(x => x.Status).IsInEnum();
+            o.RuleFor(x => x.EvidenceReference).MaximumLength(500);
+            o.RuleFor(x => x.Remediation).MaximumLength(2000);
+            o.RuleFor(x => x.RemediationVerifiedBy).MaximumLength(200);
+            o.RuleFor(x => x.Notes).MaximumLength(2000);
+            o.RuleFor(x => x.RemediationVerifiedOn).Must(TaxAdminValidation.Plausible).WithMessage("Data fora do intervalo aceito.");
+        });
     }
 }
 
@@ -102,6 +117,7 @@ public sealed class CreateTaxProfileVersionRequestValidator : AbstractValidator<
         RuleFor(x => x.SecondaryCnaes).Must(l => l is null || l.All(s => s is not null));
         RuleFor(x => x.Reason).NotEmpty().MaximumLength(500);
         RuleFor(x => x.ValidFrom).Must(d => d.Year is >= 2000 and <= 2100).WithMessage("Início de vigência inválido.");
+        RuleFor(x => x.SimplesSituation).IsInEnum().When(x => x.SimplesSituation is not null);
     }
 }
 
@@ -134,6 +150,8 @@ public sealed class CreateTaxSimulationRequestValidator : AbstractValidator<Crea
         RuleFor(x => x.Scenarios).NotEmpty().Must(s => s.Count <= TaxValidation.MaxScenarios)
             .WithMessage($"No máximo {TaxValidation.MaxScenarios} cenários.");
         RuleForEach(x => x.Scenarios).NotNull().SetValidator(new TaxScenarioRequestValidator());
+        RuleFor(x => x.Assumptions).MaximumLength(4000);
+        RuleFor(x => x.Caveats).MaximumLength(4000);
     }
 }
 
@@ -269,6 +287,12 @@ public sealed class RecordProfessionalReviewRequestValidator : AbstractValidator
             .WithMessage("Uma aprovação diz desde quando vale.");
         RuleFor(x => x.Caveats).NotEmpty().When(x => x.Status == ProfessionalReviewStatus.ApprovedWithCaveats)
             .WithMessage("Aprovação com ressalvas precisa das ressalvas.");
+        RuleFor(x => x.CoveredRegimes).NotEmpty().When(x => x.Status is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats)
+            .WithMessage("Uma aprovação diz a quais regimes do estabelecimento se aplica.");
+        RuleForEach(x => x.CoveredRegimes).IsInEnum();
+        RuleFor(x => x.ReviewedOn).Must(TaxAdminValidation.Plausible).WithMessage("Data fora do intervalo aceito.");
+        RuleFor(x => x.ValidFrom).Must(TaxAdminValidation.Plausible).WithMessage("Data fora do intervalo aceito.");
+        RuleFor(x => x.ValidTo).Must(TaxAdminValidation.Plausible).WithMessage("Data fora do intervalo aceito.");
         RuleFor(x => x.Notes).NotEmpty()
             .When(x => x.Status is ProfessionalReviewStatus.ChangesRequired or ProfessionalReviewStatus.Rejected)
             .WithMessage("Uma revisão que pede mudança ou rejeita precisa dizer por quê.");
@@ -314,6 +338,7 @@ public sealed class TaxCreditMovementRequestValidator : AbstractValidator<TaxCre
             .When(x => x.Movement is TaxCreditMovement.Block or TaxCreditMovement.Reverse or TaxCreditMovement.ConfirmToBeAppropriated or TaxCreditMovement.Discard);
         RuleFor(x => x.ObligationTax).NotNull().IsInEnum().When(x => x.Movement == TaxCreditMovement.Use);
         RuleFor(x => x.ObligationReference).NotEmpty().MaximumLength(100).When(x => x.Movement == TaxCreditMovement.Use);
+        RuleFor(x => x.IdempotencyKey).MaximumLength(80);
     }
 }
 

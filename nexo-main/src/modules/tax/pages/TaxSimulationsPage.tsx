@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FlaskConical, Plus, Trash2 } from "lucide-react";
+import { Copy, FlaskConical, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
-import { ErrorState } from "@/components/shared/ErrorState";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +20,10 @@ import {
   type SupplierOfferResultDto, type TaxDirection, type TaxRegime, type TaxType,
 } from "../api/tax.api";
 import { DIRECTIONS, TAX_NAMES } from "../lib/labels";
+import { Textarea } from "@/components/ui/textarea";
+import { DownloadButton, TaxPager, TaxQueryError, toastError } from "../components/TaxCommon";
+import { ApprovalGovernance } from "../components/ApprovalGovernance";
+import { simulationCsvUrl } from "../api/tax.api";
 import {
   brazilTodayIso, emptyHypothesis, emptyOffer, emptyOperation, emptyScenario, errorMessage, isProfileMissing, offersProblems,
   simulationProblems, toCompareRequest, toOperationRequest, toScenarioRequest, type OfferDraft, type OperationDraft, type ScenarioDraft,
@@ -31,12 +34,21 @@ import { ToneBadge } from "../components/TaxBadges";
 import { Field, ProblemList, ProfileMissingNotice, TaxNote, TaxSubNav } from "../components/TaxShell";
 
 const KEEP = "__keep";
+const PAGE = 20;
+
+/** A copy of a scenario to change one thing at a time (new keys, same choices). */
+function duplicate(s: ScenarioDraft): ScenarioDraft {
+  const fresh = emptyScenario();
+  return { ...s, key: fresh.key, name: `${s.name} (cópia)`.slice(0, 200), hypotheses: s.hypotheses.map((h) => ({ ...h, key: emptyHypothesis().key })) };
+}
 
 /** Simulações: comparar cenários (regime, data, alíquota hipotética) de uma operação, e o custo efetivo entre fornecedores. */
 export default function TaxSimulationsPage() {
   const [params, setParams] = useSearchParams();
   const selected = params.get("id");
-  const list = useQuery({ queryKey: TAX_KEYS.simulations, queryFn: listTaxSimulations });
+  const [search, setSearch] = useState("");
+  const [skip, setSkip] = useState(0);
+  const list = useQuery({ queryKey: [...TAX_KEYS.simulations, search, skip], queryFn: () => listTaxSimulations(search, skip, PAGE) });
   const open = (id: string | null) => setParams(id ? { id } : {}, { replace: false });
 
   return (
@@ -52,20 +64,33 @@ export default function TaxSimulationsPage() {
       {selected ? <SimulationView id={selected} onClose={() => open(null)} /> : <NewSimulation onCreated={open} />}
 
       <SectionCard title="Simulações guardadas" noPadding>
+        <div className="border-b p-4">
+          <Field id="sim-search" label="Buscar" className="max-w-sm">
+            <Input id="sim-search" value={search} onChange={(e) => { setSearch(e.target.value); setSkip(0); }} placeholder="Nome da simulação" />
+          </Field>
+        </div>
         {list.isLoading && <div className="p-5"><Skeleton className="h-24 w-full" /></div>}
-        {list.isError && <ErrorState title="Não foi possível listar as simulações" onRetry={() => void list.refetch()} compact />}
-        {list.data?.length === 0 && <EmptyState icon={FlaskConical} title="Nenhuma simulação ainda" compact />}
-        {list.data && list.data.length > 0 && (
-          <ul className="divide-y divide-border">
-            {list.data.map((s) => (
-              <li key={s.id}>
-                <button type="button" onClick={() => open(s.id)} className={cn("flex w-full flex-wrap items-center justify-between gap-2 px-5 py-3 text-left text-sm hover:bg-muted/50", s.id === selected && "bg-muted/50")}>
-                  <span className="font-medium">{s.name}</span>
-                  <span className="text-xs text-muted-foreground">{s.scenarios} {s.scenarios === 1 ? "cenário" : "cenários"} · {formatDateTime(s.createdAt)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+        {list.isError && <TaxQueryError error={list.error} what="as simulações" onRetry={() => void list.refetch()} />}
+        {list.data?.items.length === 0 && <EmptyState icon={FlaskConical} title={search ? "Nenhuma simulação com este nome" : "Nenhuma simulação ainda"} compact />}
+        {list.data && list.data.items.length > 0 && (
+          <>
+            <ul className="divide-y divide-border">
+              {list.data.items.map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button" onClick={() => open(s.id)} aria-current={s.id === selected ? "true" : undefined}
+                    className={cn("flex w-full flex-wrap items-center justify-between gap-2 px-5 py-3 text-left text-sm hover:bg-muted/50", s.id === selected && "bg-muted/50 font-semibold")}
+                  >
+                    <span className="font-medium">{s.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {s.scenarios} {s.scenarios === 1 ? "cenário" : "cenários"} · {formatDateTime(s.createdAt)}{s.createdByName ? ` · ${s.createdByName}` : ""}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <TaxPager total={list.data.total} skip={skip} take={PAGE} onSkip={setSkip} />
+          </>
         )}
       </SectionCard>
 
@@ -80,11 +105,32 @@ function SimulationView({ id, onClose }: Readonly<{ id: string; onClose: () => v
     <SectionCard
       title={sim.data?.name ?? "Simulação"}
       description={sim.data ? `Motor ${sim.data.engineVersion} · ${formatDateTime(sim.data.createdAt)}` : undefined}
-      actions={<Button variant="outline" size="sm" onClick={onClose}>Nova simulação</Button>}
+      actions={
+        <div className="flex flex-wrap gap-2">
+          {sim.data && <DownloadButton path={simulationCsvUrl(id)} fileName={`simulacao-${id}.csv`} label="Exportar CSV" />}
+          <Button variant="outline" size="sm" onClick={onClose}>Nova simulação</Button>
+        </div>
+      }
     >
       {sim.isLoading && <Skeleton className="h-40 w-full" />}
-      {sim.isError && <ErrorState title="Não foi possível abrir a simulação" onRetry={() => void sim.refetch()} compact />}
-      {sim.data && <ScenarioCompare scenarios={sim.data.scenarios} />}
+      {sim.isError && <TaxQueryError error={sim.error} what="a simulação" onRetry={() => void sim.refetch()} />}
+      {sim.data && (
+        <div className="space-y-4">
+          {(sim.data.assumptions || sim.data.caveats) && (
+            <dl className="grid gap-2 text-sm sm:grid-cols-2">
+              {sim.data.assumptions && <div><dt className="text-xs text-muted-foreground">Premissas</dt><dd className="whitespace-pre-wrap">{sim.data.assumptions}</dd></div>}
+              {sim.data.caveats && <div><dt className="text-xs text-muted-foreground">Ressalvas</dt><dd className="whitespace-pre-wrap">{sim.data.caveats}</dd></div>}
+            </dl>
+          )}
+          <ScenarioCompare scenarios={sim.data.scenarios} />
+          {sim.data.governance && (
+            <details>
+              <summary className="cursor-pointer text-sm font-medium">Com qual aprovação das regras (registrado quando rodou)</summary>
+              <div className="mt-2"><ApprovalGovernance governance={sim.data.governance} /></div>
+            </details>
+          )}
+        </div>
+      )}
     </SectionCard>
   );
 }
@@ -92,15 +138,20 @@ function SimulationView({ id, onClose }: Readonly<{ id: string; onClose: () => v
 function NewSimulation({ onCreated }: Readonly<{ onCreated: (id: string) => void }>) {
   const qc = useQueryClient();
   const [name, setName] = useState("");
+  const [assumptions, setAssumptions] = useState("");
+  const [caveats, setCaveats] = useState("");
   const [baseline, setBaseline] = useState<OperationDraft>(() => emptyOperation());
   const [scenarios, setScenarios] = useState<ScenarioDraft[]>(() => [emptyScenario()]);
   const [touched, setTouched] = useState(false);
   const [profileMissing, setProfileMissing] = useState(false);
   const problems = simulationProblems(name, baseline, scenarios);
   const save = useMutation({
-    mutationFn: () => createTaxSimulation({ name: name.trim(), baseline: toOperationRequest(baseline), scenarios: scenarios.map(toScenarioRequest) }),
+    mutationFn: () => createTaxSimulation({
+      name: name.trim(), baseline: toOperationRequest(baseline), scenarios: scenarios.map(toScenarioRequest),
+      assumptions: assumptions.trim() || null, caveats: caveats.trim() || null,
+    }),
     onSuccess: (s) => { void qc.invalidateQueries({ queryKey: TAX_KEYS.simulations }); onCreated(s.id); },
-    onError: (e) => { if (isProfileMissing(e)) setProfileMissing(true); else toast.error(errorMessage(e)); },
+    onError: (e) => { if (isProfileMissing(e)) setProfileMissing(true); else toastError(e); },
   });
   const setScenario = (key: string, patch: Partial<ScenarioDraft>) => setScenarios(scenarios.map((s) => (s.key === key ? { ...s, ...patch } : s)));
 
@@ -111,6 +162,15 @@ function NewSimulation({ onCreated }: Readonly<{ onCreated: (id: string) => void
         <Field id="sim-name" label="Nome da simulação" className="max-w-md">
           <Input id="sim-name" maxLength={200} placeholder="Ex.: mudar para Lucro Presumido" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field id="sim-assumptions" label="Premissas (opcional)" hint="O que você tomou como dado: preços mantidos, prazos, condições do fornecedor.">
+            <Textarea id="sim-assumptions" maxLength={4000} value={assumptions} onChange={(e) => setAssumptions(e.target.value)} />
+          </Field>
+          <Field id="sim-caveats" label="Ressalvas (opcional)" hint="O que limita a leitura do resultado.">
+            <Textarea id="sim-caveats" maxLength={4000} value={caveats} onChange={(e) => setCaveats(e.target.value)} />
+          </Field>
+        </div>
 
         <div className="space-y-2">
           <h4 className="text-sm font-semibold">Como é hoje</h4>
@@ -177,6 +237,9 @@ function NewSimulation({ onCreated }: Readonly<{ onCreated: (id: string) => void
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" variant="outline" size="sm" disabled={s.hypotheses.length >= 3} onClick={() => setScenario(s.key, { hypotheses: [...s.hypotheses, emptyHypothesis()] })}>
                     <Plus className="mr-1.5 h-3.5 w-3.5" /> Alíquota hipotética
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" disabled={scenarios.length >= 10} onClick={() => setScenarios([...scenarios, duplicate(s)])}>
+                    <Copy className="mr-1.5 h-3.5 w-3.5" /> Duplicar cenário
                   </Button>
                   <Button type="button" variant="ghost" size="sm" disabled={scenarios.length === 1} onClick={() => setScenarios(scenarios.filter((x) => x.key !== s.key))}>
                     <Trash2 className="mr-1.5 h-3.5 w-3.5" /> Remover cenário

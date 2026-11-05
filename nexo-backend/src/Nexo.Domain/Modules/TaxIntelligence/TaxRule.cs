@@ -72,12 +72,28 @@ public class TaxRuleVersion : BaseEntity
     public string? ProfessionalReviewAssumptions { get; private set; }
     public string? ProfessionalReviewCaveats { get; private set; }
     public string? ProfessionalReviewNotes { get; private set; }
+    /// <summary>Establishment regimes the current review covers (names of <c>TaxRegime</c>).</summary>
+    public List<string> ProfessionalReviewRegimes { get; private set; } = [];
+    /// <summary>Date of the review or opinion, as informed.</summary>
+    public DateOnly? ProfessionalReviewedOn { get; private set; }
+    /// <summary>The authenticated user who recorded the current review — never the professional.</summary>
+    public Guid? ProfessionalReviewRecordedById { get; private set; }
+    public string? ProfessionalReviewRecordedBy { get; private set; }
+    public string? ProfessionalReviewRecordedByRole { get; private set; }
+    /// <summary>The history record of the current review.</summary>
+    public Guid? ProfessionalReviewRecordId { get; private set; }
+    public Guid? ProfessionalReviewDocumentId { get; private set; }
 
-    /// <summary>Approved (with or without caveats) by a professional, for a date inside the review's validity.</summary>
-    public bool IsProfessionallyApprovedOn(DateOnly date)
+    /// <summary>
+    /// Approved (with or without caveats) by a professional, for a date inside the review's validity and — when the
+    /// regime of the operation is known — for a regime the review covers. A review dated in the future, expired,
+    /// asking for changes or rejecting never approves.
+    /// </summary>
+    public bool IsProfessionallyApprovedOn(DateOnly date, string? regime = null)
         => ProfessionalReview is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats
            && ProfessionalReviewValidFrom is not null && ProfessionalReviewValidFrom <= date
-           && (ProfessionalReviewValidTo is null || date <= ProfessionalReviewValidTo);
+           && (ProfessionalReviewValidTo is null || date <= ProfessionalReviewValidTo)
+           && (regime is null || ProfessionalReviewRegimes.Contains(regime, StringComparer.Ordinal));
 
     /// <summary>
     /// Internal product/governance approval for the controlled pilot — independent of
@@ -173,35 +189,70 @@ public class TaxRuleVersion : BaseEntity
     /// states its scope and from when it holds; an approval with caveats states them; a review that
     /// asks for changes or rejects says why. Each review is audited by the caller.
     /// </summary>
-    public void RecordProfessionalReview(ProfessionalReviewInput r, DateTime atUtc)
+    public TaxProfessionalReviewRecord RecordProfessionalReview(ProfessionalReviewInput r, DateTime atUtc)
+    {
+        CheckWhoAndWhen(r, atUtc);
+        CheckOutcome(r);
+
+        var record = TaxProfessionalReviewRecord.From(Id, ProfessionalReview, r);
+        ProfessionalReview = r.Status;
+        ProfessionalReviewedBy = record.Reviewer;
+        ProfessionalReference = record.ProfessionalReference;
+        ProfessionalReviewedAt = atUtc;
+        ProfessionalReviewedOn = record.ReviewedOn;
+        ProfessionalReviewScope = record.Scope;
+        ProfessionalReviewRegimes = [.. record.CoveredRegimes];
+        ProfessionalReviewValidFrom = r.ValidFrom;
+        ProfessionalReviewValidTo = r.ValidTo;
+        ProfessionalReviewAssumptions = record.Assumptions;
+        ProfessionalReviewCaveats = record.Caveats;
+        ProfessionalReviewNotes = record.Notes;
+        ProfessionalReviewRecordedById = record.RecordedById;
+        ProfessionalReviewRecordedBy = record.RecordedByName;
+        ProfessionalReviewRecordedByRole = record.RecordedByRole;
+        ProfessionalReviewRecordId = record.Id;
+        ProfessionalReviewDocumentId = record.SupportingDocumentId;
+        SetUpdatedAt();
+        return record;
+    }
+
+    /// <summary>A review names the professional (as informed) and who recorded it, and its dates make sense.</summary>
+    private static void CheckWhoAndWhen(ProfessionalReviewInput r, DateTime atUtc)
     {
         if (r.Status == ProfessionalReviewStatus.Pending)
             throw new DomainException("Pendente é o estado inicial; registre a revisão recebida.", "tax_review_status");
         if (string.IsNullOrWhiteSpace(r.Reviewer)) throw new DomainException("Informe quem revisou.", "tax_review_reviewer");
+        if (r.RecordedById == Guid.Empty || string.IsNullOrWhiteSpace(r.RecordedByName))
+            throw new DomainException("O registro da revisão identifica quem o fez no sistema.", "tax_review_recorder");
         if (r.ValidFrom is not null && r.ValidTo is not null && r.ValidTo < r.ValidFrom)
             throw new DomainException("O fim da validade da revisão é anterior ao início.", "tax_review_validity");
-        if (r.Status is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats
-            && (string.IsNullOrWhiteSpace(r.Scope) || r.ValidFrom is null))
-            throw new DomainException("Uma aprovação diz o escopo e desde quando vale.", "tax_review_scope");
+        if (r.ReviewedOn is { } on && DateOnly.FromDateTime(atUtc).AddDays(1) < on)
+            throw new DomainException("A data da revisão não pode ser futura.", "tax_review_date");
+    }
+
+    /// <summary>
+    /// What each outcome must state: an approval its scope, regimes and validity within this version's; caveats when approved with
+    /// caveats; the reason when changes are asked or the rule is rejected.
+    /// </summary>
+    private void CheckOutcome(ProfessionalReviewInput r)
+    {
+        if (r.Status is ProfessionalReviewStatus.Approved or ProfessionalReviewStatus.ApprovedWithCaveats) CheckApproval(r);
         if (r.Status == ProfessionalReviewStatus.ApprovedWithCaveats && string.IsNullOrWhiteSpace(r.Caveats))
             throw new DomainException("Aprovação com ressalvas precisa das ressalvas.", "tax_review_caveats");
         if (r.Status is ProfessionalReviewStatus.ChangesRequired or ProfessionalReviewStatus.Rejected && string.IsNullOrWhiteSpace(r.Notes))
             throw new DomainException("Uma revisão que pede mudança ou rejeita precisa dizer por quê.", "tax_review_notes");
-
-        ProfessionalReview = r.Status;
-        ProfessionalReviewedBy = r.Reviewer.Trim();
-        ProfessionalReference = Clean(r.ProfessionalReference);
-        ProfessionalReviewedAt = atUtc;
-        ProfessionalReviewScope = Clean(r.Scope);
-        ProfessionalReviewValidFrom = r.ValidFrom;
-        ProfessionalReviewValidTo = r.ValidTo;
-        ProfessionalReviewAssumptions = Clean(r.Assumptions);
-        ProfessionalReviewCaveats = Clean(r.Caveats);
-        ProfessionalReviewNotes = Clean(r.Notes);
-        SetUpdatedAt();
     }
 
-    private static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    private void CheckApproval(ProfessionalReviewInput r)
+    {
+        if (string.IsNullOrWhiteSpace(r.Scope) || r.ValidFrom is null)
+            throw new DomainException("Uma aprovação diz o escopo e desde quando vale.", "tax_review_scope");
+        if (!r.CoveredRegimes.Any(x => !string.IsNullOrWhiteSpace(x)))
+            throw new DomainException("Uma aprovação diz a quais regimes do estabelecimento se aplica.", "tax_review_regimes");
+        var beyondEnd = ValidTo is not null && (r.ValidTo is null || r.ValidTo > ValidTo);
+        if (r.ValidFrom < ValidFrom || beyondEnd)
+            throw new DomainException("A aprovação profissional não vai além da vigência da versão.", "tax_review_validity");
+    }
 
     public static TaxRuleVersion Create(
         Guid ruleId, int version, DateOnly validFrom, DateOnly? validTo, int priority,
@@ -256,10 +307,16 @@ public class TaxRuleVersion : BaseEntity
     }
 }
 
-/// <summary>A professional review as received: who, under which identification, scope, validity, assumptions and caveats.</summary>
+/// <summary>
+/// A professional review as received — who reviewed, under which identification, when, scope (text and covered
+/// regimes), validity, assumptions, caveats and the supporting document — and, apart, the authenticated user who
+/// records it.
+/// </summary>
 public sealed record ProfessionalReviewInput(
     ProfessionalReviewStatus Status, string Reviewer, string? ProfessionalReference, string? Scope, DateOnly? ValidFrom,
-    DateOnly? ValidTo, string? Assumptions, string? Caveats, string? Notes);
+    DateOnly? ValidTo, string? Assumptions, string? Caveats, string? Notes,
+    IReadOnlyList<string> CoveredRegimes, DateOnly? ReviewedOn, Guid? SupportingDocumentId,
+    Guid RecordedById, string RecordedByName, string RecordedByRole);
 
 /// <summary>
 /// An internal pilot approval as decided: policy, the authenticated actor (id, display name, capability),

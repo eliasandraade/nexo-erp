@@ -44,9 +44,15 @@ public sealed class PlatformWriteAuthorizationTests : IClassFixture<TestWebAppli
         ["PlatformAuth.RevokeAll"] = "encerra as sessões da própria conta",
         ["Platform.CreateNote"] = "nota interna de atendimento sobre a empresa, auditada; não muda o que a empresa pode fazer",
         ["Platform.TogglePin"] = "fixa uma nota interna, auditado; não muda o que a empresa pode fazer",
+        // Decisão pendente do dono (PR #85): hoje o freio de emergência fica aberto a todo operador da plataforma.
+        ["PlatformTaxModule.Suspend"] = "freio de emergência da inteligência tributária: só interrompe trabalho novo na hora (frase SUSPENDER, "
+            + "auditado), nunca libera nada; ativar, reativar e desativar continuam exigindo super admin",
     };
 
-    /// <summary>Every write of the tax catalogue and pilot, with a body that would be accepted if the policy let it through.</summary>
+    /// <summary>
+    /// Every admin write under /api/platform/tax (catalogue, pilot, module, documents, classifications, obligations,
+    /// retention), with a body that gets past model binding, so a refusal can only come from the policy.
+    /// </summary>
     private static readonly Dictionary<string, Func<Seed, (string Path, object Body)>> CatalogueWrites = new()
     {
         ["POST api/platform/tax/legal-sources"] = s => ("/api/platform/tax/legal-sources", new
@@ -75,11 +81,56 @@ public sealed class PlatformWriteAuthorizationTests : IClassFixture<TestWebAppli
         ["POST api/platform/tax/pilot/participants"] = s => ("/api/platform/tax/pilot/participants", new { tenantId = s.TenantId, storeId = (Guid?)null }),
         ["POST api/platform/tax/pilot/participants/{id:guid}/remove"] = s => ($"/api/platform/tax/pilot/participants/{Guid.NewGuid()}/remove",
             new { reason = "Teste de autorização" }),
+        // The module: the host configures no mode, so even an admin activation is refused by the checklist (never by the policy).
+        ["POST api/platform/tax/module/activate"] = s => ("/api/platform/tax/module/activate", new
+        {
+            mode = "ControlledPilot", decisionReference = $"DEC-{s.Tag}", reason = "Teste de autorização",
+            confirmation = "ATIVAR PILOTO CONTROLADO", acknowledgeShadowMode = true,
+        }),
+        ["POST api/platform/tax/module/deactivate"] = s => ("/api/platform/tax/module/deactivate",
+            new { reason = "Teste de autorização", confirmation = "DESATIVAR" }),
+        // Multipart: the upload only accepts form data, and any other content type would be refused before authorization.
+        ["POST api/platform/tax/documents"] = s => ("/api/platform/tax/documents", PdfForm(s.Tag)),
+        ["POST api/platform/tax/documents/{id:guid}/revoke"] = s => ($"/api/platform/tax/documents/{Guid.NewGuid()}/revoke",
+            new { reason = "Teste de autorização" }),
+        ["POST api/platform/tax/classifications/import"] = s => ("/api/platform/tax/classifications/import", new
+        {
+            kind = "CClassTrib", source = "Fonte fictícia da suíte de testes", sourceVersion = (string?)null, sourceDocumentId = (Guid?)null,
+            items = new[] { new { code = $"AZ{s.Tag[..4]}", description = "Código fictício", validFrom = "2026-01-01", validTo = (string?)null, notes = (string?)null } },
+        }),
+        ["POST api/platform/tax/classifications/{id:guid}/status"] = s => ($"/api/platform/tax/classifications/{Guid.NewGuid()}/status",
+            new { status = "Active", reason = "Teste de autorização" }),
+        ["POST api/platform/tax/classifications/{id:guid}/professional-review"] = s => ($"/api/platform/tax/classifications/{Guid.NewGuid()}/professional-review",
+            new { status = "Approved", notes = "Teste de autorização" }),
+        ["POST api/platform/tax/obligations"] = s => ("/api/platform/tax/obligations",
+            new { code = $"OBR-{s.Tag}", name = "Obrigação de teste", description = (string?)null, reference = "art. 1" }),
+        ["POST api/platform/tax/obligations/{id:guid}/active"] = s => ($"/api/platform/tax/obligations/{Guid.NewGuid()}/active", new { active = false }),
+        ["PUT api/platform/tax/retention-policies"] = s => ("/api/platform/tax/retention-policies", new
+        {
+            evidenceType = (string?)null, retentionMonths = 60, startsAt = "UploadDate", enabled = true, allowTenantOverride = false,
+            rationale = "Teste de autorização", reference = $"DEC-{s.Tag}",
+        }),
     };
+
+    /// <summary>A minimal PDF as the upload form (a fresh content per request: an HttpContent is sent once).</summary>
+    private static MultipartFormDataContent PdfForm(string tag)
+    {
+        var file = new ByteArrayContent("%PDF-1.4\n%%EOF\n"u8.ToArray());
+        file.Headers.ContentType = new MediaTypeHeaderValue("application/pdf");
+        return new MultipartFormDataContent
+        {
+            { file, "file", $"authz-{tag}.pdf" },
+            { new StringContent("Teste de autorização"), "purpose" },
+        };
+    }
 
     public static IEnumerable<object[]> CatalogueWriteRoutes => CatalogueWrites.Keys.Select(k => new object[] { k });
 
-    private static readonly string[] CatalogueReads = ["/api/platform/tax/rules", "/api/platform/tax/legal-sources", "/api/platform/tax/pilot"];
+    private static readonly string[] CatalogueReads =
+    [
+        "/api/platform/tax/rules", "/api/platform/tax/legal-sources", "/api/platform/tax/pilot", "/api/platform/tax/module",
+        "/api/platform/tax/documents", "/api/platform/tax/classifications", "/api/platform/tax/obligations", "/api/platform/tax/retention-policies",
+    ];
 
     private sealed record Seed(string Tag, string SourceCode, string RuleKey, Guid VersionId, Guid TenantId);
 
@@ -117,6 +168,7 @@ public sealed class PlatformWriteAuthorizationTests : IClassFixture<TestWebAppli
     private static Task<HttpResponseMessage> Send(HttpClient c, string route, Seed seed)
     {
         var (path, body) = CatalogueWrites[route](seed);
+        if (body is HttpContent content) return c.PostAsync(path, content);
         return route.StartsWith("PUT ", StringComparison.Ordinal) ? c.PutAsJsonAsync(path, body) : c.PostAsJsonAsync(path, body);
     }
 
@@ -143,7 +195,7 @@ public sealed class PlatformWriteAuthorizationTests : IClassFixture<TestWebAppli
         return new Seed(tag, source, key, version, tenantId);
     }
 
-    /// <summary>The whole catalogue and pilot as the platform shows them: any change made by a write shows up here.</summary>
+    /// <summary>The catalogue, pilot, module and references as the platform shows them: any change made by a write shows up here.</summary>
     private static async Task<string> SnapshotAsync(HttpClient c)
     {
         var parts = new List<string>();

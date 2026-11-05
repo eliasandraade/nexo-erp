@@ -139,7 +139,9 @@ public static class IntegrationsDependencyInjection
         // ── Storage ───────────────────────────────────────────────────────────────────
         services.Configure<StorageOptions>(
             configuration.GetSection(StorageOptions.SectionKey));
-        services.AddSingleton<IStorageProvider, CloudflareR2Provider>();
+        services.AddSingleton<CloudflareR2Provider>();
+        services.AddSingleton<IStorageProvider>(sp => sp.GetRequiredService<CloudflareR2Provider>());
+        services.AddSingleton<IStorageObjectReader>(sp => sp.GetRequiredService<CloudflareR2Provider>());
         services.AddSingleton<IStoragePublicUrlResolver, StoragePublicUrlResolver>();
         services.AddScoped<IPrivateFileUrls, PrivateFileUrls>();   // scoped: signs only the current tenant's keys
 

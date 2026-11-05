@@ -56,7 +56,34 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         var seeder = scope.ServiceProvider.GetRequiredService<DataSeeder>();
         await db.Database.MigrateAsync();
         await seeder.SeedAsync();
+        await SeedTaxTestClassificationAsync(db);
     }
+
+    /// <summary>
+    /// The fictitious cClassTrib the tax suite uses ("TEST01"), active from 2026 and with a fictitious approval. Test data only:
+    /// production starts with an empty catalogue, codes enter by documented import + explicit activation, and no review is ever invented.
+    /// </summary>
+    public const string TestCClassTrib = "TEST01";
+
+    private static async Task SeedTaxTestClassificationAsync(NexoDbContext db)
+    {
+        if (await db.TaxClassificationCodes.AnyAsync(c => c.Code == TestCClassTrib)) return;
+        var code = Nexo.Domain.Modules.TaxIntelligence.TaxClassificationCode.Import(
+            Nexo.Domain.Modules.TaxIntelligence.TaxClassificationKind.CClassTrib, TestCClassTrib, "Código fictício da suíte de testes",
+            "Suíte de testes de integração (dado fictício)", null, new DateOnly(2026, 1, 1), null, null, null, null, "suite");
+        code.ChangeStatus(Nexo.Domain.Modules.TaxIntelligence.TaxClassificationStatus.Active, "suite", DateTime.UtcNow);
+        // Fictitious review, test database only, so the definitive-mode tests exercise the per-rule check.
+        code.RecordProfessionalReview(Nexo.Domain.Modules.TaxIntelligence.ProfessionalReviewStatus.Approved,
+            "Aprovação fictícia da suíte de testes — não existe fora do banco de teste.");
+        db.TaxClassificationCodes.Add(code);
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>The private file store of the suite (shared by every host built from this factory).</summary>
+    public InMemoryTaxFileStorage TaxFiles { get; } = new();
+
+    /// <summary>SELECTs on the tax tables, shared by every host derived from this factory (N+1 checks).</summary>
+    public TaxQueryCounter TaxQueries { get; } = new();
 
     public new async Task DisposeAsync()
     {
@@ -85,7 +112,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
                 });
 
                 var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
-                opts.AddInterceptors(interceptor, sp.GetRequiredService<SqlCommandCounter>());
+                opts.AddInterceptors(interceptor, TaxQueries, sp.GetRequiredService<SqlCommandCounter>());
                 // a page or batch without an order is nondeterministic: fail the test instead of logging a warning
                 opts.ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.RowLimitingOperationWithoutOrderByWarning));
             });
@@ -110,6 +137,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
             services.RemoveAll<Nexo.Application.Common.Interfaces.IEmailService>();
             services.AddScoped<Nexo.Application.Common.Interfaces.IEmailService, DeliveringTestEmailService>();
 
+            // Private tax files live in memory: the test host has no object store.
+            services.RemoveAll<Nexo.Infrastructure.TaxIntelligence.Files.ITaxFileStorage>();
+            services.AddSingleton<Nexo.Infrastructure.TaxIntelligence.Files.ITaxFileStorage>(TaxFiles);
             // Claude calls go to an in-process fake: the suite never reaches Anthropic.
             services.AddHttpClient(Nexo.Infrastructure.Modules.Interpreter.AnthropicClientFactory.HttpClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => Anthropic);

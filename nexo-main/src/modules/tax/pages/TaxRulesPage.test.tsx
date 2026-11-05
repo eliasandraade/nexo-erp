@@ -18,7 +18,8 @@ const rule: api.TaxRuleDto = {
     notes: null, activatedAt: "2026-10-26T00:00:00Z", legalSourceCodes: ["LC214-2025-ART346"], createdAt: "2026-10-26T00:00:00Z",
     professionalReview: "Pending", professionalReviewedBy: null, professionalReviewedAt: null, professionalReviewNotes: null,
     professionalReference: null, professionalReviewScope: null, professionalReviewValidFrom: null, professionalReviewValidTo: null,
-    professionalReviewAssumptions: null, professionalReviewCaveats: null,
+    professionalReviewAssumptions: null, professionalReviewCaveats: null, professionalReviewRegimes: null, professionalReviewedOn: null,
+    professionalReviewRecordedBy: null, professionalReviewRecordedByRole: null, professionalReviewDocumentId: null,
     internalApproval: {
       status: "ApprovedForControlledPilot", policy: "orken-pilot-approval/1", approvedById: "u-platform", approvedBy: "Operador da plataforma",
       approvedByRole: "Platform",
@@ -33,6 +34,7 @@ const source: api.TaxLegalSourceDto = {
   id: "s1", code: "LC214-2025-ART346", kind: "ComplementaryLaw", title: "Lei Complementar nº 214, de 16 de janeiro de 2025",
   reference: "art. 346", url: "https://www.planalto.gov.br/ccivil_03/leis/lcp/Lcp214compilado.htm", excerpt: "Art. 346. …",
   publishedOn: "2025-01-16", textVerification: "Verified", verifiedAt: "2026-10-26T00:00:00Z", verifiedBy: "Conferência literal", notes: null,
+  verificationRecordedBy: null, rulesUsing: 1,
 };
 
 describe("TaxRulesPage", () => {
@@ -78,7 +80,7 @@ describe("TaxRulesPage", () => {
     renderTax(<TaxRulesPage />);
 
     expect(await screen.findByText("Revisão profissional pediu ajustes")).toBeInTheDocument();
-    expect(screen.getByText(/Revisão profissional por Contadora .*: Ajustar a vigência\./)).toBeInTheDocument();
+    expect(screen.getByText(/Revisão profissional por Contadora.*: Ajustar a vigência\./)).toBeInTheDocument();
   });
 
   it("says a verified excerpt is only the official text, not a professional approval", async () => {

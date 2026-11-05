@@ -19,6 +19,10 @@ namespace Nexo.Infrastructure.TaxIntelligence;
 /// </summary>
 public sealed class TaxCatalogService
 {
+    private const string RuleVersionLabel = "Versão de regra";
+    private const string RuleVersionEntity = "RuleVersion";
+    private const string PilotScopeEntity = "PilotScope";
+
     private readonly NexoDbContext _db;
     private readonly TaxEngineRegistry _engines;
     private readonly TaxAuditTrail _audit;
@@ -52,7 +56,7 @@ public sealed class TaxCatalogService
         var ids = rows.Select(x => x.v.Id).ToList();
         var codes = await _db.Set<TaxRuleVersionSource>().AsNoTracking()
             .Where(s => ids.Contains(s.RuleVersionId))
-            .Select(s => new { s.RuleVersionId, s.LegalSource.Code })
+            .Select(s => new { s.RuleVersionId, s.LegalSource!.Code })
             .ToListAsync(ct);
         var codesByVersion = codes.GroupBy(c => c.RuleVersionId)
             .ToDictionary(g => g.Key, g => g.Select(c => c.Code).OrderBy(c => c, StringComparer.Ordinal).ToList());
@@ -80,7 +84,12 @@ public sealed class TaxCatalogService
     }
 
     public async Task<IReadOnlyList<TaxLegalSourceDto>> GetLegalSourcesAsync(CancellationToken ct)
-        => (await _db.TaxLegalSources.AsNoTracking().OrderBy(s => s.Code).ToListAsync(ct)).Select(MapSource).ToList();
+    {
+        var usage = await _db.Set<TaxRuleVersionSource>().AsNoTracking().GroupBy(s => s.LegalSourceId)
+            .Select(g => new { g.Key, Count = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+        return (await _db.TaxLegalSources.AsNoTracking().OrderBy(s => s.Code).ToListAsync(ct))
+            .Select(s => MapSource(s) with { RulesUsing = usage.GetValueOrDefault(s.Id) }).ToList();
+    }
 
     // ── Platform administration ─────────────────────────────────────────────────
 
@@ -88,7 +97,7 @@ public sealed class TaxCatalogService
     {
         var code = r.Code.Trim().ToUpperInvariant();
         if (await _db.TaxLegalSources.AnyAsync(s => s.Code == code, ct))
-            throw new ConflictException($"Já existe a fonte {code}.");
+            throw new ConflictException($"Já existe a fonte {code}.", "tax_legal_source_duplicate");
         var source = TaxLegalSource.Create(code, r.Kind, r.Title, r.Reference, r.Url, r.Excerpt, r.PublishedOn, r.Notes);
         _db.TaxLegalSources.Add(source);
         _audit.RecordPlatform(TaxAuditActions.LegalSourceCreated, "LegalSource", source.Id, $"Fonte {code} cadastrada ({r.Reference}).");
@@ -100,8 +109,11 @@ public sealed class TaxCatalogService
     {
         var source = await _db.TaxLegalSources.FirstOrDefaultAsync(s => s.Code == code.ToUpperInvariant(), ct)
             ?? throw new NotFoundException("Fonte jurídica", code);
-        source.MarkVerified(r.VerifiedBy, DateTime.UtcNow);
-        _audit.RecordPlatform(TaxAuditActions.LegalSourceVerified, "LegalSource", source.Id, $"Fonte {source.Code} conferida por {r.VerifiedBy}.");
+        // Who compared the text is as informed; who recorded it is the authenticated user. A verified source activates nothing.
+        source.MarkVerified(r.VerifiedBy, DateTime.UtcNow, _audit.UserId, _audit.UserName);
+        _audit.RecordPlatform(TaxAuditActions.LegalSourceVerified, "LegalSource", source.Id,
+            $"Fonte {source.Code} conferida por {r.VerifiedBy.Trim()} (registrado por {_audit.UserName}). Conferência do texto não ativa regra nem é parecer.",
+            new { comparedBy = r.VerifiedBy.Trim(), recordedBy = _audit.UserName, recordedById = _audit.UserId });
         await _db.SaveChangesAsync(ct);
         return MapSource(source);
     }
@@ -112,7 +124,7 @@ public sealed class TaxCatalogService
         if (key.StartsWith(TaxSimulator.HypothesisKeyPrefix, StringComparison.Ordinal))
             throw new DomainException("Chaves HYPOTHESIS.* são reservadas às simulações.");
         if (await _db.TaxRules.AnyAsync(x => x.Key == key, ct))
-            throw new ConflictException($"Já existe a regra {key}.");
+            throw new ConflictException($"Já existe a regra {key}.", "tax_rule_duplicate");
         var rule = TaxRule.Create(key, r.Name, r.Description);
         _db.TaxRules.Add(rule);
         _audit.RecordPlatform(TaxAuditActions.RuleCreated, "Rule", rule.Id, $"Regra {key} criada.");
@@ -151,7 +163,7 @@ public sealed class TaxCatalogService
             canonical.Serialize(conditions), canonical.Serialize(result), hash, "platform", _audit.UserName, r.Notes,
             sources.Select(s => s.Id));
         _db.TaxRuleVersions.Add(version);
-        _audit.RecordPlatform(TaxAuditActions.RuleVersionCreated, "RuleVersion", version.Id,
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionCreated, RuleVersionEntity, version.Id,
             $"Regra {key} v{next} criada como rascunho ({r.ValidFrom:yyyy-MM-dd} a {(r.ValidTo is null ? "sem fim" : r.ValidTo.Value.ToString("yyyy-MM-dd"))}).",
             new { key, version = next, hash, conditions = version.ConditionsJson, result = version.ResultJson, sources = codes });
         await _db.SaveChangesAsync(ct);
@@ -163,7 +175,7 @@ public sealed class TaxCatalogService
     public async Task<TaxRuleVersionDto> ChangeStatusAsync(Guid versionId, ChangeTaxRuleVersionStatusRequest r, CancellationToken ct)
     {
         var ruleId = await _db.TaxRuleVersions.AsNoTracking().Where(v => v.Id == versionId).Select(v => (Guid?)v.RuleId).FirstOrDefaultAsync(ct)
-            ?? throw new NotFoundException("Versão de regra", versionId);
+            ?? throw new NotFoundException(RuleVersionLabel, versionId);
         // Lock first, read after: a status change made by another admin meanwhile is seen, not overwritten.
         await LockRuleAsync(ruleId, ct);
         var version = await _db.TaxRuleVersions.Include(v => v.Sources).ThenInclude(s => s.LegalSource)
@@ -191,7 +203,7 @@ public sealed class TaxCatalogService
             }
         }
 
-        _audit.RecordPlatform(TaxAuditActions.RuleVersionStatusChanged, "RuleVersion", version.Id,
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionStatusChanged, RuleVersionEntity, version.Id,
             $"Versão {version.Version} da regra passou de {before} para {r.Status}.",
             new { before = before.ToString(), after = r.Status.ToString(), superseded });
         await _db.SaveChangesAsync(ct);
@@ -206,16 +218,27 @@ public sealed class TaxCatalogService
     /// </summary>
     public async Task<TaxRuleVersionDto> RecordProfessionalReviewAsync(Guid versionId, RecordProfessionalReviewRequest r, CancellationToken ct)
     {
-        var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
-            ?? throw new NotFoundException("Versão de regra", versionId);
+        // Serialised per rule: two operators never interleave reviews of the same version.
+        var ruleId = await _db.TaxRuleVersions.AsNoTracking().Where(v => v.Id == versionId).Select(v => (Guid?)v.RuleId).FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException(RuleVersionLabel, versionId);
+        await LockRuleAsync(ruleId, ct);
+        var version = await _db.TaxRuleVersions.FirstAsync(v => v.Id == versionId, ct);
+        if (r.SupportingDocumentId is { } docId && !await _db.TaxPlatformDocuments.AnyAsync(d => d.Id == docId
+                && d.Purpose == TaxPlatformDocument.ProfessionalReviewPurpose && d.Status == TaxFileStatus.Active, ct))
+            throw new DomainException("O documento de suporte não existe, não é de revisão profissional ou foi revogado.", "tax_review_document");
         var before = version.ProfessionalReview;
-        version.RecordProfessionalReview(new ProfessionalReviewInput(r.Status, r.Reviewer, r.ProfessionalReference, r.Scope, r.ValidFrom,
-            r.ValidTo, r.Assumptions, r.Caveats, r.Notes), DateTime.UtcNow);
-        _audit.RecordPlatform(TaxAuditActions.RuleVersionProfessionalReview, "RuleVersion", version.Id,
-            $"Revisão profissional da versão {version.Version}: {before} → {r.Status} ({r.Reviewer.Trim()}).",
-            new { before = before.ToString(), after = r.Status.ToString(), reviewer = r.Reviewer.Trim(), r.ProfessionalReference, r.Scope,
-                r.ValidFrom, r.ValidTo, r.Assumptions, r.Caveats, notes = r.Notes });
+        // The professional is as informed; who records it is the authenticated user and the time is the server's.
+        var record = version.RecordProfessionalReview(new ProfessionalReviewInput(r.Status, r.Reviewer, r.ProfessionalReference, r.Scope, r.ValidFrom,
+            r.ValidTo, r.Assumptions, r.Caveats, r.Notes, (r.CoveredRegimes ?? []).Select(x => x.ToString()).ToList(), r.ReviewedOn,
+            r.SupportingDocumentId, _audit.UserId, _audit.UserName, _audit.UserRole), DateTime.UtcNow);
+        _db.TaxProfessionalReviewRecords.Add(record);
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionProfessionalReview, RuleVersionEntity, version.Id,
+            $"Revisão profissional da versão {version.Version}: {before} → {r.Status} (profissional informado: {r.Reviewer.Trim()}; registrado por {_audit.UserName}).",
+            new { recordId = record.Id, before = before.ToString(), after = r.Status.ToString(), reviewer = r.Reviewer.Trim(), r.ProfessionalReference, r.Scope,
+                r.ValidFrom, r.ValidTo, coveredRegimes = record.CoveredRegimes, r.ReviewedOn, r.Assumptions, r.Caveats, notes = r.Notes,
+                r.SupportingDocumentId, recordedBy = _audit.UserName, recordedById = _audit.UserId, recordedByRole = _audit.UserRole });
         await _db.SaveChangesAsync(ct);
+        await _db.Database.CommitTransactionAsync(ct);
         _log.LogWarning("Tax rule version {VersionId} professional review {Before} -> {After}", version.Id, before, r.Status);
         return await GetVersionAsync(version.Id, ct);
     }
@@ -228,13 +251,13 @@ public sealed class TaxCatalogService
     public async Task<TaxRuleVersionDto> ApproveForPilotAsync(Guid versionId, ApproveRuleForPilotRequest r, CancellationToken ct)
     {
         var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
-            ?? throw new NotFoundException("Versão de regra", versionId);
+            ?? throw new NotFoundException(RuleVersionLabel, versionId);
         var before = version.InternalApproval;
         var previousReference = version.InternalApprovalDecisionRef;
         // The actor is the authenticated platform user and the time is the server's — never taken from the request.
         version.ApproveForControlledPilot(new InternalApprovalInput(TaxGovernance.PilotPolicy, _audit.UserId, _audit.UserName, _audit.UserRole,
             r.Scope, r.ValidFrom, r.ValidTo, r.Caveats, r.DecisionReference), DateTime.UtcNow);
-        _audit.RecordPlatform(TaxAuditActions.RuleVersionPilotApproval, "RuleVersion", version.Id,
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionPilotApproval, RuleVersionEntity, version.Id,
             $"Aprovação interna para piloto controlado da versão {version.Version}: {before} → {version.InternalApproval} ({_audit.UserName}). Não é parecer profissional.",
             new { before = before.ToString(), after = version.InternalApproval.ToString(), policy = TaxGovernance.PilotPolicy, nature = TaxGovernance.PilotNature,
                 approvedById = _audit.UserId, approvedBy = _audit.UserName, approvedByRole = _audit.UserRole,
@@ -249,9 +272,9 @@ public sealed class TaxCatalogService
     public async Task<TaxRuleVersionDto> WithdrawPilotApprovalAsync(Guid versionId, WithdrawPilotApprovalRequest r, CancellationToken ct)
     {
         var version = await _db.TaxRuleVersions.FirstOrDefaultAsync(v => v.Id == versionId, ct)
-            ?? throw new NotFoundException("Versão de regra", versionId);
+            ?? throw new NotFoundException(RuleVersionLabel, versionId);
         version.WithdrawPilotApproval(r.Reason, DateTime.UtcNow);
-        _audit.RecordPlatform(TaxAuditActions.RuleVersionPilotApprovalWithdrawn, "RuleVersion", version.Id,
+        _audit.RecordPlatform(TaxAuditActions.RuleVersionPilotApprovalWithdrawn, RuleVersionEntity, version.Id,
             $"Aprovação interna para piloto da versão {version.Version} retirada: {r.Reason.Trim()}",
             new { policy = version.InternalApprovalPolicy, reason = r.Reason.Trim() });
         await _db.SaveChangesAsync(ct);
@@ -270,7 +293,7 @@ public sealed class TaxCatalogService
         var scope = await LoadScopeForUpdateAsync(ct);
         var before = new { scope.Enabled, scope.ValidFrom, scope.ValidTo, scope.DecisionReference };
         scope.Configure(r.Enabled, r.ValidFrom, r.ValidTo, r.DecisionReference, _audit.UserId, _audit.UserName, DateTime.UtcNow);
-        _audit.RecordPlatform(TaxAuditActions.PilotScopeConfigured, "PilotScope", scope.Id,
+        _audit.RecordPlatform(TaxAuditActions.PilotScopeConfigured, PilotScopeEntity, scope.Id,
             $"Piloto controlado {(r.Enabled ? "ativo" : "inativo")} de {r.ValidFrom:dd/MM/yyyy}{(r.ValidTo is null ? "" : $" a {r.ValidTo:dd/MM/yyyy}")} ({_audit.UserName}).",
             new { before, after = new { r.Enabled, r.ValidFrom, r.ValidTo, r.DecisionReference }, actorRole = _audit.UserRole });
         await _db.SaveChangesAsync(ct);
@@ -287,7 +310,7 @@ public sealed class TaxCatalogService
         var scope = await LoadScopeForUpdateAsync(ct);
         var p = scope.AddParticipant(r.TenantId, r.StoreId, _audit.UserId, _audit.UserName, DateTime.UtcNow);
         _db.TaxPilotParticipants.Add(p);
-        _audit.RecordPlatform(TaxAuditActions.PilotParticipantAdded, "PilotScope", scope.Id,
+        _audit.RecordPlatform(TaxAuditActions.PilotParticipantAdded, PilotScopeEntity, scope.Id,
             $"Participante incluído no piloto: tenant {r.TenantId}{(r.StoreId is null ? " (todas as lojas)" : $", loja {r.StoreId}")}.",
             new { participantId = p.Id, r.TenantId, r.StoreId, actorRole = _audit.UserRole });
         await _db.SaveChangesAsync(ct);
@@ -298,7 +321,7 @@ public sealed class TaxCatalogService
     {
         var scope = await LoadScopeForUpdateAsync(ct);
         var p = scope.RemoveParticipant(participantId, r.Reason, _audit.UserId, _audit.UserName, DateTime.UtcNow);
-        _audit.RecordPlatform(TaxAuditActions.PilotParticipantRemoved, "PilotScope", scope.Id,
+        _audit.RecordPlatform(TaxAuditActions.PilotParticipantRemoved, PilotScopeEntity, scope.Id,
             $"Participante retirado do piloto: tenant {p.TenantId}{(p.StoreId is null ? "" : $", loja {p.StoreId}")}. {r.Reason.Trim()}",
             new { participantId = p.Id, p.TenantId, p.StoreId, reason = r.Reason.Trim(), actorRole = _audit.UserRole });
         await _db.SaveChangesAsync(ct);
@@ -347,8 +370,25 @@ public sealed class TaxCatalogService
         new TaxInternalApprovalDto(v.InternalApproval, v.InternalApprovalPolicy, v.InternalApprovedById, v.InternalApprovedBy, v.InternalApprovedByRole,
             v.InternalApprovedAt, v.InternalApprovalScope,
             v.InternalApprovalValidFrom, v.InternalApprovalValidTo, v.InternalApprovalCaveats, v.InternalApprovalDecisionRef,
-            v.InternalApprovalWithdrawalReason, v.InternalApprovalWithdrawnAt, TaxGovernance.PilotNature));
+            v.InternalApprovalWithdrawalReason, v.InternalApprovalWithdrawnAt, TaxGovernance.PilotNature),
+        v.ProfessionalReviewRegimes, v.ProfessionalReviewedOn, v.ProfessionalReviewRecordedBy, v.ProfessionalReviewRecordedByRole,
+        v.ProfessionalReviewDocumentId);
 
     private static TaxLegalSourceDto MapSource(TaxLegalSource s) => new(
-        s.Id, s.Code, s.Kind, s.Title, s.Reference, s.Url, s.Excerpt, s.PublishedOn, s.TextVerification, s.VerifiedAt, s.VerifiedBy, s.Notes);
+        s.Id, s.Code, s.Kind, s.Title, s.Reference, s.Url, s.Excerpt, s.PublishedOn, s.TextVerification, s.VerifiedAt, s.VerifiedBy, s.Notes,
+        s.VerificationRecordedBy);
+
+    /// <summary>Every professional review ever recorded for a version, newest first — a later one never erases an earlier one.</summary>
+    public async Task<IReadOnlyList<TaxProfessionalReviewRecordDto>> ReviewHistoryAsync(Guid versionId, CancellationToken ct)
+    {
+        if (!await _db.TaxRuleVersions.AnyAsync(v => v.Id == versionId, ct)) throw new NotFoundException(RuleVersionLabel, versionId);
+        var records = await _db.TaxProfessionalReviewRecords.AsNoTracking().Where(r => r.RuleVersionId == versionId)
+            .OrderByDescending(r => r.CreatedAt).ToListAsync(ct);
+        var docIds = records.Where(r => r.SupportingDocumentId is not null).Select(r => r.SupportingDocumentId!.Value).ToList();
+        var docs = await _db.TaxPlatformDocuments.AsNoTracking().Where(d => docIds.Contains(d.Id)).ToDictionaryAsync(d => d.Id, ct);
+        return records.Select(r => new TaxProfessionalReviewRecordDto(r.Id, r.RuleVersionId, r.Status, r.PreviousStatus, r.Reviewer,
+            r.ProfessionalReference, r.ReviewedOn, r.Scope, r.CoveredRegimes, r.ValidFrom, r.ValidTo, r.Assumptions, r.Caveats, r.Notes,
+            r.SupportingDocumentId is { } id && docs.TryGetValue(id, out var d) ? TaxDocumentService.Map(d) : null,
+            r.RecordedByName, r.RecordedByRole, r.CreatedAt)).ToList();
+    }
 }

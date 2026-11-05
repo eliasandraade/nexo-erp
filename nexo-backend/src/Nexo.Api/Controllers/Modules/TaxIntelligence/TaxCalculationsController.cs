@@ -21,8 +21,10 @@ public class TaxCalculationsController : ControllerBase
     public TaxCalculationsController(TaxCalculationService service) => _service = service;
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<TaxCalculationSummaryDto>>> List([FromQuery] int take = 50, CancellationToken ct = default)
-        => Ok(await _service.ListAsync(take, ct));
+    public async Task<ActionResult<TaxPage<TaxCalculationSummaryDto>>> List([FromQuery] Nexo.Domain.Modules.TaxIntelligence.TaxDirection? direction,
+        [FromQuery] Nexo.Domain.Modules.TaxIntelligence.TaxTransactionSource? source, [FromQuery] DateOnly? from, [FromQuery] DateOnly? to,
+        [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken ct = default)
+        => Ok(await _service.ListAsync(direction, source, from, to, skip, take, ct));
 
     /// <summary>
     /// Whether engine V1 supports the operation (supported-operation matrix), without calculating or

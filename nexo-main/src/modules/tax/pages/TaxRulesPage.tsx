@@ -99,8 +99,15 @@ function Rule({ rule }: Readonly<{ rule: TaxRuleDto }>) {
               <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
                 <p>
                   Revisão profissional por {v.professionalReviewedBy}{v.professionalReference ? ` (${v.professionalReference})` : ""}
-                  {v.professionalReviewedAt ? ` em ${formatDateTime(v.professionalReviewedAt)}` : ""}{v.professionalReviewNotes ? `: ${v.professionalReviewNotes}` : ""}
+                  {v.professionalReviewedOn ? ` (revisão de ${formatIsoDate(v.professionalReviewedOn)})` : ""}{v.professionalReviewNotes ? `: ${v.professionalReviewNotes}` : ""}
                 </p>
+                {v.professionalReviewRecordedBy && (
+                  <p>
+                    Registrado na plataforma por {v.professionalReviewRecordedBy}{v.professionalReviewRecordedByRole ? ` (${v.professionalReviewRecordedByRole})` : ""}
+                    {v.professionalReviewedAt ? ` em ${formatDateTime(v.professionalReviewedAt)}` : ""} — quem registra não é quem revisou.
+                  </p>
+                )}
+                {v.professionalReviewRegimes && v.professionalReviewRegimes.length > 0 && <p>Regimes cobertos: {v.professionalReviewRegimes.join(", ")}</p>}
                 {v.professionalReviewScope && <p>Escopo da revisão: {v.professionalReviewScope}</p>}
                 {v.professionalReviewValidFrom && (
                   <p>Vale de {formatIsoDate(v.professionalReviewValidFrom)}{v.professionalReviewValidTo ? ` a ${formatIsoDate(v.professionalReviewValidTo)}` : " sem fim definido"}</p>

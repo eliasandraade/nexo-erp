@@ -7,7 +7,7 @@ import {
 describe("tax labels", () => {
   it("names every impact nature in words and gives each its own tone", () => {
     expect(IMPACT_NATURES.DefinitiveSaving.label).toBe("Economia");
-    expect(IMPACT_NATURES.CalculatedTaxReduction.label).toBe("Redução simulada do IBS/CBS calculado");
+    expect(IMPACT_NATURES.CalculatedTaxReduction.label).toBe("Redução do IBS/CBS calculado — não é economia");
     expect(IMPACT_NATURES.CalculatedTaxReduction.tone).not.toBe(IMPACT_NATURES.DefinitiveSaving.tone);
     expect(IMPACT_NATURES.Deferral.label).toBe("Diferimento — não é economia");
     expect(IMPACT_NATURES.CashFlow.label).toBe("Fluxo de caixa");
@@ -45,7 +45,7 @@ describe("review copy", () => {
     expect(SCENARIO_APPROVED_COPY).toBe("Cenário aprovado no escopo indicado. Não executa alteração comercial ou fiscal.");
     expect(SYSTEM_CALCULATION_COPY).toBe("Cálculo do sistema com as regras e os dados indicados.");
     expect(COMPLIANCE_VERIFIED_COPY).toBe("Obrigações verificadas no período e no escopo indicados.");
-    expect(IMPACT_NATURES.CalculatedTaxReduction.label).toBe("Redução simulada do IBS/CBS calculado");
+    expect(IMPACT_NATURES.CalculatedTaxReduction.label).toBe("Redução do IBS/CBS calculado — não é economia");
     expect(PROFESSIONAL_REVIEW.ReviewReceived.label).toContain("não é aprovação");
     expect(COMPLIANCE_STATUS.RemediationVerified.label).not.toBe(COMPLIANCE_STATUS.Verified.label);
     expect(Object.values(COMPLIANCE_STATUS).map((s) => s.label).join(" ")).not.toMatch(/conforme/i);

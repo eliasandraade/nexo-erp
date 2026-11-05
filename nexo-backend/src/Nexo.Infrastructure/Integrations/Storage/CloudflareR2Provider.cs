@@ -9,7 +9,7 @@ using Nexo.Application.Integrations.Options;
 
 namespace Nexo.Infrastructure.Integrations.Storage;
 
-public sealed class CloudflareR2Provider : IStorageProvider
+public sealed class CloudflareR2Provider : IStorageProvider, IStorageObjectReader
 {
     private readonly Lazy<IAmazonS3> _s3;
     private readonly StorageOptions  _opts;
@@ -109,6 +109,19 @@ public sealed class CloudflareR2Provider : IStorageProvider
         var bucket = BucketFor(key);
         var response = await _s3.Value.GetObjectAsync(bucket, key, ct);
         return response.ResponseStream;
+    }
+
+    /// <summary>
+    /// Tax files (<see cref="IStorageObjectReader"/>): the object's bytes read fully into memory, so the response is
+    /// released before the caller streams them back. Sizes are bounded when the files are stored.
+    /// </summary>
+    async Task<Stream> IStorageObjectReader.OpenReadAsync(string key, CancellationToken ct)
+    {
+        await using var source = await OpenReadAsync(key, ct);
+        var buffer = new MemoryStream();
+        await source.CopyToAsync(buffer, ct);
+        buffer.Position = 0;
+        return buffer;
     }
 
     public bool CanStorePrivateFiles => HasPrivateBucket(_opts.R2);

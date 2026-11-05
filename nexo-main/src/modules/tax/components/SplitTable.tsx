@@ -29,7 +29,7 @@ export function SplitTable({ items, showCalculation = false }: Readonly<{ items:
               <TableHead className="text-right">Retido</TableHead>
               <TableHead className="text-right">Diferença</TableHead>
               <TableHead>Situação</TableHead>
-              <TableHead />
+              <TableHead><span className="sr-only">Ações</span></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -45,6 +45,9 @@ export function SplitTable({ items, showCalculation = false }: Readonly<{ items:
                 <TableCell className="text-right tabular-nums">{formatCurrency(s.difference)}</TableCell>
                 <TableCell>
                   <ToneBadge label={labelOf(SPLIT_STATUS, s.status)} tone={toneOf(SPLIT_STATUS, s.status)} />
+                  {s.ageDays !== null && s.ageDays !== undefined && s.status !== "Matched" && (
+                    <p className="mt-1 text-xs text-muted-foreground">{s.ageDays} dia(s) desde a operação</p>
+                  )}
                   {s.settlements.length > 0 && (
                     <p className="mt-1 text-xs text-muted-foreground">
                       {s.settlements.length} {s.settlements.length === 1 ? "registro" : "registros"} · último {formatDateTime(s.settlements[s.settlements.length - 1].settledAt)}

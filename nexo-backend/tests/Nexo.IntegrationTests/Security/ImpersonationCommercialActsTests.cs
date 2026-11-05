@@ -3,12 +3,16 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Nexo.Api.Authorization;
+using Nexo.Api.Filters;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Integrations.Billing;
 using Nexo.Domain.Entities;
@@ -124,20 +128,213 @@ public class ImpersonationCommercialActsTests
         var (tenantId, email) = await NewTenantAsync();
         var imp = await ImpersonateAsync(tenantId);
         var owner = await AuthClientFactory.LoginAsync(_factory, email, TestCredentials.AdminPassword);
-        var body = new
+        object Assessment(string status) => new
         {
-            status = "Verified", periodFrom = "2026-06-01", periodTo = "2026-06-30", scope = "NF-e de saída do período",
+            status, periodFrom = "2026-06-01", periodTo = "2026-06-30", scope = "NF-e de saída do período",
             obligationsChecked = new[] { "Emissão de NF-e" }, evidence = "Relatório de conferência", assessedBy = "Contabilidade",
             assessedAt = (string?)null, notes = (string?)null, limitations = (string?)null, pnctParticipation = false,
         };
 
-        await ExpectForbiddenAsync(imp.PostAsJsonAsync("/api/tax/compliance-assessments", body));
+        await ExpectForbiddenAsync(imp.PostAsJsonAsync("/api/tax/compliance-assessments", Assessment("Verified")));
+        await ExpectForbiddenAsync(imp.PostAsJsonAsync("/api/tax/compliance-assessments", Assessment("Declared")));
 
         var assessments = await (await imp.GetAsync("/api/tax/compliance-assessments")).Content.ReadFromJsonAsync<JsonElement>();
         assessments.GetArrayLength().Should().Be(0, "nenhuma conferência foi registrada; e a leitura segue liberada");
 
-        var own = await owner.PostAsJsonAsync("/api/tax/compliance-assessments", body);
+        // o dono continua chegando à ação: a verificação só com texto livre é recusada pela regra dela, não pelo bloqueio, e a declaração é gravada
+        var verified = await owner.PostAsJsonAsync("/api/tax/compliance-assessments", Assessment("Verified"));
+        var refusal = await verified.Content.ReadAsStringAsync();
+        verified.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, refusal);
+        JsonDocument.Parse(refusal).RootElement.GetProperty("code").GetString().Should().Be("tax_compliance_results");
+
+        var declared = await owner.PostAsJsonAsync("/api/tax/compliance-assessments", Assessment("Declared"));
+        declared.StatusCode.Should().Be(HttpStatusCode.OK, await declared.Content.ReadAsStringAsync());
+    }
+
+    // ── Tax Intelligence: políticas e razão, só da Diretoria ─────────────────
+
+    /// <summary>Toda escrita tributária fechada durante o acesso. Lista exata de propósito: fechar ou abrir uma rota é uma decisão.</summary>
+    private static readonly string[] ClosedTaxWrites =
+    [
+        "POST api/tax/opportunities/{id:guid}/approve",
+        "POST api/tax/opportunities/{id:guid}/execution",
+        "POST api/tax/profile/versions",
+        "POST api/tax/compliance-assessments",
+        "POST api/tax/evidence-files/{id:guid}/legal-hold",
+        "PUT api/tax/materiality",
+        "PUT api/tax/retention-policies",
+        "POST api/tax/split/provider/import",
+    ];
+
+    /// <summary>
+    /// O token do acesso carrega o papel Diretoria: uma rota nova reservada à Diretoria abriria para o operador sem nenhum aviso. Os movimentos
+    /// do razão de créditos dividem a rota com a revisão, e o bloqueio deles está na ação (teste próprio abaixo).
+    /// </summary>
+    [Fact]
+    public void Every_tax_write_reserved_to_the_board_is_closed_during_an_impersonation()
+    {
+        var writes = (
+            from endpoint in _factory.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
+            let template = (endpoint.RoutePattern.RawText ?? "").TrimStart('/')
+            where template.StartsWith("api/tax/", StringComparison.OrdinalIgnoreCase)
+            from method in endpoint.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods ?? []
+            where method is "POST" or "PUT" or "PATCH" or "DELETE"
+            select (Key: $"{method} {template}", Endpoint: endpoint)).ToList();
+        writes.Should().NotBeEmpty();
+
+        var closed = writes.Where(w => w.Endpoint.Metadata.GetMetadata<DenyDuringImpersonationAttribute>() is not null).ToList();
+        closed.Select(w => w.Key).Should().BeEquivalentTo(ClosedTaxWrites);
+
+        writes.Except(closed)
+            .Where(w => w.Endpoint.Metadata.GetOrderedMetadata<IAuthorizeData>().Any(a => a.Roles == AppRoles.Directors))
+            .Select(w => w.Key)
+            .Should().BeEmpty("o que é só da Diretoria não fica aberto para quem entra com o papel dela");
+    }
+
+    [Fact]
+    public async Task An_impersonation_cannot_change_the_tax_materiality()
+    {
+        var (tenantId, email) = await NewTenantAsync();
+        var imp = await ImpersonateAsync(tenantId);
+        var owner = await AuthClientFactory.LoginAsync(_factory, email, TestCredentials.AdminPassword);
+        var body = new
+        {
+            threshold = 5000m, currency = "BRL", effectiveFrom = DateTime.UtcNow.AddDays(2).ToString("yyyy-MM-dd"), effectiveTo = (string?)null,
+            rationale = "Acima disto, quem aprova não pode ser quem analisou", decisionReference = "ATA-1",
+        };
+
+        await ExpectForbiddenAsync(imp.PutAsJsonAsync("/api/tax/materiality", body));
+
+        var materiality = await (await imp.GetAsync("/api/tax/materiality")).Content.ReadFromJsonAsync<JsonElement>();
+        materiality.GetProperty("history").GetArrayLength().Should().Be(0, "nenhuma versão foi criada; e a leitura segue liberada");
+
+        var own = await owner.PutAsJsonAsync("/api/tax/materiality", body);
         own.StatusCode.Should().Be(HttpStatusCode.OK, await own.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task An_impersonation_cannot_change_the_tax_retention_policy()
+    {
+        var (tenantId, email) = await NewTenantAsync();
+        var imp = await ImpersonateAsync(tenantId);
+        var owner = await AuthClientFactory.LoginAsync(_factory, email, TestCredentials.AdminPassword);
+        var body = new
+        {
+            evidenceType = "Other", retentionMonths = 120, startsAt = "UploadDate", enabled = true, allowTenantOverride = false,
+            rationale = "Prazo definido pela Diretoria", reference = "ATA-1",
+        };
+
+        await ExpectForbiddenAsync(imp.PutAsJsonAsync("/api/tax/retention-policies", body));
+        (await RetentionPoliciesOfAsync(tenantId)).Should().Be(0, "nenhuma política foi gravada");
+        (await imp.GetAsync("/api/tax/retention-policies")).StatusCode.Should().Be(HttpStatusCode.OK, "a leitura segue liberada");
+
+        var own = await owner.PutAsJsonAsync("/api/tax/retention-policies", body);
+        own.StatusCode.Should().Be(HttpStatusCode.OK, await own.Content.ReadAsStringAsync());
+        (await RetentionPoliciesOfAsync(tenantId)).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task An_impersonation_cannot_place_or_lift_a_legal_hold(bool hold)
+    {
+        var (tenantId, email) = await NewTenantAsync();
+        var imp = await ImpersonateAsync(tenantId);
+        var owner = await AuthClientFactory.LoginAsync(_factory, email, TestCredentials.AdminPassword);
+        var url = $"/api/tax/evidence-files/{Guid.NewGuid()}/legal-hold";
+        var body = new { hold, reason = "Processo administrativo em curso" };
+
+        await ExpectForbiddenAsync(imp.PostAsJsonAsync(url, body));
+
+        // o arquivo não existe: para o dono a rota responde 404, ou seja, ele continua chegando à decisão
+        (await owner.PostAsJsonAsync(url, body)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task An_impersonation_cannot_import_split_retentions()
+    {
+        var (tenantId, email) = await NewTenantAsync();
+        var imp = await ImpersonateAsync(tenantId);
+        var owner = await AuthClientFactory.LoginAsync(_factory, email, TestCredentials.AdminPassword);
+        const string url = "/api/tax/split/provider/import?from=2026-06-01&to=2026-06-30";
+
+        await ExpectForbiddenAsync(imp.PostAsync(url, null));
+
+        // nenhum provedor está integrado: o dono chega à ação, e é ela quem recusa, sem inventar retenção
+        var own = await owner.PostAsync(url, null);
+        var text = await own.Content.ReadAsStringAsync();
+        own.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, text);
+        JsonDocument.Parse(text).RootElement.GetProperty("code").GetString().Should().Be("tax_split_provider_missing");
+    }
+
+    [Theory]
+    [InlineData("Appropriate")]
+    [InlineData("Use")]
+    [InlineData("Block")]
+    [InlineData("Unblock")]
+    [InlineData("Reverse")]
+    [InlineData("Expire")]
+    [InlineData("ConfirmToBeAppropriated")]
+    public async Task An_impersonation_cannot_write_the_tax_credit_ledger(string movement)
+    {
+        var (tenantId, email) = await NewTenantAsync();
+        var imp = await ImpersonateAsync(tenantId);
+        var owner = await AuthClientFactory.LoginAsync(_factory, email, TestCredentials.AdminPassword);
+        var url = $"/api/tax/credits/{Guid.NewGuid()}/movements";
+        var body = new { movement, amount = 10m, reason = "Conferido", obligationTax = "Cbs", obligationReference = "GUIA-1", onDate = (string?)null };
+
+        await ExpectForbiddenAsync(imp.PostAsJsonAsync(url, body));
+
+        // o crédito não existe: para o dono a rota responde 404, ou seja, ele continua chegando ao razão
+        (await owner.PostAsJsonAsync(url, body)).StatusCode.Should().Be(HttpStatusCode.NotFound, movement);
+    }
+
+    /// <summary>O acesso nunca passa nas políticas da plataforma, nem no freio de emergência, que é a escrita mais aberta do módulo.</summary>
+    [Fact]
+    public async Task An_impersonation_never_reaches_the_platform_tax_routes()
+    {
+        var (tenantId, _) = await NewTenantAsync();
+        var imp = await ImpersonateAsync(tenantId);
+
+        (await imp.GetAsync("/api/platform/tax/module")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await imp.PostAsJsonAsync("/api/platform/tax/module/suspend", new { reason = "Teste", confirmation = "SUSPENDER" }))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await imp.PostAsJsonAsync("/api/platform/tax/module/activate", new
+        {
+            mode = "ControlledPilot", decisionReference = "ATA-1", reason = "Teste", confirmation = "ATIVAR PILOTO CONTROLADO", acknowledgeShadowMode = true,
+        })).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>
+    /// O outro lado: o trabalho de análise da Gerência segue aberto, como o #132 decidiu. Com ids inexistentes, cada rota chega à ação (404), e não ao
+    /// 403 do bloqueio. Upload e substituição de evidência não têm bloqueio nenhum: a lista exata acima garante isso.
+    /// </summary>
+    [Fact]
+    public async Task Tax_analysis_stays_open_during_an_impersonation()
+    {
+        var (tenantId, _) = await NewTenantAsync();
+        var imp = await ImpersonateAsync(tenantId);
+        var missing = Guid.NewGuid();
+
+        (await imp.PostAsJsonAsync($"/api/tax/opportunities/{missing}/assign", new { userId = (Guid?)null })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await imp.PostAsJsonAsync($"/api/tax/opportunities/{missing}/evidence/{missing}/revoke", new { reason = "Arquivo errado" })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await imp.PostAsJsonAsync($"/api/tax/evidence-files/{missing}/revoke", new { reason = "Arquivo errado" })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await imp.PutAsJsonAsync($"/api/tax/classifications/items/{missing}", new
+        {
+            itemKind = "Good", ncm = "61091000", nbs = (string?)null, cClassTrib = "TEST01", notes = (string?)null,
+        })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // revisar um crédito potencial é análise; o que grava no razão é só do dono
+        foreach (var movement in new[] { "StartRequirementsReview", "Discard" })
+            (await imp.PostAsJsonAsync($"/api/tax/credits/{missing}/movements", new { movement, amount = (decimal?)null, reason = "Sem documento de origem" }))
+                .StatusCode.Should().Be(HttpStatusCode.NotFound, movement);
+    }
+
+    private async Task<int> RetentionPoliciesOfAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return await db.TaxRetentionPolicies.AsNoTracking().CountAsync(p => p.TenantId == tenantId);
     }
 
     // ── Aditivo: o valor do contrato da empresa com o cliente dela ────────────

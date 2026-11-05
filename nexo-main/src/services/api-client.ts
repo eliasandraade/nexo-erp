@@ -317,25 +317,7 @@ async function request<T>(
     throw new ApiError(401, message, err?.code);
   }
 
-  if (!res.ok) {
-    let message = res.statusText;
-    let details: string[] | undefined;
-    const err = await readErrorBody(res);
-    const refused = subscriptionRequiredError(res.status, err);
-    if (refused) throw refused;
-    if (Array.isArray(err?.details) && err.details.length > 0) {
-      details = err.details.map(String);
-      message = details.join(" | ");
-    } else {
-      message = err?.error ?? err?.message ?? message;
-    }
-    const serverMessage = err?.error ?? err?.message ?? undefined;
-    const requestId = err?.requestId;
-    if (res.status === 429 && !message) message = "Muitas tentativas. Aguarde alguns minutos.";
-    // an unexpected error carries the id of its log lines: show it, so support can find them
-    if (res.status >= 500 && requestId) message = `${message} (código: ${requestId})`;
-    throw new ApiError(res.status, message, err?.code, requestId, details, serverMessage);
-  }
+  if (!res.ok) throw await errorOf(res);
 
   if (res.status === 204) return undefined as unknown as T;
 
@@ -363,22 +345,41 @@ async function requestForm<T>(path: string, form: FormData, isRetry = false): Pr
     throw new ApiError(401, err?.error ?? err?.message ?? "Unauthorized", err?.code);
   }
 
-  if (!res.ok) {
-    let message = res.statusText;
-    const err = await readErrorBody(res);
-    const refused = subscriptionRequiredError(res.status, err);
-    if (refused) throw refused;
-    if (Array.isArray(err?.details) && err.details.length > 0) {
-      message = err.details.join(" | ");
-    } else {
-      message = err?.error ?? err?.message ?? message;
-    }
-    throw new ApiError(res.status, message, err?.code);
-  }
+  if (!res.ok) throw await errorOf(res);
 
   if (res.status === 204) return undefined as unknown as T;
 
   return res.json() as Promise<T>;
+}
+
+/**
+ * The error of a failed response. The server's explanation ({ error }) is kept and its details (reasons, rules,
+ * fields) are added after it — never replacing it: "refused (code): rule A, rule B" loses nothing. A bare
+ * validation failure shows only its details. 5xx carry the request id, for support. The explanation alone is also
+ * kept in `serverMessage`.
+ */
+export async function errorOf(res: Response): Promise<ApiError> {
+  return errorFromBody(res.status, res.statusText, await readErrorBody(res));
+}
+
+/** The ApiError of a failed status and its parsed body (null when empty or not JSON): one shape for fetch and upload calls. */
+function errorFromBody(status: number, statusText: string, err: ErrorBody | null): ApiError {
+  const refused = subscriptionRequiredError(status, err);
+  if (refused) return refused;
+  const details = Array.isArray(err?.details) ? err.details.filter((d): d is string => typeof d === "string") : [];
+  const explanation: string | undefined = err?.error ?? err?.message ?? undefined;
+  const generic = !explanation || explanation === "Validation failed.";
+  let message: string;
+  if (generic) {
+    message = details.join(" | ") || explanation || statusText;
+  } else {
+    const extra = details.filter((d) => !explanation.includes(d));
+    message = extra.length > 0 ? `${explanation} ${extra.join(" | ")}` : explanation;
+  }
+  if (status === 429 && !message) message = "Muitas tentativas. Aguarde alguns minutos.";
+  // an unexpected error carries the id of its log lines: show it, so support can find them
+  if (status >= 500 && err?.requestId) message = `${message} (código: ${err.requestId})`;
+  return new ApiError(status, message, err?.code ?? undefined, err?.requestId, details, explanation);
 }
 
 /** Upload progress: bytes sent of the total (total 0 when the browser cannot tell). */
@@ -421,15 +422,7 @@ async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormDat
     if (await recoverFromUnauthorized(token, body?.code, isRetry)) return uploadForm<T>(method, path, form, onProgress, true);
     throw new ApiError(401, body?.error ?? body?.message ?? "Unauthorized", body?.code);
   }
-  if (res.status < 200 || res.status >= 300) {
-    const refused = subscriptionRequiredError(res.status, body);
-    if (refused) throw refused;
-    const details = Array.isArray(body?.details) && body.details.length > 0 ? body.details.map(String) : undefined;
-    const serverMessage = body?.error ?? body?.message ?? undefined;
-    let message = details ? details.join(" | ") : serverMessage ?? res.statusText;
-    if (res.status >= 500 && body?.requestId) message = `${message} (código: ${body.requestId})`;
-    throw new ApiError(res.status, message, body?.code, body?.requestId, details, serverMessage);
-  }
+  if (res.status < 200 || res.status >= 300) throw errorFromBody(res.status, res.statusText, body);
   if (res.status === 204 || !res.text) return undefined as unknown as T;
   return JSON.parse(res.text) as T;
 }
@@ -458,9 +451,9 @@ export class ApiError extends Error {
     public readonly code?: string,
     /** Id of the request in the server logs (X-Request-Id), for support. */
     public readonly requestId?: string,
-    /** The body's { details } list, when it sends one (e.g. the reason an AI provider failed). */
-    public readonly details?: string[],
-    /** The body's own { error } text, kept apart from `message` (which prefers `details`). */
+    /** The server's itemised reasons (refused rules, coverage findings, invalid fields), when it sends them. */
+    public readonly details: string[] = [],
+    /** The body's own { error } text, kept apart from `message` (which adds the details to it). */
     public readonly serverMessage?: string
   ) {
     super(message);
