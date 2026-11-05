@@ -198,14 +198,14 @@ As PRs abertas (7.2) não entram nesses números. Os 183 bugs do início caíram
 | #145 | Documentação da análise pelo CI | Só texto |
 | #141 (paralela) | Sessão encerrada ao mudar o papel; já repassa `RequestAborted` em `SecurityStampValidationMiddleware` | `S8949` nesse arquivo caiu de 6 para 1 |
 
-PRs abertas, com CI verde no SHA indicado. O efeito delas só se confirma depois do merge:
+PRs abertas quando esta seção foi escrita, cada uma com o gate da própria análise verde. O efeito delas no `master` só se confirma depois do merge:
 
-| PR | SHA | Corrige | Análise da PR |
-|---|---|---|---|
-| #148 | `944d063` | `S2699` ×7: testes de `auth.e2e.spec.ts` reescritos e executados contra a pilha real | Gate OK, nenhum achado novo |
-| #149 | `5ff78e2` | `S8949` ×16: `TenantResolutionMiddleware` (15) e `SecurityStampValidationMiddleware` (1) | Gate OK, 86,4% de cobertura, nenhum achado novo |
-| #151 | `2aab9a1` | `S9383` ×5: as linhas cobertas por teste | Gate OK, nenhum achado novo |
-| #152 | `84c61c1` | Endereços de CEP e CNPJ; deve resolver o `S5144` do ViaCEP | Gate OK, nenhum achado novo |
+| PR | Corrige | Análise da PR |
+|---|---|---|
+| #148 | `S2699` ×7: testes de `auth.e2e.spec.ts` reescritos e executados contra a pilha real | Gate OK, nenhum achado novo |
+| #149 | `S8949` ×16: `TenantResolutionMiddleware` (15) e `SecurityStampValidationMiddleware` (1) | Gate OK, 86,4% de cobertura, nenhum achado novo |
+| #151 | `S9383` ×5: as linhas cobertas por teste | Gate OK, nenhum achado novo |
+| #152 | Endereços de CEP e CNPJ; deve resolver o `S5144` do ViaCEP | Gate OK, nenhum achado novo |
 
 **Limite da evidência:** a análise de uma PR lista só os achados novos, e não mostra se um achado antigo foi embora. A #138 tinha 0 achados na PR e ainda assim o `S5144` continuou. Só a análise do `master` depois do merge confirma a saída de um achado.
 
