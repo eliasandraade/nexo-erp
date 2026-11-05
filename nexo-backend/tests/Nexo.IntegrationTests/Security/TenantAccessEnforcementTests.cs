@@ -139,6 +139,7 @@ public class TenantAccessEnforcementTests
         var host = _factory.WithWebHostBuilder(b =>
         {
             b.UseSetting("Integrations:Features:StripeEnabled", "true");
+            b.UseSetting("Billing:NewCheckoutsEnabled", "true");
             b.UseSetting("Integrations:Stripe:PriceIds:restaurante_monthly", "price_teste");
             b.ConfigureTestServices(s =>
             {
@@ -654,7 +655,7 @@ public class TenantAccessEnforcementTests
         public const string Url = "https://checkout.stripe.test/sessao";
 
         public Task<string> GetOrCreateCustomerAsync(Guid tenantId, string email, string companyName, CancellationToken ct = default)
-            => Task.FromResult("cus_teste");
+            => Task.FromResult($"cus_{tenantId:N}");
 
         public Task<CheckoutSessionResult> CreateCheckoutSessionAsync(CreateCheckoutRequest request, CancellationToken ct = default)
             => Task.FromResult(new CheckoutSessionResult("cs_teste", Url));

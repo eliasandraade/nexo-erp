@@ -76,10 +76,17 @@ export function leaveImpersonation(): void {
 /**
  * Why the client dropped the session on its own:
  *  - platform_session_ended: the platform session was revoked/logged out (sign in again);
+ *  - session_revoked: the server ended this person's sessions (role, password or access changed);
+ *  - session_ended: any other session the server no longer accepts and that could not be renewed;
  *  - impersonation_ended: the tenant access of this tab expired or was ended elsewhere;
  *  - impersonation_left: the administrator left the tenant access ("Sair do acesso").
  */
-export type SessionEndReason = "platform_session_ended" | "impersonation_ended" | "impersonation_left";
+export type SessionEndReason =
+  | "platform_session_ended"
+  | "session_revoked"
+  | "session_ended"
+  | "impersonation_ended"
+  | "impersonation_left";
 
 const SESSION_ENDED_EVENT = "orken:session-ended";
 
@@ -267,6 +274,9 @@ async function recoverFromUnauthorized(usedToken: string | null, code: string | 
     emitSessionEnded("platform_session_ended");
     return false;
   }
+  // Tokens already gone means the page dropped them on purpose (recovery codes on screen, signing out): a late answer
+  // to a call it sent before that ends nothing. A call that never had a token had no session to end.
+  const sessionInUse = usedToken !== null && getAccessToken() === usedToken;
   if (!isRetry) {
     // another tab may have renewed the shared session already
     const current = getAccessToken();
@@ -279,6 +289,7 @@ async function recoverFromUnauthorized(usedToken: string | null, code: string | 
     }
   }
   clearTokens();
+  if (sessionInUse) emitSessionEnded(code === "session_revoked" ? "session_revoked" : "session_ended");
   return false;
 }
 

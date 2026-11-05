@@ -20,11 +20,15 @@ namespace Nexo.Api.Controllers;
 ///   - No card data stored in Orken — Stripe handles payment methods.
 ///   - No checkout or portal during an impersonation: the subscription, the card and the plan are the owner's. Reading the
 ///     subscriptions stays open, it is what support needs.
+///   - A new checkout starts only with Billing:NewCheckoutsEnabled literally true. That switch stops new purchases and
+///     nothing else: the webhook, the portal and the listing do not read it, so existing subscriptions keep working.
 /// </summary>
 [ApiController]
 [Route("api/billing")]
 public class BillingController : ControllerBase
 {
+    private const string CheckoutDisabledCode = "checkout_disabled";
+
     private readonly IBillingProvider              _billing;
     private readonly ITenantRepository             _tenants;
     private readonly IModuleSubscriptionRepository _subscriptions;
@@ -70,6 +74,18 @@ public class BillingController : ControllerBase
         if (!_flags.StripeEnabled)
             return NotFound(new { error = "Billing não está habilitado." });
 
+        // Before any plan validation, read or call to Stripe: a blocked purchase leaves nothing behind.
+        if (!NewCheckoutsEnabled)
+        {
+            _logger.LogWarning("[Billing] Checkout blocked — tenant={TenantId}, reason={Reason}", _currentTenant.Id, CheckoutDisabledCode);
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                error = "A contratação de novos módulos está indisponível no momento. Fale com o suporte Orken: suporte@orken.com.br.",
+                code = CheckoutDisabledCode,
+                requestId = HttpContext.TraceIdentifier,
+            });
+        }
+
         var moduleKey     = body.ModuleKey?.Trim().ToLowerInvariant();
         var billingPeriod = body.BillingPeriod?.Trim().ToLowerInvariant();
 
@@ -102,10 +118,7 @@ public class BillingController : ControllerBase
                 : tenant.StripeCustomerId;
 
             if (tenant.StripeCustomerId != stripeCustomerId)
-            {
-                tenant.SetStripeCustomerId(stripeCustomerId);
-                await _tenants.SaveChangesAsync(ct);
-            }
+                await _tenants.SetStripeCustomerIdAsync(tenant.Id, stripeCustomerId, ct);
 
             var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
             var successUrl = BillingRules.SafeRedirect(body.SuccessUrl, $"{frontendUrl}/assinatura?sucesso=1", frontendUrl);
@@ -181,6 +194,20 @@ public class BillingController : ControllerBase
     }
 
     /// <summary>
+    /// Whether the subscription page may offer a new purchase: the same switch the checkout obeys, read from the server so
+    /// that no bundle decides it. Stays open during an impersonation, like reading the subscriptions.
+    /// </summary>
+    [HttpGet("checkout-availability")]
+    [Authorize(Roles = AppRoles.Management)]
+    public IActionResult GetCheckoutAvailability()
+    {
+        if (!_flags.StripeEnabled)
+            return NotFound(new { error = "Billing não está habilitado." });
+
+        return Ok(new { newCheckoutsEnabled = NewCheckoutsEnabled });
+    }
+
+    /// <summary>
     /// Stripe webhook endpoint — no authentication, validates Stripe-Signature instead.
     /// Idempotent: already-processed events return 200 immediately.
     /// Plan activation happens HERE, not in the checkout success callback.
@@ -222,6 +249,8 @@ public class BillingController : ControllerBase
             return StatusCode(500, new { error = "Falha ao processar evento." });
         }
     }
+
+    private bool NewCheckoutsEnabled => BillingRules.NewCheckoutsEnabled(_config[BillingRules.NewCheckoutsSetting]);
 
     // ── Request body types ────────────────────────────────────────────────────
 

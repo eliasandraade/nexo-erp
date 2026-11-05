@@ -26,9 +26,9 @@ public class User : TenantEntity
     public DateTime? PasswordChangedAt { get; private set; }
 
     /// <summary>
-    /// Opaque stamp that changes on password reset or force-logout.
-    /// Included in JWT claims. If the stored stamp differs from the token's,
-    /// the session is considered revoked.
+    /// Opaque stamp that changes on password reset, force-logout, role change or when the
+    /// account is blocked or deactivated. Included in JWT claims. If the stored stamp differs
+    /// from the token's, the session is considered revoked.
     /// </summary>
     public string SecurityStamp { get; private set; } = Guid.NewGuid().ToString("N");
 

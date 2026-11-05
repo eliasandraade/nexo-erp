@@ -146,7 +146,7 @@ public class AuthorizationTests
         (await db.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == seller.UserId)).Role.Should().Be(UserRole.Vendedor, "a alteração recusada não muda o papel");
     }
 
-    [Fact(Skip = "Defeito em aberto, issue #137: o papel vem do token e mudar o papel não troca o security stamp. Hoje responde 200 até o token expirar.")]
+    [Fact]
     public async Task DemotedUser_LosesAccess_WithTheTokenAlreadyIssued()
     {
         var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);

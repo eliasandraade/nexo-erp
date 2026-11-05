@@ -130,10 +130,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
         }
 
         if (!string.IsNullOrEmpty(session.CustomerId) && tenant.StripeCustomerId != session.CustomerId)
-        {
-            tenant.SetStripeCustomerId(session.CustomerId);
-            await _tenants.SaveChangesAsync(ct);
-        }
+            await _tenants.SetStripeCustomerIdAsync(tenant.Id, session.CustomerId, ct);
 
         var stripeSubId = session.SubscriptionId;
         if (string.IsNullOrEmpty(stripeSubId)) return;
