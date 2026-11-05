@@ -26,9 +26,13 @@ public class TaxProfileController : ControllerBase
     [HttpGet("profile")]
     public async Task<ActionResult<TaxProfileDto>> GetProfile(CancellationToken ct) => Ok(await _profiles.GetAsync(TaxToday.Brazil(), ct));
 
-    /// <summary>Adds a profile version (e.g. a change of regime from a date). Earlier versions never change.</summary>
+    /// <summary>
+    /// Adds a profile version (e.g. a change of regime from a date). Earlier versions never change, so it cannot be taken back.
+    /// Never during an impersonation.
+    /// </summary>
     [HttpPost("profile/versions")]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<TaxProfileVersionDto>> AddProfileVersion([FromBody] CreateTaxProfileVersionRequest request, CancellationToken ct)
         => Ok(await _profiles.AddVersionAsync(request, ct));
 
@@ -39,10 +43,12 @@ public class TaxProfileController : ControllerBase
 
     /// <summary>
     /// Records an assessment for a period and a scope. Only "Verified" can satisfy a rule that depends on
-    /// compliance; a declaration, a remediation or PNCT participation never does. Earlier assessments stay.
+    /// compliance; a declaration, a remediation or PNCT participation never does. Earlier assessments stay. Never during an
+    /// impersonation: it attests compliance in the owner's name.
     /// </summary>
     [HttpPost("compliance-assessments")]
     [Authorize(Roles = AppRoles.Directors)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<TaxComplianceAssessmentDto>> RecordComplianceAssessment(
         [FromBody] RecordComplianceAssessmentRequest request, CancellationToken ct)
         => Ok(await _compliance.RecordAsync(request, DateTime.UtcNow, ct));

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Sales;
@@ -16,6 +17,11 @@ namespace Nexo.Application.Modules.Restaurante;
 ///   OpenAsync usa GetByIdForUpdateAsync (SELECT FOR UPDATE) dentro de uma transação
 ///   para garantir que não existam duas comandas abertas para a mesma mesa.
 ///   O índice UNIQUE parcial na migration é a segunda linha de defesa.
+///
+/// Concorrência da comanda:
+///   Todo ato que muda a comanda (incluir ou remover item, cozinha, fechar, cancelar, pagar) trava a linha dela
+///   (SELECT FOR UPDATE) e só então a lê: os atos entram em fila, e cada um vê o que o anterior gravou. Uma vez fechada,
+///   a comanda não muda mais, e é isso que garante que a venda cobra exatamente o que a comanda tem.
 ///
 /// Idempotência de pagamento:
 ///   PayAsync valida order.Status == Closed e sale.Status != Paid.
@@ -175,8 +181,10 @@ public class OrderService
     public async Task<OrderDto> AddItemAsync(
         Guid orderId, AddOrderItemRequest request, CancellationToken ct = default)
     {
-        var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
-            ?? throw new NotFoundException("Order", orderId);
+        // Um item que chega durante o fechamento espera por ele e encontra a comanda fechada (recusado). Sem a trava, o
+        // item lia a comanda aberta e gravava depois: ficava fora da venda, sem pagamento e sem baixa de estoque.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        var order = await LockAndLoadAsync(orderId, ct);
 
         var product = await _products.GetByIdAsync(request.ProductId, ct)
             ?? throw new NotFoundException("Product", request.ProductId);
@@ -220,6 +228,7 @@ public class OrderService
             throw new DomainException("Os adicionais deixariam o item com valor negativo.");
 
         await _orders.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         // Fire-and-forget: SignalR notification (UX complement; polling fallback is authoritative)
         _ = _notifications.NewItemAddedAsync(order.Id, MapItem(item));
         return Map(order);
@@ -228,8 +237,10 @@ public class OrderService
     public async Task<OrderDto> UpdateItemStatusAsync(
         Guid orderId, Guid itemId, UpdateOrderItemStatusRequest request, CancellationToken ct = default)
     {
-        var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
-            ?? throw new NotFoundException("Order", orderId);
+        // A cozinha também muda o status da comanda: sem a trava, a leitura antiga de uma comanda aberta gravava "pronta"
+        // por cima de uma comanda já fechada ou paga, que podia então ser fechada e paga de novo.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        var order = await LockAndLoadAsync(orderId, ct);
 
         var item = order.Items.FirstOrDefault(i => i.Id == itemId)
             ?? throw new NotFoundException("OrderItem", itemId);
@@ -259,6 +270,7 @@ public class OrderService
         }
 
         await _orders.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, item.Status.ToString());
         _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString());
         try { await _deliverySync.SyncFromRestOrderAsync(order.Id, order.Status, ct); }
@@ -268,8 +280,9 @@ public class OrderService
 
     public async Task<OrderDto> CancelItemAsync(Guid orderId, Guid itemId, CancellationToken ct = default)
     {
-        var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
-            ?? throw new NotFoundException("Order", orderId);
+        // Sem a trava, o item removido durante o fechamento continuava na venda e era cobrado.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        var order = await LockAndLoadAsync(orderId, ct);
 
         // A delivery/portal order was quoted to the customer (items, coupon): changing it here would
         // charge something the customer never saw. Refuse or cancel the order in the delivery hub.
@@ -294,6 +307,7 @@ public class OrderService
                 order.SetInPreparation();
         }
         await _orders.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         // The kitchen must see it now (realtime screens don't poll), and the delivery tracking too
         // fire-and-forget on purpose: the push must not die with the request
@@ -309,11 +323,13 @@ public class OrderService
     /// <summary>
     /// Fecha a comanda: gera Sale em Draft no CORE.
     /// A mesa permanece Occupied até o pagamento ser confirmado.
+    /// Tudo numa transação, sob a trava da comanda: dois fechamentos não criam duas vendas, e um fechamento que falha no
+    /// meio não deixa uma venda pela metade.
     /// </summary>
     public async Task<CloseOrderResponse> CloseAsync(Guid orderId, CancellationToken ct = default)
     {
-        var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
-            ?? throw new NotFoundException("Order", orderId);
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        var order = await LockAndLoadAsync(orderId, ct);
 
         if (!order.IsModifiable)
             throw new DomainException($"Order cannot be closed in status {order.Status}.");
@@ -347,6 +363,7 @@ public class OrderService
         // Vincula Sale à comanda
         order.Close(saleDto.Id);
         await _orders.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         return new CloseOrderResponse(
             OrderId: order.Id,
@@ -493,7 +510,15 @@ public class OrderService
             }
 
             order.MarkPaid();
-            await _orders.SaveChangesAsync(innerCt);
+            try
+            {
+                await _orders.SaveChangesAsync(innerCt);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                // Outra comanda baixou o mesmo insumo agora: a transação volta inteira, como na conclusão da venda.
+                throw new DomainException("O estoque de um insumo mudou durante o pagamento. Tente de novo.");
+            }
             payResult = Map(order);
         }, ct);
         if (order.TableId.HasValue)
@@ -506,8 +531,9 @@ public class OrderService
 
     public async Task<OrderDto> CancelAsync(Guid orderId, CancellationToken ct = default)
     {
-        var order = await _orders.GetByIdWithItemsAsync(orderId, ct)
-            ?? throw new NotFoundException("Order", orderId);
+        // Sem a trava, cancelar durante o fechamento deixava os dois valendo: comanda fechada, com venda, e a mesa já liberada.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        var order = await LockAndLoadAsync(orderId, ct);
 
         order.Cancel();  // throws if Closed or already Cancelled
 
@@ -518,9 +544,18 @@ public class OrderService
         }
 
         await _orders.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         try { await _deliverySync.SyncFromRestOrderAsync(orderId, RestOrderStatus.Cancelled, ct); }
         catch (Exception ex) { _logger.LogError(ex, "DeliveryOrder sync failed for cancelled RestOrder {Id}", orderId); }
         return Map(order);
+    }
+
+    /// <summary>Trava a comanda e só então a lê: dentro de uma transação, o que vem depois vale o que está gravado agora.</summary>
+    private async Task<RestOrder> LockAndLoadAsync(Guid orderId, CancellationToken ct)
+    {
+        await _orders.LockAsync(orderId, ct);
+        return await _orders.GetByIdWithItemsAsync(orderId, ct)
+            ?? throw new NotFoundException("Order", orderId);
     }
 
     // ── Mapping ───────────────────────────────────────────────────────────────

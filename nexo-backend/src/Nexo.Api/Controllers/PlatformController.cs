@@ -1021,8 +1021,9 @@ public class PlatformController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns tenants whose trial period has expired (TrialEndsAt &lt; now)
-    /// or whose active subscriptions have a past CurrentPeriodEnd.
+    /// Returns tenants whose trial has expired with no module left with access (the trial is the
+    /// Trialing subscription row: Tenant.TrialEndsAt is never written), or whose active
+    /// subscriptions have a past CurrentPeriodEnd.
     /// </summary>
     [HttpGet("tenants/trial-expired")]
     public async Task<IActionResult> GetTrialExpired(CancellationToken ct)
@@ -1030,17 +1031,28 @@ public class PlatformController : ControllerBase
 
         var now = DateTime.UtcNow;
 
-        // Tenants with explicit TrialEndsAt in the past
-        var trialExpired = await _db.Tenants
+        // Someone with any module with access (the single rule) kept going after the trial: not a lapsed trial.
+        var tenantsWithAccess = _db.ModuleSubscriptions
             .IgnoreQueryFilters()
-            .Where(t => t.TrialEndsAt != null && t.TrialEndsAt < now && t.Status == TenantStatus.Active)
-            .Select(t => new
-            {
-                t.Id, t.CompanyName, t.TradeName, t.Email, t.Status,
-                t.TrialEndsAt, t.CreatedAt,
-                expiredDaysAgo = (int)Math.Floor((now - t.TrialEndsAt!.Value).TotalDays),
-                expiredReason  = "trial",
-            })
+            .Where(ModuleSubscription.HasAccessAt(now))
+            .Select(s => s.TenantId);
+
+        var trialExpired = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .Where(s => s.Status == SubscriptionStatus.Trialing
+                     && s.CurrentPeriodEnd != null
+                     && s.CurrentPeriodEnd < now
+                     && !tenantsWithAccess.Contains(s.TenantId))
+            .Join(_db.Tenants.IgnoreQueryFilters().Where(t => t.Status == TenantStatus.Active),
+                  s => s.TenantId,
+                  t => t.Id,
+                  (s, t) => new
+                  {
+                      t.Id, t.CompanyName, t.TradeName, t.Email, t.Status,
+                      TrialEndsAt = s.CurrentPeriodEnd, t.CreatedAt,
+                      expiredDaysAgo = (int)Math.Floor((now - s.CurrentPeriodEnd!.Value).TotalDays),
+                      expiredReason  = "trial",
+                  })
             .ToListAsync(ct);
 
         // Tenants with active subscriptions whose period has ended
@@ -1055,7 +1067,7 @@ public class PlatformController : ControllerBase
                   (s, t) => new
                   {
                       t.Id, t.CompanyName, t.TradeName, t.Email, t.Status,
-                      t.TrialEndsAt, t.CreatedAt,
+                      TrialEndsAt = (DateTime?)null, t.CreatedAt,
                       expiredDaysAgo = (int)Math.Floor((now - s.CurrentPeriodEnd!.Value).TotalDays),
                       expiredReason  = "subscription:" + s.ModuleKey,
                   })
