@@ -12,15 +12,15 @@ public static class TaxCapabilities
     public const string Simulate = AppRoles.Management;
     /// <summary>Analyse opportunities: open the review, answer requirements, add/replace/revoke evidence, assign.</summary>
     public const string Analyze = AppRoles.Management;
-    /// <summary>Approve a scenario, verify the execution, block a definitive decision — the board only.</summary>
+    /// <summary>Approve a scenario, verify the execution, block a definitive decision — the board only, never during an impersonation.</summary>
     public const string Decide = AppRoles.Directors;
-    /// <summary>Ledger movements of credits (appropriate, use, reverse, expire, block, unblock) — the board only.</summary>
+    /// <summary>Ledger movements of credits (appropriate, use, reverse, expire, block, unblock) — the board only, never during an impersonation.</summary>
     public const string CreditLedger = AppRoles.Directors;
     /// <summary>Register potential credits and move them through the requirements review.</summary>
     public const string CreditReview = AppRoles.Management;
     /// <summary>Record and reverse split retentions.</summary>
     public const string Split = AppRoles.Management;
-    /// <summary>Company policies (materiality, retention), tax profile versions, compliance assessments, legal holds.</summary>
+    /// <summary>Company policies (materiality, retention), tax profile versions, compliance assessments, legal holds. Never during an impersonation.</summary>
     public const string Policies = AppRoles.Directors;
     /// <summary>Export dossiers (and their evidence files) and download revoked files for audit.</summary>
     public const string Export = AppRoles.Directors;

@@ -49,9 +49,13 @@ public class TaxSplitPaymentController : ControllerBase
         [FromQuery] DateOnly? to, [FromQuery] int? minAgeDays, CancellationToken ct = default)
         => this.Csv(await _split.ExportCsvAsync(new SplitFilter(null, status, tax, from, to, minAgeDays), ct));
 
-    /// <summary>Imports retentions reported by a configured provider. With no provider integrated it refuses — nothing is invented.</summary>
+    /// <summary>
+    /// Imports retentions reported by a configured provider. With no provider integrated it refuses — nothing is invented. Never during an
+    /// impersonation: reserved to the board, and it writes the company's books in bulk in the owner's name.
+    /// </summary>
     [HttpPost("split/provider/import")]
     [Authorize(Roles = TaxCapabilities.Decide)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<int>> ImportFromProvider([FromQuery] DateOnly from, [FromQuery] DateOnly to, CancellationToken ct)
         => Ok(await _split.ImportFromProviderAsync(from, to, ct));
 

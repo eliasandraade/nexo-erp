@@ -65,9 +65,13 @@ public class TaxEvidenceController : ControllerBase
     public async Task<ActionResult<TaxEvidenceFileDto>> Revoke(Guid id, [FromBody] RevokeTaxFileRequest request, CancellationToken ct)
         => Ok(await _evidence.RevokeAsync(id, request, ct));
 
-    /// <summary>Places or lifts a legal hold: while held, no retention policy makes the file eligible for disposal.</summary>
+    /// <summary>
+    /// Places or lifts a legal hold: while held, no retention policy makes the file eligible for disposal. Never during an
+    /// impersonation: it is the board's call, recorded in the owner's name.
+    /// </summary>
     [HttpPost("evidence-files/{id:guid}/legal-hold")]
     [Authorize(Roles = TaxCapabilities.Policies)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<TaxEvidenceFileDto>> LegalHold(Guid id, [FromBody] SetLegalHoldRequest request, CancellationToken ct)
         => Ok(await _evidence.SetLegalHoldAsync(id, request, ct));
 }
@@ -126,9 +130,13 @@ public class TaxMaterialityController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<TaxMaterialityDto>> Get(CancellationToken ct) => Ok(await _materiality.GetAsync(TaxToday.Brazil(), ct));
 
-    /// <summary>A new materiality version from a date (today or later). Past decisions keep the version they used.</summary>
+    /// <summary>
+    /// A new materiality version from a date (today or later). Past decisions keep the version they used. Never during an
+    /// impersonation: raising it takes away the second person a decision needs.
+    /// </summary>
     [HttpPut]
     [Authorize(Roles = TaxCapabilities.Policies)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<TaxMaterialityDto>> Configure([FromBody] ConfigureMaterialityRequest request, CancellationToken ct)
         => Ok(await _materiality.ConfigureAsync(request, TaxToday.Brazil(), ct));
 }
@@ -147,9 +155,10 @@ public class TaxRetentionController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<TaxRetentionPolicyDto>>> List(CancellationToken ct) => Ok(await _retention.ListAsync(platform: false, ct));
 
-    /// <summary>The company's own period for a type, where the platform default allows it.</summary>
+    /// <summary>The company's own period for a type, where the platform default allows it. Never during an impersonation: it is the board's policy.</summary>
     [HttpPut]
     [Authorize(Roles = TaxCapabilities.Policies)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<ActionResult<TaxRetentionPolicyDto>> Configure([FromBody] ConfigureRetentionPolicyRequest request, CancellationToken ct)
         => Ok(await _retention.ConfigureAsync(request, platform: false, ct));
 

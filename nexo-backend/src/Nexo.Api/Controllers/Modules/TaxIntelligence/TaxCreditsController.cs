@@ -35,14 +35,18 @@ public class TaxCreditsController : ControllerBase
 
     /// <summary>
     /// Appends a movement. Reviewing a potential credit (open the review, discard) is management work; anything that writes the ledger
-    /// (confirm, appropriate, use, block, unblock, reverse, expire) is the board's. Balances are sums of the entries; a client key makes a
-    /// retried request idempotent.
+    /// (confirm, appropriate, use, block, unblock, reverse, expire) is the board's, and never during an impersonation: the ledger entry would
+    /// be in the owner's name. Balances are sums of the entries; a client key makes a retried request idempotent.
     /// </summary>
     [HttpPost("credits/{id:guid}/movements")]
     public async Task<ActionResult<TaxCreditDto>> Move(Guid id, [FromBody] TaxCreditMovementRequest request, CancellationToken ct)
     {
-        if (request.Movement is not (TaxCreditMovement.StartRequirementsReview or TaxCreditMovement.Discard) && !User.IsInRole(AppRoles.Directors))
-            return Forbid();
+        if (request.Movement is not (TaxCreditMovement.StartRequirementsReview or TaxCreditMovement.Discard))
+        {
+            if (!User.IsInRole(AppRoles.Directors)) return Forbid();
+            if (Nexo.Api.Filters.DenyDuringImpersonationAttribute.IsImpersonation(User))
+                return Nexo.Api.Filters.DenyDuringImpersonationAttribute.Refusal(HttpContext);
+        }
         return Ok(await _credits.MoveAsync(id, request, TaxToday.Brazil(), ct));
     }
 }
