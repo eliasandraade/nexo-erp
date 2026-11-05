@@ -118,10 +118,7 @@ public class BillingController : ControllerBase
                 : tenant.StripeCustomerId;
 
             if (tenant.StripeCustomerId != stripeCustomerId)
-            {
-                tenant.SetStripeCustomerId(stripeCustomerId);
-                await _tenants.SaveChangesAsync(ct);
-            }
+                await _tenants.SetStripeCustomerIdAsync(tenant.Id, stripeCustomerId, ct);
 
             var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
             var successUrl = BillingRules.SafeRedirect(body.SuccessUrl, $"{frontendUrl}/assinatura?sucesso=1", frontendUrl);
