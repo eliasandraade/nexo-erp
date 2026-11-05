@@ -5,9 +5,10 @@ using Nexo.Application.Common.Interfaces;
 namespace Nexo.Api.Filters;
 
 /// <summary>
-/// Account acts a platform administrator must not do while impersonating a tenant user: anything that issues new tokens
-/// (an impersonation must never turn into a normal session), or changes the user's password, two-step verification or
-/// sessions. Answered 403 <c>impersonation_forbidden</c>.
+/// Acts a platform administrator must not do while impersonating a tenant user: anything that issues new tokens
+/// (an impersonation must never turn into a normal session), changes the user's password, two-step verification or
+/// sessions, touches the tenant's contract with Stripe, or records a decision in the owner's name (sealed tax decisions, a
+/// change order that moves the contract value). Answered 403 <c>impersonation_forbidden</c>.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class)]
 public sealed class DenyDuringImpersonationAttribute : Attribute, IAsyncActionFilter
