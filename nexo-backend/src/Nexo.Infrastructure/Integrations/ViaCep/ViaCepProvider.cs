@@ -27,7 +27,7 @@ public sealed class ViaCepProvider : ICepLookupProvider
 
     public async Task<CepLookupResult?> LookupAsync(string cep, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/{Uri.EscapeDataString(cep)}/json/");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/ws/{Uri.EscapeDataString(cep)}/json/");
         request.Options.Set(ProviderNameKey, "ViaCep:Cep");
 
         using var response = await _http.SendAsync(request, ct);
