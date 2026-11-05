@@ -91,7 +91,7 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: (req: CreateBuildProjectRequest) => createProject(req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["build", "projects"] });
+      void qc.invalidateQueries({ queryKey: ["build", "projects"] });
     },
   });
 }
@@ -224,11 +224,11 @@ export function useCreateBudget() {
 function useBudgetMutation(invalidateProjectId?: string) {
   const qc = useQueryClient();
   const invalidate = (budgetId: string) => {
-    qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
-    qc.invalidateQueries({ queryKey: ["build", "budgets"] });
+    void qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
+    void qc.invalidateQueries({ queryKey: ["build", "budgets"] });
     if (invalidateProjectId) {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.project(invalidateProjectId) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(invalidateProjectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.project(invalidateProjectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(invalidateProjectId) });
     }
   };
   return { invalidate };
