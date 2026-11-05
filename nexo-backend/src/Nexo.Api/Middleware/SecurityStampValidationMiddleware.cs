@@ -96,7 +96,7 @@ public class SecurityStampValidationMiddleware
         if (!Guid.TryParse(userIdStr, out var userId))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "Invalid user claim." });
+            await context.Response.WriteAsJsonAsync(new { error = "Invalid user claim." }, context.RequestAborted);
             return;
         }
 
