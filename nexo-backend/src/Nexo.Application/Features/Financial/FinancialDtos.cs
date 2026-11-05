@@ -5,7 +5,7 @@ namespace Nexo.Application.Features.Financial;
 public record CreateFinancialAccountRequest(
     string Code,
     string Name,
-    string AccountType,         // "Revenue" | "Expense" | "Asset" | "Liability" | "Equity"
+    string AccountType,         // "Cash" | "Bank" | "Receivable" | "Payable"
     Guid? ParentAccountId = null);
 
 public record UpdateFinancialAccountRequest(

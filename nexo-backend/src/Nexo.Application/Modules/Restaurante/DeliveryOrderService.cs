@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Nexo.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
@@ -74,10 +75,10 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         CancellationToken ct = default)
     {
         var statusFilters = statuses?
-            .Select(s => Enum.Parse<DeliveryOrderStatus>(s, ignoreCase: true))
+            .Select(s => EnumInput.Parse<DeliveryOrderStatus>(s, "Status de pedido inválido"))
             .ToArray();
         var channelFilters = channels?
-            .Select(c => Enum.Parse<DeliveryChannel>(c, ignoreCase: true))
+            .Select(c => EnumInput.Parse<DeliveryChannel>(c, "Canal de pedido inválido"))
             .ToArray();
 
         var list = await _repo.GetAllAsync(statusFilters, channelFilters, date, ct);
@@ -116,8 +117,8 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
     public async Task<DeliveryOrderDto> CreateAsync(
         CreateDeliveryOrderRequest request, CancellationToken ct = default)
     {
-        var channel   = Enum.Parse<DeliveryChannel>(request.Channel, ignoreCase: true);
-        var orderType = Enum.Parse<DeliveryOrderType>(request.OrderType, ignoreCase: true);
+        var channel   = EnumInput.Parse<DeliveryChannel>(request.Channel, "Canal de pedido inválido");
+        var orderType = EnumInput.Parse<DeliveryOrderType>(request.OrderType, "Tipo de pedido inválido");
         if (request.DeliveryFee < 0)
             throw new DomainException("A taxa de entrega não pode ser negativa.");
         foreach (var itemReq in request.Items ?? [])
@@ -214,7 +215,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
     public async Task<DeliveryOrderDto> CreateManualAsync(
         CreateManualOrderRequest request, CancellationToken ct = default)
     {
-        var channel = Enum.Parse<DeliveryChannel>(request.Channel, ignoreCase: true);
+        var channel = EnumInput.Parse<DeliveryChannel>(request.Channel, "Canal de pedido inválido");
         if (channel is DeliveryChannel.Portal
                     or DeliveryChannel.IFood
                     or DeliveryChannel.Rappi
@@ -223,7 +224,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
                 $"Canal '{channel}' não é permitido para pedidos manuais. " +
                 "Use PhoneCall, InPerson, WhatsApp ou Other.");
 
-        var orderType = Enum.Parse<DeliveryOrderType>(request.OrderType, ignoreCase: true);
+        var orderType = EnumInput.Parse<DeliveryOrderType>(request.OrderType, "Tipo de pedido inválido");
 
         // Operator is trusted; Takeaway is always 0 by business rule.
         var deliveryFee = orderType == DeliveryOrderType.Takeaway ? 0m : request.DeliveryFee;
@@ -310,7 +311,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
             || !(await _tenants.GetActiveModuleKeysAsync(store.TenantId, ct)).Contains(PublicMenuService.RestaurantModuleKey))
             throw new DomainException("O restaurante não está aceitando pedidos no momento.");
 
-        var orderType = Enum.Parse<DeliveryOrderType>(request.OrderType, ignoreCase: true);
+        var orderType = EnumInput.Parse<DeliveryOrderType>(request.OrderType, "Tipo de pedido inválido");
 
         // Anonymous input: validate the items BEFORE anything is saved, so a bad request never
         // leaves an empty or negative-total order in the restaurant's inbox.
@@ -572,7 +573,7 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         var order = await _repo.GetByIdWithItemsAsync(id, ct)
             ?? throw new NotFoundException("DeliveryOrder", id);
 
-        var status = Enum.Parse<DeliveryOrderStatus>(request.Status, ignoreCase: true);
+        var status = EnumInput.Parse<DeliveryOrderStatus>(request.Status, "Status de pedido inválido");
 
         switch (status)
         {

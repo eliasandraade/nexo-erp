@@ -43,12 +43,7 @@ public class ProductService
     }
 
     /// <summary>A unit the catalogue does not know is the caller's mistake (422), not a server failure.</summary>
-    private static ProductUnit ParseUnit(string unit)
-    {
-        if (Enum.TryParse<ProductUnit>(unit, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed))
-            return parsed;
-        throw new DomainException($"Unidade inválida. Use uma destas: {string.Join(", ", Enum.GetNames<ProductUnit>())}.");
-    }
+    private static ProductUnit ParseUnit(string unit) => EnumInput.Parse<ProductUnit>(unit, "Unidade inválida");
 
     public async Task<ProductDto> CreateAsync(CreateProductRequest request, CancellationToken ct = default)
     {

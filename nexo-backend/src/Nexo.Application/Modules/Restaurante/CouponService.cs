@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Restaurante.Interfaces;
 using Nexo.Domain.Exceptions;
@@ -31,7 +32,7 @@ public class CouponService
     public async Task<CouponDto> CreateAsync(
         CreateCouponRequest req, CancellationToken ct = default)
     {
-        var discountType = Enum.Parse<CouponDiscountType>(req.DiscountType, ignoreCase: true);
+        var discountType = EnumInput.Parse<CouponDiscountType>(req.DiscountType, "Tipo de desconto inválido");
         var coupon = Coupon.Create(
             _currentTenant.Id,
             req.Code,
@@ -59,7 +60,7 @@ public class CouponService
     {
         var coupon = await _repo.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("Coupon", id);
-        var discountType = Enum.Parse<CouponDiscountType>(req.DiscountType, ignoreCase: true);
+        var discountType = EnumInput.Parse<CouponDiscountType>(req.DiscountType, "Tipo de desconto inválido");
         coupon.Update(
             discountType, req.DiscountValue, req.Description,
             req.MinOrderAmount, req.MinDeliveryFee,
