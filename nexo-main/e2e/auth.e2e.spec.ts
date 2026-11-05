@@ -28,6 +28,23 @@ const APP_URL = process.env.APP_URL || "http://localhost:8080";
 const E2E_LOGIN = process.env.E2E_ADMIN_LOGIN ?? "admin";
 const E2E_PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "IntegrationTestOnly!123";
 
+const LOGIN_FIELD = "#login";
+const PASSWORD_FIELD = "#password";
+const ACCESS_TOKEN_KEY = "nexo:access_token";
+const REFRESH_TOKEN_KEY = "nexo:refresh_token";
+
+async function signIn(page: Page) {
+  await page.goto(`${APP_URL}/login`);
+  await page.fill(LOGIN_FIELD, E2E_LOGIN);
+  await page.fill(PASSWORD_FIELD, E2E_PASSWORD);
+  await page.click('button[type="submit"]');
+  // Where login lands depends on the user's workspaces; the tests continue from the dashboard.
+  await page.waitForURL((url) => url.pathname !== "/login");
+  await page.goto(`${APP_URL}/dashboard`);
+}
+
+const signOutButton = (page: Page) => page.getByRole("button", { name: "Sair da conta" });
+
 test.describe("Frontend Authentication Flow", () => {
   test.beforeEach(async ({ page, context }) => {
     // Clear all cookies before each test
@@ -96,24 +113,26 @@ test.describe("Frontend Authentication Flow", () => {
 
   test("Login sets httpOnly cookies that are inaccessible to JavaScript", async ({ page }) => {
     await page.goto(`${APP_URL}/login`);
-    await page.fill('input[name="login"]', E2E_LOGIN);
-    await page.fill('input[name="password"]', E2E_PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForURL(`${APP_URL}/dashboard`);
+    await page.fill(LOGIN_FIELD, E2E_LOGIN);
+    await page.fill(PASSWORD_FIELD, E2E_PASSWORD);
 
-    // Try to access cookies via JavaScript (should fail for httpOnly)
-    const cookiesViaJs = await page.evaluate(() => {
-      return document.cookie;
-    });
+    const [response] = await Promise.all([
+      page.waitForResponse((r) => r.url().endsWith("/api/auth/login") && r.request().method() === "POST"),
+      page.click('button[type="submit"]'),
+    ]);
+    expect(response.status()).toBe(200);
 
-    // httpOnly cookies should NOT appear in document.cookie
-    // (This is the security property we're validating)
-    if (cookiesViaJs.includes("nexo_")) {
-      // If the cookie appears, it might not have httpOnly flag
-      console.warn(
-        "WARNING: Auth cookies may not have httpOnly flag set properly"
-      );
+    const setCookies = (await response.headersArray())
+      .filter((h) => h.name.toLowerCase() === "set-cookie")
+      .map((h) => h.value.toLowerCase());
+    for (const name of ["nexo_access", "nexo_refresh"]) {
+      const cookie = setCookies.find((value) => value.startsWith(`${name}=`));
+      expect(cookie, `${name} in the login response`).toBeDefined();
+      expect(cookie).toContain("httponly");
     }
+
+    await page.waitForURL((url) => url.pathname !== "/login");
+    expect(await page.evaluate(() => document.cookie)).not.toContain("nexo_");
   });
 
   test("Cookies persist across page navigation", async ({ page, context }) => {
@@ -215,104 +234,45 @@ test.describe("Frontend Authentication Flow", () => {
   // MULTI-TAB BEHAVIOR
   // ────────────────────────────────────────────────────────────────────────────
 
-  test("Login in one tab is reflected in another tab", async ({ browser, page }) => {
-    // Create two pages (simulating two tabs)
-    const page1 = await browser.newPage();
-    const page2 = await browser.newPage();
+  test("Login in one tab is reflected in another tab", async ({ context, page }) => {
+    await signIn(page);
 
-    try {
-      // Tab 1: Login
-      await page1.goto(`${APP_URL}/login`);
-      await page1.fill('input[name="login"]', E2E_LOGIN);
-      await page1.fill('input[name="password"]', E2E_PASSWORD);
-      await page1.click('button[type="submit"]');
-      await page1.waitForURL(`${APP_URL}/dashboard`);
+    // Pages of one context are tabs of one browser: they share the stored session.
+    const otherTab = await context.newPage();
+    await otherTab.goto(`${APP_URL}/dashboard`);
 
-      // Tab 2: Reload and check if logged in
-      await page2.goto(`${APP_URL}/dashboard`, { waitUntil: "networkidle" });
-
-      // Tab 2 might require redirect to login initially (depends on implementation)
-      // But if cookies are shared, it might show dashboard
-      // This documents the expected behavior
-    } finally {
-      await page1.close();
-      await page2.close();
-    }
+    await expect(signOutButton(otherTab)).toBeVisible();
+    await expect(otherTab).toHaveURL(`${APP_URL}/dashboard`);
   });
 
-  test("Logout in one tab affects other tabs", async ({ browser, page }) => {
-    const page1 = await browser.newPage();
-    const page2 = await browser.newPage();
+  test("Logout in one tab affects other tabs", async ({ context, page }) => {
+    await signIn(page);
+    const otherTab = await context.newPage();
+    await otherTab.goto(`${APP_URL}/dashboard`);
+    await expect(signOutButton(otherTab)).toBeVisible();
 
-    try {
-      // Both tabs: Login
-      const loginAndNavigate = async (p: Page) => {
-        await p.goto(`${APP_URL}/login`);
-        await p.fill('input[name="login"]', E2E_LOGIN);
-        await p.fill('input[name="password"]', E2E_PASSWORD);
-        await p.click('button[type="submit"]');
-        await p.waitForURL(`${APP_URL}/dashboard`);
-      };
+    await signOutButton(page).click();
+    await page.waitForURL(`${APP_URL}/login`);
 
-      await loginAndNavigate(page1);
-      await loginAndNavigate(page2);
-
-      // Tab 1: Logout
-      const logoutBtn1 = page1.locator(
-        'button:has-text("Logout"), button:has-text("Sair")'
-      );
-      await logoutBtn1.click();
-      await page1.waitForURL(`${APP_URL}/login`);
-
-      // Tab 2: Try to navigate (should be logged out)
-      // Depends on implementation:
-      // - If using cookies only: might still show dashboard (cookie persists until expiry)
-      // - If using localStorage: might immediately redirect
-      const currentPage2Url = page2.url();
-      if (currentPage2Url.includes("/dashboard")) {
-        // Try to trigger a refresh to check if still authenticated
-        await page2.reload();
-        const newUrl = page2.url();
-        // If properly logged out, should be on login page
-        // Otherwise, depends on implementation
-      }
-    } finally {
-      await page1.close();
-      await page2.close();
-    }
+    // The other tab finds out on its next load: the stored session is gone.
+    await otherTab.reload();
+    await expect(otherTab).toHaveURL(/\/login/);
   });
 
   // ────────────────────────────────────────────────────────────────────────────
   // CREDENTIALS & CORS
   // ────────────────────────────────────────────────────────────────────────────
 
-  test("API requests include credentials (cookies)", async ({ page }) => {
-    // Login
-    await page.goto(`${APP_URL}/login`);
-    await page.fill('input[name="login"]', E2E_LOGIN);
-    await page.fill('input[name="password"]', E2E_PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForURL(`${APP_URL}/dashboard`);
+  test("API requests carry the access token of the session", async ({ page }) => {
+    await signIn(page);
+    const token = await page.evaluate((key) => localStorage.getItem(key), ACCESS_TOKEN_KEY);
+    expect(token).toBeTruthy();
 
-    // Monitor network requests
-    const requestPromise = page.waitForEvent("request", (req) =>
-      req.url().includes("/api/")
-    );
+    // The frontend authenticates with the header; it does not send the cookies.
+    const apiRequest = page.waitForRequest((r) => r.url().endsWith("/api/auth/me") && r.method() === "GET");
+    await page.reload();
 
-    // Trigger an API call (e.g., by navigating or interacting with the page)
-    await page.goto(`${APP_URL}/profile`);
-
-    const request = await requestPromise;
-
-    // Check if request includes credentials
-    const headers = request.headers();
-    const isXhr = request.resourceType() === "xhr" || request.resourceType() === "fetch";
-
-    if (isXhr) {
-      // Fetch requests should have credentials included
-      // This is validated on the client side (credentials: 'include')
-      // and confirmed by cookies being sent with requests
-    }
+    expect(await (await apiRequest).headerValue("authorization")).toBe(`Bearer ${token}`);
   });
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -320,9 +280,17 @@ test.describe("Frontend Authentication Flow", () => {
   // ────────────────────────────────────────────────────────────────────────────
 
   test("Network errors display user-friendly message", async ({ page }) => {
-    // This test validates frontend error handling
-    // It would require mocking network failures
-    // For now, document the expected behavior
+    await page.route("**/api/auth/login", (route) => route.abort("connectionrefused"));
+    await page.goto(`${APP_URL}/login`);
+    await page.fill(LOGIN_FIELD, E2E_LOGIN);
+    await page.fill(PASSWORD_FIELD, E2E_PASSWORD);
+    await page.click('button[type="submit"]');
+
+    const message = page.getByRole("alert");
+    await expect(message).toBeVisible();
+    await expect(message).not.toContainText(/failed to fetch|networkerror|typeerror/i);
+    await expect(message).toContainText(/conectar|conex/i);
+    await expect(page).toHaveURL(/\/login/);
   });
 
   test("401 responses trigger re-login flow", async ({ page, context }) => {
@@ -398,37 +366,37 @@ test.describe("Frontend Authentication Flow", () => {
 });
 
 test.describe("Frontend Session Management", () => {
-  test("Session timeout logs user out after inactivity", async ({ page, context }) => {
-    // This test validates session timeout behavior
-    // Requires configuring a short timeout for testing
+  // The app has no inactivity timer: a session ends when its tokens stop being accepted.
+  test("Expired session sends the user back to login", async ({ page }) => {
+    await signIn(page);
 
-    // Login
-    await page.goto(`${APP_URL}/login`);
-    await page.fill('input[name="login"]', E2E_LOGIN);
-    await page.fill('input[name="password"]', E2E_PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForURL(`${APP_URL}/dashboard`);
+    await page.evaluate(
+      ([accessKey, refreshKey]) => {
+        localStorage.setItem(accessKey, "expired");
+        localStorage.setItem(refreshKey, "expired");
+      },
+      [ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY],
+    );
+    await page.reload();
 
-    // Wait for session timeout (would need short timeout in test env)
-    // await page.waitForTimeout(session_timeout_ms);
-
-    // Try to access protected page
-    // Should redirect to login if session expired
+    await expect(page).toHaveURL(/\/login/);
   });
 
-  test("Refresh token prevents constant re-login", async ({ page, context }) => {
-    // This validates that users don't have to re-login every 15 minutes
-    // The refresh token should automatically extend the session
+  test("Refresh token prevents constant re-login", async ({ page }) => {
+    await signIn(page);
+    const refreshTokenBefore = await page.evaluate((key) => localStorage.getItem(key), REFRESH_TOKEN_KEY);
 
-    // Login
-    await page.goto(`${APP_URL}/login`);
-    await page.fill('input[name="login"]', E2E_LOGIN);
-    await page.fill('input[name="password"]', E2E_PASSWORD);
-    await page.click('button[type="submit"]');
-    await page.waitForURL(`${APP_URL}/dashboard`);
+    // Only the access token stopped being accepted, as it does after 15 minutes.
+    await page.evaluate((key) => localStorage.setItem(key, "expired"), ACCESS_TOKEN_KEY);
+    const refresh = page.waitForResponse((r) => r.url().endsWith("/api/auth/refresh") && r.request().method() === "POST");
+    await page.reload();
 
-    // Stay on page for extended period
-    // Make requests periodically
-    // Session should remain valid (refresh token working)
+    expect((await refresh).status()).toBe(200);
+    await expect(signOutButton(page)).toBeVisible();
+    await expect(page).toHaveURL(`${APP_URL}/dashboard`);
+    await expect
+      .poll(() => page.evaluate((key) => localStorage.getItem(key), ACCESS_TOKEN_KEY))
+      .not.toBe("expired");
+    expect(await page.evaluate((key) => localStorage.getItem(key), REFRESH_TOKEN_KEY)).not.toBe(refreshTokenBefore);
   });
 });
