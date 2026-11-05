@@ -301,6 +301,8 @@ public class TenantAccessEnforcementTests
         var client = await tenant.LoginAsync(host);
         await ExpectBlockedAsync(client.PostAsJsonAsync("/api/categories", new { name = Unique("Categoria") }));
 
+        // o webhook grava o estado atual da assinatura no Stripe, não o corpo do evento
+        _factory.StripeSubscriptions.Set(tenant.Rows[0].StripeSubscriptionId!, "active");
         var body = SubscriptionUpdatedEvent(tenant.Rows[0].StripeSubscriptionId!, "active");
         using var webhook = new HttpRequestMessage(HttpMethod.Post, "/api/billing/webhook") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
         webhook.Headers.Add("Stripe-Signature", Sign(body, secret));
