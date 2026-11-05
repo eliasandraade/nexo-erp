@@ -146,6 +146,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // on the fly. TaxIntelligenceTests turns enforcement, the mode and the pilot scope on in derived hosts to
         // prove what each configuration accepts and refuses.
         builder.UseSetting("Secrets:MasterKey", TestMasterKey);
+        // Stripe stays off here. A host that turns it on starts with these fake secrets (StripeStartupPolicy).
+        builder.UseSetting("Integrations:Stripe:SecretKey", "sk_test_integration_tests_only");
+        builder.UseSetting("Integrations:Stripe:WebhookSecret", "whsec_integration_tests_only");
         // Admin acts normally require a sign-in with two-step verification; most suites sign in with the password only.
         // PlatformSecurityTests turns the requirement back on in its own host.
         builder.UseSetting("Platform:RequireMfaForAdmin", "false");
