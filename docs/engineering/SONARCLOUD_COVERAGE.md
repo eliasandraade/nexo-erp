@@ -5,7 +5,7 @@
 Duas causas, ambas fora do código de produto:
 
 1. **Nenhum teste gerava relatório de cobertura.** Os projetos de teste .NET não tinham coletor configurado, e o frontend não tinha provider de cobertura do Vitest instalado.
-2. **O SonarCloud roda como _Automatic Analysis_** (o app do GitHub analisa o código sozinho; não há scanner no CI nem `sonar-project.properties`). Esse modo **não importa relatórios de cobertura** — por desenho do SonarCloud. A API confirma: o PR #78 tinha `new_lines_to_cover = 0` (nenhum dado de cobertura recebido), não "0% de linhas cobertas".
+2. **O SonarCloud rodava como _Automatic Analysis_** (o app do GitHub analisava o código sozinho, sem scanner no CI). Esse modo **não importa relatórios de cobertura**, por desenho do SonarCloud. A API confirmava: o PR #78 tinha `new_lines_to_cover = 0` (nenhum dado de cobertura recebido), não "0% de linhas cobertas".
 
 ## O que é gerado agora
 
@@ -20,26 +20,25 @@ Duas causas, ambas fora do código de produto:
 
 Nenhum teste foi criado para subir percentual, nenhum limite foi reduzido e nenhum módulo foi excluído da medição.
 
-## O que falta — ação do dono (bloqueio)
+## Como a análise roda hoje
 
-Mandar a cobertura ao SonarCloud exige **análise pelo CI**, e isso depende de duas configurações que só o dono pode fazer (não são código):
+A análise é **pelo CI**: `.github/workflows/sonarcloud.yml` roda os testes com cobertura e envia tudo com o SonarScanner for .NET 11.3.0. O workflow é chamado por `ci.yml` em toda PR e por `master.yml` em todo commit que chega ao `master`. A etapa que dependia do dono (desligar a _Automatic Analysis_ e criar o `SONAR_TOKEN`) está concluída.
 
-1. **SonarCloud** → projeto `nexo-erp` → *Administration* → *Analysis Method* → **desligar Automatic Analysis**.
-2. **GitHub** → repositório → *Settings* → *Secrets and variables* → *Actions* → **criar `SONAR_TOKEN`** (token de um usuário da organização `eliasandraade` no SonarCloud, *My Account → Security*).
+- **Na PR**, o job espera o Quality Gate do código novo e falha se ele estiver vermelho (`sonar.qualitygate.wait`). Como `ci-gate` depende desse job, um gate vermelho bloqueia o merge.
+- **No `master`**, a análise é enviada sem esperar o gate, que cobre todo o histórico.
+- **Sem `SONAR_TOKEN`** (PR de fork, por exemplo), todos os passos são pulados e o job passa, sem análise.
 
-Nessa ordem. Com o token mas a análise automática ligada, o SonarCloud recusa a análise do CI.
+O que ainda depende do painel está em `docs/audits/2026-11-04-sonarcloud-revalidacao.md`: período de "código novo", falsos positivos e hotspots.
 
-O workflow `.github/workflows/sonarcloud.yml` já está pronto: roda os testes com cobertura e envia tudo com o SonarScanner for .NET 11.3.0. **Sem o `SONAR_TOKEN`, todos os passos são pulados e o job passa** — nada muda até o dono fazer os dois passos acima.
+### Configurações que ficam na interface do SonarCloud
 
-### Configurações que hoje estão na interface do SonarCloud
+A exclusão das migrations do cálculo de duplicação foi feita na interface, quando a análise era automática, e o workflow a repete em `sonar.cpd.exclusions`.
 
-A exclusão das migrations do cálculo de duplicação foi feita na interface (a análise automática ignora arquivos do repositório). O workflow repete essa exclusão em `sonar.cpd.exclusions`, para o resultado não mudar na troca.
+### Como conferir
 
-### Como conferir depois da troca
-
-- O job `sonarcloud` deixa de mostrar o aviso "SONAR_TOKEN not set" e termina com "ANALYSIS SUCCESSFUL".
-- No PR, o comentário do SonarCloud passa a mostrar cobertura diferente de 0,0% e `new_lines_to_cover > 0`.
-- Na primeira análise, conferir se os arquivos TypeScript do `nexo-main` aparecem no projeto (o scanner do .NET analisa arquivos fora dos `.csproj` a partir do `sonar.projectBaseDir`). Se não aparecerem, ajustar `sonar.sources`/`sonar.inclusions` no passo *Begin analysis*.
+- O job `sonarcloud` termina com "ANALYSIS SUCCESSFUL".
+- Na PR, a API mostra `new_lines_to_cover > 0` quando há código novo coberto por medição.
+- Os arquivos TypeScript de `nexo-main` aparecem no projeto: os achados `typescript:*` confirmam.
 
 ### Atenção ao nome das propriedades
 
