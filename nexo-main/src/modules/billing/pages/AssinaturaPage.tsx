@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CreditCard, ExternalLink, CheckCircle2, Clock, AlertTriangle, XCircle, Package } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ApiError } from "@/services/api-client";
 import {
+  CHECKOUT_DISABLED_CODE,
+  getCheckoutAvailability,
   listSubscriptions,
   createCheckout,
   createPortal,
+  type CheckoutAvailability,
   type SubscriptionDetail,
 } from "@/services/billing.api";
+
+const AVAILABILITY_KEY = ["billing", "checkout-availability"];
 
 // ── Module catalogue ──────────────────────────────────────────────────────────
 
@@ -65,9 +70,10 @@ interface ModuleCardProps {
   period: BillingPeriod;
   onSubscribe: (moduleKey: string, period: BillingPeriod) => Promise<void>;
   loading: boolean;
+  checkoutsOpen: boolean;
 }
 
-function ModuleCard({ moduleKey, label, description, subscription, period, onSubscribe, loading }: ModuleCardProps) {
+function ModuleCard({ moduleKey, label, description, subscription, period, onSubscribe, loading, checkoutsOpen }: ModuleCardProps) {
   const isActive = subscription?.status === "Active" || subscription?.status === "Trialing";
 
   return (
@@ -95,7 +101,7 @@ function ModuleCard({ moduleKey, label, description, subscription, period, onSub
               <p className="text-amber-500 font-medium">Cancelamento agendado para o fim do período.</p>
             )}
           </div>
-        ) : (
+        ) : checkoutsOpen ? (
           <Button
             size="sm"
             disabled={loading}
@@ -104,6 +110,8 @@ function ModuleCard({ moduleKey, label, description, subscription, period, onSub
           >
             {loading ? "Aguarde..." : `Assinar — ${period === "monthly" ? "Mensal" : "Anual"}`}
           </Button>
+        ) : (
+          <p className="text-[12px] text-muted-foreground">Contratação indisponível no momento.</p>
         )}
       </CardContent>
     </Card>
@@ -114,6 +122,7 @@ function ModuleCard({ moduleKey, label, description, subscription, period, onSub
 
 export default function AssinaturaPage() {
   const [searchParams] = useSearchParams();
+  const queryClient = useQueryClient();
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
@@ -130,10 +139,20 @@ export default function AssinaturaPage() {
     retry: false,
   });
 
+  const { data: availability, isLoading: availabilityLoading } = useQuery({
+    queryKey: AVAILABILITY_KEY,
+    queryFn: getCheckoutAvailability,
+    retry: false,
+  });
+
   const billingUnavailable =
     isError && error instanceof ApiError && error.status === 404;
 
   const hasAnySubscription = (subscriptions?.length ?? 0) > 0;
+
+  // Only the server opens a purchase: a failed read, or anything but true, keeps it closed.
+  const checkoutsOpen = availability?.newCheckoutsEnabled === true;
+  const pageLoading = isLoading || availabilityLoading;
 
   async function handleSubscribe(moduleKey: string, billingPeriod: BillingPeriod) {
     setCheckoutLoading(moduleKey);
@@ -141,6 +160,10 @@ export default function AssinaturaPage() {
       const { checkoutUrl } = await createCheckout(moduleKey, billingPeriod);
       window.location.href = checkoutUrl;
     } catch (err) {
+      // The server closed purchases after this page read that they were open.
+      if (err instanceof ApiError && err.code === CHECKOUT_DISABLED_CODE) {
+        queryClient.setQueryData<CheckoutAvailability>(AVAILABILITY_KEY, { newCheckoutsEnabled: false });
+      }
       const msg = err instanceof ApiError ? err.message : "Erro ao iniciar checkout.";
       toast.error(msg);
       setCheckoutLoading(null);
@@ -190,8 +213,10 @@ export default function AssinaturaPage() {
           <div className="text-sm">
             <p className="font-medium text-foreground">Modo somente leitura</p>
             <p className="text-muted-foreground mt-0.5">
-              Sem assinatura ativa, você pode ver e exportar os dados, mas não registrar nem alterar. Para voltar a
-              registrar, fale com o suporte Orken.
+              Sem assinatura ativa, você pode ver e exportar os dados, mas não registrar nem alterar.{" "}
+              {checkoutsOpen
+                ? "Os módulos disponíveis para contratação aparecem abaixo. Se o que a sua empresa usa não está na lista, fale com o suporte Orken."
+                : "Para saber as opções da sua empresa, fale com o suporte Orken."}
             </p>
             <a className="mt-1 inline-flex min-h-11 items-center text-primary underline" href="mailto:suporte@orken.com.br">
               Falar com o suporte
@@ -216,35 +241,54 @@ export default function AssinaturaPage() {
       {/* Content when billing available */}
       {!billingUnavailable && (
         <>
-          {/* Billing period toggle */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Período:</span>
-            <div className="flex rounded-md border border-border overflow-hidden text-sm">
-              <button
-                onClick={() => setPeriod("monthly")}
-                className={`px-3 py-1.5 transition-colors ${
-                  period === "monthly"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted text-foreground"
-                }`}
-              >
-                Mensal
-              </button>
-              <button
-                onClick={() => setPeriod("annual")}
-                className={`px-3 py-1.5 transition-colors ${
-                  period === "annual"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted text-foreground"
-                }`}
-              >
-                Anual
-              </button>
+          {/* New purchases closed by the server (Billing:NewCheckoutsEnabled). Promises no purchase and no price. */}
+          {!pageLoading && !checkoutsOpen && (
+            <div role="status" className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-foreground">Contratação de novos módulos indisponível</p>
+                <p className="text-muted-foreground mt-0.5">
+                  No momento, novos módulos não podem ser contratados por aqui. O que já está ativo na sua empresa não
+                  muda. Para saber as opções, fale com o suporte Orken.
+                </p>
+                <a className="mt-1 inline-flex min-h-11 items-center text-primary underline" href="mailto:suporte@orken.com.br">
+                  Falar com o suporte
+                </a>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Billing period toggle */}
+          {!pageLoading && checkoutsOpen && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Período:</span>
+              <div className="flex rounded-md border border-border overflow-hidden text-sm">
+                <button
+                  onClick={() => setPeriod("monthly")}
+                  className={`px-3 py-1.5 transition-colors ${
+                    period === "monthly"
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  Mensal
+                </button>
+                <button
+                  onClick={() => setPeriod("annual")}
+                  className={`px-3 py-1.5 transition-colors ${
+                    period === "annual"
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted text-foreground"
+                  }`}
+                >
+                  Anual
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Module cards */}
-          {isLoading ? (
+          {pageLoading ? (
             <div className="space-y-3">
               {[0, 1].map((i) => (
                 <div key={i} className="h-32 rounded-lg border border-border bg-muted/30 animate-pulse" />
@@ -264,6 +308,7 @@ export default function AssinaturaPage() {
                     period={period}
                     onSubscribe={handleSubscribe}
                     loading={checkoutLoading === mod.key}
+                    checkoutsOpen={checkoutsOpen}
                   />
                 );
               })}
@@ -271,7 +316,7 @@ export default function AssinaturaPage() {
           )}
 
           {/* No subscriptions notice */}
-          {!isLoading && !hasAnySubscription && (
+          {!pageLoading && checkoutsOpen && !hasAnySubscription && (
             <p className="text-sm text-muted-foreground">
               Nenhuma assinatura ativa. Clique em "Assinar" para adicionar um módulo.
             </p>

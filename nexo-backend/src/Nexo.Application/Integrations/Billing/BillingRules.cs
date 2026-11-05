@@ -5,6 +5,16 @@ namespace Nexo.Application.Integrations.Billing;
 /// <summary>Pure billing rules shared by the webhook and the checkout endpoints (unit-tested).</summary>
 public static class BillingRules
 {
+    /// <summary>The switch for new checkouts (environment variable <c>Billing__NewCheckoutsEnabled</c>).</summary>
+    public const string NewCheckoutsSetting = "Billing:NewCheckoutsEnabled";
+
+    /// <summary>
+    /// Whether a new checkout may start. Fails closed, unlike Billing:EnforceTenantAccess: missing, empty or mistyped keeps
+    /// new checkouts blocked. Only the literal true opens them, which the configuration delivers as "true" from an
+    /// environment variable and as "True" from a JSON boolean.
+    /// </summary>
+    public static bool NewCheckoutsEnabled(string? configured) => configured is "true" or "True";
+
     /// <summary>
     /// Stripe subscription status → ours. Anything that is not known to be paid fails closed:
     /// "incomplete" (first payment pending) and "paused" give no access; an unknown status too.

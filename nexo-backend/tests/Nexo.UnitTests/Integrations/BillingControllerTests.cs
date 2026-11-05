@@ -26,7 +26,9 @@ public sealed class BillingControllerTests
 
     private static Sut Build(
         bool stripeEnabled = true,
-        Dictionary<string, string>? priceIds = null)
+        Dictionary<string, string>? priceIds = null,
+        string? newCheckouts = null,
+        string? jsonConfig = null)
     {
         var billing         = Substitute.For<IBillingProvider>();
         var tenants         = Substitute.For<ITenantRepository>();
@@ -49,12 +51,15 @@ public sealed class BillingControllerTests
             },
         });
 
-        var config = new ConfigurationBuilder()
+        var configBuilder = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["App:FrontendUrl"] = "http://localhost:5173",
-            })
-            .Build();
+                [BillingRules.NewCheckoutsSetting] = newCheckouts,
+            });
+        if (jsonConfig is not null)
+            configBuilder.AddJsonStream(new MemoryStream(System.Text.Encoding.UTF8.GetBytes(jsonConfig)));
+        var config = configBuilder.Build();
 
         var controller = new BillingController(
             billing, tenants, subscriptions, webhookService,
@@ -110,9 +115,62 @@ public sealed class BillingControllerTests
     }
 
     [Fact]
+    public async Task CreateCheckout_FlagDisabled_WinsOverAnOpenSwitch()
+    {
+        var sut    = Build(stripeEnabled: false, newCheckouts: "true");
+        var result = await sut.Controller.CreateCheckout(
+            new BillingController.CreateCheckoutBody("restaurante", "monthly", null, null), default);
+        Assert.IsType<NotFoundObjectResult>(result);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("false")]
+    [InlineData("talvez")]
+    [InlineData("TRUE")]
+    [InlineData(" true")]
+    [InlineData("1")]
+    public async Task CreateCheckout_SwitchNotLiterallyTrue_Answers403BeforeTouchingAnything(string? newCheckouts)
+    {
+        var sut    = Build(newCheckouts: newCheckouts);
+        var result = await sut.Controller.CreateCheckout(
+            new BillingController.CreateCheckoutBody(null, null, null, null), default);
+
+        var refused = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(StatusCodes.Status403Forbidden, refused.StatusCode);
+        Assert.Equal("checkout_disabled", refused.Value!.GetType().GetProperty("code")!.GetValue(refused.Value));
+        await sut.Tenants.DidNotReceiveWithAnyArgs().GetByIdAsync(default, default);
+        await sut.Subscriptions.DidNotReceiveWithAnyArgs().GetByTenantIdAsync(default, default);
+        await sut.Billing.DidNotReceiveWithAnyArgs().GetOrCreateCustomerAsync(default, default!, default!, default);
+        await sut.Billing.DidNotReceiveWithAnyArgs().CreateCheckoutSessionAsync(default!, default);
+    }
+
+    /// <summary>The literal true, as an appsettings file writes it. A JSON boolean reaches the configuration as "True".</summary>
+    [Theory]
+    [InlineData("""{ "Billing": { "NewCheckoutsEnabled": true } }""", true)]
+    [InlineData("""{ "Billing": { "NewCheckoutsEnabled": false } }""", false)]
+    public void GetCheckoutAvailability_ReadsAJsonBoolean(string jsonConfig, bool open)
+    {
+        var sut    = Build(jsonConfig: jsonConfig);
+        var result = sut.Controller.GetCheckoutAvailability();
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal(open, ok.Value!.GetType().GetProperty("newCheckoutsEnabled")!.GetValue(ok.Value));
+    }
+
+    [Fact]
+    public void GetCheckoutAvailability_FlagDisabled_ReturnsNotFound()
+    {
+        var sut = Build(stripeEnabled: false, newCheckouts: "true");
+        Assert.IsType<NotFoundObjectResult>(sut.Controller.GetCheckoutAvailability());
+    }
+
+    [Fact]
     public async Task CreateCheckout_MissingModuleKey_ReturnsBadRequest()
     {
-        var sut    = Build();
+        var sut    = Build(newCheckouts: "true");
         var result = await sut.Controller.CreateCheckout(
             new BillingController.CreateCheckoutBody(null, "monthly", null, null), default);
         Assert.IsType<BadRequestObjectResult>(result);
@@ -121,7 +179,7 @@ public sealed class BillingControllerTests
     [Fact]
     public async Task CreateCheckout_PriceIdNotConfigured_ReturnsBadRequest()
     {
-        var sut    = Build();
+        var sut    = Build(newCheckouts: "true");
         var result = await sut.Controller.CreateCheckout(
             new BillingController.CreateCheckoutBody("build", "monthly", null, null), default); // build_monthly not in PriceIds
         Assert.IsType<BadRequestObjectResult>(result);
@@ -130,7 +188,7 @@ public sealed class BillingControllerTests
     [Fact]
     public async Task CreateCheckout_TenantNotFound_ReturnsNotFound()
     {
-        var sut = Build();
+        var sut = Build(newCheckouts: "true");
         sut.Tenants.GetByIdAsync(sut.CurrentTenant.Id, Arg.Any<CancellationToken>()).Returns((Tenant?)null);
         var result = await sut.Controller.CreateCheckout(
             new BillingController.CreateCheckoutBody("restaurante", "monthly", null, null), default);
@@ -140,7 +198,7 @@ public sealed class BillingControllerTests
     [Fact]
     public async Task CreateCheckout_ValidRequest_RedirectsToCheckoutUrl()
     {
-        var sut    = Build();
+        var sut    = Build(newCheckouts: "true");
         var tenant = MakeTenant("cus_existing");
         sut.Tenants.GetByIdAsync(sut.CurrentTenant.Id, Arg.Any<CancellationToken>()).Returns(tenant);
         sut.Billing

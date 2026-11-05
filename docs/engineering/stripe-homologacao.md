@@ -30,6 +30,7 @@ Variáveis a acrescentar ao backend em staging. Não copie nada de produção:
 |---|---|
 | `ASPNETCORE_ENVIRONMENT` | `Staging` (já definida) |
 | `Integrations__Features__StripeEnabled` | `true` |
+| `Billing__NewCheckoutsEnabled` | `true`, junto com a chave de teste (ver abaixo) |
 | `Integrations__Stripe__SecretKey` | `sk_test_...` |
 | `Integrations__Stripe__WebhookSecret` | `whsec_...` do endpoint de staging |
 | `Integrations__Stripe__PriceIds__{modulo}_{periodo}` | `price_...` de teste |
@@ -37,6 +38,27 @@ Variáveis a acrescentar ao backend em staging. Não copie nada de produção:
 
 Com `StripeEnabled=true`, o backend recusa subir sem `SecretKey` e `WebhookSecret`. A mensagem cita o nome da
 configuração, nunca o valor.
+
+### Bloqueio de novos checkouts
+
+`Billing:NewCheckoutsEnabled` (variável `Billing__NewCheckoutsEnabled`), padrão `false`. Independe de `StripeEnabled` e não
+o altera.
+
+- **Só o literal `true` libera** (em arquivo JSON, o booleano `true`, que o .NET lê como `True`). Ausente, vazio ou inválido
+  mantém bloqueado: ao contrário da `EnforceTenantAccess`, o erro de digitação falha fechado.
+- **Bloqueado:** `POST api/billing/checkout` responde 403 `checkout_disabled`, antes de validar o plano, ler qualquer dado ou
+  chamar o Stripe. A tela `/assinatura` lê `GET api/billing/checkout-availability`, tira o botão de assinar e mostra o
+  contato do suporte. Com `StripeEnabled` desligado, o checkout continua 404, e a impersonação continua recebendo
+  `impersonation_forbidden`.
+- **Não muda:** webhook, portal, listagem, leitura de status e renovação. Assinaturas existentes preservam o estado e nada é
+  cancelado nem alterado no Stripe.
+- **Log:** cada subida registra `New checkouts are open` ou `blocked`. Cada recusa gera um aviso com o id da empresa e o
+  motivo, sem dados pessoais.
+
+**Em produção,** `Billing__NewCheckoutsEnabled=true` exige autorização comercial explícita do dono e esta homologação
+concluída. Promover sem definir nada mantém bloqueado.
+
+**Na homologação,** ligue a variável junto com a `sk_test_...`. Sem ela, o §3.4 recebe 403.
 
 ## 2. Como conferir o resultado
 
@@ -105,6 +127,7 @@ stripe listen --print-secret   # devolve o whsec_ desta máquina
 cd nexo-backend/src/Nexo.Api
 ASPNETCORE_ENVIRONMENT=Development \
 Integrations__Features__StripeEnabled=true \
+Billing__NewCheckoutsEnabled=true \
 Integrations__Stripe__SecretKey=sk_test_... \
 Integrations__Stripe__WebhookSecret=whsec_... \
 dotnet run --urls http://localhost:5199
