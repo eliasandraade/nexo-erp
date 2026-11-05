@@ -19,7 +19,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 // quem testou o varejo: esse módulo não tem preço, então não há o que comprar para ele
 const trialDoVarejo = {
-  moduleKey: "varejo", status: "Trialing", planType: "Trial", currentPeriodStart: null, currentPeriodEnd: null,
+  moduleKey: "varejo", status: "Trialing", planType: "Trial", currentPeriodStart: "2026-11-01T00:00:00Z", currentPeriodEnd: null,
   cancelAtPeriodEnd: false, stripeSubscriptionId: null,
 };
 

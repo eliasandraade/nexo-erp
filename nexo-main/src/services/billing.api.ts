@@ -19,8 +19,19 @@ export interface PortalResponse {
   portalUrl: string;
 }
 
+export interface CheckoutAvailability {
+  newCheckoutsEnabled: boolean;
+}
+
+/** Code of the 403 of a checkout while the server has new purchases closed. */
+export const CHECKOUT_DISABLED_CODE = "checkout_disabled";
+
 export function listSubscriptions(): Promise<SubscriptionDetail[]> {
   return apiClient.get("/billing/subscriptions");
+}
+
+export function getCheckoutAvailability(): Promise<CheckoutAvailability> {
+  return apiClient.get("/billing/checkout-availability");
 }
 
 export function createCheckout(
