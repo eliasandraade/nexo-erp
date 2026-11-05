@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
@@ -100,29 +101,11 @@ public class SaleRepository : ISaleRepository
 
         var total = await q.CountAsync(ct);
 
-        // Reads only the fields of the list: loading items × payments of every sale multiplies the rows.
         var rows = await q
             .OrderByDescending(x => x.Number)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(s => new
-            {
-                s.Id,
-                s.Number,
-                s.Status,
-                s.CustomerId,
-                CustomerName  = s.Customer != null ? s.Customer.Name : null,
-                SoldByName    = s.SoldBy != null ? s.SoldBy.FullName : null,
-                s.Total,
-                Timestamp     = s.ConfirmedAt ?? s.CreatedAt,
-                ItemCount     = s.Items.Count,
-                TotalQuantity = s.Items.Sum(i => i.Quantity),
-                FirstItemName = s.Items
-                    .OrderBy(i => i.CreatedAt).ThenBy(i => i.Id)
-                    .Select(i => i.Product != null ? i.Product.Name : null)
-                    .FirstOrDefault(),
-                Methods       = s.Payments.OrderBy(p => p.Id).Select(p => p.Method).ToList(),
-            })
+            .Select(ToListRow)
             .ToListAsync(ct);
 
         var items = rows.Select(s => new SaleListItemDto(
@@ -146,6 +129,38 @@ public class SaleRepository : ISaleRepository
         => Enum.GetValues<TEnum>()
             .Where(v => string.Equals(v.ToString(), name, StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+    private sealed record SaleListRow(
+        Guid Id,
+        int Number,
+        SaleStatus Status,
+        Guid? CustomerId,
+        string? CustomerName,
+        string? SoldByName,
+        decimal Total,
+        DateTime Timestamp,
+        int ItemCount,
+        decimal TotalQuantity,
+        string? FirstItemName,
+        List<PaymentMethod> Methods);
+
+    /// <summary>Only the fields of the list: loading items × payments of every sale multiplies the rows.</summary>
+    private static readonly Expression<Func<Sale, SaleListRow>> ToListRow = s => new SaleListRow(
+        s.Id,
+        s.Number,
+        s.Status,
+        s.CustomerId,
+        s.Customer != null ? s.Customer.Name : null,
+        s.SoldBy != null ? s.SoldBy.FullName : null,
+        s.Total,
+        s.ConfirmedAt ?? s.CreatedAt,
+        s.Items.Count,
+        s.Items.Sum(i => i.Quantity),
+        s.Items
+            .OrderBy(i => i.CreatedAt).ThenBy(i => i.Id)
+            .Select(i => i.Product != null ? i.Product.Name : null)
+            .FirstOrDefault(),
+        s.Payments.OrderBy(p => p.Id).Select(p => p.Method).ToList());
 
     public async Task<int> GetNextNumberAsync(CancellationToken ct = default)
     {
