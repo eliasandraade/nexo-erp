@@ -48,6 +48,9 @@ import { toast } from "sonner";
 import type { UpdatePortalInfoRequest } from "../types";
 
 const PORTAL_BASE = "erp.orken.com.br";
+// One array for every render. A `= []` default in the destructuring makes a new one each time the query has no data, and
+// the effect that depends on it set state on every render: an endless loop while the query loads, fails or stays off.
+const NO_ZONES: Awaited<ReturnType<typeof getRestauranteDeliveryZones>> = [];
 
 // ── Fortaleza neighborhoods ────────────────────────────────────────────────────
 const FORTALEZA_NEIGHBORHOODS = [
@@ -566,7 +569,7 @@ export default function PortalSetupPage() {
   }
 
   // ── Delivery zones state ──────────────────────────────────────────────────
-  const { data: zonesData = [], isLoading: loadingZones } = useQuery({
+  const { data: zonesData = NO_ZONES, isLoading: loadingZones } = useQuery({
     queryKey: ["delivery-zones"],
     queryFn: getRestauranteDeliveryZones,
     enabled: !!storeId,
