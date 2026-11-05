@@ -2,7 +2,7 @@
 
 Continuação da issue #84. Dados da API pública do SonarCloud (projeto `eliasandraade_nexo-erp`), com cada item conferido no código.
 
-**Conclusão:** nenhuma vulnerabilidade real está aberta. Dos 183 "bugs", 8 são defeitos reais. As PRs #121, #122 e #123 corrigem 6 deles, mas o gate continua vermelho: o que falta depende do painel e da cobertura.
+**Conclusão:** nenhuma vulnerabilidade real está aberta. Dos 183 "bugs", 8 são defeitos reais. As PRs #121, #122 e #123 corrigem 6 deles, mas o gate continua vermelho: o que falta depende do painel e da cobertura. A revisão também achou um defeito fora do SonarCloud, ainda sem correção: um laço de renderização em `PortalSetupPage` (seção 4).
 
 ## 1. Estado no commit analisado
 
@@ -101,13 +101,29 @@ A #122 também corrige dois pontos com o mesmo defeito que o analisador não acu
 
 | # | Item | Classe | Ação sugerida |
 |---:|---|---|---|
-| 1 | `S8733` em `BuildProjectRepository.GetByIdWithDetailsAsync` | (d) | `AsSplitQuery()`: consulta só de leitura, com teste de integração carregando as duas coleções na ordem certa |
-| 2 | `S1082` em `PlatformDashboardPage.tsx:215` | (d) a11y | Transformar a linha em link ou botão |
-| 3 | Cobertura de 72,1% para 80% | (c) | Definir antes o período (seção 5). Com o período atual faltam cerca de 5 mil linhas, em código antigo. Priorizar testes de fluxos críticos, sem criar teste só pelo percentual |
-| 4 | `S8733` em `SaleRepository.cs:74` | (e) | Projetar os campos da lista em vez de carregar itens e pagamentos inteiros |
-| 5 | `S8949` nos middlewares (21) | (e) | Repassar `RequestAborted` numa PR mecânica, depois do trabalho paralelo de acesso por tenant, para evitar conflito |
-| 6 | `S1082` em `CreateTenantDrawer.tsx:91` | (e) | Fechar com Esc e foco preso no painel, se o componente for revisto |
-| 7 | `S8733` em `SaleRepository.cs:53` | (e) | Manter como está; aceitar no painel se o custo não aparecer em produção |
+| 1 | Laço de renderização em `PortalSetupPage.tsx:569-583` (fora do SonarCloud; detalhes abaixo) | (d) | Trocar o `= []` da desestruturação por uma constante fora do componente, com teste |
+| 2 | `S8733` em `BuildProjectRepository.GetByIdWithDetailsAsync` | (d) | `AsSplitQuery()`: consulta só de leitura, com teste de integração carregando as duas coleções na ordem certa |
+| 3 | `S1082` em `PlatformDashboardPage.tsx:215` | (d) a11y | Transformar a linha em link ou botão |
+| 4 | Cobertura de 72,1% para 80% | (c) | Definir antes o período (seção 5). Com o período atual faltam cerca de 5 mil linhas, em código antigo. Priorizar testes de fluxos críticos, sem criar teste só pelo percentual |
+| 5 | `S8733` em `SaleRepository.cs:74` | (e) | Projetar os campos da lista em vez de carregar itens e pagamentos inteiros |
+| 6 | `S8949` nos middlewares (21) | (e) | Repassar `RequestAborted` numa PR mecânica, depois do trabalho paralelo de acesso por tenant, para evitar conflito |
+| 7 | `S1082` em `CreateTenantDrawer.tsx:91` | (e) | Fechar com Esc e foco preso no painel, se o componente for revisto |
+| 8 | `S8733` em `SaleRepository.cs:53` | (e) | Manter como está; aceitar no painel se o custo não aparecer em produção |
+
+### Laço de renderização em `PortalSetupPage`
+
+Este defeito apareceu ao escrever o teste da #122: o teste nunca terminava e o processo estourou 4 GB de memória. O SonarCloud não o acusa, e ele não entra na contagem da seção 2.
+
+`const { data: zonesData = [] }` cria um array novo a cada renderização enquanto a consulta de zonas não tem dados. O `useEffect` depende de `zonesData` e chama `setZoneFees` com um objeto novo, o que dispara outra renderização, e assim por diante.
+
+| Situação da consulta de zonas | Renderizações medidas | Comportamento |
+|---|---:|---|
+| Responde logo | 31 no total | Normal |
+| Demora 3 s e responde | 1.186 em 3 s; 1.188 ao final | O laço para quando a resposta chega |
+| Falha | 1.107 em 3 s; 2.340 em 6 s | Não para |
+| Sessão sem loja (consulta desligada) | 1.464 em 3 s; 2.875 em 6 s | Não para |
+
+A medição foi feita em jsdom, com um teste descartável. O teste da #122 também contorna o laço, já começando com as zonas no cache. No navegador os números serão outros e o efeito não foi observado, mas a causa é a mesma: a tela deve consumir CPU continuamente se a consulta falhar. Uma busca pelo mesmo padrão no frontend (`data: x = []` como dependência de um efeito que altera estado) só encontrou este ponto; é uma busca por padrão de texto, não uma garantia.
 
 Os 1.861 code smells não foram revisados um a um, mas os 18 BLOCKER são `S2699` (teste sem asserção) e merecem atenção. Os 9 de `AuthorizationTests.cs` não fazem chamada HTTP nem asserção, ou seja, passam sem verificar nada, apesar de nomes como `SuspendedTenant_Users_CannotAccessEndpoints` e `UserSecurityStamp_Changed_InvalidatesToken`. Não foi conferido se outros testes cobrem esses comportamentos, nem foram revisados os outros 9 achados da regra.
 
