@@ -3,7 +3,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.Extensions;
-using Nexo.Application.Common.Interfaces;
 using Nexo.Infrastructure.Cache;
 using StackExchange.Redis;
 
@@ -47,27 +46,32 @@ public class RedisCacheServiceCancellationTests
         return _redis.ReceivedCalls().Any(c => c.GetMethodInfo().Name == nameof(IConnectionMultiplexer.GetDatabase));
     }
 
-    public static TheoryData<string, Func<ICacheService, CancellationToken, Task>> Operations() => new()
+    private Task CallAsync(string operation, CancellationToken ct) => operation switch
     {
-        { "GET", (cache, ct) => cache.GetAsync<object>("k", ct) },
-        { "SET", (cache, ct) => cache.SetAsync("k", new object(), TimeSpan.FromMinutes(1), ct) },
-        { "DEL", (cache, ct) => cache.RemoveAsync("k", ct) },
-        { "EXISTS", (cache, ct) => cache.ExistsAsync("k", ct) },
-        { "INCR", (cache, ct) => cache.IncrementAsync("k", TimeSpan.FromMinutes(1), ct) },
-        { "SETFLAG", (cache, ct) => cache.SetFlagAsync("k", TimeSpan.FromMinutes(1), ct) },
+        "GET" => _cache.GetAsync<object>("k", ct),
+        "SET" => _cache.SetAsync("k", new object(), TimeSpan.FromMinutes(1), ct),
+        "DEL" => _cache.RemoveAsync("k", ct),
+        "EXISTS" => _cache.ExistsAsync("k", ct),
+        "INCR" => _cache.IncrementAsync("k", TimeSpan.FromMinutes(1), ct),
+        "SETFLAG" => _cache.SetFlagAsync("k", TimeSpan.FromMinutes(1), ct),
+        _ => throw new ArgumentOutOfRangeException(nameof(operation)),
     };
 
     [Theory]
-    [MemberData(nameof(Operations))]
-    public async Task Cancelled_call_propagates_and_keeps_the_circuit_closed(
-        string operation, Func<ICacheService, CancellationToken, Task> call)
+    [InlineData("GET")]
+    [InlineData("SET")]
+    [InlineData("DEL")]
+    [InlineData("EXISTS")]
+    [InlineData("INCR")]
+    [InlineData("SETFLAG")]
+    public async Task Cancelled_call_propagates_and_keeps_the_circuit_closed(string operation)
     {
         RedisNeverAnswers();
         using var caller = new CancellationTokenSource();
         await caller.CancelAsync();
 
-        await call(_cache, caller.Token).Invoking(t => t)
-            .Should().ThrowAsync<OperationCanceledException>(operation);
+        await FluentActions.Awaiting(() => CallAsync(operation, caller.Token))
+            .Should().ThrowAsync<OperationCanceledException>();
 
         (await NextCallReachesRedisAsync()).Should().BeTrue("o cliente desistiu; o Redis não falhou");
     }
