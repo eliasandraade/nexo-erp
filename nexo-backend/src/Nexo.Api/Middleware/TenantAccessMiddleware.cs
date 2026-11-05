@@ -38,20 +38,21 @@ public class TenantAccessMiddleware
             return;
         }
 
-        // the route template, never the raw path: it carries no ids, and no personal data goes to this log
+        // The route template, never the raw path: no ids and nothing typed goes to this log. Named RequestPath on purpose,
+        // like the request log: the framework adds the raw path under that name to every log line, unless it is already set.
         var route = Nexo.Api.Observability.RequestLogging.RouteOf(context);
 
         if (!TenantAccessPolicy.IsEnforced(configuration))
         {
             _logger.LogWarning(
-                "Tenant write would be blocked, {Setting} is off: no module with access. TenantId={TenantId} Method={Method} Route={Route}",
+                "Tenant write would be blocked, {Setting} is off: no module with access. TenantId={TenantId} Method={Method} Route={RequestPath}",
                 TenantAccessPolicy.EnforceSetting, currentTenant.Id, context.Request.Method, route);
             await _next(context);
             return;
         }
 
         _logger.LogWarning(
-            "Tenant write blocked: no module with access. TenantId={TenantId} Method={Method} Route={Route}",
+            "Tenant write blocked: no module with access. TenantId={TenantId} Method={Method} Route={RequestPath}",
             currentTenant.Id, context.Request.Method, route);
         await ExceptionHandlingMiddleware.WriteErrorAsync(context, StatusCodes.Status402PaymentRequired, Message, code: TenantAccessPolicy.ErrorCode);
     }

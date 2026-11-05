@@ -379,9 +379,13 @@ public class TenantAccessEnforcementTests
         using var response = await client.PutAsJsonAsync($"/api/categories/{id}", new { name = "Dado Pessoal Qualquer" });
 
         response.StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
-        var log = _factory.ServerLog.For(response.Headers.GetValues("X-Request-Id").Single());
+        var requestId = response.Headers.GetValues("X-Request-Id").Single();
+        var log = _factory.ServerLog.For(requestId);
         log.Should().Contain("blocked").And.Contain(tenant.Id.ToString()).And.Contain("/api/categories/{id:guid}");
-        log.Should().NotContain(tenant.Login).And.NotContain(tenant.Email).And.NotContain(id.ToString()).And.NotContain("Dado Pessoal");
+        // a mensagem e as propriedades estruturadas: o caminho bruto, com o id, não entra em nenhuma das duas
+        foreach (var text in new[] { log, _factory.ServerLog.PropertiesFor(requestId) })
+            text.Should().NotContain(tenant.Login).And.NotContain(tenant.Email).And.NotContain(id.ToString()).And.NotContain("Dado Pessoal");
+        _factory.ServerLog.PropertiesFor(requestId).Should().Contain("/api/categories/{id:guid}");
     }
 
     // ── Lista de trials vencidos da plataforma ────────────────────────────────
