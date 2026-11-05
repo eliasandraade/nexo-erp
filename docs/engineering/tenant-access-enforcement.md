@@ -15,7 +15,8 @@ inadimplente há menos de 7 dias.
 - O corpo do 402 é o formato de erro padrão: `{ "error", "details": [], "requestId", "code": "subscription_required" }`.
 - Os gates por módulo continuam como estão. `[RequireModule]` e `[RequireServiceModule]` seguem respondendo 403, também
   no `GET`: sem acesso, a leitura de vendas (`SalesController`), PDV, listas de preço, Restaurante, Build e Service
-  continua fechada. O somente leitura vale para o núcleo que não tem gate de módulo.
+  continua fechada. O somente leitura vale para o núcleo que não tem gate de módulo. Na escrita, o 402 vem antes desses
+  gates.
 - Na impersonação a regra é a mesma, sem atalho.
 
 **Por que somente leitura:** o dono ainda não decidiu o que fica acessível depois do trial. É o padrão conservador e não

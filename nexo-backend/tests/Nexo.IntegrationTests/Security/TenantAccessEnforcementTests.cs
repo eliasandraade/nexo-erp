@@ -8,6 +8,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
@@ -111,7 +112,7 @@ public class TenantAccessEnforcementTests
         // a segunda já lê a entrada do cache
         await ExpectBlockedAsync(client.PostAsJsonAsync("/api/categories", new { name }));
         await ExpectBlockedAsync(client.PutAsJsonAsync($"/api/categories/{Guid.NewGuid()}", new { name }));
-        await ExpectBlockedAsync(client.DeleteAsync($"/api/products/{Guid.NewGuid()}"));
+        await ExpectBlockedAsync(client.DeleteAsync($"/api/varejo/purchases/{Guid.NewGuid()}/items/{Guid.NewGuid()}"));
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -167,7 +168,7 @@ public class TenantAccessEnforcementTests
         {
             using var request = new HttpRequestMessage(new HttpMethod(route.Method), PathOf(route.Endpoint.RoutePattern, Guid.NewGuid()))
             {
-                Content = JsonContent.Create(new { }),
+                Content = BodyFor(route.Endpoint),
             };
             using var response = await client.SendAsync(request);
             if (response.StatusCode != HttpStatusCode.PaymentRequired)
@@ -571,6 +572,12 @@ public class TenantAccessEnforcementTests
         => template.StartsWith("api/", StringComparison.OrdinalIgnoreCase)
            && !template.StartsWith("api/platform/", StringComparison.OrdinalIgnoreCase)
            && !template.StartsWith("api/orken/v1/", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Uma rota [Consumes] só casa com esse tipo de conteúdo: com outro, o roteamento responde 415 e nada é gravado.</summary>
+    private static HttpContent BodyFor(Endpoint endpoint)
+        => endpoint.Metadata.GetMetadata<IAcceptsMetadata>()?.ContentTypes.Any(t => t.StartsWith("multipart/", StringComparison.OrdinalIgnoreCase)) == true
+            ? new MultipartFormDataContent()
+            : JsonContent.Create(new { });
 
     private static string PathOf(RoutePattern pattern, Guid id)
     {
