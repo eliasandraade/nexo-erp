@@ -7,18 +7,22 @@ namespace Nexo.Api.Middleware;
 
 /// <summary>
 /// Validates the SecurityStamp embedded in every access token against the
-/// current value stored in the database (cached in Redis for 60 seconds).
+/// current value stored in the database.
 ///
-/// When a platform admin calls "Revogar sessões" or "Resetar senha", the
-/// user's SecurityStamp is rotated. The next request from any existing
-/// token is rejected here — even before the 15-minute expiry window closes.
+/// When the role, the status or the password of a user changes, or an administrator
+/// ends their sessions, the SecurityStamp is rotated. The next request from any
+/// existing token is rejected here — even before the 15-minute expiry window closes.
 ///
 /// Flow:
 ///   1. Read "security_stamp" claim from JWT.
 ///   2. If absent → skip (backward compat with tokens issued before this change).
-///   3. Check Redis cache (key: user:stamp:{userId}, TTL: 60s).
-///   4. On cache miss: load from DB, populate cache.
-///   5. If mismatch → 401 Session invalidated.
+///   3. Load the current stamp from the database, by primary key.
+///   4. If mismatch → 401 session_revoked.
+///
+/// The stamp is deliberately never cached (decided in issue #137). With a cache, a request that read
+/// the old stamp could store it after the change, and a change made while Redis was unreachable left
+/// the old stamp in place to come back with Redis: either way the old token was accepted again for up
+/// to the TTL. One primary-key read per request is what makes the change immediate, whatever Redis does.
 ///
 /// Must run AFTER UseAuthentication() and TenantResolutionMiddleware.
 ///
@@ -96,38 +100,27 @@ public class SecurityStampValidationMiddleware
             return;
         }
 
-        var cache    = context.RequestServices.GetRequiredService<ICacheService>();
-        var cacheKey = $"user:stamp:{userId}";
+        var db = context.RequestServices.GetRequiredService<NexoDbContext>();
+        var stamp = await db.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.Id == userId)
+            .Select(u => u.SecurityStamp)
+            .FirstOrDefaultAsync(context.RequestAborted);
 
-        var cached = await cache.GetAsync<StampCacheEntry>(cacheKey);
-
-        if (cached is null)
+        if (stamp is null)
         {
-            var db = context.RequestServices.GetRequiredService<NexoDbContext>();
-            var stamp = await db.Users
-                .IgnoreQueryFilters()
-                .Where(u => u.Id == userId)
-                .Select(u => u.SecurityStamp)
-                .FirstOrDefaultAsync();
-
-            if (stamp is null)
-            {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "User not found." });
-                return;
-            }
-
-            cached = new StampCacheEntry(stamp);
-            await cache.SetAsync(cacheKey, cached, TimeSpan.FromSeconds(60));
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(new { error = "User not found." }, context.RequestAborted);
+            return;
         }
 
-        if (cached.Stamp != stampClaim)
+        if (stamp != stampClaim)
         {
             _logger.LogInformation(
                 "SecurityStamp mismatch for user {UserId} — session revoked.",
                 userId);
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "Session invalidated.", code = "session_revoked" });
+            await context.Response.WriteAsJsonAsync(new { error = "Sua sessão foi encerrada. Entre de novo.", code = "session_revoked" }, context.RequestAborted);
             return;
         }
 
@@ -140,5 +133,3 @@ public class SecurityStampValidationMiddleware
            || path.Equals("/api/auth/me", StringComparison.OrdinalIgnoreCase)
            || path.Equals("/api/auth/logout", StringComparison.OrdinalIgnoreCase);
 }
-
-internal record StampCacheEntry(string Stamp);

@@ -118,6 +118,7 @@ public class UserService
         var role = ParseRole(request.Role);
         var previousEmail = user.Email;
         var previousStatus = user.Status;
+        var previousRole = user.Role;
 
         user.UpdateProfile(
             fullName: request.FullName,
@@ -135,9 +136,11 @@ public class UserService
             || user.Status is not (UserStatus.Active or UserStatus.PendingVerification))
             user.ClearPasswordResetToken();
 
-        // Blocked or deactivated: every session ends now. The tenant middleware trusts its cached "Active" for up to
-        // 5 minutes, so what stops a token that is already out there is the stamp, checked on every request.
-        var endsSessions = user.Status != previousStatus && user.Status is UserStatus.Inactive or UserStatus.Blocked;
+        // Every session ends now, for whoever the change touches (the person changing their own role included). The token
+        // carries the role, and the tenant middleware trusts its cached "Active" for up to 5 minutes: what stops a token
+        // that is already out there is the stamp, checked against the database on every request.
+        var roleChanged = user.Role != previousRole;
+        var endsSessions = roleChanged || (user.Status != previousStatus && user.Status is UserStatus.Inactive or UserStatus.Blocked);
         if (endsSessions)
         {
             user.BumpSecurityStamp();
@@ -146,16 +149,17 @@ public class UserService
 
         _audit.Stage(
             actionType:  AuditActions.UserUpdated,
-            severity:    AuditSeverity.Info,
+            severity:    roleChanged ? AuditSeverity.Warning : AuditSeverity.Info,
             entityType:  "User",
             entityId:    user.Id.ToString(),
-            description: $"User '{user.Login}' updated.",
+            description: roleChanged
+                ? $"User '{user.Login}' updated: role {previousRole} -> {user.Role}; all sessions ended."
+                : $"User '{user.Login}' updated.",
             tenantId:    _currentTenant.Id,
             actorId:     _currentUser.IsAuthenticated ? _currentUser.UserId : null,
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
-        if (endsSessions && _sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
         return MapToDto(user);
     }
 
@@ -192,7 +196,6 @@ public class UserService
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
-        if (_sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
     }
 
     public async Task AdminChangePasswordAsync(
@@ -221,7 +224,6 @@ public class UserService
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
-        if (_sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
     }
 
     public async Task<ValidateManagerResponse> ValidateManagerAsync(

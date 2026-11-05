@@ -10,8 +10,8 @@ namespace Nexo.Infrastructure.Cache;
 /// Fail-open strategy: if Redis is unavailable, methods return null/false
 /// rather than throwing — the caller falls back to the database.
 ///
-/// CIRCUIT BREAKER (critical): the hot-path middleware (tenant resolution +
-/// security stamp) makes several cache calls per authenticated request. When
+/// CIRCUIT BREAKER (critical): the hot-path middleware (tenant resolution and
+/// access checks) makes several cache calls per authenticated request. When
 /// Redis is unreachable, each blocking call used to wait the full per-call
 /// timeout, so a dead Redis added 10-16s PER request. The breaker makes calls
 /// fail FAST while Redis is down:

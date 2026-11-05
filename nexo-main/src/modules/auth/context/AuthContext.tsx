@@ -4,14 +4,24 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import * as authService from "../services/authService";
-import { apiClient, clearTokens, endImpersonationSession, isImpersonating, onSessionEnded } from "@/services/api-client";
+import { apiClient, clearTokens, endImpersonationSession, isImpersonating, onSessionEnded, TOKEN_KEYS, type SessionEndReason } from "@/services/api-client";
 import type { AuthSession, LoginInput } from "../types";
+
+/** Where a session the client dropped on its own takes the person: each page says why (`motivo`). */
+const SESSION_END_PAGE: Record<SessionEndReason, string> = {
+  platform_session_ended: "/login?motivo=sessao-encerrada",
+  session_ended: "/login?motivo=sessao-encerrada",
+  session_revoked: "/login?motivo=sessao-revogada",
+  impersonation_ended: "/acesso-encerrado",
+  impersonation_left: "/acesso-encerrado?motivo=saiu",
+};
 
 interface AuthContextValue {
   session: AuthSession | null;
@@ -50,6 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // The API client already took the person to a page that says why: the background validation must not replace it.
+  const sessionEndAnnounced = useRef(false);
 
   // Background validation: confirm the stored session is still valid
   useEffect(() => {
@@ -72,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // validation window before bouncing to /login.
         setSession(null);
         queryClient.clear();
-        navigate("/login", { replace: true });
+        if (!sessionEndAnnounced.current) navigate("/login", { replace: true });
       }
       setIsReady(true);
     }).catch(() => {
@@ -112,13 +124,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate(to, { replace: true });
   }, [navigate, queryClient]);
 
-  // The API client dropped the session on its own (revoked platform session, ended tenant access): leave the page.
-  useEffect(() => onSessionEnded((reason) => {
+  // The API client dropped the session on its own (revoked session, ended tenant access): leave the page.
+  const leaveEndedSession = useCallback((reason: SessionEndReason) => {
+    sessionEndAnnounced.current = true;
     setSession(null);
     queryClient.clear();
-    if (reason === "platform_session_ended") navigate("/login?motivo=sessao-encerrada", { replace: true });
-    else navigate(`/acesso-encerrado${reason === "impersonation_left" ? "?motivo=saiu" : ""}`, { replace: true });
-  }), [navigate, queryClient]);
+    navigate(SESSION_END_PAGE[reason], { replace: true });
+  }, [navigate, queryClient]);
+
+  useEffect(() => onSessionEnded(leaveEndedSession), [leaveEndedSession]);
+
+  // Another tab dropped the session they share (the server ended it, or the person signed out there): without a token
+  // this tab would only collect errors. An impersonation tab has its own session and stays.
+  const signedIn = session !== null;
+  useEffect(() => {
+    if (!signedIn) return;
+    const onStorage = (e: StorageEvent) => {
+      if (e.storageArea === localStorage && e.key === TOKEN_KEYS.access && e.newValue === null && !isImpersonating()) {
+        leaveEndedSession("session_ended");
+      }
+    };
+    globalThis.addEventListener("storage", onStorage);
+    return () => globalThis.removeEventListener("storage", onStorage);
+  }, [signedIn, leaveEndedSession]);
 
   const switchStore = useCallback(async (storeId: string): Promise<void> => {
     const fresh = await authService.switchStore(storeId);

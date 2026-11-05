@@ -115,7 +115,6 @@ public sealed class AccountSecurityService : IUserSessionRevoker, IUserInviter
             $"User '{user.Login}' reset the password through the e-mail link; all sessions ended.",
             tenantId: user.TenantId, actorId: user.Id, actorName: user.FullName);
         await _db.SaveChangesAsync(ct);
-        await ForgetStampAsync(user.Id, ct);
         return true;
     }
 
@@ -190,15 +189,7 @@ public sealed class AccountSecurityService : IUserSessionRevoker, IUserInviter
             $"User '{user.Login}' signed out of every device.",
             tenantId: user.TenantId, actorId: user.Id, actorName: user.FullName);
         await _db.SaveChangesAsync(ct);
-        await ForgetStampAsync(user.Id, ct);
     }
-
-    /// <summary>
-    /// Drops the cached stamp once the new one is committed — a request racing the change could
-    /// have re-cached the old stamp in between (the cache is also cleared before, in RevokeAllAsync).
-    /// </summary>
-    public Task ForgetStampAsync(Guid userId, CancellationToken ct = default)
-        => _cache.RemoveAsync($"user:stamp:{userId}", ct);
 
     public async Task RevokeAllAsync(Guid userId, CancellationToken ct = default)
     {
@@ -210,7 +201,6 @@ public sealed class AccountSecurityService : IUserSessionRevoker, IUserInviter
             s.Revoke();
             await _cache.RemoveAsync($"refresh:valid:{s.RefreshJti}", ct);
         }
-        await _cache.RemoveAsync($"user:stamp:{userId}", ct);
         // a new password ends any lockout (the 429 tells people to use "Esqueci a senha")
         await _cache.RemoveAsync($"login:fail:{userId}", ct);
         await _cache.RemoveAsync($"login:locked:{userId}", ct);
