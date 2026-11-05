@@ -252,25 +252,19 @@ def run(args: argparse.Namespace) -> int:
     signing_secret = "whsec_outro_segredo_de_teste" if args.bad_signature else secret
     timestamp = int(time.time()) - 600 if args.stale_signature else None
 
-    results = [
-        deliver_event(
-            args,
-            url,
-            build_event(
-                event_type,
-                subscription=args.subscription,
-                status=args.status,
-                cancel_at_period_end=args.cancel_at_period_end,
-                tenant_id=args.tenant_id,
-                module=args.module,
-                event_id=args.event_id,
-            ),
-            signing_secret,
-            timestamp,
+    as_expected = True
+    for event_type in EVENT_TYPES if args.all else (args.event,):
+        body = build_event(
+            event_type,
+            subscription=args.subscription,
+            status=args.status,
+            cancel_at_period_end=args.cancel_at_period_end,
+            tenant_id=args.tenant_id,
+            module=args.module,
+            event_id=args.event_id,
         )
-        for event_type in (EVENT_TYPES if args.all else (args.event,))
-    ]
-    return 0 if all(results) else 1
+        as_expected = deliver_event(args, url, body, signing_secret, timestamp) and as_expected
+    return 0 if as_expected else 1
 
 
 def main(argv: list[str]) -> int:

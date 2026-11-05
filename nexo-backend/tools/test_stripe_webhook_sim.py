@@ -39,7 +39,7 @@ class UrlGuard(unittest.TestCase):
                 sim.check_url(url)
 
     def test_other_schemes_and_broken_urls_are_refused(self):
-        for url in ("ftp://localhost/x", "localhost:5199/x", "https:///x", f"{PLAIN_HTTP}://exemplo.test/x", "http://[::1/x"):
+        for url in ("ftp://localhost/x", "localhost:5199/x", "https:///x", f"{PLAIN_HTTP}://exemplo.test/x", f"{PLAIN_HTTP}://[::1/x"):
             with self.subTest(url=url), self.assertRaises(sim.Refused):
                 sim.check_url(url)
 
