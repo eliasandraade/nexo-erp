@@ -47,29 +47,40 @@ public class SecurityHeadersTests
         var cspHeader = response.Headers.GetValues("Content-Security-Policy").First();
         cspHeader.Should().NotBeNullOrEmpty();
 
-        // CSP should restrict script injection
-        cspHeader.Should().Contain("script-src 'self'",
-            "CSP must restrict scripts to self only");
+        // a API só responde JSON e arquivos: nenhuma origem é liberada para script, estilo, imagem ou conexão
+        cspHeader.Should().Contain("default-src 'none'",
+            "CSP must block every resource type on API responses");
 
         // CSP should restrict frame embedding
         cspHeader.Should().Contain("frame-ancestors 'none'",
             "CSP must prevent clickjacking");
+        cspHeader.Should().Contain("base-uri 'none'");
+        cspHeader.Should().Contain("form-action 'none'");
     }
 
     [Fact]
-    public async Task CSP_AllowsStylesButNotUnsafeInlineScripts()
+    public async Task CSP_AllowsNoInlineCodeNorExternalSources()
     {
         var response = await _client.GetAsync("/health");
         var cspHeader = response.Headers.GetValues("Content-Security-Policy").First();
 
-        // Styles are allowed (for styled-components)
-        cspHeader.Should().Contain("style-src",
-            "CSP should allow styles for styled-components");
+        // nada de 'unsafe-inline'/'unsafe-eval' nem de esquemas inteiros (https:, data:) liberados
+        cspHeader.Should().NotContain("'unsafe-inline'");
+        cspHeader.Should().NotContain("'unsafe-eval'");
+        cspHeader.Should().NotContain("https:");
+        cspHeader.Should().NotContain("data:");
+        cspHeader.Should().NotContain("*");
+    }
 
-        // But scripts are not
-        cspHeader.Should().Contain("script-src 'self'");
-        cspHeader.Should().NotContain("script-src 'unsafe-inline'",
-            "CSP must NOT allow unsafe inline scripts");
+    [Fact]
+    public async Task CSP_DoesNotReachTheSwaggerUi()
+    {
+        // fora de produção o Swagger responde antes do middleware de cabeçalhos, então a CSP restrita da API
+        // não quebra a página dele (que usa estilos e scripts próprios)
+        var response = await _client.GetAsync("/swagger/index.html");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Headers.Contains("Content-Security-Policy").Should().BeFalse();
     }
 
     // ────────────────────────────────────────────────────────────────────────────

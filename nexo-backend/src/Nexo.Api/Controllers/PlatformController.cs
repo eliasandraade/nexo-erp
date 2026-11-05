@@ -417,9 +417,19 @@ public class PlatformController : ControllerBase
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.ModuleKey == req.ModuleKey.ToLowerInvariant(), ct);
 
-        var eventType = existing is not null ? "renewed" : "granted";
+        // While Stripe bills this row, status and period come from there. Renewing here would give access with no real
+        // charge, count it as paying and block a new checkout, until the next event overwrote it.
+        if (existing is { IsLiveInStripe: true })
+            return Conflict(new { error = "Este módulo tem uma assinatura viva no Stripe, e o acesso segue o que está lá. Para conceder sem cobrança, cancele a assinatura no Stripe primeiro." });
 
-        if (existing is not null)
+        var endedInStripe = !string.IsNullOrEmpty(existing?.StripeSubscriptionId);
+        var eventType = existing is not null && !endedInStripe ? "renewed" : "granted";
+
+        if (existing is not null && endedInStripe)
+        {
+            existing.ConvertToAdminGrant(GetPlatformUserId(), req.ExpiresAt ?? DateTime.UtcNow.AddYears(10), req.Notes ?? "Concedido via plataforma admin");
+        }
+        else if (existing is not null)
         {
             existing.Renew(req.ExpiresAt ?? DateTime.UtcNow.AddYears(10));
         }
@@ -464,6 +474,11 @@ public class PlatformController : ControllerBase
             .FirstOrDefaultAsync(s => s.TenantId == tenantId && s.ModuleKey == moduleKey.ToLowerInvariant(), ct);
 
         if (sub is null) return NotFound();
+
+        // Canceling only here would leave the customer being charged, and the next Stripe event would reopen the access.
+        // The platform does not cancel in Stripe on its own: that is a decision about real money.
+        if (sub.IsLiveInStripe)
+            return Conflict(new { error = "Este módulo tem uma assinatura viva no Stripe, e o cliente continua sendo cobrado. Cancele a assinatura no Stripe primeiro: o acesso termina quando o Stripe avisar." });
 
         sub.Cancel();
 
@@ -1006,8 +1021,9 @@ public class PlatformController : ControllerBase
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns tenants whose trial period has expired (TrialEndsAt &lt; now)
-    /// or whose active subscriptions have a past CurrentPeriodEnd.
+    /// Returns tenants whose trial has expired with no module left with access (the trial is the
+    /// Trialing subscription row: Tenant.TrialEndsAt is never written), or whose active
+    /// subscriptions have a past CurrentPeriodEnd.
     /// </summary>
     [HttpGet("tenants/trial-expired")]
     public async Task<IActionResult> GetTrialExpired(CancellationToken ct)
@@ -1015,17 +1031,28 @@ public class PlatformController : ControllerBase
 
         var now = DateTime.UtcNow;
 
-        // Tenants with explicit TrialEndsAt in the past
-        var trialExpired = await _db.Tenants
+        // Someone with any module with access (the single rule) kept going after the trial: not a lapsed trial.
+        var tenantsWithAccess = _db.ModuleSubscriptions
             .IgnoreQueryFilters()
-            .Where(t => t.TrialEndsAt != null && t.TrialEndsAt < now && t.Status == TenantStatus.Active)
-            .Select(t => new
-            {
-                t.Id, t.CompanyName, t.TradeName, t.Email, t.Status,
-                t.TrialEndsAt, t.CreatedAt,
-                expiredDaysAgo = (int)Math.Floor((now - t.TrialEndsAt!.Value).TotalDays),
-                expiredReason  = "trial",
-            })
+            .Where(ModuleSubscription.HasAccessAt(now))
+            .Select(s => s.TenantId);
+
+        var trialExpired = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .Where(s => s.Status == SubscriptionStatus.Trialing
+                     && s.CurrentPeriodEnd != null
+                     && s.CurrentPeriodEnd < now
+                     && !tenantsWithAccess.Contains(s.TenantId))
+            .Join(_db.Tenants.IgnoreQueryFilters().Where(t => t.Status == TenantStatus.Active),
+                  s => s.TenantId,
+                  t => t.Id,
+                  (s, t) => new
+                  {
+                      t.Id, t.CompanyName, t.TradeName, t.Email, t.Status,
+                      TrialEndsAt = s.CurrentPeriodEnd, t.CreatedAt,
+                      expiredDaysAgo = (int)Math.Floor((now - s.CurrentPeriodEnd!.Value).TotalDays),
+                      expiredReason  = "trial",
+                  })
             .ToListAsync(ct);
 
         // Tenants with active subscriptions whose period has ended
@@ -1040,7 +1067,7 @@ public class PlatformController : ControllerBase
                   (s, t) => new
                   {
                       t.Id, t.CompanyName, t.TradeName, t.Email, t.Status,
-                      t.TrialEndsAt, t.CreatedAt,
+                      TrialEndsAt = (DateTime?)null, t.CreatedAt,
                       expiredDaysAgo = (int)Math.Floor((now - s.CurrentPeriodEnd!.Value).TotalDays),
                       expiredReason  = "subscription:" + s.ModuleKey,
                   })
@@ -1128,14 +1155,8 @@ public class PlatformController : ControllerBase
         {
             if (!definitions.TryGetValue(sub.ModuleKey, out var def)) continue;
 
-            decimal monthlyEquivalent = sub.PlanType switch
-            {
-                PlanType.Monthly    => def.PriceMonthly    ?? 0m,
-                PlanType.Quarterly  => (def.PriceQuarterly ?? 0m) / 3m,
-                PlanType.Semiannual => (def.PriceSemiannual ?? 0m) / 6m,
-                PlanType.Annual     => (def.PriceAnnual    ?? 0m) / 12m,
-                _                   => 0m,   // Lifetime, AdminGrant, Trial
-            };
+            // Lifetime, AdminGrant e Trial valem zero (mesma conta do contrato de operações da Orken).
+            var monthlyEquivalent = def.MonthlyReferencePrice(sub.PlanType);
 
             totalMrr += monthlyEquivalent;
             byModule[sub.ModuleKey] = byModule.GetValueOrDefault(sub.ModuleKey) + monthlyEquivalent;

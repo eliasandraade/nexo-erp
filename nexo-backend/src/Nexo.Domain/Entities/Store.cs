@@ -59,7 +59,7 @@ public class Store : TenantEntity
         SetUpdatedAt();
     }
 
-    /// <summary>Bounds each slug regex: the patterns are linear, the timeout keeps any input from holding a request thread.</summary>
+    /// <summary>Tempo máximo de cada regex do slug: os padrões são lineares, e o limite impede que uma entrada prenda a requisição.</summary>
     private static readonly TimeSpan SlugTimeout = TimeSpan.FromMilliseconds(250);
 
     // lowercase, sem acentos, só letras/números/hífen

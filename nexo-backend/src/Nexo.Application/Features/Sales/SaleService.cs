@@ -67,6 +67,8 @@ public class SaleService
 
     public async Task<SaleDto> CreateAsync(CreateSaleRequest request, CancellationToken ct = default)
     {
+        // Numa transação (ou na que já existe, no fechamento da comanda): a trava da numeração dura até o commit.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
         var number = await _sales.GetNextNumberAsync(ct);
 
         var sale = Sale.Create(
@@ -79,6 +81,7 @@ public class SaleService
 
         await _sales.AddAsync(sale, ct);
         await _sales.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(sale, [], []);
     }
 
@@ -90,6 +93,12 @@ public class SaleService
     public async Task<SaleDto> AddItemAsync(Guid saleId, AddSaleItemRequest request, CancellationToken ct = default,
         bool priceFromServer = false)
     {
+        // A mesma trava da conclusão, antes de ler a venda: um item que chega enquanto ela é concluída espera a
+        // conclusão terminar e então a encontra fechada (recusado). Sem a trava, o item lia a venda ainda em rascunho
+        // e gravava depois da conclusão: caía numa venda já paga, sem pagamento, sem baixa de estoque, e o total
+        // gravado da venda mudava depois de fechada.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _sales.LockAsync(saleId, ct);
         var sale = await _sales.GetByIdWithItemsAsync(saleId, ct)
             ?? throw new NotFoundException("Sale", saleId);
 
@@ -125,6 +134,7 @@ public class SaleService
         sale.RecalculateTotals(allItems);
 
         await _sales.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(sale, allItems, []);
     }
 

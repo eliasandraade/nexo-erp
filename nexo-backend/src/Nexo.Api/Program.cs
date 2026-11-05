@@ -75,6 +75,9 @@ try
     // placeholder or not random — otherwise anyone with the repo could forge tokens.
     Nexo.Infrastructure.Auth.JwtSecretPolicy.EnsureSafe(jwtSecret, builder.Environment.EnvironmentName);
 
+    // Fail fast when Stripe is on without its secrets, and when a live key reaches anything but production.
+    Nexo.Infrastructure.Integrations.Stripe.StripeStartupPolicy.EnsureSafe(builder.Configuration, builder.Environment.EnvironmentName);
+
     builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(opts =>
@@ -140,6 +143,9 @@ try
             policy.RequireAuthenticatedUser().RequireClaim("type", "platform").RequireRole("super_admin")
                   .RequireAssertion(ctx => !adminNeedsMfa || ctx.User.HasClaim("platform_mfa", "true")));
     });
+
+    // Tokens de serviço do Orken ID (leitura de agregados pela Orken Platform). Desligado sem OrkenId:Issuer.
+    Nexo.Api.Orken.OrkenOperationsEndpoints.AddOrkenServiceAuthentication(builder);
 
     // ── CORS ──────────────────────────────────────────────────────────────────
     builder.Services.AddCors(options =>
@@ -531,22 +537,22 @@ try
         // Restrict permissions
         context.Response.Headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=(), payment=()";
         
-        // Content Security Policy - permissive enough for app functionality
-        context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; " +
-            "script-src 'self'; " +
-            "style-src 'self' 'unsafe-inline'; " +
-            "img-src 'self' data: https:; " +
-            "font-src 'self'; " +
-            "connect-src 'self'; " +
-            "frame-ancestors 'none'; " +
-            "base-uri 'self'; " +
-            "form-action 'self'";
+        // Content Security Policy da API: as respostas são JSON, arquivos para download e o hub do SignalR, nunca
+        // uma página. Nada pode ser carregado, embutido ou enviado a partir delas. A CSP do app fica no Caddyfile
+        // do frontend, e o Swagger (fora de produção) responde antes deste middleware.
+        context.Response.Headers.ContentSecurityPolicy =
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
         
         await next();
     });
+
+    // After the security headers, so a refused write carries them too.
+    app.UseMiddleware<TenantAccessMiddleware>();
+
     app.MapHub<RestaurantHub>("/hubs/restaurant");
     app.MapControllers();
     Nexo.Api.Health.HealthEndpoints.MapOrkenHealth(app);
+    Nexo.Api.Orken.OrkenOperationsEndpoints.MapOrkenOperations(app);
 
     Log.Information("Nexo API starting on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();

@@ -271,7 +271,7 @@ public class AuthenticationLifecycleTests
 
             // 3. Switch store
             var switchResponse = await client.PostAsJsonAsync("/api/auth/switch-store",
-                new { storeId = newStoreId });
+                new { storeId = newStoreId, refreshToken = loginBody.RefreshToken });
             switchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
             var switchBody = await switchResponse.Content.ReadFromJsonAsync<SwitchStoreResponse>();

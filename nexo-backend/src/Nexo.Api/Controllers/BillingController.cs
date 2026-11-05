@@ -18,6 +18,8 @@ namespace Nexo.Api.Controllers;
 ///   - Webhook validates Stripe-Signature before any processing.
 ///   - Webhook is idempotent — duplicate events are silently accepted (200 OK).
 ///   - No card data stored in Orken — Stripe handles payment methods.
+///   - No checkout or portal during an impersonation: the subscription, the card and the plan are the owner's. Reading the
+///     subscriptions stays open, it is what support needs.
 /// </summary>
 [ApiController]
 [Route("api/billing")]
@@ -62,6 +64,7 @@ public class BillingController : ControllerBase
     /// </summary>
     [HttpPost("checkout")]
     [Authorize(Roles = AppRoles.Management)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<IActionResult> CreateCheckout([FromBody] CreateCheckoutBody body, CancellationToken ct)
     {
         if (!_flags.StripeEnabled)
@@ -126,6 +129,7 @@ public class BillingController : ControllerBase
     /// </summary>
     [HttpPost("portal")]
     [Authorize(Roles = AppRoles.Management)]
+    [Nexo.Api.Filters.DenyDuringImpersonation]
     public async Task<IActionResult> CreatePortal([FromBody] CreatePortalBody? body, CancellationToken ct)
     {
         if (!_flags.StripeEnabled)

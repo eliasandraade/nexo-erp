@@ -1,21 +1,9 @@
 name: frontend-ci
 
 # Frontend gate: install from the committed lockfile, typecheck, lint, unit tests, production build
-# and the critical Playwright suite (API mocked, no backend needed).
+# and the critical Playwright suite (API mocked, no backend needed). Called by ci.yml, which decides when it runs.
 on:
-  push:
-    branches: [master]
-    paths:
-      - "nexo-main/**"
-      - ".github/workflows/frontend-ci.yml"
-  pull_request:
-    paths:
-      - "nexo-main/**"
-      - ".github/workflows/frontend-ci.yml"
-
-concurrency:
-  group: frontend-ci-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
 
 jobs:
   frontend:

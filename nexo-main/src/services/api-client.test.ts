@@ -10,8 +10,11 @@ import {
   getStoredSession,
   IMPERSONATION_KEY,
   onSessionEnded,
+  onSubscriptionRequired,
   setStoredSession,
   setTokens,
+  SUBSCRIPTION_REQUIRED_CODE,
+  SUBSCRIPTION_REQUIRED_MESSAGE,
   TOKEN_KEYS,
   type SessionEndReason,
 } from "./api-client";
@@ -158,6 +161,39 @@ describe("api-client", () => {
       expect(authHeader(fetchMock.mock.calls[2]).Authorization).toBe("Bearer late-access");
     });
 
+    it("sessão de empresa: no 409 refresh_already_rotated usa o par que a outra aba gravou, sem deslogar", async () => {
+      // o servidor da empresa segue a mesma regra da plataforma: o token é de uso único e quem perde a corrida
+      // entre abas recebe 409 sem tokens
+      localStorage.setItem(TOKEN_KEYS.access, "tenant-access");
+      localStorage.setItem(TOKEN_KEYS.refresh, "tenant-refresh");
+      fetchMock
+        .mockResolvedValueOnce(json({}, 401))
+        .mockImplementationOnce(async () => {
+          localStorage.setItem(TOKEN_KEYS.access, "tenant-winner-access");
+          localStorage.setItem(TOKEN_KEYS.refresh, "tenant-winner-refresh");
+          return json({ error: "Esta sessão acabou de ser renovada em outra aba.", code: "refresh_already_rotated" }, 409);
+        })
+        .mockResolvedValueOnce(json({ ok: true }));
+
+      await expect(apiClient.get("/products")).resolves.toEqual({ ok: true });
+      expect(JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string)).toEqual({ refreshToken: "tenant-refresh" });
+      expect(authHeader(fetchMock.mock.calls[2]).Authorization).toBe("Bearer tenant-winner-access");
+      expect(getRefreshToken()).toBe("tenant-winner-refresh");
+      expect(ended).toEqual([]);
+    });
+
+    it("sessão de empresa: renovação recusada (família encerrada) limpa os tokens", async () => {
+      localStorage.setItem(TOKEN_KEYS.access, "tenant-access");
+      localStorage.setItem(TOKEN_KEYS.refresh, "tenant-refresh");
+      fetchMock
+        .mockResolvedValueOnce(json({}, 401))
+        .mockResolvedValueOnce(json({ error: "Invalid or expired refresh token.", code: "session_ended" }, 401));
+
+      await expect(apiClient.get("/products")).rejects.toBeInstanceOf(ApiError);
+      expect(getAccessToken()).toBeNull();
+      expect(getRefreshToken()).toBeNull();
+    });
+
     it("retries with the token another tab already renewed, without refreshing again", async () => {
       signInAdmin();
       fetchMock
@@ -205,5 +241,80 @@ describe("api-client", () => {
 
   it("keeps the marker key name the banner and the router rely on", () => {
     expect(IMPERSONATION_KEY).toBe("orken:impersonation");
+  });
+
+  describe("402 subscription_required", () => {
+    const blocked = () => json({ error: "texto do servidor", code: SUBSCRIPTION_REQUIRED_CODE, requestId: "req-1", details: [] }, 402);
+    let notices: number;
+    let stopListening: () => void;
+
+    beforeEach(() => {
+      notices = 0;
+      stopListening = onSubscriptionRequired(() => { notices += 1; });
+      setTokens("tenant-access", "tenant-refresh");
+    });
+
+    afterEach(() => stopListening());
+
+    it("rejects with a clear message and tells the app, keeping the session", async () => {
+      fetchMock.mockResolvedValueOnce(blocked());
+
+      const error = await apiClient.post("/products", {}).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({ status: 402, code: SUBSCRIPTION_REQUIRED_CODE, requestId: "req-1", message: SUBSCRIPTION_REQUIRED_MESSAGE });
+      expect(notices).toBe(1);
+      // nunca desloga nem tenta renovar a sessão: a escrita foi recusada, a sessão vale
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(getAccessToken()).toBe("tenant-access");
+      expect(getRefreshToken()).toBe("tenant-refresh");
+      expect(ended).toEqual([]);
+    });
+
+    it("handles the multipart calls the same way", async () => {
+      fetchMock.mockResolvedValueOnce(blocked());
+
+      await expect(apiClient.postForm("/storage", new FormData())).rejects.toMatchObject({
+        status: 402, code: SUBSCRIPTION_REQUIRED_CODE, message: SUBSCRIPTION_REQUIRED_MESSAGE,
+      });
+
+      expect(notices).toBe(1);
+      expect(getAccessToken()).toBe("tenant-access");
+    });
+
+    it("handles the uploads with progress the same way", async () => {
+      class FakeXhr {
+        status = 402;
+        statusText = "Payment Required";
+        responseText = JSON.stringify({ error: "texto do servidor", code: SUBSCRIPTION_REQUIRED_CODE });
+        upload = {};
+        onload: (() => void) | null = null;
+        open() { /* sem rede */ }
+        setRequestHeader() { /* sem rede */ }
+        send() { this.onload?.(); }
+      }
+      vi.stubGlobal("XMLHttpRequest", FakeXhr);
+
+      await expect(apiClient.upload("POST", "/storage", new FormData())).rejects.toMatchObject({
+        status: 402, code: SUBSCRIPTION_REQUIRED_CODE, message: SUBSCRIPTION_REQUIRED_MESSAGE,
+      });
+
+      expect(notices).toBe(1);
+      expect(getAccessToken()).toBe("tenant-access");
+    });
+
+    it("a 402 for any other reason is a plain error: no notice", async () => {
+      fetchMock.mockResolvedValueOnce(json({ error: "Outro motivo.", code: "outro" }, 402));
+
+      await expect(apiClient.post("/products", {})).rejects.toMatchObject({ status: 402, code: "outro", message: "Outro motivo." });
+
+      expect(notices).toBe(0);
+    });
+
+    it("the message explains the read-only state in Portuguese and promises no purchase", () => {
+      expect(SUBSCRIPTION_REQUIRED_MESSAGE).toMatch(/somente para consulta/);
+      expect(SUBSCRIPTION_REQUIRED_MESSAGE).toMatch(/suporte/);
+      expect(SUBSCRIPTION_REQUIRED_MESSAGE).not.toMatch(/\b(assine|contrate|compre|comprar)\b/i);
+    });
   });
 });

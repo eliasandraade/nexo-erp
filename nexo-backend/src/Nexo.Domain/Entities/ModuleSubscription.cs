@@ -166,6 +166,35 @@ public class ModuleSubscription : BaseEntity
         SetUpdatedAt();
     }
 
+    /// <summary>The plan changed in Stripe (customer portal): the row follows the price actually billed.</summary>
+    public void ChangePlan(string priceId, PlanType planType)
+    {
+        StripePriceId = priceId;
+        PlanType      = planType;
+        SetUpdatedAt();
+    }
+
+    /// <summary>
+    /// A platform admin grants a module whose Stripe subscription already ended. From here on it is a plain grant:
+    /// without the Stripe references it does not count as paying, does not look live to the checkout, and no late event
+    /// of the old subscription finds it.
+    /// </summary>
+    public void ConvertToAdminGrant(Guid? grantedById, DateTime expiresAt, string? notes)
+    {
+        StripeSubscriptionId = null;
+        StripePriceId        = null;
+        PlanType             = PlanType.AdminGrant;
+        Status               = SubscriptionStatus.Active;
+        CurrentPeriodStart   = DateTime.UtcNow;
+        CurrentPeriodEnd     = expiresAt;
+        CancelAtPeriodEnd    = false;
+        PastDueSince         = null;
+        CanceledAt           = null;
+        GrantedById          = grantedById;
+        Notes                = notes;
+        SetUpdatedAt();
+    }
+
     public void Cancel()
     {
         Status = SubscriptionStatus.Canceled;

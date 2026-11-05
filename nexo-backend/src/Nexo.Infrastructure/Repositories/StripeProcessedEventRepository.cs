@@ -11,12 +11,10 @@ public sealed class StripeProcessedEventRepository : IStripeProcessedEventReposi
 
     public StripeProcessedEventRepository(NexoDbContext db) => _db = db;
 
-    public async Task<bool> ExistsAsync(string stripeEventId, CancellationToken ct)
-        => await _db.StripeProcessedEvents.AnyAsync(e => e.StripeEventId == stripeEventId, ct);
-
-    public async Task AddAsync(StripeProcessedEvent evt, CancellationToken ct)
-        => await _db.StripeProcessedEvents.AddAsync(evt, ct);
-
-    public Task SaveChangesAsync(CancellationToken ct)
-        => _db.SaveChangesAsync(ct);
+    public async Task<bool> TryRecordAsync(StripeProcessedEvent evt, CancellationToken ct)
+        => await _db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO nexo.stripe_processed_events (id, stripe_event_id, event_type, created_at, updated_at)
+            VALUES ({evt.Id}, {evt.StripeEventId}, {evt.EventType}, {evt.CreatedAt}, {evt.UpdatedAt})
+            ON CONFLICT (stripe_event_id) DO NOTHING
+            """, ct) == 1;
 }

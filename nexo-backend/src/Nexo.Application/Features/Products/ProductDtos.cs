@@ -5,7 +5,7 @@ namespace Nexo.Application.Features.Products;
 public record CreateProductRequest(
     string Code,
     string Name,
-    string Unit,                // "Unit" | "Kg" | "L" | "M" | "Box" | "Pack"
+    string Unit,                // ProductUnit: Un, Kg, G, L, Ml, M, M2, M3, Cx, Pc, Par, Fardo
     decimal SalePrice,
     decimal CostPrice = 0,
     string? Barcode = null,

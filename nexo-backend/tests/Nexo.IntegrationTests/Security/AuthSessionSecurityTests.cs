@@ -16,21 +16,13 @@ namespace Nexo.IntegrationTests.Security;
 /// Regression suite for auth session security: refresh token rotation and switch-store
 /// session integrity.
 ///
-/// Refresh token security model:
-///   - Each token has a unique JTI stored in Redis under "refresh:valid:{jti}".
-///   - On rotate: old JTI deleted, new JTI inserted atomically.
-///   - An old token presented after rotation is not in Redis → rejected (401).
-///
-/// Switch-store security gap (documented):
-///   - SwitchStore controller extracts the ACCESS token from Authorization header and
-///     passes it to SwitchStoreAsync as the "refreshToken" to revoke.
-///   - ValidateRefreshToken rejects it (wrong audience) → oldClaims = null → RemoveAsync
-///     never called → the original refresh token stays valid in Redis.
-///   - After a store switch, the old refresh token still works.
-///   - Test <see cref="SwitchStore_OldRefreshToken_RemainsValid_KnownSecurityGap"/>
-///     documents this and currently passes (bug confirmed).
-///   - Fix: have client send the refresh token in the request body of switch-store,
-///     or revoke all sessions for the userId in SwitchStoreAsync.
+/// Modelo do refresh token:
+///   - cada token tem um jti único em "refresh:valid:{jti}" e pertence a uma família (a sessão de um login);
+///   - uso único: a troca reserva o token de forma atômica; o token trocado, reapresentado dentro da carência,
+///     recebe 409 sem tokens; depois dela (ou um token mais antigo), a família inteira é encerrada (401);
+///   - a troca de loja gasta o refresh token da sessão como uma renovação: sem um refresh token válido da própria
+///     sessão, não há par novo — o access token sozinho não abre sessão (antes, abria uma de 7 dias, mesmo após o logout).
+/// Detalhes da política em RefreshTokenFamilyTests.
 /// </summary>
 [Collection("Integration")]
 public class AuthSessionSecurityTests
@@ -69,7 +61,16 @@ public class AuthSessionSecurityTests
         firstRefreshBody.RefreshToken.Should().NotBe(originalRefreshToken,
             "rotation must issue a new refresh token, not return the same one");
 
-        // Step 3: replay the original (now revoked) token → must be rejected
+        // Passo 3: o token original reapresentado logo em seguida (carência da corrida entre abas) → 409, sem tokens
+        var graceReplay = await client.PostAsJsonAsync("/api/auth/refresh",
+            TestCredentials.RefreshPayload(originalRefreshToken));
+        graceReplay.StatusCode.Should().Be(HttpStatusCode.Conflict,
+            "um token já usado nunca rende outro par, nem dentro da carência");
+        (await graceReplay.Content.ReadAsStringAsync()).Should().NotContain("accessToken");
+
+        // Passo 4: o cliente segue com o sucessor; o original deixa de ser o anterior e volta a ser só uma cópia velha
+        (await client.PostAsJsonAsync("/api/auth/refresh",
+            TestCredentials.RefreshPayload(firstRefreshBody.RefreshToken))).StatusCode.Should().Be(HttpStatusCode.OK);
         var replayResponse = await client.PostAsJsonAsync("/api/auth/refresh",
             TestCredentials.RefreshPayload(originalRefreshToken));
 
@@ -155,12 +156,50 @@ public class AuthSessionSecurityTests
         switchResponse.StatusCode.Should().Be(HttpStatusCode.OK,
             "switch-store must succeed as a precondition");
 
-        // Step 3: replay the original refresh token — it must be rejected
+        // Passo 3: o refresh token original foi gasto pela troca de loja — reapresentado, não rende tokens
+        // (409 dentro da carência da corrida entre abas)
         var replayResponse = await client.PostAsJsonAsync("/api/auth/refresh",
             TestCredentials.RefreshPayload(originalRefreshToken));
 
-        replayResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-            "original refresh token must be revoked after switch-store — replay must return 401");
+        replayResponse.StatusCode.Should().Be(HttpStatusCode.Conflict,
+            "original refresh token must be spent by switch-store — replay must not return a token pair");
+        (await replayResponse.Content.ReadAsStringAsync()).Should().NotContain("accessToken");
+    }
+
+    // ── Teste 5 ───────────────────────────────────────────────────────────────
+    // A troca de loja sem o refresh token da sessão não emite par novo: antes, bastava um access token (15 min)
+    // para obter um refresh token de 7 dias.
+
+    [Fact]
+    public async Task SwitchStore_WithoutRefreshToken_DoesNotIssueATokenPair()
+    {
+        var storeBId = await GetOrCreateSecondStoreIdAsync();
+        var (client, _) = await AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
+
+        var response = await client.PostAsJsonAsync("/api/auth/switch-store", new { storeId = storeBId.ToString() });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "o access token sozinho não pode virar uma sessão nova");
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("refreshToken\":");
+    }
+
+    // ── Teste 6 ───────────────────────────────────────────────────────────────
+    // Depois do logout, o access token ainda vivo (até 15 min) não ressuscita a sessão pela troca de loja.
+
+    [Fact]
+    public async Task SwitchStore_AfterLogout_CannotReviveTheSession()
+    {
+        var storeBId = await GetOrCreateSecondStoreIdAsync();
+        var (client, login) = await AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
+
+        (await client.PostAsJsonAsync("/api/auth/logout", new { refreshToken = login.RefreshToken }))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var response = await client.PostAsJsonAsync("/api/auth/switch-store",
+            new { storeId = storeBId.ToString(), refreshToken = login.RefreshToken });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
+            "um logout não pode ser desfeito com o access token que ainda não expirou");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

@@ -16,9 +16,11 @@ public sealed class ModuleSubscriptionRepository : IModuleSubscriptionRepository
             .Where(s => s.TenantId == tenantId)
             .ToListAsync(ct);
 
-    public async Task<ModuleSubscription?> GetByStripeSubscriptionIdAsync(string stripeSubscriptionId, CancellationToken ct)
-        => await _db.ModuleSubscriptions
-            .FirstOrDefaultAsync(s => s.StripeSubscriptionId == stripeSubscriptionId, ct);
+    public async Task<ModuleSubscription?> GetByStripeSubscriptionIdForUpdateAsync(string stripeSubscriptionId, CancellationToken ct)
+        => (await _db.ModuleSubscriptions
+            .FromSqlInterpolated($"SELECT * FROM nexo.module_subscriptions WHERE stripe_subscription_id = {stripeSubscriptionId} FOR UPDATE")
+            .ToListAsync(ct))
+            .FirstOrDefault();
 
     public async Task AddAsync(ModuleSubscription subscription, CancellationToken ct)
         => await _db.ModuleSubscriptions.AddAsync(subscription, ct);

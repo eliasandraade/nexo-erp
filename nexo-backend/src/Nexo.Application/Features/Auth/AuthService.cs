@@ -193,20 +193,38 @@ public class AuthService
     }
 
     /// <summary>
-    /// Rotates a refresh token: validates the old one, issues a new access token.
-    /// Returns null if the refresh token is invalid, expired, or already revoked.
+    /// Uma segunda aba que renova com o token que outra aba acabou de trocar é uma corrida, não um roubo: dentro desta
+    /// janela ela recebe "já renovado" (409, nada é emitido) e lê o par novo que a outra aba gravou. Depois dela, o token
+    /// já usado voltando indica uma cópia em outras mãos e encerra a família inteira. Mesma regra das sessões da plataforma.
     /// </summary>
-    public async Task<RefreshResponse?> RefreshAsync(
+    public static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
+
+    // Vida da reserva de uso único de um token: só a troca em si precisa caber nela. Depois, a entrada do token já
+    // saiu do cache e quem responde é o registro da família.
+    private static readonly TimeSpan RotationClaimTtl = TimeSpan.FromMinutes(1);
+
+    /// <summary>
+    /// Troca um refresh token por um par novo da mesma família (sessão). Uso único: só a primeira requisição que
+    /// reserva o token (INCR atômico) emite o par; as concorrentes recebem <see cref="RefreshErrors.AlreadyRotated"/>
+    /// sem nenhum token irmão. Um token já trocado apresentado depois de <see cref="RotationGrace"/> encerra a família.
+    /// </summary>
+    public async Task<RefreshOutcome> RefreshAsync(
         RefreshTokenRequest request,
         CancellationToken ct = default)
     {
         var claims = _jwt.ValidateRefreshToken(request.RefreshToken);
-        if (claims is null) return null;
+        if (claims is null) return RefreshOutcome.Fail(RefreshErrors.Invalid);
 
         // Check token is still in Redis (not revoked)
         var cacheKey = $"refresh:valid:{claims.Jti}";
         var entry = await _cache.GetAsync<RefreshTokenEntry>(cacheKey, ct);
-        if (entry is null) return null;
+        if (entry is null) return await RefuseSpentTokenAsync(claims, ct);
+
+        if (await IsFamilyRevokedAsync(claims.Family, ct))
+        {
+            await _cache.RemoveAsync(cacheKey, ct);
+            return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
+        }
 
         // Load user to make sure account is still active. This endpoint is anonymous
         // (no tenant context resolved), so we must bypass the tenant query filter —
@@ -214,24 +232,24 @@ public class AuthService
         // spurious 401 on every refresh once the cache actually persists the token.
         var user = await _users.GetByIdAcrossTenantsAsync(claims.UserId, ct);
         if (user is null || user.Status == Domain.Enums.UserStatus.Inactive || user.Status == Domain.Enums.UserStatus.Blocked)
-            return null;
+            return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
 
         // Defence in depth: the user loaded cross-tenant must match the token's tenant
         // claim and the stored entry. Guards against a token whose userId/tenantId were
         // ever decoupled (and against a future bug in token issuance).
         if (user.TenantId != claims.TenantId || entry.UserId != claims.UserId)
-            return null;
+            return RefreshOutcome.Fail(RefreshErrors.Invalid);
 
         // Sessions ended since this token was issued (entries from before the stamp was recorded pass once)
         if (entry.SecurityStamp is not null && entry.SecurityStamp != user.SecurityStamp)
         {
             await _cache.RemoveAsync(cacheKey, ct);
-            return null;
+            return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
         }
 
         var tenant = await _tenants.GetByIdAsync(claims.TenantId, ct);
         if (tenant is null || tenant.Status != Domain.Enums.TenantStatus.Active)
-            return null;
+            return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(claims.TenantId, ct);
 
@@ -245,37 +263,95 @@ public class AuthService
             ? activeStoreId
             : stores.FirstOrDefault()?.Id ?? Guid.Empty;
 
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, storeId, storeIds);
+        // Reserva logo antes de emitir: perder aqui é a corrida com outra aba, e nada é emitido duas vezes.
+        if (!await ClaimRotationAsync(claims.Jti, ct))
+            return RefreshOutcome.Fail(RefreshErrors.AlreadyRotated);
 
-        // Revoke old refresh token, store new one
-        await _cache.RemoveAsync(cacheKey, ct);
-        var newClaims = _jwt.ValidateRefreshToken(tokens.RefreshToken);
-        if (newClaims is not null)
-        {
-            var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
-            await _cache.SetAsync(
-                $"refresh:valid:{newClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId, storeId, user.SecurityStamp),
-                ttl, ct);
+        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, storeId, storeIds,
+            claims.Family);
+        await RotateIntoAsync(claims, tokens, new RefreshTokenEntry(user.Id, user.TenantId, storeId, user.SecurityStamp), ct);
 
-            // Update session JTI so platform can still revoke if needed
-            await _sessions.TouchAsync(claims.Jti, newClaims.Jti, ct);
-        }
-
-        return new RefreshResponse(
+        return RefreshOutcome.Ok(new RefreshResponse(
             tokens.AccessToken,
             tokens.AccessTokenExpiresAt,
             tokens.RefreshToken,
-            tokens.RefreshTokenExpiresAt);
+            tokens.RefreshTokenExpiresAt));
+    }
+
+    /// <summary>
+    /// Token assinado e no prazo, mas sem entrada válida. Se a família o registra como o token que acabou de ser
+    /// trocado, dentro da carência é a corrida de outra aba; um token já trocado fora dela (ou mais antigo) significa
+    /// que existe outra cópia: a família inteira é encerrada e o caso fica na auditoria.
+    /// </summary>
+    private async Task<RefreshOutcome> RefuseSpentTokenAsync(RefreshTokenClaims claims, CancellationToken ct)
+    {
+        if (await IsFamilyRevokedAsync(claims.Family, ct)) return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
+
+        var head = await _cache.GetAsync<RefreshFamilyHead>(FamilyKey(claims.Family), ct);
+        // família desconhecida (expirada, ou anterior a este controle) ou o próprio token atual já revogado (logout)
+        if (head is null || head.CurrentJti == claims.Jti) return RefreshOutcome.Fail(RefreshErrors.Invalid);
+
+        if (head.PreviousJti == claims.Jti && DateTime.UtcNow - head.RotatedAt < RotationGrace)
+            return RefreshOutcome.Fail(RefreshErrors.AlreadyRotated);
+
+        await RevokeFamilyAsync(claims.Family, ct);
+        _audit?.Stage(AuditActions.UserSessionRevoked, AuditSeverity.Critical, "User", claims.UserId.ToString(),
+            "Sessão encerrada: um refresh token já usado foi apresentado de novo (possível cópia do token).",
+            tenantId: claims.TenantId, actorName: "anonymous", actorType: "system",
+            metadata: new { reason = "refresh_reuse", family = claims.Family });
+        if (_audit is not null) await _users.SaveChangesAsync(ct);
+        return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
+    }
+
+    /// <summary>Reserva de uso único do token (INCR atômico): só quem chega primeiro troca. Sem cache, ninguém troca.</summary>
+    private async Task<bool> ClaimRotationAsync(string jti, CancellationToken ct)
+        => await _cache.IncrementAsync($"refresh:claim:{jti}", RotationClaimTtl, ct) == 1;
+
+    /// <summary>
+    /// Grava o par novo e aposenta o token trocado, nesta ordem: o novo passa a valer, a família aponta para ele (com o
+    /// trocado como anterior, para a carência) e só então o antigo deixa de valer. Uma requisição concorrente sempre
+    /// encontra um dos dois estados. A sessão registrada passa a seguir o token novo.
+    /// </summary>
+    private async Task RotateIntoAsync(RefreshTokenClaims spent, TokenPair tokens, RefreshTokenEntry entry, CancellationToken ct)
+    {
+        var next = _jwt.ValidateRefreshToken(tokens.RefreshToken);
+        if (next is not null)
+        {
+            var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
+            await _cache.SetAsync($"refresh:valid:{next.Jti}", entry, ttl, ct);
+            await _cache.SetAsync(FamilyKey(spent.Family), new RefreshFamilyHead(next.Jti, spent.Jti, DateTime.UtcNow), ttl, ct);
+        }
+        await _cache.RemoveAsync($"refresh:valid:{spent.Jti}", ct);
+        if (next is not null) await _sessions.TouchAsync(spent.Jti, next.Jti, ct);
+    }
+
+    private static string FamilyKey(string family) => $"refresh:family:{family}";
+    private static string FamilyRevokedKey(string family) => $"refresh:family:{family}:revoked";
+
+    private Task<bool> IsFamilyRevokedAsync(string family, CancellationToken ct)
+        => _cache.ExistsAsync(FamilyRevokedKey(family), ct);
+
+    /// <summary>
+    /// Encerra a família inteira: nenhum token dela renova mais (a marca vive tanto quanto o mais novo deles poderia), o
+    /// token atual sai do cache e a sessão registrada deixa a lista de dispositivos.
+    /// </summary>
+    private async Task RevokeFamilyAsync(string family, CancellationToken ct)
+    {
+        await _cache.SetFlagAsync(FamilyRevokedKey(family), _jwt.GetRefreshTokenExpiration() - DateTime.UtcNow, ct);
+        var head = await _cache.GetAsync<RefreshFamilyHead>(FamilyKey(family), ct);
+        if (head is null) return;
+        await _cache.RemoveAsync($"refresh:valid:{head.CurrentJti}", ct);
+        await _sessions.RevokeAsync(head.CurrentJti, ct);
     }
 
     /// <summary>
     /// Issues a new access token scoped to a different store.
     /// Validates the requested store belongs to the current user's tenant
     /// and is in the user's accessible store list.
-    /// Returns null if the store is invalid or inaccessible.
+    /// O par novo nasce do refresh token da sessão (trocado como numa renovação, na mesma família) — nunca só do access
+    /// token: sem essa exigência, um access token de 15 minutos virava uma sessão de 7 dias, inclusive depois do logout.
     /// </summary>
-    public async Task<SwitchStoreResponse?> SwitchStoreAsync(
+    public async Task<SwitchStoreOutcome> SwitchStoreAsync(
         Guid userId,
         Guid tenantId,
         Guid requestedStoreId,
@@ -285,39 +361,50 @@ public class AuthService
         // Validate the requested store exists and belongs to this tenant
         var store = await _stores.GetByIdAsync(requestedStoreId, ct);
         if (store is null || store.TenantId != tenantId)
-            return null;
+            return SwitchStoreOutcome.Fail(SwitchStoreErrors.StoreForbidden);
 
         if (store.Status != Domain.Enums.StoreStatus.Active)
-            return null;
+            return SwitchStoreOutcome.Fail(SwitchStoreErrors.StoreForbidden);
 
         var user = await _users.GetByIdAsync(userId, ct);
         if (user is null || user.Status != UserStatus.Active)
-            return null;
+            return SwitchStoreOutcome.Fail(SwitchStoreErrors.StoreForbidden);
 
         var tenant = await _tenants.GetByIdAsync(tenantId, ct);
-        if (tenant is null) return null;
+        if (tenant is null) return SwitchStoreOutcome.Fail(SwitchStoreErrors.StoreForbidden);
+
+        // o refresh token tem de ser o da própria sessão, ainda válido
+        var spent = _jwt.ValidateRefreshToken(refreshToken);
+        if (spent is null || spent.UserId != userId || spent.TenantId != tenantId)
+            return SwitchStoreOutcome.Fail(RefreshErrors.Invalid);
+        var entry = await _cache.GetAsync<RefreshTokenEntry>($"refresh:valid:{spent.Jti}", ct);
+        if (entry is null)
+        {
+            // Mesma leitura da renovação. Sem ela, quem perdia a corrida para outra troca de loja (ou renovação) da mesma
+            // sessão e chegava depois de a vencedora concluir recebia 401 em vez de 409, e o SPA, ao repetir a troca com
+            // o token já gasto, encerrava a sessão de todas as abas. Dentro da carência → 409; fora dela, ou um token
+            // mais antigo → a família é encerrada, como na renovação.
+            var refused = await RefuseSpentTokenAsync(spent, ct);
+            return SwitchStoreOutcome.Fail(refused.ErrorCode == RefreshErrors.AlreadyRotated
+                ? RefreshErrors.AlreadyRotated
+                : RefreshErrors.Invalid);
+        }
+        if (entry.UserId != userId
+            || (entry.SecurityStamp is not null && entry.SecurityStamp != user.SecurityStamp)
+            || await IsFamilyRevokedAsync(spent.Family, ct))
+            return SwitchStoreOutcome.Fail(RefreshErrors.Invalid);
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(tenantId, ct);
         var trialEndsAt   = await _tenants.GetTrialEndsAtAsync(tenantId, ct);
         var stores = await _stores.GetByTenantIdAsync(tenantId, ct);
         var storeIds = stores.Select(s => s.Id).ToList();
 
-        // Revoke old refresh token and issue new token pair for the switched store
-        var oldClaims = _jwt.ValidateRefreshToken(refreshToken);
-        if (oldClaims is not null)
-            await _cache.RemoveAsync($"refresh:valid:{oldClaims.Jti}", ct);
+        if (!await ClaimRotationAsync(spent.Jti, ct))
+            return SwitchStoreOutcome.Fail(RefreshErrors.AlreadyRotated);
 
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, requestedStoreId, storeIds);
-
-        var newClaims = _jwt.ValidateRefreshToken(tokens.RefreshToken);
-        if (newClaims is not null)
-        {
-            var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
-            await _cache.SetAsync(
-                $"refresh:valid:{newClaims.Jti}",
-                new RefreshTokenEntry(user.Id, user.TenantId, requestedStoreId, user.SecurityStamp),
-                ttl, ct);
-        }
+        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, requestedStoreId, storeIds,
+            spent.Family);
+        await RotateIntoAsync(spent, tokens, new RefreshTokenEntry(user.Id, user.TenantId, requestedStoreId, user.SecurityStamp), ct);
 
         var session = new SessionDto(
             UserId:        user.Id.ToString(),
@@ -333,18 +420,20 @@ public class AuthService
             TrialEndsAt:   trialEndsAt,
             RequirePasswordChange: user.RequirePasswordChange);
 
-        return new SwitchStoreResponse(
+        return SwitchStoreOutcome.Ok(new SwitchStoreResponse(
             tokens.AccessToken,
             tokens.RefreshToken,
             tokens.AccessTokenExpiresAt,
             tokens.RefreshTokenExpiresAt,
             requestedStoreId.ToString(),
-            session);
+            session));
     }
 
     /// <summary>
     /// Revokes the given refresh token so it cannot be used again.
     /// Idempotent — safe to call multiple times.
+    /// Encerra a família inteira do token: as outras abas da mesma sessão e um par trocado agora mesmo por uma
+    /// renovação concorrente também deixam de renovar. Outros logins (outros dispositivos) não são afetados.
     /// </summary>
     public async Task LogoutAsync(string? refreshToken, CancellationToken ct = default)
     {
@@ -353,6 +442,7 @@ public class AuthService
         var claims = _jwt.ValidateRefreshToken(refreshToken);
         if (claims is null) return;
 
+        await RevokeFamilyAsync(claims.Family, ct);
         await _cache.RemoveAsync($"refresh:valid:{claims.Jti}", ct);
         await _sessions.RevokeAsync(claims.Jti, ct);
     }
@@ -409,3 +499,38 @@ public class AuthService
 /// if the key itself was never tracked as a session.
 /// </summary>
 public record RefreshTokenEntry(Guid UserId, Guid TenantId, Guid? StoreId = null, string? SecurityStamp = null);
+
+/// <summary>
+/// Estado da família (sessão) no cache: o token atual e o que ele substituiu (com a hora da troca), para distinguir a
+/// corrida entre abas (carência) da reapresentação de um token já usado.
+/// </summary>
+public record RefreshFamilyHead(string CurrentJti, string PreviousJti, DateTime RotatedAt);
+
+/// <summary>Códigos de recusa de uma renovação.</summary>
+public static class RefreshErrors
+{
+    /// <summary>Token inválido, desconhecido ou já revogado (401).</summary>
+    public const string Invalid = "invalid_refresh";
+    /// <summary>A sessão terminou: família encerrada, conta ou empresa inativa, senha trocada (401).</summary>
+    public const string SessionEnded = "session_ended";
+    /// <summary>Outra aba trocou este token há instantes; o par novo está com ela (409).</summary>
+    public const string AlreadyRotated = "refresh_already_rotated";
+}
+
+public static class SwitchStoreErrors
+{
+    /// <summary>Loja inexistente, de outra empresa, inativa, ou usuário sem acesso (403).</summary>
+    public const string StoreForbidden = "store_forbidden";
+}
+
+public sealed record RefreshOutcome(RefreshResponse? Tokens, string? ErrorCode)
+{
+    public static RefreshOutcome Ok(RefreshResponse tokens) => new(tokens, null);
+    public static RefreshOutcome Fail(string code) => new(null, code);
+}
+
+public sealed record SwitchStoreOutcome(SwitchStoreResponse? Response, string? ErrorCode)
+{
+    public static SwitchStoreOutcome Ok(SwitchStoreResponse response) => new(response, null);
+    public static SwitchStoreOutcome Fail(string code) => new(null, code);
+}

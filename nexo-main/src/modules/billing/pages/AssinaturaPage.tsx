@@ -117,6 +117,7 @@ export default function AssinaturaPage() {
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const readOnlyNotice = searchParams.get("motivo") === "somente-leitura";
 
   // Show success toast when returning from Stripe checkout
   if (searchParams.get("sucesso") === "1") {
@@ -181,6 +182,24 @@ export default function AssinaturaPage() {
           </Button>
         )}
       </div>
+
+      {/* A write was refused for lack of a subscription (api-client). Promises no purchase: see docs/engineering/tenant-access-enforcement.md. */}
+      {readOnlyNotice && (
+        <div role="status" className="flex items-start gap-2.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium text-foreground">Sua empresa está em modo somente leitura</p>
+            <p className="text-muted-foreground mt-0.5">
+              Sem assinatura ativa, você pode ver e exportar os dados, mas não registrar nem alterar. Os módulos
+              disponíveis para contratação aparecem abaixo. Se o que a sua empresa usa não está na lista, fale com o
+              suporte Orken.
+            </p>
+            <a className="mt-1 inline-flex min-h-11 items-center text-primary underline" href="mailto:suporte@orken.com.br">
+              Falar com o suporte
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Billing unavailable */}
       {billingUnavailable && (

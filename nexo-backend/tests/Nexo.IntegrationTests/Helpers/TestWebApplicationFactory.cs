@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Integrations.Billing;
 using Nexo.Infrastructure.MultiTenancy;
 using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
@@ -25,7 +26,7 @@ namespace Nexo.IntegrationTests.Helpers;
 /// </summary>
 public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    // The image the 3.x/4.0 builder defaulted to — pinned so the upgrade does not change the database under test.
+    // A imagem que o construtor sem parâmetros usava (obsoleto no Testcontainers 4.x): fixada para o banco de teste não mudar.
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:15.1")
         .WithDatabase("nexo_test")
         .WithUsername("nexo_test")
@@ -34,6 +35,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
 
     /// <summary>The fake Anthropic API every Claude call of this host goes to (nothing leaves the test host).</summary>
     public FakeAnthropicHandler Anthropic { get; } = new();
+
+    /// <summary>The fake Stripe every subscription read of this host goes to (nothing leaves the test host).</summary>
+    public FakeStripeSubscriptionFetcher StripeSubscriptions { get; } = new();
 
     /// <summary>The host's latest warnings and errors, so an unexpected status in a test shows the server exception.</summary>
     public ServerLogCapture ServerLog { get; } = new();
@@ -139,6 +143,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
             // Claude calls go to an in-process fake: the suite never reaches Anthropic.
             services.AddHttpClient(Nexo.Infrastructure.Modules.Interpreter.AnthropicClientFactory.HttpClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => Anthropic);
+
+            // Subscription reads go to an in-process fake: the suite never reaches Stripe.
+            services.RemoveAll<IStripeSubscriptionFetcher>();
+            services.AddSingleton<IStripeSubscriptionFetcher>(StripeSubscriptions);
         });
 
         // JWT overrides so test tokens validate against the test server.
@@ -176,6 +184,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // on the fly. TaxIntelligenceTests turns enforcement, the mode and the pilot scope on in derived hosts to
         // prove what each configuration accepts and refuses.
         builder.UseSetting("Secrets:MasterKey", TestMasterKey);
+        // Stripe stays off here. A host that turns it on starts with these fake secrets (StripeStartupPolicy).
+        builder.UseSetting("Integrations:Stripe:SecretKey", "sk_test_integration_tests_only");
+        builder.UseSetting("Integrations:Stripe:WebhookSecret", "whsec_integration_tests_only");
         // Admin acts normally require a sign-in with two-step verification; most suites sign in with the password only.
         // PlatformSecurityTests turns the requirement back on in its own host.
         builder.UseSetting("Platform:RequireMfaForAdmin", "false");

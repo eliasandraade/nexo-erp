@@ -30,6 +30,9 @@ namespace Nexo.Infrastructure.Cache;
 ///   user:blocked:{userId}        → User block flag (no TTL)
 ///   refresh:valid:{jti}          → Valid refresh token data (TTL 7d)
 ///   refresh:blacklist:{jti}      → Revoked refresh token flag (TTL 7d)
+///   refresh:claim:{jti}          → Reserva de uso único da troca de um refresh token (TTL 1 min)
+///   refresh:family:{fid}         → Token atual e anterior da família (sessão) e hora da troca (TTL = vida do refresh)
+///   refresh:family:{fid}:revoked → Família encerrada: logout ou token já usado reapresentado (TTL = vida do refresh)
 /// </summary>
 public class RedisCacheService : ICacheService
 {
