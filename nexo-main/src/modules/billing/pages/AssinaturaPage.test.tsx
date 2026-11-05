@@ -33,6 +33,7 @@ describe("AssinaturaPage, modo somente leitura", () => {
     expect(notice.textContent).toMatch(/somente leitura/i);
     expect(notice.textContent).toMatch(/ver e exportar/i);
     expect(notice.textContent).not.toMatch(/varejo/i);
+    expect(notice.textContent).not.toMatch(/contrat|compr|assine/i);
     expect(screen.getByRole("link", { name: "Falar com o suporte" }).getAttribute("href")).toBe("mailto:suporte@orken.com.br");
     expect(await screen.findByText("Gestão de Obras")).toBeTruthy();
     expect(screen.queryByText(/varejo/i)).toBeNull();
