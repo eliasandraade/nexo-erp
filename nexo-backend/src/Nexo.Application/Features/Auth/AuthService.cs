@@ -128,6 +128,7 @@ public class AuthService
         if (tenant is null) return LoginOutcome.Fail("tenant_not_found");
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(user.TenantId, ct);
+        var expiredModules = await _tenants.GetExpiredModuleKeysAsync(user.TenantId, ct);
         var trialEndsAt   = await _tenants.GetTrialEndsAtAsync(user.TenantId, ct);
 
         // Load stores for this tenant — active store defaults to the first one
@@ -169,7 +170,8 @@ public class AuthService
             StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
             CompanyName:   companyName,
             TrialEndsAt:   trialEndsAt,
-            RequirePasswordChange: user.RequirePasswordChange);
+            RequirePasswordChange: user.RequirePasswordChange,
+            ReadOnlyModules: expiredModules.ToList());
 
         return LoginOutcome.Ok(new LoginResponse(
             tokens.AccessToken,
@@ -395,6 +397,7 @@ public class AuthService
             return SwitchStoreOutcome.Fail(RefreshErrors.Invalid);
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(tenantId, ct);
+        var expiredModules = await _tenants.GetExpiredModuleKeysAsync(tenantId, ct);
         var trialEndsAt   = await _tenants.GetTrialEndsAtAsync(tenantId, ct);
         var stores = await _stores.GetByTenantIdAsync(tenantId, ct);
         var storeIds = stores.Select(s => s.Id).ToList();
@@ -418,7 +421,8 @@ public class AuthService
             StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
             CompanyName:   tenant.TradeName ?? tenant.CompanyName,
             TrialEndsAt:   trialEndsAt,
-            RequirePasswordChange: user.RequirePasswordChange);
+            RequirePasswordChange: user.RequirePasswordChange,
+            ReadOnlyModules: expiredModules.ToList());
 
         return SwitchStoreOutcome.Ok(new SwitchStoreResponse(
             tokens.AccessToken,

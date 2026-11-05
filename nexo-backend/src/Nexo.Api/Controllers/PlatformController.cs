@@ -550,6 +550,9 @@ public class PlatformController : ControllerBase
             .Where(ModuleSubscription.HasAccessAt(DateTime.UtcNow))   // same rule as a real login
             .Select(s => s.ModuleKey)
             .ToListAsync(ct);
+        var expiredModules = ModuleSubscription.ExpiredKeys(
+            await _db.ModuleSubscriptions.IgnoreQueryFilters().AsNoTracking().Where(s => s.TenantId == tenantId).ToListAsync(ct),
+            DateTime.UtcNow);
 
         var primaryStore = stores.First();
         var storeIds     = stores.Select(s => s.Id).ToList();
@@ -584,6 +587,7 @@ public class PlatformController : ControllerBase
                 storeId     = primaryStore.Id,
                 storeIds    = storeIds,
                 activeModules = activeModules,
+                readOnlyModules = expiredModules,
                 type        = "tenant",
             }
         });

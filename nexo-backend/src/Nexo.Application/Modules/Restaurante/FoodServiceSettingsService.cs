@@ -22,6 +22,8 @@ public class FoodServiceSettingsService
         if (settings is null)
         {
             settings = FoodServiceSettings.CreateDefault(_currentTenant.Id);
+            // Module expired: the read answers with the defaults and records nothing.
+            if (_currentTenant.ExpiredModules.Contains(PublicMenuService.RestaurantModuleKey)) return Map(settings);
             await _repo.AddAsync(settings, ct);
             await _repo.SaveChangesAsync(ct);
         }

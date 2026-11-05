@@ -13,6 +13,8 @@ export interface AuthSession {
   email: string;
   /** Active module keys granted to this tenant: "varejo" | "restaurante" | "build" */
   modules: string[];
+  /** Modules that expired: their screens open and writes answer 402. Missing in a session stored by an older version. */
+  readOnlyModules?: string[];
   /** Active store ID from JWT storeId claim */
   storeId?: string;
   /** All store IDs accessible to this user */
@@ -44,6 +46,7 @@ export interface BackendSessionDto {
   login: string;
   email: string;
   activeModules: string[];
+  readOnlyModules?: string[] | null;
   storeId?: string;
   storeIds?: string[];
   companyName?: string;

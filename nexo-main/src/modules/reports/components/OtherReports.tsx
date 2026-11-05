@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ChartColumnBig, ChefHat, ConciergeBell, HardHat, Landmark, Users, Wallet, Warehouse, type LucideIcon } from "lucide-react";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { readableModules } from "@/modules/auth/hooks/useRoleAccess";
 
 interface ReportLink {
   to: string;
@@ -26,7 +27,7 @@ const LINKS: ReportLink[] = [
 /** The other reports of the system, in the screens where they live — only those of the company's modules. */
 export function OtherReports() {
   const { session } = useAuth();
-  const modules = session?.modules ?? [];
+  const modules = session ? readableModules(session) : [];
   const links = LINKS.filter((l) => !l.module || modules.includes(l.module));
 
   return (

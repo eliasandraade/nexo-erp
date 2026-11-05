@@ -4,9 +4,9 @@ using Microsoft.AspNetCore.Routing;
 namespace Nexo.Api.Middleware;
 
 /// <summary>
-/// What a company without any module with access may still do. This is the whole decision, in one place: the owner has not
-/// decided yet what stays reachable after a trial, so read-only is the conservative default and meant to be easy to change.
-/// See docs/engineering/tenant-access-enforcement.md.
+/// What a company in read-only may still do: after the due date it stays read-only, consultations and exports included, and no
+/// legitimate contracting or administration is blocked (owner's decision). This is the whole decision, in one place. See
+/// docs/engineering/tenant-access-enforcement.md.
 ///
 /// Exemptions compare the route template, never the raw path, so casing or a trailing slash cannot change the answer. A
 /// new route is not exempt until it is listed here; TenantAccessEnforcementTests sweeps every write route of the host.
@@ -17,8 +17,9 @@ public static class TenantAccessPolicy
     public const string EnforceSetting = "Billing:EnforceTenantAccess";
 
     /// <summary>
-    /// Everything a session needs to go on existing (leave, renew, change store, password, two-step verification) and to
-    /// pay. Anonymous routes need no entry: <see cref="IsExempt"/> reads <see cref="IAllowAnonymous"/>.
+    /// Everything a session needs to go on existing (leave, renew, change store, password, two-step verification), to pay and
+    /// to administer who has access, plus the reads that are sent by POST. Anonymous routes need no entry:
+    /// <see cref="IsExempt"/> reads <see cref="IAllowAnonymous"/>.
     /// </summary>
     private static readonly HashSet<string> ExemptRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -33,9 +34,14 @@ public static class TenantAccessPolicy
         "api/users/{id:guid}/admin-reset-password",
         "api/users/{id:guid}/resend-invite",
         "api/users/{id:guid}/mfa/disable",
+        // Block someone who left the company. The route is Diretoria only, and creating users stays blocked.
+        "api/users/{id:guid}",
         "api/billing/checkout",
         "api/billing/portal",
         "api/billing/subscriptions",
+        // Reads sent by POST because the question has a body: they run the rules in memory and record nothing.
+        "api/tax/calculations/coverage",
+        "api/tax/calculations/{id:guid}/verify",
     };
 
     /// <summary>Whole areas with an identity of their own: the platform, and the contract read by the Orken Platform.</summary>

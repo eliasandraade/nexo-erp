@@ -33,6 +33,7 @@ function toAuthSession(dto: BackendSessionDto): AuthSession {
     login:        dto.login,
     email:        dto.email,
     modules:      dto.activeModules ?? [],
+    readOnlyModules: dto.readOnlyModules ?? [],
     storeId:      dto.storeId,
     storeIds:     dto.storeIds ?? [],
     companyName:  dto.companyName ?? "",
