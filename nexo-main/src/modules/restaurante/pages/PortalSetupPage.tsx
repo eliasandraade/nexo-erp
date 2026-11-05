@@ -513,7 +513,7 @@ export default function PortalSetupPage() {
   const slugMut = useMutation({
     mutationFn: () => setPublicSlug(storeId, previewSlug || null),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["stores", "mine"] });
+      void qc.invalidateQueries({ queryKey: ["stores", "mine"] });
       setSlugSaved(true);
       setTimeout(() => setSlugSaved(false), 2500);
     },
@@ -592,7 +592,7 @@ export default function PortalSetupPage() {
         zones: Object.entries(zoneFees).map(([neighborhood, fee]) => ({ neighborhood, fee })),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["delivery-zones"] });
+      void qc.invalidateQueries({ queryKey: ["delivery-zones"] });
       setZonesSaved(true);
       setTimeout(() => setZonesSaved(false), 2500);
     },
@@ -629,7 +629,7 @@ export default function PortalSetupPage() {
   const revokeMut = useMutation({
     mutationFn: (id: string) => revokeCoupon(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["coupons"] });
+      void qc.invalidateQueries({ queryKey: ["coupons"] });
       setRevokeConfirm(null);
     },
   });

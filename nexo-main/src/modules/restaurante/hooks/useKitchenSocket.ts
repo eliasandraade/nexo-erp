@@ -68,9 +68,9 @@ export function useKitchenSocket(
   onItemReadyRef.current = onItemReady;
 
   const invalidateAll = useCallback(() => {
-    qc.invalidateQueries({ queryKey: KITCHEN_KEY(storeId) });
-    qc.invalidateQueries({ queryKey: TABLES_KEY(storeId) });
-    qc.invalidateQueries({ queryKey: ORDERS_KEY(storeId) });
+    void qc.invalidateQueries({ queryKey: KITCHEN_KEY(storeId) });
+    void qc.invalidateQueries({ queryKey: TABLES_KEY(storeId) });
+    void qc.invalidateQueries({ queryKey: ORDERS_KEY(storeId) });
   }, [qc, storeId]);
 
   const startPolling = useCallback(() => {
@@ -187,12 +187,12 @@ export function useKitchenSocket(
       }
     };
 
-    attemptConnect(0);
+    void attemptConnect(0);
 
     return () => {
       cancelled = true;
       stopPolling();
-      connection.stop();
+      void connection.stop();
     };
   }, [storeId, invalidateAll, startPolling, stopPolling]);
 
