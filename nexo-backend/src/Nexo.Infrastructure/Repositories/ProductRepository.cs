@@ -54,13 +54,18 @@ public class ProductRepository : IProductRepository
 
     public async Task<PagedResult<ProductDto>> GetPagedAsync(
         int page, int pageSize,
-        string? search, bool includeInactive, bool? isIngredient,
+        string? search, bool includeInactive, bool onlyInactive, bool? isIngredient,
         Guid? categoryId, string? unit,
         CancellationToken ct = default)
     {
         var q = _context.Products.AsNoTracking()
-            .Where(x => includeInactive || x.IsActive)
             .Where(x => isIngredient == null || x.IsIngredient == isIngredient);
+
+        // The status filter runs here, not on the client: the page and the total count only what is listed.
+        if (onlyInactive)
+            q = q.Where(x => !x.IsActive);
+        else if (!includeInactive)
+            q = q.Where(x => x.IsActive);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
