@@ -16,7 +16,7 @@ public static class EnumInput
         if (Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed)
             && Enum.IsDefined(parsed)
             // TryParse also accepts "1" and "A,B", which would land on a member nobody asked for
-            && string.Equals(parsed.ToString(), value!.Trim(), StringComparison.OrdinalIgnoreCase))
+            && string.Equals(parsed.ToString(), value.Trim(), StringComparison.OrdinalIgnoreCase))
             return parsed;
 
         throw new DomainException($"{problem}. Use um destes valores: {string.Join(", ", Enum.GetNames<TEnum>())}.");
