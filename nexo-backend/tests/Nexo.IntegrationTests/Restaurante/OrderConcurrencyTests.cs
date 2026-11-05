@@ -153,6 +153,22 @@ public class OrderConcurrencyTests : IAsyncLifetime
         state.SalesOfTheComanda.Should().Be(1, "a comanda tem uma venda só");
     }
 
+    /// <summary>Um produto desativado depois de pedido faz o fechamento falhar no meio: nenhuma venda fica para trás.</summary>
+    [Fact]
+    public async Task A_close_that_fails_midway_leaves_no_sale_behind()
+    {
+        var dish = await ProductAsync(10m);
+        var side = await ProductAsync(7m);
+        var order = await OpenWithItemsAsync(dish, products: side);
+        (await _client.PostAsync($"/api/products/{side}/deactivate", null)).EnsureSuccessStatusCode();
+
+        (await Close(order.Id)).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        var state = await StateOfAsync(order.Id);
+        state.Status.Should().Be(RestOrderStatus.Open);
+        state.SalesOfTheComanda.Should().Be(0, "a venda e a comanda fecham juntas, ou nenhuma delas");
+    }
+
     // ═══════════════════════════════════════════════════════════
     // Cancelar × fechar
     // ═══════════════════════════════════════════════════════════
