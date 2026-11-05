@@ -25,7 +25,7 @@ namespace Nexo.Infrastructure.Cache;
 ///     caching resumes automatically once connectivity is restored — no restart.
 ///   - A caller that cancels is not a Redis failure: the cancellation propagates and the
 ///     circuit stays closed. Otherwise any client closing a tab would turn the cache (and
-///     what relies on it, like token revocation) off for the whole process during the cooldown.
+///     what relies on it, like session renewal and the login lock) off for the whole process during the cooldown.
 ///
 /// Key namespaces:
 ///   tenant:{id}:modules          → List of active module keys (TTL 5min)
