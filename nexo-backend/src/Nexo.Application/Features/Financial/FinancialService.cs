@@ -74,7 +74,7 @@ public class FinancialService
         if (await _financial.AccountCodeExistsAsync(request.Code, ct: ct))
             throw new ConflictException($"Account code '{request.Code}' is already in use.");
 
-        var accountType = Enum.Parse<FinancialAccountType>(request.AccountType, ignoreCase: true);
+        var accountType = EnumInput.Parse<FinancialAccountType>(request.AccountType, "Tipo de conta inválido");
 
         var account = FinancialAccount.Create(
             _currentTenant.Id,

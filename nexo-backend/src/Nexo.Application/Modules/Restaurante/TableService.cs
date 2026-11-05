@@ -1,3 +1,4 @@
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Restaurante.Interfaces;
 using Nexo.Domain.Exceptions;
@@ -73,7 +74,7 @@ public class TableService
         var table = await _tables.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("Table", id);
 
-        var status = Enum.Parse<RestTableStatus>(request.Status, ignoreCase: true);
+        var status = EnumInput.Parse<RestTableStatus>(request.Status, "Status de mesa inválido");
 
         switch (status)
         {

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Sales;
 using Nexo.Application.Modules.Restaurante.Interfaces;
@@ -112,7 +113,7 @@ public class OrderService
     /// </summary>
     public async Task<OrderDto> OpenAsync(OpenOrderRequest request, CancellationToken ct = default)
     {
-        var orderType = Enum.Parse<RestOrderType>(request.OrderType, ignoreCase: true);
+        var orderType = EnumInput.Parse<RestOrderType>(request.OrderType, "Tipo de comanda inválido");
         var settings  = await _foodSettings.GetCurrentStoreAsync(ct);
 
         // Validate PartySize when CouvertAutomatic = true
@@ -245,7 +246,7 @@ public class OrderService
         var item = order.Items.FirstOrDefault(i => i.Id == itemId)
             ?? throw new NotFoundException("OrderItem", itemId);
 
-        var status = Enum.Parse<RestOrderItemStatus>(request.Status, ignoreCase: true);
+        var status = EnumInput.Parse<RestOrderItemStatus>(request.Status, "Status de item inválido");
 
         switch (status)
         {
