@@ -1,10 +1,17 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Auth;
+using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
@@ -13,112 +20,150 @@ using Nexo.IntegrationTests.Helpers;
 namespace Nexo.IntegrationTests.Security;
 
 /// <summary>
-/// Authorization and module access control test suite.
-/// Validates:
-/// - RequireModuleAttribute enforcement
-/// - Role-based access control
-/// - Module cache consistency
-/// - Admin-only endpoints
-/// - Platform-only endpoints
-/// - Inactive/blocked user rejection
-/// - Tenant status validation
+/// O que acontece com um token que já estava válido quando a situação muda, e com um token adulterado:
+/// módulos (três portões: RequireModuleFilter, RequireModuleAttribute e RequireServiceModuleAttribute), papel,
+/// usuário e empresa fora de atividade, security stamp, rotas da plataforma e troca de loja.
+/// Cada teste cria a própria empresa (<see cref="SyntheticTenant"/>) e faz a requisição de verdade. Antes de mudar a situação,
+/// o token faz uma chamada com sucesso: as entradas de cache de usuário, carimbo e empresa ficam preenchidas, como numa sessão em uso.
 /// </summary>
 [Collection("Integration")]
 public class AuthorizationTests
 {
+    /// <summary>Rota da empresa sem exigência de módulo nem de papel.</summary>
+    private const string CompanyRoute = "/api/categories";
+    /// <summary>Rota só da gerência (AppRoles.Management).</summary>
+    private const string UsersRoute = "/api/users";
+    private const string AnyModule = "varejo";
+
     private readonly TestWebApplicationFactory _factory;
 
     public AuthorizationTests(TestWebApplicationFactory factory)
         => _factory = factory;
 
     // ────────────────────────────────────────────────────────────────────────────
-    // REQUIRE MODULE ATTRIBUTE
+    // MÓDULOS
     // ────────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task ModuleRequirement_ActiveModule_AllowsAccess()
+    [Theory]
+    [InlineData("restaurante", "/api/restaurante/areas")]   // RequireModuleFilter
+    [InlineData("varejo", "/api/sales")]                    // RequireModuleAttribute
+    [InlineData("service", "/api/v1/service/catalog")]      // RequireServiceModuleAttribute
+    public async Task ModuleRequirement_ActiveModule_AllowsAccess(string module, string route)
     {
-        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var director = await SyntheticTenant.CreateAsync(_factory, module);
+        var client = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
 
-        // Assuming /api/cash/* or similar endpoint requires a module
-        var response = await client.GetAsync("/api/auth/me");
-
-        // Should succeed (even if the endpoint itself needs modules)
-        response.StatusCode.Should().BeOneOf(
-            HttpStatusCode.OK,
-            HttpStatusCode.Forbidden,   // If module not active
-            HttpStatusCode.Unauthorized
-        );
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
     }
 
-    [Fact]
-    public async Task ModuleRequirement_InactiveModule_ReturnsInsufficientPermissions()
+    [Theory]
+    [InlineData("restaurante", "/api/restaurante/areas")]
+    [InlineData("varejo", "/api/sales")]
+    [InlineData("service", "/api/v1/service/catalog")]
+    public async Task ModuleRequirement_InactiveModule_ReturnsInsufficientPermissions(string module, string route)
     {
-        // This test assumes:
-        // 1. There's an endpoint that requires a specific module
-        // 2. That module can be deactivated for a tenant
-        // 3. When deactivated, accessing that endpoint returns 403
+        // sem o módulo: a rota dele fecha, e o resto da empresa continua aberto
+        var withoutIt = await SyntheticTenant.CreateAsync(_factory, "build");
+        var client = await AuthClientFactory.LoginAsync(_factory, withoutIt.Login, withoutIt.Password);
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        // Implementation depends on specific endpoints available
-        // Document this test as a template for when modules are available
-        await Task.CompletedTask;
+        // a concessão existe, mas venceu. Outra empresa, para a recusa acima não vir do cache.
+        var expired = await SyntheticTenant.CreateAsync(_factory, "build");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            db.ModuleSubscriptions.Add(ModuleSubscription.CreateAdminGrant(expired.TenantId, module, expiresAt: DateTime.UtcNow.AddDays(-1)));
+            await db.SaveChangesAsync();
+        }
+        var expiredClient = await AuthClientFactory.LoginAsync(_factory, expired.Login, expired.Password);
+        await expiredClient.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+    }
+
+    [Theory]
+    [InlineData("restaurante", "/api/restaurante/areas")]
+    [InlineData("varejo", "/api/sales")]
+    [InlineData("service", "/api/v1/service/catalog")]
+    public async Task ModuleActivation_EventuallyAllowsAccess(string module, string route)
+    {
+        var director = await SyntheticTenant.CreateAsync(_factory);
+        var client = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
+        var platform = await PlatformClientAsync();
+
+        // a recusa fica no cache de 5 minutos dos portões; o mesmo token é usado do começo ao fim
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+
+        await platform.PostAsJsonAsync($"/api/platform/tenants/{director.TenantId}/modules", new { moduleKey = module })
+            .ShouldHaveStatusAsync(HttpStatusCode.NoContent, _factory);
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);   // agora o acesso está no cache
+
+        await platform.DeleteAsync($"/api/platform/tenants/{director.TenantId}/modules/{module}")
+            .ShouldHaveStatusAsync(HttpStatusCode.NoContent, _factory);
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // ROLE-BASED ACCESS CONTROL
+    // PAPÉIS (a matriz completa está em RbacMatrixTests)
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task AdminRole_CanAccessAdminEndpoints()
     {
-        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var client = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
 
-        var meResponse = await client.GetAsync("/api/auth/me");
-        var session = await meResponse.Content.ReadFromJsonAsync<SessionDto>();
+        var session = await client.GetFromJsonAsync<SessionDto>("/api/auth/me");
+        session!.Role.Should().Be("diretoria");
 
-        session!.Role.Should().Be("diretoria", "admin should have diretoria role");
+        await client.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        await client.PostAsJsonAsync(UsersRoute, NewUserBody()).ShouldHaveStatusAsync(HttpStatusCode.Created, _factory);
     }
 
     [Fact]
     public async Task LowerRole_CannotAccessAdminOnlyEndpoints()
     {
-        // Assuming there's an admin-only endpoint
-        // This test validates authorization on specific operations
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var manager = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Gerente);
+        var seller = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Vendedor);
+        var managerClient = await AuthClientFactory.LoginAsync(_factory, manager.Login, manager.Password);
+        var sellerClient = await AuthClientFactory.LoginAsync(_factory, seller.Login, seller.Password);
 
-        // Create a non-admin user
-        var adminClient = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        // gerente lista, mas criar e alterar usuários é só da Diretoria
+        await managerClient.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        var body = NewUserBody();
+        await managerClient.PostAsJsonAsync(UsersRoute, body).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+        await managerClient.PutAsJsonAsync($"{UsersRoute}/{seller.UserId}", UpdateBody(seller, "gerente", "active"))
+            .ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
 
-        var login = $"mgr_{Guid.NewGuid():N}"[..15];
+        // vendedor nem lista
+        await sellerClient.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+        await sellerClient.PostAsJsonAsync(UsersRoute, body).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
 
-        var createUserResponse = await adminClient.PostAsJsonAsync("/api/users",
-            new CreateUserRequest(
-                FullName: "Test Manager",
-                Email: $"{login}@{TestCredentials.TestDomain}",  // IANA-reserved .test TLD
-                Login: login,
-                Password: TestCredentials.SameTenantManagerPassword,
-                Role: "gerente",
-                Phone: null,
-                Notes: null,
-                RequirePasswordChange: false));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        (await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Login == body.Login)).Should().BeFalse("a criação recusada não grava nada");
+        (await db.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == seller.UserId)).Role.Should().Be(UserRole.Vendedor, "a alteração recusada não muda o papel");
+    }
 
-        if (createUserResponse.StatusCode == HttpStatusCode.Created)
-        {
-            var userDto = await createUserResponse.Content.ReadFromJsonAsync<UserDto>();
+    [Fact(Skip = "Defeito em aberto, issue #137: o papel vem do token e mudar o papel não troca o security stamp. Hoje responde 200 até o token expirar.")]
+    public async Task DemotedUser_LosesAccess_WithTheTokenAlreadyIssued()
+    {
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var manager = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Gerente);
+        var directorClient = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
+        var client = await AuthClientFactory.LoginAsync(_factory, manager.Login, manager.Password);
+        await client.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-            // Note: The test user password is set during creation, but we'd need
-            // to know how to authenticate as them in a real scenario
-            // This would require either:
-            // 1. Setting a known password in the test data
-            // 2. Getting a password reset token
-            // 3. Mocking authentication
+        await directorClient.PutAsJsonAsync($"{UsersRoute}/{manager.UserId}", UpdateBody(manager, "vendedor", "active"))
+            .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-            // For now, document the test structure
-            _ = userDto;
-        }
+        var response = await client.GetAsync(UsersRoute);
+        response.StatusCode.Should().BeOneOf(new[] { HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized }, "vendedor não lista usuários, mesmo com o token de quando era gerente");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // USER STATUS VALIDATION IN AUTH MIDDLEWARE
+    // USUÁRIO FORA DE ATIVIDADE, COM UM TOKEN QUE JÁ ESTAVA VÁLIDO
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -136,195 +181,316 @@ public class AuthorizationTests
 
     private async Task AssertStatusEndsTheSessionAsync(string status, UserRole role)
     {
-        const string route = "/api/categories";
-        var director = await SyntheticTenant.CreateAsync(_factory, "varejo");
+        var roleName = role.ToString().ToLowerInvariant();
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
         var target = await SyntheticTenant.AddUserAsync(_factory, director, role);
         var directorClient = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
         var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, target.Login, target.Password);
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        // o token já estava em uso: as entradas de cache do usuário e do carimbo estão preenchidas
-        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
-
-        await directorClient.PutAsJsonAsync($"/api/users/{target.UserId}", UserUpdate(target, role, status))
+        await directorClient.PutAsJsonAsync($"{UsersRoute}/{target.UserId}", UpdateBody(target, roleName, status))
             .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
         await client.GetAsync("/api/auth/me").ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
-        await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/refresh", TestCredentials.RefreshPayload(login.RefreshToken))
-            .ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        await RefreshAsync(login.RefreshToken).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
         await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/login", TestCredentials.LoginPayload(target.Login, target.Password))
             .ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
 
         // reativado, entra de novo com um login novo; o token de antes continua morto
-        await directorClient.PutAsJsonAsync($"/api/users/{target.UserId}", UserUpdate(target, role, "active"))
+        await directorClient.PutAsJsonAsync($"{UsersRoute}/{target.UserId}", UpdateBody(target, roleName, "active"))
             .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
-        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
         var renewed = await AuthClientFactory.LoginAsync(_factory, target.Login, target.Password);
-        await renewed.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        await renewed.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
     }
 
-    private static object UserUpdate(SyntheticAccount user, UserRole role, string status) => new
-    {
-        fullName = user.FullName,
-        email = user.Email,
-        role = role.ToString().ToLowerInvariant(),
-        phone = (string?)null,
-        notes = (string?)null,
-        status,
-    };
-
     // ────────────────────────────────────────────────────────────────────────────
-    // TENANT STATUS VALIDATION
+    // EMPRESA FORA DE ATIVIDADE, COM UM TOKEN QUE JÁ ESTAVA VÁLIDO
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task SuspendedTenant_Users_CannotAccessEndpoints()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-
-        var suspendedTenant = await db.Tenants
-            .FirstOrDefaultAsync(t => t.Status == TenantStatus.Suspended);
-
-        if (suspendedTenant == null)
-            return; // Skip if no suspended tenant
-
-        // Users from this tenant should get 403 when trying to access their endpoints
-        await Task.CompletedTask;
-    }
+        => await AssertTenantStatusStopsTheTokenAsync(TenantStatus.Suspended);
 
     [Fact]
     public async Task InactiveTenant_Users_CannotAccessEndpoints()
+        => await AssertTenantStatusStopsTheTokenAsync(TenantStatus.Cancelled);
+
+    private async Task AssertTenantStatusStopsTheTokenAsync(TenantStatus status)
     {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, director.Login, director.Password);
+        var platform = await PlatformClientAsync();
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        var inactiveTenant = await db.Tenants
-            .FirstOrDefaultAsync(t => t.Status == TenantStatus.Cancelled);
+        await platform.PutAsJsonAsync($"/api/platform/tenants/{director.TenantId}/status", new { status = status.ToString() })
+            .ShouldHaveStatusAsync(HttpStatusCode.NoContent, _factory);
 
-        if (inactiveTenant == null)
-            return;
+        // sem esperar os 5 minutos do cache da empresa: leitura, escrita e renovação param na hora
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+        await client.PostAsJsonAsync(CompanyRoute, new { name = "Nao grava" }).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+        await RefreshAsync(login.RefreshToken).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
 
-        // Expected: 403 Forbidden
-        await Task.CompletedTask;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            (await db.Categories.IgnoreQueryFilters().AnyAsync(c => c.TenantId == director.TenantId)).Should().BeFalse("a escrita recusada não grava nada");
+        }
+
+        // reativada, o mesmo token volta a valer: a recusa não ficou presa no cache
+        await platform.PutAsJsonAsync($"/api/platform/tenants/{director.TenantId}/status", new { status = nameof(TenantStatus.Active) })
+            .ShouldHaveStatusAsync(HttpStatusCode.NoContent, _factory);
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // MODULE CACHE INVALIDATION
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task ModuleActivation_EventuallyAllowsAccess()
-    {
-        // This test validates cache invalidation:
-        // 1. Module is inactive → endpoint returns 403
-        // 2. Admin activates module
-        // 3. After cache timeout, endpoint returns 200
-        // 4. Or if cache invalidation is immediate, returns 200 immediately
-        await Task.CompletedTask;
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // PLATFORM ADMIN ENDPOINTS
+    // ROTAS DA PLATAFORMA (mais rotas em PlatformAuthorizationTests e PlatformSecurityTests)
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task PlatformAdmin_HasSeparateAuth()
     {
-        // /api/platform/* endpoints use different authentication
-        // They require "platform" token audience, not "nexo-frontend"
+        const string platformRoute = "/api/platform/tenants";
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, director.Login, director.Password);
+        var platform = await PlatformClientAsync();
 
-        // Attempt to access a platform endpoint with a regular tenant token
-        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        await platform.GetAsync(platformRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);   // a rota existe: um 404 abaixo não passaria
+        await _factory.CreateApiClient().GetAsync(platformRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        await client.GetAsync(platformRoute).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
 
-        var response = await client.GetAsync("/api/platform/admin");
+        // a diretoria da empresa não muda a situação da própria empresa
+        await client.PutAsJsonAsync($"/api/platform/tenants/{director.TenantId}/status", new { status = nameof(TenantStatus.Cancelled) })
+            .ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        // Should be forbidden (even though user has valid tenant token)
-        response.StatusCode.Should().BeOneOf(
-            HttpStatusCode.Unauthorized,
-            HttpStatusCode.Forbidden,
-            HttpStatusCode.NotFound  // If endpoint doesn't exist in test env
-        );
+        // um token de empresa que se declara da plataforma, sem a chave do servidor
+        var payload = ForgedToken.PayloadOf(login.AccessToken);
+        payload["type"] = "platform";
+        foreach (var (how, forged) in ForgedToken.WithoutTheServerKey(login.AccessToken, payload))
+            await ClientWith(forged).GetAsync(platformRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory, how);
+
+        // e o contrário: a sessão da plataforma não entra na área das empresas
+        var refused = await platform.GetAsync(CompanyRoute);
+        refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString().Should().Be("platform_token_scope");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // PERMISSION ESCALATION PREVENTION
+    // TOKEN ADULTERADO
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task TamperingWithToken_ChangeRole_FailsValidation()
     {
-        // Login
-        var client = _factory.CreateApiClient();
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var seller = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Vendedor);
+        var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, seller.Login, seller.Password);
+        await client.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
 
-        var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
-        var tokenParts = loginBody!.AccessToken.Split('.');
+        var payload = ForgedToken.PayloadOf(login.AccessToken);
+        payload["role"] = new JsonArray("diretoria", "Diretoria");
 
-        // A valid JWT has 3 parts: header.payload.signature
-        // Tampering with payload would invalidate the signature
-        if (tokenParts.Length == 3)
-        {
-            var tamperedToken = tokenParts[0] + ".modified" + tokenParts[2];
+        // Controle: assinado com a chave do servidor, este payload abre a rota. Os 401 abaixo vêm da assinatura, não de um token malformado.
+        var signedByTheServerKey = ForgedToken.Sign(login.AccessToken, payload, ServerKey);
+        await ClientWith(signedByTheServerKey).GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-            var client2 = _factory.CreateApiClient();
-            client2.DefaultRequestHeaders.Authorization =
-                new AuthenticationHeaderValue("Bearer", tamperedToken);
+        foreach (var (how, forged) in ForgedToken.WithoutTheServerKey(login.AccessToken, payload))
+            await ClientWith(forged).GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory, how);
 
-            var meResponse = await client2.GetAsync("/api/auth/me");
-            meResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-                "tampered token should be rejected");
-        }
+        // assinatura removida do token legítimo, sem mudar nada no payload
+        var parts = login.AccessToken.Split('.');
+        await ClientWith($"{parts[0]}.{parts[1]}.").GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
     }
 
     [Fact]
     public async Task TenantIdClaim_CannotBeChangedByUser()
     {
-        // Even if a user somehow crafted a JWT with different tenantId,
-        // the server validation should reject it (signature invalid)
+        var victim = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var victimClient = await AuthClientFactory.LoginAsync(_factory, victim.Login, victim.Password);
+        var secret = $"Categoria da vitima {Guid.NewGuid():N}";
+        await victimClient.PostAsJsonAsync(CompanyRoute, new { name = secret }).ShouldHaveStatusAsync(HttpStatusCode.Created, _factory);
 
-        // This test documents the protection:
-        // JWTs are signed by the server with the user's actual tenantId
-        // Changing claims invalidates the signature
-        await Task.CompletedTask;
+        var attacker = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, attacker.Login, attacker.Password);
+        var payload = ForgedToken.PayloadOf(login.AccessToken);
+        payload["tenantId"] = victim.TenantId.ToString();
+
+        // Mesmo com a chave do servidor (um defeito na emissão, um segredo vazado): o usuário não pertence àquela empresa.
+        // Primeira chamada lê o usuário do banco; depois da chamada legítima, lê do cache.
+        var signedByTheServerKey = ForgedToken.Sign(login.AccessToken, payload, ServerKey);
+        await ClientWith(signedByTheServerKey).GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        var own = await client.GetAsync(CompanyRoute);
+        own.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await own.Content.ReadAsStringAsync()).Should().NotContain(secret);
+        await ClientWith(signedByTheServerKey).GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+
+        foreach (var (how, forged) in ForgedToken.WithoutTheServerKey(login.AccessToken, payload))
+            await ClientWith(forged).GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory, how);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // SECURITY STAMP VALIDATION
+    // SECURITY STAMP (o link de "esqueci a senha" está em AccountRecoveryTests)
     // ────────────────────────────────────────────────────────────────────────────
 
-    [Fact]
-    public async Task UserSecurityStamp_Changed_InvalidatesToken()
+    [Theory]
+    [InlineData("senha redefinida pela diretoria", true)]
+    [InlineData("senha trocada pela própria pessoa", true)]
+    [InlineData("senha redefinida pela plataforma", true)]
+    [InlineData("sessões encerradas pela plataforma", false)]
+    public async Task UserSecurityStamp_Changed_InvalidatesToken(string cause, bool passwordChanges)
     {
-        // If a user's security stamp changes (password reset, etc),
-        // old tokens should become invalid
-        // Test structure documented here
-        await Task.CompletedTask;
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var target = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Vendedor);
+        var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, target.Login, target.Password);
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        var stampBefore = await SecurityStampOfAsync(target.UserId);
+
+        var newPassword = $"Nova!{Guid.NewGuid():N}";
+        var platformPath = $"/api/platform/tenants/{target.TenantId}/users/{target.UserId}";
+        var change = cause switch
+        {
+            "senha redefinida pela diretoria" =>
+                (await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password))
+                    .PostAsJsonAsync($"{UsersRoute}/{target.UserId}/admin-reset-password", new { newPassword }),
+            "senha trocada pela própria pessoa" =>
+                client.PostAsJsonAsync($"{UsersRoute}/{target.UserId}/change-password", new { currentPassword = target.Password, newPassword }),
+            "senha redefinida pela plataforma" =>
+                (await PlatformClientAsync()).PostAsJsonAsync($"{platformPath}/reset-password", new { newPassword }),
+            _ => (await PlatformClientAsync()).PostAsync($"{platformPath}/force-logout", null),
+        };
+        await change.ShouldHaveStatusAsync(HttpStatusCode.NoContent, _factory);
+
+        (await SecurityStampOfAsync(target.UserId)).Should().NotBe(stampBefore);
+        var refused = await client.GetAsync(CompanyRoute);
+        refused.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString().Should().Be("session_revoked");
+        await RefreshAsync(login.RefreshToken).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+
+        // só a sessão antiga morre: um login novo entra, com a senha que vale agora
+        var oldPasswordStatus = passwordChanges ? HttpStatusCode.Unauthorized : HttpStatusCode.OK;
+        await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/login", TestCredentials.LoginPayload(target.Login, target.Password))
+            .ShouldHaveStatusAsync(oldPasswordStatus, _factory);
+        var renewed = await AuthClientFactory.LoginAsync(_factory, target.Login, passwordChanges ? newPassword : target.Password);
+        await renewed.GetAsync("/api/auth/me").ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // STORE ACCESS VALIDATION
+    // LOJAS
     // ────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>Não existe vínculo por usuário: as lojas acessíveis são as lojas ativas da empresa do usuário.</summary>
     [Fact]
     public async Task UserCanOnlyAccessAssignedStores()
     {
-        var client = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var stranger = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var (secondStore, inactiveStore) = await AddStoresAsync(director.TenantId);
+        var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, director.Login, director.Password);
 
-        // Get available stores
-        var meResponse = await client.GetAsync("/api/auth/me");
-        var session = await meResponse.Content.ReadFromJsonAsync<SessionDto>();
-        var availableStoreIds = session!.StoreIds;
+        foreach (var store in new[] { Guid.NewGuid(), stranger.StoreId, inactiveStore })
+            await client.PostAsJsonAsync("/api/auth/switch-store", new { storeId = store.ToString(), refreshToken = login.RefreshToken })
+                .ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
 
-        // Try to switch to a random store ID (not in available list)
-        var randomStoreId = Guid.NewGuid().ToString();
+        // a recusa não gastou a sessão, e a loja certa funciona
+        var switched = await client.PostAsJsonAsync("/api/auth/switch-store", new { storeId = secondStore.ToString(), refreshToken = login.RefreshToken });
+        switched.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await switched.Content.ReadFromJsonAsync<SwitchStoreResponse>())!.StoreId.Should().Be(secondStore.ToString());
+    }
 
-        var switchResponse = await client.PostAsJsonAsync("/api/auth/switch-store",
-            new { storeId = randomStoreId });
+    // ── helpers ──────────────────────────────────────────────────────────────
 
-        switchResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden,
-            "cannot switch to unassigned store");
+    private string ServerKey => _factory.Services.GetRequiredService<IConfiguration>()["Jwt:Secret"]!;
+
+    private HttpClient ClientWith(string token)
+    {
+        var client = _factory.CreateApiClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        return client;
+    }
+
+    private Task<HttpResponseMessage> RefreshAsync(string refreshToken)
+        => _factory.CreateApiClient().PostAsJsonAsync("/api/auth/refresh", TestCredentials.RefreshPayload(refreshToken));
+
+    private static CreateUserRequest NewUserBody()
+    {
+        var login = $"novo{Guid.NewGuid():N}"[..20];
+        return new CreateUserRequest("Pessoa Nova", $"{login}@{TestCredentials.TestDomain}", login, TestCredentials.SameTenantManagerPassword, "vendedor", null, null, false);
+    }
+
+    private static object UpdateBody(SyntheticAccount user, string role, string status)
+        => new { fullName = user.FullName, email = user.Email, role, phone = (string?)null, notes = (string?)null, status };
+
+    private async Task<string> SecurityStampOfAsync(Guid userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return await db.Users.IgnoreQueryFilters().Where(u => u.Id == userId).Select(u => u.SecurityStamp).SingleAsync();
+    }
+
+    private async Task<(Guid Active, Guid Inactive)> AddStoresAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        var tag = Guid.NewGuid().ToString("N")[..12];
+        var active = Store.Create(tenantId, $"Segunda {tag}", $"segunda-{tag}");
+        var inactive = Store.Create(tenantId, $"Fechada {tag}", $"fechada-{tag}");
+        inactive.Deactivate();
+        db.Stores.AddRange(active, inactive);
+        await db.SaveChangesAsync();
+        return (active.Id, inactive.Id);
+    }
+
+    /// <summary>Um administrador da plataforma só deste teste.</summary>
+    private async Task<HttpClient> PlatformClientAsync()
+    {
+        var email = $"authz-{Guid.NewGuid():N}"[..17] + "@platform.test";
+        const string password = TestCredentials.PlatformPassword;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            db.PlatformUsers.Add(PlatformUser.Create(email, scope.ServiceProvider.GetRequiredService<IPasswordHasher>().Hash(password), "super_admin"));
+            await db.SaveChangesAsync();
+        }
+        var login = await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/login", new { email, password });
+        login.StatusCode.Should().Be(HttpStatusCode.OK, await login.Content.ReadAsStringAsync());
+        return ClientWith((await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!);
+    }
+
+    /// <summary>Monta tokens como um atacante faria: a partir de um token verdadeiro, com o payload alterado.</summary>
+    private static class ForgedToken
+    {
+        public static JsonObject PayloadOf(string token)
+        {
+            var segment = token.Split('.')[1].Replace('-', '+').Replace('_', '/');
+            var padded = segment.PadRight(segment.Length + (4 - segment.Length % 4) % 4, '=');
+            return JsonNode.Parse(Convert.FromBase64String(padded))!.AsObject();
+        }
+
+        /// <summary>O payload alterado com a assinatura de uma chave qualquer.</summary>
+        public static string Sign(string original, JsonObject payload, string key)
+        {
+            var unsigned = $"{original.Split('.')[0]}.{Encode(payload)}";
+            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(key));
+            return $"{unsigned}.{Encode(hmac.ComputeHash(Encoding.ASCII.GetBytes(unsigned)))}";
+        }
+
+        /// <summary>Todas as formas de apresentar um payload alterado para quem não tem a chave do servidor.</summary>
+        public static IEnumerable<(string How, string Token)> WithoutTheServerKey(string original, JsonObject payload)
+        {
+            var parts = original.Split('.');
+            var altered = Encode(payload);
+            yield return ("assinado com outra chave", Sign(original, payload, "outra-chave-qualquer-com-mais-de-32-caracteres"));
+            yield return ("com a assinatura do token original", $"{parts[0]}.{altered}.{parts[2]}");
+            yield return ("com a assinatura removida", $"{parts[0]}.{altered}.");
+            yield return ("sem o terceiro segmento", $"{parts[0]}.{altered}");
+            yield return ("com alg none", $"{Encode(new JsonObject { ["alg"] = "none", ["typ"] = "JWT" })}.{altered}.");
+        }
+
+        private static string Encode(JsonNode node) => Encode(Encoding.UTF8.GetBytes(node.ToJsonString()));
+
+        private static string Encode(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 }
 

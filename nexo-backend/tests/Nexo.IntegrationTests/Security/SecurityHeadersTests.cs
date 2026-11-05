@@ -237,51 +237,27 @@ public class SecurityHeadersTests
             }
         });
 
-        // Preflight should reject invalid origin
-        // Either 403 Forbidden or missing CORS headers
-        if (response.StatusCode == HttpStatusCode.OK)
-        {
-            // Some servers return 200 but without Access-Control headers
-            var hasAccessControlOrigin = response.Headers
-                .TryGetValues("Access-Control-Allow-Origin", out var origins);
-            
-            // If present, should not be "*" (wildcard)
-            if (hasAccessControlOrigin)
-            {
-                origins!.Should().AllSatisfy(origin =>
-                    origin.Should().NotBe("*", "wildcard CORS is insecure"));
-            }
-        }
+        // quem barra é o navegador: sem este cabeçalho, nem a origem exata nem "*" estão autorizadas
+        response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse("origem fora da lista não é autorizada");
+        response.Headers.Contains("Access-Control-Allow-Credentials").Should().BeFalse();
     }
 
     [Fact]
     public async Task CORSPreflight_RestrictedMethods()
     {
+        // A política de CORS vale para a API inteira (não é por rota): a restrição é a lista explícita de métodos.
         var response = await _client.SendAsync(new HttpRequestMessage(HttpMethod.Options, "/api/auth/me")
         {
             Headers = {
                 { "Origin", "http://localhost:3000" },
-                { "Access-Control-Request-Method", "DELETE" }
+                { "Access-Control-Request-Method", "TRACE" }
             }
         });
 
-        // Response status varies by implementation
-        // Document allowed methods
-        if (response.StatusCode == HttpStatusCode.OK)
-        {
-            var hasMethods = response.Headers
-                .TryGetValues("Access-Control-Allow-Methods", out var methods);
-
-            if (hasMethods)
-            {
-                // DELETE should be restricted for auth endpoints
-                // Either no methods listed, or DELETE is not among them (for auth routes)
-                var methodList = methods!.SelectMany(m => m.Split(',').Select(s => s.Trim())).ToList();
-                var allowsDelete = methodList.Any(m => m.Equals("DELETE", StringComparison.OrdinalIgnoreCase));
-                // Documented expectation — DELETE should not be allowed on preflight for /api/auth/*
-                _ = allowsDelete; // assertion deliberately skipped: endpoint may vary
-            }
-        }
+        response.Headers.GetValues("Access-Control-Allow-Origin").Should().ContainSingle().Which.Should().Be("http://localhost:3000");
+        var methods = response.Headers.GetValues("Access-Control-Allow-Methods")
+            .SelectMany(m => m.Split(',').Select(s => s.Trim().ToUpperInvariant())).ToList();
+        methods.Should().BeEquivalentTo("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS");
     }
 
     // ────────────────────────────────────────────────────────────────────────────

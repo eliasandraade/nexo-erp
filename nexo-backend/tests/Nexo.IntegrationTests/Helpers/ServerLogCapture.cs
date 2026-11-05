@@ -65,11 +65,11 @@ public static class ServerLogAssertions
     /// request (exception type, message and stack), not just the two status codes.
     /// </summary>
     public static async Task ShouldHaveStatusAsync(this Task<HttpResponseMessage> request, HttpStatusCode expected,
-        TestWebApplicationFactory factory)
+        TestWebApplicationFactory factory, string? because = null)
     {
         using var response = await request;
         if (response.StatusCode == expected) return;
         throw new Xunit.Sdk.XunitException(
-            $"Expected {(int)expected} {expected}, got {await factory.ServerLog.DescribeAsync(response)}");
+            $"Expected {(int)expected} {expected}{(because is null ? "" : $" ({because})")}, got {await factory.ServerLog.DescribeAsync(response)}");
     }
 }

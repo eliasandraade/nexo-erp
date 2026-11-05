@@ -27,10 +27,14 @@ namespace Nexo.IntegrationTests.Auth;
 [Collection("Integration")]
 public class RateLimitingTests : IDisposable
 {
+    private readonly TestWebApplicationFactory _factory;
     private readonly WebApplicationFactory<Program> _rlFactory;
 
     public RateLimitingTests(TestWebApplicationFactory factory)
-        => _rlFactory = factory.WithRateLimitingEnabled(permitLimit: 5, windowSeconds: 900);
+    {
+        _factory = factory;
+        _rlFactory = factory.WithRateLimitingEnabled(permitLimit: 5, windowSeconds: 900);
+    }
 
     public void Dispose() => _rlFactory.Dispose();
 
@@ -191,14 +195,10 @@ public class RateLimitingTests : IDisposable
         var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
             TestCredentials.AdminLoginPayload());
 
-        if (loginResponse.StatusCode != HttpStatusCode.OK)
-            return; // Login failed, skip refresh test
-
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        var refreshToken = loginBody.TryGetProperty("refreshToken", out var rt) ? rt.GetString() : null;
-
-        if (string.IsNullOrEmpty(refreshToken))
-            return; // No refresh token available
+        var refreshToken = loginBody.GetProperty("refreshToken").GetString()!;
+        refreshToken.Should().NotBeNullOrEmpty();
 
         // Login and refresh use SEPARATE partitions (keyed by path), so the login
         // above does not consume the refresh budget: all 5 refreshes succeed.
@@ -221,14 +221,10 @@ public class RateLimitingTests : IDisposable
         var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
             TestCredentials.AdminLoginPayload());
 
-        if (loginResponse.StatusCode != HttpStatusCode.OK)
-            return;
-
+        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        var refreshToken = loginBody.TryGetProperty("refreshToken", out var rtProp) ? rtProp.GetString() : null;
-
-        if (string.IsNullOrEmpty(refreshToken))
-            return;
+        var refreshToken = loginBody.GetProperty("refreshToken").GetString()!;
+        refreshToken.Should().NotBeNullOrEmpty();
 
         // Make 6 refresh requests
         HttpStatusCode lastStatus = HttpStatusCode.OK;
@@ -304,18 +300,31 @@ public class RateLimitingTests : IDisposable
     [Fact]
     public async Task RateLimitWindow_ResetsAfterTimeout()
     {
-        // Note: This test requires waiting the full window, so we skip it or use mocking
-        // Document the expected behavior instead
+        // Janela curta num host próprio: o relógio é o de verdade. Login que não existe: não conta contra conta nenhuma.
+        using var shortWindow = _factory.WithRateLimitingEnabled(permitLimit: 2, windowSeconds: 3);
+        var client = shortWindow.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var payload = TestCredentials.LoginPayload($"ninguem-{Guid.NewGuid():N}", "qualquer");
+        var deadline = DateTime.UtcNow.AddSeconds(30);
 
-        // Expected behavior:
-        // 1. Make 6 requests to login (get rate limited on 6th)
-        // 2. Wait for the rate limit window to elapse
-        // 3. Make another request to login (should succeed)
+        // A primeira chamada do host é lenta e pode gastar a janela inteira: insiste até ver o limite.
+        HttpResponseMessage response;
+        do
+            response = await client.PostAsJsonAsync("/api/auth/login", payload);
+        while (response.StatusCode != HttpStatusCode.TooManyRequests && DateTime.UtcNow < deadline);
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
 
-        // For actual testing, this would require:
-        // - Mocking the time service
-        // - Or accepting that this is an integration test we can't run in CI
-        await Task.CompletedTask; // documented expectation — no time-dependent assertions
+        var retryAfter = int.Parse(response.Headers.GetValues("Retry-After").Single());
+        retryAfter.Should().BeInRange(1, 3, "é o tempo que falta numa janela de 3 segundos");
+
+        await Task.Delay(TimeSpan.FromSeconds(retryAfter));
+        response = await client.PostAsJsonAsync("/api/auth/login", payload);
+        while (response.StatusCode == HttpStatusCode.TooManyRequests && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(200));
+            response = await client.PostAsJsonAsync("/api/auth/login", payload);
+        }
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "a janela reabriu: a tentativa chega ao login e é recusada por ser inválida");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -343,12 +352,7 @@ public class RateLimitingTests : IDisposable
 
         rateLimitedResponse.Should().NotBeNull("should have received a 429 response");
 
-        // RFC 6585 specifies that 429 should include Retry-After header
-        // ASP.NET RateLimiter may include this
-        if (rateLimitedResponse.Headers.Contains("Retry-After"))
-        {
-            rateLimitedResponse.Headers.GetValues("Retry-After")
-                .Should().NotBeEmpty();
-        }
+        // RateLimitRejection: Retry-After é o tempo que falta, em segundos, na janela de 900 segundos deste host
+        int.Parse(rateLimitedResponse.Headers.GetValues("Retry-After").Single()).Should().BeInRange(1, 900);
     }
 }
