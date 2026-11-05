@@ -43,8 +43,8 @@ export default function CompraDetailPage() {
 
   const done = (p: PurchaseDto, message?: string) => {
     qc.setQueryData([...PURCHASES_KEY, id], p);
-    qc.invalidateQueries({ queryKey: PURCHASES_KEY });
-    qc.invalidateQueries({ queryKey: ["stock"] });
+    void qc.invalidateQueries({ queryKey: PURCHASES_KEY });
+    void qc.invalidateQueries({ queryKey: ["stock"] });
     if (message) toast.success(message);
   };
   const fail = (e: Error) => toast.error(e.message);

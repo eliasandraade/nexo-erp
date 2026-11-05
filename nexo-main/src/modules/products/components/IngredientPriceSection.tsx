@@ -35,7 +35,7 @@ export function IngredientPriceSection({ productId }: Props) {
         purchasedAt: newDate,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: PRICE_KEY(productId) });
+      void qc.invalidateQueries({ queryKey: PRICE_KEY(productId) });
       setNewPrice("");
       toast.success("Preço registrado.");
     },

@@ -62,8 +62,8 @@ export function useUpdateTenant(tenantId: string) {
     mutationFn: (input: Parameters<typeof updatePlatformTenant>[1]) =>
       updatePlatformTenant(tenantId, input),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["platform", "tenants"] });
-      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
+      void qc.invalidateQueries({ queryKey: ["platform", "tenants"] });
+      void qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
     },
     onError: toastPlatformError,
   });
@@ -74,8 +74,8 @@ export function useSetTenantStatus(tenantId: string) {
   return useMutation({
     mutationFn: (status: string) => setTenantStatus(tenantId, status),
     onSuccess: (_, status) => {
-      qc.invalidateQueries({ queryKey: ["platform", "tenants"] });
-      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
+      void qc.invalidateQueries({ queryKey: ["platform", "tenants"] });
+      void qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
       toast.success(status === "Suspended" ? "Cliente suspenso." : "Cliente reativado.");
     },
     onError: (e) => toast.error(errMsg(e)),
@@ -88,7 +88,7 @@ export function useGrantModule(tenantId: string) {
     mutationFn: ({ moduleKey, notes }: { moduleKey: string; notes?: string }) =>
       grantModule(tenantId, moduleKey, undefined, notes),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
+      void qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
       toast.success("Módulo ativado.");
     },
     onError: (e) => toast.error(errMsg(e)),
@@ -100,7 +100,7 @@ export function useRevokeModule(tenantId: string) {
   return useMutation({
     mutationFn: (moduleKey: string) => revokeModule(tenantId, moduleKey),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
+      void qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId] });
       toast.success("Módulo revogado.");
     },
     onError: (e) => toast.error(errMsg(e)),
@@ -185,7 +185,7 @@ export function useRevokeAllSessions(tenantId: string) {
   return useMutation({
     mutationFn: (userId: string) => revokeAllSessions(tenantId, userId),
     onSuccess: (_, userId) => {
-      qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "users", userId, "sessions"] });
+      void qc.invalidateQueries({ queryKey: ["platform", "tenants", tenantId, "users", userId, "sessions"] });
       toast.success("Sessões revogadas. O usuário foi desconectado.");
     },
     onError: (e) => toast.error(errMsg(e)),

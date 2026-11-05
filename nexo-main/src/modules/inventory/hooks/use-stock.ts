@@ -48,8 +48,8 @@ export function useAdjustStock() {
   return useMutation({
     mutationFn: (request: AdjustStockRequest) => adjustStock(request),
     onSuccess:  (_, req) => {
-      qc.invalidateQueries({ queryKey: STOCK_KEY });
-      qc.invalidateQueries({ queryKey: [...STOCK_KEY, "movements", req.productId] });
+      void qc.invalidateQueries({ queryKey: STOCK_KEY });
+      void qc.invalidateQueries({ queryKey: [...STOCK_KEY, "movements", req.productId] });
     },
   });
 }
