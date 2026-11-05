@@ -70,6 +70,8 @@ public class TenantAccessEnforcementTests
     [InlineData("lifetime")]
     [InlineData("trial_no_prazo")]
     [InlineData("past_due_na_carencia")]
+    [InlineData("admin_trialing_no_prazo")]
+    [InlineData("admin_past_due_na_carencia")]
     public async Task A_valid_grant_keeps_writing(string state)
     {
         var tenant = await NewTenantAsync(state);
@@ -93,6 +95,8 @@ public class TenantAccessEnforcementTests
     [InlineData("todos_canceled")]
     [InlineData("todos_suspended")]
     [InlineData("sem_assinatura")]
+    [InlineData("admin_trialing_vencido")]
+    [InlineData("admin_past_due_fora_da_carencia")]
     public async Task Without_access_the_tenant_reads_but_does_not_write(string state)
     {
         var tenant = await NewTenantAsync(state);
@@ -451,6 +455,12 @@ public class TenantAccessEnforcementTests
 
     private static ModuleSubscription PastDueSince(ModuleSubscription s, int daysAgo) { s.MarkPastDue(DateTime.UtcNow.AddDays(-daysAgo)); return s; }
 
+    private static ModuleSubscription Trialing(ModuleSubscription s, int daysLeft)
+    {
+        s.SyncFromStripe(SubscriptionStatus.Trialing, DateTime.UtcNow.AddDays(-5), DateTime.UtcNow.AddDays(daysLeft), false);
+        return s;
+    }
+
     private static ModuleSubscription FromStripe(Guid t, string module, PlanType plan, DateTime? end) => ModuleSubscription.CreateFromStripe(
         t, module, $"sub_{Guid.NewGuid():N}", "price_teste", plan, DateTime.UtcNow.AddDays(-40), end);
 
@@ -470,6 +480,11 @@ public class TenantAccessEnforcementTests
         "todos_suspended" => [Suspended(ModuleSubscription.CreateAdminGrant(t, "varejo")), Suspended(ModuleSubscription.CreateAdminGrant(t, "build"))],
         "stripe_cancelada" => [Canceled(FromStripe(t, "restaurante", PlanType.Monthly, DateTime.UtcNow.AddDays(-1)))],
         "sem_assinatura" => [],
+        // a regra não olha o plano: os mesmos estados em linhas de concessão
+        "admin_trialing_no_prazo" => [Trialing(ModuleSubscription.CreateAdminGrant(t, "varejo"), daysLeft: 3)],
+        "admin_trialing_vencido" => [Trialing(ModuleSubscription.CreateAdminGrant(t, "varejo"), daysLeft: -1)],
+        "admin_past_due_na_carencia" => [PastDueSince(ModuleSubscription.CreateAdminGrant(t, "varejo"), ModuleSubscription.PastDueGraceDays - 1)],
+        "admin_past_due_fora_da_carencia" => [PastDueSince(ModuleSubscription.CreateAdminGrant(t, "varejo"), ModuleSubscription.PastDueGraceDays + 1)],
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
     };
 
