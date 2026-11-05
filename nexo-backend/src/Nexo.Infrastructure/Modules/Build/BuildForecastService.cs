@@ -68,6 +68,7 @@ public sealed class BuildForecastService
     public const string WeatherDisclaimer =
         "Previsão do tempo para o local da obra — é previsão, não certeza, e pode mudar ao longo do dia. Não altera datas automaticamente.";
     public const int WeatherDays = 7;
+    private const string BuildModuleKey = "build";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -307,6 +308,8 @@ public sealed class BuildForecastService
     /// <summary>Daily forecast at the site, or the reason it is not available (weather off, no coordinates, provider down).</summary>
     private async Task<(IReadOnlyList<BuildWeatherDay>? Days, string? Reason)> DailyAsync(BuildProject project, CancellationToken ct)
     {
+        // Module expired: reading stays open, and it does not call an outside provider.
+        if (_tenant.ExpiredModules.Contains(BuildModuleKey)) return (null, "module_read_only");
         if (!_flags.WeatherEnabled) return (null, "weather_disabled");
         if (!project.HasSite) return (null, "no_coordinates");
         try
@@ -328,6 +331,7 @@ public sealed class BuildForecastService
 
     private static string? ReasonMessage(string? reason) => reason switch
     {
+        "module_read_only" => "A previsão do tempo fica fora enquanto o Orken Build estiver em somente leitura.",
         "weather_disabled" => "A previsão do tempo não está ligada nesta instalação.",
         "no_coordinates" => "Informe a localização (latitude e longitude) da obra para ver a previsão do tempo.",
         "provider_unavailable" => "A previsão do tempo está indisponível no momento. Tente mais tarde.",

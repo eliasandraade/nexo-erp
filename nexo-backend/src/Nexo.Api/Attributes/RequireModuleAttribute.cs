@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Nexo.Api.Middleware;
 using Nexo.Application.Common.Interfaces;
 
 namespace Nexo.Api.Attributes;
 
 /// <summary>
 /// Ensures the authenticated tenant has an active subscription for the specified module.
-/// Returns 403 Forbidden if the module is not active.
+/// A module that expired stays read-only and a module the tenant never had answers 403: see <see cref="ExpiredModuleGate"/>.
 /// Uses caching to avoid repeated database queries.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true)]
@@ -35,16 +36,16 @@ public class RequireModuleAttribute : Attribute, IAsyncAuthorizationFilter
         // If not present, fetch and cache
         var cacheKey = $"tenant:{currentTenant.Id}:modules";
         var cachedModules = await cache.GetAsync<List<string>>(cacheKey);
-        
+
         if (cachedModules == null)
         {
             cachedModules = (await tenantRepository.GetActiveModuleKeysAsync(currentTenant.Id)).ToList();
             await cache.SetAsync(cacheKey, cachedModules, TimeSpan.FromMinutes(5));
         }
-        
+
         if (!cachedModules.Contains(_moduleKey))
         {
-            context.Result = new ForbidResult();
+            context.Result = ExpiredModuleGate.Decide(context.HttpContext, currentTenant, key => key == _moduleKey, new ForbidResult());
         }
     }
 }

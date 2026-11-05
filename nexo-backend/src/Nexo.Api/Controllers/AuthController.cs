@@ -321,6 +321,7 @@ public class AuthController : ControllerBase
 
         var tenant        = await _tenants.GetByIdAsync(_currentUser.TenantId, ct);
         var activeModules = await _tenants.GetActiveModuleKeysAsync(_currentUser.TenantId, ct);
+        var expiredModules = await _tenants.GetExpiredModuleKeysAsync(_currentUser.TenantId, ct);
         var trialEndsAt   = await _tenants.GetTrialEndsAtAsync(_currentUser.TenantId, ct);
         var stores        = await _stores.GetByTenantIdAsync(_currentUser.TenantId, ct);
 
@@ -336,7 +337,8 @@ public class AuthController : ControllerBase
             StoreIds:      stores.Select(s => s.Id.ToString()).ToList(),
             CompanyName:   tenant?.TradeName ?? tenant?.CompanyName ?? "",
             TrialEndsAt:   trialEndsAt,
-            RequirePasswordChange: user.RequirePasswordChange));
+            RequirePasswordChange: user.RequirePasswordChange,
+            ReadOnlyModules: expiredModules.ToList()));
     }
 
     /// <summary>

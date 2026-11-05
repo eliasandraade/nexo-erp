@@ -133,6 +133,17 @@ public class ModuleSubscription : BaseEntity
            || (Status == SubscriptionStatus.PastDue && PastDueSince is { } since && since > nowUtc.AddDays(-PastDueGraceDays));
 
     /// <summary>
+    /// The single rule for an expired module: it has a subscription row and no access now. It stays readable and takes no
+    /// writes. A module with no row was never the tenant's. See docs/engineering/tenant-access-enforcement.md.
+    /// </summary>
+    public static IReadOnlyList<string> ExpiredKeys(IEnumerable<ModuleSubscription> rows, DateTime nowUtc)
+        => rows.GroupBy(r => r.ModuleKey)
+            .Where(module => !module.Any(r => r.HasAccessAtTime(nowUtc)))
+            .Select(module => module.Key)
+            .OrderBy(key => key, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
     /// Still billed by Stripe (or about to be): a second checkout would charge twice — it has to
     /// go through the portal (pay the open invoice, change plan, cancel).
     /// </summary>

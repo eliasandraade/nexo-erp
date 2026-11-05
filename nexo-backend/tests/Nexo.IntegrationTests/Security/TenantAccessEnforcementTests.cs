@@ -53,8 +53,11 @@ public class TenantAccessEnforcementTests
         "POST api/users/{id:guid}/admin-reset-password",
         "POST api/users/{id:guid}/resend-invite",
         "POST api/users/{id:guid}/mfa/disable",
+        "PUT api/users/{id:guid}",
         "POST api/billing/checkout",
         "POST api/billing/portal",
+        "POST api/tax/calculations/coverage",
+        "POST api/tax/calculations/{id:guid}/verify",
     ];
 
     private readonly TestWebApplicationFactory _factory;
@@ -596,12 +599,12 @@ public class TenantAccessEnforcementTests
            && !template.StartsWith("api/orken/v1/", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Uma rota [Consumes] só casa com esse tipo de conteúdo: com outro, o roteamento responde 415 e nada é gravado.</summary>
-    private static HttpContent BodyFor(Endpoint endpoint)
+    internal static HttpContent BodyFor(Endpoint endpoint)
         => endpoint.Metadata.GetMetadata<IAcceptsMetadata>()?.ContentTypes.Any(t => t.StartsWith("multipart/", StringComparison.OrdinalIgnoreCase)) == true
             ? new MultipartFormDataContent()
             : JsonContent.Create(new { });
 
-    private static string PathOf(RoutePattern pattern, Guid id)
+    internal static string PathOf(RoutePattern pattern, Guid id)
     {
         var path = new StringBuilder();
         foreach (var segment in pattern.PathSegments)
@@ -629,7 +632,7 @@ public class TenantAccessEnforcementTests
 
     // ── Webhook assinado como o Stripe assina ─────────────────────────────────
 
-    private static string Sign(string payload, string secret)
+    internal static string Sign(string payload, string secret)
     {
         var t = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
@@ -637,7 +640,7 @@ public class TenantAccessEnforcementTests
         return $"t={t},v1={signature}";
     }
 
-    private static string SubscriptionUpdatedEvent(string subscriptionId, string status)
+    internal static string SubscriptionUpdatedEvent(string subscriptionId, string status)
     {
         var start = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds();
         var end = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds();

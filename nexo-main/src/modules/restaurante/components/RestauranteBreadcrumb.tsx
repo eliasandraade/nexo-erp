@@ -1,7 +1,7 @@
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { homeRoute, canAccessPath } from "@/modules/auth/hooks/useRoleAccess";
+import { homeRoute, canAccessPath, readableModules } from "@/modules/auth/hooks/useRoleAccess";
 
 interface Crumb {
   section: string;
@@ -38,7 +38,7 @@ export function RestauranteBreadcrumb({ dark = false }: { dark?: boolean }) {
   const canGoBack =
     backTo !== pathname &&
     !!session &&
-    canAccessPath(session.role, session.modules, backTo);
+    canAccessPath(session.role, readableModules(session), backTo);
 
   return (
     <div className="flex min-w-0 items-center gap-1.5" style={dark ? { "--foreground": "210 20% 95%", "--muted-foreground": "215 16% 72%", "--muted": "215 20% 24%", "--ring": "155 40% 70%" } as React.CSSProperties : undefined}>
