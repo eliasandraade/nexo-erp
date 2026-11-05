@@ -73,6 +73,9 @@ resultado muda na hora.
 | `incomplete`, `paused`, `unpaid`, desconhecido | `Suspended` | Não |
 | `canceled`, `incomplete_expired` | `Canceled` | Não |
 
+Sem nenhum módulo com acesso, a empresa fica só com leitura: as escritas respondem 402 `subscription_required`, salvo as
+rotas isentas, como checkout e portal ([`tenant-access-enforcement.md`](tenant-access-enforcement.md)).
+
 **Regra de ordem:** `customer.subscription.updated` e `invoice.payment_failed` não aplicam o corpo do evento. O backend
 relê a assinatura atual no Stripe e grava esse estado, com a linha travada até o fim da transação. Se a leitura falhar, o
 webhook responde 500, nada é gravado e o Stripe reenvia. O registro em `stripe_processed_events` entra na mesma transação
