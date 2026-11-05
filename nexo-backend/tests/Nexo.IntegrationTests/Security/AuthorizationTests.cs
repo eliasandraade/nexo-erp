@@ -123,38 +123,55 @@ public class AuthorizationTests
 
     [Fact]
     public async Task InactiveUser_CannotAccessProtectedEndpoints()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-
-        // Find or create an inactive user
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Status == UserStatus.Inactive);
-
-        if (user == null)
-            return; // Skip if no inactive user in test data
-
-        // Even if they have a valid JWT, accessing endpoints should fail
-        // This requires middleware to check user.Status
-
-        // Expected: 401 Unauthorized when user is inactive
-        await Task.CompletedTask;
-    }
+        => await AssertStatusEndsTheSessionAsync("inactive", UserRole.Vendedor);
 
     [Fact]
     public async Task BlockedUser_CannotAccessProtectedEndpoints()
+        => await AssertStatusEndsTheSessionAsync("blocked", UserRole.Vendedor);
+
+    /// <summary>A tela de usuários oferece o papel Cozinha: quem o tem também precisa poder ser bloqueado.</summary>
+    [Fact]
+    public async Task BlockedKitchenUser_CannotAccessProtectedEndpoints()
+        => await AssertStatusEndsTheSessionAsync("blocked", UserRole.Cozinha);
+
+    private async Task AssertStatusEndsTheSessionAsync(string status, UserRole role)
     {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        const string route = "/api/categories";
+        var director = await SyntheticTenant.CreateAsync(_factory, "varejo");
+        var target = await SyntheticTenant.AddUserAsync(_factory, director, role);
+        var directorClient = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
+        var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, target.Login, target.Password);
 
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Status == UserStatus.Blocked);
+        // o token já estava em uso: as entradas de cache do usuário e do carimbo estão preenchidas
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        if (user == null)
-            return;
+        await directorClient.PutAsJsonAsync($"/api/users/{target.UserId}", UserUpdate(target, role, status))
+            .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        // Similar to inactive user test
-        // Expected: 401 Unauthorized when user is blocked
-        await Task.CompletedTask;
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        await client.GetAsync("/api/auth/me").ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/refresh", TestCredentials.RefreshPayload(login.RefreshToken))
+            .ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        await _factory.CreateApiClient().PostAsJsonAsync("/api/auth/login", TestCredentials.LoginPayload(target.Login, target.Password))
+            .ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+
+        // reativado, entra de novo com um login novo; o token de antes continua morto
+        await directorClient.PutAsJsonAsync($"/api/users/{target.UserId}", UserUpdate(target, role, "active"))
+            .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
+        var renewed = await AuthClientFactory.LoginAsync(_factory, target.Login, target.Password);
+        await renewed.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
     }
+
+    private static object UserUpdate(SyntheticAccount user, UserRole role, string status) => new
+    {
+        fullName = user.FullName,
+        email = user.Email,
+        role = role.ToString().ToLowerInvariant(),
+        phone = (string?)null,
+        notes = (string?)null,
+        status,
+    };
 
     // ────────────────────────────────────────────────────────────────────────────
     // TENANT STATUS VALIDATION
