@@ -91,7 +91,7 @@ export function useCreateProject() {
   return useMutation({
     mutationFn: (req: CreateBuildProjectRequest) => createProject(req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["build", "projects"] });
+      void qc.invalidateQueries({ queryKey: ["build", "projects"] });
     },
   });
 }
@@ -101,9 +101,9 @@ export function useUpdateProject(id: string) {
   return useMutation({
     mutationFn: (req: UpdateBuildProjectRequest) => updateProject(id, req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.project(id) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(id) });
-      qc.invalidateQueries({ queryKey: ["build", "projects"] });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.project(id) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(id) });
+      void qc.invalidateQueries({ queryKey: ["build", "projects"] });
     },
   });
 }
@@ -113,9 +113,9 @@ function useProjectTransition(id: string, fn: (id: string) => Promise<unknown>) 
   return useMutation({
     mutationFn: () => fn(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.project(id) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(id) });
-      qc.invalidateQueries({ queryKey: ["build", "projects"] });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.project(id) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(id) });
+      void qc.invalidateQueries({ queryKey: ["build", "projects"] });
     },
   });
 }
@@ -213,9 +213,9 @@ export function useCreateBudget() {
   return useMutation({
     mutationFn: (req: CreateBuildBudgetRequest) => createBudget(req),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["build", "budgets"] });
+      void qc.invalidateQueries({ queryKey: ["build", "budgets"] });
       if (data.projectId) {
-        qc.invalidateQueries({ queryKey: BUILD_KEYS.budgets(data.projectId) });
+        void qc.invalidateQueries({ queryKey: BUILD_KEYS.budgets(data.projectId) });
       }
     },
   });
@@ -224,11 +224,11 @@ export function useCreateBudget() {
 function useBudgetMutation(invalidateProjectId?: string) {
   const qc = useQueryClient();
   const invalidate = (budgetId: string) => {
-    qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
-    qc.invalidateQueries({ queryKey: ["build", "budgets"] });
+    void qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
+    void qc.invalidateQueries({ queryKey: ["build", "budgets"] });
     if (invalidateProjectId) {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.project(invalidateProjectId) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(invalidateProjectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.project(invalidateProjectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(invalidateProjectId) });
     }
   };
   return { invalidate };
@@ -264,11 +264,11 @@ export function useConvertBudget() {
     mutationFn: ({ id, req }: { id: string; req: ConvertBudgetToProjectRequest }) =>
       convertBudget(id, req),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["build", "budgets"] });
-      qc.invalidateQueries({ queryKey: ["build", "projects"] });
+      void qc.invalidateQueries({ queryKey: ["build", "budgets"] });
+      void qc.invalidateQueries({ queryKey: ["build", "projects"] });
       if (data.projectId) {
-        qc.invalidateQueries({ queryKey: BUILD_KEYS.project(data.projectId) });
-        qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(data.projectId) });
+        void qc.invalidateQueries({ queryKey: BUILD_KEYS.project(data.projectId) });
+        void qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(data.projectId) });
       }
     },
   });
@@ -280,8 +280,8 @@ export function useSetBudgetMargin() {
     mutationFn: ({ id, req }: { id: string; req: SetBudgetMarginRequest }) =>
       setBudgetMargin(id, req),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(data.id) });
-      qc.invalidateQueries({ queryKey: ["build", "budgets"] });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(data.id) });
+      void qc.invalidateQueries({ queryKey: ["build", "budgets"] });
     },
   });
 }
@@ -291,7 +291,7 @@ export function useAddBudgetItem(budgetId: string) {
   return useMutation({
     mutationFn: (req: AddBuildBudgetItemRequest) => addBudgetItem(budgetId, req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
     },
   });
 }
@@ -302,7 +302,7 @@ export function useUpdateBudgetItem(budgetId: string) {
     mutationFn: ({ id, req }: { id: string; req: UpdateBuildBudgetItemRequest }) =>
       updateBudgetItem(id, req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
     },
   });
 }
@@ -312,7 +312,7 @@ export function useRemoveBudgetItem(budgetId: string) {
   return useMutation({
     mutationFn: (id: string) => removeBudgetItem(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.budget(budgetId) });
     },
   });
 }
@@ -344,10 +344,10 @@ export function useCreateDailyLog(projectId: string) {
   return useMutation({
     mutationFn: (req: CreateDailyLogRequest) => createDailyLog(projectId, req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(projectId) });
-      qc.invalidateQueries({ queryKey: ["build", "projects"] });    // card log counts
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.projectDetails(projectId) });
+      void qc.invalidateQueries({ queryKey: ["build", "projects"] });    // card log counts
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
     },
   });
 }
@@ -358,8 +358,8 @@ export function useUpdateDailyLog(projectId: string) {
     mutationFn: ({ id, req }: { id: string; req: UpdateDailyLogRequest }) =>
       updateDailyLog(id, req),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLog(data.id) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLog(data.id) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
     },
   });
 }
@@ -370,8 +370,8 @@ export function useAddDailyLogPhoto(projectId: string) {
     mutationFn: ({ logId, req }: { logId: string; req: AddDailyLogPhotoRequest }) =>
       addDailyLogPhoto(logId, req),
     onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLog(data.id) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLog(data.id) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
     },
   });
 }
@@ -381,7 +381,7 @@ export function useRemoveDailyLogPhoto(projectId: string) {
   return useMutation({
     mutationFn: (photoId: string) => removeDailyLogPhoto(photoId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dailyLogs(projectId) });
     },
   });
 }
