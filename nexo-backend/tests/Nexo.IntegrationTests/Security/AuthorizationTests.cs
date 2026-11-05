@@ -146,27 +146,49 @@ public class AuthorizationTests
         (await db.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == seller.UserId)).Role.Should().Be(UserRole.Vendedor, "a alteração recusada não muda o papel");
     }
 
+    [Fact]
+    public async Task DemotedUser_LosesAccess_WithTheTokenAlreadyIssued()
+    {
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var manager = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Gerente);
+        var directorClient = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
+        var client = await AuthClientFactory.LoginAsync(_factory, manager.Login, manager.Password);
+        await client.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+
+        await directorClient.PutAsJsonAsync($"{UsersRoute}/{manager.UserId}", UpdateBody(manager, "vendedor", "active"))
+            .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+
+        var response = await client.GetAsync(UsersRoute);
+        response.StatusCode.Should().BeOneOf(new[] { HttpStatusCode.Forbidden, HttpStatusCode.Unauthorized }, "vendedor não lista usuários, mesmo com o token de quando era gerente");
+    }
+
     // ────────────────────────────────────────────────────────────────────────────
     // USUÁRIO FORA DE ATIVIDADE, COM UM TOKEN QUE JÁ ESTAVA VÁLIDO
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task InactiveUser_CannotAccessProtectedEndpoints()
-        => await AssertStatusEndsTheSessionAsync("inactive");
+        => await AssertStatusEndsTheSessionAsync("inactive", UserRole.Vendedor);
 
     [Fact]
     public async Task BlockedUser_CannotAccessProtectedEndpoints()
-        => await AssertStatusEndsTheSessionAsync("blocked");
+        => await AssertStatusEndsTheSessionAsync("blocked", UserRole.Vendedor);
 
-    private async Task AssertStatusEndsTheSessionAsync(string status)
+    /// <summary>A tela de usuários oferece o papel Cozinha: quem o tem também precisa poder ser bloqueado.</summary>
+    [Fact]
+    public async Task BlockedKitchenUser_CannotAccessProtectedEndpoints()
+        => await AssertStatusEndsTheSessionAsync("blocked", UserRole.Cozinha);
+
+    private async Task AssertStatusEndsTheSessionAsync(string status, UserRole role)
     {
+        var roleName = role.ToString().ToLowerInvariant();
         var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
-        var target = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Vendedor);
+        var target = await SyntheticTenant.AddUserAsync(_factory, director, role);
         var directorClient = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
         var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, target.Login, target.Password);
         await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        await directorClient.PutAsJsonAsync($"{UsersRoute}/{target.UserId}", UpdateBody(target, "vendedor", status))
+        await directorClient.PutAsJsonAsync($"{UsersRoute}/{target.UserId}", UpdateBody(target, roleName, status))
             .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
         await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
@@ -176,7 +198,7 @@ public class AuthorizationTests
             .ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
 
         // reativado, entra de novo com um login novo; o token de antes continua morto
-        await directorClient.PutAsJsonAsync($"{UsersRoute}/{target.UserId}", UpdateBody(target, "vendedor", "active"))
+        await directorClient.PutAsJsonAsync($"{UsersRoute}/{target.UserId}", UpdateBody(target, roleName, "active"))
             .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
         await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory);
         var renewed = await AuthClientFactory.LoginAsync(_factory, target.Login, target.Password);

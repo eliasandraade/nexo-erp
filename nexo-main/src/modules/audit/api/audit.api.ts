@@ -1,4 +1,5 @@
 import { apiClient } from "@/services/api-client";
+import { comparePtBr } from "@/lib/collation";
 import type { AuditRecord, AuditFilters } from "../types";
 
 interface AuditApiRecord {
@@ -57,5 +58,5 @@ export async function fetchAuditStats(): Promise<AuditStats> {
 export async function fetchAuditActors(): Promise<string[]> {
   const records = await fetchAuditRecords();
   const actors = new Set(records.map((r) => r.actor).filter(Boolean));
-  return Array.from(actors).sort();
+  return Array.from(actors).sort(comparePtBr);
 }

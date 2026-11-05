@@ -117,6 +117,7 @@ public class UserService
 
         var role = ParseRole(request.Role);
         var previousEmail = user.Email;
+        var previousStatus = user.Status;
 
         user.UpdateProfile(
             fullName: request.FullName,
@@ -134,6 +135,15 @@ public class UserService
             || user.Status is not (UserStatus.Active or UserStatus.PendingVerification))
             user.ClearPasswordResetToken();
 
+        // Blocked or deactivated: every session ends now. The tenant middleware trusts its cached "Active" for up to
+        // 5 minutes, so what stops a token that is already out there is the stamp, checked on every request.
+        var endsSessions = user.Status != previousStatus && user.Status is UserStatus.Inactive or UserStatus.Blocked;
+        if (endsSessions)
+        {
+            user.BumpSecurityStamp();
+            if (_sessions is not null) await _sessions.RevokeAllAsync(user.Id, ct);
+        }
+
         _audit.Stage(
             actionType:  AuditActions.UserUpdated,
             severity:    AuditSeverity.Info,
@@ -145,6 +155,7 @@ public class UserService
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
+        if (endsSessions && _sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
         return MapToDto(user);
     }
 
