@@ -197,7 +197,7 @@ public class RateLimitingTests : IDisposable
 
         loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        var refreshToken = loginBody.GetProperty("refreshToken").GetString();
+        var refreshToken = loginBody.GetProperty("refreshToken").GetString()!;
         refreshToken.Should().NotBeNullOrEmpty();
 
         // Login and refresh use SEPARATE partitions (keyed by path), so the login
@@ -223,7 +223,7 @@ public class RateLimitingTests : IDisposable
 
         loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        var refreshToken = loginBody.GetProperty("refreshToken").GetString();
+        var refreshToken = loginBody.GetProperty("refreshToken").GetString()!;
         refreshToken.Should().NotBeNullOrEmpty();
 
         // Make 6 refresh requests
