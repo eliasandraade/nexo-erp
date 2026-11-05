@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Integrations.Billing;
 using Nexo.Infrastructure.MultiTenancy;
 using Nexo.Infrastructure.Persistence;
 using Nexo.Infrastructure.Persistence.Seed;
@@ -34,6 +35,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
 
     /// <summary>The fake Anthropic API every Claude call of this host goes to (nothing leaves the test host).</summary>
     public FakeAnthropicHandler Anthropic { get; } = new();
+
+    /// <summary>The fake Stripe every subscription read of this host goes to (nothing leaves the test host).</summary>
+    public FakeStripeSubscriptionFetcher StripeSubscriptions { get; } = new();
 
     /// <summary>The host's latest warnings and errors, so an unexpected status in a test shows the server exception.</summary>
     public ServerLogCapture ServerLog { get; } = new();
@@ -109,6 +113,10 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
             // Claude calls go to an in-process fake: the suite never reaches Anthropic.
             services.AddHttpClient(Nexo.Infrastructure.Modules.Interpreter.AnthropicClientFactory.HttpClientName)
                 .ConfigurePrimaryHttpMessageHandler(() => Anthropic);
+
+            // Subscription reads go to an in-process fake: the suite never reaches Stripe.
+            services.RemoveAll<IStripeSubscriptionFetcher>();
+            services.AddSingleton<IStripeSubscriptionFetcher>(StripeSubscriptions);
         });
 
         // JWT overrides so test tokens validate against the test server.

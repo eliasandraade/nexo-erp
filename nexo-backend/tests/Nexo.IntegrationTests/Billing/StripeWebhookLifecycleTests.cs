@@ -30,12 +30,13 @@ public class StripeWebhookLifecycleTests
 {
     private const string WebhookSecret = "whsec_integration_tests_only";
 
-    private static readonly FakeStripeSubscriptionFetcher Stripe = new();
     private static WebApplicationFactory<Program>? _host;
 
     private readonly TestWebApplicationFactory _factory;
 
     public StripeWebhookLifecycleTests(TestWebApplicationFactory factory) => _factory = factory;
+
+    private FakeStripeSubscriptionFetcher Stripe => _factory.StripeSubscriptions;
 
     /// <summary>Um só host para a classe: cada teste usa empresa e assinatura próprias. O factory pai o descarta no fim.</summary>
     private WebApplicationFactory<Program> Host => _host ??= _factory.WithWebHostBuilder(b =>
@@ -45,8 +46,6 @@ public class StripeWebhookLifecycleTests
         b.UseSetting("Integrations:Stripe:SecretKey", "sk_test_integration_tests_only");
         b.ConfigureTestServices(s =>
         {
-            s.RemoveAll<IStripeSubscriptionFetcher>();
-            s.AddSingleton<IStripeSubscriptionFetcher>(Stripe);
             s.RemoveAll<IBillingProvider>();
             s.AddSingleton<IBillingProvider, NoStripeBillingProvider>();
         });
