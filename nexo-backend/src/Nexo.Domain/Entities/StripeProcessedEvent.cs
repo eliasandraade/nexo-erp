@@ -4,8 +4,8 @@ namespace Nexo.Domain.Entities;
 
 /// <summary>
 /// Records each Stripe webhook event ID that has been successfully processed.
-/// Used to enforce idempotency: before processing an event, check this table;
-/// after processing, insert a record. Prevents duplicate side effects on webhook retries.
+/// Used to enforce idempotency: the record and the event's effects commit in one transaction,
+/// so a recorded event was applied, and a failed one leaves no record and can be delivered again.
 /// </summary>
 public class StripeProcessedEvent : BaseEntity
 {

@@ -86,13 +86,17 @@ public class BillingIntegrityTests
     {
         var sub = ModuleSubscription.CreateFromStripe(Guid.NewGuid(), "build", subId, "price_1", PlanType.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddDays(30));
         var subs = repo ?? Substitute.For<IModuleSubscriptionRepository>();
-        if (repo is null) subs.GetByStripeSubscriptionIdAsync(subId, Arg.Any<CancellationToken>()).Returns(sub);
+        if (repo is null) subs.GetByStripeSubscriptionIdForUpdateAsync(subId, Arg.Any<CancellationToken>()).Returns(sub);
         var processed = Substitute.For<IStripeProcessedEventRepository>();
+        processed.TryRecordAsync(Arg.Any<StripeProcessedEvent>(), Arg.Any<CancellationToken>()).Returns(true);
+        var unitOfWork = Substitute.For<IUnitOfWork>();
+        unitOfWork.ExecuteInTransactionAsync(Arg.Any<Func<CancellationToken, Task<bool>>>(), Arg.Any<CancellationToken>())
+            .Returns(call => call.Arg<Func<CancellationToken, Task<bool>>>()(call.Arg<CancellationToken>()));
         var access = Substitute.For<IModuleAccessService>();
         var service = new StripeWebhookService(
             Options.Create(new StripeOptions { WebhookSecret = Secret }), subs, processed,
             tenants ?? Substitute.For<ITenantRepository>(), access, fetcher ?? Substitute.For<IStripeSubscriptionFetcher>(),
-            Substitute.For<ICacheService>(), NullLogger<StripeWebhookService>.Instance);
+            Substitute.For<ICacheService>(), unitOfWork, NullLogger<StripeWebhookService>.Instance);
         return (service, access, sub);
     }
 
@@ -163,8 +167,11 @@ public class BillingIntegrityTests
     [Fact]
     public async Task An_unknown_subscription_status_suspends_access_and_clears_the_access_cache()
     {
-        var (service, access, sub) = Arrange("sub_unknown");
-        var body = SubscriptionEvent("evt_1", "customer.subscription.updated", "sub_unknown", "paused");
+        var fetcher = Substitute.For<IStripeSubscriptionFetcher>();
+        fetcher.GetAsync("sub_unknown", Arg.Any<CancellationToken>()).Returns(
+            new StripeSubscriptionSnapshot("sub_unknown", "paused", "price_1", "month", DateTime.UtcNow, DateTime.UtcNow.AddDays(30), false));
+        var (service, access, sub) = Arrange("sub_unknown", fetcher: fetcher);
+        var body = SubscriptionEvent("evt_1", "customer.subscription.updated", "sub_unknown", "active");
 
         var result = await service.HandleAsync(body, Sign(body), default);
 
