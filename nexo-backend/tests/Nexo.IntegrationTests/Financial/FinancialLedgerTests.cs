@@ -133,13 +133,25 @@ public class FinancialLedgerTests
     [Fact]
     public async Task The_only_active_receivable_account_cannot_be_deactivated()
     {
-        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
-        var receivables = (await c.GetFromJsonAsync<List<FinancialAccountDto>>("/api/financial/accounts"))!
-            .Where(a => a.AccountType == "Receivable" && a.IsActive).ToList();
-        if (receivables.Count != 1) return;   // another test left a second one: nothing to prove here
+        // empresa própria: a conta única não pode depender do que os outros testes deixaram na empresa do seed
+        var director = await SyntheticTenant.CreateAsync(_factory, "varejo");
+        var c = await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
+        var only = await NewReceivableAccountAsync(c, "1.1.01");
 
-        (await c.PostAsync($"/api/financial/accounts/{receivables[0].Id}/deactivate", null))
+        (await c.PostAsync($"/api/financial/accounts/{only.Id}/deactivate", null))
             .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+
+        // com outra ativa do mesmo tipo, a regra não impede mais
+        await NewReceivableAccountAsync(c, "1.1.02");
+        (await c.PostAsync($"/api/financial/accounts/{only.Id}/deactivate", null))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    private static async Task<FinancialAccountDto> NewReceivableAccountAsync(HttpClient c, string code)
+    {
+        var created = await c.PostAsJsonAsync("/api/financial/accounts", new { code, name = $"Contas a Receber {code}", accountType = "Receivable" });
+        created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        return (await created.Content.ReadFromJsonAsync<FinancialAccountDto>())!;
     }
 
     [Fact]

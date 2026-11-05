@@ -2,11 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Features.Auth;
 using Nexo.Domain.Enums;
-using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
@@ -140,8 +137,12 @@ public class AuthenticationLifecycleTests
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    /// <summary>
+    /// O token vem no corpo (é o que o app manda). Sem ele a validação do corpo responde 400 antes de qualquer leitura de
+    /// cookie: o cookie sozinho não renova a sessão.
+    /// </summary>
     [Fact]
-    public async Task RefreshToken_FromCookie_WorksWithoutJsonBody()
+    public async Task RefreshToken_FromCookie_IsRefusedWithoutJsonBody()
     {
         // 1. Login (sets cookies)
         var loginResponse = await _client.PostAsJsonAsync("/api/auth/login",
@@ -154,22 +155,12 @@ public class AuthenticationLifecycleTests
             cookieClient.DefaultRequestHeaders.Add("Cookie", ParseCookieForRequest(cookie));
         }
 
-        // 3. Refresh without providing token in body (should read from cookie)
+        // 3. Refresh without providing token in body
         var refreshResponse = await cookieClient.PostAsJsonAsync("/api/auth/refresh",
             new { });
 
-        // This should work if the endpoint reads from cookie
-        if (refreshResponse.StatusCode == HttpStatusCode.OK)
-        {
-            var body = await refreshResponse.Content.ReadFromJsonAsync<RefreshResponse>();
-            body!.AccessToken.Should().NotBeNullOrEmpty();
-        }
-        // If it returns 400, that's also acceptable (requires explicit body)
-        else if (refreshResponse.StatusCode != HttpStatusCode.BadRequest)
-        {
-            // But definitely shouldn't return 500 or other unexpected errors
-            refreshResponse.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError);
-        }
+        refreshResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await refreshResponse.Content.ReadAsStringAsync()).Should().NotContain("accessToken");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -322,46 +313,26 @@ public class AuthenticationLifecycleTests
 
     [Fact]
     public async Task Login_WithInactiveUser_IsRejected()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-
-        var inactiveUser = await db.Users.FirstOrDefaultAsync(u => u.Login == "inactive_test_user");
-        if (inactiveUser == null)
-        {
-            // Skip if test data doesn't exist
-            return;
-        }
-
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.LoginPayload(inactiveUser.Login, "fake-test-password"));
-
-        response.StatusCode.Should().BeOneOf(
-            HttpStatusCode.Unauthorized,
-            HttpStatusCode.Forbidden
-        );
-    }
+        => await AssertLoginRefusedAsync(UserStatus.Inactive);
 
     [Fact]
     public async Task Login_WithBlockedUser_IsRejected()
+        => await AssertLoginRefusedAsync(UserStatus.Blocked);
+
+    /// <summary>A senha está certa: quem recusa é a situação da conta, e a resposta diz isso (senha errada responde outra coisa).</summary>
+    private async Task AssertLoginRefusedAsync(UserStatus status)
     {
-        using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        var director = await SyntheticTenant.CreateAsync(_factory);
+        var user = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Vendedor, status);
 
-        var blockedUser = await db.Users.FirstOrDefaultAsync(u =>
-            u.Login == "blocked_test_user" || u.Status == UserStatus.Blocked);
-        if (blockedUser == null)
-        {
-            return;
-        }
+        var response = await _client.PostAsJsonAsync("/api/auth/login", TestCredentials.LoginPayload(user.Login, user.Password));
 
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.LoginPayload(blockedUser.Login, "fake-test-password"));
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        var body = await response.Content.ReadAsStringAsync();
+        body.Should().Contain("Conta bloqueada").And.NotContain("accessToken");
 
-        response.StatusCode.Should().BeOneOf(
-            HttpStatusCode.Unauthorized,
-            HttpStatusCode.Forbidden
-        );
+        // mesma senha, conta ativa: entra
+        await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
