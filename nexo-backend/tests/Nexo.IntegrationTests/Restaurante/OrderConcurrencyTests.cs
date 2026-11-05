@@ -285,7 +285,7 @@ public class OrderConcurrencyTests : IAsyncLifetime
     /// <summary>
     /// Duas comandas diferentes pagas ao mesmo tempo, com o mesmo insumo na ficha técnica: o segundo pagamento perde a
     /// concorrência otimista do estoque. É um conflito para tentar de novo, como na conclusão da venda, e não um erro do
-    /// servidor. E nenhuma baixa se perde.
+    /// servidor. E nenhuma baixa se perde. Em Pix, de propósito: em dinheiro, a trava do caixa já põe os dois em fila.
     /// </summary>
     [Fact]
     public async Task Paying_two_comandas_that_share_an_ingredient_is_a_retry_and_loses_no_stock()
@@ -299,8 +299,8 @@ public class OrderConcurrencyTests : IAsyncLifetime
         (await Close(b.Id)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         await using var gate = await RowGate.HoldAsync(_connectionString, "stock_items", "product_id", ingredient);
-        var payA = PayCash(a.Id, 20m);
-        var payB = PayCash(b.Id, 20m);
+        var payA = PayPix(a.Id, 20m);
+        var payB = PayPix(b.Id, 20m);
         await WaitUntilParkedAsync(2);
         await gate.ReleaseAsync();
 
@@ -313,7 +313,7 @@ public class OrderConcurrencyTests : IAsyncLifetime
         (await StateOfAsync(loser)).PaymentLines.Should().Be(0);
         (await StockOfAsync(ingredient)).Should().Be(98m);
 
-        (await PayCash(loser, 20m)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await PayPix(loser, 20m)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await StockOfAsync(ingredient)).Should().Be(96m, "as duas comandas baixaram o insumo");
     }
 
@@ -530,6 +530,9 @@ public class OrderConcurrencyTests : IAsyncLifetime
 
     private Task<HttpResponseMessage> PayCash(Guid orderId, decimal amount)
         => _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/pay", new PayOrderRequest([new PaymentInputDto("Cash", "Cash", amount)]));
+
+    private Task<HttpResponseMessage> PayPix(Guid orderId, decimal amount)
+        => _client.PostAsJsonAsync($"/api/restaurante/orders/{orderId}/pay", new PayOrderRequest([new PaymentInputDto("Pix", "Cash", amount)]));
 
     /// <summary>Abre uma comanda (na mesa, se houver; senão, no balcão) e inclui um item de cada produto.</summary>
     private async Task<OrderDto> OpenWithItemsAsync(Guid product, Guid? table = null, params Guid[] products)
