@@ -1,4 +1,5 @@
 import {
+  ApiError,
   apiClient,
   beginImpersonation,
   clearTokens,
@@ -76,8 +77,9 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
 
     return { success: true, session };
   } catch (err: unknown) {
+    // Without an answer from the server, all there is is the browser's text ("Failed to fetch"): not for the user.
     const message =
-      err instanceof Error ? err.message : "Erro ao conectar com o servidor.";
+      err instanceof ApiError ? err.message : "Erro ao conectar com o servidor.";
     if (message === "Unauthorized" || message === "Invalid login or password." || message.includes("401")) {
       return { success: false, error: "Login ou senha incorretos." };
     }
