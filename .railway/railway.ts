@@ -47,11 +47,13 @@ export default defineRailway((ctx) => {
   const Postgres = postgres("Postgres", { region: REGION });
   Postgres.networking = { privateNetworkEndpoint: "postgres" };
   const postgresVolume = volume("postgres-volume", { alerts, allowOnlineResize: true, region: REGION, sizeMB: 5000 });
-  // The same image as production. The default image of redis() runs without root and cannot start this command.
+  // The same image as production. The default image of redis() runs without root and cannot start this command. The
+  // service requires the volume on /bitnami, and the image's entrypoint only hands /data over to the redis user: without
+  // the chown, Redis cannot write its snapshot and refuses every write (MISCONF), which turns every refresh into a 401.
   const Redis = database("Redis", "redis", { image: "redis:8.2.10", output: "REDIS_URL", defaultMountPath: "/bitnami", region: REGION });
   Redis.deploy = {
     startCommand:
-      '/bin/sh -c "rm -rf $RAILWAY_VOLUME_MOUNT_PATH/lost+found/ && exec docker-entrypoint.sh redis-server --requirepass $REDIS_PASSWORD --save 60 1 --dir $RAILWAY_VOLUME_MOUNT_PATH --bind 0.0.0.0 ::"',
+      '/bin/sh -c "rm -rf $RAILWAY_VOLUME_MOUNT_PATH/lost+found/ && chown -R redis:redis $RAILWAY_VOLUME_MOUNT_PATH && exec docker-entrypoint.sh redis-server --requirepass $REDIS_PASSWORD --save 60 1 --dir $RAILWAY_VOLUME_MOUNT_PATH --bind 0.0.0.0 ::"',
   };
   Redis.networking = { privateNetworkEndpoint: "redis" };
   const redisVolume = volume("redis-volume", { alerts, allowOnlineResize: true, region: REGION, sizeMB: 500 });
