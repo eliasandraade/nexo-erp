@@ -1,0 +1,67 @@
+name: ci
+
+# Checks of a pull request (docs/engineering/staging-e-promocao.md). ci-gate is required to merge into master. Commits that
+# reach master are verified by master.yml.
+on:
+  pull_request:
+
+# A pull request's new push replaces its older run.
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+      frontend: ${{ steps.diff.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # A pull request runs what its diff touches. The checkout is the merge commit, so HEAD^1 is the base.
+      - name: What changed?
+        id: diff
+        run: |
+          files=$(git diff --name-only HEAD^1 HEAD)
+          if echo "$files" | grep -qE '^(nexo-backend/|\.github/workflows/)'; then echo "backend=true" >> "$GITHUB_OUTPUT"; else echo "backend=false" >> "$GITHUB_OUTPUT"; fi
+          if echo "$files" | grep -qE '^(nexo-main/|\.github/workflows/)'; then echo "frontend=true" >> "$GITHUB_OUTPUT"; else echo "frontend=false" >> "$GITHUB_OUTPUT"; fi
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    uses: ./.github/workflows/backend-tests.yml
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    uses: ./.github/workflows/frontend-ci.yml
+
+  sonarcloud:
+    uses: ./.github/workflows/sonarcloud.yml
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # Always reports, so the required check never hangs on a job that the diff skipped. A skipped job counts only when the
+  # diff did not touch it; anything failed or cancelled fails the gate.
+  ci-gate:
+    if: always()
+    needs: [changes, backend, frontend, sonarcloud]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verdict
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          BACKEND: ${{ needs.backend.result }}
+          FRONTEND: ${{ needs.frontend.result }}
+          SONAR: ${{ needs.sonarcloud.result }}
+        run: |
+          echo "changes=$CHANGES backend=$BACKEND frontend=$FRONTEND sonarcloud=$SONAR"
+          [ "$CHANGES" = "success" ] && [ "$SONAR" = "success" ] || exit 1
+          case "$BACKEND" in success|skipped) ;; *) exit 1 ;; esac
+          case "$FRONTEND" in success|skipped) ;; *) exit 1 ;; esac

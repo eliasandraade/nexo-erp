@@ -9,7 +9,8 @@ namespace Nexo.Application.Common.Interfaces;
 public interface IModuleSubscriptionRepository
 {
     Task<IReadOnlyList<ModuleSubscription>> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default);
-    Task<ModuleSubscription?> GetByStripeSubscriptionIdAsync(string stripeSubscriptionId, CancellationToken ct = default);
+    /// <summary>Reads the row and locks it until the current transaction ends.</summary>
+    Task<ModuleSubscription?> GetByStripeSubscriptionIdForUpdateAsync(string stripeSubscriptionId, CancellationToken ct = default);
     Task AddAsync(ModuleSubscription subscription, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
 }

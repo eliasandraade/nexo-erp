@@ -30,10 +30,10 @@ public class ProductService
 
     public Task<PagedResult<ProductDto>> GetPagedAsync(
         int page, int pageSize,
-        string? search, bool includeInactive, bool? isIngredient,
+        string? search, bool includeInactive, bool onlyInactive, bool? isIngredient,
         Guid? categoryId, string? unit,
         CancellationToken ct = default)
-        => _products.GetPagedAsync(page, pageSize, search, includeInactive, isIngredient, categoryId, unit, ct);
+        => _products.GetPagedAsync(page, pageSize, search, includeInactive, onlyInactive, isIngredient, categoryId, unit, ct);
 
     public async Task<ProductDto> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
@@ -42,12 +42,20 @@ public class ProductService
         return MapToDto(product);
     }
 
+    /// <summary>A unit the catalogue does not know is the caller's mistake (422), not a server failure.</summary>
+    private static ProductUnit ParseUnit(string unit)
+    {
+        if (Enum.TryParse<ProductUnit>(unit, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed))
+            return parsed;
+        throw new DomainException($"Unidade inválida. Use uma destas: {string.Join(", ", Enum.GetNames<ProductUnit>())}.");
+    }
+
     public async Task<ProductDto> CreateAsync(CreateProductRequest request, CancellationToken ct = default)
     {
         if (await _products.CodeExistsAsync(request.Code, ct: ct))
             throw new ConflictException($"Product code '{request.Code.ToUpperInvariant()}' is already in use.");
 
-        var unit = Enum.Parse<ProductUnit>(request.Unit, ignoreCase: true);
+        var unit = ParseUnit(request.Unit);
 
         var product = Product.Create(
             _currentTenant.Id,
@@ -82,7 +90,7 @@ public class ProductService
         var product = await _products.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("Product", id);
 
-        var unit = Enum.Parse<ProductUnit>(request.Unit, ignoreCase: true);
+        var unit = ParseUnit(request.Unit);
 
         product.Update(
             request.Name,

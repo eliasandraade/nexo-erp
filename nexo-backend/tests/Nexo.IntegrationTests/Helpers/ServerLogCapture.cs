@@ -18,14 +18,14 @@ public sealed class ServerLogCapture : ILogEventSink
 
     private readonly ConcurrentQueue<Entry> _entries = new();
 
-    private sealed record Entry(DateTimeOffset At, LogEventLevel Level, string? RequestId, string Message, string? Exception);
+    private sealed record Entry(DateTimeOffset At, LogEventLevel Level, string? RequestId, string Message, string? Exception, string Properties);
 
     public void Emit(LogEvent logEvent)
     {
         if (logEvent.Level < LogEventLevel.Warning) return;
         var requestId = logEvent.Properties.TryGetValue("RequestId", out var v) && v is ScalarValue { Value: string id } ? id : null;
         _entries.Enqueue(new Entry(logEvent.Timestamp, logEvent.Level, requestId, logEvent.RenderMessage(),
-            logEvent.Exception?.ToString()));
+            logEvent.Exception?.ToString(), string.Join(" ", logEvent.Properties.Select(p => $"{p.Key}={p.Value}"))));
         while (_entries.Count > Capacity && _entries.TryDequeue(out _)) { }
     }
 
@@ -41,6 +41,10 @@ public sealed class ServerLogCapture : ILogEventSink
         }
         return sb.Length == 0 ? "(no warning or error logged for this request)" : sb.ToString();
     }
+
+    /// <summary>The structured properties of the warnings and errors logged for one request: what a log search sees beyond the message.</summary>
+    public string PropertiesFor(string requestId)
+        => string.Join(Environment.NewLine, _entries.Where(e => e.RequestId == requestId).Select(e => e.Properties));
 
     /// <summary>Status, body and the server log of a response — the "because" of a status assertion.</summary>
     public async Task<string> DescribeAsync(HttpResponseMessage response)

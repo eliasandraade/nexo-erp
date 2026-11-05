@@ -11,13 +11,14 @@ import { ProductFilters } from "../components/ProductFilters";
 import { ProductTable } from "../components/ProductTable";
 import { ManageCategoriesDialog } from "../components/ManageCategoriesDialog";
 import { useProductsPaged, useCategories } from "../hooks/use-products";
+import { productStatusParams } from "../api/products.api";
 
 export default function ProdutosPage() {
   const navigate = useNavigate();
   const [search, setSearch]           = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryId, setCategoryId]   = useState("all");
-  const [status, setStatus]           = useState("all");
+  const [status, setStatus]           = useState("active");
   const [unit, setUnit]               = useState("all");
   const [page, setPage]               = useState(1);
   const [manageCatsOpen, setManageCatsOpen] = useState(false);
@@ -36,19 +37,13 @@ export default function ProdutosPage() {
     page,
     pageSize: 50,
     search:          debouncedSearch || undefined,
-    includeInactive: status === "inactive" ? true : status === "all" ? false : false,
+    ...productStatusParams(status),
     isIngredient:    false,
     categoryId:      categoryId !== "all" ? categoryId : undefined,
     unit:            unit !== "all" ? unit : undefined,
   });
 
-  // Active/inactive filter: inactive requires includeInactive=true from above;
-  // filter active-only client-side on the current page (25-50 items max).
-  const products = status === "inactive"
-    ? (data?.items ?? []).filter(p => !p.isActive)
-    : status === "active"
-    ? (data?.items ?? []).filter(p => p.isActive)
-    : (data?.items ?? []);
+  const products = data?.items ?? [];
 
   const { data: categories = [] } = useCategories();
   const { data: allCategories = [] } = useCategories(true);

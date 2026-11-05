@@ -11,7 +11,10 @@ namespace Nexo.Infrastructure.Integrations.Stripe;
 
 /// <summary>
 /// Validates Stripe webhooks, enforces idempotency, and routes to per-event handlers.
-/// Uses Stripe.net v52 API — period dates are on SubscriptionItem, not on Subscription directly.
+///
+/// Stripe does not order events, so a handler never applies the state in the event body: it locks the row, reads the
+/// subscription as it is now, and writes that. A late event then just repeats the current state. A failed read answers
+/// an error, so Stripe delivers the event again.
 /// </summary>
 public sealed class StripeWebhookService : IStripeWebhookService
 {
@@ -22,7 +25,11 @@ public sealed class StripeWebhookService : IStripeWebhookService
     private readonly IModuleAccessService               _access;
     private readonly IStripeSubscriptionFetcher         _fetcher;
     private readonly ICacheService                      _cache;
+    private readonly IUnitOfWork                        _unitOfWork;
     private readonly ILogger<StripeWebhookService>     _logger;
+
+    /// <summary>Rows this delivery changed: their access caches are cleared only after the commit.</summary>
+    private readonly List<(Guid TenantId, string ModuleKey)> _changed = [];
 
     public StripeWebhookService(
         IOptions<StripeOptions> options,
@@ -32,11 +39,13 @@ public sealed class StripeWebhookService : IStripeWebhookService
         IModuleAccessService access,
         IStripeSubscriptionFetcher fetcher,
         ICacheService cache,
+        IUnitOfWork unitOfWork,
         ILogger<StripeWebhookService> logger)
     {
         _access          = access;
         _fetcher         = fetcher;
         _cache           = cache;
+        _unitOfWork      = unitOfWork;
         _options         = options.Value;
         _subscriptions   = subscriptions;
         _processedEvents = processedEvents;
@@ -64,19 +73,28 @@ public sealed class StripeWebhookService : IStripeWebhookService
             return new WebhookHandleResult(SignatureValid: false, AlreadyProcessed: false);
         }
 
-        if (await _processedEvents.ExistsAsync(stripeEvent.Id, ct))
+        // The record of the event and its effects commit together. A simultaneous delivery of the same event waits for
+        // this transaction on the unique index: if it commits, the other has nothing to do; if it fails, the other takes over.
+        var isFirstDelivery = await _unitOfWork.ExecuteInTransactionAsync(async transactionCt =>
+        {
+            if (!await _processedEvents.TryRecordAsync(StripeProcessedEvent.Create(stripeEvent.Id, stripeEvent.Type), transactionCt))
+                return false;
+
+            _logger.LogInformation("[Billing] Processing event {EventId} type={Type}", stripeEvent.Id, stripeEvent.Type);
+            await DispatchAsync(stripeEvent, transactionCt);
+            return true;
+        }, ct);
+
+        if (!isFirstDelivery)
         {
             _logger.LogInformation("[Billing] Webhook already processed: {EventId}", stripeEvent.Id);
             return new WebhookHandleResult(SignatureValid: true, AlreadyProcessed: true);
         }
 
-        _logger.LogInformation("[Billing] Processing event {EventId} type={Type}", stripeEvent.Id, stripeEvent.Type);
-
-        await DispatchAsync(stripeEvent, ct);
-
-        await _processedEvents.AddAsync(
-            StripeProcessedEvent.Create(stripeEvent.Id, stripeEvent.Type), ct);
-        await _processedEvents.SaveChangesAsync(ct);
+        // After the commit: a gate that refills its cache from here on reads the new state. Already committed, so a client
+        // that hung up does not get to skip this.
+        foreach (var (tenantId, moduleKey) in _changed)
+            await InvalidateAsync(tenantId, moduleKey, CancellationToken.None);
 
         return new WebhookHandleResult(SignatureValid: true, AlreadyProcessed: false);
     }
@@ -85,7 +103,7 @@ public sealed class StripeWebhookService : IStripeWebhookService
         => stripeEvent.Type switch
         {
             EventTypes.CheckoutSessionCompleted    => HandleCheckoutCompletedAsync((global::Stripe.Checkout.Session)stripeEvent.Data.Object!, ct),
-            EventTypes.CustomerSubscriptionUpdated => HandleSubscriptionUpdatedAsync((Subscription)stripeEvent.Data.Object!, ct),
+            EventTypes.CustomerSubscriptionUpdated => SyncFromStripeAsync(((Subscription)stripeEvent.Data.Object!).Id, ct),
             EventTypes.CustomerSubscriptionDeleted => HandleSubscriptionDeletedAsync((Subscription)stripeEvent.Data.Object!, ct),
             EventTypes.InvoicePaymentFailed        => HandleInvoicePaymentFailedAsync((Invoice)stripeEvent.Data.Object!, ct),
             _                                      => Task.CompletedTask,
@@ -149,33 +167,42 @@ public sealed class StripeWebhookService : IStripeWebhookService
         }
 
         await _subscriptions.SaveChangesAsync(ct);
-        await InvalidateAsync(tenantId, moduleKey, ct);
+        _changed.Add((tenantId, moduleKey));
         _logger.LogInformation("[Billing] Subscription activated — tenant={TenantId}, module={Module}", tenantId, moduleKey);
     }
 
-    private async Task HandleSubscriptionUpdatedAsync(Subscription stripeSub, CancellationToken ct)
+    /// <summary>
+    /// The row takes the subscription's current state in Stripe. The lock comes before the read, so whoever writes last
+    /// has read after the previous write: an overlapping event cannot overwrite a newer state with what it read earlier.
+    /// </summary>
+    private async Task<ModuleSubscription?> SyncFromStripeAsync(string stripeSubscriptionId, CancellationToken ct)
     {
-        var sub = await _subscriptions.GetByStripeSubscriptionIdAsync(stripeSub.Id, ct);
+        var sub = await _subscriptions.GetByStripeSubscriptionIdForUpdateAsync(stripeSubscriptionId, ct);
         if (sub == null)
         {
-            _logger.LogWarning("[Billing] subscription.updated — no local record for {StripeId}", stripeSub.Id);
-            return;
+            _logger.LogWarning("[Billing] No local record for subscription {StripeId}", stripeSubscriptionId);
+            return null;
         }
 
-        var (periodStart, periodEnd) = GetPeriodFromSubscription(stripeSub);
-        sub.SyncFromStripe(BillingRules.MapStripeStatus(stripeSub.Status), periodStart, periodEnd, stripeSub.CancelAtPeriodEnd);
+        var live = await _fetcher.GetAsync(stripeSubscriptionId, ct);
+        if (!string.IsNullOrEmpty(live.PriceId) && live.PriceId != sub.StripePriceId)
+            sub.ChangePlan(live.PriceId, MapPlanType(live.Interval));
+        sub.SyncFromStripe(BillingRules.MapStripeStatus(live.Status), live.PeriodStart, live.PeriodEnd, live.CancelAtPeriodEnd);
+
         await _subscriptions.SaveChangesAsync(ct);
-        await InvalidateAsync(sub.TenantId, sub.ModuleKey, ct);
+        _changed.Add((sub.TenantId, sub.ModuleKey));
+        return sub;
     }
 
     private async Task HandleSubscriptionDeletedAsync(Subscription stripeSub, CancellationToken ct)
     {
-        var sub = await _subscriptions.GetByStripeSubscriptionIdAsync(stripeSub.Id, ct);
+        // Final in Stripe: a canceled subscription never comes back, so there is nothing newer to read.
+        var sub = await _subscriptions.GetByStripeSubscriptionIdForUpdateAsync(stripeSub.Id, ct);
         if (sub == null) return;
 
         sub.Cancel();
         await _subscriptions.SaveChangesAsync(ct);
-        await InvalidateAsync(sub.TenantId, sub.ModuleKey, ct);
+        _changed.Add((sub.TenantId, sub.ModuleKey));
         _logger.LogInformation("[Billing] Subscription canceled — stripeId={StripeId}", stripeSub.Id);
     }
 
@@ -185,13 +212,10 @@ public sealed class StripeWebhookService : IStripeWebhookService
         var subscriptionId = invoice.Parent?.SubscriptionDetails?.SubscriptionId;
         if (string.IsNullOrEmpty(subscriptionId)) return;
 
-        var sub = await _subscriptions.GetByStripeSubscriptionIdAsync(subscriptionId, ct);
-        if (sub == null) return;
-
-        sub.MarkPastDue();
-        await _subscriptions.SaveChangesAsync(ct);
-        await InvalidateAsync(sub.TenantId, sub.ModuleKey, ct);
-        _logger.LogWarning("[Billing] Payment failed — marked past_due for stripeId={StripeId}", subscriptionId);
+        // This invoice may be old: only the subscription's current state says whether it is still unpaid.
+        var sub = await SyncFromStripeAsync(subscriptionId, ct);
+        if (sub != null)
+            _logger.LogWarning("[Billing] Payment failed — stripeId={StripeId}, status now {Status}", subscriptionId, sub.Status);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -207,20 +231,13 @@ public sealed class StripeWebhookService : IStripeWebhookService
         await _cache.RemoveAsync($"tenant:{tenantId}:info", ct);
     }
 
-    /// <summary>Stripe.net v52: period dates live on the subscription item, not on the subscription.</summary>
-    private static (DateTime PeriodStart, DateTime? PeriodEnd) GetPeriodFromSubscription(Subscription stripeSub)
-    {
-        var item = stripeSub.Items?.Data?.FirstOrDefault();
-        return (item?.CurrentPeriodStart ?? DateTime.UtcNow, item?.CurrentPeriodEnd);
-    }
-
     private async Task<ModuleSubscription?> FindExistingAsync(
         string stripeSubId,
         Guid tenantId,
         string moduleKey,
         CancellationToken ct)
     {
-        var byStripeId = await _subscriptions.GetByStripeSubscriptionIdAsync(stripeSubId, ct);
+        var byStripeId = await _subscriptions.GetByStripeSubscriptionIdForUpdateAsync(stripeSubId, ct);
         if (byStripeId != null) return byStripeId;
 
         var allForTenant = await _subscriptions.GetByTenantIdAsync(tenantId, ct);
