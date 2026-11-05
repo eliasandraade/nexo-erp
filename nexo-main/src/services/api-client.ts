@@ -100,6 +100,37 @@ export function endImpersonationSession(reason: "impersonation_ended" | "imperso
   emitSessionEnded(reason);
 }
 
+// ── Subscription required ─────────────────────────────────────────────────────
+
+/** Code of the 402 a company without any module with access gets on a write (it stays read-only). */
+export const SUBSCRIPTION_REQUIRED_CODE = "subscription_required";
+
+/**
+ * Promises no purchase on purpose: not every module is for sale, and whoever tried one with no price has nothing to buy.
+ * See docs/engineering/tenant-access-enforcement.md.
+ */
+export const SUBSCRIPTION_REQUIRED_MESSAGE =
+  "Sua empresa está sem assinatura ativa e o sistema ficou somente para consulta: você pode ver e exportar os dados, " +
+  "mas não registrar nem alterar. Quem administra a conta pode ver as opções na tela Assinatura ou falar com o suporte Orken.";
+
+const SUBSCRIPTION_REQUIRED_EVENT = "orken:subscription-required";
+
+/** Subscribes to writes refused for lack of a subscription; returns the unsubscribe function. */
+export function onSubscriptionRequired(handler: () => void): () => void {
+  globalThis.addEventListener(SUBSCRIPTION_REQUIRED_EVENT, handler);
+  return () => globalThis.removeEventListener(SUBSCRIPTION_REQUIRED_EVENT, handler);
+}
+
+/**
+ * The error of a write refused for lack of a subscription, with the app told so it can open the subscription page.
+ * Null for any other response. The session is valid: nothing here touches it.
+ */
+function subscriptionRequiredError(status: number, body: ErrorBody | null): ApiError | null {
+  if (status !== 402 || body?.code !== SUBSCRIPTION_REQUIRED_CODE) return null;
+  globalThis.dispatchEvent(new Event(SUBSCRIPTION_REQUIRED_EVENT));
+  return new ApiError(402, SUBSCRIPTION_REQUIRED_MESSAGE, body.code, body.requestId);
+}
+
 // ── Token helpers ─────────────────────────────────────────────────────────────
 
 // The storage is the source of truth (no in-memory copy): when another tab renews the shared session,
@@ -290,6 +321,8 @@ async function request<T>(
     let message = res.statusText;
     let details: string[] | undefined;
     const err = await readErrorBody(res);
+    const refused = subscriptionRequiredError(res.status, err);
+    if (refused) throw refused;
     if (Array.isArray(err?.details) && err.details.length > 0) {
       details = err.details.map(String);
       message = details.join(" | ");
@@ -333,6 +366,8 @@ async function requestForm<T>(path: string, form: FormData, isRetry = false): Pr
   if (!res.ok) {
     let message = res.statusText;
     const err = await readErrorBody(res);
+    const refused = subscriptionRequiredError(res.status, err);
+    if (refused) throw refused;
     if (Array.isArray(err?.details) && err.details.length > 0) {
       message = err.details.join(" | ");
     } else {
@@ -387,6 +422,8 @@ async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormDat
     throw new ApiError(401, body?.error ?? body?.message ?? "Unauthorized", body?.code);
   }
   if (res.status < 200 || res.status >= 300) {
+    const refused = subscriptionRequiredError(res.status, body);
+    if (refused) throw refused;
     const details = Array.isArray(body?.details) && body.details.length > 0 ? body.details.map(String) : undefined;
     const serverMessage = body?.error ?? body?.message ?? undefined;
     let message = details ? details.join(" | ") : serverMessage ?? res.statusText;
