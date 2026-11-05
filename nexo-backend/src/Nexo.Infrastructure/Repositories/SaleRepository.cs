@@ -70,10 +70,6 @@ public class SaleRepository : ISaleRepository
         int page, int pageSize, string? search, string? status, string? paymentMethod, CancellationToken ct = default)
     {
         var q = _context.Sales
-            .Include(x => x.Customer)
-            .Include(x => x.SoldBy)
-            .Include(x => x.Items).ThenInclude(i => i.Product)
-            .Include(x => x.Payments)
             .AsNoTracking()
             .AsQueryable();
 
@@ -104,32 +100,44 @@ public class SaleRepository : ISaleRepository
 
         var total = await q.CountAsync(ct);
 
-        var sales = await q
+        // Reads only the fields of the list: loading items × payments of every sale multiplies the rows.
+        var rows = await q
             .OrderByDescending(x => x.Number)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .ToListAsync(ct);
-
-        var items = sales.Select(s =>
-        {
-            var firstItem  = s.Items.OrderBy(i => i.CreatedAt).FirstOrDefault();
-            var methods    = s.Payments.Select(p => p.Method.ToString()).Distinct().ToList();
-            var timestamp  = s.ConfirmedAt ?? s.CreatedAt;
-
-            return new SaleListItemDto(
+            .Select(s => new
+            {
                 s.Id,
                 s.Number,
-                s.Status.ToString(),
+                s.Status,
                 s.CustomerId,
-                s.Customer?.Name,
-                s.SoldBy?.FullName ?? string.Empty,
+                CustomerName  = s.Customer != null ? s.Customer.Name : null,
+                SoldByName    = s.SoldBy != null ? s.SoldBy.FullName : null,
                 s.Total,
-                timestamp,
-                s.Items.Count,
-                s.Items.Sum(i => i.Quantity),
-                firstItem?.Product?.Name,
-                methods.AsReadOnly());
-        }).ToList();
+                Timestamp     = s.ConfirmedAt ?? s.CreatedAt,
+                ItemCount     = s.Items.Count,
+                TotalQuantity = s.Items.Sum(i => i.Quantity),
+                FirstItemName = s.Items
+                    .OrderBy(i => i.CreatedAt).ThenBy(i => i.Id)
+                    .Select(i => i.Product != null ? i.Product.Name : null)
+                    .FirstOrDefault(),
+                Methods       = s.Payments.OrderBy(p => p.Id).Select(p => p.Method).ToList(),
+            })
+            .ToListAsync(ct);
+
+        var items = rows.Select(s => new SaleListItemDto(
+            s.Id,
+            s.Number,
+            s.Status.ToString(),
+            s.CustomerId,
+            s.CustomerName,
+            s.SoldByName ?? string.Empty,
+            s.Total,
+            s.Timestamp,
+            s.ItemCount,
+            s.TotalQuantity,
+            s.FirstItemName,
+            s.Methods.Select(m => m.ToString()).Distinct().ToList().AsReadOnly())).ToList();
 
         return new PagedResult<SaleListItemDto>(items, total, page, pageSize);
     }
