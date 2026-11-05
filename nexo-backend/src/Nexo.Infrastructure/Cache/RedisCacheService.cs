@@ -23,6 +23,9 @@ namespace Nexo.Infrastructure.Cache;
 ///   - After the cooldown, the next call probes Redis again. With
 ///     AbortOnConnectFail=false the multiplexer reconnects in the background, so
 ///     caching resumes automatically once connectivity is restored — no restart.
+///   - A caller that cancels is not a Redis failure: the cancellation propagates and the
+///     circuit stays closed. Otherwise any client closing a tab would turn the cache (and
+///     what relies on it, like token revocation) off for the whole process during the cooldown.
 ///
 /// Key namespaces:
 ///   tenant:{id}:modules          → List of active module keys (TTL 5min)
@@ -93,7 +96,7 @@ public class RedisCacheService : ICacheService
 
             return JsonSerializer.Deserialize<T>(value!, JsonOptions);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             TripCircuit(ex, "GET", key);
             return null;
@@ -110,7 +113,7 @@ public class RedisCacheService : ICacheService
             var json = JsonSerializer.Serialize(value, JsonOptions);
             await db.StringSetAsync(key, json, ttl).WaitAsync(_callTimeout, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             TripCircuit(ex, "SET", key);
         }
@@ -124,7 +127,7 @@ public class RedisCacheService : ICacheService
             var db = _redis.GetDatabase();
             await db.KeyDeleteAsync(key).WaitAsync(_callTimeout, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             TripCircuit(ex, "DEL", key);
         }
@@ -157,7 +160,7 @@ public class RedisCacheService : ICacheService
             var db = _redis.GetDatabase();
             return await db.KeyExistsAsync(key).WaitAsync(_callTimeout, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             TripCircuit(ex, "EXISTS", key);
             return false;
@@ -174,7 +177,7 @@ public class RedisCacheService : ICacheService
             if (value == 1) await db.KeyExpireAsync(key, window).WaitAsync(_callTimeout, ct);
             return value;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             TripCircuit(ex, "INCR", key);
             return null;
@@ -189,7 +192,7 @@ public class RedisCacheService : ICacheService
             var db = _redis.GetDatabase();
             await db.StringSetAsync(key, "1", ttl).WaitAsync(_callTimeout, ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             TripCircuit(ex, "SETFLAG", key);
         }
