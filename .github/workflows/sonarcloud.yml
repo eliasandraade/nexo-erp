@@ -9,14 +9,12 @@ name: sonarcloud
 #   2. GitHub → repository → Settings → Secrets → Actions → add SONAR_TOKEN.
 # Without SONAR_TOKEN every step below is skipped and the job passes, so nothing changes until then.
 # (With the token but Automatic Analysis still on, SonarCloud rejects the CI analysis — do step 1 first.)
+# Called by ci.yml, which sets when it runs and what may cancel it.
 on:
-  push:
-    branches: [master]
-  pull_request:
-
-concurrency:
-  group: sonarcloud-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
+    secrets:
+      SONAR_TOKEN:
+        required: false
 
 jobs:
   sonarcloud:
@@ -74,8 +72,8 @@ jobs:
 
       # sonar.qualitygate.wait: on pull requests the job waits for the Quality Gate of the new code and fails
       # when it is red, so it gates the merge. On pushes to master the analysis is uploaded without waiting:
-      # the master gate covers the whole history, and Railway deploys master only after every check passes
-      # (Wait for CI), so a red overall gate would block every deploy for findings that predate the change.
+      # the master gate covers the whole history, and master-gate needs this job, so a red overall gate would
+      # block every promotion for findings that predate the change.
       - name: Begin analysis
         if: steps.gate.outputs.enabled == 'true'
         run: >-
