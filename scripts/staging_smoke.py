@@ -132,7 +132,7 @@ if check("User with two stores signs in", two_stores is not None):
 # ── ERP core ─────────────────────────────────────────────────────────────────
 stamp = str(int(time.time()))
 status, product = api("POST", "/api/products", token,
-                      {"code": "SMOKE-" + stamp, "name": "Produto sintético " + stamp, "unit": "Unit", "salePrice": 10.5, "costPrice": 4})
+                      {"code": "SMOKE-" + stamp, "name": "Produto sintético " + stamp, "unit": "Un", "salePrice": 10.5, "costPrice": 4})
 product_id = product.get("id") if isinstance(product, dict) else None
 check("ERP creates a product", status in (200, 201) and bool(product_id), str(status))
 status, _ = api("GET", "/api/products", token)

@@ -1,4 +1,4 @@
-import { defineRailway, github, postgres, project, redis, service, volume } from "railway/iac";
+import { database, defineRailway, github, postgres, project, service, volume } from "railway/iac";
 
 // Orken ERP on Railway (.railway/README.md). This file manages `backend` and `main` in both environments, and the
 // staging databases. It is a `partial`: the production Postgres, Redis and volumes are not listed for production, and
@@ -47,7 +47,8 @@ export default defineRailway((ctx) => {
   const Postgres = postgres("Postgres", { region: REGION });
   Postgres.networking = { privateNetworkEndpoint: "postgres" };
   const postgresVolume = volume("postgres-volume", { alerts, allowOnlineResize: true, region: REGION, sizeMB: 5000 });
-  const Redis = redis("Redis", { region: REGION });
+  // The same image and mount as production. The SDK's redis() default runs without root and cannot start this command.
+  const Redis = database("Redis", "redis", { image: "redis:8.2.10", output: "REDIS_URL", defaultMountPath: "/data", region: REGION });
   Redis.deploy = {
     startCommand:
       '/bin/sh -c "rm -rf $RAILWAY_VOLUME_MOUNT_PATH/lost+found/ && exec docker-entrypoint.sh redis-server --requirepass $REDIS_PASSWORD --save 60 1 --dir $RAILWAY_VOLUME_MOUNT_PATH --bind 0.0.0.0 ::"',
