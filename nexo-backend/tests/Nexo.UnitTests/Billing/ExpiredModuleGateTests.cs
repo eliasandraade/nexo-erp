@@ -33,7 +33,7 @@ public class ExpiredModuleGateTests
         return tenant;
     }
 
-    private static HttpContext Request(string method, string template = "api/sales")
+    private static DefaultHttpContext Request(string method, string template = "api/sales")
     {
         var context = new DefaultHttpContext
         {

@@ -143,7 +143,7 @@ public class TenantResolutionMiddleware
             }
 
             var moduleKeys = await tenantRepository.GetActiveModuleKeysAsync(tenantId);
-            var expiredKeys = await tenantRepository.GetExpiredModuleKeysAsync(tenantId);
+            var expiredKeys = await tenantRepository.GetExpiredModuleKeysAsync(tenantId, context.RequestAborted);
             tenantInfo = new TenantCacheEntry(
                 tenant.Slug,
                 tenant.Status.ToString(),

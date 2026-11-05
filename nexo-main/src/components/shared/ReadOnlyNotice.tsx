@@ -21,7 +21,7 @@ export function ReadOnlyNotice({ className }: Readonly<{ className?: string }>) 
   if (!wholeCompany && expired.length === 0) return null;
 
   return (
-    <div role="status" className={cn("flex shrink-0 flex-wrap items-center justify-center gap-x-2 bg-muted px-4 py-1 text-xs text-muted-foreground", className)}>
+    <output className={cn("flex shrink-0 flex-wrap items-center justify-center gap-x-2 bg-muted px-4 py-1 text-xs text-muted-foreground", className)}>
       <span>
         {wholeCompany
           ? "Somente leitura: sua empresa está sem assinatura ativa. Dá para consultar e exportar, mas não registrar nem alterar."
@@ -30,6 +30,6 @@ export function ReadOnlyNotice({ className }: Readonly<{ className?: string }>) 
       {canAccessPath(session.role, [], "/assinatura") && (
         <Link to={READ_ONLY_SUBSCRIPTION_URL} className="font-medium underline">Ver assinatura</Link>
       )}
-    </div>
+    </output>
   );
 }
