@@ -23,7 +23,7 @@ if ! git merge-base --is-ancestor origin/production "$sha"; then
 fi
 
 gate=$(gh api "repos/$repo/commits/$sha/check-runs?check_name=master-gate&per_page=1" --jq '.check_runs[0].conclusion // "absent"')
-if [ "$gate" != "success" ]; then
+if [[ "$gate" != "success" ]]; then
   echo "Refused: master-gate on $sha is '$gate'." >&2
   exit 1
 fi
