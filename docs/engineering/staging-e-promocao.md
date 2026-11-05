@@ -94,6 +94,7 @@ STAGING_API=https://backend-staging-d8d0.up.railway.app STAGING_WEB=https://main
 | Dados | Sintéticos, do `DataSeeder` (rodam fora de produção) | Reais |
 | Swagger | Ligado | Desligado |
 | Stripe | Desligado até haver chave `sk_test_` | Chave live |
+| Novos checkouts (`Billing__NewCheckoutsEnabled`, [detalhes](stripe-homologacao.md#bloqueio-de-novos-checkouts)) | Bloqueados. A homologação precisa de `true` junto com a chave `sk_test_` | Bloqueados. `true` exige autorização comercial explícita do dono e homologação concluída |
 | Storage (R2) e e-mail (Resend) | Desligados | Ligados |
 | Orken ID | `account.staging.orken.com.br` | `account.orken.com.br` |
 

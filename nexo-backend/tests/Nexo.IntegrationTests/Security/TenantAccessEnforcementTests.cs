@@ -139,6 +139,7 @@ public class TenantAccessEnforcementTests
         var host = _factory.WithWebHostBuilder(b =>
         {
             b.UseSetting("Integrations:Features:StripeEnabled", "true");
+            b.UseSetting("Billing:NewCheckoutsEnabled", "true");
             b.UseSetting("Integrations:Stripe:PriceIds:restaurante_monthly", "price_teste");
             b.ConfigureTestServices(s =>
             {

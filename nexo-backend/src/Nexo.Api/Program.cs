@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Nexo.Api.Middleware;
 using Nexo.Application;
+using Nexo.Application.Integrations.Billing;
 using Nexo.Infrastructure;
 using Nexo.Infrastructure.Hubs;
 using Nexo.Infrastructure.Persistence;
@@ -552,6 +553,11 @@ try
     app.MapControllers();
     Nexo.Api.Health.HealthEndpoints.MapOrkenHealth(app);
     Nexo.Api.Orken.OrkenOperationsEndpoints.MapOrkenOperations(app);
+
+    // Every deploy says whether someone can start paying today. See docs/engineering/stripe-homologacao.md.
+    app.Logger.LogInformation("[Billing] New checkouts are {NewCheckouts} ({Setting})",
+        BillingRules.NewCheckoutsEnabled(app.Configuration[BillingRules.NewCheckoutsSetting]) ? "open" : "blocked",
+        BillingRules.NewCheckoutsSetting);
 
     Log.Information("Nexo API starting on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();
