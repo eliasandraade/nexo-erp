@@ -1239,7 +1239,6 @@ public class PlatformController : ControllerBase
     /// <summary>
     /// Removes all active session Redis entries for a user and marks DB rows as revoked.
     /// Does NOT save changes — caller must call SaveChangesAsync.
-    /// Also invalidates the SecurityStamp Redis cache so the middleware reloads from DB.
     /// </summary>
     private async Task RevokeUserSessionsAsync(Guid userId, CancellationToken ct)
     {
@@ -1253,9 +1252,6 @@ public class PlatformController : ControllerBase
             s.Revoke();
             await _cache.RemoveAsync($"refresh:valid:{s.RefreshJti}", ct);
         }
-
-        // Clear stamp cache so middleware reloads the new stamp from DB on next request
-        await _cache.RemoveAsync($"user:stamp:{userId}", ct);
     }
 
     /// <summary>Drops the cached tenant info and module access so a suspension or a module change applies at once.</summary>
