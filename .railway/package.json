@@ -1,0 +1,8 @@
+{
+  "name": "nexo-erp-railway",
+  "private": true,
+  "description": "Railway Infrastructure as Code SDK for railway config plan/apply.",
+  "devDependencies": {
+    "railway": "3.16.0"
+  }
+}
