@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useRef, useState } from "react";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useCreateTenant } from "../hooks/usePlatformTenants";
 import { platformErrorMessage } from "../services/platformErrors";
@@ -27,6 +27,7 @@ interface Props {
 
 export function CreateTenantDrawer({ open, onClose, onCreated }: Props) {
   const createMut = useCreateTenant();
+  const openerRef = useRef<HTMLElement | null>(null);
 
   const [form, setForm] = useState<CreateTenantInput>({
     companyName: "",
@@ -83,22 +84,21 @@ export function CreateTenantDrawer({ open, onClose, onCreated }: Props) {
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex">
-      {/* Backdrop */}
-      <div className="flex-1 bg-black/40" onClick={onClose} />
-
-      {/* Panel */}
-      <div className="w-full max-w-md bg-background border-l border-border flex flex-col overflow-hidden">
+    <Sheet open={open} onOpenChange={next => { if (!next) onClose(); }}>
+      {/* The sheet closes on Esc and on a click outside and keeps focus inside. Without a SheetTrigger it
+          has nowhere to return focus to on close, so it remembers what was focused when it opened. */}
+      <SheetContent
+        side="right"
+        aria-describedby={undefined}
+        onOpenAutoFocus={() => { openerRef.current = document.activeElement as HTMLElement | null; }}
+        onCloseAutoFocus={event => { event.preventDefault(); openerRef.current?.focus(); }}
+        className="w-full sm:max-w-md p-0 gap-0 border-border flex flex-col overflow-hidden"
+      >
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-          <h2 className="text-base font-semibold text-foreground">Novo cliente</h2>
-          <button onClick={onClose} className="p-1.5 rounded-md hover:bg-muted transition-colors">
-            <X className="h-4 w-4 text-muted-foreground" />
-          </button>
+          <SheetTitle className="text-base font-semibold text-foreground">Novo cliente</SheetTitle>
         </div>
 
         {/* Body */}
@@ -212,8 +212,8 @@ export function CreateTenantDrawer({ open, onClose, onCreated }: Props) {
             {createMut.isPending ? "Criando..." : "Criar cliente"}
           </button>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

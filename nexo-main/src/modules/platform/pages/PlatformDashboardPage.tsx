@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Building2, Store, Users, Package, Zap, ChevronRight, Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { usePlatformStats, usePlatformHealth } from "../hooks/usePlatformSystem";
 import { useMrr, useChurn } from "../hooks/usePlatformTenants";
@@ -212,10 +212,10 @@ export default function PlatformDashboardPage() {
         ) : (
           <div className="divide-y divide-border">
             {stats?.recentTenants?.map(t => (
-              <div
+              <Link
                 key={t.id}
-                onClick={() => navigate(`/platform/tenants/${t.id}`)}
-                className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors"
+                to={`/platform/tenants/${t.id}`}
+                className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <div>
                   <p className="text-sm font-medium text-foreground">{t.tradeName ?? t.companyName}</p>
@@ -229,7 +229,7 @@ export default function PlatformDashboardPage() {
                   </span>
                   <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}
