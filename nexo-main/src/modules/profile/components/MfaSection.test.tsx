@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { toast } from "sonner";
 import { MfaSection } from "./MfaSection";
+import { fetchMfaStatus } from "@/modules/auth/services/authService";
+import { getAccessToken, getRefreshToken, setTokens } from "@/services/api-client";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock("qrcode", () => ({ default: { toDataURL: vi.fn().mockResolvedValue("data:image/png;base64,") } }));
@@ -39,8 +41,21 @@ async function reachRecoveryCodes() {
 beforeEach(() => {
   vi.mocked(toast.error).mockClear();
   vi.mocked(toast.success).mockClear();
+  vi.mocked(fetchMfaStatus).mockClear();
 });
 afterEach(cleanup);
+
+describe("MfaSection after turning it on", () => {
+  it("drops the tokens the server just revoked, so no refetch ends the page before the codes are saved", async () => {
+    setTokens("tenant-access", "tenant-refresh");
+    await reachRecoveryCodes();
+
+    expect(getAccessToken()).toBeNull();
+    expect(getRefreshToken()).toBeNull();
+    expect(vi.mocked(fetchMfaStatus)).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("BBBB-2222")).toBeTruthy();
+  });
+});
 
 describe("MfaSection recovery codes copy", () => {
   it("copies every code and confirms", async () => {

@@ -273,7 +273,7 @@ public class ImpersonationCommercialActsTests
         public Task<string> GetOrCreateCustomerAsync(Guid tenantId, string email, string companyName, CancellationToken ct = default)
         {
             Calls.Add(nameof(GetOrCreateCustomerAsync));
-            return Task.FromResult("cus_teste");
+            return Task.FromResult($"cus_{tenantId:N}");
         }
 
         public Task<CheckoutSessionResult> CreateCheckoutSessionAsync(CreateCheckoutRequest request, CancellationToken ct = default)

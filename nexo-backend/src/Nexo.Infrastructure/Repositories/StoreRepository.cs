@@ -64,6 +64,12 @@ public class TenantRepository : ITenantRepository
     public async Task AddAsync(Tenant tenant, CancellationToken ct = default)
         => await _context.Tenants.AddAsync(tenant, ct);
 
+    public async Task SetStripeCustomerIdAsync(Guid tenantId, string stripeCustomerId, CancellationToken ct = default)
+        => await _context.Tenants
+            .IgnoreQueryFilters()
+            .Where(t => t.Id == tenantId)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.StripeCustomerId, stripeCustomerId), ct);
+
     public async Task SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);
 }

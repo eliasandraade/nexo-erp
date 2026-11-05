@@ -119,6 +119,36 @@ public class NewCheckoutsGuardTests
         stripe.Checkouts.Should().Be(1);
     }
 
+    // ── O cliente do Stripe fica gravado: sem ele, quem pagou não abre o portal ────────
+
+    [Fact]
+    public async Task An_opened_checkout_saves_the_customer_created_in_stripe()
+    {
+        var host = HostWith(new CountingBillingProvider(), value: "true", setValue: true);
+        var session = await NewTenantAsync(host);
+
+        using var response = await session.Client.PostAsJsonAsync(CheckoutRoute, ValidPlan);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await _factory.ServerLog.DescribeAsync(response));
+        (await StripeCustomerOfAsync(host, session.TenantId)).Should().Be($"cus_{session.TenantId:N}");
+    }
+
+    [Fact]
+    public async Task A_completed_checkout_saves_the_customer_and_the_portal_opens()
+    {
+        var (host, _, session) = await BlockedAsync();
+        var subId = NewSubscriptionId();
+        StripeState.Set(subId, "active");
+        (await StripeCustomerOfAsync(host, session.TenantId)).Should().BeNull();
+
+        using var delivered = await DeliverAsync(host, CheckoutEvent(session.TenantId, "build", subId));
+
+        delivered.StatusCode.Should().Be(HttpStatusCode.OK, await _factory.ServerLog.DescribeAsync(delivered));
+        (await StripeCustomerOfAsync(host, session.TenantId)).Should().StartWith("cus_");
+        using var portal = await session.Client.PostAsJsonAsync("/api/billing/portal", new { });
+        portal.StatusCode.Should().Be(HttpStatusCode.OK, await _factory.ServerLog.DescribeAsync(portal));
+    }
+
     // ── A ordem: Stripe desligado, depois o bloqueio, depois todo o resto ─────
 
     [Theory]

@@ -87,7 +87,6 @@ public sealed class MfaService : IMfaChallengeService
         _audit.Stage(AuditActions.UserMfaEnabled, AuditSeverity.Warning, "User", user.Id.ToString(),
             $"User '{user.Login}' turned on two-step verification; all sessions ended.", tenantId: user.TenantId, actorId: user.Id, actorName: user.FullName);
         await _users.SaveChangesAsync(ct);
-        if (_sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
         return new MfaEnabledDto(codes);
     }
 
