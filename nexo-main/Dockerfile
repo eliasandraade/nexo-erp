@@ -11,8 +11,11 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund --ignore-scripts
 
-# Build the production bundle. `vite build` runs in production mode and reads
-# the committed .env.production (bakes VITE_API_BASE_URL into the bundle).
+# Build the production bundle. `vite build` runs in production mode and reads the committed .env.production, which
+# bakes the production API into the bundle. The build argument overrides it per environment: Railway only hands a
+# service variable to a Dockerfile build when the ARG is declared, and without this one a staging bundle would call
+# the production API.
+ARG VITE_API_BASE_URL
 COPY . .
 RUN npm run build
 
