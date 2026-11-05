@@ -105,7 +105,8 @@ public class ExceptionHandlingMiddleware
     private static Guid? TenantOf(HttpContext ctx)
         => Guid.TryParse(ctx.User.FindFirst("tenantId")?.Value, out var id) ? id : null;
 
-    private static async Task WriteErrorAsync(
+    /// <summary>Writes the API's standard error body; also used by the middleware that answer without an exception.</summary>
+    internal static async Task WriteErrorAsync(
         HttpContext ctx,
         int statusCode,
         string error,
