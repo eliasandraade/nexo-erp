@@ -68,7 +68,7 @@ def check_url(url: str) -> str:
         raise Refused(f"URL inválida: {error}") from error
 
     if parts.scheme not in ("http", "https"):
-        raise Refused("A URL precisa começar com http:// ou https://.")
+        raise Refused("A URL precisa usar HTTP ou HTTPS.")
     if not host or not HOST_PATTERN.match(host):
         raise Refused("A URL não tem um host válido.")
     if parts.username or parts.password or "\\" in url:
@@ -76,7 +76,7 @@ def check_url(url: str) -> str:
     if host in PRODUCTION_HOSTS or host.endswith(".api.erp.orken.com.br"):
         raise Refused(f"{host} é produção. Este script só envia para staging ou para a máquina local.")
     if parts.scheme == "http" and host not in LOCAL_HOSTS:
-        raise Refused("http:// só para a máquina local. Use https:// em staging.")
+        raise Refused("HTTP sem TLS só para a máquina local. Use HTTPS em staging.")
     return url.strip()
 
 
@@ -215,10 +215,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def run(args: argparse.Namespace) -> int:
-    if args.list:
-        print("\n".join(EVENT_TYPES))
-        return 0
+def delivery_target(args: argparse.Namespace) -> tuple[str, str]:
+    """Valida o pedido antes de qualquer envio; devolve a URL e o segredo."""
     if not args.url:
         raise Refused("Informe --url (ou STRIPE_WEBHOOK_URL).")
     url = check_url(args.url)
@@ -227,31 +225,52 @@ def run(args: argparse.Namespace) -> int:
         raise Refused("Informe --event ou --all.")
     if args.repeat < 1 or args.concurrent < 1:
         raise Refused("--repeat e --concurrent precisam ser pelo menos 1.")
+    return url, secret
 
+
+def deliver_event(args: argparse.Namespace, url: str, body: str, signing_secret: str, timestamp: int | None) -> bool:
+    """Entrega o evento --repeat vezes, --concurrent de cada vez. False se algum status fugiu de --expect."""
+    event = json.loads(body)
+    as_expected = True
+    for _ in range(args.repeat):
+        signature = sign(body, signing_secret, timestamp)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrent) as pool:
+            deliveries = [pool.submit(deliver, url, body, signature, args.timeout) for _ in range(args.concurrent)]
+            statuses = [delivery.result() for delivery in deliveries]
+        print(f"{event['type']} {event['id']} -> {' '.join(str(s) for s in statuses)}")
+        if args.expect is not None and any(s != args.expect for s in statuses):
+            as_expected = False
+    return as_expected
+
+
+def run(args: argparse.Namespace) -> int:
+    if args.list:
+        print("\n".join(EVENT_TYPES))
+        return 0
+
+    url, secret = delivery_target(args)
     signing_secret = "whsec_outro_segredo_de_teste" if args.bad_signature else secret
     timestamp = int(time.time()) - 600 if args.stale_signature else None
-    failed = False
 
-    for event_type in EVENT_TYPES if args.all else (args.event,):
-        body = build_event(
-            event_type,
-            subscription=args.subscription,
-            status=args.status,
-            cancel_at_period_end=args.cancel_at_period_end,
-            tenant_id=args.tenant_id,
-            module=args.module,
-            event_id=args.event_id,
+    results = [
+        deliver_event(
+            args,
+            url,
+            build_event(
+                event_type,
+                subscription=args.subscription,
+                status=args.status,
+                cancel_at_period_end=args.cancel_at_period_end,
+                tenant_id=args.tenant_id,
+                module=args.module,
+                event_id=args.event_id,
+            ),
+            signing_secret,
+            timestamp,
         )
-        event_id = json.loads(body)["id"]
-        for _ in range(args.repeat):
-            signature = sign(body, signing_secret, timestamp)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrent) as pool:
-                statuses = list(pool.map(lambda _i: deliver(url, body, signature, args.timeout), range(args.concurrent)))
-            print(f"{event_type} {event_id} -> {' '.join(str(s) for s in statuses)}")
-            if args.expect is not None and any(s != args.expect for s in statuses):
-                failed = True
-
-    return 1 if failed else 0
+        for event_type in (EVENT_TYPES if args.all else (args.event,))
+    ]
+    return 0 if all(results) else 1
 
 
 def main(argv: list[str]) -> int:

@@ -16,6 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import stripe_webhook_sim as sim  # noqa: E402
 
 SECRET = "whsec_segredo_dos_testes"
+PLAIN_HTTP = "http"  # as URLs sem TLS abaixo são o que o script precisa recusar
 
 
 class UrlGuard(unittest.TestCase):
@@ -27,7 +28,7 @@ class UrlGuard(unittest.TestCase):
             "https://API.ERP.ORKEN.COM.BR/api/billing/webhook",
             "https://api.erp.orken.com.br./api/billing/webhook",
             "https://api.erp.orken.com.br:443/api/billing/webhook",
-            "http://api.erp.orken.com.br/api/billing/webhook",
+            f"{PLAIN_HTTP}://api.erp.orken.com.br/api/billing/webhook",
             "  https://api.erp.orken.com.br/api/billing/webhook  ",
             "https://x.api.erp.orken.com.br/api/billing/webhook",
             "https://localhost@api.erp.orken.com.br/api/billing/webhook",
@@ -38,7 +39,7 @@ class UrlGuard(unittest.TestCase):
                 sim.check_url(url)
 
     def test_other_schemes_and_broken_urls_are_refused(self):
-        for url in ("ftp://localhost/x", "localhost:5199/x", "https:///x", "http://exemplo.test/x", "http://[::1/x"):
+        for url in ("ftp://localhost/x", "localhost:5199/x", "https:///x", f"{PLAIN_HTTP}://exemplo.test/x", "http://[::1/x"):
             with self.subTest(url=url), self.assertRaises(sim.Refused):
                 sim.check_url(url)
 
@@ -107,7 +108,7 @@ class _Receiver(http.server.BaseHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, *args):
-        pass
+        pass  # sem log de cada pedido na saída dos testes
 
 
 class Delivery(unittest.TestCase):
