@@ -30,7 +30,7 @@ export function useCreateCustomer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (form: CustomerFormInput) => createCustomer(form),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: CUSTOMERS_KEY }); },
+    onSuccess:  () => { void qc.invalidateQueries({ queryKey: CUSTOMERS_KEY }); },
   });
 }
 
@@ -40,7 +40,7 @@ export function useUpdateCustomer(id: string) {
     mutationFn: (form: CustomerFormInput) => updateCustomer(id, form),
     onSuccess:  (updated) => {
       qc.setQueryData([...CUSTOMERS_KEY, id], updated);
-      qc.invalidateQueries({ queryKey: CUSTOMERS_KEY });
+      void qc.invalidateQueries({ queryKey: CUSTOMERS_KEY });
     },
   });
 }
@@ -51,8 +51,8 @@ export function useSetCustomerActive(id: string) {
     mutationFn: (active: boolean) =>
       active ? activateCustomer(id) : deactivateCustomer(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [...CUSTOMERS_KEY, id] });
-      qc.invalidateQueries({ queryKey: CUSTOMERS_KEY });
+      void qc.invalidateQueries({ queryKey: [...CUSTOMERS_KEY, id] });
+      void qc.invalidateQueries({ queryKey: CUSTOMERS_KEY });
     },
   });
 }

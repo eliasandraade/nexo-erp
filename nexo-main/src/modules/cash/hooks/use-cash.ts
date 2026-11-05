@@ -42,7 +42,7 @@ export function useOpenCashSession() {
   return useMutation({
     mutationFn: (req: OpenCashSessionRequest) => openSession(req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: CASH_KEY });
+      void qc.invalidateQueries({ queryKey: CASH_KEY });
     },
   });
 }
@@ -53,7 +53,7 @@ export function useCloseCashSession() {
     mutationFn: ({ id, req }: { id: string; req: CloseCashSessionRequest }) =>
       closeSession(id, req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: CASH_KEY });
+      void qc.invalidateQueries({ queryKey: CASH_KEY });
     },
   });
 }
@@ -64,7 +64,7 @@ export function useAddCashMovement() {
     mutationFn: ({ id, req }: { id: string; req: AddCashMovementRequest }) =>
       addMovement(id, req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: CASH_KEY });
+      void qc.invalidateQueries({ queryKey: CASH_KEY });
     },
   });
 }
