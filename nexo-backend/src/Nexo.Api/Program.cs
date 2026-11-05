@@ -75,6 +75,9 @@ try
     // placeholder or not random — otherwise anyone with the repo could forge tokens.
     Nexo.Infrastructure.Auth.JwtSecretPolicy.EnsureSafe(jwtSecret, builder.Environment.EnvironmentName);
 
+    // Fail fast when Stripe is on without its secrets, and when a live key reaches anything but production.
+    Nexo.Infrastructure.Integrations.Stripe.StripeStartupPolicy.EnsureSafe(builder.Configuration, builder.Environment.EnvironmentName);
+
     builder.Services
         .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(opts =>
