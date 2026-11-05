@@ -131,7 +131,10 @@ public class PlatformTaxRetentionController : ControllerBase
         => Ok(await _retention.ConfigureAsync(request, platform: true, ct));
 }
 
-/// <summary>How private tax files are served: as attachments, never sniffed or rendered, never cached, sandboxed.</summary>
+/// <summary>
+/// How private tax files are served: as attachments, never sniffed or rendered, never cached, sandboxed. The sandbox is added to the API's
+/// own Content-Security-Policy (set by the security headers middleware before any action runs), never in place of it.
+/// </summary>
 public static class TaxFileResults
 {
     public static IActionResult PrivateFile(this ControllerBase controller, TaxFileDownload file)
@@ -139,7 +142,7 @@ public static class TaxFileResults
         var headers = controller.Response.Headers;
         headers.XContentTypeOptions = "nosniff";
         headers.CacheControl = "no-store";
-        headers.ContentSecurityPolicy = "default-src 'none'; sandbox";
+        headers.ContentSecurityPolicy = $"{headers.ContentSecurityPolicy}; sandbox";
         headers["X-Content-SHA256"] = file.Sha256;
         return controller.File(file.Content, file.ContentType, file.FileName);
     }

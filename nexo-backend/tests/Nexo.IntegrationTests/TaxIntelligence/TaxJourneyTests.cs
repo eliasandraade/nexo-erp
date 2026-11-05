@@ -7,6 +7,8 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Nexo.Domain.Enums;
+using Nexo.Domain.Modules.TaxIntelligence;
 using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
@@ -86,6 +88,8 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
         var csv = await pilot.GetAsync($"/api/tax/simulations/{sim.GetProperty("id").GetGuid()}/export");
         csv.StatusCode.Should().Be(HttpStatusCode.OK);
         (await csv.Content.ReadAsStringAsync()).Should().Contain("imposto_calculado").And.NotContain("economia");
+        (await (await OtherCompanyAsync()).GetAsync($"/api/tax/simulations/{sim.GetProperty("id").GetGuid()}/export")).StatusCode
+            .Should().Be(HttpStatusCode.NotFound, "another company never exports this simulation");
 
         var oppId = calc.GetProperty("opportunityIds")[0].GetGuid();
         (await Post(gerente, $"/api/tax/opportunities/{oppId}/assign", new { userId = Guid.NewGuid() })).StatusCode
@@ -244,7 +248,11 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
             var revokedFile = revoked.GetProperty("evidence").EnumerateArray().Single(e => e.GetProperty("id").GetGuid() == current.GetProperty("id").GetGuid())
                 .GetProperty("file").GetProperty("id").GetGuid();
             (await gerente.GetAsync($"/api/tax/evidence-files/{revokedFile}/content")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
-            (await pilot.GetAsync($"/api/tax/evidence-files/{revokedFile}/content")).StatusCode.Should().Be(HttpStatusCode.OK);
+            var download = await pilot.GetAsync($"/api/tax/evidence-files/{revokedFile}/content");
+            download.StatusCode.Should().Be(HttpStatusCode.OK);
+            // The API's own policy stays whole on a private file: the sandbox is added to it, never in place of it.
+            download.Headers.GetValues("Content-Security-Policy").Single()
+                .Should().Be("default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; sandbox");
 
             // Another company never finds it.
             var other = await OtherCompanyAsync();
@@ -287,6 +295,91 @@ public sealed class TaxJourneyTests : TaxIsolatedSuite
             .StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await other.GetAsync($"/api/tax/decisions/{Guid.NewGuid()}/export")).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await other.GetAsync("/api/platform/tax/module")).StatusCode.Should().Be(HttpStatusCode.Forbidden, "a company token never reaches the platform");
+    }
+
+    /// <summary>
+    /// The id sweep of the shared suite reads GET routes only, and never sees this database. Here, with real rows: every new write route that takes
+    /// an id answers 404 to another company, and nothing changes.
+    /// </summary>
+    [Fact]
+    public async Task F_A_write_with_an_id_of_another_company_finds_nothing_and_changes_nothing()
+    {
+        var (admin, _) = await ReadyPilotAsync();
+        var pilot = Pilot(admin);
+        var gerente = Pilot(await UserAsync(admin, "gerente"));
+        var calc = await Json(await Post(pilot, "/api/tax/calculations", Operation(Unique("Isolamento"), gross: 2211m)));
+        var oppId = calc.GetProperty("opportunityIds")[0].GetGuid();
+        await Json(await Post(gerente, $"/api/tax/opportunities/{oppId}/review", new { }));
+        var uploaded = await UploadEvidenceAsync(gerente, oppId, Pdf("isolamento"), "contrato.pdf", "Other", null, "Contrato");
+        var evidence = uploaded.GetProperty("evidence").EnumerateArray().Last();
+        var evidenceId = evidence.GetProperty("id").GetGuid();
+        var fileId = evidence.GetProperty("file").GetProperty("id").GetGuid();
+        var creditId = (await Json(await Post(admin, "/api/tax/credits", new
+        {
+            tax = "Cbs", sourceDocumentType = "NF-e", sourceDocumentKey = (string?)null, supplierDocument = (string?)null,
+            acquiredOn = "2026-06-01", expiresOn = (string?)null, originalAmount = 10m, potentialAmount = 10m, potentialBasis = "teste",
+        }))).GetProperty("id").GetGuid();
+        var productId = (await Json(await Post(admin, "/api/products", new
+        {
+            code = $"ISO-{Guid.NewGuid():N}"[..12], name = "Produto da empresa", unit = "Un", salePrice = 10m, costPrice = 5m, trackStock = false,
+        }), HttpStatusCode.Created)).GetProperty("id").GetGuid();
+
+        async Task<string?> AssignedAsync()
+        {
+            using var scope = Factory.Services.CreateScope();
+            return await scope.ServiceProvider.GetRequiredService<NexoDbContext>().TaxOpportunities.IgnoreQueryFilters().AsNoTracking()
+                .Where(o => o.Id == oppId).Select(o => o.AssignedToName).SingleAsync();
+        }
+        var assignedBefore = await AssignedAsync();
+        var other = await OtherCompanyAsync();
+
+        (await Post(other, $"/api/tax/evidence-files/{fileId}/legal-hold", new { hold = true, reason = "x" })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await Post(other, $"/api/tax/evidence-files/{fileId}/revoke", new { reason = "x" })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await Post(other, $"/api/tax/opportunities/{oppId}/assign", new { userId = (Guid?)null })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await Post(other, $"/api/tax/opportunities/{oppId}/evidence/{evidenceId}/revoke", new { reason = "x" })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        await UploadEvidenceAsync(other, oppId, Pdf("alheio"), "alheio.pdf", "Other", null, "Alheio", HttpStatusCode.NotFound);
+        using (var replace = new MultipartFormDataContent())
+        {
+            replace.Add(new ByteArrayContent(Pdf("alheio")), "file", "alheio.pdf");
+            replace.Add(new StringContent("Alheio"), "description");
+            (await other.PostAsync($"/api/tax/opportunities/{oppId}/evidence/{evidenceId}/replace", replace)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        using (var toCredit = new MultipartFormDataContent())
+        {
+            toCredit.Add(new ByteArrayContent(Pdf("alheio")), "file", "alheio.pdf");
+            toCredit.Add(new StringContent("Credit"), "owner");
+            toCredit.Add(new StringContent(creditId.ToString()), "ownerId");
+            toCredit.Add(new StringContent("FiscalDocument"), "type");
+            (await other.PostAsync("/api/tax/evidence-files", toCredit)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+        (await Put(other, $"/api/tax/classifications/items/{productId}", new
+        {
+            itemKind = "Good", ncm = "61091000", nbs = (string?)null, cClassTrib = TestWebApplicationFactory.TestCClassTrib, notes = (string?)null,
+        })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // The reference in the body: a user of another company is never made responsible here.
+        Guid foreignUser;
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            var tenant = await db.TaxOpportunities.IgnoreQueryFilters().Where(o => o.Id == oppId).Select(o => o.TenantId).SingleAsync();
+            foreignUser = await db.Users.IgnoreQueryFilters().Where(u => u.TenantId != tenant && u.Role == UserRole.Diretoria && u.Status == UserStatus.Active)
+                .Select(u => u.Id).FirstAsync();
+        }
+        (await Post(gerente, $"/api/tax/opportunities/{oppId}/assign", new { userId = foreignUser })).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        (await AssignedAsync()).Should().Be(assignedBefore);
+        using (var scope = Factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            var file = await db.TaxEvidenceFiles.IgnoreQueryFilters().AsNoTracking().SingleAsync(f => f.Id == fileId);
+            file.LegalHold.Should().BeFalse();
+            file.Status.Should().Be(TaxFileStatus.Active);
+            (await db.TaxOpportunityEvidence.IgnoreQueryFilters().AsNoTracking().CountAsync(e => e.OpportunityId == oppId))
+                .Should().Be(uploaded.GetProperty("evidence").GetArrayLength(), "no evidence was added or replaced");
+            (await db.TaxEvidenceFiles.IgnoreQueryFilters().AsNoTracking().CountAsync(f => f.OwnerId == creditId)).Should().Be(0);
+            (await db.TaxItemClassifications.IgnoreQueryFilters().AsNoTracking().AnyAsync(c => c.ProductId == productId)).Should().BeFalse();
+        }
     }
 
     // ── G: credit lifecycle ─────────────────────────────────────────────────────
