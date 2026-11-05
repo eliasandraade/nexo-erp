@@ -27,7 +27,7 @@ public interface IProductRepository
         CancellationToken ct = default);
     Task<PagedResult<ProductDto>> GetPagedAsync(
         int page, int pageSize,
-        string? search, bool includeInactive, bool? isIngredient,
+        string? search, bool includeInactive, bool onlyInactive, bool? isIngredient,
         Guid? categoryId, string? unit,
         CancellationToken ct = default);
     Task<bool> CodeExistsAsync(string code, Guid? excludeId = null, CancellationToken ct = default);

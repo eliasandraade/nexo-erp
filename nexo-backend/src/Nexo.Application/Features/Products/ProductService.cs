@@ -30,10 +30,10 @@ public class ProductService
 
     public Task<PagedResult<ProductDto>> GetPagedAsync(
         int page, int pageSize,
-        string? search, bool includeInactive, bool? isIngredient,
+        string? search, bool includeInactive, bool onlyInactive, bool? isIngredient,
         Guid? categoryId, string? unit,
         CancellationToken ct = default)
-        => _products.GetPagedAsync(page, pageSize, search, includeInactive, isIngredient, categoryId, unit, ct);
+        => _products.GetPagedAsync(page, pageSize, search, includeInactive, onlyInactive, isIngredient, categoryId, unit, ct);
 
     public async Task<ProductDto> GetByIdAsync(Guid id, CancellationToken ct = default)
     {

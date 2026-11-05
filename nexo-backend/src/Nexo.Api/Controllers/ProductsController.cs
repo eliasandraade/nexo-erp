@@ -36,6 +36,7 @@ public class ProductsController : ControllerBase
         [FromQuery] int pageSize = 50,
         [FromQuery] string? search = null,
         [FromQuery] bool includeInactive = false,
+        [FromQuery] bool onlyInactive = false,
         [FromQuery] bool? isIngredient = null,
         [FromQuery] Guid? categoryId = null,
         [FromQuery] string? unit = null,
@@ -44,7 +45,7 @@ public class ProductsController : ControllerBase
         page     = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 200);
         var result = await _service.GetPagedAsync(
-            page, pageSize, search, includeInactive, isIngredient, categoryId, unit, ct);
+            page, pageSize, search, includeInactive, onlyInactive, isIngredient, categoryId, unit, ct);
         return Ok(result with { Items = result.Items.Select(VisibleTo).ToList() });
     }
 
