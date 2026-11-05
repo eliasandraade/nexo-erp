@@ -43,6 +43,7 @@ import type {
   CreateCouponRequest,
 } from "../api/restaurante.api";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { comparePtBr } from "@/lib/collation";
 import { copyToClipboard } from "@/lib/clipboard";
 import { toast } from "sonner";
 import type { UpdatePortalInfoRequest } from "../types";
@@ -75,7 +76,7 @@ const FORTALEZA_NEIGHBORHOODS = [
   "São Gerardo", "Sapiranga", "Serrinha", "Siqueira",
   "Tauape", "Varjota", "Vila Ellery", "Vila Velha",
   "Washington Soares",
-].sort();
+].sort(comparePtBr);
 
 // ── Slug normalization ─────────────────────────────────────────────────────────
 function normalizeSlug(raw: string): string {
