@@ -67,6 +67,8 @@ public class SaleService
 
     public async Task<SaleDto> CreateAsync(CreateSaleRequest request, CancellationToken ct = default)
     {
+        // Numa transação (ou na que já existe, no fechamento da comanda): a trava da numeração dura até o commit.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
         var number = await _sales.GetNextNumberAsync(ct);
 
         var sale = Sale.Create(
@@ -79,6 +81,7 @@ public class SaleService
 
         await _sales.AddAsync(sale, ct);
         await _sales.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
         return MapToDto(sale, [], []);
     }
 
