@@ -388,6 +388,13 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+/** A refusal without our JSON body (it came from the edge proxy): its status text is empty or in English. */
+function uploadRefusalText(status: number): string | undefined {
+  if (status === 429) return "Muitas tentativas. Aguarde um pouco e tente de novo.";
+  if (status === 413) return "Arquivo grande demais para o envio.";
+  return undefined;
+}
+
 async function requestForm<T>(path: string, form: FormData, isRetry = false): Promise<T> {
   const url = `${BASE_URL}${path}`;
 
@@ -417,7 +424,7 @@ async function requestForm<T>(path: string, form: FormData, isRetry = false): Pr
     if (Array.isArray(err?.details) && err.details.length > 0) {
       message = err.details.join(" | ");
     } else {
-      message = err?.error ?? err?.message ?? message;
+      message = err?.error ?? err?.message ?? uploadRefusalText(res.status) ?? message;
     }
     throw new ApiError(res.status, message, err?.code);
   }
@@ -472,7 +479,7 @@ async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormDat
     if (refused) throw refused;
     const details = Array.isArray(body?.details) && body.details.length > 0 ? body.details.map(String) : undefined;
     const serverMessage = body?.error ?? body?.message ?? undefined;
-    let message = details ? details.join(" | ") : serverMessage ?? res.statusText;
+    let message = details ? details.join(" | ") : serverMessage ?? uploadRefusalText(res.status) ?? res.statusText;
     if (res.status >= 500 && body?.requestId) message = `${message} (código: ${body.requestId})`;
     throw new ApiError(res.status, message, body?.code, body?.requestId, details, serverMessage);
   }
