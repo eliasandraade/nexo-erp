@@ -50,6 +50,20 @@ public sealed class BuildRealityCaptureService
     public sealed record CreateCapture(string Type, string Title, DateTimeOffset? CapturedAt, Guid? StageId, Guid? ZoneId,
         string? ElementExternalId, string? Notes, bool ClientVisible);
 
+    /// <summary>
+    /// What can be refused before reading a capture's body: the project, a place to store it, a type that does not exist. Returns the
+    /// largest file the upload may carry: the limit of the type when it is known, otherwise the largest of all.
+    /// </summary>
+    public async Task<long> EnsureCanUploadAsync(Guid projectId, string? type, CancellationToken ct)
+    {
+        await BuildScope.EnsureProjectAsync(_db, Tid, projectId, ct);
+        if (!_flags.StorageEnabled || !_storage.CanStorePrivateFiles)
+            throw new BuildStorageUnavailableException("Armazenamento de arquivos indisponível.");
+        if (string.IsNullOrWhiteSpace(type)) return _options.MaxCaptureBytes;
+        var parsed = BuildTwinParse.Enum<BuildRealityCaptureType>(type, "Tipo de captura");
+        return Enum.GetValues<BuildCaptureFamily>().Where(f => BuildCaptureFormats.Accepts(parsed, f)).Max(_options.MaxCaptureBytesFor);
+    }
+
     public async Task<BuildRealityCaptureDto> CreateAsync(Guid projectId, CreateCapture r, BuildUploadBuffer file, CancellationToken ct)
     {
         await BuildScope.EnsureProjectAsync(_db, Tid, projectId, ct);

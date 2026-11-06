@@ -1,7 +1,11 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.RateLimiting;
 using Nexo.Api.Authorization;
 using Nexo.Api.Filters;
+using Nexo.Api.Uploads;
 using Nexo.Application.Modules.Build;
 using Nexo.Domain.Modules.Build;
 using Nexo.Infrastructure.Modules.Build;
@@ -26,12 +30,14 @@ public class BuildAiController : ControllerBase
     private readonly BuildAiService _ai;
     private readonly BuildRiskService _risk;
     private readonly BuildDocumentService _documents;
+    private readonly UploadAdmission _uploads;
 
-    public BuildAiController(BuildAiService ai, BuildRiskService risk, BuildDocumentService documents)
+    public BuildAiController(BuildAiService ai, BuildRiskService risk, BuildDocumentService documents, UploadAdmission uploads)
     {
         _ai = ai;
         _risk = risk;
         _documents = documents;
+        _uploads = uploads;
     }
 
     // ── Generation ────────────────────────────────────────────────────────────
@@ -107,13 +113,33 @@ public class BuildAiController : ControllerBase
     /// Alvara, NotaFiscal, Laudo, Manual, Garantia, Foto, Outro), <c>title?</c>, <c>validUntil?</c>, <c>clientVisible?</c>.
     /// </summary>
     [HttpPost("projects/{projectId:guid}/documents")]
-    [BuildUploadLimit(BuildUploadKind.Document)]
-    public async Task<ActionResult<BuildDocumentDto>> UploadDocument(Guid projectId, IFormFile? file, [FromForm] string? category,
-        [FromForm] string? title, [FromForm] DateOnly? validUntil, [FromForm] bool? clientVisible, CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    [EnableRateLimiting(UploadAdmission.RateLimitPolicy)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file", "category", "title", "validUntil", "clientVisible")]
+    public async Task<ActionResult<BuildDocumentDto>> UploadDocument(Guid projectId, CancellationToken ct)
     {
-        await using var buffer = await BuildTwinController.BufferAsync(file, BuildDocument.MaxBytes, ct);
+        await _documents.EnsureCanUploadAsync(projectId, ct);
+        var read = await _uploads.ReadAsync(HttpContext, BuildDocument.MaxBytes + UploadAdmission.MultipartOverheadBytes,
+            "Documento grande demais: o limite é 20 MB.", ct);
+        if (read.Refusal is { } refusal) return refusal.ToResult(HttpContext);
+
+        var fields = new DocumentFields();
+        if (!await TryUpdateModelAsync(fields, "", new FormValueProvider(BindingSource.Form, read.Form!, CultureInfo.CurrentCulture)))
+            return ValidationProblem(ModelState);
+
+        await using var buffer = await BuildTwinController.BufferAsync(read.Form!, BuildDocument.MaxBytes, ct);
         return StatusCode(StatusCodes.Status201Created,
-            await _documents.CreateAsync(projectId, category, title, validUntil, clientVisible ?? false, buffer, ct));
+            await _documents.CreateAsync(projectId, fields.Category, fields.Title, fields.ValidUntil, fields.ClientVisible ?? false, buffer, ct));
+    }
+
+    /// <summary>The text fields of the form, converted by the framework's binders once the form has been read.</summary>
+    private sealed class DocumentFields
+    {
+        public string? Category { get; set; }
+        public string? Title { get; set; }
+        public DateOnly? ValidUntil { get; set; }
+        public bool? ClientVisible { get; set; }
     }
 
     [HttpGet("documents/{id:guid}")]
