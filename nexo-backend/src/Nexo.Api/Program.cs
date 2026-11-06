@@ -510,10 +510,6 @@ try
     app.UseMiddleware<UploadBodyMiddleware>();
     // Before authentication and the limiters: a page of another site spends nothing of anybody.
     app.UseMiddleware<AuthOriginGuardMiddleware>();
-    // Before authentication and the limiters: a page of another site spends nothing of anybody.
-    app.UseMiddleware<AuthOriginGuardMiddleware>();
-    // Before authentication and the limiters: a page of another site spends nothing of anybody.
-    app.UseMiddleware<AuthOriginGuardMiddleware>();
     app.UseAuthentication();
     // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
     // HttpContext.User is empty, so every caller, even one without a session, shared a single budget per path.
