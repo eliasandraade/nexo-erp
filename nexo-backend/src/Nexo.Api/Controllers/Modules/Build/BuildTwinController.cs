@@ -3,8 +3,10 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Nexo.Api.Authorization;
 using Nexo.Api.Filters;
+using Nexo.Api.Uploads;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Build;
 using Nexo.Infrastructure.Modules.Build;
@@ -32,15 +34,17 @@ public class BuildTwinController : ControllerBase
     private readonly BuildTenantSettingsService _settings;
     private readonly BuildTwinOptions _options;
     private readonly ICurrentTenant _tenant;
+    private readonly UploadAdmission _uploads;
 
     public BuildTwinController(BuildModelService models, BuildTwinService twin, BuildTenantSettingsService settings,
-        BuildTwinOptions options, ICurrentTenant tenant)
+        BuildTwinOptions options, ICurrentTenant tenant, UploadAdmission uploads)
     {
         _models = models;
         _twin = twin;
         _settings = settings;
         _options = options;
         _tenant = tenant;
+        _uploads = uploads;
     }
 
     /// <summary>The company's Build feature flags (Build3D, BuildAI, BuildVision, BuildPredict) — changed only by the platform.</summary>
@@ -56,15 +60,21 @@ public class BuildTwinController : ControllerBase
     /// <summary>
     /// New model with its first version. Multipart: <c>file</c>, <c>name</c>, <c>discipline</c> (Arquitetura, Estrutura,
     /// Hidráulica, Elétrica, Outro). 201 with the queued (or ready, for PDF/image) version; 422 model_format_rejected (RVT/DWG,
-    /// recorded without storing the file) or another 422 code for refused files (nothing recorded).
+    /// recorded without storing the file) or another 422 code for refused files (nothing recorded). The 3D flag, the project and
+    /// the storage are checked before the body is read.
     /// </summary>
     [HttpPost("projects/{projectId:guid}/models")]
-    [BuildUploadLimit(BuildUploadKind.Model)]
-    public async Task<IActionResult> CreateModel(Guid projectId, IFormFile? file, [FromForm] string? name, [FromForm] string? discipline,
-        CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    [EnableRateLimiting(UploadAdmission.RateLimitPolicy)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file", "name", "discipline")]
+    public async Task<IActionResult> CreateModel(Guid projectId, CancellationToken ct)
     {
-        await using var buffer = await BufferAsync(file, _options.MaxModelBytes, ct);
-        return Upload(await _models.CreateModelAsync(projectId, name, discipline, buffer, ct));
+        await _models.EnsureCanUploadToProjectAsync(projectId, ct);
+        var read = await ReadModelFormAsync(ct);
+        if (read.Refusal is { } refusal) return refusal.ToResult(HttpContext);
+        await using var buffer = await BufferAsync(read.Form!, _options.MaxModelBytes, ct);
+        return Upload(await _models.CreateModelAsync(projectId, read.Form!["name"].ToString(), read.Form["discipline"].ToString(), buffer, ct));
     }
 
     [HttpGet("models/{modelId:guid}")]
@@ -83,10 +93,16 @@ public class BuildTwinController : ControllerBase
 
     /// <summary>New version of a model (multipart <c>file</c>); same rules as the first upload.</summary>
     [HttpPost("models/{modelId:guid}/versions")]
-    [BuildUploadLimit(BuildUploadKind.Model)]
-    public async Task<IActionResult> AddVersion(Guid modelId, IFormFile? file, CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    [EnableRateLimiting(UploadAdmission.RateLimitPolicy)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file")]
+    public async Task<IActionResult> AddVersion(Guid modelId, CancellationToken ct)
     {
-        await using var buffer = await BufferAsync(file, _options.MaxModelBytes, ct);
+        await _models.EnsureCanUploadVersionAsync(modelId, ct);
+        var read = await ReadModelFormAsync(ct);
+        if (read.Refusal is { } refusal) return refusal.ToResult(HttpContext);
+        await using var buffer = await BufferAsync(read.Form!, _options.MaxModelBytes, ct);
         return Upload(await _models.AddVersionAsync(modelId, buffer, ct));
     }
 
@@ -104,10 +120,16 @@ public class BuildTwinController : ControllerBase
     /// 422 viewer_mismatch when too few node names are elements of the version.
     /// </summary>
     [HttpPut("models/versions/{versionId:guid}/viewer")]
-    [BuildUploadLimit(BuildUploadKind.Model)]
-    public async Task<ActionResult<BuildModelVersionDto>> AttachViewer(Guid versionId, IFormFile? file, CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    [EnableRateLimiting(UploadAdmission.RateLimitPolicy)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file")]
+    public async Task<ActionResult<BuildModelVersionDto>> AttachViewer(Guid versionId, CancellationToken ct)
     {
-        await using var buffer = await BufferAsync(file, _options.MaxModelBytes, ct);
+        await _models.EnsureCanAttachViewerAsync(versionId, ct);
+        var read = await ReadModelFormAsync(ct);
+        if (read.Refusal is { } refusal) return refusal.ToResult(HttpContext);
+        await using var buffer = await BufferAsync(read.Form!, _options.MaxModelBytes, ct);
         return Ok(await _models.AttachViewerAsync(versionId, buffer, ct));
     }
 
@@ -219,14 +241,19 @@ public class BuildTwinController : ControllerBase
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    internal static async Task<BuildUploadBuffer> BufferAsync(IFormFile? file, long maxBytes, CancellationToken ct)
+    private Task<UploadRead> ReadModelFormAsync(CancellationToken ct)
+        => _uploads.ReadAsync(HttpContext, _options.MaxModelBytes + UploadAdmission.MultipartOverheadBytes,
+            $"Arquivo grande demais: o limite é {_options.MaxModelBytes / (1024 * 1024)} MB.", ct);
+
+    /// <summary>The form's <c>file</c>, hashed where the form already spooled it: there is no second copy on disk.</summary>
+    internal static async Task<BuildUploadBuffer> BufferAsync(IFormCollection form, long maxBytes, CancellationToken ct)
     {
+        var file = form.Files.GetFile("file");
         if (file is null || file.Length == 0)
             throw new Nexo.Domain.Exceptions.DomainException("Envie o arquivo no campo file.", "file_required");
         if (file.Length > maxBytes)
             throw new BuildFileTooLargeException($"Arquivo grande demais: o limite é {maxBytes / (1024 * 1024)} MB.");
-        await using var stream = file.OpenReadStream();
-        return await BuildUploadBuffer.FromAsync(stream, file.FileName, maxBytes, ct);
+        return await BuildUploadBuffer.FromAsync(file.OpenReadStream(), file.FileName, ct);
     }
 
     private IActionResult Upload(BuildModelUploadResultDto result)

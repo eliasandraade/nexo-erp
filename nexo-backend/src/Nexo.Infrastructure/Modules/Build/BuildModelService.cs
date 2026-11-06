@@ -116,6 +116,44 @@ public sealed class BuildModelService
 
     // ── Uploads ───────────────────────────────────────────────────────────────
 
+    /// <summary>What can be refused before reading a model's body: the 3D flag, the project, a place to store it.</summary>
+    public async Task EnsureCanUploadToProjectAsync(Guid projectId, CancellationToken ct)
+    {
+        await _settings.EnsureBuild3DAsync(Tid, ct);
+        await BuildScope.EnsureProjectAsync(_db, Tid, projectId, ct);
+        EnsureStorageAccepts();
+    }
+
+    /// <summary>What can be refused before reading a new version's body.</summary>
+    public async Task EnsureCanUploadVersionAsync(Guid modelId, CancellationToken ct)
+    {
+        await _settings.EnsureBuild3DAsync(Tid, ct);
+        if (!await _db.BldModels.AnyAsync(m => m.TenantId == Tid && m.Id == modelId, ct))
+            throw new NotFoundException("BuildModel", modelId);
+        EnsureStorageAccepts();
+    }
+
+    /// <summary>What can be refused before reading a viewer file's body.</summary>
+    public async Task EnsureCanAttachViewerAsync(Guid versionId, CancellationToken ct)
+    {
+        await _settings.EnsureBuild3DAsync(Tid, ct);
+        EnsureAcceptsViewer(await LoadVersionAsync(versionId, tracking: false, ct));
+        EnsureStorageAccepts();
+    }
+
+    /// <summary>Model files are always private: with no private bucket they have nowhere to go (never the public one).</summary>
+    private void EnsureStorageAccepts()
+    {
+        if (!_flags.StorageEnabled || !_storage.CanStorePrivateFiles)
+            throw new BuildStorageUnavailableException("Armazenamento de arquivos indisponível.");
+    }
+
+    private static void EnsureAcceptsViewer(BuildModelVersion v)
+    {
+        if (v.SourceFormat != BuildModelSourceFormat.Ifc || v.Status != BuildModelVersionStatus.Ready)
+            throw new DomainException("O arquivo do visualizador só pode ser anexado a uma versão IFC já processada.", "viewer_requires_parsed_ifc");
+    }
+
     public async Task<BuildModelUploadResultDto> CreateModelAsync(Guid projectId, string? name, string? discipline,
         BuildUploadBuffer file, CancellationToken ct)
     {
@@ -211,8 +249,7 @@ public sealed class BuildModelService
     {
         await _settings.EnsureBuild3DAsync(Tid, ct);
         var v = await LoadVersionAsync(versionId, tracking: true, ct);
-        if (v.SourceFormat != BuildModelSourceFormat.Ifc || v.Status != BuildModelVersionStatus.Ready)
-            throw new DomainException("O arquivo do visualizador só pode ser anexado a uma versão IFC já processada.", "viewer_requires_parsed_ifc");
+        EnsureAcceptsViewer(v);
         if (BuildFileSignatures.Sniff(file.Head) != BuildFileKind.Glb)
             throw new BuildModelFileException("Envie o visualizador como GLB (glTF binário 2.0).", "invalid_file_content");
 

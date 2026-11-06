@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Nexo.Api.Middleware;
+using Nexo.Api.Uploads;
 using Nexo.Application;
 using Nexo.Application.Integrations.Billing;
 using Nexo.Infrastructure;
@@ -368,7 +369,11 @@ try
         AddIpPolicy("build-portal-auth", "BuildPortalAuth", 10, 300);
         // client decisions (change orders, selections): writes, so tighter than reads
         AddIpPolicy("build-portal-decision", "BuildPortalDecision", 30, 300);
+        // Content-Security-Policy reports (RateLimiting:CspReport:*): its rejection is the same 204, so it has a class of its own.
+        options.AddPolicy<string, Nexo.Api.Security.CspReportRateLimitPolicy>(Nexo.Api.Security.CspReportRateLimitPolicy.Name);
     });
+
+    builder.Services.AddUploadLimits(builder.Configuration);
 
     // ── Controllers ───────────────────────────────────────────────────────────
     // JsonStringEnumConverter: serializes all enums as their string names
@@ -516,6 +521,7 @@ try
         });
     }
 
+    app.UseMiddleware<UploadBodyMiddleware>();
     app.UseAuthentication();
     // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
     // HttpContext.User is empty, so every caller, even one without a session, shared a single budget per path.
@@ -565,6 +571,7 @@ try
     app.Logger.LogInformation("[Billing] New checkouts are {NewCheckouts} ({Setting})",
         BillingRules.NewCheckoutsEnabled(app.Configuration[BillingRules.NewCheckoutsSetting]) ? "open" : "blocked",
         BillingRules.NewCheckoutsSetting);
+    app.Services.GetRequiredService<UploadAdmission>().LogCeiling(app.Logger);
 
     Log.Information("Nexo API starting on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();

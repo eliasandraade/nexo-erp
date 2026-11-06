@@ -9,8 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { ApiError } from "@/services/api-client";
 import { uploadPrivateFile } from "@/services/storage.api";
+import { uploadErrorMessage } from "@/services/upload-error";
 import { useSaveSelectionOption } from "../../hooks/use-build-commercial";
 import type { BuildSelectionOptionDto } from "../../api/build-commercial.api";
 import { parseDecimal } from "../../lib/format";
@@ -64,9 +64,7 @@ export function SelectionOptionDialog({ projectId, selectionId, option, onClose 
       setImageKey(key);
       setPreview(url);
     } catch (e) {
-      toast.error(e instanceof ApiError && e.status === 404
-        ? "Upload de imagens indisponível neste ambiente."
-        : "Falha ao enviar a imagem. Tente novamente.");
+      toast.error(uploadErrorMessage(e, "Falha ao enviar a imagem. Tente novamente.", "Upload de imagens indisponível neste ambiente."));
     } finally {
       setUploading(false);
     }
