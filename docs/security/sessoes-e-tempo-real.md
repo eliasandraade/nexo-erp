@@ -104,10 +104,11 @@ corpo e nenhum cookie é gravado nem lido.
 - **Nome do cookie:** lido do cabeçalho cru, por nome exato. Outra grafia não vale, e o nome exato duas vezes também não.
 - **Recarregar:** a aba perde o access, então cada carregamento renova uma vez antes de chamar a API. Isso gasta o orçamento da sessão: são 300 carregamentos ou abas novas por 15 min.
 - **Várias abas:** `navigator.locks` põe as renovações em fila, e `BroadcastChannel("orken-session")` entrega o token novo, o login, a troca de loja e o logout. Quem estava na fila e ouviu o token não renova.
-- **Reload no meio de uma renovação:** a renovação vai com `keepalive`, para a resposta com o cookie novo chegar mesmo depois de a página sair. Quem vier nesse meio-tempo recebe 409 e tenta de novo.
+- **Reload no meio de uma renovação:** a renovação vai com `keepalive`, para a resposta com o cookie novo chegar mesmo depois de a página sair. Quem vier nesse meio-tempo recebe 409, e o 409 não encerra nada (veja "Renovação"). Com uma diferença: nenhum script vê se o cookie mudou, então a aba
+  olha mais uma vez, depois de 3 s, e uma página recém-carregada olha uma vez mesmo durante a espera de um 409. Se a resposta demorar mais que isso, a tela mostra o aviso temporário até o fim da carência, e recarregar resolve. Dentro da carência, apresentar o cookie antigo não muda nada no servidor. São no máximo dois 409 por carregamento.
 - **Logout:** só precisa do cookie, porque a aba pode ter acabado de carregar. Vai sem `Authorization`, porque um access recusado o barraria antes de encerrar a sessão.
 - **Logout que não chegou:** a tela sai na hora, mas só a API remove o cookie. `nexo:pending_sign_out`, sem credencial, faz o pedido ir de novo no próximo carregamento, ou antes do próximo login na mesma página. Um 4xx encerra a marca; rede fora, 429 e 5xx a mantêm.
-- **Quem desiste depois de um 409, no modo cookie:** avisa o servidor pelo próprio cookie, como no modo padrão.
+- **Logout que outra aba ouviu só pelo `storage`:** num navegador sem `BroadcastChannel`, o evento de `nexo:session` também apaga o access da memória. Sem isso, a aba se achava logada e descartava o logout pendente no login seguinte.
 - **Respostas guardadas:** as rotas de autenticação respondem `Cache-Control: no-store`, nos dois modos.
 - **Sessão encerrada pelo servidor:** quem recarrega não tem access para ouvir `session_revoked`. No modo cookie, a resposta 401 da renovação traz esse código quando o carimbo mudou, para a tela dizer o mesmo.
 - **Armazenamento limpo com o cookie vivo:** a aba aberta continua. No próximo carregamento de uma página que pede sessão ou do login, uma renovação recupera a sessão. Quem saiu não volta: `nexo:signed_out`, sem credencial, impede essa

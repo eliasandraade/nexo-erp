@@ -11,6 +11,8 @@ const ACCESS = "nexo:access_token";
 const REFRESH = "nexo:refresh_token";
 const SESSION = "nexo:session";
 const SIGNED_OUT = "nexo:signed_out";
+const WAIT = "nexo:renewal_wait";
+const SESSION_RENEWAL_UNAVAILABLE_CODE = "session_renewal_unavailable";
 const MODE_HEADER = "X-Orken-Session";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -435,81 +437,176 @@ describe("the cookie build", () => {
       expect(urls().filter((u) => u.endsWith("/auth/refresh"))).toHaveLength(1);
     });
 
-    it("with no word from any tab it tries again, and by then the browser has the new cookie", async () => {
-      const { apiClient, getAccessToken } = await load();
+    const conflict = (seconds = 27) => json({ code: "refresh_already_rotated" }, 409, { "Retry-After": String(seconds) });
+    const renewals = () => urls().filter((u) => u.endsWith("/auth/refresh"));
+    const signOuts = () => urls().filter((u) => u.endsWith("/auth/logout"));
+    const graceIsOver = () => {
+      const wait = JSON.parse(localStorage.getItem(WAIT)!) as Record<string, unknown>;
+      localStorage.setItem(WAIT, JSON.stringify({ ...wait, until: Date.now() - 1 }));
+    };
+
+    it("with no word from any tab it looks once more, after the wait, and by then the browser has the new cookie", async () => {
+      const { apiClient, getAccessToken, ROTATION_WAIT_MS } = await load();
       localStorage.setItem(SESSION, tenantSession());
       const access = accessOf("novo");
-      fetchMock.mockResolvedValueOnce(json({ code: "refresh_already_rotated" }, 409));
+      fetchMock.mockResolvedValueOnce(conflict());
       fetchMock.mockResolvedValueOnce(json({ accessToken: access }));
       fetchMock.mockResolvedValueOnce(json([]));
+      const started = Date.now();
 
       await apiClient.get("/a");
 
+      expect(Date.now() - started, "no burst: it waited before looking").toBeGreaterThanOrEqual(ROTATION_WAIT_MS - 50);
       expect(getAccessToken()).toBe(access);
-      expect(urls().filter((u) => u.endsWith("/auth/refresh"))).toHaveLength(2);
-    });
-
-    it("giving up, it tells the server first, with the cookie: someone else may hold the new one", async () => {
-      const { apiClient, hasSession } = await load();
-      localStorage.setItem(SESSION, tenantSession());
-      let sessionWhenCalled: boolean | null = null;
-      fetchMock.mockImplementation(async (url: string) => {
-        if (url.endsWith("/auth/logout")) {
-          sessionWhenCalled = hasSession();
-          return empty();
-        }
-        return json({ code: "refresh_already_rotated" }, 409);
-      });
-
-      await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 401 });
-
-      const signOut = fetchMock.mock.calls.filter(([url]) => (url as string).endsWith("/auth/logout"));
-      expect(signOut).toHaveLength(1);
-      const init = signOut[0][1] as RequestInit & { headers: Record<string, string> };
-      expect(init.method).toBe("POST");
-      expect(init.credentials).toBe("include");
-      expect(init.keepalive).toBe(true);
-      expect(init.headers[MODE_HEADER]).toBe("cookie");
-      expect(init.headers).not.toHaveProperty("Authorization");
-      expect(sessionWhenCalled).toBe(true);
-      expect(hasSession()).toBe(false);
+      expect(renewals()).toHaveLength(2);
+      expect(localStorage.getItem(WAIT), "the new cookie ends the wait").toBeNull();
     }, 10_000);
 
-    it("a session not yet migrated tells it with the token it has", async () => {
+    it("still a 409 then: no verdict, the session stays and nothing signs out by itself", async () => {
+      const { apiClient, hasSession, onSessionEnded } = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      const reasons: string[] = [];
+      onSessionEnded((r) => reasons.push(r));
+      fetchMock.mockImplementation(async () => conflict());
+
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE, status: 409 });
+
+      expect(renewals(), "the burst is over: two presentations, not seven").toHaveLength(2);
+      expect(signOuts()).toHaveLength(0);
+      expect(hasSession()).toBe(true);
+      expect(localStorage.getItem(SESSION)).toBe(tenantSession());
+      expect(localStorage.getItem(SIGNED_OUT)).toBeNull();
+      expect(reasons).toEqual([]);
+    }, 10_000);
+
+    it("the rest of this page does not present it again until the time the server gave", async () => {
+      const { apiClient } = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      fetchMock.mockImplementation(async () => conflict());
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE });
+
+      await expect(apiClient.get("/b")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE });
+
+      expect(renewals()).toHaveLength(2);
+      expect(JSON.parse(localStorage.getItem(WAIT)!).until).toBeGreaterThanOrEqual(Date.now() + 20_000);
+    }, 10_000);
+
+    // A page reloaded during a renewal: the answer that page never read may have left a new cookie, and no script can see it. Waiting out the grace would leave a person who pressed F5
+    // twice with a dead screen for half a minute, and presenting it costs nothing inside the grace.
+    it("a page that has just loaded looks once at the cookie, whatever the page before it heard", async () => {
+      const first = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      fetchMock.mockImplementation(async () => conflict());
+      await expect(first.apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE });
+      fetchMock.mockReset();
+
+      const reloaded = await load();
+      const access = accessOf("novo");
+      fetchMock.mockResolvedValueOnce(json({ accessToken: access }));
+      fetchMock.mockResolvedValueOnce(json([]));
+      await reloaded.apiClient.get("/a");
+
+      expect(reloaded.getAccessToken()).toBe(access);
+      expect(localStorage.getItem(WAIT)).toBeNull();
+    }, 10_000);
+
+    it("that is only for a 409: a page that has just loaded respects the wait of a 429", async () => {
+      localStorage.setItem(SESSION, tenantSession());
+      localStorage.setItem(WAIT, JSON.stringify({ until: Date.now() + 60_000, status: 429, attempts: 1 }));
+      const { apiClient } = await load();
+
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE, status: 429 });
+
+      expect(renewals()).toHaveLength(0);
+    });
+
+    it("the token of another tab ends the wait at once", async () => {
+      const { apiClient } = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      fetchMock.mockImplementation(async () => conflict());
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE });
+      fetchMock.mockReset();
+
+      const access = accessOf("da-outra-aba");
+      otherTab().postMessage({ type: "token", accessToken: access });
+      expect(localStorage.getItem(WAIT)).toBeNull();
+
+      fetchMock.mockResolvedValueOnce(json([]));
+      await apiClient.get("/a");
+      expect(call(0).headers.Authorization).toBe(`Bearer ${access}`);
+      expect(renewals()).toHaveLength(0);
+    }, 10_000);
+
+    it("after the grace the cookie goes again, and a renewal goes on as if nothing had happened", async () => {
+      const { apiClient, getAccessToken } = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      fetchMock.mockImplementation(async () => conflict());
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE });
+      fetchMock.mockReset();
+      graceIsOver();
+
+      const access = accessOf("novo");
+      fetchMock.mockResolvedValueOnce(json({ accessToken: access }));
+      fetchMock.mockResolvedValueOnce(json([]));
+      await apiClient.get("/a");
+
+      expect(getAccessToken()).toBe(access);
+      expect(localStorage.getItem(WAIT)).toBeNull();
+    }, 10_000);
+
+    it("after the grace the cookie goes again, and the refusal of the server ends the session", async () => {
+      const { apiClient, hasSession, onSessionEnded } = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      const reasons: string[] = [];
+      onSessionEnded((r) => reasons.push(r));
+      fetchMock.mockImplementation(async () => conflict());
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE });
+      fetchMock.mockReset();
+      graceIsOver();
+
+      fetchMock.mockResolvedValueOnce(json({ code: "session_ended" }, 401));
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 401 });
+
+      expect(hasSession()).toBe(false);
+      expect(reasons).toEqual(["session_ended"]);
+      expect(signOuts()).toHaveLength(0);
+    }, 10_000);
+
+    it("a session not yet migrated keeps its token through it", async () => {
       const { apiClient } = await load();
       localStorage.setItem(ACCESS, "acesso-antigo");
       localStorage.setItem(REFRESH, "renovacao-antiga");
       localStorage.setItem(SESSION, tenantSession());
-      fetchMock.mockImplementation(async (url: string) => (url.endsWith("/auth/logout") ? empty() : json({ code: "refresh_already_rotated" }, 409)));
+      fetchMock.mockImplementation(async (url: string) => (url.endsWith("/auth/refresh") ? conflict() : json({ code: "session_ended" }, 401)));
 
-      await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 401 });
+      await apiClient.get("/a").catch(() => undefined);
 
-      const signOut = fetchMock.mock.calls.find(([url]) => (url as string).endsWith("/auth/logout"))!;
-      expect((signOut[1] as RequestInit).body).toBe(JSON.stringify({ refreshToken: "renovacao-antiga" }));
+      expect(signOuts()).toHaveLength(0);
+      expect(localStorage.getItem(REFRESH)).toBe("renovacao-antiga");
     }, 10_000);
 
-    it("asking whether the cookie has a session, a 409 ends nothing", async () => {
+    it("asking whether the cookie has a session, a 409 ends nothing and marks nothing", async () => {
       const { renewFromCookieWithoutSession } = await load();
-      fetchMock.mockImplementation(async () => json({ code: "refresh_already_rotated" }, 409));
+      fetchMock.mockImplementation(async () => conflict());
 
       await expect(renewFromCookieWithoutSession()).resolves.toBe(false);
 
-      expect(urls().filter((u) => u.endsWith("/auth/logout"))).toHaveLength(0);
+      expect(signOuts()).toHaveLength(0);
+      expect(localStorage.getItem(SIGNED_OUT), "the cookie may well have a session: the next load asks again").toBeNull();
     }, 10_000);
 
-    it("still a 409 after the wait ends the session, as in the normal mode", async () => {
-      const { apiClient, hasSession, onSessionEnded, ROTATION_WAIT_MS } = await load();
+    it("signing out during the wait still reaches the server, and the mark still works", async () => {
+      const { apiClient, signOutOnServer } = await load();
       localStorage.setItem(SESSION, tenantSession());
-      const reasons: string[] = [];
-      onSessionEnded((r) => reasons.push(r));
-      fetchMock.mockImplementation(async () => json({ code: "refresh_already_rotated" }, 409));
-      const started = Date.now();
+      fetchMock.mockImplementation(async () => conflict());
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE });
+      fetchMock.mockReset();
 
-      await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 401 });
+      fetchMock.mockResolvedValueOnce(empty());
+      await signOutOnServer();
 
-      expect(Date.now() - started).toBeGreaterThanOrEqual(ROTATION_WAIT_MS - 50);
-      expect(hasSession()).toBe(false);
-      expect(reasons).toEqual(["session_ended"]);
+      expect(signOuts()).toHaveLength(1);
+      expect(localStorage.getItem("nexo:pending_sign_out")).toBeNull();
     }, 10_000);
   });
 
@@ -742,6 +839,78 @@ describe("the cookie build", () => {
 
       expect(urls()).toEqual([`${API}/auth/logout`, `${API}/auth/login`]);
       expect(localStorage.getItem(PENDING)).toBeNull();
+    });
+
+    describe("told only by the storage event: a browser with no BroadcastChannel", () => {
+      const signedOutElsewhere = () => globalThis.dispatchEvent(new StorageEvent("storage", { key: SESSION, newValue: null, storageArea: localStorage }));
+
+      it("the token in memory goes with the session of the other tab", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const { hasSession, setTokens, getAccessToken } = await load();
+        setTokens(accessOf("desta-aba"), undefined);
+        localStorage.setItem(SESSION, tenantSession());
+
+        localStorage.removeItem(SESSION);
+        signedOutElsewhere();
+
+        expect(getAccessToken()).toBeNull();
+        expect(hasSession()).toBe(false);
+      });
+
+      it("so a sign-in here finishes the sign-out the server did not hear, instead of dropping it", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const { setTokens, finishPendingSignOut } = await load();
+        setTokens(accessOf("desta-aba"), undefined);
+        localStorage.setItem(SESSION, tenantSession());
+
+        // the other tab signed out with no connection
+        localStorage.setItem(PENDING, "1");
+        localStorage.removeItem(SESSION);
+        signedOutElsewhere();
+        fetchMock.mockResolvedValueOnce(empty());
+        await finishPendingSignOut();
+
+        expect(urls()).toEqual([`${API}/auth/logout`]);
+        expect(localStorage.getItem(PENDING)).toBeNull();
+      });
+
+      it("the answer of a renewal sent before that is not applied", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const { apiClient, setTokens, getAccessToken } = await load();
+        setTokens("", undefined);
+        localStorage.setItem(SESSION, tenantSession());
+        let answer!: (r: Response) => void;
+        fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { answer = resolve; }));
+        const call = apiClient.get("/a").catch(() => undefined);
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+        localStorage.removeItem(SESSION);
+        signedOutElsewhere();
+        answer(json({ accessToken: accessOf("tarde") }));
+        await call;
+
+        expect(getAccessToken()).toBeNull();
+      });
+
+      it("a storage cleared by hand is no sign-out: the token stays", async () => {
+        vi.stubGlobal("BroadcastChannel", undefined);
+        const { hasSession, setTokens } = await load();
+        setTokens(accessOf("desta-aba"), undefined);
+
+        localStorage.clear();
+        globalThis.dispatchEvent(new StorageEvent("storage", { key: null, newValue: null, storageArea: localStorage }));
+
+        expect(hasSession()).toBe(true);
+      });
+
+      it("an impersonation tab has its own session", async () => {
+        const { beginImpersonation, getAccessToken } = await load();
+        beginImpersonation("acesso-do-acesso", tenantSession(), { tenant: "E", user: "P", expiresAt: null });
+
+        signedOutElsewhere();
+
+        expect(getAccessToken()).toBe("acesso-do-acesso");
+      });
     });
 
     it("a sign-in removes it", async () => {

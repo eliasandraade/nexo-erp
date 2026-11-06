@@ -337,6 +337,12 @@ export function connectToOtherTabs(): void {
   globalThis.addEventListener?.("pagehide", () => { pageIsLeaving = true; });
   // back from the back/forward cache: the same page, with the same variables, working again
   globalThis.addEventListener?.("pageshow", () => { pageIsLeaving = false; });
+  // A browser with no BroadcastChannel hears of a sign-out only by this, and a token left in memory would say this tab still has a session. A cleared storage (key null) is no sign-out.
+  globalThis.addEventListener?.("storage", (e: StorageEvent) => {
+    if (e.storageArea !== localStorage || e.key !== TOKEN_KEYS.session || e.newValue !== null || isImpersonating()) return;
+    accessInMemory = null;
+    sessionEpoch++;
+  });
   if (sessionChannel || typeof BroadcastChannel === "undefined") return;
   sessionChannel = new BroadcastChannel(SESSION_CHANNEL);
   sessionChannel.onmessage = (e: MessageEvent<SessionMessage>) => hearOtherTab(e.data);
@@ -350,11 +356,13 @@ function hearOtherTab(message: SessionMessage): void {
   if (!message || isImpersonating()) return;   // the session of an impersonation tab is its own
   if (message.type === "token") {
     accessInMemory = message.accessToken;
+    localStorage.removeItem(RENEWAL_WAIT_KEY);
     return;
   }
   sessionEpoch++;
   if (message.type === "session") {
     accessInMemory = message.accessToken;
+    localStorage.removeItem(RENEWAL_WAIT_KEY);
     globalThis.dispatchEvent(new CustomEvent<string>(SESSION_REPLACED_EVENT, { detail: message.session }));
     return;
   }
@@ -552,23 +560,17 @@ async function readErrorBody(res: Response): Promise<ErrorBody | null> {
   }
 }
 
-/**
- * The token was rotated and no tab here got the new pair: someone else may hold it. Before giving up, the server hears it with this same token, which ends the
- * family even inside the grace. Otherwise this client would never present the token again, and nothing would ever call it a reuse. Best effort: it does not wait.
- * With no token at hand, in the cookie mode, the token is the cookie that just got the 409.
- */
-async function endFamilyOfSpentToken(token: string | null): Promise<void> {
-  const throughCookie = usesSessionCookie();
+/** Ends the session of a token, by the token alone: for a session on a host that no longer has one. Best effort: it does not wait. */
+async function endSessionOfToken(token: string): Promise<void> {
   try {
     await fetch(`${BASE_URL}/auth/logout`, {
       method: "POST",
       keepalive: true,
-      ...(throughCookie ? { credentials: "include" as const } : {}),
-      headers: { "Content-Type": "application/json", ...(throughCookie ? { [SESSION_MODE_HEADER]: "cookie" } : {}) },
-      body: token ? JSON.stringify({ refreshToken: token }) : undefined,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: token }),
     });
   } catch {
-    // no connection: the session ends here anyway, and the family at its expiry
+    // no connection: the session ends at its expiry
   }
 }
 
@@ -616,12 +618,11 @@ async function renewThroughCookie(allowWithoutSession: boolean): Promise<Refresh
     if (accessInMemory && accessInMemory !== tokenBefore) return "ok";
     if (epoch !== sessionEpoch) return staleOutcome();
     if (!allowWithoutSession && !hasSession()) return "refused";
-    const wait = readRenewalWait();
-    if (wait && wait.until > Date.now()) return "unavailable";
+    if (holdsBackRenewal()) return "unavailable";
 
-    let conflictDeadline: number | null = null;
+    let lookedAgain = false;
     for (;;) {
-      let spentByNobodyHere = false;
+      presentedOnThisPage = true;
       const stored = localStorage.getItem(TOKEN_KEYS.refresh);
       const res = await fetch(`${BASE_URL}/auth/refresh`, {
         method: "POST",
@@ -647,27 +648,28 @@ async function renewThroughCookie(allowWithoutSession: boolean): Promise<Refresh
         return "ok";
       }
 
-      if (res.status !== 401 && res.status !== 409) {
+      // No verdict, and nothing here signs out by itself: that would end the new cookie of whoever won. The other tabs hold back until the server's grace is over, and the
+      // token of a tab that won ends that at once. A page reloaded during its renewal has no way to speak: its answer only changes the cookie, which no script can read.
+      // The only way to look is to present it, once, after the same wait the normal mode gives the pair of the winner. A cookie that is still the old one changes nothing inside the grace.
+      if (res.status === 409) {
+        noteRenewalUnavailable(409, retryAfterMs(res) ?? ROTATION_GRACE_MS);
+        if (lookedAgain) return "unavailable";
+        lookedAgain = true;
+        if (await waitForTokenOfOtherTab(tokenBefore, Date.now() + ROTATION_WAIT_MS)) return "ok";
+        if (epoch !== sessionEpoch) return staleOutcome();
+        continue;
+      }
+      if (res.status !== 401) {
         noteRenewalUnavailable(res.status, retryAfterMs(res));
         return "unavailable";
       }
       const err = await readErrorBody(res);
-      if (res.status === 409 && err?.code === "refresh_already_rotated") {
-        // Someone just replaced the cookie: a tab with no lock, or a page reloaded during its renewal, whose answer still has to arrive.
-        // Its token comes through the channel, or the browser has the new cookie by the next attempt.
-        conflictDeadline ??= Date.now() + ROTATION_WAIT_MS;
-        if (await waitForTokenOfOtherTab(tokenBefore, conflictDeadline)) return "ok";
-        if (epoch !== sessionEpoch) return staleOutcome();
-        if (Date.now() < conflictDeadline) continue;
-        spentByNobodyHere = true;
-      }
       // Asking whether the cookie has a session, this tab has none to end. What is in the storage now is another tab's sign-in.
       if (allowWithoutSession) {
         localStorage.setItem(SIGNED_OUT_KEY, "1");
         return "refused";
       }
       const platform = isPlatformSession();
-      if (spentByNobodyHere) void endFamilyOfSpentToken(stored);
       clearTokens();
       if (platform) return "platform_ended";
       return err?.code === "session_revoked" ? "revoked" : "refused";
@@ -681,16 +683,24 @@ async function renewThroughCookie(allowWithoutSession: boolean): Promise<Refresh
   });
 }
 
-const CONFLICT_RETRY_MS = 400;
-
-/** Waits a little for the token of the tab that won. True when it came; false when it is time to try again or give up. */
+/** Waits for the token of the tab that won. True when it came. */
 async function waitForTokenOfOtherTab(tokenBefore: string | null, deadline: number): Promise<boolean> {
-  const until = Math.min(deadline, Date.now() + CONFLICT_RETRY_MS);
   for (;;) {
     if (accessInMemory && accessInMemory !== tokenBefore) return true;
-    if (Date.now() >= until) return false;
+    if (Date.now() >= deadline) return false;
     await sleep(50);
   }
+}
+
+/**
+ * Whether this page keeps from presenting the cookie now. The wait after a 409 does not hold a page that has just loaded: the answer the page before it never got to read may have
+ * left a new cookie, and without this a person who pressed F5 twice would look at a dead screen until the end of the grace.
+ */
+let presentedOnThisPage = false;
+
+function holdsBackRenewal(): boolean {
+  const wait = readRenewalWait();
+  return wait !== null && wait.until > Date.now() && (wait.status !== 409 || presentedOnThisPage);
 }
 
 function isPlatformSession(): boolean {
@@ -707,8 +717,7 @@ async function attemptRefresh(allowWithoutSession = false): Promise<RefreshOutco
 
   if (isCookieSessionMode()) {
     if (!allowWithoutSession && !hasSession()) return "refused";
-    const waiting = readRenewalWait();
-    if (waiting && waiting.until > Date.now()) return "unavailable";
+    if (holdsBackRenewal()) return "unavailable";
     refreshPromise = renewThroughCookie(allowWithoutSession).finally(() => { refreshPromise = null; });
     return refreshPromise;
   }
@@ -1065,7 +1074,7 @@ async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormDat
 function endSessionLeftOnPublicHost(): void {
   if (!isPublicPortalHost()) return;
   const token = localStorage.getItem(TOKEN_KEYS.refresh);
-  if (token) void endFamilyOfSpentToken(token);
+  if (token) void endSessionOfToken(token);
   localStorage.removeItem(TOKEN_KEYS.access);
   localStorage.removeItem(TOKEN_KEYS.refresh);
   localStorage.removeItem(TOKEN_KEYS.session);

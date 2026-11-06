@@ -82,7 +82,8 @@ Depois de qualquer login, confira uma vez:
    resposta), depois `auth/me` (200) com `Authorization: Bearer`. Nenhum 401.
 3. Pressione F5 várias vezes em sequência, sem esperar. A sessão continua, e nenhum `auth/refresh` responde 401.
 4. **Reload no meio da renovação:** em **Network**, escolha **Slow 3G**, recarregue e recarregue de novo enquanto `auth/refresh` estiver pendente. Volte
-   para **No throttling**. A sessão continua. Um 409 no `auth/refresh` é aceitável (a aba espera e tenta de novo); um 401 reprova.
+   para **No throttling**. A sessão continua. Até dois 409 por carregamento no `auth/refresh` são aceitáveis (a aba espera 3 s e olha mais uma vez). Mais que isso reprova, e também reprova um 401 ou qualquer `auth/logout`.
+5. **Resposta que demora:** se a resposta da renovação levar mais de 3 s, a tela mostra o aviso de sessão ativa e fica assim até o fim da carência, no máximo 30 s. Não vai para o login. Recarregar resolve na hora.
 
 ### Várias abas
 
@@ -147,6 +148,8 @@ Depois de qualquer login, confira uma vez:
    continua. Depois do tempo indicado, volta sozinha.
 3. **401 encerra sem laço:** apague o cookie em **Application > Cookies** e recarregue. Um `auth/refresh` com 401, depois o login. Nenhum pedido repetido.
 
+4. **409:** um 409 nunca leva ao login sozinho e nunca dispara `auth/logout`. A resposta traz `Retry-After`, com o que falta dos 30 s de carência.
+
 ### Migração de quem já está logado
 
 1. Antes de publicar o bundle novo, entre pelo bundle atual e não saia. Confira `nexo:refresh_token` no Local Storage.
@@ -195,7 +198,17 @@ for (let i = 0; i < 30; i++) fetch(`${API}/api/auth/login`, { method: "POST", mo
 
 Em **Network**, cada um responde 403 (a linha aparece como `opaque`, sem detalhes). Sem esperar a janela do limite, entre na aplicação pelo mesmo navegador: o login funciona, porque nenhum pedido daquele site gastou o limite de login do endereço.
 
-**Quem desiste depois de um 409:** é difícil de produzir à mão. A prova está em `auth.e2e.spec.ts` ("A token someone else spent ends the session for them too"). Para conferir na auditoria: `logout_with_spent_token` aparece depois de um 409 sem ninguém para receber o par novo.
+**Corpo grande:** com 20 KB sem declarar o tamanho, cada uma das rotas responde 413, sem linha nova em `error_events`:
+
+```bash
+head -c 20480 /dev/zero | tr '\\0' x | curl -i -X POST "$API/api/auth/refresh" -H "Content-Type: application/json" -H "Transfer-Encoding: chunked" --data-binary @-
+```
+
+**Ladrão que renovou primeiro:** com o valor do cookie na variável (`RT=...`), renove pelo terminal, como faria quem copiou o token: `curl -i -X POST "$API/api/auth/refresh" -H "Origin: $APP" -H "X-Orken-Session: cookie" -H "Cookie: __Host-nexo_rt=$RT"`. Guarde o novo valor do `Set-Cookie`. Recarregue a aba:
+
+1. `auth/refresh` responde 409 com `Retry-After`, no máximo duas vezes. A tela continua, com o aviso de sessão ativa. Nenhum `auth/logout`.
+2. Espere passar o tempo e navegue. `auth/refresh` responde 401, a tela vai para o login, e a auditoria tem `refresh_reuse` crítico.
+3. O valor guardado, apresentado de novo pelo terminal, responde 401: o ladrão ficou sem o par.
 
 ### Isolamento
 
@@ -244,5 +257,16 @@ Esse é o comportamento definido: enquanto o cookie vale, limpar o armazenamento
 
 ## 5. Voltar atrás
 
+**A ordem importa: primeiro o bundle, depois a API, se ela também voltar.** A API anterior responde 400 a uma renovação sem corpo e volta a gravar `nexo_access`, então um bundle no modo cookie falando com ela perderia todas as sessões. Isso é raciocínio a partir do código: a volta não foi executada.
+
 Publique o bundle sem `VITE_SESSION_MODE`. A API continua aceitando os dois modos, então nada muda nela. Quem migrou precisa entrar de novo, porque o bundle antigo não enxerga o cookie. O cookie
 que ficou no navegador expira sozinho, e nenhum pedido do bundle antigo o usa.
+
+## 6. Riscos aceitos
+
+Não são reprovação. A lista completa, com as condições, está na seção 9 do contrato:
+
+- Uma queda dura do Redis pode reviver uma sessão encerrada no último minuto antes dela, ou fazer um logout durante a queda não valer se a linha estiver defasada. Fechar isso exige uma coluna com a família na linha da sessão, e portanto uma migração. A base tem a mesma exposição.
+- Login durante uma queda do Redis não tem trava por conta, e a sessão aberta nesse período termina na primeira renovação depois da volta.
+- Quem está no mesmo endereço gasta os mesmos tetos. No modo cookie, o logout conta na partição anônima.
+- Um subdomínio comprometido pode bloquear um navegador com cookies grandes (431).

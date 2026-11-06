@@ -861,7 +861,8 @@ test.describe("Session ended by the server", () => {
     await page.waitForTimeout(3500);
     await expect(signOutButton(page), "a 409 ends nothing").toBeVisible();
     expect(apiCalls.count("/auth/logout"), "and nothing signs out by itself").toBe(0);
-    expect(apiCalls.count("/auth/refresh"), "and the token is not presented again").toBe(1);
+    // the cookie mode looks once more, because no script can see whether the cookie changed
+    expect(apiCalls.count("/auth/refresh"), "and the token is not presented again").toBe(COOKIE_MODE ? 2 : 1);
 
     // the server's grace goes by, and the next thing the person does presents the token once more
     await expect.poll(async () => {
@@ -941,6 +942,7 @@ test.describe("Session ended by the server", () => {
 test.describe("Two tabs and a 409", () => {
   for (const holdMs of [2000, 6000]) {
     test(`The answer of the winner takes ${holdMs} ms, and nobody loses the session`, async ({ context, page, company, device, apiCalls }) => {
+      test.skip(COOKIE_MODE, "the lock keeps these two tabs in line there: the cases of that mode are in \"A reload in the middle of a renewal\"");
       const user = await company.createUser("gerente");
       await signInToDashboard(page, user);
       const api = await device();
@@ -2257,6 +2259,79 @@ test.describe("Cookie mode, what only exists there", () => {
     await expect.poll(() => apiCalls.count("/auth/me", 200)).toBeGreaterThanOrEqual(1);
     expect(apiCalls.count("/auth/refresh", 401), "the spent cookie did not end the session").toBe(0);
     expect((await sessionCookie(context))?.value).not.toBe(before?.value);
+  });
+
+  // The proof of the review: the answer of the renewal takes longer than the page waits. It used to end in seven 409s, a sign-out that ended the new cookie, and the login page.
+  for (const holdMs of [1500, 6000]) {
+    test(`A reload during a renewal whose answer takes ${holdMs} ms ends nothing`, async ({ context, page, company, device, apiCalls }) => {
+      const address = clientAddress();
+      await context.setExtraHTTPHeaders({ "X-Forwarded-For": address });
+      const user = await company.createUser("gerente");
+      await signInToDashboard(page, user);
+      const api = await device();
+      const before = await sessionCookie(context);
+      await api.post(`${HOST_ORIGIN}/__test/hold-renewals`, { data: { address, milliseconds: holdMs } });
+      const sent = page.waitForRequest((r) => r.url() === `${API}/auth/refresh` && r.method() === "POST");
+      await page.reload({ waitUntil: "commit" });
+      await sent;
+      await page.waitForTimeout(300);
+      await api.post(`${HOST_ORIGIN}/__test/hold-renewals`, { data: { address, milliseconds: 0 } });
+      apiCalls.reset();
+
+      await page.reload();
+      await page.waitForTimeout(holdMs + 4000);
+
+      expect(apiCalls.count("/auth/logout"), "a 409 calls nothing by itself").toBe(0);
+      expect(apiCalls.count("/auth/refresh", 401), "and the session was not refused").toBe(0);
+      expect(apiCalls.count("/auth/refresh", 409), "no burst: at most one look more").toBeLessThanOrEqual(2);
+      await expect(signOutButton(page)).toBeVisible();
+      await expect(page).toHaveURL(`${APP_ORIGIN}/dashboard`);
+      const after = await sessionCookie(context);
+      expect(after?.value, "the answer of the page before reached the cookie").not.toBe(before?.value);
+
+      // and whatever this page still waits for, the next load has its session
+      apiCalls.reset();
+      await page.reload();
+      await expect(signOutButton(page)).toBeVisible();
+      await expect.poll(() => apiCalls.count("/auth/me", 200)).toBeGreaterThanOrEqual(1);
+      expect(apiCalls.count("/auth/refresh", 401)).toBe(0);
+    });
+  }
+
+  // The proof of the review: told only by the storage event, the other tab kept its token in memory, thought it had a session, and dropped the sign-out still pending.
+  test("With no BroadcastChannel, a sign-out with no connection is not dropped by a sign-in in the other tab", async ({ browser, device, company }) => {
+    const context = await browser.newContext({ baseURL: APP_ORIGIN, extraHTTPHeaders: { "X-Forwarded-For": clientAddress() } });
+    await context.addInitScript(() => { delete (globalThis as { BroadcastChannel?: unknown }).BroadcastChannel; });
+    const api = await device();
+    const user = await company.createUser("gerente");
+    const a = await context.newPage();
+    const calls: string[] = [];
+    context.on("response", (r) => { if (r.url().startsWith(`${API}/auth/`) && r.request().method() !== "OPTIONS") calls.push(`${new URL(r.url()).pathname.replace("/api", "")}:${r.status()}`); });
+    await a.goto("/login");
+    await submitLogin(a, user.login, user.password);
+    await expect(a).not.toHaveURL(/\/login/);
+    await a.goto("/dashboard");
+    await expect(signOutButton(a)).toBeVisible();
+    const b = await context.newPage();
+    await b.goto("/dashboard");
+    await expect(signOutButton(b)).toBeVisible();
+    await expect.poll(() => calls.filter((c) => c === "/auth/me:200").length).toBeGreaterThanOrEqual(2);
+    const oldCookie = (await sessionCookie(context))!.value;
+
+    await context.setOffline(true);
+    await signOutButton(a).click();
+    await expect(a).toHaveURL(/\/login/);
+    await expect(b).toHaveURL(/\/login/);
+    await context.setOffline(false);
+    calls.length = 0;
+
+    await submitLogin(b, user.login, user.password);
+    await expect(b).not.toHaveURL(/\/login/);
+
+    expect(calls, "the sign-out goes first").toContain("/auth/logout:204");
+    const renewal = await api.post(`${API}/auth/refresh`, { data: { refreshToken: oldCookie } });
+    expect(renewal.status(), "the session the person signed out of is over").toBe(401);
+    await context.close();
   });
 
   test("Reloading many times in a row keeps the session", async ({ page, company, apiCalls }) => {
