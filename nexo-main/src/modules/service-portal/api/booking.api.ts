@@ -151,6 +151,8 @@ export interface PublicAppointmentView {
   cancelDeadline:   string;
   /** Only the store can cancel it now (it already has a comanda or was paid with a package). */
   handledByStore?:  boolean;
+  /** The store takes no changes through the portal right now: the customer talks to it directly. */
+  onlineChangesPaused?: boolean;
 }
 
 // ── Endpoints ───────────────────────────────────────────────────────────────────

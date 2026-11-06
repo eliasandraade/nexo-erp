@@ -19,11 +19,13 @@ public class BuildProjectRepository : IBuildProjectRepository
     /// <summary>
     /// Loads project with its Stages and DailyLogs (without stage photos to keep it light).
     /// Used by project detail view and BuildProjectService.GetDetailsAsync.
+    /// Split query: stages × logs in a single query would grow with the duration of the project.
     /// </summary>
     public async Task<BuildProject?> GetByIdWithDetailsAsync(Guid id, CancellationToken ct = default)
         => await _context.BldProjects
             .Include(x => x.Stages.OrderBy(s => s.Order))
             .Include(x => x.DailyLogs.OrderByDescending(l => l.Date))
+            .AsSplitQuery()
             .FirstOrDefaultAsync(x => x.Id == id, ct);
 
     public async Task<IReadOnlyList<BuildProject>> GetAllAsync(

@@ -1,5 +1,6 @@
 import { Brand } from "@/components/shared/Brand";
 import { Outlet } from "react-router-dom";
+import { ReadOnlyNotice } from "@/components/shared/ReadOnlyNotice";
 import { UserDropdown } from "@/components/shared/UserDropdown";
 
 export function PosLayout() {
@@ -13,6 +14,7 @@ export function PosLayout() {
         </div>
         <UserDropdown />
       </header>
+      <ReadOnlyNotice />
 
       {/* Main POS content */}
       <main className="flex-1 overflow-hidden">

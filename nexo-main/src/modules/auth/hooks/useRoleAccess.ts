@@ -1,18 +1,34 @@
 import type { UserRole } from "@/modules/users/types";
 import type { AuthSession } from "../types";
 
+/** Where the read-only notices point. The page itself is for Diretoria and Gerente only. */
+export const READ_ONLY_SUBSCRIPTION_URL = "/assinatura?motivo=somente-leitura";
+
+/** Opens for every role, so it can be the home of a role whose module the company never had. */
+const HOME_WITHOUT_MODULE = "/perfil";
+
+/**
+ * The modules whose screens open: those with access and those that expired, which stay read-only. What each one may write
+ * is the server's decision: a write on an expired module answers 402.
+ */
+export function readableModules(session: Pick<AuthSession, "modules" | "readOnlyModules">): string[] {
+  return [...session.modules, ...(session.readOnlyModules ?? [])];
+}
+
 /**
  * Returns the home route for a given session.
- * Used after login and as the fallback redirect for role-guarded routes.
+ * Used after login and as the fallback redirect for role-guarded routes, so it never points to a route this same role would
+ * be sent back from: that is a blank screen or a redirect loop.
  */
 export function homeRoute(session: AuthSession): string {
+  const modules = readableModules(session);
   switch (session.role) {
     case "cozinha":
-      return "/restaurante/cozinha";
+      return modules.includes("restaurante") ? "/restaurante/cozinha" : HOME_WITHOUT_MODULE;
     case "vendedor":
-      if (session.modules.includes("varejo"))      return "/pdv";
-      if (session.modules.includes("restaurante")) return "/restaurante";
-      return "/dashboard";
+      if (modules.includes("varejo"))      return "/pdv";
+      if (modules.includes("restaurante")) return "/restaurante";
+      return HOME_WITHOUT_MODULE;
     case "estoquista":
       return "/estoque";
     case "gerente":
@@ -24,6 +40,7 @@ export function homeRoute(session: AuthSession): string {
 
 /**
  * Returns true if the given role + modules combination can access the given path.
+ * `modules` is {@link readableModules}: an expired module still opens, read-only.
  *
  * Rules:
  * - diretoria: all paths

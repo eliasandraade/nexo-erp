@@ -1,7 +1,9 @@
 import {
+  ApiError,
   apiClient,
   beginImpersonation,
   clearTokens,
+  getAccessToken,
   getImpersonation,
   leaveImpersonation,
   getRefreshToken,
@@ -33,6 +35,7 @@ function toAuthSession(dto: BackendSessionDto): AuthSession {
     login:        dto.login,
     email:        dto.email,
     modules:      dto.activeModules ?? [],
+    readOnlyModules: dto.readOnlyModules ?? [],
     storeId:      dto.storeId,
     storeIds:     dto.storeIds ?? [],
     companyName:  dto.companyName ?? "",
@@ -76,8 +79,9 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
 
     return { success: true, session };
   } catch (err: unknown) {
+    // Without an answer from the server, all there is is the browser's text ("Failed to fetch"): not for the user.
     const message =
-      err instanceof Error ? err.message : "Erro ao conectar com o servidor.";
+      err instanceof ApiError ? err.message : "Erro ao conectar com o servidor.";
     if (message === "Unauthorized" || message === "Invalid login or password." || message.includes("401")) {
       return { success: false, error: "Login ou senha incorretos." };
     }
@@ -110,15 +114,19 @@ export async function switchStore(storeId: string): Promise<AuthSession> {
 /**
  * Validates the current session against the backend.
  * Called in the background on app boot. Updates stored session on success;
- * clears tokens on failure so ProtectedRoute redirects to login.
+ * clears tokens when the server refuses them, so ProtectedRoute redirects to login.
+ * Rejects when there is no verdict (no connection, server error): that says nothing about the session, and the caller keeps it.
  */
 export async function validateSession(): Promise<AuthSession | null> {
   try {
     const dto = await apiClient.get<BackendSessionDto>("/auth/me");
+    // Signed out while the answer was on its way: it confirms a session that no longer exists.
+    if (!getAccessToken()) return null;
     const session = toAuthSession(dto);
     persistSession(session);
     return session;
-  } catch {
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 401) throw err;
     clearTokens();
     return null;
   }

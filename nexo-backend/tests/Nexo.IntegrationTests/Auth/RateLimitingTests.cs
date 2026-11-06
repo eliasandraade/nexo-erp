@@ -1,7 +1,10 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Nexo.Application.Features.Auth;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
@@ -49,6 +52,60 @@ public class RateLimitingTests : IDisposable
             client.DefaultRequestHeaders.Add("X-Forwarded-For", forwardedFor);
         return client;
     }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // CREDENTIAL CHECK: one budget per signed-in user
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CredentialCheck_SpentByOneUser_DoesNotThrottleAnotherUser()
+    {
+        await using var host = CredentialCheckHost(permitLimit: 2);
+        var spender = await SignedInClientAsync(host);
+        var other = await SignedInClientAsync(host);
+
+        (await CheckCredentialAsync(spender)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+        (await CheckCredentialAsync(spender)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+        (await CheckCredentialAsync(spender)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests,
+            "the third attempt is over this user's own budget");
+
+        (await CheckCredentialAsync(other)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
+            "another user, in another company, has not attempted anything yet");
+    }
+
+    [Fact]
+    public async Task CredentialCheck_AnonymousCalls_DoNotThrottleASignedInUser()
+    {
+        await using var host = CredentialCheckHost(permitLimit: 2);
+        var anonymous = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var signedIn = await SignedInClientAsync(host);
+
+        for (var i = 0; i < 3; i++)
+            await CheckCredentialAsync(anonymous);
+
+        (await CheckCredentialAsync(signedIn)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
+            "calls without a session must not spend the budget of someone who has one");
+    }
+
+    private WebApplicationFactory<Program> CredentialCheckHost(int permitLimit)
+        => _factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("RateLimiting:CredentialCheck:Enabled", "true");
+            b.UseSetting("RateLimiting:CredentialCheck:PermitLimit", permitLimit.ToString());
+            b.UseSetting("RateLimiting:CredentialCheck:WindowSeconds", "900");
+        });
+
+    private async Task<HttpClient> SignedInClientAsync(WebApplicationFactory<Program> host)
+    {
+        var account = await SyntheticTenant.CreateAsync(_factory, "varejo");
+        var (_, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, account.Login, account.Password);
+        var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+        return client;
+    }
+
+    private static Task<HttpResponseMessage> CheckCredentialAsync(HttpClient client)
+        => client.PostAsJsonAsync("/api/auth/verify-manager", new VerifyManagerRequest("ninguem", "senha-errada"));
 
     // ────────────────────────────────────────────────────────────────────────────
     // LOGIN RATE LIMITING

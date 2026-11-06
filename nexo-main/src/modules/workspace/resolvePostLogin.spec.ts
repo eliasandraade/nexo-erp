@@ -53,9 +53,42 @@ describe("resolvePostLogin", () => {
   it("routes management with no active module to the selector (Caso 3 state)", () => {
     expect(resolvePostLogin(session("diretoria", []), null)).toBe("/workspaces");
   });
+
+  describe("somente leitura: módulo vencido conta como destino", () => {
+    const readOnly = (role: UserRole, modules: string[], readOnlyModules: string[]) => ({ ...session(role, modules), readOnlyModules });
+
+    it("papéis operacionais vão à tela do módulo vencido", () => {
+      expect(resolvePostLogin(readOnly("vendedor", [], ["varejo"]), null)).toBe("/pdv");
+      expect(resolvePostLogin(readOnly("vendedor", [], ["restaurante"]), null)).toBe("/restaurante");
+      expect(resolvePostLogin(readOnly("cozinha", [], ["restaurante"]), null)).toBe("/restaurante/cozinha");
+      expect(resolvePostLogin(readOnly("estoquista", [], ["varejo"]), null)).toBe("/estoque");
+    });
+
+    it("gerência entra direto no único módulo, vencido", () => {
+      expect(resolvePostLogin(readOnly("diretoria", [], ["varejo"]), null)).toBe("/dashboard");
+      expect(resolvePostLogin(readOnly("gerente", [], ["build"]), null)).toBe("/build");
+    });
+
+    it("gerência com um ativo e um vencido escolhe, e a escolha salva no vencido vale", () => {
+      expect(resolvePostLogin(readOnly("diretoria", ["build"], ["varejo"]), null)).toBe("/workspaces");
+      expect(resolvePostLogin(readOnly("diretoria", ["varejo"], ["build"]), "build")).toBe("/build");
+    });
+
+    it("sem módulo nenhum, cada papel tem uma tela: nunca uma rota que o devolve a si mesma", () => {
+      expect(resolvePostLogin(readOnly("vendedor", [], []), null)).toBe("/perfil");
+      expect(resolvePostLogin(readOnly("cozinha", [], []), null)).toBe("/perfil");
+      expect(resolvePostLogin(readOnly("cozinha", [], ["varejo"]), null)).toBe("/perfil");
+      expect(resolvePostLogin(readOnly("estoquista", [], []), null)).toBe("/estoque");
+    });
+  });
 });
 
 describe("availableWorkspaces", () => {
+  it("includes the modules that expired, read-only", () => {
+    const ws = availableWorkspaces({ ...session("diretoria", ["build"]), readOnlyModules: ["varejo"] });
+    expect(ws.map((w) => w.id)).toEqual(["store", "build"]);
+  });
+
   it("maps module keys to workspaces in display order", () => {
     const ws = availableWorkspaces(session("diretoria", ["build", "varejo"]));
     expect(ws.map((w) => w.id)).toEqual(["store", "build"]);

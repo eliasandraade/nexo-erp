@@ -231,6 +231,79 @@ describe("api-client", () => {
     expect(ended).toEqual(["platform_session_ended"]);
   });
 
+  describe("sessão de empresa que o servidor não aceita mais", () => {
+    const revoked = () => json({ error: "Sua sessão foi encerrada. Entre de novo.", code: "session_revoked" }, 401);
+    const refreshRefused = () => json({ error: "Invalid or expired refresh token.", code: "session_ended" }, 401);
+
+    beforeEach(() => setTokens("tenant-access", "tenant-refresh"));
+
+    it("401 session_revoked: uma tentativa de renovar, tokens limpos, o app avisado uma vez e nada mais é enviado", async () => {
+      fetchMock.mockResolvedValueOnce(revoked()).mockResolvedValueOnce(refreshRefused());
+
+      await expect(apiClient.get("/products")).rejects.toMatchObject({
+        status: 401, code: "session_revoked", message: "Sua sessão foi encerrada. Entre de novo.",
+      });
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1][0]).toBe(`${API}/auth/refresh`);
+      expect(getAccessToken()).toBeNull();
+      expect(getRefreshToken()).toBeNull();
+      expect(ended).toEqual(["session_revoked"]);
+    });
+
+    it("um par renovado que também é recusado encerra a sessão depois de uma única repetição, sem laço", async () => {
+      fetchMock
+        .mockResolvedValueOnce(revoked())
+        .mockResolvedValueOnce(json({ accessToken: "dead-access", refreshToken: "dead-refresh" }))
+        .mockResolvedValueOnce(revoked());
+
+      await expect(apiClient.get("/products")).rejects.toMatchObject({ status: 401, code: "session_revoked" });
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(getAccessToken()).toBeNull();
+      expect(ended).toEqual(["session_revoked"]);
+    });
+
+    it("qualquer outro 401 sem renovação possível também tira a pessoa da página", async () => {
+      fetchMock.mockResolvedValueOnce(json({}, 401)).mockResolvedValueOnce(refreshRefused());
+
+      await expect(apiClient.get("/products")).rejects.toBeInstanceOf(ApiError);
+
+      expect(ended).toEqual(["session_ended"]);
+    });
+
+    it("as chamadas multipart e de upload seguem a mesma regra", async () => {
+      fetchMock.mockResolvedValueOnce(revoked()).mockResolvedValueOnce(refreshRefused());
+
+      await expect(apiClient.postForm("/storage", new FormData())).rejects.toMatchObject({ status: 401, code: "session_revoked" });
+
+      expect(ended).toEqual(["session_revoked"]);
+    });
+
+    it("com os tokens já descartados de propósito, uma resposta atrasada não encerra a página", async () => {
+      // os códigos de recuperação na tela: a sessão acabou, e a pessoa ainda precisa guardá-los
+      let answer: (response: Response) => void = () => undefined;
+      fetchMock.mockImplementationOnce(() => new Promise<Response>(resolve => { answer = resolve; }));
+
+      const late = apiClient.get("/auth/mfa");
+      clearTokens();
+      answer(revoked());
+
+      await expect(late).rejects.toMatchObject({ status: 401 });
+      expect(ended).toEqual([]);
+    });
+
+    it("uma chamada sem token, de quem não entrou, não encerra nada", async () => {
+      clearTokens();
+      fetchMock.mockResolvedValueOnce(json({}, 401));
+
+      await expect(apiClient.get("/products")).rejects.toMatchObject({ status: 401 });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(ended).toEqual([]);
+    });
+  });
+
   it("a wrong password on sign-in keeps the session and never refreshes", async () => {
     signInAdmin();
     fetchMock.mockResolvedValueOnce(json({ error: "Credenciais inválidas." }, 401));

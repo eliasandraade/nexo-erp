@@ -12,14 +12,17 @@ public class CurrentTenantService : ICurrentTenant
     private Guid _id;
     private string _slug = string.Empty;
     private IReadOnlyList<string> _activeModules = Array.Empty<string>();
+    private IReadOnlyList<string> _expiredModules = Array.Empty<string>();
     private bool _isResolved;
 
     public Guid Id => _id;
     public string Slug => _slug;
     public IReadOnlyList<string> ActiveModules => _activeModules;
+    public IReadOnlyList<string> ExpiredModules => _expiredModules;
     public bool IsResolved => _isResolved;
+    public bool IsReadOnly => _isResolved && _activeModules.Count == 0;
 
-    public void Set(Guid id, string slug, IReadOnlyList<string> activeModules)
+    public void Set(Guid id, string slug, IReadOnlyList<string> activeModules, IReadOnlyList<string>? expiredModules = null)
     {
         if (_isResolved)
             throw new InvalidOperationException(
@@ -29,6 +32,7 @@ public class CurrentTenantService : ICurrentTenant
         _id = id;
         _slug = slug;
         _activeModules = activeModules;
+        _expiredModules = expiredModules ?? Array.Empty<string>();
         _isResolved = true;
     }
 }

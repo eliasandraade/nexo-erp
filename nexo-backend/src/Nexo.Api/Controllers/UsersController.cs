@@ -67,7 +67,10 @@ public class UsersController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = user.Id }, user);
     }
 
-    /// <summary>Updates a user's profile and role. Diretoria only.</summary>
+    /// <summary>
+    /// Updates a user's profile and role. Diretoria only. Answers 409 (code last_director) when it would leave the company
+    /// without an active Diretoria.
+    /// </summary>
     [HttpPut("{id:guid}")]
     [Authorize(Roles = AppRoles.Directors)]
     [Nexo.Api.Filters.DenyDuringImpersonation]

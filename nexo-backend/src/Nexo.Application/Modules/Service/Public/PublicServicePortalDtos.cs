@@ -106,4 +106,6 @@ public sealed record PublicAppointmentViewDto(
     bool     CanCancel,
     DateTime CancelDeadline,
     /// <summary>True when only the store can cancel it now: it already has a comanda or was paid with a package.</summary>
-    bool     HandledByStore = false);
+    bool     HandledByStore = false,
+    /// <summary>True when the company takes no changes through the portal now (no access to the module): talk to the store.</summary>
+    bool     OnlineChangesPaused = false);

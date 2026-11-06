@@ -15,8 +15,10 @@ public class UserServiceTests
     private readonly IAuditWriter    _audit   = Substitute.For<IAuditWriter>();
     private readonly ICurrentUser    _current = Substitute.For<ICurrentUser>();
     private readonly ICurrentTenant  _tenant  = Substitute.For<ICurrentTenant>();
+    private readonly IUnitOfWork     _uow     = Substitute.For<IUnitOfWork>();
+    private readonly IUserSessionRevoker _sessions = Substitute.For<IUserSessionRevoker>();
 
-    private UserService CreateSut() => new(_users, _hasher, _audit, _current, _tenant);
+    private UserService CreateSut() => new(_users, _hasher, _audit, _current, _tenant, _uow, _sessions);
 
     // ── CreateAsync ───────────────────────────────────────────────────────────
 
@@ -131,5 +133,68 @@ public class UserServiceTests
             new ChangePasswordRequest("wrong", "newpass"));
 
         await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    // ── UpdateAsync: the last active Diretoria ────────────────────────────────
+
+    private static UpdateUserRequest EditOf(User user, string role, string? status) =>
+        new(user.FullName, user.Email, role, user.Phone, user.Notes, status);
+
+    private User ExistingDirector()
+    {
+        var tenantId = Guid.NewGuid();
+        var user = User.Create(tenantId, "A", "a@b.com", "a", "hash", UserRole.Diretoria);
+        _tenant.Id.Returns(tenantId);
+        _users.GetByIdAsync(user.Id, Arg.Any<CancellationToken>()).Returns(user);
+        return user;
+    }
+
+    [Theory]
+    [InlineData("gerente", "active")]
+    [InlineData("diretoria", "blocked")]
+    [InlineData("diretoria", "inactive")]
+    public async Task UpdateAsync_RefusedForTheLastDirector_TouchesNothing(string role, string status)
+    {
+        var user = ExistingDirector();
+        var stamp = user.SecurityStamp;
+        _users.HasAnotherActiveDirectorAsync(user.TenantId, user.Id, Arg.Any<CancellationToken>()).Returns(false);
+
+        var act = () => CreateSut().UpdateAsync(user.Id, EditOf(user, role, status));
+
+        (await act.Should().ThrowAsync<ConflictException>()).Which.Code.Should().Be(LastDirectorException.ErrorCode);
+        user.Role.Should().Be(UserRole.Diretoria);
+        user.Status.Should().Be(UserStatus.Active);
+        user.SecurityStamp.Should().Be(stamp);
+        await _sessions.DidNotReceiveWithAnyArgs().RevokeAllAsync(default);
+        await _users.DidNotReceiveWithAnyArgs().SaveChangesAsync(default);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_TakesTheLockBeforeReadingAnything()
+    {
+        var user = ExistingDirector();
+        _users.HasAnotherActiveDirectorAsync(user.TenantId, user.Id, Arg.Any<CancellationToken>()).Returns(true);
+
+        await CreateSut().UpdateAsync(user.Id, EditOf(user, "gerente", "active"));
+
+        Received.InOrder(() =>
+        {
+            _uow.BeginTransactionAsync(Arg.Any<CancellationToken>());
+            _users.LockDirectorsAsync(user.TenantId, Arg.Any<CancellationToken>());
+            _users.GetByIdAsync(user.Id, Arg.Any<CancellationToken>());
+            _users.HasAnotherActiveDirectorAsync(user.TenantId, user.Id, Arg.Any<CancellationToken>());
+            _users.SaveChangesAsync(Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task UpdateAsync_OfSomeoneWhoStaysADirector_DoesNotAskIfAnotherOneExists()
+    {
+        var user = ExistingDirector();
+
+        await CreateSut().UpdateAsync(user.Id, EditOf(user, "Diretoria", null));
+
+        await _users.DidNotReceiveWithAnyArgs().HasAnotherActiveDirectorAsync(default, default);
+        await _sessions.DidNotReceiveWithAnyArgs().RevokeAllAsync(default);
     }
 }

@@ -1,4 +1,5 @@
 import { Outlet } from "react-router-dom";
+import { ReadOnlyNotice } from "@/components/shared/ReadOnlyNotice";
 import { UserDropdown } from "@/components/shared/UserDropdown";
 import { RestauranteBreadcrumb } from "@/modules/restaurante/components/RestauranteBreadcrumb";
 
@@ -15,6 +16,7 @@ export function WaiterLayout() {
         <RestauranteBreadcrumb />
         <UserDropdown />
       </header>
+      <ReadOnlyNotice />
 
       <Outlet />
     </div>

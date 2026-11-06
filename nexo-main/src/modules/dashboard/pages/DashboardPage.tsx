@@ -18,6 +18,7 @@ import { StockAlerts } from "@/modules/dashboard/components/StockAlerts";
 import { SetupCard } from "@/components/shared/SetupCard";
 import { RestauranteBlocks } from "@/modules/dashboard/components/RestauranteBlocks";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { readableModules } from "@/modules/auth/hooks/useRoleAccess";
 
 function useSetupDismissed(userId: string | undefined) {
   const key = userId ? `nexo:setup-dismissed:${userId}` : null;
@@ -59,7 +60,7 @@ export default function DashboardPage() {
       <OperationPriorities />
       <KpiCards />
 
-      {session?.modules.includes("restaurante") && <RestauranteBlocks />}
+      {session && readableModules(session).includes("restaurante") && <RestauranteBlocks />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">

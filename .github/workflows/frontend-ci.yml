@@ -58,7 +58,17 @@ jobs:
           for i in $(seq 1 30); do curl -fs -o /dev/null http://localhost:8099/ && break; sleep 1; done
           bash scripts/check-public-hosts.sh http://localhost:8099
 
+      # Normally 20 s. On 2026-11-05 the apt mirror behind --with-deps hung for 26 minutes and took the whole job limit with
+      # it: a stuck install now ends in 5 minutes and gets one second attempt. If that one fails too, the job fails here.
       - name: Playwright browsers
+        id: browsers
+        continue-on-error: true
+        timeout-minutes: 5
+        run: npm run e2e:install
+
+      - name: Playwright browsers (second attempt)
+        if: steps.browsers.outcome == 'failure'
+        timeout-minutes: 5
         run: npm run e2e:install
 
       - name: Critical end-to-end suite

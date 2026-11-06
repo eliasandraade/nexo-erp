@@ -69,6 +69,7 @@ public sealed partial class BuildPublicPortalService
         var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
         await EnsureAccessAsync(ctx, token, ct);   // before anything that reveals the portal's configuration
         EnsureDecisionPortal(ctx);
+        EnsureTakesWrites(ctx);
         if (!ctx.Visibility.PostConstruction) throw BuildPortalAccessException.SectionDisabled();
         return ctx;
     }
@@ -150,7 +151,6 @@ public sealed partial class BuildPublicPortalService
             }
         }
         var documents = h.Documents.Select(d => new PublicBuildHandoverDocumentDto(d.Name, _media.SignedUrl(d.FileKey, tid, BuildPostConstructionService.HandoverFolder))).ToList();
-        var password = ctx.Portal.Access == BuildPortalAccess.Password;
         return new PublicBuildHandoverDto
         {
             Status = h.Status.ToString(),
@@ -164,7 +164,7 @@ public sealed partial class BuildPublicPortalService
             AcceptedByName = h.AcceptedByName,
             AcceptanceChannel = h.AcceptanceChannel?.ToString(),
             AcceptanceComment = h.AcceptanceComment,
-            CanAccept = password && h.CanBeAccepted,
+            CanAccept = ctx.CanAct && h.CanBeAccepted,
         };
     }
 
@@ -195,7 +195,7 @@ public sealed partial class BuildPublicPortalService
         var handover = await HandoverOfAsync(ctx, ct);
         return new PublicBuildAssistanceListDto(list.Select(a => MapAssistance(ctx, a)).ToList(),
             BuildPostConstructionRules.Categories(terms),
-            ctx.Portal.Access == BuildPortalAccess.Password && handover?.IsDelivered == true);
+            ctx.CanAct && handover?.IsDelivered == true);
     }
 
     /// <summary>
@@ -397,7 +397,6 @@ public sealed partial class BuildPublicPortalService
 
     private PublicBuildAssistanceDto MapAssistance(Ctx ctx, BuildAssistanceRequest a)
     {
-        var password = ctx.Portal.Access == BuildPortalAccess.Password;
         var urls = a.PhotoKeys.Select(k => _media.SignedUrl(k, ctx.TenantId, BuildPostConstructionService.AssistanceFolder)).Where(u => u is not null).Select(u => u!).ToList();
         var timeline = new List<PublicBuildAssistanceEventDto> { new(nameof(BuildAssistanceStatus.Open), Utc(a.CreatedAt)) };
         void Add(BuildAssistanceStatus s, DateTime? at)
@@ -428,8 +427,8 @@ public sealed partial class BuildPublicPortalService
             Feedback = a.ClientFeedback,
             PhotoUrls = urls,
             PhotoUrlsExpireAt = urls.Count > 0 ? DateTimeOffset.UtcNow.Add(BuildPortalMedia.SignedUrlTtl) : null,
-            CanAddPhotos = password && a.CanAddPhotos,
-            CanGiveFeedback = password && a.CanGiveFeedback,
+            CanAddPhotos = ctx.CanAct && a.CanAddPhotos,
+            CanGiveFeedback = ctx.CanAct && a.CanGiveFeedback,
             Timeline = timeline.OrderBy(t => t.At).ToList(),
         };
     }

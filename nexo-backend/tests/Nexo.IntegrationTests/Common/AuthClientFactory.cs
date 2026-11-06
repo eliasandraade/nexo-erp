@@ -1,7 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Auth;
+using Nexo.Domain.Entities;
+using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Helpers;
 
 namespace Nexo.IntegrationTests.Common;
@@ -33,6 +38,27 @@ public static class AuthClientFactory
     public static Task<(HttpClient Client, LoginResponse Body)> LoginAsAdminWithBodyAsync(
         TestWebApplicationFactory factory)
         => LoginWithBodyAsync(factory, TestCredentials.AdminLogin, TestCredentials.AdminPassword);
+
+    /// <summary>A fresh platform administrator (super_admin) and an HttpClient signed in as them.</summary>
+    public static async Task<HttpClient> LoginAsPlatformAsync(TestWebApplicationFactory factory)
+    {
+        var email = $"ops-{Guid.NewGuid():N}"[..14] + "@platform.test";
+        const string password = TestCredentials.PlatformPassword;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            db.PlatformUsers.Add(PlatformUser.Create(email, scope.ServiceProvider.GetRequiredService<IPasswordHasher>().Hash(password), "super_admin"));
+            await db.SaveChangesAsync();
+        }
+
+        var client = factory.CreateApiClient();
+        var login = await client.PostAsJsonAsync("/api/platform/auth/login", new { email, password });
+        if (login.StatusCode != HttpStatusCode.OK)
+            throw new InvalidOperationException($"Platform login expected 200 OK but got {(int)login.StatusCode}: {await login.Content.ReadAsStringAsync()}");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer",
+            (await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString());
+        return client;
+    }
 
     // ── Generic helpers ────────────────────────────────────────────────────────
 

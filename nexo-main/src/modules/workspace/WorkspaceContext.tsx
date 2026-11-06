@@ -13,7 +13,7 @@ import { readLastWorkspace, writeLastWorkspace } from "./persistence";
 import type { WorkspaceDef, WorkspaceId } from "./types";
 
 interface WorkspaceContextValue {
-  /** Workspaces the tenant has an active module for. */
+  /** Workspaces the tenant has a module for, active or expired (read-only). */
   available: WorkspaceDef[];
   /** The workspace currently in scope (drives the sidebar). Null when none apply. */
   active: WorkspaceDef | null;
@@ -38,7 +38,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const available = useMemo(
     () => (session ? availableWorkspaces(session) : []),
-    [session?.modules] // eslint-disable-line react-hooks/exhaustive-deps
+    [session?.modules, session?.readOnlyModules] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const active = useMemo<WorkspaceDef | null>(() => {

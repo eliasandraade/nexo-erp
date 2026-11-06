@@ -26,9 +26,9 @@ public class User : TenantEntity
     public DateTime? PasswordChangedAt { get; private set; }
 
     /// <summary>
-    /// Opaque stamp that changes on password reset or force-logout.
-    /// Included in JWT claims. If the stored stamp differs from the token's,
-    /// the session is considered revoked.
+    /// Opaque stamp that changes on password reset, force-logout, role change or when the
+    /// account is blocked or deactivated. Included in JWT claims. If the stored stamp differs
+    /// from the token's, the session is considered revoked.
     /// </summary>
     public string SecurityStamp { get; private set; } = Guid.NewGuid().ToString("N");
 
@@ -213,6 +213,9 @@ public class User : TenantEntity
     /// <summary>Returns true if this user has a management role (Gerente or Diretoria).</summary>
     public bool IsManager() =>
         Role == UserRole.Gerente || Role == UserRole.Diretoria;
+
+    /// <summary>Who keeps a company administrable: a company must not lose its last one (see LastDirectorException).</summary>
+    public bool IsActiveDirector => Role == UserRole.Diretoria && Status == UserStatus.Active;
 
     /// <summary>Throws ForbiddenException if the user cannot authorize management actions.</summary>
     public void EnsureCanAuthorize()

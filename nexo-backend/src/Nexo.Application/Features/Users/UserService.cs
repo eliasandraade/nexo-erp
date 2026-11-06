@@ -12,6 +12,7 @@ public class UserService
     private readonly IAuditWriter _audit;
     private readonly ICurrentUser _currentUser;
     private readonly ICurrentTenant _currentTenant;
+    private readonly IUnitOfWork _uow;
 
     private readonly IUserSessionRevoker? _sessions;
     private readonly IUserInviter? _inviter;
@@ -23,10 +24,12 @@ public class UserService
         IAuditWriter audit,
         ICurrentUser currentUser,
         ICurrentTenant currentTenant,
+        IUnitOfWork uow,
         IUserSessionRevoker? sessions = null,
         IUserInviter? inviter = null,
         Nexo.Application.Features.Auth.LoginAttemptGuard? attempts = null)
     {
+        _uow = uow;
         _attempts = attempts;
         _inviter = inviter;
         _sessions = sessions;
@@ -112,12 +115,24 @@ public class UserService
 
     public async Task<UserDto> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken ct = default)
     {
+        // Lock first, read after: what this request sees is what the previous holder of the lock committed.
+        await using var tx = await _uow.BeginTransactionAsync(ct);
+        await _users.LockDirectorsAsync(_currentTenant.Id, ct);
+
         var user = await _users.GetByIdAsync(id, ct)
             ?? throw new NotFoundException("User", id);
 
         var role = ParseRole(request.Role);
+        var status = request.Status is null ? user.Status : ParseStatus(request.Status);
+
+        // Before anything changes: a refused request writes nothing, bumps no stamp and revokes no session.
+        var leavesTheDirectors = user.IsActiveDirector && (role != UserRole.Diretoria || status != UserStatus.Active);
+        if (leavesTheDirectors && !await _users.HasAnotherActiveDirectorAsync(user.TenantId, user.Id, ct))
+            throw new LastDirectorException();
+
         var previousEmail = user.Email;
         var previousStatus = user.Status;
+        var previousRole = user.Role;
 
         user.UpdateProfile(
             fullName: request.FullName,
@@ -127,7 +142,7 @@ public class UserService
             notes:    request.Notes);
 
         if (request.Status is not null)
-            user.SetStatus(ParseStatus(request.Status));
+            user.SetStatus(status);
 
         // A pending invite/reset link went to the old address (maybe a typo): it must stop working.
         // Same when the account is blocked or deactivated.
@@ -135,9 +150,11 @@ public class UserService
             || user.Status is not (UserStatus.Active or UserStatus.PendingVerification))
             user.ClearPasswordResetToken();
 
-        // Blocked or deactivated: every session ends now. The tenant middleware trusts its cached "Active" for up to
-        // 5 minutes, so what stops a token that is already out there is the stamp, checked on every request.
-        var endsSessions = user.Status != previousStatus && user.Status is UserStatus.Inactive or UserStatus.Blocked;
+        // Every session ends now, for whoever the change touches (the person changing their own role included). The token
+        // carries the role, and the tenant middleware trusts its cached "Active" for up to 5 minutes: what stops a token
+        // that is already out there is the stamp, checked against the database on every request.
+        var roleChanged = user.Role != previousRole;
+        var endsSessions = roleChanged || (user.Status != previousStatus && user.Status is UserStatus.Inactive or UserStatus.Blocked);
         if (endsSessions)
         {
             user.BumpSecurityStamp();
@@ -146,16 +163,18 @@ public class UserService
 
         _audit.Stage(
             actionType:  AuditActions.UserUpdated,
-            severity:    AuditSeverity.Info,
+            severity:    roleChanged ? AuditSeverity.Warning : AuditSeverity.Info,
             entityType:  "User",
             entityId:    user.Id.ToString(),
-            description: $"User '{user.Login}' updated.",
+            description: roleChanged
+                ? $"User '{user.Login}' updated: role {previousRole} -> {user.Role}; all sessions ended."
+                : $"User '{user.Login}' updated.",
             tenantId:    _currentTenant.Id,
             actorId:     _currentUser.IsAuthenticated ? _currentUser.UserId : null,
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
-        if (endsSessions && _sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
+        await tx.CommitAsync(ct);
         return MapToDto(user);
     }
 
@@ -192,7 +211,6 @@ public class UserService
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
-        if (_sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
     }
 
     public async Task AdminChangePasswordAsync(
@@ -221,7 +239,6 @@ public class UserService
             actorName:   _currentUser.IsAuthenticated ? _currentUser.Name : "system");
 
         await _users.SaveChangesAsync(ct);
-        if (_sessions is not null) await _sessions.ForgetStampAsync(user.Id, ct);
     }
 
     public async Task<ValidateManagerResponse> ValidateManagerAsync(

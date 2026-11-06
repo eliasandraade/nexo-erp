@@ -56,7 +56,7 @@ public class ExceptionHandlingMiddleware
         catch (ConflictException ex)
         {
             _logger.LogDebug("Conflict: {Message}", ex.Message);
-            await WriteErrorAsync(ctx, 409, ex.Message);
+            await WriteErrorAsync(ctx, 409, ex.Message, null, ex.Code);
         }
         catch (ForbiddenException ex)
         {

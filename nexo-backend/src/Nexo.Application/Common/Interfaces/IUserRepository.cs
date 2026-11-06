@@ -43,6 +43,16 @@ public interface IUserRepository
     Task AddAsync(User user, CancellationToken ct = default);
     Task SaveChangesAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Serialises, in the database, every change to who is an active Diretoria of this company until the current
+    /// transaction ends. Call it before reading what the change depends on. Requires an open transaction; a wait that
+    /// runs out is a <see cref="Nexo.Domain.Exceptions.ConflictException"/>.
+    /// </summary>
+    Task LockDirectorsAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>Whether the company has an active Diretoria other than this user. Only conclusive under <see cref="LockDirectorsAsync"/>.</summary>
+    Task<bool> HasAnotherActiveDirectorAsync(Guid tenantId, Guid userId, CancellationToken ct = default);
+
     /// <summary>Claims a TOTP step for the user (only if newer than the last one) — atomic; false = replay.</summary>
     Task<bool> TryClaimMfaStepAsync(Guid userId, long step, CancellationToken ct = default);
 
