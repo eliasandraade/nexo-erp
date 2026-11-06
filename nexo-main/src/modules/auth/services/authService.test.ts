@@ -46,3 +46,48 @@ describe("authService, módulos em somente leitura na sessão", () => {
     expect(session.readOnlyModules).toEqual(["varejo"]);
   });
 });
+
+describe("validateSession: só uma recusa do servidor encerra a sessão", () => {
+  const stored = () => localStorage.getItem(TOKEN_KEYS.access);
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    localStorage.setItem(TOKEN_KEYS.access, "token");
+    localStorage.setItem(TOKEN_KEYS.refresh, "refresh");
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("sem conexão: rejeita e mantém os tokens", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
+
+    await expect(validateSession()).rejects.toThrow("Failed to fetch");
+    expect(stored()).toBe("token");
+  });
+
+  it("erro do servidor: rejeita e mantém os tokens", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Erro interno." }), { status: 500 })));
+
+    await expect(validateSession()).rejects.toMatchObject({ status: 500 });
+    expect(stored()).toBe("token");
+  });
+
+  it("recusa do servidor: resolve sem sessão e limpa os tokens", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Recusado." }), { status: 401 })));
+
+    expect(await validateSession()).toBeNull();
+    expect(stored()).toBeNull();
+    expect(localStorage.getItem(TOKEN_KEYS.refresh)).toBeNull();
+  });
+
+  it("saiu enquanto a resposta vinha: não traz a sessão de volta", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      localStorage.removeItem(TOKEN_KEYS.access);
+      return json(dto({}));
+    }));
+
+    expect(await validateSession()).toBeNull();
+    expect(localStorage.getItem(TOKEN_KEYS.session)).toBeNull();
+  });
+});
