@@ -173,7 +173,7 @@ public class OrderService
             await _orders.SaveChangesAsync(innerCt);
             dineInResult = Map(order);
         }, ct);
-        _ = _notifications.TableStatusChangedAsync(request.TableId!.Value, "Occupied");
+        _ = _notifications.TableStatusChangedAsync(request.TableId!.Value, "Occupied", CancellationToken.None);
         return dineInResult!;
     }
 
@@ -231,7 +231,7 @@ public class OrderService
         await _orders.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
         // Fire-and-forget: SignalR notification (UX complement; polling fallback is authoritative)
-        _ = _notifications.NewItemAddedAsync(order.Id, MapItem(item));
+        _ = _notifications.NewItemAddedAsync(order.Id, MapItem(item), CancellationToken.None);
         return Map(order);
     }
 
@@ -272,8 +272,8 @@ public class OrderService
 
         await _orders.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
-        _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, item.Status.ToString());
-        _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString());
+        _ = _notifications.OrderItemStatusChangedAsync(order.Id, itemId, item.Status.ToString(), CancellationToken.None);
+        _ = _notifications.OrderStatusChangedAsync(order.Id, order.Status.ToString(), CancellationToken.None);
         try { await _deliverySync.SyncFromRestOrderAsync(order.Id, order.Status, ct); }
         catch (Exception ex) { _logger.LogError(ex, "DeliveryOrder sync failed for RestOrder {Id} → {Status}", order.Id, order.Status); }
         return Map(order);
@@ -523,8 +523,8 @@ public class OrderService
             payResult = Map(order);
         }, ct);
         if (order.TableId.HasValue)
-            _ = _notifications.TableStatusChangedAsync(order.TableId.Value, "Available");
-        _ = _notifications.OrderStatusChangedAsync(order.Id, "Paid");
+            _ = _notifications.TableStatusChangedAsync(order.TableId.Value, "Available", CancellationToken.None);
+        _ = _notifications.OrderStatusChangedAsync(order.Id, "Paid", CancellationToken.None);
         return payResult!;
     }
 
