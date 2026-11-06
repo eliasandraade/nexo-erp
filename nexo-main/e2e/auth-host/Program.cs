@@ -1,20 +1,42 @@
+using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Net.WebSockets;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Nexo.Domain.Entities;
+using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 
 // Development/test only. The real API (controllers, middleware, CORS policy, rate limiter, migrations) on a disposable
 // PostgreSQL (Testcontainers), behind a thin pass-through because the test server does not listen on a port. Same shape as
 // e2e/backend-host, which seeds the portal and forwards only the portal routes; this one seeds nothing and forwards all of
-// /api. Test data only: every account is created by the suite, through the API, with synthetic values.
+// /api and the hub. Test data only: every account is created by the suite, through the API, with synthetic values.
+//
+// A second listener, with TLS and a certificate made here at startup, answers for *.orken.test: the shape of production, with
+// the app and the API on sibling hosts of one site, and a third sibling that is not ours (playwright.auth.config.ts maps the names).
 public static class AuthE2EHost
 {
-    const string ApiUrl = "http://127.0.0.1:5196";
-    const string FrontendOrigin = "http://127.0.0.1:5197";
+    const int ApiPort = 5196;
+    const int ProductionShapePort = 5199;
+    const string TestAddressHeader = "X-Forwarded-For";
+    static readonly string[] FrontendOrigins = ["http://127.0.0.1:5197", "http://127.0.0.1:5198", $"https://erp.orken.test:{ProductionShapePort}"];
+
+    /// <summary>The renewals of an address whose answer is held back, in milliseconds: a slow network, on demand, after the API has answered.</summary>
+    static readonly ConcurrentDictionary<string, int> HeldRenewals = new();
+
+    /// <summary>The names of the cookies that reached the last renewal of an address: what the server really got, whatever the browser reports.</summary>
+    static readonly ConcurrentDictionary<string, string[]> CookiesOnRenewal = new();
+
+    /// <summary>Connections to the hub through this host, so a test can drop them as a network would.</summary>
+    static readonly ConcurrentDictionary<Guid, CancellationTokenSource> HubConnections = new();
 
     public static async Task Main(string[] args)
     {
@@ -28,8 +50,39 @@ public static class AuthE2EHost
 
         var builder = WebApplication.CreateBuilder(args);
         builder.Logging.ClearProviders();
-        builder.WebHost.UseUrls(ApiUrl);
+        var certificate = NewCertificate();
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.Listen(IPAddress.Loopback, ApiPort);
+            // HTTP/1.1, like the other listener: this pass-through copies headers that HTTP/2 does not take on an empty answer.
+            kestrel.Listen(IPAddress.Loopback, ProductionShapePort, listen =>
+            {
+                listen.Protocols = Microsoft.AspNetCore.Server.Kestrel.Core.HttpProtocols.Http1;
+                listen.UseHttps(certificate);
+            });
+        });
         var app = builder.Build();
+        app.UseWebSockets();
+
+        // The app and the sibling that is not ours: a page to run a script from, and the sibling's attempts to write cookies for the whole site.
+        app.Use(async (ctx, next) =>
+        {
+            var host = ctx.Request.Host.Host;
+            if (host is "erp.orken.test" or "evil.orken.test")
+            {
+                if (ctx.Request.Path == "/tossed-cookies")
+                {
+                    var expires = DateTimeOffset.UtcNow.AddHours(1).ToString("R");
+                    ctx.Response.Headers.Append("Set-Cookie", $"__Host-nexo_rt=do-vizinho; Domain=orken.test; Path=/; Secure; HttpOnly; SameSite=Lax; Expires={expires}");
+                    ctx.Response.Headers.Append("Set-Cookie", $"__Host-nexo_rt=do-vizinho; Path=/; Secure; HttpOnly; SameSite=Lax; Expires={expires}");
+                    ctx.Response.Headers.Append("Set-Cookie", $"nexo_rt=do-vizinho; Domain=orken.test; Path=/; Secure; HttpOnly; SameSite=Lax; Expires={expires}");
+                }
+                ctx.Response.ContentType = "text/html";
+                await ctx.Response.WriteAsync("<!doctype html><title>orken.test</title>");
+                return;
+            }
+            await next();
+        });
 
         app.MapGet("/__test/setup", () => new
         {
@@ -57,32 +110,191 @@ public static class AuthE2EHost
             return Results.Ok(new { accessToken = new JwtSecurityTokenHandler().WriteToken(expired) });
         });
 
-        // Pass-through to the real API: method, headers (Origin, preflight headers, X-Forwarded-For) and body as sent by the
-        // client; the response, CORS and Set-Cookie headers included, exactly as the API answered.
-        app.Map("/api/{**path}", async ctx =>
+        // What the e-mail would have carried: this host delivers no e-mail. A verification link, and the link of a new password.
+        app.MapPost("/__test/links/verification", async (LinkRequest request) =>
         {
-            using var request = new HttpRequestMessage(new HttpMethod(ctx.Request.Method), ctx.Request.Path + ctx.Request.QueryString);
-            if (ctx.Request.ContentLength > 0 || ctx.Request.Headers.TransferEncoding.Count > 0)
-                request.Content = new StreamContent(ctx.Request.Body);
-            foreach (var (name, value) in ctx.Request.Headers)
-            {
-                if (name is "Host" or "Connection" or "Content-Length" or "Transfer-Encoding") continue;
-                if (!request.Headers.TryAddWithoutValidation(name, value.ToArray()))
-                    request.Content?.Headers.TryAddWithoutValidation(name, value.ToArray());
-            }
-            using var response = await api.SendAsync(request, ctx.RequestAborted);
-            ctx.Response.StatusCode = (int)response.StatusCode;
-            foreach (var h in response.Headers.Concat(response.Content.Headers))
-                ctx.Response.Headers[h.Key] = h.Value.ToArray();
-            ctx.Response.Headers.Remove("transfer-encoding");
-            await response.Content.CopyToAsync(ctx.Response.Body);
+            var token = Guid.NewGuid().ToString("N");
+            await ChangeUserAsync(factory, request.Email, user => user.SetVerificationToken(token, DateTime.UtcNow.AddMinutes(30)));
+            return Results.Ok(new { token });
+        });
+        app.MapPost("/__test/links/password", async (LinkRequest request) =>
+        {
+            var token = Guid.NewGuid().ToString("N");
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token))).ToLowerInvariant();
+            await ChangeUserAsync(factory, request.Email, user => user.SetPasswordResetToken(hash, DateTime.UtcNow.AddMinutes(30)));
+            return Results.Ok(new { token });
         });
 
-        Console.WriteLine($"Auth E2E host ready on {ApiUrl} (test data only)");
+        // A second store: a company of the suite is born with one, and there is no screen to create another in the way of these tests.
+        app.MapPost("/__test/stores", async (StoreRequest request) =>
+        {
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            var tag = Guid.NewGuid().ToString("N")[..8];
+            var store = Store.Create(request.TenantId, request.Name, $"loja-{tag}");
+            db.Stores.Add(store);
+            await db.SaveChangesAsync();
+            return Results.Ok(new { id = store.Id });
+        });
+
+        app.MapPost("/__test/platform-users", async () =>
+        {
+            var email = $"e2e-{Guid.NewGuid():N}"[..16] + "@platform.test";
+            var password = $"Sintetica-{Guid.NewGuid()}";
+            using var scope = factory.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            db.PlatformUsers.Add(PlatformUser.Create(email, scope.ServiceProvider.GetRequiredService<Nexo.Application.Common.Interfaces.IPasswordHasher>().Hash(password), "super_admin"));
+            await db.SaveChangesAsync();
+            return Results.Ok(new { email, password });
+        });
+
+        app.MapPost("/__test/hold-renewals", (HoldRequest request) =>
+        {
+            HeldRenewals[request.Address] = request.Milliseconds;
+            return Results.NoContent();
+        });
+
+        // Puts a value in the cookie of the session, for what only another browser or another app could have done to it.
+        app.MapGet("/__test/session-cookie", (string value, HttpContext ctx) =>
+        {
+            ctx.Response.Headers.Append("Set-Cookie", $"__Host-nexo_rt={value}; Path=/; Secure; HttpOnly; SameSite=Lax; Expires={DateTimeOffset.UtcNow.AddHours(1):R}");
+            return Results.NoContent();
+        });
+
+        app.MapGet("/__test/cookies-on-renewal", (string address) =>
+            Results.Ok(new { names = CookiesOnRenewal.TryGetValue(address, out var names) ? names : [] }));
+
+        app.MapPost("/__test/hub/drop", () =>
+        {
+            foreach (var connection in HubConnections.Values) connection.Cancel();
+            return Results.NoContent();
+        });
+
+        // The hub: a real WebSocket on each side, the API's on the test server.
+        app.Map("/hubs/{**path}", async ctx =>
+        {
+            if (!ctx.WebSockets.IsWebSocketRequest)
+            {
+                await PassThroughAsync(api, ctx);
+                return;
+            }
+            var client = factory.Server.CreateWebSocketClient();
+            using var upstream = await client.ConnectAsync(new Uri($"ws://localhost{ctx.Request.Path}{ctx.Request.QueryString}"), ctx.RequestAborted);
+            using var downstream = await ctx.WebSockets.AcceptWebSocketAsync();
+            using var dropped = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
+            var id = Guid.NewGuid();
+            HubConnections[id] = dropped;
+            try
+            {
+                await Task.WhenAny(PumpAsync(upstream, downstream, dropped.Token), PumpAsync(downstream, upstream, dropped.Token));
+            }
+            finally
+            {
+                HubConnections.TryRemove(id, out _);
+                downstream.Abort();
+                upstream.Abort();
+            }
+        });
+
+        // Pass-through to the real API: method, headers (Origin, preflight headers, X-Forwarded-For) and body as sent by the
+        // client; the response, CORS and Set-Cookie headers included, exactly as the API answered.
+        app.Map("/api/{**path}", ctx => PassThroughAsync(api, ctx));
+
+        Console.WriteLine($"Auth E2E host ready on http://127.0.0.1:{ApiPort} and *.orken.test:{ProductionShapePort} (test data only)");
         await app.RunAsync();
     }
 
+    static async Task PassThroughAsync(HttpClient api, HttpContext ctx)
+    {
+        if (ctx.Request.Path == "/api/auth/refresh" && ctx.Request.Method == "POST")
+            CookiesOnRenewal[ctx.Request.Headers["X-Forwarded-For"].ToString()] = [.. ctx.Request.Cookies.Keys];
+
+        using var request = new HttpRequestMessage(new HttpMethod(ctx.Request.Method), ctx.Request.Path + ctx.Request.QueryString);
+        if (ctx.Request.ContentLength > 0 || ctx.Request.Headers.TransferEncoding.Count > 0)
+            request.Content = new StreamContent(ctx.Request.Body);
+        foreach (var (name, value) in ctx.Request.Headers)
+        {
+            if (name is "Host" or "Connection" or "Content-Length" or "Transfer-Encoding") continue;
+            if (!request.Headers.TryAddWithoutValidation(name, value.ToArray()))
+                request.Content?.Headers.TryAddWithoutValidation(name, value.ToArray());
+        }
+
+        // Each test is its own client address, through X-Forwarded-For set on the browser context. In production the proxy writes that
+        // header and no page can: the API does not allow it on a preflight. So it is the one header this host answers for by itself, and
+        // the API judges all the others exactly as it would.
+        var addressAsked = false;
+        if (request.Headers.TryGetValues("Access-Control-Request-Headers", out var asked))
+        {
+            var names = asked.SelectMany(v => v.Split(',')).Select(n => n.Trim()).ToList();
+            addressAsked = names.RemoveAll(n => n.Equals(TestAddressHeader, StringComparison.OrdinalIgnoreCase)) > 0;
+            request.Headers.Remove("Access-Control-Request-Headers");
+            if (names.Count > 0) request.Headers.TryAddWithoutValidation("Access-Control-Request-Headers", string.Join(",", names));
+        }
+        using var response = await api.SendAsync(request, ctx.RequestAborted);
+
+        // The API already answered, and rotated the token: only the way back is slow.
+        if (ctx.Request.Path == "/api/auth/refresh" && ctx.Request.Method == "POST"
+            && HeldRenewals.TryGetValue(ctx.Request.Headers["X-Forwarded-For"].ToString(), out var hold))
+            await Task.Delay(hold, CancellationToken.None);
+
+        ctx.Response.StatusCode = (int)response.StatusCode;
+        foreach (var h in response.Headers.Concat(response.Content.Headers))
+            ctx.Response.Headers[h.Key] = h.Value.ToArray();
+        ctx.Response.Headers.Remove("transfer-encoding");
+        if (addressAsked && ctx.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
+            ctx.Response.Headers.Append("Access-Control-Allow-Headers", TestAddressHeader);
+        await response.Content.CopyToAsync(ctx.Response.Body);
+    }
+
+    static async Task PumpAsync(WebSocket from, WebSocket to, CancellationToken ct)
+    {
+        var buffer = new byte[16 * 1024];
+        try
+        {
+            while (from.State == WebSocketState.Open && to.State == WebSocketState.Open)
+            {
+                var received = await from.ReceiveAsync(buffer, ct);
+                if (received.MessageType == WebSocketMessageType.Close)
+                {
+                    await to.CloseAsync(received.CloseStatus ?? WebSocketCloseStatus.NormalClosure, received.CloseStatusDescription, CancellationToken.None);
+                    return;
+                }
+                await to.SendAsync(buffer.AsMemory(0, received.Count), received.MessageType, received.EndOfMessage, ct);
+            }
+        }
+        catch (Exception e) when (e is OperationCanceledException or WebSocketException or ObjectDisposedException)
+        {
+            // one side went away: the finally of the caller closes the other
+        }
+    }
+
+    static async Task ChangeUserAsync(AuthFactory factory, string email, Action<User> change)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        change(await db.Users.IgnoreQueryFilters().SingleAsync(u => u.Email == email));
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>A certificate only for this process and these names. The browser of the suite is told to ignore that nobody signed it.</summary>
+    static X509Certificate2 NewCertificate()
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest("CN=orken.test", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddDnsName("erp.orken.test");
+        names.AddDnsName("api.erp.orken.test");
+        names.AddDnsName("evil.orken.test");
+        request.CertificateExtensions.Add(names.Build());
+        using var created = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+        // Through PFX: on Windows the TLS stack does not take an ephemeral key.
+        return new X509Certificate2(created.Export(X509ContentType.Pfx), (string?)null, X509KeyStorageFlags.Exportable);
+    }
+
     sealed record ExpireRequest(string AccessToken);
+    sealed record LinkRequest(string Email);
+    sealed record StoreRequest(Guid TenantId, string Name);
+    sealed record HoldRequest(string Address, int Milliseconds);
 
     sealed class AuthFactory(string root) : TestWebApplicationFactory
     {
@@ -91,7 +303,8 @@ public static class AuthE2EHost
             base.ConfigureWebHost(builder);
             builder.UseContentRoot(Path.Combine(root, "src", "Nexo.Api"));
             // the frontend under test is a separate origin, as in production: the API's own CORS policy must let it in
-            builder.UseSetting("Cors:AllowedOrigins:0", FrontendOrigin);
+            for (var i = 0; i < FrontendOrigins.Length; i++)
+                builder.UseSetting($"Cors:AllowedOrigins:{i}", FrontendOrigins[i]);
             // the base factory turns the sign-in and renewal limits off for the shared integration suite; here they are under
             // test, at the production defaults, with each test of the suite as its own client address (X-Forwarded-For)
             builder.UseSetting("RateLimiting:AuthLogin:Enabled", "true");

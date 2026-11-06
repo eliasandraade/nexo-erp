@@ -3,6 +3,10 @@ name: auth-e2e
 # Authentication end to end: the real login page, route guards and API client against the real API on a disposable
 # PostgreSQL (nexo-main/e2e/auth-host, Testcontainers). It depends on the frontend and on the backend at once, so it does not
 # live in frontend-ci.yml, which a backend-only pull request skips. Called by ci.yml and master.yml, on every run.
+#
+# The same suite against the two bundles of the session (docs/security/sessao-auditoria-e-migracao.md, section 6): the storage of
+# today and VITE_SESSION_MODE=cookie. The gates read the result of this workflow as a whole, so a failure in either fails ci-gate
+# and master-gate, and their names do not change.
 on:
   workflow_call:
 
@@ -10,6 +14,10 @@ jobs:
   auth-e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        session: [storage, cookie]
     defaults:
       run:
         working-directory: nexo-main
@@ -47,12 +55,14 @@ jobs:
         run: npm run e2e:install
 
       - name: Authentication end-to-end suite
+        env:
+          AUTH_E2E_SESSION_MODE: ${{ matrix.session }}
         run: npm run test:e2e
 
       - name: Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: auth-e2e-report
+          name: auth-e2e-report-${{ matrix.session }}
           path: nexo-main/playwright-report
           retention-days: 7
