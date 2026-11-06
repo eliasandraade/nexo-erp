@@ -313,6 +313,23 @@ async function readErrorBody(res: Response): Promise<ErrorBody | null> {
   }
 }
 
+/**
+ * The token was rotated and no tab here got the new pair: someone else may hold it. Before giving up, the server hears it with this same token, which ends the
+ * family even inside the grace. Otherwise this client would never present the token again, and nothing would ever call it a reuse. Best effort: it does not wait.
+ */
+async function endFamilyOfSpentToken(token: string): Promise<void> {
+  try {
+    await fetch(`${BASE_URL}/auth/logout`, {
+      method: "POST",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: token }),
+    });
+  } catch {
+    // no connection: the session ends here anyway, and the family at its expiry
+  }
+}
+
 let refreshPromise: Promise<RefreshOutcome> | null = null;
 
 async function attemptRefresh(): Promise<RefreshOutcome> {
@@ -347,7 +364,10 @@ async function attemptRefresh(): Promise<RefreshOutcome> {
       }
       const err = await readErrorBody(res);
       // Another tab renewed the same session a moment ago and stores the new pair in localStorage: use it.
-      if (res.status === 409 && err?.code === "refresh_already_rotated" && await waitForRotatedToken(sent)) return "ok";
+      if (res.status === 409 && err?.code === "refresh_already_rotated") {
+        if (await waitForRotatedToken(sent)) return "ok";
+        void endFamilyOfSpentToken(sent);
+      }
       clearTokens();
       return isPlatformRefreshToken(sent) ? "platform_ended" : "refused";
     } catch (error) {

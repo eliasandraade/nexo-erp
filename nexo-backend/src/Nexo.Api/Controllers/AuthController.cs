@@ -439,8 +439,19 @@ public class AuthController : ControllerBase
 
     public sealed record EndedImpersonation(DateTime At);
 
+    /// <summary>A refresh token fits with room to spare, and nothing bigger is worth binding, hashing and looking up for someone with no session.</summary>
+    private const int LogoutBodyLimitBytes = 16 * 1024;
+
+    /// <summary>
+    /// Ends the session of the token presented, and its whole family. It takes an access token or, without one, the refresh token itself: whoever holds it
+    /// could renew it anyway. That is the way out of a client that lost the race for its own token and is about to give up: its access token has usually
+    /// expired by then, and inside the grace this is the only moment the server can hear that someone else holds the new one.
+    /// </summary>
     [HttpPost("logout")]
-    [Authorize]
+    [AllowAnonymous]
+    [EnableRateLimiting(Nexo.Api.Middleware.AuthLogoutRateLimit.Policy)]
+    [RequestSizeLimit(LogoutBodyLimitBytes)]
+    [Nexo.Api.Filters.RefusesLargeBody(LogoutBodyLimitBytes)]
     public async Task<IActionResult> Logout(
         [FromBody] LogoutRequest? request,
         CancellationToken ct)
@@ -451,11 +462,18 @@ public class AuthController : ControllerBase
             // Try to get from cookie
             refreshToken = Request.Cookies["nexo_refresh"];
         }
-        
+
+        var signedIn = User.Identity?.IsAuthenticated == true;
+        if (!signedIn && string.IsNullOrWhiteSpace(request?.RefreshToken)) return Challenge();
+
         if (User.FindFirstValue("type") == "platform")
         {
             if (Guid.TryParse(User.FindFirstValue("platformUserId"), out var platformUserId) && Guid.TryParse(User.FindFirstValue("sid"), out var sid))
                 await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>().LogoutAsync(platformUserId, sid, ct);
+        }
+        else if (Nexo.Infrastructure.Auth.PlatformAuthService.IsPlatformToken(refreshToken))
+        {
+            await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>().LogoutByRefreshTokenAsync(refreshToken, ct);
         }
         else if (!string.IsNullOrWhiteSpace(refreshToken))
         {

@@ -52,6 +52,10 @@ public class SessionStoreService : ISessionStore
         => _db.UserSessions.IgnoreQueryFilters().AsNoTracking()
             .AnyAsync(s => s.RefreshJti == refreshJti && !s.IsRevoked && s.ExpiresAt > DateTime.UtcNow, ct);
 
+    public Task<bool> IsRevokedAsync(string refreshJti, CancellationToken ct = default)
+        => _db.UserSessions.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(s => s.RefreshJti == refreshJti && s.IsRevoked, ct);
+
     public async Task TouchAsync(string oldRefreshJti, string newRefreshJti, CancellationToken ct = default)
     {
         var session = await _db.UserSessions

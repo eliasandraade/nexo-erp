@@ -153,27 +153,15 @@ try
     Nexo.Api.Orken.OrkenOperationsEndpoints.AddOrkenServiceAuthentication(builder);
 
     // ── CORS ──────────────────────────────────────────────────────────────────
+    // One list, for this policy and for the guard of the auth routes. Railway env Cors:AllowedOrigins can add more.
+    var allowedOrigins = new AllowedOrigins(builder.Configuration);
+    builder.Services.AddSingleton(allowedOrigins);
+
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("NexoFrontend", policy =>
         {
-            // Always include known origins; Railway env Cors:AllowedOrigins can add more.
-            var builtInOrigins = new[]
-            {
-                "http://localhost:3000",
-                "http://localhost:8080",
-                "http://localhost:5173",
-                "https://erp.orken.com.br",
-                "https://www.orken.com.br",
-            };
-
-            var configOrigins = builder.Configuration
-                .GetSection("Cors:AllowedOrigins")
-                .Get<string[]>() ?? [];
-
-            var origins = builtInOrigins.Concat(configOrigins).Distinct().ToArray();
-
-            policy.WithOrigins(origins)
+            policy.WithOrigins(allowedOrigins.All)
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                   .AllowAnyHeader()
                   .AllowCredentials()
@@ -367,7 +355,10 @@ try
     });
 
     builder.Services.Configure<RateLimiterOptions>(options =>
-        Nexo.Api.Middleware.AuthRefreshRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp));
+    {
+        Nexo.Api.Middleware.AuthRefreshRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp);
+        Nexo.Api.Middleware.AuthLogoutRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp);
+    });
     builder.Services.AddUploadLimits(builder.Configuration);
 
     // ── Controllers ───────────────────────────────────────────────────────────
@@ -517,6 +508,12 @@ try
     }
 
     app.UseMiddleware<UploadBodyMiddleware>();
+    // Before authentication and the limiters: a page of another site spends nothing of anybody.
+    app.UseMiddleware<AuthOriginGuardMiddleware>();
+    // Before authentication and the limiters: a page of another site spends nothing of anybody.
+    app.UseMiddleware<AuthOriginGuardMiddleware>();
+    // Before authentication and the limiters: a page of another site spends nothing of anybody.
+    app.UseMiddleware<AuthOriginGuardMiddleware>();
     app.UseAuthentication();
     // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
     // HttpContext.User is empty, so every caller, even one without a session, shared a single budget per path.

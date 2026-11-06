@@ -32,4 +32,10 @@ public interface ISessionStore
     /// that normally says this is not answering.
     /// </summary>
     Task<bool> IsActiveAsync(string refreshJti, CancellationToken ct = default);
+
+    /// <summary>
+    /// True when the row of this token says the session ended. Not the opposite of <see cref="IsActiveAsync"/>: the row follows the token by a best-effort step
+    /// and may still hold an earlier one, so a token with no row of its own is simply not known to have ended.
+    /// </summary>
+    Task<bool> IsRevokedAsync(string refreshJti, CancellationToken ct = default);
 }

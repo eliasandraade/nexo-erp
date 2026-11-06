@@ -172,6 +172,7 @@ public static class AuthE2EHost
             // test, at the production defaults, with each test of the suite as its own client address (X-Forwarded-For)
             builder.UseSetting("RateLimiting:AuthLogin:Enabled", "true");
             builder.UseSetting("RateLimiting:AuthRefresh:Enabled", "true");
+            builder.UseSetting("RateLimiting:AuthLogout:Enabled", "true");
             // the browsers of the suite share one client address, and a run sends more reports than a person would
             builder.UseSetting("RateLimiting:CspReport:Enabled", "false");
             builder.UseSetting("Integrations:Features:StorageEnabled", "true");
