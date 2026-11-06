@@ -34,17 +34,12 @@ jobs:
       - name: Build the API host
         run: dotnet build e2e/auth-host/AuthE2EHost.csproj --nologo -v q
 
-      # Same two steps as frontend-ci.yml, which explains them.
+      # Normally 20 s. apt only when Chromium does not open: see the script.
       - name: Playwright browsers
-        id: browsers
-        continue-on-error: true
-        timeout-minutes: 5
-        run: npm run e2e:install
-
-      - name: Playwright browsers (second attempt)
-        if: steps.browsers.outcome == 'failure'
-        timeout-minutes: 5
-        run: npm run e2e:install
+        timeout-minutes: 12
+        env:
+          PLAYWRIGHT_FORCE_DEPS: "1"
+        run: npm run e2e:install:ci
 
       - name: Authentication end-to-end suite
         run: npm run test:e2e

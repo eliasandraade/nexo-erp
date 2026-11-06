@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:ui": "playwright test",
     "e2e:install": "playwright install --with-deps chromium",
+    "e2e:install:ci": "bash scripts/install-playwright-browser.sh",
     "e2e:critical": "playwright test"
   },
   "dependencies": {
