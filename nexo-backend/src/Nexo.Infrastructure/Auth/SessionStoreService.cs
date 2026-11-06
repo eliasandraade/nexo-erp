@@ -56,7 +56,7 @@ public class SessionStoreService : ISessionStore
         => _db.UserSessions.IgnoreQueryFilters().AsNoTracking()
             .AnyAsync(s => s.RefreshJti == refreshJti && s.IsRevoked, ct);
 
-    public async Task TouchAsync(string oldRefreshJti, string newRefreshJti, CancellationToken ct = default)
+    public async Task TouchAsync(string oldRefreshJti, string newRefreshJti, DateTime expiresAt, CancellationToken ct = default)
     {
         var session = await _db.UserSessions
             .IgnoreQueryFilters()
@@ -64,7 +64,7 @@ public class SessionStoreService : ISessionStore
 
         if (session is null) return;
 
-        session.Touch(newRefreshJti);
+        session.Touch(newRefreshJti, expiresAt);
 
         try
         {

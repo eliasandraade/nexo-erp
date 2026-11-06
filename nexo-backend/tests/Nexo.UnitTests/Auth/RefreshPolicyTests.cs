@@ -54,7 +54,7 @@ public class RefreshPolicyTests
     public async Task Cache_failing_right_before_the_claim_is_no_race_it_asks_to_come_back()
     {
         TokenIsValidWithAnEntry();
-        _cache.IncrementAsync(Arg.Any<string>(), Arg.Any<TimeSpan>(), Arg.Any<CancellationToken>()).Returns((long?)null);
+        _cache.TryClaimAsync(Arg.Any<CacheClaim>(), Arg.Any<CancellationToken>()).Returns((bool?)null);
 
         var outcome = await Sut().RefreshAsync(new RefreshTokenRequest(Token), "203.0.113.1");
 

@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.Extensions;
+using Nexo.Application.Common.Interfaces;
 using Nexo.Infrastructure.Cache;
 using StackExchange.Redis;
 
@@ -56,6 +57,8 @@ public class RedisCacheServiceCancellationTests
         "INCR" => _cache.IncrementAsync("k", TimeSpan.FromMinutes(1), ct),
         "SETFLAG" => _cache.SetFlagAsync("k", TimeSpan.FromMinutes(1), ct),
         "COUNT" => _cache.CountInWindowAsync("k", TimeSpan.FromMinutes(1), ct),
+        "CLAIM" => _cache.TryClaimAsync(new CacheClaim("k", "owner", TimeSpan.FromSeconds(2)), ct),
+        "COMMIT" => _cache.CommitClaimAsync(new CacheClaim("k", "owner", TimeSpan.FromSeconds(2)), "spent", [new CacheWrite("next", new object())], TimeSpan.FromMinutes(1), ct),
         _ => throw new ArgumentOutOfRangeException(nameof(operation)),
     };
 
@@ -67,6 +70,8 @@ public class RedisCacheServiceCancellationTests
     [InlineData("INCR")]
     [InlineData("SETFLAG")]
     [InlineData("COUNT")]
+    [InlineData("CLAIM")]
+    [InlineData("COMMIT")]
     public async Task Cancelled_call_propagates_and_keeps_the_circuit_closed(string operation)
     {
         RedisNeverAnswers();

@@ -20,9 +20,9 @@ public interface ISessionStore
         CancellationToken ct = default);
 
     /// <summary>
-    /// Updates the session's RefreshJti and LastUsedAt when the token is rotated.
+    /// Updates the session's RefreshJti, LastUsedAt and ExpiresAt when the token is rotated: the session lives as long as its newest token.
     /// </summary>
-    Task TouchAsync(string oldRefreshJti, string newRefreshJti, CancellationToken ct = default);
+    Task TouchAsync(string oldRefreshJti, string newRefreshJti, DateTime expiresAt, CancellationToken ct = default);
 
     /// <summary>Marks the session of this refresh token as ended (logout) — it leaves the device list.</summary>
     Task RevokeAsync(string refreshJti, CancellationToken ct = default);

@@ -174,8 +174,8 @@ public sealed class RenewalReviewRedisTests : IClassFixture<RedisWebApplicationF
     // ── The reservation of a token ────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// INCR and then EXPIRE leave, on a crash between the two, a key with no expiry: a live token answering 409 forever. One atomic step never
-    /// leaves that, and a key already left like that by the old code gets its expiry at the next touch.
+    /// INCR and then EXPIRE left, on a crash between the two, a key with no expiry: a live token blocked forever. The claim of now is one atomic step, which never
+    /// leaves that, and a key already left like that by the old code gets its expiry at the next touch. With no rotation behind it, it is no 409 either.
     /// </summary>
     [Fact]
     public async Task A_reservation_left_with_no_expiry_does_not_stay_forever()
@@ -187,12 +187,8 @@ public sealed class RenewalReviewRedisTests : IClassFixture<RedisWebApplicationF
 
         var renewal = await RenewAsync(signedIn.RefreshToken);
 
-        renewal.StatusCode.Should().Be(HttpStatusCode.Conflict);
-        var ttl = await _factory.RedisDatabase.KeyTimeToLiveAsync(key);
-        ttl.Should().NotBeNull("the reservation has to end by itself");
-        ttl!.Value.Should().BeLessThanOrEqualTo(TimeSpan.FromMinutes(1));
-
-        await _factory.RedisDatabase.KeyDeleteAsync(key);
+        renewal.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        (await _factory.RedisDatabase.KeyTimeToLiveAsync(key)).Should().BeNull("the two seconds of the first attempt already ended it");
         (await RenewAsync(signedIn.RefreshToken)).StatusCode.Should().Be(HttpStatusCode.OK, "once it ends, the token is good");
     }
 

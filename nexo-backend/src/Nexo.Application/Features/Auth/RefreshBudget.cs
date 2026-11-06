@@ -15,7 +15,7 @@ public sealed class RefreshBudgetOptions
     public int FailureBudget { get; init; } = 30;
     public TimeSpan FailureWindow { get; init; } = TimeSpan.FromMinutes(15);
 
-    /// <summary>Renewals per session and window. A session renews once per access token (15 min), so 60 is a client in a loop.</summary>
+    /// <summary>Renewals per session and window. A session renews once per access token (15 min), and a page load may renew too, so 300 is a client in a loop.</summary>
     public int FamilyBudget { get; init; } = 300;
     public TimeSpan FamilyWindow { get; init; } = TimeSpan.FromMinutes(15);
 }
@@ -70,7 +70,7 @@ public sealed class RefreshBudget
     /// there, whatever was sent.
     /// </summary>
     private static string AddressPart(string clientIp)
-        => IPAddress.TryParse(clientIp, out _)
+        => clientIp.Length <= 45 && !clientIp.Contains('%') && IPAddress.TryParse(clientIp, out _)
             ? clientIp
             : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(clientIp)));
 }

@@ -50,6 +50,11 @@ public static class RateLimitRejection
             "Não foi possível renovar a sessão agora. Ela continua ativa: tente de novo em instantes.",
             Nexo.Application.Features.Auth.RefreshErrors.Unavailable, retryAfter);
 
+    /// <summary>A token another tab has just rotated (409): nothing changed in the session, and the server judges this token when the time given is over.</summary>
+    public static ObjectResult AlreadyRotatedResult(ControllerBase controller, TimeSpan retryAfter)
+        => Answer(controller, StatusCodes.Status409Conflict, "Esta sessão acabou de ser renovada em outra aba.",
+            Nexo.Application.Features.Auth.RefreshErrors.AlreadyRotated, retryAfter);
+
     private static ObjectResult Answer(ControllerBase controller, int status, string error, string code, TimeSpan retryAfter)
     {
         var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));

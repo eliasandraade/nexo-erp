@@ -23,6 +23,7 @@ const API = `${HOST_ORIGIN}/api`;
 const ACCESS_TOKEN_KEY = "nexo:access_token";
 const REFRESH_TOKEN_KEY = "nexo:refresh_token";
 const SESSION_KEY = "nexo:session";
+const WAIT_KEY = "nexo:renewal_wait";
 const NO_SESSION = { access: null, refresh: null, session: null };
 
 const SESSION_COOKIE = "__Host-nexo_rt";
@@ -838,9 +839,10 @@ test.describe("Session ended by the server", () => {
     await expectSettledOnLogin(page, apiCalls, user, SESSION_ENDED_URL, "/workspaces");
   });
 
-  // A thief who renews first leaves the victim with a spent token. The victim only ever sees a race (409), never the reuse: without telling the
-  // server, the victim would give up alone and the copy would go on. It is the one moment the server can hear of it.
-  test("A token someone else spent ends the session for them too", async ({ page, company, device, apiCalls }) => {
+  // A thief who renews first leaves the victim with a spent token. Inside the grace the victim only sees a race (409), and says nothing to the server. Past it the same token
+  // goes again, and the server calls it what it is. This is the wait the client really does, against the real grace.
+  test("A token someone else spent ends the session for them too, when the grace is over", async ({ page, company, device, apiCalls }) => {
+    test.slow(); // the real grace of the rotation, 30 s
     const user = await company.createUser("gerente");
     await signInToDashboard(page, user);
     const api = await device();
@@ -851,12 +853,26 @@ test.describe("Session ended by the server", () => {
     await expireAccessToken(page, api);
     apiCalls.reset();
 
-    const signedOut = page.waitForResponse((r) => r.url() === `${API}/auth/logout` && r.request().method() === "POST");
+    const raced = page.waitForResponse((r) => r.url() === `${API}/auth/refresh` && r.request().method() === "POST");
     await page.reload();
 
-    expect((await signedOut).status()).toBe(204);
+    expect((await raced).status(), "inside the grace").toBe(409);
+    expect(Number(await (await raced).headerValue("retry-after"))).toBeGreaterThan(0);
+    await page.waitForTimeout(3500);
+    await expect(signOutButton(page), "a 409 ends nothing").toBeVisible();
+    expect(apiCalls.count("/auth/logout"), "and nothing signs out by itself").toBe(0);
+    expect(apiCalls.count("/auth/refresh"), "and the token is not presented again").toBe(1);
+
+    // the server's grace goes by, and the next thing the person does presents the token once more
+    await expect.poll(async () => {
+      const wait = await page.evaluate((key) => localStorage.getItem(key), WAIT_KEY);
+      return wait ? (JSON.parse(wait) as { until: number }).until - Date.now() : 0;
+    }, { timeout: 45_000, intervals: [1000] }).toBeLessThanOrEqual(0);
+    await page.getByRole("link", { name: "Produtos" }).click();
+
     await expect(page).toHaveURL(SESSION_ENDED_URL);
-    expect(apiCalls.count("/auth/refresh", 409)).toBeGreaterThanOrEqual(1);
+    expect(apiCalls.count("/auth/refresh", 401)).toBe(1);
+    expect(apiCalls.count("/auth/logout")).toBe(0);
     const theirRenewal = await api.post(`${API}/auth/refresh`, { data: { refreshToken: theirs } });
     expect(theirRenewal.status(), "the copy ended with the family").toBe(401);
   });
@@ -918,9 +934,56 @@ test.describe("Session ended by the server", () => {
  * had to stop being reachable in normal use first: the renewal has its own policy (docs/security/sessao-auditoria-e-migracao.md,
  * section 4), with room for a store behind one address, and what remains over it is abuse or a client in a loop.
  */
+/**
+ * The proof of the review: the tab that lost the race used to sign out after 3 s, and that ended the new pair of the tab that won. Two real tabs, with the answer of the winner
+ * held on the way back.
+ */
+test.describe("Two tabs and a 409", () => {
+  for (const holdMs of [2000, 6000]) {
+    test(`The answer of the winner takes ${holdMs} ms, and nobody loses the session`, async ({ context, page, company, device, apiCalls }) => {
+      const user = await company.createUser("gerente");
+      await signInToDashboard(page, user);
+      const api = await device();
+      const other = await context.newPage();
+      await other.goto("/dashboard");
+      await expect(signOutButton(other)).toBeVisible();
+      await expireAccessToken(page, api);
+
+      let winnerToken = "";
+      let rotated!: () => void;
+      const atServer = new Promise<void>((resolve) => { rotated = resolve; });
+      await page.route(`${API}/auth/refresh`, async (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        const response = await route.fetch();
+        winnerToken = (await response.json()).refreshToken;
+        rotated();
+        await new Promise((resolve) => setTimeout(resolve, holdMs));
+        await route.fulfill({ response });
+      });
+      apiCalls.reset();
+      void page.reload();
+      await atServer;
+      await other.reload({ waitUntil: "commit" });
+      await page.waitForTimeout(holdMs + 4000);
+
+      expect(apiCalls.count("/auth/logout"), "a 409 calls nothing by itself").toBe(0);
+      expect(apiCalls.count("/auth/refresh", 409), "and ends the burst: one per tab that lost").toBeLessThanOrEqual(1);
+      await expect(signOutButton(page)).toBeVisible();
+      await expect(signOutButton(other)).toBeVisible();
+      expect(page.url()).not.toMatch(/\/login/);
+      expect(other.url()).not.toMatch(/\/login/);
+
+      // the tab that lost goes on with the pair of the tab that won
+      await other.getByRole("link", { name: "Produtos" }).click();
+      await expect(other.getByRole("heading", { name: "Produtos" })).toBeVisible();
+      const renewal = await api.post(`${API}/auth/refresh`, { data: { refreshToken: winnerToken } });
+      expect(renewal.status(), "the pair the winning tab got is alive").toBe(200);
+    });
+  }
+});
+
 test.describe("Failures that say nothing about the session", () => {
   const STILL_ACTIVE = /Sua sessão continua ativa/;
-  const WAIT_KEY = "nexo:renewal_wait";
   const CEILING = 900; // RateLimiting:AuthRefresh:PermitLimit, the production default
   const SESSION_BUDGET = 300; // RateLimiting:AuthRefresh:FamilyBudget, the production default
   /** The first call of a page load: the renewal in the cookie mode, where the tab has no token yet. */

@@ -20,9 +20,8 @@ using Nexo.IntegrationTests.Helpers;
 namespace Nexo.IntegrationTests.Auth;
 
 /// <summary>
-/// The way out for a client that lost the race: someone else rotated its token, the wait ended with no new pair, and it is about to clear the
-/// session. Its access token is usually expired by then, which is why it was renewing. Holding the refresh token is proof enough to end
-/// that session, spent or not, and inside the grace this is the only moment the copy can be caught: the victim will not present it again.
+/// The way out for someone with no valid access token: a tab that just loaded, one whose access expired, or a sign-out left pending. Holding the refresh token is proof
+/// enough to end that session, spent or not. A client never does this by itself after a 409: that would end the new pair of the tab that won the race.
 /// </summary>
 [Collection("Integration")]
 public class LogoutByRefreshTokenTests

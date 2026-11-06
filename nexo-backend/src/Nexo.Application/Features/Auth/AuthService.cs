@@ -199,18 +199,19 @@ public class AuthService
 
     /// <summary>
     /// Uma segunda aba que renova com o token que outra aba acabou de trocar é uma corrida, não um roubo: dentro desta
-    /// janela ela recebe "já renovado" (409, nada é emitido) e lê o par novo que a outra aba gravou. Depois dela, o token
+    /// janela ela recebe "já renovado" (409, nada é emitido, com o tempo que falta) e lê o par novo que a outra aba gravou. Depois dela, o token
     /// já usado voltando indica uma cópia em outras mãos e encerra a família inteira. Mesma regra das sessões da plataforma.
     /// </summary>
     public static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
 
-    // Vida da reserva de uso único de um token: só a troca em si precisa caber nela. Depois, a entrada do token já
-    // saiu do cache e quem responde é o registro da família.
-    private static readonly TimeSpan RotationClaimTtl = TimeSpan.FromMinutes(1);
+    // The hold on a token while it rotates: only the rotation itself has to fit in it. Far shorter than UnavailableRetry, so a claim that ran late in Redis after the API
+    // gave up on it (a stall) is over when the client comes back. The commit is conditional on it, so a winner slower than this creates nothing.
+    private static readonly TimeSpan RotationClaimTtl = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan LostClaimPoll = TimeSpan.FromMilliseconds(25);
 
     /// <summary>
-    /// Troca um refresh token por um par novo da mesma família (sessão). Uso único: só a primeira requisição que
-    /// reserva o token (INCR atômico) emite o par; as concorrentes recebem <see cref="RefreshErrors.AlreadyRotated"/>
+    /// Troca um refresh token por um par novo da mesma família (sessão). Uso único: só quem reserva o token e conclui a
+    /// troca num passo atômico emite o par; as concorrentes recebem <see cref="RefreshErrors.AlreadyRotated"/>
     /// sem nenhum token irmão. Um token já trocado apresentado depois de <see cref="RotationGrace"/> encerra a família.
     /// </summary>
     public Task<RefreshOutcome> RefreshAsync(RefreshTokenRequest request, CancellationToken ct = default)
@@ -293,15 +294,10 @@ public class AuthService
             ? activeStoreId
             : stores.FirstOrDefault()?.Id ?? Guid.Empty;
 
-        // Reserva logo antes de emitir: perder aqui é a corrida com outra aba, e nada é emitido duas vezes.
-        // Without an answer from the cache nobody rotates, and that is no race: a 409 would lead the client to end the session.
-        var claimed = await ClaimRotationAsync(claims.Jti, ct);
-        if (claimed is null) return RefreshOutcome.Unavailable();
-        if (claimed == false) return RefreshOutcome.Fail(RefreshErrors.AlreadyRotated);
-
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, storeId, storeIds,
-            claims.Family);
-        await RotateIntoAsync(claims, tokens, new RefreshTokenEntry(user.Id, user.TenantId, storeId, user.SecurityStamp), ct);
+        var (tokens, notRotated) = await RotateAsync(claims,
+            () => _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, storeId, storeIds, claims.Family),
+            new RefreshTokenEntry(user.Id, user.TenantId, storeId, user.SecurityStamp), ct);
+        if (tokens is null) return notRotated!;
 
         return RefreshOutcome.Ok(new RefreshResponse(
             tokens.AccessToken,
@@ -347,38 +343,76 @@ public class AuthService
         // (acima), e a validade deste token ainda não venceu: quem apagou a entrada foi o fim das sessões da pessoa (papel, situação, senha).
         if (head is null || head.CurrentJti == claims.Jti) return RefreshOutcome.Fail(RefreshErrors.Invalid) with { PersonChanged = true };
 
-        if (head.PreviousJti == claims.Jti && DateTime.UtcNow - head.RotatedAt < RotationGrace)
-            return RefreshOutcome.Fail(RefreshErrors.AlreadyRotated);
+        var sinceRotation = DateTime.UtcNow - head.RotatedAt;
+        if (head.PreviousJti == claims.Jti && sinceRotation < RotationGrace)
+            return RefreshOutcome.AlreadyRotated(RotationGrace - sinceRotation);
 
+        // After a crash the snapshot may not know a token issued after it. The row of the session does, and then nobody stole anything: the session ends, with no alarm.
+        var rowCallsItCurrent = await _sessions.IsActiveAsync(claims.Jti, ct);
         await RevokeFamilyAsync(claims.Family, ct);
-        _audit?.Stage(AuditActions.UserSessionRevoked, AuditSeverity.Critical, "User", claims.UserId.ToString(),
-            "Sessão encerrada: um refresh token já usado foi apresentado de novo (possível cópia do token).",
-            tenantId: claims.TenantId, actorName: "anonymous", actorType: "system",
-            metadata: new { reason = "refresh_reuse", family = claims.Family });
+        if (rowCallsItCurrent)
+        {
+            await _sessions.RevokeAsync(claims.Jti, ct);
+            _audit?.Stage(AuditActions.UserSessionRevoked, AuditSeverity.Warning, "User", claims.UserId.ToString(),
+                "Sessão encerrada: o cache perdeu o token atual desta sessão (reinício do Redis).",
+                tenantId: claims.TenantId, actorName: "anonymous", actorType: "system",
+                metadata: new { reason = "refresh_entry_lost", family = claims.Family });
+        }
+        else
+        {
+            _audit?.Stage(AuditActions.UserSessionRevoked, AuditSeverity.Critical, "User", claims.UserId.ToString(),
+                "Sessão encerrada: um refresh token já usado foi apresentado de novo (possível cópia do token).",
+                tenantId: claims.TenantId, actorName: "anonymous", actorType: "system",
+                metadata: new { reason = "refresh_reuse", family = claims.Family });
+        }
         if (_audit is not null) await _users.SaveChangesAsync(ct);
         return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
     }
 
-    /// <summary>Reserva de uso único do token (INCR atômico): só quem chega primeiro troca. Sem cache (null), ninguém troca.</summary>
-    private async Task<bool?> ClaimRotationAsync(string jti, CancellationToken ct)
-        => await _cache.IncrementAsync($"refresh:claim:{jti}", RotationClaimTtl, ct) is { } count ? count == 1 : null;
+    /// <summary>
+    /// The rotation of a token: a short hold on it, then one atomic step that writes the new token and the head of the family and removes the old one, only while the hold
+    /// is still ours. So there is never a second branch, however slow the winner, and a cache lost midway leaves the token as it was. With no answer from the cache nothing was
+    /// decided, and the client comes back. A client that left before the commit changed nothing; from the commit on, the rotation goes to the end without it, row included.
+    /// </summary>
+    private async Task<(TokenPair? Tokens, RefreshOutcome? Refused)> RotateAsync(RefreshTokenClaims spent, Func<TokenPair> issue, RefreshTokenEntry entry, CancellationToken ct)
+    {
+        var claim = new CacheClaim($"refresh:claim:{spent.Jti}", Guid.NewGuid().ToString("N"), RotationClaimTtl);
+        var taken = await _cache.TryClaimAsync(claim, ct);
+        if (taken is null) return (null, RefreshOutcome.Unavailable());
+        if (taken == false) return (null, await AnswerLostClaimAsync(spent, ct));
+
+        var tokens = issue();
+        var next = _jwt.ValidateRefreshToken(tokens.RefreshToken);
+        if (next is null) return (null, RefreshOutcome.Unavailable());
+
+        ct.ThrowIfCancellationRequested();
+        var head = new RefreshFamilyHead(next.Jti, spent.Jti, DateTime.UtcNow);
+        var done = await _cache.CommitClaimAsync(claim, $"refresh:valid:{spent.Jti}",
+            [new CacheWrite($"refresh:valid:{next.Jti}", entry), new CacheWrite(FamilyKey(spent.Family), head)],
+            tokens.RefreshTokenExpiresAt - DateTime.UtcNow, CancellationToken.None);
+        if (done is null) return (null, RefreshOutcome.Unavailable());
+        if (done == false) return (null, await AnswerLostClaimAsync(spent, ct));
+
+        await _sessions.TouchAsync(spent.Jti, next.Jti, tokens.RefreshTokenExpiresAt, CancellationToken.None);
+        return (tokens, null);
+    }
 
     /// <summary>
-    /// Grava o par novo e aposenta o token trocado, nesta ordem: o novo passa a valer, a família aponta para ele (com o
-    /// trocado como anterior, para a carência) e só então o antigo deixa de valer. Uma requisição concorrente sempre
-    /// encontra um dos dois estados. A sessão registrada passa a seguir o token novo.
+    /// Someone else holds this token, or held it longer than the hold lasts. A 409 says a rotation happened, so it only goes out with one behind it, and every hold ends in
+    /// its commit or in nothing within its lifetime. Nothing behind it means a hold that led nowhere (a command that ran late in a stall, a winner that died): the token is still
+    /// good, and the only thing to say is to come back.
     /// </summary>
-    private async Task RotateIntoAsync(RefreshTokenClaims spent, TokenPair tokens, RefreshTokenEntry entry, CancellationToken ct)
+    private async Task<RefreshOutcome> AnswerLostClaimAsync(RefreshTokenClaims claims, CancellationToken ct)
     {
-        var next = _jwt.ValidateRefreshToken(tokens.RefreshToken);
-        if (next is not null)
+        var until = DateTime.UtcNow + RotationClaimTtl;
+        for (;;)
         {
-            var ttl = tokens.RefreshTokenExpiresAt - DateTime.UtcNow;
-            await _cache.SetAsync($"refresh:valid:{next.Jti}", entry, ttl, ct);
-            await _cache.SetAsync(FamilyKey(spent.Family), new RefreshFamilyHead(next.Jti, spent.Jti, DateTime.UtcNow), ttl, ct);
+            var head = await _cache.GetAsync<RefreshFamilyHead>(FamilyKey(claims.Family), ct);
+            if (_cache.IsUnavailable) return RefreshOutcome.Unavailable();
+            if (head is not null && head.CurrentJti != claims.Jti) return await RefuseSpentTokenAsync(claims, ct);
+            if (DateTime.UtcNow >= until) return RefreshOutcome.Unavailable(RotationClaimTtl);
+            await Task.Delay(LostClaimPoll, ct);
         }
-        await _cache.RemoveAsync($"refresh:valid:{spent.Jti}", ct);
-        if (next is not null) await _sessions.TouchAsync(spent.Jti, next.Jti, ct);
     }
 
     private static string FamilyKey(string family) => $"refresh:family:{family}";
@@ -457,12 +491,11 @@ public class AuthService
         var stores = await _stores.GetByTenantIdAsync(tenantId, ct);
         var storeIds = stores.Select(s => s.Id).ToList();
 
-        if (await ClaimRotationAsync(spent.Jti, ct) != true)
-            return SwitchStoreOutcome.Fail(RefreshErrors.AlreadyRotated);
-
-        var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, requestedStoreId, storeIds,
-            spent.Family);
-        await RotateIntoAsync(spent, tokens, new RefreshTokenEntry(user.Id, user.TenantId, requestedStoreId, user.SecurityStamp), ct);
+        var (tokens, lost) = await RotateAsync(spent,
+            () => _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, requestedStoreId, storeIds, spent.Family),
+            new RefreshTokenEntry(user.Id, user.TenantId, requestedStoreId, user.SecurityStamp), ct);
+        if (tokens is null)
+            return SwitchStoreOutcome.Fail(lost!.ErrorCode is RefreshErrors.AlreadyRotated or RefreshErrors.Unavailable ? lost.ErrorCode : RefreshErrors.Invalid);
 
         var session = new SessionDto(
             UserId:        user.Id.ToString(),
@@ -493,7 +526,7 @@ public class AuthService
     /// Idempotent — safe to call multiple times.
     /// Encerra a família inteira do token: as outras abas da mesma sessão e um par trocado agora mesmo por uma
     /// renovação concorrente também deixam de renovar. Outros logins (outros dispositivos) não são afetados.
-    /// Com um token já trocado, pode ser o cliente que desistiu depois de um 409: outra pessoa pode estar com o par novo, e isso fica na auditoria.
+    /// Com um token já trocado, pode ser uma aba com o token antigo ou uma cópia: fica na auditoria, uma vez. Depois disso a família já acabou, e repetir não escreve mais nada.
     /// </summary>
     public async Task LogoutAsync(string? refreshToken, CancellationToken ct = default)
     {
@@ -503,7 +536,7 @@ public class AuthService
         if (claims is null) return;
 
         var head = await _cache.GetAsync<RefreshFamilyHead>(FamilyKey(claims.Family), ct);
-        if (head is not null && head.CurrentJti != claims.Jti && _audit is not null)
+        if (head is not null && head.CurrentJti != claims.Jti && _audit is not null && !await IsFamilyRevokedAsync(claims.Family, ct))
         {
             _audit.Stage(AuditActions.UserSessionRevoked, AuditSeverity.Warning, "User", claims.UserId.ToString(),
                 "Sessão encerrada com um refresh token já trocado: pode ser uma corrida ou uma cópia do token.",
@@ -583,7 +616,7 @@ public static class RefreshErrors
     public const string Invalid = "invalid_refresh";
     /// <summary>A sessão terminou: família encerrada, conta ou empresa inativa, senha trocada (401).</summary>
     public const string SessionEnded = "session_ended";
-    /// <summary>Outra aba trocou este token há instantes; o par novo está com ela (409).</summary>
+    /// <summary>Outra aba trocou este token há instantes; o par novo está com ela (409). Nada mudou na sessão, e o tempo que falta da carência vai junto.</summary>
     public const string AlreadyRotated = "refresh_already_rotated";
     /// <summary>Over a budget of the renewal policy: the session is fine, wait for the time given (429).</summary>
     public const string OverBudget = "rate_limited";
@@ -609,7 +642,8 @@ public sealed record RefreshOutcome(RefreshResponse? Tokens, string? ErrorCode, 
     public static RefreshOutcome Fail(string code) => new(null, code);
     public static RefreshOutcome EndedByAChange() => new(null, RefreshErrors.SessionEnded) { PersonChanged = true };
     public static RefreshOutcome OverBudget(TimeSpan retryAfter) => new(null, RefreshErrors.OverBudget, retryAfter);
-    public static RefreshOutcome Unavailable() => new(null, RefreshErrors.Unavailable, RefreshErrors.UnavailableRetry);
+    public static RefreshOutcome Unavailable(TimeSpan? retryAfter = null) => new(null, RefreshErrors.Unavailable, retryAfter ?? RefreshErrors.UnavailableRetry);
+    public static RefreshOutcome AlreadyRotated(TimeSpan retryAfter) => new(null, RefreshErrors.AlreadyRotated, retryAfter);
 }
 
 public sealed record SwitchStoreOutcome(SwitchStoreResponse? Response, string? ErrorCode)

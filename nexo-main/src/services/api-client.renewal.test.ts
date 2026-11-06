@@ -101,68 +101,150 @@ describe("a renewal without a verdict keeps the session", () => {
       expect(fetchMock).toHaveBeenCalledTimes(2);
     });
 
-    it("a 409 that the wait does not resolve is a verdict too: nobody stored a new pair", async () => {
-      const wait = vi.fn();
-      vi.useFakeTimers();
-      vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
-      fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(json({ code: "refresh_already_rotated" }, 409));
-
-      const call = apiClient.get("/products").catch((e: unknown) => { wait(); return e; });
-      await vi.advanceTimersByTimeAsync(3100);
-      const error = await call;
-
-      expect(wait).toHaveBeenCalled();
-      expect(error).toMatchObject({ status: 401 });
-      expect(getAccessToken()).toBeNull();
-      expect(ended).toEqual(["session_ended"]);
-    });
-
-    // A limit of the rotation, stated here so nobody reads "no connection keeps the session" as more than it is: if the server
-    // did rotate and only the answer was lost, the new pair is gone, and the next attempt presents a spent token.
-    it("giving up after a 409, it tells the server with the same token: someone else may hold the new one", async () => {
+    describe("a 409 is no verdict", () => {
       const signOuts = () => fetchMock.mock.calls.filter(call => call[0] === `${API}/auth/logout`);
-      let clearedBefore: boolean | null = null;
-      vi.useRealTimers();
-      fetchMock.mockImplementation(async (url: string) => {
-        if (url === `${API}/auth/refresh`) return json({ code: "refresh_already_rotated" }, 409);
-        if (url === `${API}/auth/logout`) {
-          clearedBefore = getRefreshToken() === null;
-          return new Response(null, { status: 204 });
-        }
-        return expiredCall();
+      const conflict = (seconds?: number) =>
+        json({ code: "refresh_already_rotated" }, 409, seconds === undefined ? {} : { "Retry-After": String(seconds) });
+
+      /** The clock jumps, so the three seconds this tab looks at the storage for the pair of the winner go by at once. */
+      async function callAndLetTheWaitGoBy() {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
+        const call = apiClient.get("/products").catch((e: unknown) => e);
+        await vi.advanceTimersByTimeAsync(3100);
+        return call;
+      }
+
+      it("the session stays, nothing calls logout by itself, and the call fails like on a 5xx", async () => {
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict(27));
+
+        const error = await callAndLetTheWaitGoBy() as ApiError;
+
+        expect(error).toBeInstanceOf(ApiError);
+        expect(error.status).toBe(409);
+        expect(error.code).toBe(UNAVAILABLE);
+        expect(error.message).toMatch(/sessão continua ativa/);
+        sessionIsIntact();
+        expect(signOuts()).toHaveLength(0);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
       });
 
-      await expect(apiClient.get("/a")).rejects.toBeInstanceOf(ApiError);
+      it("no tab presents that token again until the time the server gave", async () => {
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict(27));
+        await callAndLetTheWaitGoBy();
+        expect(renewals()).toBe(1);
 
-      expect(signOuts()).toHaveLength(1);
-      const [, init] = signOuts()[0] as [string, RequestInit & { headers: Record<string, string> }];
-      expect(init.method).toBe("POST");
-      expect(init.keepalive).toBe(true);
-      expect(init.body).toBe(JSON.stringify({ refreshToken: "refresh-1" }));
-      expect(init.headers).not.toHaveProperty("Authorization");
-      expect(clearedBefore).toBe(false);
-      expect(getRefreshToken()).toBeNull();
-      expect(ended).toEqual(["session_ended"]);
-    }, 10_000);
+        vi.setSystemTime(new Date("2026-11-06T12:00:20Z"));
+        fetchMock.mockResolvedValueOnce(expiredCall());
+        await expect(apiClient.get("/products")).rejects.toMatchObject({ code: UNAVAILABLE });
 
-    it("that call never holds the session back: an answer that does not come, or a failure, changes nothing", async () => {
-      vi.useRealTimers();
-      for (const answer of [() => new Promise<Response>(() => undefined), () => Promise.reject(new TypeError("Failed to fetch"))]) {
-        setTokens("access-1", "refresh-1");
-        localStorage.setItem(TOKEN_KEYS.session, "{}");
-        ended.length = 0;
-        fetchMock.mockImplementation(async (url: string) => {
-          if (url === `${API}/auth/refresh`) return json({ code: "refresh_already_rotated" }, 409);
-          if (url === `${API}/auth/logout`) return answer();
-          return expiredCall();
-        });
+        expect(renewals()).toBe(1);
+        sessionIsIntact();
+      });
 
-        await expect(apiClient.get("/a")).rejects.toBeInstanceOf(ApiError);
+      it("the time is written down for the other tabs before anything else", async () => {
+        let waitWhenAnswered: string | null = null;
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict(27));
+        const call = callAndLetTheWaitGoBy();
+        await vi.advanceTimersByTimeAsync(100);
+        waitWhenAnswered = localStorage.getItem(RENEWAL_WAIT_KEY);
+        await call;
 
+        expect(JSON.parse(waitWhenAnswered!).until).toBeGreaterThanOrEqual(Date.parse("2026-11-06T12:00:27Z"));
+      });
+
+      it("with no Retry-After, it waits the whole grace", async () => {
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict());
+        await callAndLetTheWaitGoBy();
+
+        expect(JSON.parse(localStorage.getItem(RENEWAL_WAIT_KEY)!).until).toBeGreaterThanOrEqual(Date.parse("2026-11-06T12:00:30Z"));
+        sessionIsIntact();
+      });
+
+      it("a 409 of any other kind says nothing about the session either", async () => {
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(json({ error: "conflito" }, 409));
+
+        await callAndLetTheWaitGoBy();
+
+        sessionIsIntact();
+        expect(signOuts()).toHaveLength(0);
+      });
+
+      it("the new pair of another tab ends the wait at once", async () => {
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict(27));
+        await callAndLetTheWaitGoBy();
+
+        // the winning tab got its answer: this is what setTokens does there
+        setTokens("access-2", "refresh-2");
+        expect(localStorage.getItem(RENEWAL_WAIT_KEY)).toBeNull();
+
+        fetchMock.mockResolvedValueOnce(json({ ok: true }));
+        await expect(apiClient.get("/products")).resolves.toEqual({ ok: true });
+        expect(renewals()).toBe(1);
+        expect(fetchMock.mock.calls.at(-1)![1].headers.Authorization).toBe("Bearer access-2");
+      });
+
+      it("a pair that lands during the wait leaves nothing behind", async () => {
+        vi.useRealTimers();
+        fetchMock
+          .mockResolvedValueOnce(expiredCall())
+          .mockImplementationOnce(async () => {
+            setTimeout(() => {
+              localStorage.setItem(TOKEN_KEYS.access, "access-2");
+              localStorage.setItem(TOKEN_KEYS.refresh, "refresh-2");
+            }, 150);
+            return conflict(27);
+          })
+          .mockResolvedValueOnce(json({ ok: true }));
+
+        await expect(apiClient.get("/products")).resolves.toEqual({ ok: true });
+
+        expect(localStorage.getItem(RENEWAL_WAIT_KEY)).toBeNull();
+        expect(ended).toEqual([]);
+      });
+
+      it("after the grace the same token goes again, and a renewal goes on as if nothing had happened", async () => {
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict(27));
+        await callAndLetTheWaitGoBy();
+
+        vi.setSystemTime(new Date("2026-11-06T12:00:40Z"));
+        fetchMock.mockResolvedValueOnce(expiredCall())
+          .mockResolvedValueOnce(json({ accessToken: "access-2", refreshToken: "refresh-2" }))
+          .mockResolvedValueOnce(json({ ok: true }));
+        await expect(apiClient.get("/products")).resolves.toEqual({ ok: true });
+
+        expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toEqual({ refreshToken: "refresh-1" });
+        expect(getRefreshToken()).toBe("refresh-2");
+        expect(localStorage.getItem(RENEWAL_WAIT_KEY)).toBeNull();
+      });
+
+      it("after the grace the same token goes again, and the server's refusal ends the session", async () => {
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict(27));
+        await callAndLetTheWaitGoBy();
+
+        vi.setSystemTime(new Date("2026-11-06T12:00:40Z"));
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(json({ code: "session_ended" }, 401));
+        await expect(apiClient.get("/products")).rejects.toMatchObject({ status: 401 });
+
+        expect(getAccessToken()).toBeNull();
         expect(getRefreshToken()).toBeNull();
         expect(ended).toEqual(["session_ended"]);
-      }
-    }, 20_000);
+        expect(signOuts()).toHaveLength(0);
+      });
+
+      it("while it waits, signing out still reaches the server, with the token this tab has", async () => {
+        fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict(27));
+        await callAndLetTheWaitGoBy();
+        const { logout } = await import("@/modules/auth/services/authService");
+
+        fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+        await logout();
+
+        expect(signOuts()).toHaveLength(1);
+        expect(JSON.parse(signOuts()[0][1].body)).toEqual({ refreshToken: "refresh-1" });
+        expect(getRefreshToken()).toBeNull();
+      });
+    });
 
     it("a plain 401 needs no such call: the server already said the session is over", async () => {
       fetchMock.mockImplementation(async (url: string) => (url === `${API}/auth/refresh` ? json({ code: "session_ended" }, 401) : expiredCall()));
@@ -172,7 +254,9 @@ describe("a renewal without a verdict keeps the session", () => {
       expect(fetchMock.mock.calls.filter(call => call[0] === `${API}/auth/logout`)).toHaveLength(0);
     });
 
-    it("an answer lost after the server rotated still ends the session on the next attempt", async () => {
+    // A limit of the rotation, stated here so nobody reads "no connection keeps the session" as more than it is: if the server
+    // did rotate and only the answer was lost, the new pair is gone. Past the grace the spent token is judged, and the session ends there.
+    it("an answer lost after the server rotated ends the session when the server judges the token", async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
       fetchMock.mockResolvedValueOnce(expiredCall()).mockRejectedValueOnce(new TypeError("Failed to fetch"));
@@ -180,11 +264,15 @@ describe("a renewal without a verdict keeps the session", () => {
       sessionIsIntact();
 
       vi.setSystemTime(new Date("2026-11-06T12:00:10Z"));
-      fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(json({ code: "refresh_already_rotated" }, 409));
+      fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(json({ code: "refresh_already_rotated" }, 409, { "Retry-After": "20" }));
       const next = apiClient.get("/products").catch((e: unknown) => e);
       await vi.advanceTimersByTimeAsync(3100);
+      await expect(next).resolves.toMatchObject({ code: UNAVAILABLE });
+      sessionIsIntact();
 
-      await expect(next).resolves.toMatchObject({ status: 401 });
+      vi.setSystemTime(new Date("2026-11-06T12:00:40Z"));
+      fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(json({ code: "session_ended" }, 401));
+      await expect(apiClient.get("/products")).rejects.toMatchObject({ status: 401 });
       expect(getAccessToken()).toBeNull();
       expect(ended).toEqual(["session_ended"]);
     });
