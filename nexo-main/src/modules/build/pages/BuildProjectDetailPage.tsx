@@ -48,6 +48,7 @@ import {
   type WeatherResult,
 } from "@/services/weather.api";
 import { uploadPrivateFile } from "@/services/storage.api";
+import { uploadErrorMessage } from "@/services/upload-error";
 import { ApiError } from "@/services/api-client";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
@@ -56,6 +57,12 @@ import { fetchSuppliers } from "@/modules/suppliers/api/suppliers.api";
 const DigitalTwinTab = lazy(() => import("../components/twin/DigitalTwinTab").then((m) => ({ default: m.DigitalTwinTab })));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * The storage route's own ceiling. Below it, the size the server is configured with decides, and its 413 says the limit:
+ * this screen does not assume that value.
+ */
+const PHOTO_MAX_BYTES = 20 * 1024 * 1024;
 
 function fmt(v: number | null | undefined) {
   if (v == null) return "—";
@@ -396,6 +403,10 @@ function TabDiario({ projectId }: { projectId: string }) {
       toast.error("Selecione uma imagem (JPG, PNG ou WebP).");
       return;
     }
+    if (file.size > PHOTO_MAX_BYTES) {
+      toast.error("Foto muito grande. Reduza a imagem e tente de novo.");
+      return;
+    }
     setUploadingLogId(logId);
     try {
       // Persist only the durable storage key — the public URL is composed on read.
@@ -406,12 +417,7 @@ function TabDiario({ projectId }: { projectId: string }) {
       });
     } catch (e) {
       // Storage off/misconfigured → backend returns a controlled 404. Show an honest state.
-      const disabled = e instanceof ApiError
-        ? e.status === 404
-        : /habilitado/i.test(e instanceof Error ? e.message : "");
-      toast.error(disabled
-        ? "Upload de fotos indisponível neste ambiente."
-        : "Falha ao enviar foto. Tente novamente.");
+      toast.error(uploadErrorMessage(e, "Falha ao enviar foto. Tente novamente.", "Upload de fotos indisponível neste ambiente."));
     } finally {
       setUploadingLogId(null);
     }

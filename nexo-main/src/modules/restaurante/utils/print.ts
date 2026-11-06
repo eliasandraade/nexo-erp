@@ -61,12 +61,26 @@ const BASE_STYLE = `
   }
 `;
 
+const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+/**
+ * Notes, product names and labels come from whoever filled in the order, including a customer on the public menu. Every dynamic
+ * value in this file goes through here: this HTML is written into a window of the app's own origin.
+ */
+function esc(value: string | number): string {
+  return String(value).replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
+}
+
+/** A ticket needs no script at all: this holds even if a value ever gets past esc(). */
+const PRINT_POLICY = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'";
+
 function wrapHtml(title: string, body: string): string {
   return `<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>${title}</title>
+  <meta http-equiv="Content-Security-Policy" content="${PRINT_POLICY}">
+  <title>${esc(title)}</title>
   <style>${BASE_STYLE}</style>
 </head>
 <body>${body}</body>
@@ -79,6 +93,7 @@ function openPrint(html: string) {
     alert("Permita pop-ups para este site para usar a impressão.");
     return;
   }
+  win.opener = null;
   win.document.write(html);
   win.document.close();
   win.focus();
@@ -123,15 +138,15 @@ export function printKitchen(order: OrderDto): void {
   const itemsHtml = activeItems.map(item => {
     const mods = item.modifiers.length > 0
       ? item.modifiers
-          .map(m => `<div class="indent small">+ ${m.labelSnapshot}</div>`)
+          .map(m => `<div class="indent small">+ ${esc(m.labelSnapshot)}</div>`)
           .join("")
       : "";
     const notes = item.notes
-      ? `<div class="indent small"><em>Obs: ${item.notes}</em></div>`
+      ? `<div class="indent small"><em>Obs: ${esc(item.notes)}</em></div>`
       : "";
     return `
       <div style="margin-bottom:8px">
-        <div class="bold">${item.quantity}x  ${item.productName}</div>
+        <div class="bold">${esc(item.quantity)}x  ${esc(item.productName)}</div>
         ${mods}${notes}
       </div>`;
   }).join("");
@@ -140,8 +155,8 @@ export function printKitchen(order: OrderDto): void {
     <h1>*** COZINHA ***</h1>
     <div class="sep-solid"></div>
     <div class="row">
-      <span class="bold">${tableLabel}</span>
-      <span>#${order.orderNumber}</span>
+      <span class="bold">${esc(tableLabel)}</span>
+      <span>#${esc(order.orderNumber)}</span>
     </div>
     <div class="small center" style="margin-bottom:4px">${fmtDate(order.openedAt)}</div>
     <div class="sep-dashed"></div>
@@ -169,19 +184,19 @@ export function printReceipt(order: OrderDto): void {
   const itemsHtml = billItems.map(item => {
     const mods = item.modifiers.length > 0
       ? item.modifiers
-          .map(m => `<div class="indent small">+ ${m.labelSnapshot}${m.priceSnapshot > 0 ? `  ${fmtMoney(m.priceSnapshot)}` : ""}</div>`)
+          .map(m => `<div class="indent small">+ ${esc(m.labelSnapshot)}${m.priceSnapshot > 0 ? `  ${fmtMoney(m.priceSnapshot)}` : ""}</div>`)
           .join("")
       : "";
     return `
       <div class="row" style="margin-bottom:3px">
-        <span>${item.quantity}x ${item.productName}</span>
+        <span>${esc(item.quantity)}x ${esc(item.productName)}</span>
         <span>${fmtMoney(item.total)}</span>
       </div>
       ${mods}`;
   }).join("");
 
   const couvertRow = order.couvertAmount > 0
-    ? `<div class="row"><span>Couvert${order.partySize ? ` (${order.partySize} pess.)` : ""}</span><span>${fmtMoney(order.couvertAmount)}</span></div>`
+    ? `<div class="row"><span>Couvert${order.partySize ? ` (${esc(order.partySize)} pess.)` : ""}</span><span>${fmtMoney(order.couvertAmount)}</span></div>`
     : "";
 
   const serviceFeeRow = order.serviceFeeAmount > 0
@@ -207,10 +222,10 @@ export function printReceipt(order: OrderDto): void {
     <div class="center small" style="margin-bottom:2px">Resumo da Comanda</div>
     <div class="sep-solid"></div>
     <div class="row">
-      <span class="bold">${tableLabel}</span>
-      <span class="bold">#${order.orderNumber}</span>
+      <span class="bold">${esc(tableLabel)}</span>
+      <span class="bold">#${esc(order.orderNumber)}</span>
     </div>
-    ${order.partySize ? `<div class="small">${order.partySize} pessoa(s)</div>` : ""}
+    ${order.partySize ? `<div class="small">${esc(order.partySize)} pessoa(s)</div>` : ""}
     <div class="small">${fmtDate(order.openedAt)}</div>
     <div class="sep-dashed"></div>
     ${itemsHtml}

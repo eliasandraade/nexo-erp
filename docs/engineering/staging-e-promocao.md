@@ -10,7 +10,7 @@ PR ──(ci-gate)──> master ──(CI completo)──> staging ──(valid
 
 | Etapa | O que acontece | Quem garante |
 |---|---|---|
-| PR para `master` | Roda `ci.yml`: o que o diff tocou, mais o SonarCloud e a autenticação de ponta a ponta (`auth-e2e`), que rodam sempre. O merge exige `ci-gate` verde | Proteção da branch `master` |
+| PR para `master` | Roda `ci.yml`: o que o diff tocou, mais o SonarCloud, a autenticação de ponta a ponta (`auth-e2e`) e a CSP sob um navegador real (`csp-e2e`), que rodam sempre. O merge exige `ci-gate` verde | Proteção da branch `master` |
 | Push em `master` | Roda `master.yml`: tudo, sem pular nada. Railway publica no **staging** depois do CI | `master.yml` e "Wait for CI" do Railway |
 | Promoção | `production` avança para um SHA com `master-gate` verde. Railway publica em **produção** | Proteção da branch `production` |
 
@@ -19,7 +19,7 @@ PR ──(ci-gate)──> master ──(CI completo)──> staging ──(valid
 - **`ci-gate`** (`ci.yml`): veredito de uma PR. Sempre reporta, então nunca fica pendente por causa de um job que o diff
   pulou. Um job pulado só vale se o diff não tocou aquela área; falha ou cancelamento reprova.
 - **`master-gate`** (`master.yml`): só existe em commit que chegou à `master` e passou em tudo (backend, frontend,
-  `auth-e2e` e SonarCloud), sem nada pulado.
+  `auth-e2e`, `csp-e2e` e SonarCloud), sem nada pulado.
 
 O `master-gate` fica num workflow próprio de propósito. Para checks obrigatórios, o GitHub trata como sucesso um job pulado
 por condição. Se ele fosse um job que a PR apenas pula, a ponta de uma branch não mesclada passaria pela proteção de

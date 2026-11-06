@@ -652,12 +652,12 @@ public class BuildTwinTests
             form.Add(new StringContent(context), "context");
             return form;
         }
-        (await Code(await api.PostAsync("/api/integrations/storage/upload", Image("build-daily-log")), HttpStatusCode.ServiceUnavailable))
+        (await Code(await api.PostAsync("/api/integrations/storage/upload?context=build-daily-log", Image("build-daily-log")), HttpStatusCode.ServiceUnavailable))
             .Should().Be("storage_unavailable");
         storage.Objects.Should().BeEmpty("nothing private was written anywhere");
 
         // public branding keeps its public URL
-        var logo = await Json(await api.PostAsync("/api/integrations/storage/upload", Image("build-portal-logo")), HttpStatusCode.OK);
+        var logo = await Json(await api.PostAsync("/api/integrations/storage/upload?context=build-portal-logo", Image("build-portal-logo")), HttpStatusCode.OK);
         logo.GetProperty("publicUrl").GetString().Should().StartWith(InMemoryStorageProvider.Host + $"tenants/{tenant}/build/portal/logo/");
         storage.Objects.Keys.Should().ContainSingle().Which.Should().NotStartWith(StorageKeys.PrivatePrefix);
     }

@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Nexo.Api.Controllers.Integrations;
 using Nexo.Api.Filters;
+using Nexo.Api.Uploads;
 using Nexo.Application.Modules.Restaurante;
 using Nexo.Api.Authorization;
 
@@ -16,9 +19,24 @@ namespace Nexo.Api.Controllers.Modules.Restaurante;
 [RequireModule("restaurante")]
 public class RecipeCardsController : ControllerBase
 {
-    private readonly RecipeCardService _service;
+    private const long MaxImageBytes = 5 * 1024 * 1024;
+    private const long MaxImageRequestBytes = MaxImageBytes + UploadAdmission.MultipartOverheadBytes;
 
-    public RecipeCardsController(RecipeCardService service) => _service = service;
+    private static readonly Dictionary<string, string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["image/jpeg"] = ".jpg",
+        ["image/png"]  = ".png",
+        ["image/webp"] = ".webp",
+    };
+
+    private readonly RecipeCardService _service;
+    private readonly UploadAdmission _uploads;
+
+    public RecipeCardsController(RecipeCardService service, UploadAdmission uploads)
+    {
+        _service = service;
+        _uploads = uploads;
+    }
 
     [HttpGet]
     [Authorize(Roles = AppRoles.Stock)]
@@ -65,24 +83,39 @@ public class RecipeCardsController : ControllerBase
         Guid id, Guid ingredientId, CancellationToken ct)
         => Ok(await _service.RemoveIngredientAsync(id, ingredientId, ct));
 
-    /// <summary>Upload ou substituição da imagem da ficha técnica. Máximo 5 MB; JPEG, PNG ou WebP.</summary>
+    /// <summary>
+    /// Uploads or replaces the recipe card's image (multipart field <c>file</c>): up to 5 MB, JPEG, PNG or WebP, checked by its
+    /// first bytes. The card is checked before the body is read.
+    /// </summary>
     [HttpPost("{id:guid}/image")]
     [Authorize(Roles = AppRoles.Stock)]
     [Consumes("multipart/form-data")]
-    public async Task<ActionResult<RecipeCardDto>> UploadImage(
-        Guid id, IFormFile file, CancellationToken ct)
+    [EnableRateLimiting(UploadAdmission.RateLimitPolicy)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file")]
+    public async Task<ActionResult<RecipeCardDto>> UploadImage(Guid id, CancellationToken ct)
     {
+        await _service.GetByIdAsync(id, ct);   // 404 for a card that does not exist, with nothing read
+
+        const string tooLarge = "A imagem pode ter até 5 MB.";
+        var read = await _uploads.ReadAsync(HttpContext, MaxImageRequestBytes, tooLarge, ct);
+        if (read.Refusal is { } refusal)
+            return refusal.ToResult(HttpContext);
+
+        var file = read.Form!.Files.GetFile("file");
         if (file is null || file.Length == 0)
-            return BadRequest("No file uploaded.");
+            return BadRequest(new { error = "Envie a imagem no campo file." });
 
-        var allowed = new[] { "image/jpeg", "image/png", "image/webp" };
-        if (!allowed.Contains(file.ContentType))
-            return BadRequest("Only JPEG, PNG, and WebP images are accepted.");
+        var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
+        if (!ImageExtensions.TryGetValue(contentType, out var ext))
+            return BadRequest(new { error = "Envie uma imagem JPEG, PNG ou WebP." });
 
-        if (file.Length > 5 * 1024 * 1024)
-            return BadRequest("Image must be smaller than 5 MB.");
+        if (file.Length > MaxImageBytes)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = tooLarge, code = UploadAdmission.TooLargeCode });
 
-        var ext      = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!await FileSignature.MatchesAsync(file, contentType, ct))
+            return BadRequest(new { error = "O conteúdo do arquivo não corresponde a uma imagem válida." });
+
         var fileName = $"{id:N}{ext}";
         var wwwroot  = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "images", "recipes");
         Directory.CreateDirectory(wwwroot);

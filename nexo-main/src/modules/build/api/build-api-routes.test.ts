@@ -231,7 +231,7 @@ describe("build-twin.api", () => {
       elementExternalId: " G1 ", notes: " ok ", clientVisible: true,
     });
     const [method, url, form] = formOf();
-    expect([method, url]).toEqual(["POST", `${B}/projects/p1/reality-captures`]);
+    expect([method, url]).toEqual(["POST", `${B}/projects/p1/reality-captures?type=Photo`]);
     expect(Object.fromEntries([...form.entries()].filter(([k]) => k !== "file"))).toEqual({
       type: "Photo", title: "Laje", capturedAt: "2026-10-05T12:00:00", stageId: "s1", zoneId: "z1",
       elementExternalId: "G1", notes: "ok", clientVisible: "true",
