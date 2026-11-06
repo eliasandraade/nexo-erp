@@ -45,3 +45,16 @@ describe("impersonation hand-off (BroadcastChannel)", () => {
     await expect(requestImpersonation("nonce-3", { timeoutMs: 300 })).rejects.toMatchObject({ reason: "timeout" });
   });
 });
+
+describe("impersonation hand-off, a page that left before the answer", () => {
+  it("stops asking and rejects, so no request of this nonce is left behind", async () => {
+    const abort = new AbortController();
+    const pending = requestImpersonation(newHandoffNonce(), { signal: abort.signal, timeoutMs: 60_000 });
+
+    abort.abort();
+
+    const error = await pending.catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(HandoffError);
+    expect((error as HandoffError).reason).toBe("timeout");
+  });
+});
