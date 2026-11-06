@@ -3,7 +3,7 @@ import { act, cleanup, render, renderHook, screen, waitFor } from "@testing-libr
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
-import { beginImpersonation, getAccessToken, setStoredSession, setTokens, TOKEN_KEYS } from "@/services/api-client";
+import { beginImpersonation, clearTokens, getAccessToken, setStoredSession, setTokens, TOKEN_KEYS } from "@/services/api-client";
 import type { AuthSession } from "../types";
 
 const json = (body: unknown, status = 200) =>
@@ -97,6 +97,19 @@ describe("AuthProvider, what the session actions do", () => {
       renderApp(client);
 
       await waitFor(() => expect(where()).toBe("/platform|Ana|pronto"));
+    });
+
+    it("signed out while the validation was on its way: its answer confirms nothing, and the person goes to the login", async () => {
+      signedIn();
+      let answer: (response: Response) => void = () => undefined;
+      fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { answer = resolve; }));
+      renderApp(client);
+
+      clearTokens();
+      await act(async () => { answer(json(DTO)); });
+
+      await waitFor(() => expect(where()).toBe("/login|sem sessão|pronto"));
+      expect(cachedOfTheLastPerson(client)).toBeUndefined();
     });
 
     it("the entry page of a platform access starts from no session at all, not the administrator's", async () => {
