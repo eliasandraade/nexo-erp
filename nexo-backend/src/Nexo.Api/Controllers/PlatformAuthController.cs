@@ -43,6 +43,8 @@ public class PlatformAuthController : ControllerBase
     [HttpPost("refresh")]
     [AllowAnonymous]
     [EnableRateLimiting(Nexo.Api.Middleware.AuthRefreshRateLimit.Policy)]
+    [RequestSizeLimit(AuthController.TokenBodyLimitBytes)]
+    [Nexo.Api.Filters.RefusesLargeBody(AuthController.TokenBodyLimitBytes)]
     public async Task<IActionResult> Refresh([FromBody] PlatformRefreshRequest request, CancellationToken ct)
     {
         var clientIp = HttpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(HttpContext);
@@ -123,10 +125,9 @@ public class PlatformAuthController : ControllerBase
 
     internal static IActionResult RefreshRefusedResult(ControllerBase c, string? error, TimeSpan? retryAfter)
     {
+        if (error == "refresh_already_rotated") return Nexo.Api.Middleware.RateLimitRejection.AlreadyRotatedResult(c, retryAfter ?? PlatformAuthService.RotationGrace);
         if (retryAfter is { } wait) return Nexo.Api.Middleware.RateLimitRejection.OverBudgetResult(c, wait);
-        return error == "refresh_already_rotated"
-            ? c.Conflict(new { error = "Esta sessão acabou de ser renovada em outra aba.", code = error })
-            : c.Unauthorized(new { error = "Sessão da plataforma encerrada. Entre de novo.", code = error ?? "session_ended" });
+        return c.Unauthorized(new { error = "Sessão da plataforma encerrada. Entre de novo.", code = error ?? "session_ended" });
     }
 
     private IActionResult Answer(PlatformSignIn result)

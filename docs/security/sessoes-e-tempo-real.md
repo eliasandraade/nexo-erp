@@ -49,7 +49,7 @@ para. Sem veredito do servidor (sem conexão, 429, 5xx), a sessão continua, e e
 
 ## Renovação
 
-Só uma recusa do servidor encerra a sessão: 401, ou 409 depois da espera pela aba que ganhou a corrida. Sem conexão, 429 e 5xx, a
+Só uma recusa do servidor encerra a sessão: 401. Sem conexão, 409, 429 e 5xx, a
 sessão fica, a chamada falha com um erro que a pessoa consegue ler, e nenhuma aba do navegador renova de novo antes do `Retry-After`
 (ou, sem ele, de uma espera que dobra, até 1 min). `auth/refresh` e `platform/auth/refresh` têm uma política própria, separada do login,
 pensada para muitos terminais atrás do mesmo endereço:
@@ -63,16 +63,25 @@ pensada para muitos terminais atrás do mesmo endereço:
 - Token vencido assinado por nós, corrida entre abas (409) e sessão encerrada não gastam o orçamento de falha. Na plataforma, o token é
   opaco: um token desconhecido faz o papel da assinatura inválida, e a família é a sessão.
 - Um token já usado é julgado antes de qualquer orçamento: passar do limite nunca esconde uma reutilização.
-- **Quem desiste depois de um 409 avisa o servidor.** Se ninguém no navegador recebeu o par novo, outra pessoa pode estar com ele. Antes de limpar a sessão, o cliente chama
-  `auth/logout` com o mesmo token, sem esperar a resposta. Isso encerra a família mesmo dentro da carência e deixa um aviso na auditoria (`logout_with_spent_token`). Sem isso, a vítima nunca
-  apresentaria o token de novo e a reutilização nunca seria detectada.
+- **Um 409 não é veredito.** Quem perde a corrida não encerra a sessão nem chama `auth/logout`: isso acabaria com o par novo da aba que ganhou. O 409 traz em `Retry-After` o que falta da carência, e até lá nenhuma aba
+  apresenta aquele token. As chamadas recebem o mesmo erro temporário de um 5xx, e a sessão fica. O token novo de outra aba encerra a espera na hora. Depois da carência, o token vai de novo e o servidor decide: renova, ou é
+  reutilização, e aí a família acaba com auditoria crítica. É isso que mantém detectável um ladrão que renovou primeiro. Uma resposta perdida depois da troca passa pelo mesmo caminho e termina do mesmo jeito, com a mesma auditoria.
+- **A troca é um passo só.** O token fica reservado por 2 s (`refresh:claim:{jti}`), bem menos que o `Retry-After` de 15 s de um 503, e um script no Redis grava o token novo e o registro da família e remove o antigo, só se a reserva ainda for de quem
+  a pegou. Um vencedor mais lento que a reserva não cria um segundo ramo. Quem perde a reserva só recebe 409 se houver uma troca de verdade por trás; sem nenhuma, responde 503 e pede para voltar. Isso cobre o comando que estoura o tempo na API e ainda roda no
+  Redis: a API espera a conclusão mais do que a reserva dura, então, quando desiste, ela não vale mais. Cache perdido no meio responde 503, e o token continua o mesmo. Depois da conclusão, um cliente que saiu não interrompe nada, nem a atualização da linha da sessão.
+- **Depois de uma queda do Redis:** se a linha da sessão diz que o token apresentado é o atual, o snapshot é que está velho. A sessão termina, sem o alarme de roubo: a auditoria registra `refresh_entry_lost` como aviso, e não `refresh_reuse`.
+- **A linha da sessão acompanha o token:** a troca move `RefreshJti` e `ExpiresAt`. Um terminal com mais de 7 dias continua na lista de dispositivos e, numa queda do Redis, recebe 503, e não 401.
 - **`auth/logout` aceita o refresh token sem access token,** porque quem o tem já poderia renová-lo. Tem teto próprio (`RateLimiting:AuthLogout:*`, 300 por 15 min por endereço; quem tem access conta à
-  parte) e corpo de no máximo 16 KB. Sem nenhum dos dois tokens, continua 401.
+  parte). Sem nenhum dos dois tokens, continua 401. Com um token já trocado, deixa um aviso na auditoria (`logout_with_spent_token`), também nas sessões da plataforma, uma vez só: depois disso a família já acabou.
+- **Corpo de no máximo 16 KB** em `auth/logout`, `auth/refresh` e `platform/auth/refresh`. Sem esse limite, as rotas anônimas de renovação aceitavam os 30 MB do Kestrel, lidos antes de qualquer orçamento responder. Quem declara o tamanho recebe 413 antes de qualquer
+  leitura. Quem não declara (`chunked`) é cortado pelo Kestrel ao passar do limite, durante a leitura, e também recebe 413, ou a conexão fechada se ainda estiver enviando. Isso não conta como erro da API: nada de log de erro, de métrica de erro nem de `error_events`.
 - **Origem fora da lista:** uma página de qualquer site consegue mandar a estas rotas um POST simples, sem preflight, e os limitadores contariam esse pedido antes de o MVC recusar o tipo de conteúdo. Por isso,
   `api/auth/*` e `api/platform/auth/*` respondem `403 origin_not_allowed` a qualquer `Origin` fora da lista, antes dos limitadores. Sem `Origin` (quem não é navegador), segue como antes. O Swagger fora de
   produção é uma página: para usar essas rotas por ele, inclua a origem dele em `Cors:AllowedOrigins`.
 - **Logout durante uma queda do Redis:** só o banco ouve. Quando o Redis volta do snapshot, a entrada do token volta válida; por isso a renovação também confere a linha da sessão (`IsRevokedAsync`), e
   a recusa marca a família. A sessão da plataforma mora no banco e não tem essa falha.
+- **O endereço precisa ser um endereço.** `ClientIpResolver` só aceita o que `IPAddress.TryParse` aceita, com até 45 caracteres e sem identificador de zona, e devolve a forma normalizada. Qualquer outra coisa conta como o endereço da conexão, então não compra partição nem chave no Redis.
+  A fonte padrão não mudou: no staging, medido por `build-portal-auth`, um limite gasto com um `X-Forwarded-For` forjado continua em 429 com outros valores forjados e sem o cabeçalho. Vale para o host `up.railway.app`; o domínio de produção não foi medido.
 - `RateLimiting:AuthRefresh:Enabled=false` desliga as três camadas.
 - **Redis fora do ar ou lento:** os orçamentos deixam de contar, sem abrir o disjuntor do cache, e o teto continua valendo. Como a
   validade do refresh de empresa está no Redis, a renovação responde 503 com `Retry-After` para a sessão que o banco conhece como ativa

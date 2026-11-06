@@ -81,6 +81,12 @@ public class ExceptionHandlingMiddleware
             _logger.LogInformation("Unique constraint hit: {Constraint}.", ((Npgsql.PostgresException)ex.InnerException).ConstraintName);
             await WriteErrorAsync(ctx, 409, "Já existe um registro com estes dados.", null, "duplicate");
         }
+        catch (BadHttpRequestException ex) when (!ctx.RequestAborted.IsCancellationRequested)
+        {
+            // Kestrel refused what the client sent while MVC read it (over the size limit, cut in the middle), and says with which status. Nothing failed here.
+            _logger.LogInformation("Request refused by the server while reading it: {Status}.", ex.StatusCode);
+            await WriteErrorAsync(ctx, ex.StatusCode, ex.StatusCode == StatusCodes.Status413PayloadTooLarge ? "O corpo da requisição é grande demais." : "Requisição inválida.");
+        }
         catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
         {
             // the caller went away (closed tab, timeout): nothing failed, nobody to answer

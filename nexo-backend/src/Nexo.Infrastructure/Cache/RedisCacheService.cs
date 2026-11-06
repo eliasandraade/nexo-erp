@@ -33,7 +33,7 @@ namespace Nexo.Infrastructure.Cache;
 ///   user:blocked:{userId}        → User block flag (no TTL)
 ///   refresh:valid:{jti}          → Valid refresh token data (TTL 7d)
 ///   refresh:blacklist:{jti}      → Revoked refresh token flag (TTL 7d)
-///   refresh:claim:{jti}          → Reserva de uso único da troca de um refresh token (TTL 1 min)
+///   refresh:claim:{jti}          → Reserva de uso único da troca de um refresh token (TTL 2 s)
 ///   refresh:family:{fid}         → Token atual e anterior da família (sessão) e hora da troca (TTL = vida do refresh)
 ///   refresh:family:{fid}:revoked → Família encerrada: logout ou token já usado reapresentado (TTL = vida do refresh)
 ///   refresh:budget:ip:{ip}       → Invalid refresh tokens from this address in the current window (RateLimiting:AuthRefresh)
@@ -66,6 +66,21 @@ public class RedisCacheService : ICacheService
           redis.call('PEXPIRE', KEYS[1], ttl)
         end
         return { count, ttl }
+        """;
+
+    // A hold that nobody can leave without a lifetime. One left like that by the old code, a counter with no expiry, gets it here.
+    private const string ClaimScript = """
+        if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then return 1 end
+        if redis.call('PTTL', KEYS[1]) < 0 then redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
+        return 0
+        """;
+
+    // KEYS: the claim, the key spent, then the keys to write. ARGV: the owner, their lifetime, then the values, each at the same position as its key.
+    private const string CommitClaimScript = """
+        if redis.call('GET', KEYS[1]) ~= ARGV[1] or redis.call('EXISTS', KEYS[2]) == 0 then return 0 end
+        for i = 3, #KEYS do redis.call('SET', KEYS[i], ARGV[i], 'PX', ARGV[2]) end
+        redis.call('DEL', KEYS[2])
+        return 1
         """;
 
     private readonly IConnectionMultiplexer _redis;
@@ -230,6 +245,43 @@ public class RedisCacheService : ICacheService
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
             WarnCountSkipped(ex, key);
+            return null;
+        }
+    }
+
+    public async Task<bool?> TryClaimAsync(CacheClaim claim, CancellationToken ct = default)
+    {
+        if (RedisUnavailable) return null;
+        try
+        {
+            var taken = await _redis.GetDatabase()
+                .ScriptEvaluateAsync(ClaimScript, [claim.Key], [claim.Owner, (long)claim.Lifetime.TotalMilliseconds])
+                .WaitAsync(_callTimeout, ct);
+            return (long)taken == 1;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            TripCircuit(ex, "CLAIM", claim.Key);
+            return null;
+        }
+    }
+
+    public async Task<bool?> CommitClaimAsync(CacheClaim claim, string spentKey, IReadOnlyList<CacheWrite> writes, TimeSpan lifetime, CancellationToken ct = default)
+    {
+        if (RedisUnavailable) return null;
+        try
+        {
+            RedisKey[] keys = [claim.Key, spentKey, .. writes.Select(w => (RedisKey)w.Key)];
+            RedisValue[] values = [claim.Owner, (long)lifetime.TotalMilliseconds, .. writes.Select(w => (RedisValue)JsonSerializer.Serialize(w.Value, w.Value.GetType(), JsonOptions))];
+            // Longer than the claim lives: a command that ran out of this time finds the claim over when it finally runs, and changes nothing.
+            var done = await _redis.GetDatabase()
+                .ScriptEvaluateAsync(CommitClaimScript, keys, values)
+                .WaitAsync(claim.Lifetime + _callTimeout, ct);
+            return (long)done == 1;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            TripCircuit(ex, "COMMIT", claim.Key);
             return null;
         }
     }

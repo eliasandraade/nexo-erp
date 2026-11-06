@@ -162,7 +162,7 @@ public sealed class PlatformAuthService
 
         if (session.PreviousRefreshTokenHash == hash)
         {
-            if (session.RotatedAt is { } rotated && now - rotated < RotationGrace) return (null, "refresh_already_rotated", null);
+            if (session.RotatedAt is { } rotated && now - rotated < RotationGrace) return (null, "refresh_already_rotated", RotationGrace - (now - rotated));
             session.Revoke("refresh_reuse");
             Audit(AuditActions.PlatformSessionRevoked, AuditSeverity.Critical, user, "Sessão da plataforma encerrada: refresh token reutilizado (possível roubo).",
                 new { sessionId = session.Id });
@@ -182,7 +182,7 @@ public sealed class PlatformAuthService
                 .SetProperty(s => s.RefreshTokenHash, Hash(next))
                 .SetProperty(s => s.RotatedAt, now)
                 .SetProperty(s => s.LastUsedAt, now), ct);
-        if (rotatedRows != 1) return (null, "refresh_already_rotated", null);
+        if (rotatedRows != 1) return (null, "refresh_already_rotated", RotationGrace);
 
         var access = _jwt.GeneratePlatformToken(user, session.Id, session.MfaVerified);
         return (new PlatformTokens(access.AccessToken, access.ExpiresAt, next, session.ExpiresAt), null, null);
@@ -202,11 +202,21 @@ public sealed class PlatformAuthService
     public async Task LogoutByRefreshTokenAsync(string refreshToken, CancellationToken ct)
     {
         var hash = Hash(refreshToken);
-        var session = await _db.PlatformSessions.AsNoTracking()
-            .Where(s => !s.PendingMfa && (s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash))
-            .Select(s => new { s.Id, s.PlatformUserId })
-            .FirstOrDefaultAsync(ct);
-        if (session is not null) await LogoutAsync(session.PlatformUserId, session.Id, ct);
+        var session = await _db.PlatformSessions
+            .FirstOrDefaultAsync(s => !s.PendingMfa && (s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash), ct);
+        if (session is null) return;
+        if (session.RefreshTokenHash == hash)
+        {
+            await LogoutAsync(session.PlatformUserId, session.Id, ct);
+            return;
+        }
+        if (session.RevokedAt is not null) return;
+
+        session.Revoke("logout_with_spent_token");
+        var user = await _db.PlatformUsers.FirstAsync(u => u.Id == session.PlatformUserId, ct);
+        Audit(AuditActions.PlatformSessionRevoked, AuditSeverity.Warning, user, "Sessão da plataforma encerrada com um refresh token já trocado: pode ser uma corrida ou uma cópia do token.",
+            new { sessionId = session.Id, reason = "logout_with_spent_token" });
+        await _db.SaveChangesAsync(ct);
     }
 
     public async Task<IReadOnlyList<PlatformSessionView>> SessionsAsync(Guid userId, Guid? currentSessionId, CancellationToken ct)

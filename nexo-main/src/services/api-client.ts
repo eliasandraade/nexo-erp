@@ -187,9 +187,9 @@ export function clearTokens(): void {
 // ── Refresh ───────────────────────────────────────────────────────────────────
 
 /**
- * Only a refusal from the server ends a session: a 401, or a 409 after the wait for the pair of the tab that won the race.
- * Everything else says nothing about the session (no connection, 429, 5xx, a proxy's answer): that is "unavailable", the tokens
- * stay, and the call that needed the renewal fails with a temporary error.
+ * Only a refusal from the server ends a session: a 401. Everything else says nothing about the session (no connection, 409, 429, 5xx, a proxy's answer): that is
+ * "unavailable", the tokens stay, and the call that needed the renewal fails with a temporary error. A 409 above all: signing out after one would end the new pair of the tab
+ * that won the race. The token waits for the end of the server's grace and goes again, and then the server says what it is: a renewal, or the reuse of a copy.
  */
 type RefreshOutcome = "ok" | "refused" | "platform_ended" | "unavailable";
 
@@ -272,6 +272,7 @@ function renewalUnavailableError(): ApiError {
   const left = Math.max(0, (wait?.until ?? 0) - Date.now());
   const status = wait?.status ?? 0;
   const cause = status === 0 ? "Sem conexão com o servidor para renovar sua sessão."
+    : status === 409 ? "Sua sessão acabou de ser renovada em outra aba."
     : status === 429 ? "Muitas renovações de sessão em pouco tempo."
     : "O servidor não conseguiu renovar sua sessão agora.";
   const message = `${cause} Sua sessão continua ativa: tente de novo ${timeLeftInWords(left)}.`;
@@ -284,6 +285,9 @@ const isPlatformRefreshToken = (token: string) => token.startsWith("p.");
 
 /** How long a tab that lost the refresh race waits for the winner tab to store the new pair. */
 export const ROTATION_WAIT_MS = 3000;
+
+/** The grace of the server, for a 409 that does not say how much of it is left. */
+const ROTATION_GRACE_MS = 30_000;
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -310,23 +314,6 @@ async function readErrorBody(res: Response): Promise<ErrorBody | null> {
     return (await res.json()) as ErrorBody;
   } catch {
     return null; // empty or non-JSON body
-  }
-}
-
-/**
- * The token was rotated and no tab here got the new pair: someone else may hold it. Before giving up, the server hears it with this same token, which ends the
- * family even inside the grace. Otherwise this client would never present the token again, and nothing would ever call it a reuse. Best effort: it does not wait.
- */
-async function endFamilyOfSpentToken(token: string): Promise<void> {
-  try {
-    await fetch(`${BASE_URL}/auth/logout`, {
-      method: "POST",
-      keepalive: true,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: token }),
-    });
-  } catch {
-    // no connection: the session ends here anyway, and the family at its expiry
   }
 }
 
@@ -358,15 +345,17 @@ async function attemptRefresh(): Promise<RefreshOutcome> {
         return "ok";
       }
 
-      if (res.status !== 401 && res.status !== 409) {
+      // Another tab renewed the same session a moment ago and stores the new pair in localStorage: use it. Until then nobody here presents this token. The wait is written
+      // first, for the other tabs, and the new pair removes it.
+      if (res.status === 409) {
+        noteRenewalUnavailable(409, retryAfterMs(res) ?? ROTATION_GRACE_MS);
+        if (!(await waitForRotatedToken(sent))) return "unavailable";
+        localStorage.removeItem(RENEWAL_WAIT_KEY);
+        return "ok";
+      }
+      if (res.status !== 401) {
         noteRenewalUnavailable(res.status, retryAfterMs(res));
         return "unavailable";
-      }
-      const err = await readErrorBody(res);
-      // Another tab renewed the same session a moment ago and stores the new pair in localStorage: use it.
-      if (res.status === 409 && err?.code === "refresh_already_rotated") {
-        if (await waitForRotatedToken(sent)) return "ok";
-        void endFamilyOfSpentToken(sent);
       }
       clearTokens();
       return isPlatformRefreshToken(sent) ? "platform_ended" : "refused";

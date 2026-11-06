@@ -86,7 +86,7 @@ só, usada pelo CORS e pela conferência de `Origin`.
 - `navigator.locks` serializa a renovação entre as abas, o que evita apresentar um cookie já trocado depois do prazo de carência.
 - `BroadcastChannel("orken-session")` entrega o access novo às outras abas, e também login e logout. O evento `storage` em
   `nexo:session` fica como reserva.
-- Sem `navigator.locks`, o 409 espera e tenta de novo, como hoje.
+- Sem `navigator.locks`, um 409 não encerra nada: a aba espera o token de outra aba ou o fim da carência.
 
 ### Migração de quem já está logado
 
@@ -101,7 +101,7 @@ do administrador. O access curto em `sessionStorage` continua sendo risco residu
 
 ### Falha na renovação
 
-Só uma recusa do servidor encerra a sessão (401, ou 409 depois da espera). Rede fora, 429 e 5xx não encerram: a sessão fica, a
+Só uma recusa do servidor encerra a sessão (401). Rede fora, 409, 429 e 5xx não encerram: a sessão fica, a
 requisição falha com erro temporário e o cliente respeita `Retry-After`. Isso resolve os dois `test.fixme` de `auth.e2e.spec.ts`.
 
 ## 4. Política de renovação
@@ -172,3 +172,14 @@ dono, na GoDaddy.
 Cookie `HttpOnly` impede levar o refresh para fora, mas não impede um XSS de agir **enquanto a página está aberta**: o script chama
 `auth/refresh` pela própria aba e usa o access. Por isso a CSP (`docs/security/csp.md`) é parte da mesma defesa, e o `script-src`
 precisa chegar a modo de bloqueio.
+
+### Riscos aceitos nesta etapa
+
+Nenhum destes muda aqui. Ficam escritos para a revisão decidir sabendo.
+
+- **Uma queda dura do Redis pode reviver uma sessão encerrada.** Condições: o Redis perde o que gravou depois do último snapshot (`--save 60 1`, até 1 min), e o logout aconteceu nesse último minuto. A marca da família some, e um token de antes do snapshot volta a
+  valer, porque `IsRevokedAsync` procura um `jti` só e a linha já está no mais novo. O mesmo acontece com um logout durante a queda se a linha estiver defasada, já que ela segue o token em melhor esforço. A base tem a mesma exposição. O que fecharia: uma coluna com a família na linha da sessão
+  e a conferência por família, o que exige migração.
+- **Login durante uma queda do Redis:** não há trava por conta, porque o contador mora no Redis, e a sessão aberta nesse período termina na primeira renovação depois da volta, porque sua entrada nunca chegou ao cache.
+- **Tetos compartilhados:** quem está no mesmo endereço gasta o mesmo teto de renovação, de login e de logout anônimo. No modo cookie, o logout vai sem access, então conta na partição anônima do endereço.
+- **Cookies grandes de um irmão comprometido:** um subdomínio de `orken.com.br` comprometido pode encher o navegador de cookies para o domínio pai, e a API responde 431 até eles saírem ou expirarem. O prefixo `__Host-` impede trocar o cookie da sessão, não isso.

@@ -99,7 +99,7 @@ public class SessionStoreBestEffortTests
         using var scope = _factory.Services.CreateScope();
         var (store, _, saves) = StoreOverABrokenDatabase(scope);
 
-        var act = () => store.TouchAsync(jti, next);
+        var act = () => store.TouchAsync(jti, next, DateTime.UtcNow.AddDays(7));
 
         await act.Should().NotThrowAsync();
         saves.Failed.Should().Be(1);
@@ -114,7 +114,7 @@ public class SessionStoreBestEffortTests
         var (store, _, saves) = StoreOverABrokenDatabase(scope);
 
         await store.RevokeAsync("never-recorded");
-        await store.TouchAsync("never-recorded", "next");
+        await store.TouchAsync("never-recorded", "next", DateTime.UtcNow.AddDays(7));
 
         saves.Failed.Should().Be(0);
     }
