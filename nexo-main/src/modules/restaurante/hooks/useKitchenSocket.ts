@@ -39,6 +39,8 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/ap
 
 interface UseKitchenSocketOptions {
   onItemReady?: (tableNumber: string | null, productName: string) => void;
+  /** No connection, no retries and no polling: the company has no access now. Turning it off connects again from scratch. */
+  paused?: boolean;
 }
 
 /**
@@ -64,7 +66,7 @@ export function useKitchenSocket(
   storeId: string,
   options: UseKitchenSocketOptions = {}
 ) {
-  const { onItemReady } = options;
+  const { onItemReady, paused = false } = options;
   const qc               = useQueryClient();
   const connectionRef    = useRef<signalR.HubConnection | null>(null);
   const retryCountRef    = useRef(0);
@@ -94,7 +96,7 @@ export function useKitchenSocket(
 
   useEffect(() => {
     // Only connect when a store is resolved (implies authenticated).
-    if (!storeId) return;
+    if (!storeId || paused) return;
 
     // Do not attempt connection if there is no access token at hook mount time.
     // This guards against the brief window between ProtectedRoute rendering and
@@ -204,7 +206,7 @@ export function useKitchenSocket(
       stopPolling();
       connection.stop();
     };
-  }, [storeId, invalidateAll, startPolling, stopPolling]);
+  }, [storeId, paused, invalidateAll, startPolling, stopPolling]);
 
   return { connectionMode: mode };
 }
