@@ -119,10 +119,11 @@ código; valem só para dados de teste, e por isso nada real pode entrar neste a
 ### Domínios
 
 Staging roda nos domínios gerados pelo Railway. `*.up.railway.app` é um sufixo público, então o `main` e o `backend` são
-sites diferentes para o navegador e o cookie `nexo_refresh` (`SameSite=Lax`) não acompanha as chamadas: o login funciona
-com o token em memória, mas recarregar a página encerra a sessão. Isso é limite do domínio, não defeito do produto.
+sites diferentes para o navegador. Isso não afeta a sessão do SPA: ele não usa os cookies `nexo_access` e `nexo_refresh` em
+nenhum ambiente, guarda os tokens em `localStorage` e chama a API com o header `Authorization`
+([evidência](../audits/2026-11-05-sonarcloud-seguranca-evidencias.md)). Conferido no código e em host local, não com login real em staging.
 
-Para o staging se comportar como produção, os dois hosts precisam ser do mesmo site:
+Para o staging ter a mesma relação de sites de produção, os dois hosts precisam ser do mesmo site:
 `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br`. Depois de criar os registros DNS:
 
 1. inclua os domínios em `.railway/railway.ts` (fora do ramo de produção) e rode o `apply` no staging;
