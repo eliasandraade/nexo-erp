@@ -47,6 +47,12 @@ internal static class UploadTempFolder
         Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "nexo-upload-it-" + Environment.ProcessId);
         Directory.CreateDirectory(Path);
         Environment.SetEnvironmentVariable("ASPNETCORE_TEMP", Path);
+        // the whole process uses this folder, other collections included: it can only go away with the process
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { Directory.Delete(Path, recursive: true); }
+            catch (IOException) { /* something still open: it stays in the machine's temp folder */ }
+        };
     }
 
     /// <summary>What an upload leaves on disk: the framework's spool files and the Build buffers.</summary>
