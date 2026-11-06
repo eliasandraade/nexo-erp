@@ -37,8 +37,6 @@ jobs:
       # Normally 20 s. apt only when Chromium does not open: see the script.
       - name: Playwright browsers
         timeout-minutes: 12
-        env:
-          PLAYWRIGHT_FORCE_DEPS: "1"
         run: npm run e2e:install:ci
 
       - name: Authentication end-to-end suite
