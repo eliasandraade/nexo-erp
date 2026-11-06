@@ -368,6 +368,8 @@ try
         AddIpPolicy("build-portal-auth", "BuildPortalAuth", 10, 300);
         // client decisions (change orders, selections): writes, so tighter than reads
         AddIpPolicy("build-portal-decision", "BuildPortalDecision", 30, 300);
+        // Content-Security-Policy reports (RateLimiting:CspReport:*): its rejection is the same 204, so it has a class of its own.
+        options.AddPolicy<string, Nexo.Api.Security.CspReportRateLimitPolicy>(Nexo.Api.Security.CspReportRateLimitPolicy.Name);
     });
 
     // ── Controllers ───────────────────────────────────────────────────────────

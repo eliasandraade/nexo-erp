@@ -66,6 +66,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Tax Intelligence: catálogo de regras e fontes jurídicas | Management (leitura) | policy Platform | só status, policy Platform | — | ativar regra exige fontes conferidas; revisão profissional, aprovação interna para piloto e sua retirada, janela e participantes do piloto: policy Platform, auditadas |
 | Platform admin | policy Platform | policy Platform | policy Platform | policy Platform | policy Platform |
 | Público (cardápio, agendamento, login) | anônimo, com rate limit | anônimo, com rate limit | — | — | — |
+| Relatórios de violação de CSP (`POST /api/csp-reports`, ver `docs/security/csp.md`) | — | anônimo, com rate limit por IP; responde sempre 204, sem banco | — | — | — |
 
 ### Decisões que merecem nota
 

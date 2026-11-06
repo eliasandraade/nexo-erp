@@ -55,7 +55,8 @@ A isenção compara o **modelo da rota**, não o caminho digitado. Maiúsculas e
 módulo respeita a mesma lista.
 
 - **Anônimas (`[AllowAnonymous]`), mesmo se o chamador mandar uma sessão:** login, refresh, MFA de login, cadastro,
-  esqueci/redefinir senha, verificação de e-mail, webhook do Stripe, portais e rotas públicas (`api/public/*`).
+  esqueci/redefinir senha, verificação de e-mail, webhook do Stripe, portais e rotas públicas (`api/public/*`), relatórios de
+  violação de CSP (`api/csp-reports`, que não grava nada no banco).
 - **Sessão:** `api/auth/logout`, `switch-store`, `impersonation/end`, `sessions/revoke-all`, `mfa/setup`, `mfa/enable`,
   `mfa/disable`.
 - **Senha e MFA de usuários:** `api/users/{id:guid}/change-password`, `admin-reset-password`, `resend-invite`,
