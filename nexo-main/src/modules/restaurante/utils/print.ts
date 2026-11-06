@@ -61,17 +61,14 @@ const BASE_STYLE = `
   }
 `;
 
+const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
 /**
  * Notes, product names and labels come from whoever filled in the order, including a customer on the public menu. Every dynamic
  * value in this file goes through here: this HTML is written into a window of the app's own origin.
  */
 function esc(value: string | number): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
+  return String(value).replace(/[&<>"']/g, (char) => HTML_ESCAPES[char]);
 }
 
 /** A ticket needs no script at all: this holds even if a value ever gets past esc(). */
