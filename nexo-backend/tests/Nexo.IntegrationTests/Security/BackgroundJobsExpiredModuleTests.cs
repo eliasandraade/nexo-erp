@@ -167,6 +167,33 @@ public class BackgroundJobsExpiredModuleTests
         (await PendingConfirmationAsync(appointmentId)).Should().BeFalse();
     }
 
+    /// <summary>
+    /// O cliente desmarca em somente leitura: nenhum e-mail sai por isso, nem depois. A confirmação que estava na fila morre com o
+    /// agendamento, mesmo que o acesso volte.
+    /// </summary>
+    [Theory]
+    [InlineData("periodo_vencido")]
+    [InlineData("past_due_fora_da_carencia")]
+    [InlineData("canceled")]
+    [InlineData("suspended")]
+    public async Task A_cancellation_in_read_only_sends_no_email_now_or_after_access_returns(string state)
+    {
+        var (tenant, email, appointmentId) = await BookingWithEmailAsync();
+        var (slug, token) = await LinkOfAsync(appointmentId);
+        await ExpireAsync(tenant, "service", state);
+        var sender = new CapturingEmail();
+
+        using var cancelled = await AuthClientFactory.CreateAnonymousClient(_factory).PostAsync($"/api/public/service/{slug}/appointments/{token}/cancel", null);
+        cancelled.StatusCode.Should().Be(HttpStatusCode.OK, await cancelled.Content.ReadAsStringAsync());
+
+        await RunEmailsAsync(sender);
+        sender.Sent.Should().NotContain(email, "em somente leitura o provedor de e-mail não é consumido");
+
+        await RestoreAsync(tenant, "service", state);
+        await RunEmailsAsync(sender);
+        sender.Sent.Should().NotContain(email, "um agendamento desmarcado não recebe confirmação nem lembrete");
+    }
+
     // ── Títulos vencidos ──────────────────────────────────────────────────────
 
     [Fact]
@@ -463,6 +490,15 @@ public class BackgroundJobsExpiredModuleTests
             customerName = "Cliente", phone = "1197" + Random.Shared.Next(1_000_000, 9_999_999), email, catalogItemId = catalog, professionalId = professional, startsAt = slot,
         }), HttpStatusCode.Created);
         return (tenant, email, created.GetProperty("appointmentId").GetGuid());
+    }
+
+    private async Task<(string Slug, string Token)> LinkOfAsync(Guid appointmentId)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        var appointment = await db.SvcAppointments.IgnoreQueryFilters().AsNoTracking().SingleAsync(a => a.Id == appointmentId);
+        var store = await db.Stores.IgnoreQueryFilters().AsNoTracking().SingleAsync(s => s.Id == appointment.StoreId);
+        return (store.PublicSlug!, appointment.PublicToken!);
     }
 
     private async Task RunEmailsAsync(CapturingEmail sender)
