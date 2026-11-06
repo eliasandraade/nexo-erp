@@ -4,6 +4,7 @@ namespace Nexo.Application.Common.Interfaces;
 /// Ends every session of a user: refresh tokens removed and session rows marked revoked. The caller
 /// bumps the user's SecurityStamp and saves: once committed, every access token already out there
 /// dies on its next request (the stamp is checked against the database) and no refresh goes through.
+/// That commit also closes the person's open hub connections (HubSessionChangeInterceptor): nothing to call for it.
 /// </summary>
 public interface IUserSessionRevoker
 {

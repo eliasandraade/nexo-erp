@@ -231,9 +231,11 @@ public sealed class BuildProgressEngine
     /// </summary>
     public async Task<int> EnsureDailySnapshotsAsync(DateOnly today, CancellationToken ct)
     {
+        // read-only without access: nothing changes there, so there is no new point to record
+        var withAccess = ModuleAccessQueries.TenantsWithAccess(_db, PublicBuildPortal.ModuleKey, DateTime.UtcNow);
         var active = await _db.BldProjects.IgnoreQueryFilters().AsNoTracking()
-            .Where(p => p.Status == BuildProjectStatus.Planning || p.Status == BuildProjectStatus.InProgress
-                     || p.Status == BuildProjectStatus.Paused)
+            .Where(p => (p.Status == BuildProjectStatus.Planning || p.Status == BuildProjectStatus.InProgress
+                         || p.Status == BuildProjectStatus.Paused) && withAccess.Contains(p.TenantId))
             .Select(p => new { p.Id, p.TenantId })
             .ToListAsync(ct);
         var done = (await _db.BldProgressSnapshots.IgnoreQueryFilters().AsNoTracking()

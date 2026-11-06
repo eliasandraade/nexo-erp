@@ -53,7 +53,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Storage (upload/exclusão) | — | Stock | — | Stock | — |
 | Restaurante: áreas / mesas | RestaurantOps | Management | Management · status da mesa: Floor | — | — |
 | Restaurante: comandas | RestaurantOps | Floor | itens: Floor · status do item: RestaurantOps | remover item: Floor | fechar, pagar, cancelar (antes de pagar): Floor |
-| Restaurante: tempo real (SignalR `RestaurantHub`) | RestaurantOps | — | — | — | — |
+| Restaurante: tempo real (SignalR `RestaurantHub`; quando a sessão acaba: [sessoes-e-tempo-real.md](sessoes-e-tempo-real.md)) | RestaurantOps | — | — | — | — |
 | Restaurante: delivery | Floor | Floor | Floor | — | cancelar / recusar: Floor |
 | Restaurante: adicionais, configurações | RestaurantOps | Management | Management | Management | — |
 | Restaurante: cupons, zonas | Floor | Management | Management | Management | — |

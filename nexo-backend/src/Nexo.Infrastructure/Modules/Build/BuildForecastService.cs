@@ -147,15 +147,17 @@ public sealed class BuildForecastService
 
     /// <summary>
     /// Daily job (system, every tenant): one Scheduled forecast per active project of the companies with BuildPredict on that
-    /// has none for today. Deterministic; weather factor included when available. Returns how many were stored.
+    /// has none for today. Deterministic; weather factor included when available. Returns how many were stored. A company
+    /// without access to the module is left out: it writes nothing and calls no weather provider.
     /// </summary>
     public async Task<int> EnsureDailyForecastsAsync(DateOnly today, CancellationToken ct)
     {
         var predictOff = await _db.BldTenantSettings.IgnoreQueryFilters().AsNoTracking()
             .Where(s => !s.BuildPredictEnabled).Select(s => s.TenantId).ToListAsync(ct);
+        var withAccess = ModuleAccessQueries.TenantsWithAccess(_db, PublicBuildPortal.ModuleKey, DateTime.UtcNow);
         var active = await _db.BldProjects.IgnoreQueryFilters().AsNoTracking()
             .Where(p => (p.Status == BuildProjectStatus.Planning || p.Status == BuildProjectStatus.InProgress
-                         || p.Status == BuildProjectStatus.Paused) && !predictOff.Contains(p.TenantId))
+                         || p.Status == BuildProjectStatus.Paused) && !predictOff.Contains(p.TenantId) && withAccess.Contains(p.TenantId))
             .Select(p => new { p.Id, p.TenantId })
             .ToListAsync(ct);
         var done = (await _db.BldForecasts.IgnoreQueryFilters().AsNoTracking()
