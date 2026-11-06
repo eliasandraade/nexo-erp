@@ -509,7 +509,10 @@ export function onRenewalUnavailable(handler: (message: string) => void): () => 
   return () => globalThis.removeEventListener(RENEWAL_UNAVAILABLE_EVENT, listener);
 }
 
-/** The error of a call that could not renew the session. Never a 401: everything that reads a 401 takes it for a refusal. */
+/**
+ * The error of a call that could not renew the session. Never a 401: everything that reads a 401 takes it for a refusal. Never a 409 either: a screen reads that as a conflict of
+ * its own record ("this time was just booked"), and this says nothing about the record.
+ */
 function renewalUnavailableError(): ApiError {
   const wait = readRenewalWait();
   const left = Math.max(0, (wait?.until ?? 0) - Date.now());
@@ -520,7 +523,7 @@ function renewalUnavailableError(): ApiError {
     : "O servidor não conseguiu renovar sua sessão agora.";
   const message = `${cause} Sua sessão continua ativa: tente de novo ${timeLeftInWords(left)}.`;
   globalThis.dispatchEvent(new CustomEvent<string>(RENEWAL_UNAVAILABLE_EVENT, { detail: message }));
-  return new ApiError(status, message, SESSION_RENEWAL_UNAVAILABLE_CODE, undefined, undefined, undefined, Math.ceil(left / 1000));
+  return new ApiError(status === 409 ? 503 : status, message, SESSION_RENEWAL_UNAVAILABLE_CODE, undefined, undefined, undefined, Math.ceil(left / 1000));
 }
 
 /** Refresh tokens of platform administrators start with "p." (rotated on every refresh). */
@@ -744,6 +747,8 @@ async function attemptRefresh(allowWithoutSession = false): Promise<RefreshOutco
         return "ok";
       }
 
+      // The status says it all, but an answer nobody reads is a request that never ends.
+      await readErrorBody(res);
       // Another tab renewed the same session a moment ago and stores the new pair in localStorage: use it. Until then nobody here presents this token. The wait is written
       // first, for the other tabs, and the new pair removes it.
       if (res.status === 409) {
