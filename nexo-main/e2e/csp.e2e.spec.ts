@@ -193,7 +193,7 @@ async function createWorld(http: APIRequestContext): Promise<World> {
   // One store: its public menu and its booking page.
   const publicSlug = unique("loja");
   await api.patch(`/stores/${storeId}/public-slug`, { publicSlug });
-  const image = await api.upload("/integrations/storage/upload", "produto.png", PNG, { context: "product-image" }, "image/png");
+  const image = await api.upload("/integrations/storage/upload?context=product-image", "produto.png", PNG, { context: "product-image" }, "image/png");
   const code = unique("PROD");
   const product = await api.post("/products", { code, name: `Produto ${code}`, unit: "Un", salePrice: 25, costPrice: 5, trackStock: false, menuVisible: true });
   await api.patch(`/products/${product.id}/image`, { imageUrl: image.publicUrl });
