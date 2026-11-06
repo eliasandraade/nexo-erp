@@ -1,7 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Nexo.Application.Features.Auth;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
@@ -13,7 +19,8 @@ namespace Nexo.IntegrationTests.Auth;
 /// Ensures HttpOnly, Secure, SameSite, Path, Domain flags are correct,
 /// and that cookies are properly managed during login, refresh, and logout.
 ///
-/// These tests are CRITICAL — a cookie security failure is an XSS vulnerability.
+/// The SPA does not use these cookies: it calls with the Bearer header and keeps the tokens in localStorage, so the flags
+/// here protect only clients that do send cookies. See docs/audits/2026-11-05-sonarcloud-seguranca-evidencias.md.
 /// </summary>
 [Collection("Integration")]
 public class CookieSecurityTests
@@ -179,6 +186,9 @@ public class CookieSecurityTests
         refreshCookie.Should().ContainEquivalentOf("HttpOnly");
         refreshCookie.Should().ContainEquivalentOf("SameSite=Lax");
         refreshCookie.Should().ContainEquivalentOf("Path=/");
+
+        Attributes(accessCookie).Should().Contain("secure");
+        Attributes(refreshCookie).Should().Contain("secure");
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -236,6 +246,28 @@ public class CookieSecurityTests
         refreshCookie.Should().ContainEquivalentOf("HttpOnly");
         refreshCookie.Should().ContainEquivalentOf("SameSite=Lax");
         refreshCookie.Should().ContainEquivalentOf("Path=/");
+
+        Attributes(accessCookie).Should().Contain("secure");
+        Attributes(refreshCookie).Should().Contain("secure");
+    }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    // SWITCH STORE: new cookies, same flags
+    // ────────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task SwitchStore_Cookies_CarryEveryFlag()
+    {
+        var (client, login) = await AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
+
+        var response = await client.PostAsJsonAsync("/api/auth/switch-store",
+            new { storeId = login.Session.StoreIds[0], refreshToken = login.RefreshToken });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
+        foreach (var name in new[] { "nexo_access", "nexo_refresh" })
+            Attributes(ExtractSetCookieHeader(setCookieHeaders, name))
+                .Should().Contain(["secure", "httponly", "samesite=lax", "path=/"], name);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -262,34 +294,60 @@ public class CookieSecurityTests
     }
 
     // ────────────────────────────────────────────────────────────────────────────
-    // SECURE FLAG: Should be true in HTTPS, can be false in HTTP (localhost dev)
+    // SECURE FLAG: comes from the environment name, never from the request scheme.
+    // TLS ends at the proxy, so the API always sees plain HTTP.
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Login_Cookies_SecureFlag_MatchesRequestScheme()
+    public async Task Login_Cookies_AreSecure_EvenOverPlainHttp()
     {
-        // The test server runs HTTP (not HTTPS), so Secure should be absent
-        // In production (HTTPS), Secure should be present
         var response = await _client.PostAsJsonAsync("/api/auth/login",
             TestCredentials.AdminLoginPayload());
 
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-        var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        _client.BaseAddress!.Scheme.Should().Be("http", "this host stands in for the API behind the proxy");
 
-        // Since test server is HTTP, Secure flag should be absent
-        var isHttps = _client.BaseAddress?.Scheme == "https";
-        if (isHttps)
+        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
+        Attributes(ExtractSetCookieHeader(setCookieHeaders, "nexo_access")).Should().Contain("secure");
+        Attributes(ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh")).Should().Contain("secure");
+    }
+
+    [Theory]
+    [InlineData("Production", true, "samesite=lax")]
+    [InlineData("Staging", true, "samesite=lax")]
+    [InlineData("Development", false, "samesite=strict")]
+    public async Task Login_Cookie_Flags_FollowTheEnvironment(string environment, bool secure, string sameSite)
+    {
+        await using var host = HostIn(environment);
+        var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        var response = await client.PostAsJsonAsync("/api/auth/login", TestCredentials.AdminLoginPayload());
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
+        foreach (var name in new[] { "nexo_access", "nexo_refresh" })
         {
-            accessCookie.Should().Contain("Secure",
-                "HTTPS connections must have Secure flag");
-        }
-        else
-        {
-            // HTTP (localhost development) — Secure may or may not be present,
-            // but the code should dynamically detect IsHttps
-            // This test documents the expected behavior
+            var attributes = Attributes(ExtractSetCookieHeader(setCookieHeaders, name));
+            attributes.Should().Contain(["httponly", sameSite], name);
+            if (secure) attributes.Should().Contain("secure", name);
+            else attributes.Should().NotContain("secure", name);
         }
     }
+
+    /// <summary>The real startup in another environment: strict ones demand a random signing secret.</summary>
+    private WebApplicationFactory<Program> HostIn(string environment)
+        => _factory.WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment(environment);
+            b.UseSetting("Jwt:Secret", Convert.ToBase64String(RandomNumberGenerator.GetBytes(48)));
+            // Outside "Testing" the periodic jobs start too: they must not touch the data of other tests in the collection.
+            b.ConfigureTestServices(s =>
+            {
+                foreach (var job in s.Where(d => d.ServiceType == typeof(IHostedService)
+                                                 && d.ImplementationType?.Namespace?.StartsWith("Nexo.", StringComparison.Ordinal) == true).ToList())
+                    s.Remove(job);
+            });
+        });
 
     // ────────────────────────────────────────────────────────────────────────────
     // HELPERS
@@ -301,6 +359,10 @@ public class CookieSecurityTests
         cookie.Should().NotBeNull($"Set-Cookie header for '{cookieName}' not found");
         return cookie!;
     }
+
+    /// <summary>The attributes after the value, lower-cased: a JWT value could contain any of these words by chance.</summary>
+    private static string[] Attributes(string setCookieHeader)
+        => setCookieHeader.Split(';').Skip(1).Select(p => p.Trim().ToLowerInvariant()).ToArray();
 
     private static string ExtractSetCookieValue(IEnumerable<string> setCookieHeaders, string cookieName)
     {
