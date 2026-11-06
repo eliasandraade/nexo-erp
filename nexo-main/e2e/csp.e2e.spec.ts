@@ -9,8 +9,8 @@ import { test as base, expect, type APIRequestContext, type BrowserContext, type
  *  - the policy has teeth: an injected script, an eval or a request to an unknown host do produce a violation, the report reaches
  *    the endpoint, and each source the policy allows is needed by a flow (take it out and that flow is reported).
  *
- * Everything runs against the real API on a disposable PostgreSQL. The only thing answered here is the object store and the CEP
- * service, which are other companies' hosts: the browser's request still goes through the policy.
+ * Everything runs against the real API on a disposable PostgreSQL. The object store and the CEP service are other companies' hosts,
+ * so they are answered here, and the browser's request still goes through the policy.
  */
 
 const APP_ORIGIN = "http://127.0.0.1:5197";
@@ -278,6 +278,8 @@ const test = base.extend<{
       headers: { "access-control-allow-origin": "*" },
     }));
     await provide(context);
+    // A request still on its way when the test ends has nobody left to answer it.
+    await context.unrouteAll({ behavior: "ignoreErrors" });
   },
   violations: async ({ context }, provide) => {
     const seen: Violation[] = [];
@@ -321,7 +323,7 @@ async function expectNoViolation(page: Page, http: APIRequestContext, violations
  */
 async function editPolicy(context: BrowserContext, edit: (policy: string) => string): Promise<void> {
   await context.grantPermissions(["local-network-access"]);
-  const ownsAPolicy = (url: URL) => url.origin === APP_ORIGIN && (!url.pathname.startsWith("/assets/") || url.pathname.includes(".worker"));
+  const ownsAPolicy = (url: URL) => url.origin === APP_ORIGIN && (!url.pathname.includes(".") || url.pathname.includes(".worker"));
   await context.route(ownsAPolicy, async (route) => {
     const response = await route.fetch();
     const headers = response.headers();
@@ -667,43 +669,42 @@ test.describe("each allowance is needed", () => {
   useWorld();
 
   /** The API received a report of this directive, for this address if one is given. The only signal that sees inside a worker. */
-  async function expectFlowReported(page: Page, http: APIRequestContext, directive: string, flow: () => Promise<void>, blocked?: string) {
+  async function expectFlowReported(http: APIRequestContext, directive: string, flow: () => Promise<void>, blocked?: string) {
     const before = (await reportLines(http)).length;
     await flow();
-    await waitForReports(page, http);
-    const reported = (await reportLines(http)).slice(before)
-      .filter((l) => l.includes(`EffectiveDirective: "${directive}"`) && (!blocked || l.includes(`BlockedOrigin: "${blocked}"`)));
-    expect(reported.length, `${directive}: the flow must need this source`).toBeGreaterThan(0);
+    await expect.poll(async () => (await reportLines(http)).slice(before)
+      .filter((l) => l.includes(`EffectiveDirective: "${directive}"`) && (!blocked || l.includes(`BlockedOrigin: "${blocked}"`))).length,
+    { message: `${directive}: the flow must need this source` }).toBeGreaterThan(0);
   }
 
   test("'wasm-unsafe-eval': the worker compiling the IFC converter", async ({ page, context, http }) => {
     await editPolicy(context, without("script-src", "'wasm-unsafe-eval'"));
-    await expectFlowReported(page, http, "script-src", () => convertIfcInTheBrowser(page, context, http), "wasm-eval");
+    await expectFlowReported(http, "script-src", () => convertIfcInTheBrowser(page, context, http), "wasm-eval");
   });
 
   test("worker-src 'self': the worker that runs it", async ({ page, context, http }) => {
     await editPolicy(context, (policy) => policy.replace("worker-src 'self'", "worker-src 'none'"));
-    await expectFlowReported(page, http, "worker-src", () => convertIfcInTheBrowser(page, context, http));
+    await expectFlowReported(http, "worker-src", () => convertIfcInTheBrowser(page, context, http));
   });
 
   test("object-src blob:: the PDF of the floor plan", async ({ page, context, http }) => {
     await editPolicy(context, (policy) => policy.replace("object-src blob:", "object-src 'none'"));
-    await expectFlowReported(page, http, "object-src", () => openPdfOnTheFloorPlan(page), "blob");
+    await expectFlowReported(http, "object-src", () => openPdfOnTheFloorPlan(page), "blob");
   });
 
   test("frame-src blob:: Chromium opens that same PDF as a frame", async ({ page, context, http }) => {
     await editPolicy(context, (policy) => policy.replace("frame-src blob:", "frame-src 'none'"));
-    await expectFlowReported(page, http, "frame-src", () => openPdfOnTheFloorPlan(page), "blob");
+    await expectFlowReported(http, "frame-src", () => openPdfOnTheFloorPlan(page), "blob");
   });
 
   test("connect-src blob:: the texture embedded in a GLB", async ({ page, context, http }) => {
     await editPolicy(context, without("connect-src", "blob:"));
-    await expectFlowReported(page, http, "connect-src", () => viewPortalModel(page), "blob");
+    await expectFlowReported(http, "connect-src", () => viewPortalModel(page), "blob");
   });
 
   test("style-src 'unsafe-inline': the app shell, the toasts and the dialogs, which write <style> elements", async ({ page, context, http }) => {
     await editPolicy(context, without("style-src", "'unsafe-inline'"));
-    await expectFlowReported(page, http, "style-src-elem", async () => {
+    await expectFlowReported(http, "style-src-elem", async () => {
       await page.goto("/login");
       await expect(page.getByLabel("Login ou e-mail")).toBeVisible();
     }, "inline");
@@ -711,7 +712,7 @@ test.describe("each allowance is needed", () => {
 
   test("media-src: the captured video", async ({ page, context, http }) => {
     await editPolicy(context, (policy) => policy.replace(/media-src [^;]*/, "media-src 'none'"));
-    await expectFlowReported(page, http, "media-src", async () => {
+    await expectFlowReported(http, "media-src", async () => {
       await signIn(page);
       await openTwinTab(page, world.captureProject);
       await page.getByRole("tab", { name: "Captura da realidade" }).click();
@@ -721,6 +722,6 @@ test.describe("each allowance is needed", () => {
 
   test("img-src data:: the QR code of two-step verification", async ({ page, context, http }) => {
     await editPolicy(context, without("img-src", "data:"));
-    await expectFlowReported(page, http, "img-src", () => openMfaQrCode(page), "data");
+    await expectFlowReported(http, "img-src", () => openMfaQrCode(page), "data");
   });
 });

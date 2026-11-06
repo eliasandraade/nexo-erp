@@ -67,7 +67,7 @@ public static class CspReportReader
     {
         if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("csp-report", out var report) && report.ValueKind == JsonValueKind.Object)
             Add(found, Text(report, "effective-directive") ?? Text(report, "violated-directive"), Text(report, "blocked-uri"),
-                Text(report, "document-uri"), Text(report, "source-file"), report, "line-number", Text(report, "disposition"));
+                Text(report, "document-uri"), Text(report, "source-file"), Line(report, "line-number"), Text(report, "disposition"));
     }
 
     private static void ReadReportingApi(JsonElement root, List<CspViolationLogEntry> found)
@@ -78,16 +78,15 @@ public static class CspReportReader
             if (item.ValueKind != JsonValueKind.Object || Text(item, "type") != "csp-violation") continue;
             if (!item.TryGetProperty("body", out var report) || report.ValueKind != JsonValueKind.Object) continue;
             Add(found, Text(report, "effectiveDirective"), Text(report, "blockedURL"), Text(report, "documentURL"),
-                Text(report, "sourceFile"), report, "lineNumber", Text(report, "disposition"));
+                Text(report, "sourceFile"), Line(report, "lineNumber"), Text(report, "disposition"));
         }
     }
 
-    private static void Add(List<CspViolationLogEntry> found, string? directive, string? blocked, string? document, string? source,
-        JsonElement report, string lineField, string? disposition)
+    private static void Add(List<CspViolationLogEntry> found, string? directive, string? blocked, string? document, string? source, int? line, string? disposition)
     {
         var effective = Token(directive);
         if (effective.Length == 0) return;   // a report with no directive says nothing about the policy
-        found.Add(new CspViolationLogEntry(effective, OriginOf(blocked), DocumentOf(document), SourceFileOf(source), Line(report, lineField), Token(disposition)));
+        found.Add(new CspViolationLogEntry(effective, OriginOf(blocked), DocumentOf(document), SourceFileOf(source), line, Token(disposition)));
     }
 
     private static string? Text(JsonElement parent, string name)

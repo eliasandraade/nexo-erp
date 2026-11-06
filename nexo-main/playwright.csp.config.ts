@@ -3,12 +3,16 @@ import { resolve } from "node:path";
 
 /**
  * The Content-Security-Policy of the app under a real browser (docs/security/csp.md): the production bundle, served by the
- * real Caddyfile on the production image (e2e/csp-app-server.mjs), against the real API on a disposable PostgreSQL
- * (e2e/auth-host). `npm run test:e2e:csp` starts both; it needs Docker and the .NET 8 SDK. Nothing here takes a URL from the
- * environment: the suite only ever talks to these two local servers.
+ * real Caddyfile on the image the Dockerfile uses, against the real API on a disposable PostgreSQL (e2e/auth-host).
+ * `npm run test:e2e:csp` starts both; it needs Docker and the .NET 8 SDK. Nothing here takes a URL from the environment: the suite
+ * only ever talks to these two local servers. The policy under test is what this server sends, read from the response, and only
+ * the API's own addresses differ from production, through the variables the Caddyfile declares.
  */
 const API_ORIGIN = "http://127.0.0.1:5196";
+const HUB_ORIGIN = "ws://127.0.0.1:5196";
 const APP_ORIGIN = "http://127.0.0.1:5197";
+const CONTAINER = "orken-csp-e2e";
+const OUT_DIR = "dist-e2e";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -51,7 +55,14 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      command: "node e2e/csp-app-server.mjs",
+      // A build of its own, pointed at the test host. Removes a container that a run stopped from outside may have left.
+      command: [
+        `(docker rm -f ${CONTAINER} || echo nothing to remove)`,
+        `npx vite build --outDir ${OUT_DIR} --emptyOutDir --logLevel warn`,
+        `docker run --rm --name ${CONTAINER} -p 127.0.0.1:5197:8080 -e PORT=8080 -e CSP_API_ORIGIN=${API_ORIGIN} -e CSP_HUB_ORIGIN=${HUB_ORIGIN} ` +
+          `-v "${resolve("Caddyfile")}:/etc/caddy/Caddyfile:ro" -v "${resolve(OUT_DIR)}:/srv:ro" caddy:2-alpine`,
+      ].join(" && "),
+      env: { VITE_API_BASE_URL: `${API_ORIGIN}/api` },
       url: APP_ORIGIN,
       timeout: 300_000,
       reuseExistingServer: !process.env.CI,

@@ -429,7 +429,7 @@ public class CspReportTests
     }
 
     /// <summary>The violation lines of this request.</summary>
-    private string[] LogLines(HttpResponseMessage response)
+    private static string[] LogLines(HttpResponseMessage response)
     {
         var id = response.Headers.GetValues("X-Request-Id").Single();
         return EndpointLog.For(id).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
@@ -437,7 +437,7 @@ public class CspReportTests
             .ToArray();
     }
 
-    private string Properties(HttpResponseMessage response)
+    private static string Properties(HttpResponseMessage response)
         => EndpointLog.PropertiesFor(response.Headers.GetValues("X-Request-Id").Single());
 
     private static int CountOf(string text, string part)
