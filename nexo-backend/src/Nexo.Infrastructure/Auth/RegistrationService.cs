@@ -103,10 +103,9 @@ public class RegistrationService
         await _db.SaveChangesAsync(ct);
 
         // 7. Create default AppSettings
-        var escapedName = name.Replace("\"", "\\\"");
         var settings = AppSettings.CreateForTenant(
             tenantId:      tenant.Id,
-            companyJson:   $"{{\"name\":\"{escapedName}\",\"tradeName\":\"{escapedName}\",\"cnpj\":\"\",\"email\":\"{email}\",\"phone\":\"\"}}",
+            companyJson:   System.Text.Json.JsonSerializer.Serialize(new { name, tradeName = name, cnpj = "", email, phone = "" }),
             operationJson: "{\"defaultOperator\":\"\"}",
             inventoryJson: "{\"noMovementAlertDays\":30,\"minStockBehavior\":\"alert\",\"enableLowStockAlerts\":true,\"enableZeroStockAlerts\":true,\"enableHighRotationAlerts\":false}",
             commissionJson:"{\"defaultCommissionRate\":3,\"enableProductCommission\":false,\"policyNotes\":\"\"}",

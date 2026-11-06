@@ -496,8 +496,13 @@ public class AuthController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length < 2)
             return BadRequest(new { error = "Informe seu nome completo." });
+        if (request.Name.Trim().Length > 150)
+            return BadRequest(new { error = "Use um nome de até 150 caracteres." });
         if (string.IsNullOrWhiteSpace(request.Email))
             return BadRequest(new { error = "Informe um e-mail válido." });
+        // The login of this account is the e-mail, and the column takes 50: past that the insert fails with the company already saved.
+        if (request.Email.Trim().Length > 50)
+            return BadRequest(new { error = "Use um e-mail de até 50 caracteres." });
         if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length < 6)
             return BadRequest(new { error = "A senha deve ter no mínimo 6 caracteres." });
 
