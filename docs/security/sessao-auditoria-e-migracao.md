@@ -172,3 +172,15 @@ dono, na GoDaddy.
 Cookie `HttpOnly` impede levar o refresh para fora, mas não impede um XSS de agir **enquanto a página está aberta**: o script chama
 `auth/refresh` pela própria aba e usa o access. Por isso a CSP (`docs/security/csp.md`) é parte da mesma defesa, e o `script-src`
 precisa chegar a modo de bloqueio.
+
+## 10. O que a implementação acrescentou a este contrato
+
+- **Mais endpoints de sessão:** `auth/mfa/enable`, `users/{id}/change-password`, `platform/auth/logout`, `platform/auth/sessions/revoke-all`, `platform/auth/mfa/enable` e `platform/auth/mfa/disable` também encerram a sessão deste
+  navegador, então usam `credentials` e o header para o cookie sair junto. `auth/reset-password` não: é anônima e pode vir de um navegador logado com outra pessoa. O cookie de quem trocou a senha deixa de renovar.
+- **Renovação sem token no modo cookie** responde 401, não 400: para o cliente é "não há sessão", e não um erro temporário.
+- **`session_revoked` na renovação**, só no modo cookie: quem recarrega não tem access para ouvir esse código da API e a tela precisa dizer o mesmo. Sem o header, a resposta continua `session_ended`.
+- **Armazenamento limpo:** a sessão volta pelo cookie, com uma renovação, e a marca `nexo:signed_out` (sem credencial) impede que volte depois de um logout. Custo: um 401 na primeira visita de cada navegador ao login.
+- **`keepalive` na renovação e no logout:** um reload no meio da renovação cancelaria a resposta depois de o servidor ter trocado o token, e o cookie gasto encerraria a sessão.
+- **Cabeçalhos do CORS:** `AllowAnyHeader` virou lista explícita. Não era uma falha, porque só origens da lista recebem resposta da preflight. A lista documenta o que os clientes deste repositório mandam.
+- **`localhost` saiu também do `appsettings.json`:** era por lá que ele chegava à produção, além do código.
+- **Pessoa diferente no cookie:** `erp` e `www` dividem o cookie, e o `BroadcastChannel` não atravessa origens. Se a renovação trouxer o token de outra pessoa, a aba encerra a sessão local, em vez de seguir trabalhando como outra pessoa.

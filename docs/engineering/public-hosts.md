@@ -27,7 +27,7 @@ A raiz de `www` responde 307 para `https://app.orken.com.br/`, mantendo a query 
 A raiz de `erp` responde 307 para `/login`, mantendo a query string. Isso também vale só para `GET` e `HEAD`, com os
 mesmos cabeçalhos.
 
-- **Sessão:** a sessão do ERP fica no cookie da API (`api.erp.orken.com.br`), e o servidor do frontend não a vê. Por
+- **Sessão:** a sessão do ERP fica no navegador (no `localStorage` ou, no modo cookie, num cookie do host da API), e o servidor do frontend não a vê. Por
   isso o servidor manda todos ao login. O `AuthLayout` leva quem já tem sessão ao mesmo destino de logo depois de
   entrar (`resolvePostLogin`: `/platform`, a última área de trabalho guardada, a área única, `/workspaces` ou a casa do
   papel). Nenhum desses destinos é `/`, então não há laço.

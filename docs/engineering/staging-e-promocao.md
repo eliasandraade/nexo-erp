@@ -119,15 +119,15 @@ código; valem só para dados de teste, e por isso nada real pode entrar neste a
 ### Domínios
 
 Staging roda nos domínios gerados pelo Railway. `*.up.railway.app` é um sufixo público, então o `main` e o `backend` são
-sites diferentes para o navegador. Isso não afeta a sessão do SPA: ele não usa os cookies `nexo_access` e `nexo_refresh` em
-nenhum ambiente, guarda os tokens em `localStorage` e chama a API com o header `Authorization`
-([evidência](../audits/2026-11-05-sonarcloud-seguranca-evidencias.md)). Conferido no código e em host local, não com login real em staging.
+sites diferentes para o navegador. Isso não afeta o modo atual da sessão, que guarda os tokens em `localStorage` e não usa cookie. O modo cookie
+(`VITE_SESSION_MODE=cookie` no `main`) precisa de `Auth__Session__CookieSameSite=None` no `backend` enquanto o staging estiver nesse domínio: veja
+[o roteiro de homologação](../security/roteiro-homologacao-sessao.md).
 
 Para o staging ter a mesma relação de sites de produção, os dois hosts precisam ser do mesmo site:
 `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br`. Depois de criar os registros DNS:
 
 1. inclua os domínios em `.railway/railway.ts` (fora do ramo de produção) e rode o `apply` no staging;
-2. troque `App__FrontendUrl`, `Cors__AllowedOrigins__0` e `VITE_API_BASE_URL` para os novos hosts;
+2. troque `App__FrontendUrl`, `Cors__AllowedOrigins__0` e `VITE_API_BASE_URL` para os novos hosts, e remova `Auth__Session__CookieSameSite`;
 3. publique de novo o `main`, porque a API fica fixada no bundle durante o build.
 
 ### Custo
