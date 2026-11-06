@@ -3,6 +3,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common;
+using Nexo.Domain.Enums;
+using Nexo.Infrastructure.Modules;
 using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Infrastructure.Jobs;
@@ -11,7 +13,8 @@ namespace Nexo.Infrastructure.Jobs;
 /// Marca como vencidos (Overdue) os títulos em aberto cujo vencimento ficou antes de hoje (Brasil).
 /// A system job across every tenant: one idempotent UPDATE an hour. Listings don't depend on it —
 /// they already show a pending título past due as overdue — but the stored status stays honest for
-/// reports and integrations.
+/// reports and integrations. A company with no module with access is read-only as a whole, so it is left out: what it
+/// reads does not change, and the next pass after access returns catches up.
 /// </summary>
 public class OverdueTitlesJob : BackgroundService
 {
@@ -53,7 +56,11 @@ public class OverdueTitlesJob : BackgroundService
 
     /// <summary>Pending → Overdue for every título due before <paramref name="todayStartUtc"/>. Idempotent.</summary>
     public static Task<int> MarkOverdueAsync(NexoDbContext db, DateTime todayStartUtc, CancellationToken ct = default)
-        => db.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE nexo.financial_transactions SET status = 'Overdue', updated_at = now() WHERE status = 'Pending' AND due_date < {todayStartUtc}",
-            ct);
+    {
+        var now = DateTime.UtcNow;
+        var withAccess = ModuleAccessQueries.TenantsWithAnyAccess(db, now);
+        return db.FinancialTransactions.IgnoreQueryFilters()
+            .Where(t => t.Status == TransactionStatus.Pending && t.DueDate < todayStartUtc && withAccess.Contains(t.TenantId))
+            .ExecuteUpdateAsync(u => u.SetProperty(t => t.Status, TransactionStatus.Overdue).SetProperty(t => t.UpdatedAt, now), ct);
+    }
 }

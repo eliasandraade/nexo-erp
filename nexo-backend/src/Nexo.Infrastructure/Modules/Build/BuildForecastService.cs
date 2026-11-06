@@ -68,6 +68,7 @@ public sealed class BuildForecastService
     public const string WeatherDisclaimer =
         "Previsão do tempo para o local da obra — é previsão, não certeza, e pode mudar ao longo do dia. Não altera datas automaticamente.";
     public const int WeatherDays = 7;
+    private const string BuildModuleKey = "build";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -146,15 +147,17 @@ public sealed class BuildForecastService
 
     /// <summary>
     /// Daily job (system, every tenant): one Scheduled forecast per active project of the companies with BuildPredict on that
-    /// has none for today. Deterministic; weather factor included when available. Returns how many were stored.
+    /// has none for today. Deterministic; weather factor included when available. Returns how many were stored. A company
+    /// without access to the module is left out: it writes nothing and calls no weather provider.
     /// </summary>
     public async Task<int> EnsureDailyForecastsAsync(DateOnly today, CancellationToken ct)
     {
         var predictOff = await _db.BldTenantSettings.IgnoreQueryFilters().AsNoTracking()
             .Where(s => !s.BuildPredictEnabled).Select(s => s.TenantId).ToListAsync(ct);
+        var withAccess = ModuleAccessQueries.TenantsWithAccess(_db, PublicBuildPortal.ModuleKey, DateTime.UtcNow);
         var active = await _db.BldProjects.IgnoreQueryFilters().AsNoTracking()
             .Where(p => (p.Status == BuildProjectStatus.Planning || p.Status == BuildProjectStatus.InProgress
-                         || p.Status == BuildProjectStatus.Paused) && !predictOff.Contains(p.TenantId))
+                         || p.Status == BuildProjectStatus.Paused) && !predictOff.Contains(p.TenantId) && withAccess.Contains(p.TenantId))
             .Select(p => new { p.Id, p.TenantId })
             .ToListAsync(ct);
         var done = (await _db.BldForecasts.IgnoreQueryFilters().AsNoTracking()
@@ -307,6 +310,8 @@ public sealed class BuildForecastService
     /// <summary>Daily forecast at the site, or the reason it is not available (weather off, no coordinates, provider down).</summary>
     private async Task<(IReadOnlyList<BuildWeatherDay>? Days, string? Reason)> DailyAsync(BuildProject project, CancellationToken ct)
     {
+        // Module expired: reading stays open, and it does not call an outside provider.
+        if (_tenant.ExpiredModules.Contains(BuildModuleKey)) return (null, "module_read_only");
         if (!_flags.WeatherEnabled) return (null, "weather_disabled");
         if (!project.HasSite) return (null, "no_coordinates");
         try
@@ -328,6 +333,7 @@ public sealed class BuildForecastService
 
     private static string? ReasonMessage(string? reason) => reason switch
     {
+        "module_read_only" => "A previsão do tempo fica fora enquanto o Orken Build estiver em somente leitura.",
         "weather_disabled" => "A previsão do tempo não está ligada nesta instalação.",
         "no_coordinates" => "Informe a localização (latitude e longitude) da obra para ver a previsão do tempo.",
         "provider_unavailable" => "A previsão do tempo está indisponível no momento. Tente mais tarde.",

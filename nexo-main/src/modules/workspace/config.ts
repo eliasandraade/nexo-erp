@@ -1,4 +1,5 @@
 import { Store, UtensilsCrossed, HardHat, ConciergeBell } from "lucide-react";
+import { readableModules } from "@/modules/auth/hooks/useRoleAccess";
 import type { AuthSession } from "@/modules/auth/types";
 import type { WorkspaceDef, WorkspaceId } from "./types";
 
@@ -65,9 +66,10 @@ export function getWorkspace(id: WorkspaceId): WorkspaceDef {
   return BY_ID[id];
 }
 
-/** Workspaces the tenant actually has an active module for, in display order. */
-export function availableWorkspaces(session: Pick<AuthSession, "modules">): WorkspaceDef[] {
-  return WORKSPACES.filter((w) => session.modules.includes(w.moduleKey));
+/** Workspaces the tenant has a module for, active or expired (read-only), in display order. */
+export function availableWorkspaces(session: Pick<AuthSession, "modules" | "readOnlyModules">): WorkspaceDef[] {
+  const modules = readableModules(session);
+  return WORKSPACES.filter((w) => modules.includes(w.moduleKey));
 }
 
 /**

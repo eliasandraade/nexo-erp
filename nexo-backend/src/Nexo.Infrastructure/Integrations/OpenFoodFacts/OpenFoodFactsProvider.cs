@@ -45,7 +45,7 @@ public sealed class OpenFoodFactsProvider : IBarcodeProductLookupProvider
         }
 
         // HTTP call
-        using var response = await _http.GetAsync($"/api/v0/product/{normalizedBarcode}.json", ct);
+        using var response = await _http.GetAsync($"/api/v0/product/{Uri.EscapeDataString(normalizedBarcode)}.json", ct);
         response.EnsureSuccessStatusCode();
 
         var offResponse = await JsonSerializer.DeserializeAsync<OffResponse>(

@@ -27,7 +27,7 @@ public sealed class BrasilApiCepProvider : ICepLookupProvider
 
     public async Task<CepLookupResult?> LookupAsync(string cep, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/cep/v2/{cep}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/cep/v2/{Uri.EscapeDataString(cep)}");
         request.Options.Set(ProviderNameKey, "BrasilApi:Cep");
 
         using var response = await _http.SendAsync(request, ct);

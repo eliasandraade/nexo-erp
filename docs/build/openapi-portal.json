@@ -2,7 +2,7 @@
   "openapi": "3.0.1",
   "info": {
     "title": "Orken Build — Portal do Cliente (API pública)",
-    "version": "1.6",
+    "version": "1.7",
     "description": "Gerado da API (Swagger) por BuildPortalOpenApiTests. Contrato humano: docs/build/client-portal-contract.md."
   },
   "paths": {
@@ -3334,6 +3334,9 @@
             "items": {
               "type": "string"
             }
+          },
+          "readOnly": {
+            "type": "boolean"
           },
           "portal": {
             "allOf": [

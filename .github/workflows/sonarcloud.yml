@@ -1,15 +1,11 @@
 name: sonarcloud
 
 # CI-based SonarCloud analysis WITH test coverage (backend: Microsoft Code Coverage XML;
-# frontend: Vitest lcov). SonarCloud's Automatic Analysis — what runs today — cannot import
-# coverage, which is why new code always showed 0.0%.
+# frontend: Vitest lcov). This is the project's analysis: it runs on every pull request and on every
+# commit that reaches master, and it is what sends coverage to SonarCloud (docs/engineering/SONARCLOUD_COVERAGE.md).
 #
-# Inert until the owner switches the project to CI-based analysis (docs/engineering/SONARCLOUD_COVERAGE.md):
-#   1. SonarCloud → project → Administration → Analysis Method → turn OFF Automatic Analysis;
-#   2. GitHub → repository → Settings → Secrets → Actions → add SONAR_TOKEN.
-# Without SONAR_TOKEN every step below is skipped and the job passes, so nothing changes until then.
-# (With the token but Automatic Analysis still on, SonarCloud rejects the CI analysis — do step 1 first.)
-# Called by ci.yml, which sets when it runs and what may cancel it.
+# Without SONAR_TOKEN (a fork's pull request, for example) every step below is skipped and the job passes.
+# Called by ci.yml and master.yml, which set when it runs and what may cancel it.
 on:
   workflow_call:
     secrets:
@@ -27,7 +23,7 @@ jobs:
         id: gate
         run: |
           if [ -z "$SONAR_TOKEN" ]; then
-            echo "::notice::SONAR_TOKEN not set — SonarCloud stays on Automatic Analysis (no coverage). See docs/engineering/SONARCLOUD_COVERAGE.md."
+            echo "::notice::SONAR_TOKEN not set — this run sends no analysis to SonarCloud. See docs/engineering/SONARCLOUD_COVERAGE.md."
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=true" >> "$GITHUB_OUTPUT"

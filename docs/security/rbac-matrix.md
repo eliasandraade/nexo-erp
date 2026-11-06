@@ -53,7 +53,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
 | Storage (upload/exclusão) | — | Stock | — | Stock | — |
 | Restaurante: áreas / mesas | RestaurantOps | Management | Management · status da mesa: Floor | — | — |
 | Restaurante: comandas | RestaurantOps | Floor | itens: Floor · status do item: RestaurantOps | remover item: Floor | fechar, pagar, cancelar (antes de pagar): Floor |
-| Restaurante: tempo real (SignalR `RestaurantHub`) | RestaurantOps | — | — | — | — |
+| Restaurante: tempo real (SignalR `RestaurantHub`; quando a sessão acaba: [sessoes-e-tempo-real.md](sessoes-e-tempo-real.md)) | RestaurantOps | — | — | — | — |
 | Restaurante: delivery | Floor | Floor | Floor | — | cancelar / recusar: Floor |
 | Restaurante: adicionais, configurações | RestaurantOps | Management | Management | Management | — |
 | Restaurante: cupons, zonas | Floor | Management | Management | Management | — |
@@ -86,6 +86,20 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
     de um colega.
 - **Preço de venda:** o Estoquista altera preço porque a tela `/produtos` já é dele. Se o negócio
   quiser separar quem cadastra de quem precifica, basta trocar uma linha (`PATCH /products/{id}/prices`).
+- **A empresa nunca perde a última Diretoria ativa.** Rebaixar, inativar, bloquear ou excluir o último
+  usuário ativo da Diretoria responde `409` com `code: "last_director"` e nada muda: nem o carimbo de
+  segurança, nem as sessões. Vale também para a própria pessoa. Quem está em `PendingVerification`,
+  `Inactive` ou `Blocked` não conta. Promover, reativar e editar nome ou e-mail seguem livres, e uma
+  empresa que já está sem Diretoria pode ser alterada em tudo que não tire uma, para o estado poder ser
+  consertado.
+  - A regra está em `NexoDbContext.SaveChangesAsync` (`LastDirectorGuard`), então nenhum caminho que grave
+    pelo EF escapa dela. `PUT /users/{id}` a aplica também antes de mexer em qualquer coisa, para a recusa
+    não encerrar sessão nenhuma.
+  - Dois diretores se rebaixando ao mesmo tempo, em conexões diferentes, nunca passam os dois: a decisão é
+    tomada sob um advisory lock da empresa, na mesma transação da escrita, sobre o que já foi confirmado.
+    Se a espera pelo lock passar de 5 s, a resposta é `409` com `code: "users_busy"` (tente de novo).
+  - Não existe exclusão de usuário nem de empresa. `UserWriteSurfaceTests` e `LastDirectorTests` falham se
+    alguém criar uma rota, uma remoção ou uma escrita em massa que contorne a regra.
 
 ## Pendências conhecidas (fora do escopo do PR 42)
 
@@ -103,3 +117,5 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
   cada área por HTTP. O teste também confirma que o token do platform admin é recusado nas rotas de
   tenant.
 - O isolamento entre tenants é coberto por `TenantIsolationTests` e pelos query filters globais.
+- **`LastDirectorTests`** (comportamento e concorrência, com PostgreSQL de verdade): a última Diretoria ativa
+  não sai por nenhum caminho, e dois diretores agindo ao mesmo tempo nunca deixam a empresa sem nenhum.

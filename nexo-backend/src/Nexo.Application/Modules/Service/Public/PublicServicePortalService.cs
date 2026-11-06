@@ -18,9 +18,15 @@ namespace Nexo.Application.Modules.Service.Public;
 /// customer is resolved/created from the phone, the subject is created server-side, the price is
 /// snapshotted from the catalog, and availability/overlap are recomputed from the database. No
 /// internal identifiers, costs, commissions or other customers' data leave this service.
+///
+/// A company with no access to the Service module now keeps its portal readable and takes no writes: no booking and no
+/// change to one (<see cref="EnsureTakesWritesAsync"/>). The visitor sees a neutral message, never the company's subscription.
 /// </summary>
 public sealed class PublicServicePortalService
 {
+    /// <summary>A write refused because the portal is only readable now (403).</summary>
+    public const string ReadOnlyCode = "portal_read_only";
+
     private readonly IStoreRepository           _stores;
     private readonly ISvcSettingsRepository     _settings;
     private readonly ISvcCatalogItemRepository  _catalog;
@@ -28,6 +34,7 @@ public sealed class PublicServicePortalService
     private readonly ISvcAppointmentRepository  _appointments;
     private readonly ICustomerRepository        _customers;
     private readonly ISvcSubjectRepository      _subjects;
+    private readonly ITenantRepository          _tenants;
     private readonly IUnitOfWork                _uow;
     private readonly ILogger<PublicServicePortalService> _logger;
 
@@ -40,9 +47,11 @@ public sealed class PublicServicePortalService
         ICustomerRepository customers,
         ISvcSubjectRepository subjects,
         ILogger<PublicServicePortalService> logger,
-        IUnitOfWork uow)
+        IUnitOfWork uow,
+        ITenantRepository tenants)
     {
         _uow = uow;
+        _tenants = tenants;
         _stores        = stores;
         _settings      = settings;
         _catalog       = catalog;
@@ -66,7 +75,7 @@ public sealed class PublicServicePortalService
             Capabilities:                  ctx.Preset.Capabilities,
             ShowPrices:                    ctx.Settings.ShowPrices,
             RequiresProfessionalSelection: true, // v1 decision: a professional is always chosen first
-            IsBookingEnabled:              ctx.Settings.PublicBookingEnabled,
+            IsBookingEnabled:              ctx.Settings.PublicBookingEnabled && await TakesWritesAsync(ctx, ct),
             DisplayName:                   ctx.Settings.DisplayName,
             Description:                   ctx.Settings.Description,
             LogoUrl:                       ctx.Settings.LogoUrl,
@@ -156,6 +165,7 @@ public sealed class PublicServicePortalService
         string slug, CreatePublicAppointmentRequest request, CancellationToken ct = default)
     {
         var ctx = await ResolveBookableAsync(slug, ct);
+        await EnsureTakesWritesAsync(ctx, ReadOnlyBookingMessage, ct);
 
         var catalog = await LoadActiveCatalogAsync(ctx, request.CatalogItemId, ct);
         var professional = await LoadActiveProfessionalAsync(ctx, request.ProfessionalId, ct);
@@ -249,11 +259,13 @@ public sealed class PublicServicePortalService
     /// <summary>
     /// The customer cancels their own booking. Allowed while it has not started and up to the same
     /// lead a booking needs (MinLeadMinutes); later than that, they talk to the store. Works even if
-    /// online booking was switched off since — it only frees a slot.
+    /// online booking was switched off since — it only frees a slot. Not while the company has no access to the module:
+    /// then nothing changes through the portal.
     /// </summary>
     public async Task<PublicAppointmentViewDto> CancelByTokenAsync(string slug, string token, CancellationToken ct = default)
     {
         var ctx = await ResolveAsync(slug, ct);
+        await EnsureTakesWritesAsync(ctx, ReadOnlyChangeMessage, ct);
         var key = NormalizeToken(token);
         await using var tx = await _uow.BeginTransactionAsync(ct);
         // vs. the team changing it right now: each side saves the whole row, so they take turns
@@ -293,6 +305,7 @@ public sealed class PublicServicePortalService
         var professional = await _professionals.GetByIdPublicAsync(appt.ProfessionalId, ctx.Store.TenantId, ctx.Store.Id, ct);
         var open = appt.Status is SvcAppointmentStatus.Scheduled or SvcAppointmentStatus.Confirmed;
         var handledByStore = open && await _appointments.HasChargesPublicAsync(appt.Id, ctx.Store.TenantId, ct);
+        var paused = open && !await TakesWritesAsync(ctx, ct);
         return new PublicAppointmentViewDto(
             Status:           appt.Status.ToString(),
             StartsAt:         appt.StartsAt,
@@ -300,14 +313,33 @@ public sealed class PublicServicePortalService
             ServiceName:      catalog?.Name ?? "Serviço",
             ProfessionalName: professional?.Name ?? "Profissional",
             StoreName:        ctx.Settings.DisplayName ?? ctx.Store.Name,
-            CanCancel:        !handledByStore && appt.CustomerCanCancel(DateTime.UtcNow, ctx.Settings.MinLeadMinutes),
+            CanCancel:        !paused && !handledByStore && appt.CustomerCanCancel(DateTime.UtcNow, ctx.Settings.MinLeadMinutes),
             CancelDeadline:   appt.CustomerCancelDeadline(ctx.Settings.MinLeadMinutes),
-            HandledByStore:   handledByStore);
+            HandledByStore:   handledByStore,
+            OnlineChangesPaused: paused);
     }
 
     // ── Resolution helpers ──────────────────────────────────────────────────────
 
     private sealed record PortalContext(Store Store, SvcSettings Settings, ServicePreset Preset);
+
+    private const string ReadOnlyBookingMessage =
+        "Este estabelecimento não está recebendo agendamentos online no momento. Fale diretamente com ele.";
+    private const string ReadOnlyChangeMessage =
+        "Este estabelecimento não está alterando agendamentos online no momento. Para desmarcar, fale diretamente com ele.";
+
+    /// <summary>The store is active and the company has access to the Service module right now (no cache).</summary>
+    private async Task<bool> TakesWritesAsync(PortalContext ctx, CancellationToken ct)
+        => ctx.Store.Status == StoreStatus.Active
+           && await _tenants.HasLiveModuleAsync(ctx.Store.TenantId, ServicePresetRegistry.Family, ct);
+
+    private async Task EnsureTakesWritesAsync(PortalContext ctx, string message, CancellationToken ct)
+    {
+        if (await TakesWritesAsync(ctx, ct)) return;
+        _logger.LogWarning("Public booking write refused: no access to the Service module. TenantId={TenantId} StoreId={StoreId}",
+            ctx.Store.TenantId, ctx.Store.Id);
+        throw new ForbiddenException(message, ReadOnlyCode);
+    }
 
     /// <summary>Resolves the slug to a configured Service store. 404 when the slug is unknown or not a Service store.</summary>
     private async Task<PortalContext> ResolveAsync(string slug, CancellationToken ct)

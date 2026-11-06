@@ -57,6 +57,9 @@ public class TenantResolutionMiddleware
             return;
         }
 
+        // The caller left: ExceptionHandlingMiddleware treats the cancellation as "nothing failed, nobody to answer".
+        var ct = context.RequestAborted;
+
         // 1. Extract tenant_id and user_id from JWT
         var tenantIdClaim = context.User.FindFirstValue("tenantId");
         var userIdClaim = context.User.FindFirstValue("userId");
@@ -64,7 +67,7 @@ public class TenantResolutionMiddleware
         {
             _logger.LogWarning("Request rejected: missing or invalid 'tenantId' or 'userId' claim.");
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            await context.Response.WriteAsJsonAsync(new { error = "Invalid tenant or user claim." });
+            await context.Response.WriteAsJsonAsync(new { error = "Invalid tenant or user claim." }, ct);
             return;
         }
 
@@ -72,7 +75,7 @@ public class TenantResolutionMiddleware
         // MUST use IgnoreQueryFilters(): the global EF filter requires ICurrentTenant.IsResolved,
         // which is false at this point — we are the middleware that sets it.
         var userCacheKey = $"user:{userId}:info";
-        var cachedUser = await cache.GetAsync<UserCacheEntry>(userCacheKey);
+        var cachedUser = await cache.GetAsync<UserCacheEntry>(userCacheKey, ct);
 
         if (cachedUser == null)
         {
@@ -81,32 +84,32 @@ public class TenantResolutionMiddleware
                 .IgnoreQueryFilters()
                 .Where(u => u.Id == userId)
                 .Select(u => new { u.TenantId, u.Status })
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync(ct);
 
             if (userInfo == null)
             {
                 _logger.LogWarning("Request rejected: user {UserId} not found.", userId);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "User not found." });
+                await context.Response.WriteAsJsonAsync(new { error = "User not found." }, ct);
                 return;
             }
             if (userInfo.TenantId != tenantId)
             {
                 _logger.LogWarning("Request rejected: user {UserId} does not belong to tenant {TenantId}.", userId, tenantId);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "Tenant mismatch." });
+                await context.Response.WriteAsJsonAsync(new { error = "Tenant mismatch." }, ct);
                 return;
             }
             if (userInfo.Status != Domain.Enums.UserStatus.Active)
             {
                 _logger.LogWarning("Request rejected: user {UserId} is {Status}.", userId, userInfo.Status);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "User account is inactive." });
+                await context.Response.WriteAsJsonAsync(new { error = "User account is inactive." }, ct);
                 return;
             }
 
             cachedUser = new UserCacheEntry(userInfo.TenantId, userInfo.Status.ToString());
-            await cache.SetAsync(userCacheKey, cachedUser, TimeSpan.FromMinutes(5));
+            await cache.SetAsync(userCacheKey, cachedUser, TimeSpan.FromMinutes(5), ct);
         }
         else
         {
@@ -114,40 +117,43 @@ public class TenantResolutionMiddleware
             {
                 _logger.LogWarning("Request rejected: user {UserId} does not belong to tenant {TenantId}.", userId, tenantId);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "Tenant mismatch." });
+                await context.Response.WriteAsJsonAsync(new { error = "Tenant mismatch." }, ct);
                 return;
             }
             if (cachedUser.Status != "Active")
             {
                 _logger.LogWarning("Request rejected: user {UserId} is {Status}.", userId, cachedUser.Status);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "User account is inactive." });
+                await context.Response.WriteAsJsonAsync(new { error = "User account is inactive." }, ct);
                 return;
             }
         }
 
         // 2. Load tenant from Redis cache or DB
         var cacheKey  = $"tenant:{tenantId}:info";
-        var tenantInfo = await cache.GetAsync<TenantCacheEntry>(cacheKey);
+        var tenantInfo = await cache.GetAsync<TenantCacheEntry>(cacheKey, ct);
 
-        if (tenantInfo is null)
+        // An entry written before ExpiredModules existed, still in Redis during a deploy, is read again.
+        if (tenantInfo?.ExpiredModules is null)
         {
-            var tenant = await tenantRepository.GetByIdAsync(tenantId);
+            var tenant = await tenantRepository.GetByIdAsync(tenantId, ct);
             if (tenant is null)
             {
                 _logger.LogWarning("Request rejected: tenant {TenantId} not found.", tenantId);
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-                await context.Response.WriteAsJsonAsync(new { error = "Tenant not found." });
+                await context.Response.WriteAsJsonAsync(new { error = "Tenant not found." }, ct);
                 return;
             }
 
-            var moduleKeys = await tenantRepository.GetActiveModuleKeysAsync(tenantId);
+            var moduleKeys = await tenantRepository.GetActiveModuleKeysAsync(tenantId, ct);
+            var expiredKeys = await tenantRepository.GetExpiredModuleKeysAsync(tenantId, ct);
             tenantInfo = new TenantCacheEntry(
                 tenant.Slug,
                 tenant.Status.ToString(),
-                moduleKeys.ToList());
+                moduleKeys.ToList(),
+                expiredKeys.ToList());
 
-            await cache.SetAsync(cacheKey, tenantInfo, TimeSpan.FromMinutes(5));
+            await cache.SetAsync(cacheKey, tenantInfo, TimeSpan.FromMinutes(5), ct);
         }
 
         // 3. Validate status — enforced on EVERY request, whether from cache or DB.
@@ -158,19 +164,19 @@ public class TenantResolutionMiddleware
                 "Request rejected: tenant {TenantId} is {Status}.",
                 tenantId, tenantInfo.Status);
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new { error = "Tenant account is suspended." });
+            await context.Response.WriteAsJsonAsync(new { error = "Tenant account is suspended." }, ct);
             return;
         }
 
         // 4. Populate ICurrentTenant for this request scope
-        currentTenant.Set(tenantId, tenantInfo.Slug, tenantInfo.ActiveModules);
+        currentTenant.Set(tenantId, tenantInfo.Slug, tenantInfo.ActiveModules, tenantInfo.ExpiredModules);
 
         await _next(context);
     }
 }
 
 /// <summary>Serializable cache entry for tenant info.</summary>
-internal record TenantCacheEntry(string Slug, string Status, List<string> ActiveModules);
+internal record TenantCacheEntry(string Slug, string Status, List<string> ActiveModules, List<string>? ExpiredModules = null);
 
 /// <summary>Serializable cache entry for user info.</summary>
 internal record UserCacheEntry(Guid TenantId, string Status);

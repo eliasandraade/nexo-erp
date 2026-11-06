@@ -26,9 +26,18 @@ public interface ICurrentTenant
     /// </summary>
     IReadOnlyList<string> ActiveModules { get; }
 
+    /// <summary>
+    /// Module keys the tenant had and has no access to now (ModuleSubscription.ExpiredKeys): they read and take no writes.
+    /// Comes from the same cache entry as <see cref="ActiveModules"/>.
+    /// </summary>
+    IReadOnlyList<string> ExpiredModules { get; }
+
     /// <summary>True if the tenant context has been resolved for this request.</summary>
     bool IsResolved { get; }
 
+    /// <summary>Resolved, with no module with access now: the whole company is read-only.</summary>
+    bool IsReadOnly { get; }
+
     /// <summary>Called by TenantResolutionMiddleware after JWT validation.</summary>
-    void Set(Guid id, string slug, IReadOnlyList<string> activeModules);
+    void Set(Guid id, string slug, IReadOnlyList<string> activeModules, IReadOnlyList<string>? expiredModules = null);
 }

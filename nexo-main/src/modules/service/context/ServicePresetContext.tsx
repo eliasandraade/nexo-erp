@@ -1,5 +1,6 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { Outlet } from "react-router-dom";
+import { ReadOnlyNotice } from "@/components/shared/ReadOnlyNotice";
 import type {
   ServiceCapabilities,
   ServiceLabels,
@@ -76,7 +77,7 @@ export function ServicePresetProvider({ children }: { children?: ReactNode }) {
       );
     }
     if (!settingsQ.isError && !isConfigured) {
-      return <ServiceOnboardingPage />;
+      return <><ReadOnlyNotice /><ServiceOnboardingPage /></>;
     }
   }
 

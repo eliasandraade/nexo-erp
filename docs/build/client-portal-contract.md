@@ -64,8 +64,12 @@ portal com senha). **v1.5:** em portal público as seções com dados pessoais/d
 `selections`, `documents`, `realityCapture`) **nunca** são servidas, mesmo com a flag ligada: somem de `sections`/`property` e
 as leituras respondem `404 portal_section_disabled` (ver §4).
 
-Ordem das verificações (v1.5): portal existe e está publicado → **sessão** (portal com senha) → portal com senha (escritas)
-→ seção ligada. Sem sessão num portal com senha a resposta é sempre `401`, mesmo para uma seção desligada: nada da
+Sem acesso da empresa ao módulo agora (v1.7), o portal continua legível e todas essas escritas respondem `403
+portal_read_only`; o bootstrap traz `readOnly: true` e os indicadores `canDecide`, `canChoose`, `canAccept`, `canOpen`,
+`canAddPhotos` e `canGiveFeedback` vêm `false`. Abrir e encerrar a sessão continuam funcionando, porque são o acesso à leitura.
+
+Ordem das verificações (v1.5, v1.7): portal existe e está publicado → **sessão** (portal com senha) → portal com senha (escritas)
+→ somente leitura (escritas) → seção ligada. Sem sessão num portal com senha a resposta é sempre `401`, mesmo para uma seção desligada: nada da
 configuração do portal é revelado antes da senha.
 
 Corpos JSON das rotas `POST` (sessão, decisão, escolha, aceite, abrir chamado, avaliação) têm no máximo **64 KB** →
@@ -703,6 +707,7 @@ Corpo padrão: `{ "error": "mensagem em português", "code": "…" }` (+ `portal
 | 409 | `portal_conflict` | escrita simultânea a outra alteração (abrir chamado, enviar foto) — tente de novo (v1.5) |
 | 413 | `payload_too_large` | corpo JSON acima de 64 KB (v1.5) |
 | 403 | `portal_decision_requires_password` | decisão (aditivo/escolha) em portal público (v1.1) |
+| 403 | `portal_read_only` | escrita num portal só de consulta: a empresa não tem acesso ao módulo agora (v1.7) |
 | 404 | `portal_item_not_found` | aditivo/escolha inexistente, de outra obra ou não visível ao cliente (v1.1) |
 | 409 | `change_order_already_decided` | aditivo já aprovado/recusado (v1.1) |
 | 409 | `selection_closed` | escolha já feita, confirmada ou encerrada (v1.1) |
@@ -753,7 +758,7 @@ mesmo IP é usado no bloqueio de senha por visitante (§3), guardado só como ha
 
 ## 8. Versionamento
 
-`contract v1.6` (`contractVersion: "1.6"` no bootstrap; a v1.5 respondia `"1.5"`, a v1.4 respondia `"1.4"`, a v1.3 respondia `"1.3"`, a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
+`contract v1.7` (`contractVersion: "1.7"` no bootstrap; a v1.6 respondia `"1.6"`, a v1.5 respondia `"1.5"`, a v1.4 respondia `"1.4"`, a v1.3 respondia `"1.3"`, a v1.2 respondia `"1.2"`, a v1.1 `"1.1"`, a v1 `"1"`). Compare só o número antes do ponto
 (major): `1.x` continua compatível. Mudanças **aditivas** (campos novos, novos `type` na timeline,
 novas seções em `sections`) podem chegar sem aviso — ignore o que não conhecer. Remoções ou mudanças de significado
 só numa `v2`, anunciada antes.
@@ -774,6 +779,14 @@ só numa `v2`, anunciada antes.
   de regras e significado; o OpenAPI descreve os formatos.
 
 ## 9. Changelog
+
+### v1.7 — portal somente leitura
+
+- `contractVersion` passa a `"1.7"`. O bootstrap ganha `readOnly` (booleano).
+- Novo código `403 portal_read_only`: a empresa não tem acesso ao módulo agora ou está suspensa. O portal continua legível,
+  inclusive a abertura de sessão de um portal com senha. A mensagem é neutra: o visitante é cliente da construtora e não
+  precisa saber da assinatura dela.
+- Com `readOnly`, os indicadores de ação vêm `false` e `weather` não vem: portal só de consulta não chama provedor externo.
 
 ### v1.6 — integração do portal "Minha Obra"
 

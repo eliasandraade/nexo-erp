@@ -229,6 +229,30 @@ public class NexoDbContext : DbContext
     public DbSet<AiUsageReservation>      AiUsageReservations  => Set<AiUsageReservation>();
     public DbSet<StoredPromptVersion>     StoredPromptVersions => Set<StoredPromptVersion>();
 
+    /// <summary>
+    /// A save never takes the last active Diretoria from a company, whatever code path makes it (see <see cref="LastDirectorGuard"/>).
+    /// The decision and the write share one transaction, opened here when the caller has none.
+    /// </summary>
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        var tenants = LastDirectorGuard.TenantsAtRisk(this);
+        if (tenants.Count == 0) return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+
+        await using var ownTransaction = Database.CurrentTransaction is null ? await Database.BeginTransactionAsync(cancellationToken) : null;
+        await LastDirectorGuard.EnforceAsync(this, tenants, cancellationToken);
+        var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        if (ownTransaction is not null) await ownTransaction.CommitAsync(cancellationToken);
+        return saved;
+    }
+
+    /// <summary>Nothing in the code base saves synchronously. If something ever does, it cannot go around the rule above.</summary>
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        if (LastDirectorGuard.TenantsAtRisk(this).Count > 0)
+            throw new InvalidOperationException("Changing who is an active Diretoria waits for a database lock: use SaveChangesAsync.");
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

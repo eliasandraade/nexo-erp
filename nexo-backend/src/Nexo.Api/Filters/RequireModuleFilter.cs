@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Nexo.Api.Middleware;
 using Nexo.Application.Common.Interfaces;
 
 namespace Nexo.Api.Filters;
@@ -7,7 +8,7 @@ namespace Nexo.Api.Filters;
 /// <summary>
 /// Action filter que verifica se o tenant autenticado tem acesso ativo ao módulo.
 /// Usa IModuleAccessService (cache em memória + DB como fonte de verdade).
-/// Retorna 403 se o módulo não estiver ativo.
+/// Módulo vencido fica somente leitura e módulo que o tenant nunca teve responde 403: ver <see cref="ExpiredModuleGate"/>.
 /// </summary>
 public class RequireModuleFilter : IAsyncActionFilter
 {
@@ -38,16 +39,22 @@ public class RequireModuleFilter : IAsyncActionFilter
 
         if (!hasAccess)
         {
-            context.Result = new ObjectResult(new
+            var refusal = ExpiredModuleGate.Decide(context.HttpContext, _currentTenant,
+                key => string.Equals(key, _moduleKey, StringComparison.OrdinalIgnoreCase),
+                new ObjectResult(new
+                {
+                    error   = "Module not available",
+                    message = $"Your subscription does not include the '{_moduleKey}' module.",
+                    module  = _moduleKey,
+                })
+                {
+                    StatusCode = StatusCodes.Status403Forbidden,
+                });
+            if (refusal is not null)
             {
-                error   = "Module not available",
-                message = $"Your subscription does not include the '{_moduleKey}' module.",
-                module  = _moduleKey,
-            })
-            {
-                StatusCode = StatusCodes.Status403Forbidden,
-            };
-            return;
+                context.Result = refusal;
+                return;
+            }
         }
 
         await next();
