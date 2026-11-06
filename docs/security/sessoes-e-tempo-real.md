@@ -34,7 +34,28 @@ não precisa colaborar: depois de fechada, o servidor não escreve mais nada naq
 
 O hub fecha a conexão quando o token dela expira (`CloseOnAuthenticationExpiration`, a cada 15 min no máximo), dizendo que o cliente
 pode voltar. O cliente (`useKitchenSocket`) renova o token antes de reconectar. Se a renovação for recusada, a sessão acabou e ele
-para. Sem resposta do servidor, a sessão continua, e ele tenta um número limitado de vezes e cai no polling.
+para. Sem veredito do servidor (sem conexão, 429, 5xx), a sessão continua, e ele tenta um número limitado de vezes e cai no polling.
+
+## Renovação
+
+Só uma recusa do servidor encerra a sessão: 401, ou 409 depois da espera pela aba que ganhou a corrida. Sem conexão, 429 e 5xx, a
+sessão fica, a chamada falha com um erro que a pessoa consegue ler, e nenhuma aba do navegador renova de novo antes do `Retry-After`
+(ou, sem ele, de uma espera que dobra, até 1 min). `auth/refresh` e `platform/auth/refresh` têm uma política própria, separada do login,
+pensada para muitos terminais atrás do mesmo endereço:
+
+| Camada | Chave | Padrão (`RateLimiting:AuthRefresh:*`) | Para quê |
+|---|---|---|---|
+| Teto, em memória | endereço (`ClientIpResolver`) | `PermitLimit` 900 por `WindowSeconds` 900 | Inundação |
+| Orçamento de falha, no Redis | endereço | `FailureBudget` 30 por `FailureWindowSeconds` 900 | Tentativa e erro. Só token inválido conta e só ele recebe 429 |
+| Orçamento da sessão, no Redis | família do token | `FamilyBudget` 60 por `FamilyWindowSeconds` 900 | Cliente em laço. 429 para aquela sessão, que continua viva |
+
+- Token vencido assinado por nós, corrida entre abas (409) e sessão encerrada não gastam o orçamento de falha. Na plataforma, o token é
+  opaco: um token desconhecido faz o papel da assinatura inválida, e a família é a sessão.
+- Um token já usado é julgado antes de qualquer orçamento: passar do limite nunca esconde uma reutilização.
+- `RateLimiting:AuthRefresh:Enabled=false` desliga as três camadas.
+- **Redis fora do ar ou lento:** os orçamentos deixam de contar, sem abrir o disjuntor do cache, e o teto continua valendo. Como a
+  validade do refresh de empresa está no Redis, a renovação responde 503 com `Retry-After` para a sessão que o banco conhece como ativa
+  e 401 para a que ele sabe encerrada. A sessão da plataforma mora no banco e segue renovando.
 
 ## Token nos logs
 

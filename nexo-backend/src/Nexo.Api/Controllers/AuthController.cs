@@ -237,7 +237,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("refresh")]
     [AllowAnonymous]
-    [EnableRateLimiting("auth-login")]
+    [EnableRateLimiting(Nexo.Api.Middleware.AuthRefreshRateLimit.Policy)]
     public async Task<ActionResult<RefreshResponse>> Refresh(
         [FromBody] RefreshTokenRequest request,
         CancellationToken ct)
@@ -251,16 +251,24 @@ public class AuthController : ControllerBase
                 return BadRequest(new { error = "Refresh token is required." });
         }
 
+        var clientIp = HttpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(HttpContext);
+
         if (Nexo.Infrastructure.Auth.PlatformAuthService.IsPlatformToken(refreshToken))
         {
-            var (tokens, error) = await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>()
-                .RefreshAsync(refreshToken, ct);
+            var (tokens, error, retryAfter) = await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>()
+                .RefreshAsync(refreshToken, clientIp, ct);
             return tokens is not null
                 ? Ok(new RefreshResponse(tokens.AccessToken, tokens.AccessTokenExpiresAt, tokens.RefreshToken, tokens.RefreshTokenExpiresAt))
-                : (ActionResult)PlatformAuthController.RefreshRefusedResult(this, error);
+                : (ActionResult)PlatformAuthController.RefreshRefusedResult(this, error, retryAfter);
         }
 
-        var outcome = await _authService.RefreshAsync(new RefreshTokenRequest(refreshToken), ct);
+        var outcome = await _authService.RefreshAsync(new RefreshTokenRequest(refreshToken), clientIp, ct);
+
+        // Neither of these says anything about the session: the client keeps it and comes back after the time given.
+        if (outcome.ErrorCode == RefreshErrors.OverBudget)
+            return Nexo.Api.Middleware.RateLimitRejection.OverBudgetResult(this, outcome.RetryAfter!.Value);
+        if (outcome.ErrorCode == RefreshErrors.Unavailable)
+            return Nexo.Api.Middleware.RateLimitRejection.RenewalUnavailableResult(this, outcome.RetryAfter!.Value);
 
         // 409: outra aba trocou este token há instantes e grava o par novo no armazenamento compartilhado — o
         // cliente usa esse par em vez de encerrar a sessão. Qualquer outra recusa é 401.

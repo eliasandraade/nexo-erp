@@ -45,20 +45,7 @@ public class JwtTokenService : IJwtTokenService
     {
         try
         {
-            var key = GetSigningKey();
-            var handler = new JwtSecurityTokenHandler();
-
-            var principal = handler.ValidateToken(refreshToken, new TokenValidationParameters
-            {
-                ValidateIssuer           = true,
-                ValidateAudience         = true,
-                ValidateLifetime         = true,
-                ValidateIssuerSigningKey = true,
-                ValidIssuer              = GetIssuer(),
-                ValidAudience            = GetRefreshAudience(),
-                IssuerSigningKey         = key,
-                ClockSkew                = TimeSpan.FromMinutes(1),
-            }, out _);
+            var principal = new JwtSecurityTokenHandler().ValidateToken(refreshToken, RefreshTokenParameters(validateLifetime: true), out _);
 
             var jti      = principal.FindFirstValue(JwtRegisteredClaimNames.Jti);
             var userId   = principal.FindFirstValue("userId");
@@ -77,6 +64,33 @@ public class JwtTokenService : IJwtTokenService
             return null;
         }
     }
+
+    public bool IsRefreshTokenOurs(string refreshToken)
+    {
+        try
+        {
+            // Lifetime off, not the expired exception of the check above: that one would depend on the library validating
+            // the signature first, and a made-up token with an old date must never pass for an expired one of ours.
+            new JwtSecurityTokenHandler().ValidateToken(refreshToken, RefreshTokenParameters(validateLifetime: false), out _);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private TokenValidationParameters RefreshTokenParameters(bool validateLifetime) => new()
+    {
+        ValidateIssuer           = true,
+        ValidateAudience         = true,
+        ValidateLifetime         = validateLifetime,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer              = GetIssuer(),
+        ValidAudience            = GetRefreshAudience(),
+        IssuerSigningKey         = GetSigningKey(),
+        ClockSkew                = TimeSpan.FromMinutes(1),
+    };
 
     public DateTime GetAccessTokenExpiration()
     {

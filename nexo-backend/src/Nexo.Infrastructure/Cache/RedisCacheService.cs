@@ -36,6 +36,8 @@ namespace Nexo.Infrastructure.Cache;
 ///   refresh:claim:{jti}          → Reserva de uso único da troca de um refresh token (TTL 1 min)
 ///   refresh:family:{fid}         → Token atual e anterior da família (sessão) e hora da troca (TTL = vida do refresh)
 ///   refresh:family:{fid}:revoked → Família encerrada: logout ou token já usado reapresentado (TTL = vida do refresh)
+///   refresh:budget:ip:{ip}       → Invalid refresh tokens from this address in the current window (RateLimiting:AuthRefresh)
+///   refresh:budget:family:{fid}  → Renewals of this session in the current window (RateLimiting:AuthRefresh)
 /// </summary>
 public class RedisCacheService : ICacheService
 {
@@ -48,6 +50,24 @@ public class RedisCacheService : ICacheService
     // request), so the state must be static to be shared process-wide.
     private static readonly TimeSpan _circuitCooldown = TimeSpan.FromSeconds(10);
     private static long s_circuitResetAtTicks; // UtcNow ticks until which Redis is treated as "down"
+
+    // A count is optional and sits in front of work that does need Redis, so it waits less than a call that decides something,
+    // and running out of time here does not open the circuit. If it did, one slow count would turn every refresh-token lookup
+    // of the process into "no such token" for the whole cooldown.
+    private static readonly TimeSpan _countTimeout = TimeSpan.FromMilliseconds(200);
+    private static readonly TimeSpan _countWarningInterval = TimeSpan.FromMinutes(1);
+    private static long s_nextCountWarningTicks;
+
+    // One atomic step. The lifetime is set whenever the counter has none, which also heals one left without it.
+    private const string CountInWindowScript = """
+        local count = redis.call('INCR', KEYS[1])
+        local ttl = redis.call('PTTL', KEYS[1])
+        if ttl < 0 then
+          ttl = tonumber(ARGV[1])
+          redis.call('PEXPIRE', KEYS[1], ttl)
+        end
+        return { count, ttl }
+        """;
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisCacheService> _logger;
@@ -196,5 +216,34 @@ public class RedisCacheService : ICacheService
         {
             TripCircuit(ex, "SETFLAG", key);
         }
+    }
+
+    public async Task<WindowCount?> CountInWindowAsync(string key, TimeSpan window, CancellationToken ct = default)
+    {
+        if (RedisUnavailable) return null;
+        try
+        {
+            var result = (RedisResult[]?)await _redis.GetDatabase()
+                .ScriptEvaluateAsync(CountInWindowScript, [key], [(long)window.TotalMilliseconds])
+                .WaitAsync(_countTimeout, ct);
+            return new WindowCount((long)result![0], TimeSpan.FromMilliseconds((long)result[1]));
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            WarnCountSkipped(ex, key);
+            return null;
+        }
+    }
+
+    public bool IsUnavailable => RedisUnavailable;
+
+    /// <summary>A budget that stopped counting is worth knowing about, once a minute at most.</summary>
+    private void WarnCountSkipped(Exception ex, string key)
+    {
+        var now = DateTime.UtcNow.Ticks;
+        var next = Volatile.Read(ref s_nextCountWarningTicks);
+        if (now < next || Interlocked.CompareExchange(ref s_nextCountWarningTicks, now + _countWarningInterval.Ticks, next) != next) return;
+        _logger.LogWarning(ex, "Redis did not answer a count for key '{Key}' in {Milliseconds} ms: this count was skipped (fail-open).",
+            key, _countTimeout.TotalMilliseconds);
     }
 }

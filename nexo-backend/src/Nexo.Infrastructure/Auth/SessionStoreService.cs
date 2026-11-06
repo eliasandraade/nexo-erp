@@ -48,6 +48,10 @@ public class SessionStoreService : ISessionStore
         catch { /* best-effort, like the rest of session tracking */ }
     }
 
+    public Task<bool> IsActiveAsync(string refreshJti, CancellationToken ct = default)
+        => _db.UserSessions.IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(s => s.RefreshJti == refreshJti && !s.IsRevoked && s.ExpiresAt > DateTime.UtcNow, ct);
+
     public async Task TouchAsync(string oldRefreshJti, string newRefreshJti, CancellationToken ct = default)
     {
         var session = await _db.UserSessions

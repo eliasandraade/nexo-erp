@@ -17,6 +17,7 @@ public class AuthService
     private readonly IAuditWriter? _audit;
     private readonly LoginAttemptGuard? _attempts;
     private readonly IMfaChallengeService? _mfa;
+    private readonly RefreshBudget? _budget;
 
     public AuthService(
         IUserRepository users,
@@ -29,7 +30,8 @@ public class AuthService
         ICurrentTenant currentTenant,
         IAuditWriter? audit = null,
         LoginAttemptGuard? attempts = null,
-        IMfaChallengeService? mfa = null)
+        IMfaChallengeService? mfa = null,
+        RefreshBudget? budget = null)
     {
         _users    = users;
         _tenants  = tenants;
@@ -41,6 +43,7 @@ public class AuthService
         _audit = audit;
         _attempts = attempts;
         _mfa = mfa;
+        _budget = budget;
         _currentTenant = currentTenant;
     }
 
@@ -210,23 +213,40 @@ public class AuthService
     /// reserva o token (INCR atômico) emite o par; as concorrentes recebem <see cref="RefreshErrors.AlreadyRotated"/>
     /// sem nenhum token irmão. Um token já trocado apresentado depois de <see cref="RotationGrace"/> encerra a família.
     /// </summary>
-    public async Task<RefreshOutcome> RefreshAsync(
-        RefreshTokenRequest request,
-        CancellationToken ct = default)
+    public Task<RefreshOutcome> RefreshAsync(RefreshTokenRequest request, CancellationToken ct = default)
+        => RefreshAsync(request, clientIp: null, ct);
+
+    /// <param name="request">The token presented.</param>
+    /// <param name="clientIp">Who presented it, for the failure budget. Null counts nothing.</param>
+    /// <param name="ct">The request's cancellation.</param>
+    public async Task<RefreshOutcome> RefreshAsync(RefreshTokenRequest request, string? clientIp, CancellationToken ct = default)
     {
         var claims = _jwt.ValidateRefreshToken(request.RefreshToken);
-        if (claims is null) return RefreshOutcome.Fail(RefreshErrors.Invalid);
+        if (claims is null) return await RefuseUnreadableTokenAsync(request.RefreshToken, clientIp, ct);
 
         // Check token is still in Redis (not revoked)
         var cacheKey = $"refresh:valid:{claims.Jti}";
         var entry = await _cache.GetAsync<RefreshTokenEntry>(cacheKey, ct);
-        if (entry is null) return await RefuseSpentTokenAsync(claims, ct);
+        if (entry is null)
+        {
+            // Without the cache, "no entry" is no answer: it cannot be taken for a spent token nor for an ended session.
+            if (_cache.IsUnavailable) return await RefuseWithoutCacheAsync(claims, ct);
+            var refused = await RefuseSpentTokenAsync(claims, ct);
+            return refused.ErrorCode == RefreshErrors.Invalid && _cache.IsUnavailable
+                ? await RefuseWithoutCacheAsync(claims, ct)
+                : refused;
+        }
 
         if (await IsFamilyRevokedAsync(claims.Family, ct))
         {
             await _cache.RemoveAsync(cacheKey, ct);
             return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
         }
+
+        // Only a token that can still rotate gets here: a spent one was already judged above, so holding a family over budget
+        // can never hide a reused token from the reuse detection. Before the database, so a loop costs little.
+        if (_budget is not null && await _budget.SpendFamilyAsync(claims.Family, ct) is { } wait)
+            return RefreshOutcome.OverBudget(wait);
 
         // Load user to make sure account is still active. This endpoint is anonymous
         // (no tenant context resolved), so we must bypass the tenant query filter —
@@ -266,8 +286,10 @@ public class AuthService
             : stores.FirstOrDefault()?.Id ?? Guid.Empty;
 
         // Reserva logo antes de emitir: perder aqui é a corrida com outra aba, e nada é emitido duas vezes.
-        if (!await ClaimRotationAsync(claims.Jti, ct))
-            return RefreshOutcome.Fail(RefreshErrors.AlreadyRotated);
+        // Without an answer from the cache nobody rotates, and that is no race: a 409 would lead the client to end the session.
+        var claimed = await ClaimRotationAsync(claims.Jti, ct);
+        if (claimed is null) return RefreshOutcome.Unavailable();
+        if (claimed == false) return RefreshOutcome.Fail(RefreshErrors.AlreadyRotated);
 
         var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, storeId, storeIds,
             claims.Family);
@@ -279,6 +301,29 @@ public class AuthService
             tokens.RefreshToken,
             tokens.RefreshTokenExpiresAt));
     }
+
+    /// <summary>
+    /// A token that does not validate. Only one we did not issue spends the failure budget: an expired token of ours is a
+    /// terminal coming back after the weekend, and it needs its 401 to go to the login. A 429 would leave it stuck, because a
+    /// 429 does not end a session.
+    /// </summary>
+    private async Task<RefreshOutcome> RefuseUnreadableTokenAsync(string token, string? clientIp, CancellationToken ct)
+    {
+        if (_budget is not null && clientIp is not null && !_jwt.IsRefreshTokenOurs(token)
+            && await _budget.SpendFailureAsync(clientIp, ct) is { } wait)
+            return RefreshOutcome.OverBudget(wait);
+        return RefreshOutcome.Fail(RefreshErrors.Invalid);
+    }
+
+    /// <summary>
+    /// The cache is not answering, so the entry of this token cannot be read. The session table still knows the ones that ended
+    /// (role, status or password changed, signed out) and the token a session is on. Any other answer would be false: a 401 for
+    /// a live session signs its terminal out because the cache had a bad moment, and the circuit keeps it open for 10 s.
+    /// </summary>
+    private async Task<RefreshOutcome> RefuseWithoutCacheAsync(RefreshTokenClaims claims, CancellationToken ct)
+        => await _sessions.IsActiveAsync(claims.Jti, ct)
+            ? RefreshOutcome.Unavailable()
+            : RefreshOutcome.Fail(RefreshErrors.SessionEnded);
 
     /// <summary>
     /// Token assinado e no prazo, mas sem entrada válida. Se a família o registra como o token que acabou de ser
@@ -305,9 +350,9 @@ public class AuthService
         return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
     }
 
-    /// <summary>Reserva de uso único do token (INCR atômico): só quem chega primeiro troca. Sem cache, ninguém troca.</summary>
-    private async Task<bool> ClaimRotationAsync(string jti, CancellationToken ct)
-        => await _cache.IncrementAsync($"refresh:claim:{jti}", RotationClaimTtl, ct) == 1;
+    /// <summary>Reserva de uso único do token (INCR atômico): só quem chega primeiro troca. Sem cache (null), ninguém troca.</summary>
+    private async Task<bool?> ClaimRotationAsync(string jti, CancellationToken ct)
+        => await _cache.IncrementAsync($"refresh:claim:{jti}", RotationClaimTtl, ct) is { } count ? count == 1 : null;
 
     /// <summary>
     /// Grava o par novo e aposenta o token trocado, nesta ordem: o novo passa a valer, a família aponta para ele (com o
@@ -402,7 +447,7 @@ public class AuthService
         var stores = await _stores.GetByTenantIdAsync(tenantId, ct);
         var storeIds = stores.Select(s => s.Id).ToList();
 
-        if (!await ClaimRotationAsync(spent.Jti, ct))
+        if (await ClaimRotationAsync(spent.Jti, ct) != true)
             return SwitchStoreOutcome.Fail(RefreshErrors.AlreadyRotated);
 
         var tokens = _jwt.GenerateTokenPair(user, tenant.Slug, tenant.TradeName ?? tenant.CompanyName, activeModules, requestedStoreId, storeIds,
@@ -519,6 +564,13 @@ public static class RefreshErrors
     public const string SessionEnded = "session_ended";
     /// <summary>Outra aba trocou este token há instantes; o par novo está com ela (409).</summary>
     public const string AlreadyRotated = "refresh_already_rotated";
+    /// <summary>Over a budget of the renewal policy: the session is fine, wait for the time given (429).</summary>
+    public const string OverBudget = "rate_limited";
+    /// <summary>The cache that holds the sessions is not answering: nothing was decided, come back (503).</summary>
+    public const string Unavailable = "session_renewal_unavailable";
+
+    /// <summary>A little more than the cache's circuit stays open after a failure.</summary>
+    public static readonly TimeSpan UnavailableRetry = TimeSpan.FromSeconds(15);
 }
 
 public static class SwitchStoreErrors
@@ -527,10 +579,12 @@ public static class SwitchStoreErrors
     public const string StoreForbidden = "store_forbidden";
 }
 
-public sealed record RefreshOutcome(RefreshResponse? Tokens, string? ErrorCode)
+public sealed record RefreshOutcome(RefreshResponse? Tokens, string? ErrorCode, TimeSpan? RetryAfter = null)
 {
     public static RefreshOutcome Ok(RefreshResponse tokens) => new(tokens, null);
     public static RefreshOutcome Fail(string code) => new(null, code);
+    public static RefreshOutcome OverBudget(TimeSpan retryAfter) => new(null, RefreshErrors.OverBudget, retryAfter);
+    public static RefreshOutcome Unavailable() => new(null, RefreshErrors.Unavailable, RefreshErrors.UnavailableRetry);
 }
 
 public sealed record SwitchStoreOutcome(SwitchStoreResponse? Response, string? ErrorCode)

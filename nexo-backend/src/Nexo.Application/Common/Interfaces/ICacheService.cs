@@ -45,4 +45,20 @@ public interface ICacheService
     /// window). Null when the cache is unavailable (fail-open — callers decide what that means).
     /// </summary>
     Task<long?> IncrementAsync(string key, TimeSpan window, CancellationToken ct = default);
+
+    /// <summary>
+    /// Counts one more in a fixed window: the increment, its lifetime and the time left are one atomic step, so concurrent
+    /// callers never share a slot and a counter never outlives its window. Null when the count is not available. A slow cache
+    /// only skips this count: it is not treated as an outage, and it must not affect any other call of the process.
+    /// </summary>
+    Task<WindowCount?> CountInWindowAsync(string key, TimeSpan window, CancellationToken ct = default);
+
+    /// <summary>
+    /// True while the cache is not answering. Reads fail open to "nothing there", so a caller for which a missing key is a
+    /// verdict (a session that no longer exists) has to look at this before believing it.
+    /// </summary>
+    bool IsUnavailable { get; }
 }
+
+/// <summary>A counter in a fixed window: the value after this count and what is left of the window.</summary>
+public readonly record struct WindowCount(long Count, TimeSpan Remaining);

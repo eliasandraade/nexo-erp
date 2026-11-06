@@ -202,7 +202,8 @@ try
     builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
 
     // ── Rate Limiting ────────────────────────────────────────────────────────
-    // "auth-login" protects /auth/login and /auth/refresh from brute force.
+    // "auth-login" protects the sign-in and account recovery routes from brute force. The renewal has its own policy
+    // ("auth-refresh", AuthRefreshRateLimit): a limit shared with the sign-in signs out the terminals of a store.
     //
     // Config-driven (RateLimiting:AuthLogin:{Enabled,PermitLimit,WindowSeconds})
     // so the integration suite can disable it (the previous global limiter caused
@@ -228,15 +229,7 @@ try
             if (!authLoginEnabled)
                 return RateLimitPartition.GetNoLimiter("auth-login:disabled");
 
-            // Prefer the client IP from X-Forwarded-For (Railway sits behind a
-            // proxy); fall back to the socket address. NOTE: a client could spoof
-            // X-Forwarded-For — to harden, configure ForwardedHeaders middleware
-            // with KnownProxies and partition on the resolved RemoteIpAddress.
-            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
-                ? forwardedFor.Split(',')[0].Trim()
-                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
+            var clientIp = httpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(httpContext);
             var partitionKey = $"{clientIp}|{httpContext.Request.Path}";
 
             return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
@@ -369,6 +362,9 @@ try
         // client decisions (change orders, selections): writes, so tighter than reads
         AddIpPolicy("build-portal-decision", "BuildPortalDecision", 30, 300);
     });
+
+    builder.Services.Configure<RateLimiterOptions>(options =>
+        Nexo.Api.Middleware.AuthRefreshRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp));
 
     // ── Controllers ───────────────────────────────────────────────────────────
     // JsonStringEnumConverter: serializes all enums as their string names

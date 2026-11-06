@@ -95,4 +95,20 @@ public sealed class InMemoryCacheService : ICacheService
         _cache.Set(key, "1", new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl });
         return Task.CompletedTask;
     }
+
+    private sealed record WindowCounter(long Count, DateTime EndsAt);
+
+    public Task<WindowCount?> CountInWindowAsync(string key, TimeSpan window, CancellationToken ct = default)
+    {
+        lock (CounterLock)
+        {
+            var now = DateTime.UtcNow;
+            var current = _cache.TryGetValue(key, out WindowCounter? found) && found!.EndsAt > now ? found : new WindowCounter(0, now + window);
+            var next = current with { Count = current.Count + 1 };
+            _cache.Set(key, next, new MemoryCacheEntryOptions { AbsoluteExpiration = next.EndsAt });
+            return Task.FromResult<WindowCount?>(new WindowCount(next.Count, next.EndsAt - now));
+        }
+    }
+
+    public bool IsUnavailable => false;
 }

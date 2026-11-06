@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Nexo.Api.Middleware;
 
@@ -23,17 +24,36 @@ public static class RateLimitRejection
         ctx.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         ctx.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
         ctx.Response.ContentType = "application/json";
-
-        var body = new
-        {
-            error = "Muitas tentativas. Aguarde um pouco e tente de novo.",
-            details = Array.Empty<string>(),
-            requestId = ctx.TraceIdentifier,
-            code = Code,
-            retryAfterSeconds = seconds,
-        };
-        await ctx.Response.WriteAsync(JsonSerializer.Serialize(body, JsonOpts), ct);
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(Body(ctx, TooManyAttempts, Code, seconds), JsonOpts), ct);
     }
+
+    /// <summary>The same 429, from a budget counted inside an endpoint instead of a limiter in front of it.</summary>
+    public static ObjectResult OverBudgetResult(ControllerBase controller, TimeSpan retryAfter)
+        => Answer(controller, StatusCodes.Status429TooManyRequests, TooManyAttempts, Code, retryAfter);
+
+    /// <summary>A renewal the server could not decide (503): the session is not in question, and the client comes back.</summary>
+    public static ObjectResult RenewalUnavailableResult(ControllerBase controller, TimeSpan retryAfter)
+        => Answer(controller, StatusCodes.Status503ServiceUnavailable,
+            "Não foi possível renovar a sessão agora. Ela continua ativa: tente de novo em instantes.",
+            Nexo.Application.Features.Auth.RefreshErrors.Unavailable, retryAfter);
+
+    private static ObjectResult Answer(ControllerBase controller, int status, string error, string code, TimeSpan retryAfter)
+    {
+        var seconds = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds));
+        controller.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
+        return controller.StatusCode(status, Body(controller.HttpContext, error, code, seconds));
+    }
+
+    private const string TooManyAttempts = "Muitas tentativas. Aguarde um pouco e tente de novo.";
+
+    private static object Body(HttpContext ctx, string error, string code, int seconds) => new
+    {
+        error,
+        details = Array.Empty<string>(),
+        requestId = ctx.TraceIdentifier,
+        code,
+        retryAfterSeconds = seconds,
+    };
 
     internal static int RetryAfterSeconds(RateLimitLease lease)
         => lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter)

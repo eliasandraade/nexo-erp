@@ -26,4 +26,10 @@ public interface ISessionStore
 
     /// <summary>Marks the session of this refresh token as ended (logout) — it leaves the device list.</summary>
     Task RevokeAsync(string refreshJti, CancellationToken ct = default);
+
+    /// <summary>
+    /// True when this is the current refresh token of a session that was not ended. The database's answer, for when the cache
+    /// that normally says this is not answering.
+    /// </summary>
+    Task<bool> IsActiveAsync(string refreshJti, CancellationToken ct = default);
 }

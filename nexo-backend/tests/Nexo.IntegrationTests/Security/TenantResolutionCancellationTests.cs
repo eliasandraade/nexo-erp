@@ -85,6 +85,8 @@ public class TenantResolutionCancellationTests
         public Task<bool> ExistsAsync(string key, CancellationToken ct = default) => _inner.ExistsAsync(key, ct);
         public Task SetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default) => _inner.SetFlagAsync(key, ttl, ct);
         public Task<long?> IncrementAsync(string key, TimeSpan window, CancellationToken ct = default) => _inner.IncrementAsync(key, window, ct);
+        public Task<WindowCount?> CountInWindowAsync(string key, TimeSpan window, CancellationToken ct = default) => _inner.CountInWindowAsync(key, window, ct);
+        public bool IsUnavailable => _inner.IsUnavailable;
     }
 
     private sealed class RecordingErrorTracker : IErrorTracker

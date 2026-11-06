@@ -42,10 +42,11 @@ public sealed class PlatformAuthService
     private readonly IMfaSecretProtector _protector;
     private readonly LoginAttemptGuard _attempts;
     private readonly IAuditWriter _audit;
+    private readonly RefreshBudget _budget;
     private readonly TimeSpan _sessionLifetime;
 
     public PlatformAuthService(NexoDbContext db, IPasswordHasher hasher, IJwtTokenService jwt, IMfaSecretProtector protector,
-        LoginAttemptGuard attempts, IAuditWriter audit, IConfiguration config)
+        LoginAttemptGuard attempts, IAuditWriter audit, RefreshBudget budget, IConfiguration config)
     {
         _db = db;
         _hasher = hasher;
@@ -53,6 +54,7 @@ public sealed class PlatformAuthService
         _protector = protector;
         _attempts = attempts;
         _audit = audit;
+        _budget = budget;
         _sessionLifetime = TimeSpan.FromHours(Math.Clamp(config.GetValue("Platform:SessionHours", 12), 1, 24));
     }
 
@@ -140,26 +142,37 @@ public sealed class PlatformAuthService
     /// <summary>
     /// Rotates the refresh token. The old one stops working at once (conditional update: two concurrent refreshes can't
     /// both win). Presented again within <see cref="RotationGrace"/> → "already rotated" (the other tab won; read the new
-    /// token); later → treated as stolen: the session ends.
+    /// token); later → treated as stolen: the session ends. Same renewal policy as the company sessions (<see cref="RefreshBudget"/>):
+    /// these tokens are opaque, so an unknown one plays the part of a bad signature, and the session is the family. The session
+    /// lives in the database: without Redis the budgets stop counting and the renewal goes on.
     /// </summary>
-    public async Task<(PlatformTokens? Tokens, string? ErrorCode)> RefreshAsync(string refreshToken, CancellationToken ct)
+    public async Task<(PlatformTokens? Tokens, string? ErrorCode, TimeSpan? RetryAfter)> RefreshAsync(string refreshToken, string? clientIp, CancellationToken ct)
     {
         var hash = Hash(refreshToken);
         var now = DateTime.UtcNow;
         var session = await _db.PlatformSessions.FirstOrDefaultAsync(s => !s.PendingMfa && (s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash), ct);
-        if (session is null) return (null, "invalid_refresh");
+        if (session is null)
+        {
+            return clientIp is not null && !string.IsNullOrWhiteSpace(refreshToken) && await _budget.SpendFailureAsync(clientIp, ct) is { } wait
+                ? (null, RefreshErrors.OverBudget, wait)
+                : (null, "invalid_refresh", null);
+        }
         var user = await _db.PlatformUsers.FirstOrDefaultAsync(u => u.Id == session.PlatformUserId, ct);
-        if (user is null || !session.IsActiveAt(now, user.SecurityStamp)) return (null, "session_ended");
+        if (user is null || !session.IsActiveAt(now, user.SecurityStamp)) return (null, "session_ended", null);
 
         if (session.PreviousRefreshTokenHash == hash)
         {
-            if (session.RotatedAt is { } rotated && now - rotated < RotationGrace) return (null, "refresh_already_rotated");
+            if (session.RotatedAt is { } rotated && now - rotated < RotationGrace) return (null, "refresh_already_rotated", null);
             session.Revoke("refresh_reuse");
             Audit(AuditActions.PlatformSessionRevoked, AuditSeverity.Critical, user, "Sessão da plataforma encerrada: refresh token reutilizado (possível roubo).",
                 new { sessionId = session.Id });
             await _db.SaveChangesAsync(ct);
-            return (null, "session_ended");
+            return (null, "session_ended", null);
         }
+
+        // after the reuse check, as in the company sessions: being over budget never hides a reused token
+        if (await _budget.SpendFamilyAsync($"platform:{session.Id}", ct) is { } over)
+            return (null, RefreshErrors.OverBudget, over);
 
         var next = NewToken();
         var rotatedRows = await _db.PlatformSessions
@@ -169,10 +182,10 @@ public sealed class PlatformAuthService
                 .SetProperty(s => s.RefreshTokenHash, Hash(next))
                 .SetProperty(s => s.RotatedAt, now)
                 .SetProperty(s => s.LastUsedAt, now), ct);
-        if (rotatedRows != 1) return (null, "refresh_already_rotated");
+        if (rotatedRows != 1) return (null, "refresh_already_rotated", null);
 
         var access = _jwt.GeneratePlatformToken(user, session.Id, session.MfaVerified);
-        return (new PlatformTokens(access.AccessToken, access.ExpiresAt, next, session.ExpiresAt), null);
+        return (new PlatformTokens(access.AccessToken, access.ExpiresAt, next, session.ExpiresAt), null, null);
     }
 
     public async Task LogoutAsync(Guid userId, Guid sessionId, CancellationToken ct)

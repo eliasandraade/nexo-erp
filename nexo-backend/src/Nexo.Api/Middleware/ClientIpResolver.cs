@@ -12,8 +12,8 @@ public enum ClientIpSource
 }
 
 /// <summary>
-/// The one place that derives the client IP used to partition the Build client-portal rate limits and the per-client
-/// password lockout.
+/// The one place that derives the client IP used to partition the sign-in and renewal limits, the Build client-portal rate
+/// limits and the per-client password lockout.
 ///
 /// Why the first <c>X-Forwarded-For</c> entry by default: the API runs behind Railway's edge proxy, which (per Railway staff
 /// guidance) drops any <c>X-Forwarded-For</c> the client sends and writes the connecting IP as the first entry. A spoofed
