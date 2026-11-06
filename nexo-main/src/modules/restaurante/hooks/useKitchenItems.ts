@@ -8,7 +8,8 @@ const KITCHEN_STATUSES = new Set(["Pending", "Preparing", "Ready"]);
 export const KITCHEN_KEY = (storeId: string) =>
   ["kitchen-items", storeId] as const;
 
-export function useKitchenItems(storeId: string, refetchInterval?: number) {
+/** With <paramref>enabled</paramref> false nothing asks for the data by itself; a manual refetch still does. */
+export function useKitchenItems(storeId: string, refetchInterval?: number, enabled = true) {
   return useQuery({
     queryKey: KITCHEN_KEY(storeId),
     queryFn: async (): Promise<KitchenItem[]> => {
@@ -35,6 +36,7 @@ export function useKitchenItems(storeId: string, refetchInterval?: number) {
       return items;
     },
     refetchInterval,
+    enabled,
     staleTime: 0,
   });
 }

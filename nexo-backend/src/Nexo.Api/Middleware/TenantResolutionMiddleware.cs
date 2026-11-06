@@ -25,6 +25,12 @@ namespace Nexo.Api.Middleware;
 /// </summary>
 public class TenantResolutionMiddleware
 {
+    /// <summary>
+    /// The 403 of a company that is not Active (Suspended or Cancelled), which a client tells apart from any other 403 by this code.
+    /// The session is not over: the same token works again if the company is reactivated.
+    /// </summary>
+    public const string TenantSuspendedCode = "tenant_suspended";
+
     private readonly RequestDelegate _next;
     private readonly ILogger<TenantResolutionMiddleware> _logger;
 
@@ -164,7 +170,7 @@ public class TenantResolutionMiddleware
                 "Request rejected: tenant {TenantId} is {Status}.",
                 tenantId, tenantInfo.Status);
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new { error = "Tenant account is suspended." }, ct);
+            await context.Response.WriteAsJsonAsync(new { error = "Tenant account is suspended.", code = TenantSuspendedCode }, ct);
             return;
         }
 
