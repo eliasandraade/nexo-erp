@@ -119,6 +119,59 @@ describe("a renewal without a verdict keeps the session", () => {
 
     // A limit of the rotation, stated here so nobody reads "no connection keeps the session" as more than it is: if the server
     // did rotate and only the answer was lost, the new pair is gone, and the next attempt presents a spent token.
+    it("giving up after a 409, it tells the server with the same token: someone else may hold the new one", async () => {
+      const signOuts = () => fetchMock.mock.calls.filter(call => call[0] === `${API}/auth/logout`);
+      let clearedBefore: boolean | null = null;
+      vi.useRealTimers();
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url === `${API}/auth/refresh`) return json({ code: "refresh_already_rotated" }, 409);
+        if (url === `${API}/auth/logout`) {
+          clearedBefore = getRefreshToken() === null;
+          return new Response(null, { status: 204 });
+        }
+        return expiredCall();
+      });
+
+      await expect(apiClient.get("/a")).rejects.toBeInstanceOf(ApiError);
+
+      expect(signOuts()).toHaveLength(1);
+      const [, init] = signOuts()[0] as [string, RequestInit & { headers: Record<string, string> }];
+      expect(init.method).toBe("POST");
+      expect(init.keepalive).toBe(true);
+      expect(init.body).toBe(JSON.stringify({ refreshToken: "refresh-1" }));
+      expect(init.headers).not.toHaveProperty("Authorization");
+      expect(clearedBefore).toBe(false);
+      expect(getRefreshToken()).toBeNull();
+      expect(ended).toEqual(["session_ended"]);
+    }, 10_000);
+
+    it("that call never holds the session back: an answer that does not come, or a failure, changes nothing", async () => {
+      vi.useRealTimers();
+      for (const answer of [() => new Promise<Response>(() => undefined), () => Promise.reject(new TypeError("Failed to fetch"))]) {
+        setTokens("access-1", "refresh-1");
+        localStorage.setItem(TOKEN_KEYS.session, "{}");
+        ended.length = 0;
+        fetchMock.mockImplementation(async (url: string) => {
+          if (url === `${API}/auth/refresh`) return json({ code: "refresh_already_rotated" }, 409);
+          if (url === `${API}/auth/logout`) return answer();
+          return expiredCall();
+        });
+
+        await expect(apiClient.get("/a")).rejects.toBeInstanceOf(ApiError);
+
+        expect(getRefreshToken()).toBeNull();
+        expect(ended).toEqual(["session_ended"]);
+      }
+    }, 20_000);
+
+    it("a plain 401 needs no such call: the server already said the session is over", async () => {
+      fetchMock.mockImplementation(async (url: string) => (url === `${API}/auth/refresh` ? json({ code: "session_ended" }, 401) : expiredCall()));
+
+      await expect(apiClient.get("/a")).rejects.toBeInstanceOf(ApiError);
+
+      expect(fetchMock.mock.calls.filter(call => call[0] === `${API}/auth/logout`)).toHaveLength(0);
+    });
+
     it("an answer lost after the server rotated still ends the session on the next attempt", async () => {
       vi.useFakeTimers();
       vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));

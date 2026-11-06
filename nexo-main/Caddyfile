@@ -14,14 +14,22 @@
 	# plugin; zstd+gzip covers all browsers and is built in.
 	encode zstd gzip
 
-	# Security headers on every response (the app on erp.orken.com.br and the Build portal on www.orken.com.br). No
-	# full CSP: the app embeds PDFs (<object>) and runs WebAssembly (IFC viewer). Framing is refused; geolocation stays
-	# allowed for the app itself (project page), camera, microphone and USB are not used.
+	# Security headers on every response (the app on erp.orken.com.br and the Build portal on www.orken.com.br). Framing
+	# is refused; geolocation stays allowed for the app itself (project page), camera, microphone and USB are not used.
+	#
+	# Content-Security-Policy: the full policy is report-only for now (docs/security/csp.md: what each source is for, how to read
+	# the reports and how to move to enforcing). Only frame-ancestors is enforced. A PDF in an <object> and the WebAssembly of the
+	# IFC converter do fit in a full policy: they are the 'object-src blob:', the 'frame-src blob:' and the 'wasm-unsafe-eval' below.
+	# Hosts that differ per environment, read when the server starts. The defaults are production's, so production needs none:
+	#   CSP_API_ORIGIN       the API, for requests and for the reports
+	#   CSP_HUB_ORIGIN       the same API by WebSocket, for the kitchen hub
+	#   CSP_STORAGE_ORIGINS  the object store (public files and signed URLs), one or more origins separated by a space
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
 		Content-Security-Policy "frame-ancestors 'none'"
+		Content-Security-Policy-Report-Only "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: {$CSP_STORAGE_ORIGINS:https://*.r2.cloudflarestorage.com https://*.r2.dev} https://images.openfoodfacts.org; font-src 'none'; connect-src 'self' blob: {$CSP_API_ORIGIN:https://api.erp.orken.com.br} {$CSP_HUB_ORIGIN:wss://api.erp.orken.com.br} https://viacep.com.br {$CSP_STORAGE_ORIGINS:https://*.r2.cloudflarestorage.com https://*.r2.dev}; worker-src 'self'; frame-src blob:; object-src blob:; media-src {$CSP_STORAGE_ORIGINS:https://*.r2.cloudflarestorage.com https://*.r2.dev}; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; report-uri {$CSP_API_ORIGIN:https://api.erp.orken.com.br}/api/csp-reports"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), usb=(), geolocation=(self)"
 	}
@@ -48,10 +56,9 @@
 	redir @institutional https://app.orken.com.br{uri} 307
 
 	# The root of erp.orken.com.br is the entry of the ERP, not another institutional page: a visit goes to the sign-in
-	# page with its query string. The session is not visible here (it is in the browser: storage, or a cookie of the API's
-	# own host, depending on the build); the sign-in page
-	# sends a signed-in user on to their own destination (AuthLayout). Any other host keeps the SPA at the root, so
-	# Railway's healthcheck still gets a 200.
+	# page with its query string. This server cannot see the session: it stays in the browser, in storage or in a cookie of the API's
+	# own host depending on the build, and only ever goes to the API. The sign-in page sends a signed-in user on to their own
+	# destination (AuthLayout). Any other host keeps the SPA at the root, so Railway's healthcheck still gets a 200.
 	@erpEntry {
 		host erp.orken.com.br
 		method GET HEAD

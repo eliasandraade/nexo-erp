@@ -336,14 +336,14 @@ public sealed class RefreshRateLimitingRedisTests : IClassFixture<RedisWebApplic
             (await RenewAsync(host, bad, BadSignature())).StatusCode.Should().Be(HttpStatusCode.Unauthorized, $"attempt {i + 1} of 30");
         (await RenewAsync(host, bad, BadSignature())).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
 
-        // family budget: 60
+        // family budget: 300, because in the cookie mode every page load renews
         var current = login.RefreshToken;
         var terminal = NewAddress();
-        for (var i = 0; i < 60; i++)
+        for (var i = 0; i < 300; i++)
             current = (await RenewOkAsync(host, terminal, current)).RefreshToken;
         (await RenewAsync(host, terminal, current)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
 
-        // ceiling: 900 (the window of this address already holds the 61 calls above)
+        // ceiling: 900 (the window of this address already holds the 301 calls above)
         var flood = NewAddress();
         var expired = SignedByUs(expiredBy: TimeSpan.FromDays(1));
         foreach (var batch in Enumerable.Range(0, 900).Chunk(30))

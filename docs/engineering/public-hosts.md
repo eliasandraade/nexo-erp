@@ -17,8 +17,8 @@ A raiz de `www` responde 307 para `https://app.orken.com.br/`, mantendo a query 
 
 - **Servidor:** o `Caddyfile` faz o redirecionamento só em visitas (`GET` e `HEAD`) ao host `www.orken.com.br` no
   caminho `/`, antes do fallback da SPA. O Caddy normaliza o caminho antes, então `//` e `/./` também contam como raiz.
-  O destino é sempre `https://app.orken.com.br/`. Um `POST` na raiz continua com o 405 de antes. Os seis cabeçalhos de
-  segurança saem também no 307.
+  O destino é sempre `https://app.orken.com.br/`. Um `POST` na raiz continua com o 405 de antes. Os cabeçalhos de
+  segurança, inclusive a [CSP](../security/csp.md), saem também no 307.
 - **Cliente:** links internos para `/` não passam pelo servidor (o logo das telas de login). Para eles, o roteador faz a
   mesma coisa (`src/app/router/institutionalEntry.ts`).
 

@@ -88,7 +88,10 @@ public class RedisCacheServiceCancellationTests
         var pending = _cache.GetAsync<object>("k", caller.Token);
         await caller.CancelAsync();
 
-        await pending.Invoking(t => t).Should().ThrowAsync<OperationCanceledException>();
+        // On a loaded machine the 500 ms limit of the call can fire before the line above runs. The caller has left either way:
+        // what this test is about is that the failure does not open the circuit.
+        var thrown = await pending.Invoking(t => t).Should().ThrowAsync<Exception>();
+        thrown.Which.Should().Match<Exception>(e => e is OperationCanceledException || e is TimeoutException);
         (await NextCallReachesRedisAsync()).Should().BeTrue();
     }
 

@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import { Camera, FileUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ApiError } from "@/services/api-client";
 import { uploadPrivateFile, type PrivateStorageContext, type PrivateUploadResult } from "@/services/storage.api";
+import { uploadErrorMessage } from "@/services/upload-error";
 
 const IMAGES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_MB = 10;
@@ -40,9 +40,7 @@ export function PrivateUploadButton({ context, allowPdf, label, disabled, captur
     try {
       onUploaded(await uploadPrivateFile(file, context), file);
     } catch (e) {
-      toast.error(e instanceof ApiError && e.status === 404
-        ? "Upload de arquivos indisponível neste ambiente."
-        : "Falha ao enviar o arquivo. Tente novamente.");
+      toast.error(uploadErrorMessage(e, "Falha ao enviar o arquivo. Tente novamente.", "Upload de arquivos indisponível neste ambiente."));
     } finally {
       setUploading(false);
     }

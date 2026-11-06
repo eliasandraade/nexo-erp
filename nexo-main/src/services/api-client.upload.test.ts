@@ -167,6 +167,16 @@ describe("apiClient.postForm and request error mapping", () => {
     await expect(apiClient.postForm("/x", form)).resolves.toBeUndefined();
   });
 
+  it("a refusal without a JSON body from the server still has a message in Portuguese", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("<html>busy</html>", { status: 429, statusText: "Too Many Requests" }))
+      .mockResolvedValueOnce(new Response("<html>big</html>", { status: 413, statusText: "Payload Too Large" }))
+      .mockResolvedValueOnce(json({ error: "Há muitos envios em andamento agora.", details: [], code: "upload_busy" }, 429));
+    await expect(apiClient.postForm("/x", new FormData())).rejects.toMatchObject({ status: 429, message: "Muitas tentativas. Aguarde um pouco e tente de novo." });
+    await expect(apiClient.postForm("/x", new FormData())).rejects.toMatchObject({ status: 413, message: "Arquivo grande demais para o envio." });
+    await expect(apiClient.postForm("/x", new FormData())).rejects.toMatchObject({ status: 429, code: "upload_busy", message: "Há muitos envios em andamento agora." });
+  });
+
   it("postForm maps errors (details or message) and renews on 401", async () => {
     fetchMock
       .mockResolvedValueOnce(json({ details: ["tipo", "tamanho"] }, 400))

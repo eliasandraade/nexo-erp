@@ -8,9 +8,14 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
+using Nexo.Application.Integrations.Contracts;
+using Nexo.Application.Integrations.DTOs;
 using Nexo.Domain.Entities;
+using Nexo.Infrastructure.Modules.Build;
 using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
@@ -18,7 +23,8 @@ using Nexo.IntegrationTests.Helpers;
 // Development/test only. The real API (controllers, middleware, CORS policy, rate limiter, migrations) on a disposable
 // PostgreSQL (Testcontainers), behind a thin pass-through because the test server does not listen on a port. Same shape as
 // e2e/backend-host, which seeds the portal and forwards only the portal routes; this one seeds nothing and forwards all of
-// /api and the hub. Test data only: every account is created by the suite, through the API, with synthetic values.
+// /api and the real-time hub. Test data only: every account is created by the suite, through the API, with synthetic values.
+// Used by the authentication suite and by the Content-Security-Policy suite (e2e/csp.e2e.spec.ts).
 //
 // A second listener, with TLS and a certificate made here at startup, answers for *.orken.test: the shape of production, with
 // the app and the API on sibling hosts of one site, and a third sibling that is not ours (playwright.auth.config.ts maps the names).
@@ -37,6 +43,8 @@ public static class AuthE2EHost
 
     /// <summary>Connections to the hub through this host, so a test can drop them as a network would.</summary>
     static readonly ConcurrentDictionary<Guid, CancellationTokenSource> HubConnections = new();
+
+    static readonly E2EStorage Storage = new();
 
     public static async Task Main(string[] args)
     {
@@ -170,44 +178,41 @@ public static class AuthE2EHost
             return Results.NoContent();
         });
 
-        // The hub: a real WebSocket on each side, the API's on the test server.
-        app.Map("/hubs/{**path}", async ctx =>
+        // The object store as the browser sees it: the suite answers the storage hosts with these bytes, nothing leaves the machine.
+        app.MapGet("/__test/media/{**key}", (string key) =>
+            Storage.Inner.Objects.TryGetValue(key, out var value) ? Results.File(value.Bytes, value.ContentType) : Results.NotFound());
+
+        // What the API wrote for the Content-Security-Policy reports it received, oldest first.
+        app.MapGet("/__test/csp-reports", () => Results.Text(factory.ServerLog.Containing("CSP report")));
+
+        // The queue of model files: the background job does not run in the test environment.
+        app.MapPost("/__test/build/process-models", async () =>
         {
-            if (!ctx.WebSockets.IsWebSocketRequest)
-            {
-                await PassThroughAsync(api, ctx);
-                return;
-            }
-            var client = factory.Server.CreateWebSocketClient();
-            using var upstream = await client.ConnectAsync(new Uri($"ws://localhost{ctx.Request.Path}{ctx.Request.QueryString}"), ctx.RequestAborted);
-            using var downstream = await ctx.WebSockets.AcceptWebSocketAsync();
-            using var dropped = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
-            var id = Guid.NewGuid();
-            HubConnections[id] = dropped;
-            try
-            {
-                await Task.WhenAny(PumpAsync(upstream, downstream, dropped.Token), PumpAsync(downstream, upstream, dropped.Token));
-            }
-            finally
-            {
-                HubConnections.TryRemove(id, out _);
-                downstream.Abort();
-                upstream.Abort();
-            }
+            using var scope = factory.Services.CreateScope();
+            var processor = scope.ServiceProvider.GetRequiredService<IBuildModelProcessor>();
+            for (var i = 0; i < 20 && await processor.ProcessNextAsync(CancellationToken.None); i++) { }
+            return Results.Ok();
         });
 
-        // Pass-through to the real API: method, headers (Origin, preflight headers, X-Forwarded-For) and body as sent by the
-        // client; the response, CORS and Set-Cookie headers included, exactly as the API answered.
-        app.Map("/api/{**path}", ctx => PassThroughAsync(api, ctx));
+        // The hub: the negotiation is a plain request, and the browser's WebSocket is joined to one on the test server.
+        app.Map("/hubs/{**path}", async ctx =>
+        {
+            if (ctx.WebSockets.IsWebSocketRequest) await TunnelAsync(ctx, factory.Server);
+            else await ForwardAsync(ctx, api);
+        });
+
+        app.Map("/api/{**path}", ctx => ForwardAsync(ctx, api));
 
         Console.WriteLine($"Auth E2E host ready on http://127.0.0.1:{ApiPort} and *.orken.test:{ProductionShapePort} (test data only)");
         await app.RunAsync();
     }
 
-    static async Task PassThroughAsync(HttpClient api, HttpContext ctx)
+    // Pass-through to the real API: method, headers (Origin, preflight headers, X-Forwarded-For) and body as sent by the
+    // client; the response, CORS and Set-Cookie headers included, exactly as the API answered.
+    static async Task ForwardAsync(HttpContext ctx, HttpClient api)
     {
         if (ctx.Request.Path == "/api/auth/refresh" && ctx.Request.Method == "POST")
-            CookiesOnRenewal[ctx.Request.Headers["X-Forwarded-For"].ToString()] = [.. ctx.Request.Cookies.Keys];
+            CookiesOnRenewal[ctx.Request.Headers[TestAddressHeader].ToString()] = [.. ctx.Request.Cookies.Keys];
 
         using var request = new HttpRequestMessage(new HttpMethod(ctx.Request.Method), ctx.Request.Path + ctx.Request.QueryString);
         if (ctx.Request.ContentLength > 0 || ctx.Request.Headers.TransferEncoding.Count > 0)
@@ -234,7 +239,7 @@ public static class AuthE2EHost
 
         // The API already answered, and rotated the token: only the way back is slow.
         if (ctx.Request.Path == "/api/auth/refresh" && ctx.Request.Method == "POST"
-            && HeldRenewals.TryGetValue(ctx.Request.Headers["X-Forwarded-For"].ToString(), out var hold))
+            && HeldRenewals.TryGetValue(ctx.Request.Headers[TestAddressHeader].ToString(), out var hold))
             await Task.Delay(hold, CancellationToken.None);
 
         ctx.Response.StatusCode = (int)response.StatusCode;
@@ -246,25 +251,38 @@ public static class AuthE2EHost
         await response.Content.CopyToAsync(ctx.Response.Body);
     }
 
+    static async Task TunnelAsync(HttpContext ctx, TestServer server)
+    {
+        var target = new UriBuilder(server.BaseAddress) { Scheme = "ws", Path = ctx.Request.Path, Query = ctx.Request.QueryString.Value }.Uri;
+        using var upstream = await server.CreateWebSocketClient().ConnectAsync(target, ctx.RequestAborted);
+        using var browser = await ctx.WebSockets.AcceptWebSocketAsync();
+        using var dropped = CancellationTokenSource.CreateLinkedTokenSource(ctx.RequestAborted);
+        var id = Guid.NewGuid();
+        HubConnections[id] = dropped;
+        try
+        {
+            await Task.WhenAny(PumpAsync(browser, upstream, dropped.Token), PumpAsync(upstream, browser, dropped.Token));
+        }
+        finally
+        {
+            HubConnections.TryRemove(id, out _);
+            browser.Abort();
+            upstream.Abort();
+        }
+    }
+
     static async Task PumpAsync(WebSocket from, WebSocket to, CancellationToken ct)
     {
         var buffer = new byte[16 * 1024];
-        try
+        while (from.State == WebSocketState.Open && to.State == WebSocketState.Open)
         {
-            while (from.State == WebSocketState.Open && to.State == WebSocketState.Open)
+            var read = await from.ReceiveAsync(buffer, ct);
+            if (read.MessageType == WebSocketMessageType.Close)
             {
-                var received = await from.ReceiveAsync(buffer, ct);
-                if (received.MessageType == WebSocketMessageType.Close)
-                {
-                    await to.CloseAsync(received.CloseStatus ?? WebSocketCloseStatus.NormalClosure, received.CloseStatusDescription, CancellationToken.None);
-                    return;
-                }
-                await to.SendAsync(buffer.AsMemory(0, received.Count), received.MessageType, received.EndOfMessage, ct);
+                await to.CloseAsync(read.CloseStatus ?? WebSocketCloseStatus.NormalClosure, read.CloseStatusDescription, ct);
+                return;
             }
-        }
-        catch (Exception e) when (e is OperationCanceledException or WebSocketException or ObjectDisposedException)
-        {
-            // one side went away: the finally of the caller closes the other
+            await to.SendAsync(buffer.AsMemory(0, read.Count), read.MessageType, read.EndOfMessage, ct);
         }
     }
 
@@ -296,6 +314,25 @@ public static class AuthE2EHost
     sealed record StoreRequest(Guid TenantId, string Name);
     sealed record HoldRequest(string Address, int Milliseconds);
 
+    /// <summary>The real upload pipeline over memory, with Cloudflare R2's hosts in its URLs: the ones the production policy allows.</summary>
+    sealed class E2EStorage : IStorageProvider
+    {
+        const string PublicBase = "https://orken-e2e.r2.dev/";
+        const string SignedBase = "https://orken-e2e.r2.cloudflarestorage.com/";
+        public InMemoryStorageProvider Inner { get; } = new();
+
+        public async Task<StorageUploadResult> UploadAsync(StorageUploadRequest request, CancellationToken ct = default)
+        {
+            var stored = await Inner.UploadAsync(request, ct);
+            return new StorageUploadResult(stored.Key, PublicBase + request.ObjectKey);
+        }
+
+        public Task DeleteAsync(string key, CancellationToken ct = default) => Inner.DeleteAsync(key, ct);
+        public Task PingAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task<Stream> OpenReadAsync(string key, CancellationToken ct = default) => Inner.OpenReadAsync(key, ct);
+        public string GetSignedUrl(string key, TimeSpan ttl) => $"{SignedBase}{key}?X-Amz-Signature=e2e&X-Amz-Expires={(int)ttl.TotalSeconds}";
+    }
+
     sealed class AuthFactory(string root) : TestWebApplicationFactory
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -309,6 +346,16 @@ public static class AuthE2EHost
             // test, at the production defaults, with each test of the suite as its own client address (X-Forwarded-For)
             builder.UseSetting("RateLimiting:AuthLogin:Enabled", "true");
             builder.UseSetting("RateLimiting:AuthRefresh:Enabled", "true");
+            builder.UseSetting("RateLimiting:AuthLogout:Enabled", "true");
+            // the browsers of the suite share one client address, and a run sends more reports than a person would
+            builder.UseSetting("RateLimiting:CspReport:Enabled", "false");
+            builder.UseSetting("Integrations:Features:StorageEnabled", "true");
+            builder.UseSetting("Integrations:Storage:R2:PublicUrl", "https://orken-e2e.r2.dev");
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IStorageProvider>();
+                services.AddSingleton<IStorageProvider>(Storage);
+            });
         }
     }
 }

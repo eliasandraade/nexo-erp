@@ -390,24 +390,35 @@ public class AuthController : ControllerBase
 
     public sealed record EndedImpersonation(DateTime At);
 
+    /// <summary>A refresh token fits with room to spare, and nothing bigger is worth binding, hashing and looking up for someone with no session.</summary>
+    private const int LogoutBodyLimitBytes = 16 * 1024;
+
     /// <summary>
-    /// Ends the session of the token presented, and its whole family. Without the header it asks for the access token, as always. In
-    /// the cookie mode the cookie is enough: a tab that just reloaded, or whose token expired, signs out like any other.
+    /// Ends the session of the token presented, and its whole family. It takes an access token or, without one, the refresh token itself: whoever holds it could
+    /// renew it anyway. That is the way out of a client that lost the race for its own token and is about to give up: its access token has usually expired by then,
+    /// and inside the grace this is the only moment the server can hear that someone else holds the new one. In the cookie mode the cookie is that proof, so a tab
+    /// that just reloaded, or whose token expired, signs out like any other.
     /// </summary>
     [HttpPost("logout")]
-    [Authorize(Policy = Nexo.Api.Middleware.BrowserSession.SignOutPolicy)]
+    [AllowAnonymous]
+    [EnableRateLimiting(Nexo.Api.Middleware.AuthLogoutRateLimit.Policy)]
+    [RequestSizeLimit(LogoutBodyLimitBytes)]
+    [Nexo.Api.Filters.RefusesLargeBody(LogoutBodyLimitBytes)]
     public async Task<IActionResult> Logout(
         [FromBody] LogoutRequest? request,
         CancellationToken ct)
     {
         var refreshToken = _browser.PresentedToken(Request, request?.RefreshToken);
 
+        var signedIn = User.Identity?.IsAuthenticated == true;
+        if (!signedIn && !CookieMode && string.IsNullOrWhiteSpace(refreshToken)) return Challenge();
+
         if (User.FindFirstValue("type") == "platform")
         {
             if (Guid.TryParse(User.FindFirstValue("platformUserId"), out var platformUserId) && Guid.TryParse(User.FindFirstValue("sid"), out var sid))
                 await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>().LogoutAsync(platformUserId, sid, ct);
         }
-        else if (CookieMode && Nexo.Infrastructure.Auth.PlatformAuthService.IsPlatformToken(refreshToken))
+        else if (Nexo.Infrastructure.Auth.PlatformAuthService.IsPlatformToken(refreshToken))
         {
             await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>().LogoutByRefreshTokenAsync(refreshToken!, ct);
         }

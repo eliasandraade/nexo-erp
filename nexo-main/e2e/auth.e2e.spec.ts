@@ -838,6 +838,29 @@ test.describe("Session ended by the server", () => {
     await expectSettledOnLogin(page, apiCalls, user, SESSION_ENDED_URL, "/workspaces");
   });
 
+  // A thief who renews first leaves the victim with a spent token. The victim only ever sees a race (409), never the reuse: without telling the
+  // server, the victim would give up alone and the copy would go on. It is the one moment the server can hear of it.
+  test("A token someone else spent ends the session for them too", async ({ page, company, device, apiCalls }) => {
+    const user = await company.createUser("gerente");
+    await signInToDashboard(page, user);
+    const api = await device();
+    const { refresh } = await sessionTokens(page);
+    const stolen = await api.post(`${API}/auth/refresh`, { data: { refreshToken: refresh } });
+    expect(stolen.status(), await stolen.text()).toBe(200);
+    const theirs = (await stolen.json()).refreshToken as string;
+    await expireAccessToken(page, api);
+    apiCalls.reset();
+
+    const signedOut = page.waitForResponse((r) => r.url() === `${API}/auth/logout` && r.request().method() === "POST");
+    await page.reload();
+
+    expect((await signedOut).status()).toBe(204);
+    await expect(page).toHaveURL(SESSION_ENDED_URL);
+    expect(apiCalls.count("/auth/refresh", 409)).toBeGreaterThanOrEqual(1);
+    const theirRenewal = await api.post(`${API}/auth/refresh`, { data: { refreshToken: theirs } });
+    expect(theirRenewal.status(), "the copy ended with the family").toBe(401);
+  });
+
   test("Revoked session (401 session_revoked) goes to login with the reason and no loop", async ({ page, company, apiCalls }) => {
     const user = await company.createUser("gerente");
     await signInToDashboard(page, user);
@@ -899,7 +922,7 @@ test.describe("Failures that say nothing about the session", () => {
   const STILL_ACTIVE = /Sua sessão continua ativa/;
   const WAIT_KEY = "nexo:renewal_wait";
   const CEILING = 900; // RateLimiting:AuthRefresh:PermitLimit, the production default
-  const SESSION_BUDGET = 60; // RateLimiting:AuthRefresh:FamilyBudget, the production default
+  const SESSION_BUDGET = 300; // RateLimiting:AuthRefresh:FamilyBudget, the production default
   /** The first call of a page load: the renewal in the cookie mode, where the tab has no token yet. */
   const FIRST_CALL_ON_LOAD = COOKIE_MODE ? `${API}/auth/refresh` : `${API}/auth/me`;
 
@@ -1000,6 +1023,7 @@ test.describe("Failures that say nothing about the session", () => {
   });
 
   test("A session over its own renewal budget gets a 429 and stays, and another session behind the same address renews", async ({ context, page, company, device, playwright, apiCalls }) => {
+    test.slow(); // the budget of a session, one real renewal at a time
     const user = await company.createUser("gerente");
     const address = clientAddress();
     await context.setExtraHTTPHeaders({ "X-Forwarded-For": address });

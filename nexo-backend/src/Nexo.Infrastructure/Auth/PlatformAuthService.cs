@@ -198,7 +198,7 @@ public sealed class PlatformAuthService
         await _db.SaveChangesAsync(ct);
     }
 
-    /// <summary>A sign-out with nothing but the refresh token: in the cookie mode, a tab that just reloaded has no access token yet.</summary>
+    /// <summary>A sign-out with nothing but the refresh token: a tab that just reloaded has no access token yet, and a client giving up holds a spent one.</summary>
     public async Task LogoutByRefreshTokenAsync(string refreshToken, CancellationToken ct)
     {
         var hash = Hash(refreshToken);

@@ -112,7 +112,7 @@ Rota própria, `auth-refresh`, separada do login, com três camadas:
 |---|---|---|---|
 | Teto por IP | IP de `ClientIpResolver` | 900 por 15 min | Inundação. Folga para uma loja grande: 100 terminais com renovação a cada 15 min, mais recarregamentos |
 | Orçamento de falha por IP (Redis) | IP | 30 assinaturas inválidas por 15 min | Tentativa e erro. Acima disso, só o token inválido recebe 429; token válido nunca é afetado |
-| Orçamento por sessão (Redis) | família do token | 60 por 15 min | Token copiado em laço. Acima disso, 429 para aquela sessão e nenhuma outra |
+| Orçamento por sessão (Redis) | família do token | 300 por 15 min | Token copiado em laço. Acima disso, 429 para aquela sessão e nenhuma outra. Folga para o modo cookie, em que cada carregamento de página renova |
 
 - **Token só vencido não conta como falha.** Conta apenas assinatura inválida ou token malformado. Senão, terminais que voltam depois
   do fim de semana gastariam a cota e, como 429 não encerra sessão, ficariam travados.

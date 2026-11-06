@@ -362,7 +362,8 @@ public class PublicPortalExpiredModuleTests
         using var response = await BookAsync(portal, slot, phone);
 
         var raw = await response.Content.ReadAsStringAsync();
-        raw.Should().NotContainEquivalentOf("assinatura").And.NotContainEquivalentOf("subscription").And.NotContain("402");
+        raw.Should().NotContainEquivalentOf("assinatura").And.NotContainEquivalentOf("subscription");
+        response.StatusCode.Should().NotBe(HttpStatusCode.PaymentRequired);
         var requestId = response.Headers.GetValues("X-Request-Id").Single();
         foreach (var text in new[] { _factory.ServerLog.For(requestId), _factory.ServerLog.PropertiesFor(requestId) })
             text.Should().NotContain(phone);

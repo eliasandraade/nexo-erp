@@ -33,3 +33,6 @@ test-results/
 # Local backend host for the portal integration suite (build outputs)
 e2e/backend-host/bin/
 e2e/backend-host/obj/
+
+# Production build of the browser suites against the real API
+dist-e2e/

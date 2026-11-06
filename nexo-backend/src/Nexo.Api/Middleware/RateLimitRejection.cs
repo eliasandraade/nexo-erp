@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Nexo.Api.Uploads;
 
 namespace Nexo.Api.Middleware;
 
@@ -24,7 +26,18 @@ public static class RateLimitRejection
         ctx.Response.StatusCode = StatusCodes.Status429TooManyRequests;
         ctx.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
         ctx.Response.ContentType = "application/json";
-        await ctx.Response.WriteAsync(JsonSerializer.Serialize(Body(ctx, TooManyAttempts, Code, seconds), JsonOpts), ct);
+
+        var error = ctx.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName == UploadAdmission.RateLimitPolicy
+            ? $"Muitos envios em pouco tempo. Aguarde {seconds} segundos e tente de novo."
+            : TooManyAttempts;
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(Body(ctx, error, Code, seconds), JsonOpts), ct);
+    }
+
+    /// <summary>The same 429 for a refusal outside the limiter's own pipeline (an upload over its in-flight bound).</summary>
+    public static ObjectResult Refuse(HttpContext ctx, string error, string code, int seconds)
+    {
+        ctx.Response.Headers.RetryAfter = seconds.ToString(CultureInfo.InvariantCulture);
+        return new ObjectResult(Body(ctx, error, code, seconds)) { StatusCode = StatusCodes.Status429TooManyRequests };
     }
 
     /// <summary>The same 429, from a budget counted inside an endpoint instead of a limiter in front of it.</summary>

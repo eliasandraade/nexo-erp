@@ -13,9 +13,6 @@ public sealed class BrowserSession
     /// <summary><c>__Host-</c>: no other subdomain of orken.com.br can write over it, and a browser only takes it Secure, on Path=/ and with no Domain.</summary>
     public const string CookieName = "__Host-nexo_rt";
 
-    /// <summary>A sign-out asks for an access token, except in the cookie mode: a tab that just reloaded has none, and the cookie says whose session it is.</summary>
-    public const string SignOutPolicy = "SignOut";
-
     /// <summary>Cookies of earlier versions. Nothing sets or reads them; a sign-out still removes what a browser may have kept.</summary>
     private static readonly string[] OldCookies = ["nexo_access", "nexo_refresh"];
 

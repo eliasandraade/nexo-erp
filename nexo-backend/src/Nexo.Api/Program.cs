@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Nexo.Api.Middleware;
+using Nexo.Api.Uploads;
 using Nexo.Application;
 using Nexo.Application.Integrations.Billing;
 using Nexo.Infrastructure;
@@ -136,16 +137,13 @@ try
         options.AddPolicy("PlatformAdmin", policy =>
             policy.RequireAuthenticatedUser().RequireClaim("type", "platform").RequireRole("super_admin")
                   .RequireAssertion(ctx => !adminNeedsMfa || ctx.User.HasClaim("platform_mfa", "true")));
-        options.AddPolicy(BrowserSession.SignOutPolicy, policy =>
-            policy.RequireAssertion(ctx => ctx.User.Identity?.IsAuthenticated == true
-                                           || (ctx.Resource is HttpContext http && BrowserSession.IsCookieMode(http.Request))));
     });
 
     // Tokens de serviço do Orken ID (leitura de agregados pela Orken Platform). Desligado sem OrkenId:Issuer.
     Nexo.Api.Orken.OrkenOperationsEndpoints.AddOrkenServiceAuthentication(builder);
 
     // ── CORS ──────────────────────────────────────────────────────────────────
-    // One list of origins, for this policy and for the check of the Origin in the cookie mode (SessionOriginMiddleware).
+    // One list of origins, for this policy, for the guard of the auth routes and for the check of the Origin in the cookie mode.
     var allowedOrigins = new AllowedOrigins(builder.Configuration, builder.Environment);
     builder.Services.AddSingleton(allowedOrigins);
     builder.Services.AddSingleton(new BrowserSession(builder.Configuration, allowedOrigins));
@@ -346,10 +344,16 @@ try
         AddIpPolicy("build-portal-auth", "BuildPortalAuth", 10, 300);
         // client decisions (change orders, selections): writes, so tighter than reads
         AddIpPolicy("build-portal-decision", "BuildPortalDecision", 30, 300);
+        // Content-Security-Policy reports (RateLimiting:CspReport:*): its rejection is the same 204, so it has a class of its own.
+        options.AddPolicy<string, Nexo.Api.Security.CspReportRateLimitPolicy>(Nexo.Api.Security.CspReportRateLimitPolicy.Name);
     });
 
     builder.Services.Configure<RateLimiterOptions>(options =>
-        Nexo.Api.Middleware.AuthRefreshRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp));
+    {
+        Nexo.Api.Middleware.AuthRefreshRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp);
+        Nexo.Api.Middleware.AuthLogoutRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp);
+    });
+    builder.Services.AddUploadLimits(builder.Configuration);
 
     // ── Controllers ───────────────────────────────────────────────────────────
     // JsonStringEnumConverter: serializes all enums as their string names
@@ -497,7 +501,9 @@ try
         });
     }
 
-    // Before authentication and the limiters: a refused Origin reads nothing and spends nothing.
+    app.UseMiddleware<UploadBodyMiddleware>();
+    // Before authentication and the limiters: a page of another site spends nothing of anybody, and a refused Origin reads nothing.
+    app.UseMiddleware<AuthOriginGuardMiddleware>();
     app.UseMiddleware<SessionOriginMiddleware>();
     app.UseAuthentication();
     // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
@@ -548,6 +554,7 @@ try
     app.Logger.LogInformation("[Billing] New checkouts are {NewCheckouts} ({Setting})",
         BillingRules.NewCheckoutsEnabled(app.Configuration[BillingRules.NewCheckoutsSetting]) ? "open" : "blocked",
         BillingRules.NewCheckoutsSetting);
+    app.Services.GetRequiredService<UploadAdmission>().LogCeiling(app.Logger);
 
     Log.Information("Nexo API starting on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();

@@ -58,11 +58,21 @@ pensada para muitos terminais atrás do mesmo endereço:
 |---|---|---|---|
 | Teto, em memória | endereço (`ClientIpResolver`) | `PermitLimit` 900 por `WindowSeconds` 900 | Inundação |
 | Orçamento de falha, no Redis | endereço | `FailureBudget` 30 por `FailureWindowSeconds` 900 | Tentativa e erro. Só token inválido conta e só ele recebe 429 |
-| Orçamento da sessão, no Redis | família do token | `FamilyBudget` 60 por `FamilyWindowSeconds` 900 | Cliente em laço. 429 para aquela sessão, que continua viva |
+| Orçamento da sessão, no Redis | família do token | `FamilyBudget` 300 por `FamilyWindowSeconds` 900 | Cliente em laço. 429 para aquela sessão, que continua viva |
 
 - Token vencido assinado por nós, corrida entre abas (409) e sessão encerrada não gastam o orçamento de falha. Na plataforma, o token é
   opaco: um token desconhecido faz o papel da assinatura inválida, e a família é a sessão.
 - Um token já usado é julgado antes de qualquer orçamento: passar do limite nunca esconde uma reutilização.
+- **Quem desiste depois de um 409 avisa o servidor.** Se ninguém no navegador recebeu o par novo, outra pessoa pode estar com ele. Antes de limpar a sessão, o cliente chama
+  `auth/logout` com o mesmo token, sem esperar a resposta. Isso encerra a família mesmo dentro da carência e deixa um aviso na auditoria (`logout_with_spent_token`). Sem isso, a vítima nunca
+  apresentaria o token de novo e a reutilização nunca seria detectada.
+- **`auth/logout` aceita o refresh token sem access token,** porque quem o tem já poderia renová-lo. Tem teto próprio (`RateLimiting:AuthLogout:*`, 300 por 15 min por endereço; quem tem access conta à
+  parte) e corpo de no máximo 16 KB. Sem nenhum dos dois tokens, continua 401.
+- **Origem fora da lista:** uma página de qualquer site consegue mandar a estas rotas um POST simples, sem preflight, e os limitadores contariam esse pedido antes de o MVC recusar o tipo de conteúdo. Por isso,
+  `api/auth/*` e `api/platform/auth/*` respondem `403 origin_not_allowed` a qualquer `Origin` fora da lista, antes dos limitadores. Sem `Origin` (quem não é navegador), segue como antes. O Swagger fora de
+  produção é uma página: para usar essas rotas por ele, inclua a origem dele em `Cors:AllowedOrigins`.
+- **Logout durante uma queda do Redis:** só o banco ouve. Quando o Redis volta do snapshot, a entrada do token volta válida; por isso a renovação também confere a linha da sessão (`IsRevokedAsync`), e
+  a recusa marca a família. A sessão da plataforma mora no banco e não tem essa falha.
 - `RateLimiting:AuthRefresh:Enabled=false` desliga as três camadas.
 - **Redis fora do ar ou lento:** os orçamentos deixam de contar, sem abrir o disjuntor do cache, e o teto continua valendo. Como a
   validade do refresh de empresa está no Redis, a renovação responde 503 com `Retry-After` para a sessão que o banco conhece como ativa

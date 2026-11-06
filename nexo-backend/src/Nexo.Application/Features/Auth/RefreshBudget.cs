@@ -16,7 +16,7 @@ public sealed class RefreshBudgetOptions
     public TimeSpan FailureWindow { get; init; } = TimeSpan.FromMinutes(15);
 
     /// <summary>Renewals per session and window. A session renews once per access token (15 min), so 60 is a client in a loop.</summary>
-    public int FamilyBudget { get; init; } = 60;
+    public int FamilyBudget { get; init; } = 300;
     public TimeSpan FamilyWindow { get; init; } = TimeSpan.FromMinutes(15);
 }
 

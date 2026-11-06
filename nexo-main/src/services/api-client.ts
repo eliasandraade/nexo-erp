@@ -526,6 +526,23 @@ async function readErrorBody(res: Response): Promise<ErrorBody | null> {
   }
 }
 
+/**
+ * The token was rotated and no tab here got the new pair: someone else may hold it. Before giving up, the server hears it with this same token, which ends the
+ * family even inside the grace. Otherwise this client would never present the token again, and nothing would ever call it a reuse. Best effort: it does not wait.
+ */
+async function endFamilyOfSpentToken(token: string): Promise<void> {
+  try {
+    await fetch(`${BASE_URL}/auth/logout`, {
+      method: "POST",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: token }),
+    });
+  } catch {
+    // no connection: the session ends here anyway, and the family at its expiry
+  }
+}
+
 let refreshPromise: Promise<RefreshOutcome> | null = null;
 
 /** What the access token says about whose it is, for the check below. */
@@ -692,7 +709,10 @@ async function attemptRefresh(allowWithoutSession = false): Promise<RefreshOutco
       }
       const err = await readErrorBody(res);
       // Another tab renewed the same session a moment ago and stores the new pair in localStorage: use it.
-      if (res.status === 409 && err?.code === "refresh_already_rotated" && await waitForRotatedToken(sent)) return "ok";
+      if (res.status === 409 && err?.code === "refresh_already_rotated") {
+        if (await waitForRotatedToken(sent)) return "ok";
+        void endFamilyOfSpentToken(sent);
+      }
       clearTokens();
       return isPlatformRefreshToken(sent) ? "platform_ended" : "refused";
     } catch (error) {
@@ -892,6 +912,13 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+/** A refusal without our JSON body (it came from the edge proxy): its status text is empty or in English. */
+function uploadRefusalText(status: number): string | undefined {
+  if (status === 429) return "Muitas tentativas. Aguarde um pouco e tente de novo.";
+  if (status === 413) return "Arquivo grande demais para o envio.";
+  return undefined;
+}
+
 async function requestForm<T>(path: string, form: FormData, isRetry = false): Promise<T> {
   const url = `${BASE_URL}${path}`;
 
@@ -923,7 +950,7 @@ async function requestForm<T>(path: string, form: FormData, isRetry = false): Pr
     if (Array.isArray(err?.details) && err.details.length > 0) {
       message = err.details.join(" | ");
     } else {
-      message = err?.error ?? err?.message ?? message;
+      message = err?.error ?? err?.message ?? uploadRefusalText(res.status) ?? message;
     }
     throw new ApiError(res.status, message, err?.code);
   }
@@ -979,7 +1006,7 @@ async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormDat
     if (refused) throw refused;
     const details = Array.isArray(body?.details) && body.details.length > 0 ? body.details.map(String) : undefined;
     const serverMessage = body?.error ?? body?.message ?? undefined;
-    let message = details ? details.join(" | ") : serverMessage ?? res.statusText;
+    let message = details ? details.join(" | ") : serverMessage ?? uploadRefusalText(res.status) ?? res.statusText;
     if (res.status >= 500 && body?.requestId) message = `${message} (código: ${body.requestId})`;
     throw new ApiError(res.status, message, body?.code, body?.requestId, details, serverMessage);
   }

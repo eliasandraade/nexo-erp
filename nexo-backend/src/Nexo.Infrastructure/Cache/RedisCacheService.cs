@@ -191,10 +191,10 @@ public class RedisCacheService : ICacheService
         if (RedisUnavailable) return null;
         try
         {
-            var db = _redis.GetDatabase();
-            var value = await db.StringIncrementAsync(key).WaitAsync(_callTimeout, ct);
-            if (value == 1) await db.KeyExpireAsync(key, window).WaitAsync(_callTimeout, ct);
-            return value;
+            var result = (RedisResult[]?)await _redis.GetDatabase()
+                .ScriptEvaluateAsync(CountInWindowScript, [key], [(long)window.TotalMilliseconds])
+                .WaitAsync(_callTimeout, ct);
+            return (long)result![0];
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {

@@ -269,6 +269,14 @@ public class AuthService
             return RefreshOutcome.EndedByAChange();
         }
 
+        // A sign-out during an outage reached only the database: when the cache came back, from its snapshot, this entry came back valid and the family unmarked.
+        if (await _sessions.IsRevokedAsync(claims.Jti, ct))
+        {
+            await RevokeFamilyAsync(claims.Family, ct);
+            await _cache.RemoveAsync(cacheKey, ct);
+            return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
+        }
+
         var tenant = await _tenants.GetByIdAsync(claims.TenantId, ct);
         if (tenant is null || tenant.Status != Domain.Enums.TenantStatus.Active)
             return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
@@ -439,7 +447,8 @@ public class AuthService
         }
         if (entry.UserId != userId
             || (entry.SecurityStamp is not null && entry.SecurityStamp != user.SecurityStamp)
-            || await IsFamilyRevokedAsync(spent.Family, ct))
+            || await IsFamilyRevokedAsync(spent.Family, ct)
+            || await _sessions.IsRevokedAsync(spent.Jti, ct))
             return SwitchStoreOutcome.Fail(RefreshErrors.Invalid);
 
         var activeModules = await _tenants.GetActiveModuleKeysAsync(tenantId, ct);
@@ -484,6 +493,7 @@ public class AuthService
     /// Idempotent — safe to call multiple times.
     /// Encerra a família inteira do token: as outras abas da mesma sessão e um par trocado agora mesmo por uma
     /// renovação concorrente também deixam de renovar. Outros logins (outros dispositivos) não são afetados.
+    /// Com um token já trocado, pode ser o cliente que desistiu depois de um 409: outra pessoa pode estar com o par novo, e isso fica na auditoria.
     /// </summary>
     public async Task LogoutAsync(string? refreshToken, CancellationToken ct = default)
     {
@@ -491,6 +501,16 @@ public class AuthService
 
         var claims = _jwt.ValidateRefreshToken(refreshToken);
         if (claims is null) return;
+
+        var head = await _cache.GetAsync<RefreshFamilyHead>(FamilyKey(claims.Family), ct);
+        if (head is not null && head.CurrentJti != claims.Jti && _audit is not null)
+        {
+            _audit.Stage(AuditActions.UserSessionRevoked, AuditSeverity.Warning, "User", claims.UserId.ToString(),
+                "Sessão encerrada com um refresh token já trocado: pode ser uma corrida ou uma cópia do token.",
+                tenantId: claims.TenantId, actorName: "anonymous", actorType: "system",
+                metadata: new { reason = "logout_with_spent_token", family = claims.Family });
+            await _users.SaveChangesAsync(ct);
+        }
 
         await RevokeFamilyAsync(claims.Family, ct);
         await _cache.RemoveAsync($"refresh:valid:{claims.Jti}", ct);
