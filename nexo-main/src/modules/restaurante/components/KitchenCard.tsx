@@ -37,10 +37,11 @@ function cardStyle(status: string, mins: number): string {
 }
 
 export function KitchenCard({
-  item, storeId,
+  item, storeId, readOnly = false,
 }: {
   item: KitchenItem;
   storeId: string;
+  readOnly?: boolean;
 }) {
   const updateMut             = useUpdateItemStatus(storeId);
   const [pending, setPending] = useState(false);
@@ -97,7 +98,7 @@ export function KitchenCard({
       {nextStatus && (
         <button
           onClick={handleAdvance}
-          disabled={pending}
+          disabled={pending || readOnly}
           className={cn(
             "mt-1 w-full rounded-lg py-2.5 text-sm font-medium transition-colors disabled:opacity-50",
             item.status === "Ready"

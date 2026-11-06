@@ -210,6 +210,23 @@ public class User : TenantEntity
         SetUpdatedAt();
     }
 
+    /// <summary>
+    /// The address was never proven: following a link (verification or reset) is what clears the token, so it stays set
+    /// through an inactivation or a block, and tells who has to go back to pending when reactivated.
+    /// </summary>
+    public bool EmailNeverVerified => Status == UserStatus.PendingVerification || VerificationToken is not null;
+
+    /// <summary>
+    /// The link already sent stops working and the mark of <see cref="EmailNeverVerified"/> stays: this token was sent to nobody and
+    /// is already expired. A new link replaces it.
+    /// </summary>
+    public void InvalidateVerificationLink()
+    {
+        VerificationToken       = Guid.NewGuid().ToString("N");
+        VerificationTokenExpiry = DateTime.UtcNow.AddMinutes(-1);
+        SetUpdatedAt();
+    }
+
     /// <summary>Returns true if this user has a management role (Gerente or Diretoria).</summary>
     public bool IsManager() =>
         Role == UserRole.Gerente || Role == UserRole.Diretoria;

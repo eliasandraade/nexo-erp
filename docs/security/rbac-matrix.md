@@ -101,6 +101,25 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
     Se a espera pelo lock passar de 5 s, a resposta é `409` com `code: "users_busy"` (tente de novo).
   - Não existe exclusão de usuário nem de empresa. `UserWriteSurfaceTests` e `LastDirectorTests` falham se
     alguém criar uma rota, uma remoção ou uma escrita em massa que contorne a regra.
+  - Toda recusa fica na auditoria (`user_last_director_refused`, severidade `warning`), com o id de quem tentou, o id do alvo, a
+    empresa e o papel e a situação pedidos, sem nome, e-mail nem login. A entrada é gravada em conexão própria
+    (`ILastDirectorRefusalAudit`), porque a transação recusada é desfeita. Nada espera por ela: uma auditoria que falha ou trava não
+    muda a resposta e não prende o lock da empresa. O preço é que um processo que morra logo depois da recusa pode perder a entrada.
+    A falha ao gravar vai para o log de erros. Aparece no log de atividade da plataforma e na tela de auditoria da empresa.
+- **Editar um usuário não libera acesso de quem não confirmou o e-mail.** O link enviado por e-mail é o único caminho de
+  `PendingVerification` para `Active`.
+
+  | Situação atual | Pedido no `PUT /users/{id}` | Resultado |
+  |---|---|---|
+  | `PendingVerification` | sem status, ou `pendingverification` | continua pendente, e o resto do formulário é salvo |
+  | `PendingVerification` | `active` | `409` `email_not_verified`, e nada muda |
+  | `PendingVerification` | `inactive`, `blocked` | para: os links enviados deixam de valer |
+  | `Inactive`, `Blocked`, sem nunca ter confirmado | `active`, `pendingverification` | volta para `PendingVerification`, e é preciso um link novo |
+  | `Inactive`, `Blocked`, com e-mail confirmado | `active` | volta para `Active`, como sempre |
+  | `Active`, `Inactive`, `Blocked`, com e-mail confirmado | `pendingverification` | `409` `status_not_editable`, e nada muda |
+
+  Trocar o e-mail de quem nunca confirmou também encerra o link já enviado, que não prova nada sobre o endereço novo. Sem coluna nova: o
+  token de verificação só é apagado quando um link é seguido, então ele marca quem nunca confirmou (`User.EmailNeverVerified`).
 
 ## Pendências conhecidas (fora do escopo do PR 42)
 
@@ -119,4 +138,7 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
   tenant.
 - O isolamento entre tenants é coberto por `TenantIsolationTests` e pelos query filters globais.
 - **`LastDirectorTests`** (comportamento e concorrência, com PostgreSQL de verdade): a última Diretoria ativa
-  não sai por nenhum caminho, e dois diretores agindo ao mesmo tempo nunca deixam a empresa sem nenhum.
+  não sai por nenhum caminho, e dois diretores agindo ao mesmo tempo nunca deixam a empresa sem nenhum. Cada recusa fica na
+  auditoria uma única vez, mesmo com a auditoria falhando ou travada, sem mudar a resposta nem prender o lock.
+- **`PendingUserEditTests`** (comportamento): editar um usuário nunca libera o acesso de quem não confirmou o e-mail, e parar e
+  reativar a pessoa não contorna o link.

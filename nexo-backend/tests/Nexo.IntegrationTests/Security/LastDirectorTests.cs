@@ -25,7 +25,7 @@ namespace Nexo.IntegrationTests.Security;
 /// Every other company of the database (the seed included) has directors, so a count that forgets the tenant fails here.
 /// </summary>
 [Collection("Integration")]
-public sealed class LastDirectorTests
+public sealed partial class LastDirectorTests
 {
     private const string UsersRoute = "/api/users";
     private const string CompanyRoute = "/api/categories";
@@ -218,6 +218,8 @@ public sealed class LastDirectorTests
     [InlineData(UserStatus.Blocked, "diretoria", "inactive")]
     [InlineData(UserStatus.Inactive, "vendedor", "inactive")]
     [InlineData(UserStatus.PendingVerification, "gerente", null)]
+    [InlineData(UserStatus.PendingVerification, "gerente", "pendingverification")]
+    [InlineData(UserStatus.PendingVerification, "diretoria", "blocked")]
     public async Task A_director_who_is_not_active_can_still_be_changed(UserStatus current, string role, string? status)
     {
         var director = await NewCompanyAsync();
@@ -229,12 +231,12 @@ public sealed class LastDirectorTests
         (await ActiveDirectorsAsync(director.TenantId)).Should().Be(1);
     }
 
-    public enum Activation { ResetLink, VerificationLink, Edit }
+    public enum Activation { ResetLink, VerificationLink }
 
+    /// <summary>Only the e-mail links activate someone who is pending: an edit cannot (see PendingUserEditTests).</summary>
     [Theory]
     [InlineData(Activation.ResetLink)]
     [InlineData(Activation.VerificationLink)]
-    [InlineData(Activation.Edit)]
     public async Task A_pending_director_starts_to_count_once_activated(Activation how)
     {
         var director = await NewCompanyAsync();
@@ -257,9 +259,6 @@ public sealed class LastDirectorTests
                 await ChangeUserAsync(pending.UserId, u => u.SetVerificationToken(verificationToken, DateTime.UtcNow.AddMinutes(30)));
                 await _factory.CreateApiClient().GetAsync($"/api/auth/verify-email?token={verificationToken}")
                     .ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
-                break;
-            case Activation.Edit:
-                await client.PutAsJsonAsync(RouteOf(pending), Body(pending, "diretoria", "active")).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
                 break;
         }
         (await ActiveDirectorsAsync(director.TenantId)).Should().Be(2);

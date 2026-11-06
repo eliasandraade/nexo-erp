@@ -27,6 +27,7 @@ const ACTION_TYPES: { value: string; label: string }[] = [
   { value: "user_logged_out",        label: "Logout" },
   { value: "user_created",           label: "Usuário criado" },
   { value: "user_updated",           label: "Usuário atualizado" },
+  { value: "user_last_director_refused", label: "Alteração recusada (última Diretoria)" },
   { value: "sale_completed",         label: "Venda concluída" },
   { value: "sale_cancelled",         label: "Venda cancelada" },
   { value: "stock_adjustment",       label: "Ajuste de estoque" },
@@ -235,9 +236,9 @@ export default function PlatformActivityPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      {r.actorName ? (
+                      {r.actorName || r.actorId ? (
                         <div>
-                          <p className="text-xs font-medium text-foreground">{r.actorName}</p>
+                          <p className="text-xs font-medium text-foreground break-all">{r.actorName ?? r.actorId}</p>
                           <p className="text-[10px] text-muted-foreground">{r.actorType}</p>
                         </div>
                       ) : (

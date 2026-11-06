@@ -151,16 +151,25 @@ cache.
 
 | Portal | Continua funcionando sem acesso | Recusado sem acesso |
 |---|---|---|
-| Agendamento (Service) | cabeçalho, catálogo, profissionais, horários, o link do cliente | agendar e cancelar: **403** `portal_read_only` |
+| Agendamento (Service) | cabeçalho, catálogo, profissionais, horários, o link do cliente e o cliente desmarcar o próprio horário | agendar: **403** `portal_read_only` |
 | Cliente da obra (Build) | todas as leituras, abrir e encerrar a sessão de um portal com senha | decidir aditivo, escolher opção, aceitar entrega, abrir chamado, enviar foto, avaliar: **403** `portal_read_only` |
 | Cardápio (Menu) | cardápio, zonas de entrega, acompanhar pedido | novo pedido: **422**, como já era |
 
 - **A mensagem é neutra.** Quem visita é cliente da empresa e não precisa saber da assinatura dela: por isso 403 com
   `portal_read_only`, e não o 402 `subscription_required` de quem tem login.
-- **A tela sabe antes:** `isBookingEnabled` e `canCancel` (Service), `acceptingOrders` (Menu), `readOnly` e os indicadores
-  `can*` (Build) vêm falsos, então a ação nem é oferecida.
-- **Cancelamento pelo cliente também para.** Sem acesso, nada muda pelo portal. A tela do link diz para falar com o
-  estabelecimento, e `onlineChangesPaused` diferencia isso de um prazo vencido.
+- **A tela sabe antes:** `isBookingEnabled` (Service), `acceptingOrders` (Menu), `readOnly` e os indicadores `can*` (Build) vêm
+  falsos, então a ação nem é oferecida.
+- **O cliente desmarca o próprio horário também em somente leitura.** Decisão do dono, que reverte a do PR #155: uma assinatura vencida
+  não pode prender o cliente a um horário em que ele não vai poder ir. É a única escrita aberta sem acesso ao módulo. Nada mais muda:
+  - Valem as regras de sempre: o link, o prazo (`MinLeadMinutes`), o que já tem comanda ou pacote (`handledByStore`) e o horário já
+    iniciado ou encerrado.
+  - A escrita é só a linha do agendamento. Não existe e-mail de cancelamento, e `ServiceCustomerEmailsJob` ignora horário cancelado,
+    inclusive quando o acesso volta. Nada pago ou operacional é acionado.
+  - Agendar continua recusado, então a tela do link não oferece outro horário.
+- **Empresa suspensa ou cancelada e loja inativa não recebem o cancelamento:** **403** `portal_read_only`. O link continua legível,
+  `canCancel` vem falso e `onlineChangesPaused` vem verdadeiro, o que diferencia esse caso de um prazo vencido. A suspensão é uma parada
+  decidida pela plataforma, e a loja inativa foi fechada pela empresa: ninguém ali veria a mudança, então o cliente é orientado a falar
+  com o estabelecimento. A assinatura vencida é outra situação: a empresa segue operando e o cliente ainda conta com o horário.
 - **O portal só de consulta não chama provedor externo:** o bootstrap do Build não traz `weather`.
 - **Suspensão da empresa e loja inativa** também recusam a escrita, nos três portais.
 - **Rota nova:** `PublicPortalExpiredModuleTests` lista toda escrita anônima sob `api/public/`. Uma rota nova reprova o teste até
