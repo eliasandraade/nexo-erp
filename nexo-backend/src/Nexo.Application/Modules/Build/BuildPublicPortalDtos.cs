@@ -13,6 +13,8 @@ public sealed record PublicBuildBootstrapDto
     public string ContractVersion { get; init; } = PublicBuildPortal.ContractVersion;
     /// <summary>Names of the enabled sections (only the enabled ones are listed).</summary>
     public IReadOnlyList<string> Sections { get; init; } = [];
+    /// <summary>v1.7: the portal can be read and takes no writes now (decisions, choices, requests): talk to the company.</summary>
+    public bool ReadOnly { get; init; }
     public required PublicBuildPortalDto  Portal  { get; init; }
     public required PublicBuildCompanyDto Company { get; init; }
     public required PublicBuildProjectDto Project { get; init; }
@@ -240,7 +242,9 @@ public sealed record PublicBuildMeasurementsDto(IReadOnlyList<PublicBuildMeasure
 /// <summary>Constants of the public portal contract.</summary>
 public static class PublicBuildPortal
 {
-    public const string ContractVersion = "1.6";
+    public const string ContractVersion = "1.7";
+    /// <summary>The commercial module behind the portal.</summary>
+    public const string ModuleKey       = "build";
     public const string SessionHeader   = "X-Build-Portal-Session";
 
     public const string CodeNotFound         = "portal_not_found";
@@ -287,6 +291,10 @@ public static class PublicBuildPortal
     public const string CodeConflict                 = "portal_conflict";
     /// <summary>A JSON body beyond 64 KB (413).</summary>
     public const string CodePayloadTooLarge          = "payload_too_large";
+
+    // v1.7
+    /// <summary>A write on a portal that is only readable now (403): the company has no access to the module.</summary>
+    public const string CodeReadOnly                 = "portal_read_only";
 }
 
 /// <summary>

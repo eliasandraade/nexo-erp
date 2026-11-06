@@ -516,8 +516,10 @@ try
         });
     }
 
-    app.UseRateLimiter();
     app.UseAuthentication();
+    // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
+    // HttpContext.User is empty, so every caller, even one without a session, shared a single budget per path.
+    app.UseRateLimiter();
     app.UseMiddleware<TenantResolutionMiddleware>();
     app.UseMiddleware<SecurityStampValidationMiddleware>();
     app.UseAuthorization();
