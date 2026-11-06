@@ -1,0 +1,52 @@
+name: csp-e2e
+
+# The Content-Security-Policy under a real browser (docs/security/csp.md): the production bundle, served by the real Caddyfile on
+# the production image, against the real API on a disposable PostgreSQL (nexo-main/e2e/auth-host, Testcontainers). No flow of the
+# product may produce a violation, and an injected script must. It depends on the frontend and on the backend at once, so it does
+# not live in frontend-ci.yml, which a backend-only pull request skips. Called by ci.yml and master.yml, on every run.
+on:
+  workflow_call:
+
+jobs:
+  csp-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: nexo-main
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: nexo-main/package-lock.json
+
+      - name: Install (lockfile)
+        run: npm ci --no-audit --no-fund --ignore-scripts
+
+      # Its own step: a backend that does not compile fails here, not as a server that never came up.
+      - name: Build the API host
+        run: dotnet build e2e/auth-host/AuthE2EHost.csproj --nologo -v q
+
+      # Normally 20 s. apt only when Chromium does not open: see the script.
+      - name: Playwright browsers
+        timeout-minutes: 12
+        run: npm run e2e:install:ci
+
+      - name: Content-Security-Policy suite
+        run: npm run test:e2e:csp
+
+      - name: Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csp-e2e-report
+          path: nexo-main/playwright-report
+          retention-days: 7

@@ -46,6 +46,10 @@ public sealed class ServerLogCapture : ILogEventSink
     public string PropertiesFor(string requestId)
         => string.Join(Environment.NewLine, _entries.Where(e => e.RequestId == requestId).Select(e => e.Properties));
 
+    /// <summary>The messages of the warnings and errors that contain this text, oldest first, one per line.</summary>
+    public string Containing(string text)
+        => string.Join(Environment.NewLine, _entries.Where(e => e.Message.Contains(text, StringComparison.Ordinal)).Select(e => e.Message));
+
     /// <summary>Status, body and the server log of a response — the "because" of a status assertion.</summary>
     public async Task<string> DescribeAsync(HttpResponseMessage response)
     {
