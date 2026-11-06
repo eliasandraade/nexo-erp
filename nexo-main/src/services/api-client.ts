@@ -453,6 +453,19 @@ async function recoverFromUnauthorized(usedToken: string | null, code: string | 
   return false;
 }
 
+// ── API address ──────────────────────────────────────
+
+const TRAVERSAL = /(^|[/\\])(\.|%2e){2}([/\\]|$)/i;
+
+/**
+ * The address of a call. Screens build it from values of the address bar (`/sales/${id}`), which the router decodes, so a crafted link
+ * could point the call at another route of the API with the session of whoever clicked. The query string is left alone.
+ */
+function apiUrl(path: string): string {
+  if (TRAVERSAL.test(path.split(/[?#]/, 1)[0])) throw new ApiError(400, "Endereço inválido.");
+  return `${BASE_URL}${path}`;
+}
+
 // ── Core request ─────────────────────────────────────────────────────────────
 
 async function request<T>(
@@ -461,7 +474,7 @@ async function request<T>(
   body?: unknown,
   isRetry = false
 ): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const url = apiUrl(path);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -521,7 +534,7 @@ function uploadRefusalText(status: number): string | undefined {
 }
 
 async function requestForm<T>(path: string, form: FormData, isRetry = false): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const url = apiUrl(path);
 
   const headers: Record<string, string> = {};
   const token = getAccessToken();
@@ -592,7 +605,7 @@ function sendXhr(method: "POST" | "PUT", url: string, form: FormData, token: str
 async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormData, onProgress?: UploadProgressHandler,
   isRetry = false): Promise<T> {
   const token = getAccessToken();
-  const res = await sendXhr(method, `${BASE_URL}${path}`, form, token, onProgress);
+  const res = await sendXhr(method, apiUrl(path), form, token, onProgress);
   const body = parseJson(res.text);
 
   if (res.status === 401) {
