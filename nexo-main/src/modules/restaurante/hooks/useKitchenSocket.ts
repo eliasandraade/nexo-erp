@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as signalR from "@microsoft/signalr";
 import { useQueryClient } from "@tanstack/react-query";
-import { getAccessToken } from "@/services/api-client";
+import { getAccessToken, getFreshAccessToken } from "@/services/api-client";
 import { KITCHEN_KEY } from "./useKitchenItems";
 import { TABLES_KEY } from "./useRestauranteTables";
 import { ORDERS_KEY } from "./useActiveOrder";
@@ -44,12 +44,18 @@ interface UseKitchenSocketOptions {
 /**
  * Manages a SignalR connection to /hubs/restaurant for real-time kitchen updates.
  *
- * Token is read via getAccessToken() inside accessTokenFactory — NOT captured from
+ * Token is read via getFreshAccessToken() inside accessTokenFactory — NOT captured from
  * component props. This prevents the useEffect from re-running when the token
  * refreshes mid-negotiation, which would cause "connection stopped during negotiation".
  *
  * On initial connect failure, retries up to 3 times with backoff before switching
  * to polling mode. Polling invalidates React Query caches every 10s.
+ *
+ * The server closes the connection in two ways:
+ *  - when the token expires, allowing a reconnect: the client comes back by itself with a renewed token, about once per token.
+ *  - when the session ended (role, status or password changed, sessions revoked, company suspended), for good: no reconnect, and
+ *    the data is asked for at once, so the 401 of that call takes the person out through the same path as any other request.
+ * Without a token nothing is retried: the session is over and the app is leaving the page.
  *
  * Guard: only connects when storeId is non-empty (user is authenticated + store resolved)
  * AND a valid access token is present.
@@ -101,13 +107,16 @@ export function useKitchenSocket(
 
     const connection = new signalR.HubConnectionBuilder()
       .withUrl(`${API_BASE}/hubs/restaurant`, {
-        // Always reads the latest token at request time — survives refreshes.
-        accessTokenFactory: () => getAccessToken() ?? "",
+        // Always reads the latest token at request time and renews one about to expire.
+        accessTokenFactory: async () => (await getFreshAccessToken()) ?? "",
         // Allow both transports so Railway's reverse proxy has a fallback
         // if WebSocket upgrades are not available.
         transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.LongPolling,
       })
-      .withAutomaticReconnect(RECONNECT_DELAYS)
+      .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: ({ previousRetryCount }) =>
+          getAccessToken() ? RECONNECT_DELAYS[previousRetryCount] ?? null : null,
+      })
       .configureLogging(silentNegotiationLogger)
       .build();
 
@@ -150,15 +159,16 @@ export function useKitchenSocket(
     });
 
     connection.onclose(() => {
-      if (!cancelled) {
-        startPolling();
-      }
+      if (cancelled || !getAccessToken()) return;
+      startPolling();
+      // Now, not at the next tick of the polling: if the server closed because the session ended, this call is what says so.
+      invalidateAll();
     });
 
     // Attempt initial connection with manual retry before falling back to polling.
     // `cancelled` is captured in each effect's closure, so cleanup sets its own copy.
     const attemptConnect = async (attempt: number): Promise<void> => {
-      if (cancelled) return;
+      if (cancelled || !getAccessToken()) return;
 
       try {
         await connection.start();
@@ -169,7 +179,7 @@ export function useKitchenSocket(
         stopPolling();
         await connection.invoke("JoinStore", storeId);
       } catch (err) {
-        if (cancelled) return;  // cleanup already ran — don't retry, don't poll
+        if (cancelled || !getAccessToken()) return;  // cleanup already ran or the session is over — don't retry, don't poll
 
         const nextDelay = INITIAL_RETRY_DELAYS_MS[attempt];
         if (nextDelay !== undefined) {
