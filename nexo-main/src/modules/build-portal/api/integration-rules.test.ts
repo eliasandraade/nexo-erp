@@ -9,8 +9,9 @@ import type {
 } from "./generated/portal-types";
 
 const bootstrap = (sections: string[]): PublicBuildBootstrapDto => ({
-  contractVersion: "1.6",
+  contractVersion: "1.7",
   sections,
+  readOnly: false,
   portal: { access: "Password" },
   company: { name: "Empresa de teste" },
   project: { name: "Obra de teste", type: "House", status: "InProgress" },

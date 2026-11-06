@@ -115,6 +115,9 @@ public class FinancialRecurrenceService
     /// </summary>
     public async Task EnsureGeneratedAsync(CancellationToken ct = default)
     {
+        // Reading the finances of a company in read-only creates nothing. What is pending is generated when access returns.
+        if (_currentTenant.IsReadOnly) return;
+
         var horizon = CurrentMonth().AddMonths(1);
 
         // Fast path: nothing pending → no transaction, no lock (the common case on every read).

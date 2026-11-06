@@ -76,10 +76,17 @@ export function leaveImpersonation(): void {
 /**
  * Why the client dropped the session on its own:
  *  - platform_session_ended: the platform session was revoked/logged out (sign in again);
+ *  - session_revoked: the server ended this person's sessions (role, password or access changed);
+ *  - session_ended: any other session the server no longer accepts and that could not be renewed;
  *  - impersonation_ended: the tenant access of this tab expired or was ended elsewhere;
  *  - impersonation_left: the administrator left the tenant access ("Sair do acesso").
  */
-export type SessionEndReason = "platform_session_ended" | "impersonation_ended" | "impersonation_left";
+export type SessionEndReason =
+  | "platform_session_ended"
+  | "session_revoked"
+  | "session_ended"
+  | "impersonation_ended"
+  | "impersonation_left";
 
 const SESSION_ENDED_EVENT = "orken:session-ended";
 
@@ -102,15 +109,15 @@ export function endImpersonationSession(reason: "impersonation_ended" | "imperso
 
 // ── Subscription required ─────────────────────────────────────────────────────
 
-/** Code of the 402 a company without any module with access gets on a write (it stays read-only). */
+/** Code of the 402 of a write on an expired module, or by a company without any module with access (it stays read-only). */
 export const SUBSCRIPTION_REQUIRED_CODE = "subscription_required";
 
 /**
- * Promises no purchase on purpose: not every module is for sale, and whoever tried one with no price has nothing to buy.
- * See docs/engineering/tenant-access-enforcement.md.
+ * Says "this area": another module of the company may be working normally. Promises no purchase on purpose: not every module
+ * is for sale, and whoever tried one with no price has nothing to buy. See docs/engineering/tenant-access-enforcement.md.
  */
 export const SUBSCRIPTION_REQUIRED_MESSAGE =
-  "Sua empresa está sem assinatura ativa e o sistema ficou somente para consulta: você pode ver e exportar os dados, " +
+  "Esta área está sem assinatura ativa e ficou somente para consulta: você pode ver e exportar os dados, " +
   "mas não registrar nem alterar. Quem administra a conta pode ver as opções na tela Assinatura ou falar com o suporte Orken.";
 
 const SUBSCRIPTION_REQUIRED_EVENT = "orken:subscription-required";
@@ -122,7 +129,7 @@ export function onSubscriptionRequired(handler: () => void): () => void {
 }
 
 /**
- * The error of a write refused for lack of a subscription, with the app told so it can open the subscription page.
+ * The error of a write refused for lack of a subscription, with the app told so it can show a notice.
  * Null for any other response. The session is valid: nothing here touches it.
  */
 function subscriptionRequiredError(status: number, body: ErrorBody | null): ApiError | null {
@@ -242,8 +249,8 @@ async function attemptRefresh(): Promise<RefreshOutcome> {
       clearTokens();
       return isPlatformRefreshToken(sent) ? "platform_ended" : "failed";
     } catch (error) {
+      // No answer says nothing about the session, so the tokens stay here. A 401 that led here drops them anyway (recoverFromUnauthorized).
       console.error("Token refresh failed:", error);
-      clearTokens();
       return "failed";
     } finally {
       refreshPromise = null;
@@ -251,6 +258,41 @@ async function attemptRefresh(): Promise<RefreshOutcome> {
   })();
 
   return refreshPromise;
+}
+
+/** A token with less than this left is renewed first: a connection opened with it would be closed right after, at its expiry. */
+const TOKEN_MIN_LIFETIME_MS = 30_000;
+
+/** The expiry the token says it has, in milliseconds. Null when it cannot be read: only the server can judge it then. */
+function tokenExpiry(token: string): number | null {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const exp = (JSON.parse(atob(payload)) as { exp?: unknown }).exp;
+    return typeof exp === "number" ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The access token for a connection that stays open. The server closes it when its token expires, and a screen that only listens
+ * to the connection makes no other request that would renew the token: the renewal has to happen here. Uses the same single
+ * renewal as the requests. Null means the session is over (the app was already told): there is nothing to connect with.
+ *
+ * Without an answer from the server the session is not over: the token goes as it is, the attempt fails like any other during a
+ * network failure, and the next one tries again.
+ */
+export async function getFreshAccessToken(): Promise<string | null> {
+  const token = getAccessToken();
+  if (!token) return null;
+  const expiry = tokenExpiry(token);
+  if (isImpersonating() || expiry === null || expiry - Date.now() > TOKEN_MIN_LIFETIME_MS) return token;
+
+  const outcome = await attemptRefresh();
+  if (outcome === "ok") return getAccessToken();
+  if (getAccessToken()) return token;
+  emitSessionEnded(outcome === "platform_ended" ? "platform_session_ended" : "session_ended");
+  return null;
 }
 
 /**
@@ -267,6 +309,9 @@ async function recoverFromUnauthorized(usedToken: string | null, code: string | 
     emitSessionEnded("platform_session_ended");
     return false;
   }
+  // Tokens already gone means the page dropped them on purpose (recovery codes on screen, signing out): a late answer
+  // to a call it sent before that ends nothing. A call that never had a token had no session to end.
+  const sessionInUse = usedToken !== null && getAccessToken() === usedToken;
   if (!isRetry) {
     // another tab may have renewed the shared session already
     const current = getAccessToken();
@@ -279,6 +324,7 @@ async function recoverFromUnauthorized(usedToken: string | null, code: string | 
     }
   }
   clearTokens();
+  if (sessionInUse) emitSessionEnded(code === "session_revoked" ? "session_revoked" : "session_ended");
   return false;
 }
 

@@ -43,6 +43,20 @@ public class TenantRepository : ITenantRepository
             .ToListAsync(ct);
     }
 
+    /// <summary>Called by TenantResolutionMiddleware on a cache miss and when a session is built, never on every request.</summary>
+    public async Task<IReadOnlyList<string>> GetExpiredModuleKeysAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var rows = await _context.ModuleSubscriptions
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenantId)
+            .ToListAsync(ct);
+        return ModuleSubscription.ExpiredKeys(rows, DateTime.UtcNow);
+    }
+
+    public Task<bool> HasLiveModuleAsync(Guid tenantId, string moduleKey, CancellationToken ct = default)
+        => Nexo.Infrastructure.Modules.ModuleAccessQueries.TenantsWithAccess(_context, moduleKey, DateTime.UtcNow)
+            .AnyAsync(id => id == tenantId, ct);
+
     public async Task<DateTime?> GetTrialEndsAtAsync(Guid tenantId, CancellationToken ct = default)
     {
         return await _context.ModuleSubscriptions
@@ -53,6 +67,12 @@ public class TenantRepository : ITenantRepository
 
     public async Task AddAsync(Tenant tenant, CancellationToken ct = default)
         => await _context.Tenants.AddAsync(tenant, ct);
+
+    public async Task SetStripeCustomerIdAsync(Guid tenantId, string stripeCustomerId, CancellationToken ct = default)
+        => await _context.Tenants
+            .IgnoreQueryFilters()
+            .Where(t => t.Id == tenantId)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.StripeCustomerId, stripeCustomerId), ct);
 
     public async Task SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);

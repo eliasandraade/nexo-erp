@@ -110,7 +110,9 @@ export default function ManageBookingPage() {
       {cancelError && <p role="alert" className="mt-3 text-center text-[13px] text-red-600">{cancelError}</p>}
       {!b.canCancel && !cancelled && (b.status === "Scheduled" || b.status === "Confirmed") && (
         <Muted className="mt-5 block text-center text-[13px]">
-          {b.handledByStore
+          {b.onlineChangesPaused
+            ? "As alterações online estão indisponíveis no momento. Para desmarcar, fale com o estabelecimento."
+            : b.handledByStore
             ? "Este agendamento já tem pagamento ou comanda. Para desmarcar, fale com o estabelecimento."
             : `O prazo para cancelar por aqui terminou em ${deadline}. Para desmarcar, fale com o estabelecimento.`}
         </Muted>

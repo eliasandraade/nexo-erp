@@ -150,13 +150,17 @@ public class BuildForecastTests
     public sealed class FakeWeatherProvider : IWeatherProvider
     {
         public int DailyCalls;
+        public int CurrentCalls;
         public Func<DateOnly, IReadOnlyList<WeatherDailyForecast>> Days { get; set; } = today => Enumerable.Range(0, 8)
             .Select(i => new WeatherDailyForecast(today.AddDays(i), 28, 19, i == 2 ? 15 : 0.5, i == 2 ? 85 : 10, i == 3 ? 55 : 12, i == 2 ? 65 : 1,
                 i == 2 ? "Chuva forte" : "Céu limpo"))
             .ToList();
 
         public Task<WeatherResult?> GetCurrentAsync(double latitude, double longitude, CancellationToken ct = default)
-            => Task.FromResult<WeatherResult?>(new WeatherResult(latitude, longitude, BusinessClock.Today(), 28, 19, 0.5, 1, "Céu limpo", "28/19"));
+        {
+            Interlocked.Increment(ref CurrentCalls);
+            return Task.FromResult<WeatherResult?>(new WeatherResult(latitude, longitude, BusinessClock.Today(), 28, 19, 0.5, 1, "Céu limpo", "28/19"));
+        }
 
         public Task<WeatherResult?> GetHistoryAsync(double latitude, double longitude, DateOnly date, CancellationToken ct = default)
             => Task.FromResult<WeatherResult?>(null);

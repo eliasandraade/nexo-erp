@@ -42,10 +42,13 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
     /// <summary>The host's latest warnings and errors, so an unexpected status in a test shows the server exception.</summary>
     public ServerLogCapture ServerLog { get; } = new();
 
+    /// <summary>Holds one SQL command in flight when a test asks: how a race becomes deterministic. Idle otherwise.</summary>
+    public DbCommandGate Gate { get; } = new();
+
     /// <summary>A test-only master key (base64 of 32 fixed bytes) so AI provider keys are really encrypted in the tests.</summary>
     public static readonly string TestMasterKey = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes("test-only-master-key-32-bytes!!!"));
 
-    public async Task InitializeAsync()
+    public virtual async Task InitializeAsync()
     {
         await _postgres.StartAsync();
 
@@ -58,7 +61,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         await seeder.SeedAsync();
     }
 
-    public new async Task DisposeAsync()
+    public new virtual async Task DisposeAsync()
     {
         await _postgres.StopAsync();
         await base.DisposeAsync();
@@ -85,7 +88,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
                 });
 
                 var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
-                opts.AddInterceptors(interceptor, sp.GetRequiredService<SqlCommandCounter>());
+                opts.AddInterceptors(interceptor, sp.GetRequiredService<Nexo.Infrastructure.Hubs.HubSessionChangeInterceptor>(), sp.GetRequiredService<SqlCommandCounter>(), Gate);
                 // a page or batch without an order is nondeterministic: fail the test instead of logging a warning
                 opts.ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.RowLimitingOperationWithoutOrderByWarning));
             });
