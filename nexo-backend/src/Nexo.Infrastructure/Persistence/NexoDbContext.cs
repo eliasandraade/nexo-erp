@@ -36,12 +36,17 @@ public class NexoDbContext : DbContext
     public NexoDbContext(
         DbContextOptions<NexoDbContext> options,
         ICurrentTenant currentTenant,
-        ICurrentStore currentStore)
+        ICurrentStore currentStore,
+        ILastDirectorRefusalAudit? lastDirectorRefusals = null)
         : base(options)
     {
         _currentTenant = currentTenant;
         _currentStore  = currentStore;
+        LastDirectorRefusals = lastDirectorRefusals;
     }
+
+    /// <summary>Where <see cref="LastDirectorGuard"/> records what it refuses.</summary>
+    internal ILastDirectorRefusalAudit? LastDirectorRefusals { get; }
 
     // ── Platform (no tenant_id) ───────────────────────────────────────────────
     public DbSet<Tenant> Tenants => Set<Tenant>();

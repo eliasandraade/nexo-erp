@@ -53,6 +53,12 @@ public sealed class DbCommandGate : DbCommandInterceptor
     public static Func<DbCommand, bool> UserRowOfLogin(string login)
         => command => IsUserRow(command) && HasParameter(command, login);
 
+    /// <summary>The write of an audit entry of this action.</summary>
+    public static Func<DbCommand, bool> AuditInsertOf(string actionType)
+        => command => command.CommandText.Contains("INSERT INTO", StringComparison.Ordinal)
+                      && command.CommandText.Contains("audit_records", StringComparison.Ordinal)
+                      && HasParameter(command, actionType);
+
     private static bool IsUserRow(DbCommand command)
         => command.CommandText.Contains("\"SecurityStamp\"", StringComparison.Ordinal)
            && command.CommandText.Contains(".role", StringComparison.Ordinal);
