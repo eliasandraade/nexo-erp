@@ -8,7 +8,7 @@ const KITCHEN_STATUSES = new Set(["Pending", "Preparing", "Ready"]);
 export const KITCHEN_KEY = (storeId: string) =>
   ["kitchen-items", storeId] as const;
 
-/** With <paramref>enabled</paramref> false nothing asks for the data by itself; a manual refetch still does. */
+/** With `enabled` false nothing asks for the data by itself; a manual refetch still does. */
 export function useKitchenItems(storeId: string, refetchInterval?: number, enabled = true) {
   return useQuery({
     queryKey: KITCHEN_KEY(storeId),
