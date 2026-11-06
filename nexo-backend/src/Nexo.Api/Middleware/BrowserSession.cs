@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Primitives;
+
 namespace Nexo.Api.Middleware;
 
 /// <summary>
@@ -29,11 +31,33 @@ public sealed class BrowserSession
         => request.Headers.TryGetValue(ModeHeader, out var mode) && mode.Count == 1 && mode[0] == ModeValue;
 
     /// <summary>
-    /// The token of the cookie. Only in the cookie mode and only from a listed Origin: <see cref="SessionOriginMiddleware"/> already
+    /// The token of the cookie. Only in the cookie mode and only from an Origin of the session: <see cref="SessionOriginMiddleware"/> already
     /// answered anything else, and this is the one place that reads the cookie, so it holds even if the pipeline ever changes.
     /// </summary>
     public string? ReadCookie(HttpRequest request)
-        => IsCookieMode(request) && _origins.Contains(request.Headers.Origin.ToString()) ? request.Cookies[CookieName] : null;
+        => IsCookieMode(request) && _origins.AllowsCookie(request.Headers.Origin.ToString()) ? ExactCookie(request.Headers.Cookie) : null;
+
+    /// <summary>
+    /// From the raw header, because <c>__Host-</c> protects one exact name. <c>request.Cookies</c> ignores case and keeps the last value, so <c>__HOST-nexo_rt</c>, which a
+    /// browser that compares the prefix exactly takes with a Domain from any sibling, would count as ours and win over it. Only the blanks of the header syntax are trimmed:
+    /// a Unicode one is part of another name. The exact name twice means something else wrote one of them, and nobody can say which, so neither counts.
+    /// </summary>
+    private static string? ExactCookie(StringValues headers)
+    {
+        string? found = null;
+        foreach (var header in headers)
+        {
+            if (header is null) continue;
+            foreach (var pair in header.Split(';'))
+            {
+                var cookie = pair.Trim(' ', '\t');
+                if (!cookie.StartsWith(CookieName + "=", StringComparison.Ordinal)) continue;
+                if (found is not null) return null;
+                found = cookie[(CookieName.Length + 1)..];
+            }
+        }
+        return string.IsNullOrEmpty(found) ? null : Uri.UnescapeDataString(found);
+    }
 
     /// <summary>A token in the body wins: that is how a session still in localStorage migrates to the cookie.</summary>
     public string? PresentedToken(HttpRequest request, string? bodyToken)

@@ -826,11 +826,14 @@ public class SessionCookieModeTests
 
     [Theory]
     [InlineData("https://erp.orken.com.br")]
-    [InlineData("https://www.orken.com.br")]
     [InlineData("https://erp.staging.example")]
-    public async Task A_listed_origin_passes_both(string origin)
+    public async Task An_origin_on_the_list_of_the_session_passes_both(string origin)
     {
-        await using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Cors:AllowedOrigins:0", "https://erp.staging.example"));
+        await using var host = _factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Auth:Session:AllowedOrigins:0", "https://erp.orken.com.br");
+            b.UseSetting("Auth:Session:AllowedOrigins:1", "https://erp.staging.example");
+        });
         var kit = _kit.On(host);
         var account = await _kit.NewAccountAsync();
 

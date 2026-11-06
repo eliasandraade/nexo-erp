@@ -13,7 +13,7 @@ listados no §9 "Changelog"); mudanças incompatíveis viram `v2` (ver "Versiona
 | URL pública sugerida no site Astra | `/{companySlug}/{projectSlug}` (ex.: `/construtora-silva/residencia-alfa`) |
 | Autenticação | Nenhuma conta. Portais com senha usam uma **sessão de portal** (ver §3). **Não** envie `Authorization`. |
 | Formato | JSON UTF-8, `camelCase`, datas `yyyy-MM-dd`, instantes ISO-8601 com fuso (`2026-10-30T14:03:11.123456+00:00`), enums como texto. |
-| CORS | A origem do site Astra precisa estar em `Cors:AllowedOrigins` da API (configuração da Orken). O header `X-Build-Portal-Session` (e `If-None-Match`) é aceito; `Retry-After` e `ETag` são expostos (v1.6 — antes o navegador de outra origem não conseguia ler o `ETag`). `https://www.orken.com.br` e `https://app.orken.com.br` já estão na lista fixa. |
+| CORS | A origem do site Astra precisa estar em `Cors:AllowedOrigins` da API (configuração da Orken). Isso permite chamar a API e não dá nenhuma autoridade sobre o cookie de sessão do ERP, que tem lista própria (`Auth:Session:AllowedOrigins`). O header `X-Build-Portal-Session` (e `If-None-Match`) é aceito; `Retry-After` e `ETag` são expostos (v1.6 — antes o navegador de outra origem não conseguia ler o `ETag`). `https://www.orken.com.br` e `https://app.orken.com.br` já estão na lista fixa. |
 
 **Regras de slug** (empresa e obra): 3–60 caracteres; só `a-z`, `0-9` e `-`; sem `-` no começo/fim nem `--`;
 sempre minúsculo (a API normaliza para minúsculas). O slug da empresa é único na plataforma; o da obra é único

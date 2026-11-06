@@ -67,13 +67,29 @@ No modo cookie, o corpo da resposta não traz `refreshToken`.
 Três barreiras independentes, todas obrigatórias no modo cookie:
 
 1. O header `X-Orken-Session` força o preflight de CORS, que só passa para origens da lista.
-2. O servidor confere `Origin` contra a mesma lista e responde `403 origin_not_allowed`, sem ler o cookie. Sem `Origin`, recusa.
+2. O servidor confere `Origin` contra a lista da sessão e responde `403 origin_not_allowed`, sem ler o cookie. Sem `Origin`, recusa.
 3. `SameSite`, onde couber.
 
 ### CORS
 
-`localhost` só em `Development`. Produção: `erp.orken.com.br`, `www.orken.com.br` e `Cors:AllowedOrigins`. A lista vira uma fonte
-só, usada pelo CORS e pela conferência de `Origin`.
+`localhost` só em `Development`. Duas listas, porque respondem a duas perguntas:
+
+| Lista | Pergunta | Produção | Quem usa |
+|---|---|---|---|
+| CORS | Quem pode chamar a API de um navegador | `erp.orken.com.br`, `www.orken.com.br`, `Cors:AllowedOrigins` e a lista da sessão | Política de CORS e `AuthOriginGuardMiddleware` |
+| Sessão (`Auth:Session:AllowedOrigins`) | Quem pode agir sobre o cookie | `erp.orken.com.br`, a não ser que a variável diga outra coisa | `SessionOriginMiddleware` e a leitura do cookie |
+
+A primeira cresce a cada site de cliente (`docs/build/client-portal-contract.md`). Poder chamar a API não dá autoridade sobre a sessão de quem visita esse site.
+
+### `www.orken.com.br` no modo cookie
+
+O mesmo bundle atende `erp` e `www`, e `www` não está na lista da sessão. Nesse host, o modo cookie não se aplica: sem `credentials`, sem o header e sem sessão.
+
+- **Páginas que pedem sessão** (`ProtectedRoute`, `AuthLayout`) vão para `https://erp.orken.com.br`, com o caminho, a consulta e o fragmento.
+- **Portais públicos** (`/agendar/...`, `/rastrear/...`, cardápio, Build) ficam em `www` e não perguntam nada sobre a sessão.
+- **Sessão deixada lá pelo bundle anterior:** é encerrada no servidor e sai do armazenamento quando o host abre, porque nada ali a encerraria depois.
+
+No modo padrão, nada disso muda.
 
 ### Access token em memória
 
@@ -183,4 +199,7 @@ precisa chegar a modo de bloqueio.
 - **`keepalive` na renovação e no logout:** um reload no meio da renovação cancelaria a resposta depois de o servidor ter trocado o token, e o cookie gasto encerraria a sessão.
 - **Cabeçalhos do CORS:** `AllowAnyHeader` virou lista explícita. Não era uma falha, porque só origens da lista recebem resposta da preflight. A lista documenta o que os clientes deste repositório mandam.
 - **`localhost` saiu também do `appsettings.json`:** era por lá que ele chegava à produção, além do código.
-- **Pessoa diferente no cookie:** `erp` e `www` dividem o cookie, e o `BroadcastChannel` não atravessa origens. Se a renovação trouxer o token de outra pessoa, a aba encerra a sessão local, em vez de seguir trabalhando como outra pessoa.
+- **Pessoa diferente no cookie:** o cookie é do navegador, não da aba, e o login de outra pessoa pode acontecer numa aba que esta não ouviu (navegador sem `BroadcastChannel`, aba dormindo). Se a renovação trouxer o token de outra pessoa, a aba encerra a sessão local, em vez de seguir trabalhando como outra pessoa.
+- **Nome exato do cookie:** `__Host-` protege um nome exato. O valor vem do cabeçalho `Cookie` cru, com comparação exata. Outra grafia (`__HOST-nexo_rt`) não vale nada, e o nome exato duas vezes também não, porque ninguém sabe dizer qual é o verdadeiro.
+- **Logout que não chegou:** a marca `nexo:pending_sign_out` (sem credencial) faz o pedido ir de novo no próximo carregamento, ou antes do próximo login na mesma página. Um 4xx encerra a marca; rede fora, 429 e 5xx a mantêm. Sessão ainda não migrada que sai sem conexão não tem como repetir: o token saiu do armazenamento, e a sessão vive até expirar.
+- **`Cache-Control: no-store`** em `api/auth/*` e `api/platform/auth/*`, nos dois modos, inclusive nas recusas e no `GET auth/verify-email`, que traz tokens.

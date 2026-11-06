@@ -30,9 +30,24 @@ const BASE_URL =
 
 // ── Session mode ──────────────────────────────────────────────────────────────
 
+const builtForSessionCookie = () => import.meta.env.VITE_SESSION_MODE === "cookie";
+
+/** The same bundle also serves the public portals of the clients here. The API gives this origin no authority over the cookie, only the app of the ERP has it. */
+const PUBLIC_PORTAL_HOST = "www.orken.com.br";
+const SESSION_APP_ORIGIN = "https://erp.orken.com.br";
+
+const isPublicPortalHost = () => builtForSessionCookie() && globalThis.location?.hostname === PUBLIC_PORTAL_HOST;
+
+/** Where a page that needs a session lives, when it is not here. Null wherever the session is at home, and always in the default build. */
+export function sessionAppUrl(): string | null {
+  if (!isPublicPortalHost()) return null;
+  const { pathname, search, hash } = globalThis.location;
+  return `${SESSION_APP_ORIGIN}${pathname}${search}${hash}`;
+}
+
 /** The refresh token of this build is in the cookie of the API. Chosen at build time: the default is the storage of the normal mode. */
 export function isCookieSessionMode(): boolean {
-  return import.meta.env.VITE_SESSION_MODE === "cookie";
+  return builtForSessionCookie() && !isPublicPortalHost();
 }
 
 /** The session of THIS tab is the one in the cookie. Never in an impersonation tab, which must not even send the cookie. */
@@ -281,6 +296,7 @@ function forgetStoredTokens(): void {
   localStorage.removeItem(TOKEN_KEYS.refresh);
   localStorage.removeItem(RENEWAL_WAIT_KEY);
   localStorage.removeItem(SIGNED_OUT_KEY);
+  localStorage.removeItem(PENDING_SIGN_OUT_KEY);
 }
 
 // ── Other tabs (cookie mode) ──────────────────────────────────────────────────
@@ -291,6 +307,12 @@ function forgetStoredTokens(): void {
  * It holds no credential. It also keeps a sign-out that the server never heard (no connection) from coming back by itself.
  */
 const SIGNED_OUT_KEY = "nexo:signed_out";
+
+/**
+ * A sign-out the server has not answered yet. The tab forgets the session at once, but only the API can remove the cookie: with no connection it stays alive in the
+ * browser, and the session with it. This goes again on the next load, or before the next sign-in. It holds no credential.
+ */
+const PENDING_SIGN_OUT_KEY = "nexo:pending_sign_out";
 
 const SESSION_CHANNEL = "orken-session";
 const SESSION_REPLACED_EVENT = "orken:session-replaced";
@@ -529,14 +551,17 @@ async function readErrorBody(res: Response): Promise<ErrorBody | null> {
 /**
  * The token was rotated and no tab here got the new pair: someone else may hold it. Before giving up, the server hears it with this same token, which ends the
  * family even inside the grace. Otherwise this client would never present the token again, and nothing would ever call it a reuse. Best effort: it does not wait.
+ * With no token at hand, in the cookie mode, the token is the cookie that just got the 409.
  */
-async function endFamilyOfSpentToken(token: string): Promise<void> {
+async function endFamilyOfSpentToken(token: string | null): Promise<void> {
+  const throughCookie = usesSessionCookie();
   try {
     await fetch(`${BASE_URL}/auth/logout`, {
       method: "POST",
       keepalive: true,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken: token }),
+      ...(throughCookie ? { credentials: "include" as const } : {}),
+      headers: { "Content-Type": "application/json", ...(throughCookie ? { [SESSION_MODE_HEADER]: "cookie" } : {}) },
+      body: token ? JSON.stringify({ refreshToken: token }) : undefined,
     });
   } catch {
     // no connection: the session ends here anyway, and the family at its expiry
@@ -558,8 +583,8 @@ function ownerOfToken(token: string): string | null {
 }
 
 /**
- * The cookie belongs to the browser, not to this tab, and both apps (erp and www) share it: a sign-in as someone else on the other one
- * replaces it, and BroadcastChannel does not cross origins. A tab showing one person must not go on working as another.
+ * The cookie belongs to the browser, not to this tab: a sign-in as someone else in a tab this one cannot hear (a browser with no BroadcastChannel,
+ * a tab asleep when the message went by) replaces it. A tab showing one person must not go on working as another.
  */
 function tokenIsOfAnotherPerson(token: string): boolean {
   try {
@@ -592,6 +617,7 @@ async function renewThroughCookie(allowWithoutSession: boolean): Promise<Refresh
 
     let conflictDeadline: number | null = null;
     for (;;) {
+      let spentByNobodyHere = false;
       const stored = localStorage.getItem(TOKEN_KEYS.refresh);
       const res = await fetch(`${BASE_URL}/auth/refresh`, {
         method: "POST",
@@ -629,6 +655,7 @@ async function renewThroughCookie(allowWithoutSession: boolean): Promise<Refresh
         if (await waitForTokenOfOtherTab(tokenBefore, conflictDeadline)) return "ok";
         if (epoch !== sessionEpoch) return staleOutcome();
         if (Date.now() < conflictDeadline) continue;
+        spentByNobodyHere = true;
       }
       // Asking whether the cookie has a session, this tab has none to end. What is in the storage now is another tab's sign-in.
       if (allowWithoutSession) {
@@ -636,6 +663,7 @@ async function renewThroughCookie(allowWithoutSession: boolean): Promise<Refresh
         return "refused";
       }
       const platform = isPlatformSession();
+      if (spentByNobodyHere) void endFamilyOfSpentToken(stored);
       clearTokens();
       if (platform) return "platform_ended";
       return err?.code === "session_revoked" ? "revoked" : "refused";
@@ -1014,7 +1042,19 @@ async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormDat
   return JSON.parse(res.text) as T;
 }
 
+/** A session the bundle of before this mode kept on the host of the public portals: this host has no session now, and nothing there would ever end that one. */
+function endSessionLeftOnPublicHost(): void {
+  if (!isPublicPortalHost()) return;
+  const token = localStorage.getItem(TOKEN_KEYS.refresh);
+  if (token) void endFamilyOfSpentToken(token);
+  localStorage.removeItem(TOKEN_KEYS.access);
+  localStorage.removeItem(TOKEN_KEYS.refresh);
+  localStorage.removeItem(TOKEN_KEYS.session);
+  localStorage.removeItem(RENEWAL_WAIT_KEY);
+}
+
 connectToOtherTabs();
+endSessionLeftOnPublicHost();
 
 // ── Public client ─────────────────────────────────────────────────────────────
 
@@ -1029,6 +1069,38 @@ export const apiClient = {
   delete:   <T>(path: string)                   => request<T>("DELETE", path),
   postForm: <T>(path: string, form: FormData)   => requestForm<T>(path, form),
 };
+
+// ── Sign-out ──────────────────────────────────────────────────────────────────
+
+/** Sends it and settles the mark. A 4xx is an answer that another attempt would get again (401: there is nothing left to end). No answer, a 429 or a 5xx is no answer at all. */
+async function sendSignOut(body: unknown): Promise<void> {
+  localStorage.setItem(PENDING_SIGN_OUT_KEY, "1");
+  try {
+    await apiClient.post("/auth/logout", body);
+    localStorage.removeItem(PENDING_SIGN_OUT_KEY);
+  } catch (error) {
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 429) localStorage.removeItem(PENDING_SIGN_OUT_KEY);
+  }
+}
+
+/** Tells the server. Nobody waits for the answer, and a failure here changes nothing for the person, who is signed out of this browser either way. */
+export async function signOutOnServer(): Promise<void> {
+  const refreshToken = getRefreshToken();
+  // In the cookie mode the token is in the cookie: only a session not yet migrated has one to send.
+  const body = isCookieSessionMode() ? (refreshToken ? { refreshToken } : undefined) : { refreshToken: refreshToken ?? "" };
+  if (usesSessionCookie()) await sendSignOut(body);
+  else await apiClient.post("/auth/logout", body).catch(() => undefined);
+}
+
+/** The sign-out the server did not hear, by the cookie, once per load. With a session here it is too late: a sign-in has happened, and the cookie now is of that session. */
+export async function finishPendingSignOut(): Promise<void> {
+  if (!usesSessionCookie() || localStorage.getItem(PENDING_SIGN_OUT_KEY) === null) return;
+  if (hasSession()) {
+    localStorage.removeItem(PENDING_SIGN_OUT_KEY);
+    return;
+  }
+  await sendSignOut(undefined);
+}
 
 // ── Error type ────────────────────────────────────────────────────────────────
 

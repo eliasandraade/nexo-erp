@@ -449,6 +449,54 @@ describe("the cookie build", () => {
       expect(urls().filter((u) => u.endsWith("/auth/refresh"))).toHaveLength(2);
     });
 
+    it("giving up, it tells the server first, with the cookie: someone else may hold the new one", async () => {
+      const { apiClient, hasSession } = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      let sessionWhenCalled: boolean | null = null;
+      fetchMock.mockImplementation(async (url: string) => {
+        if (url.endsWith("/auth/logout")) {
+          sessionWhenCalled = hasSession();
+          return empty();
+        }
+        return json({ code: "refresh_already_rotated" }, 409);
+      });
+
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 401 });
+
+      const signOut = fetchMock.mock.calls.filter(([url]) => (url as string).endsWith("/auth/logout"));
+      expect(signOut).toHaveLength(1);
+      const init = signOut[0][1] as RequestInit & { headers: Record<string, string> };
+      expect(init.method).toBe("POST");
+      expect(init.credentials).toBe("include");
+      expect(init.keepalive).toBe(true);
+      expect(init.headers[MODE_HEADER]).toBe("cookie");
+      expect(init.headers).not.toHaveProperty("Authorization");
+      expect(sessionWhenCalled).toBe(true);
+      expect(hasSession()).toBe(false);
+    }, 10_000);
+
+    it("a session not yet migrated tells it with the token it has", async () => {
+      const { apiClient } = await load();
+      localStorage.setItem(ACCESS, "acesso-antigo");
+      localStorage.setItem(REFRESH, "renovacao-antiga");
+      localStorage.setItem(SESSION, tenantSession());
+      fetchMock.mockImplementation(async (url: string) => (url.endsWith("/auth/logout") ? empty() : json({ code: "refresh_already_rotated" }, 409)));
+
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 401 });
+
+      const signOut = fetchMock.mock.calls.find(([url]) => (url as string).endsWith("/auth/logout"))!;
+      expect((signOut[1] as RequestInit).body).toBe(JSON.stringify({ refreshToken: "renovacao-antiga" }));
+    }, 10_000);
+
+    it("asking whether the cookie has a session, a 409 ends nothing", async () => {
+      const { renewFromCookieWithoutSession } = await load();
+      fetchMock.mockImplementation(async () => json({ code: "refresh_already_rotated" }, 409));
+
+      await expect(renewFromCookieWithoutSession()).resolves.toBe(false);
+
+      expect(urls().filter((u) => u.endsWith("/auth/logout"))).toHaveLength(0);
+    }, 10_000);
+
     it("still a 409 after the wait ends the session, as in the normal mode", async () => {
       const { apiClient, hasSession, onSessionEnded, ROTATION_WAIT_MS } = await load();
       localStorage.setItem(SESSION, tenantSession());
@@ -612,6 +660,166 @@ describe("the cookie build", () => {
 
       await expect(reloaded.renewFromCookieWithoutSession()).resolves.toBe(false);
       expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("a sign-out the server did not hear", () => {
+    const PENDING = "nexo:pending_sign_out";
+
+    it("is remembered until the server answers", async () => {
+      const { signOutOnServer } = await load();
+      let pendingDuringCall: string | null = null;
+      fetchMock.mockImplementationOnce(async () => {
+        pendingDuringCall = localStorage.getItem(PENDING);
+        return empty();
+      });
+
+      await signOutOnServer();
+
+      expect(pendingDuringCall).toBe("1");
+      expect(localStorage.getItem(PENDING)).toBeNull();
+    });
+
+    for (const [name, answer] of [
+      ["no connection", () => Promise.reject(new TypeError("Failed to fetch"))],
+      ["a 503", () => Promise.resolve(json({}, 503))],
+      ["a 429", () => Promise.resolve(json({ code: "rate_limited" }, 429, { "Retry-After": "30" }))],
+    ] as const) {
+      it(`${name} keeps it for the next load, which sends it again by the cookie`, async () => {
+        const first = await load();
+        fetchMock.mockImplementationOnce(answer);
+        await first.signOutOnServer();
+        expect(localStorage.getItem(PENDING)).toBe("1");
+
+        const reloaded = await load();
+        fetchMock.mockResolvedValueOnce(empty());
+        await reloaded.finishPendingSignOut();
+
+        const last = fetchMock.mock.calls.at(-1) as [string, RequestInit & { headers: Record<string, string> }];
+        expect(last[0]).toBe(`${API}/auth/logout`);
+        expect(last[1].credentials).toBe("include");
+        expect(last[1].keepalive).toBe(true);
+        expect(last[1].headers[MODE_HEADER]).toBe("cookie");
+        expect(localStorage.getItem(PENDING)).toBeNull();
+      });
+    }
+
+    it("a 401 says there is nothing left to end", async () => {
+      const { signOutOnServer } = await load();
+      fetchMock.mockResolvedValueOnce(json({}, 401));
+
+      await signOutOnServer();
+
+      expect(localStorage.getItem(PENDING)).toBeNull();
+    });
+
+    it("with nothing pending, a load asks nothing", async () => {
+      const { finishPendingSignOut } = await load();
+
+      await finishPendingSignOut();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("a new sign-in since then is left alone: the cookie now is of that session", async () => {
+      localStorage.setItem(PENDING, "1");
+      localStorage.setItem(SESSION, tenantSession());
+      const { finishPendingSignOut } = await load();
+
+      await finishPendingSignOut();
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(localStorage.getItem(PENDING)).toBeNull();
+    });
+
+    it("signing in on the same page sends it first: the new cookie would replace the only way of ending that session", async () => {
+      localStorage.setItem(PENDING, "1");
+      await load();
+      const { login } = await import("@/modules/auth/services/authService");
+      fetchMock.mockImplementation(async (url: string) => (url.endsWith("/auth/logout") ? empty() : json({ mfaRequired: true, mfaChallenge: "x" })));
+
+      await login({ login: "pessoa", password: "x" });
+
+      expect(urls()).toEqual([`${API}/auth/logout`, `${API}/auth/login`]);
+      expect(localStorage.getItem(PENDING)).toBeNull();
+    });
+
+    it("a sign-in removes it", async () => {
+      localStorage.setItem(PENDING, "1");
+      const { setTokens } = await load();
+
+      setTokens("acesso", undefined);
+
+      expect(localStorage.getItem(PENDING)).toBeNull();
+    });
+
+    it("the default build has none of this", async () => {
+      const { signOutOnServer, finishPendingSignOut } = await load("default");
+      fetchMock.mockImplementation(async () => empty());
+
+      await signOutOnServer();
+      expect(localStorage.getItem(PENDING)).toBeNull();
+      expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("credentials");
+
+      fetchMock.mockClear();
+      await finishPendingSignOut();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("on the host of the public portals", () => {
+    const onPublicHost = (pathname = "/login", search = "?motivo=x", hash = "") =>
+      vi.stubGlobal("location", { hostname: "www.orken.com.br", origin: "https://www.orken.com.br", pathname, search, hash });
+
+    it("a page that needs a session goes to the app, with its whole address", async () => {
+      onPublicHost("/produtos", "?q=1", "#a");
+      const { sessionAppUrl } = await load();
+
+      expect(sessionAppUrl()).toBe("https://erp.orken.com.br/produtos?q=1#a");
+    });
+
+    it("on any other host nothing moves", async () => {
+      const { sessionAppUrl } = await load();
+
+      expect(sessionAppUrl()).toBeNull();
+    });
+
+    it("in the default build nothing moves", async () => {
+      onPublicHost();
+      const { sessionAppUrl } = await load("default");
+
+      expect(sessionAppUrl()).toBeNull();
+    });
+
+    it("it has no session and sends neither the cookie nor the header", async () => {
+      onPublicHost();
+      const { apiClient, hasSession } = await load();
+      fetchMock.mockImplementation(async () => json({}));
+
+      expect(hasSession()).toBe(false);
+      await apiClient.post("/auth/login", {});
+
+      expect(call(0).init).not.toHaveProperty("credentials");
+      expect(call(0).headers).not.toHaveProperty(MODE_HEADER);
+      expect(urls().filter((u) => u.endsWith("/auth/refresh"))).toHaveLength(0);
+    });
+
+    it("a session left in its storage by the old bundle is ended on the server and removed", async () => {
+      onPublicHost();
+      localStorage.setItem(ACCESS, "acesso-antigo");
+      localStorage.setItem(REFRESH, "renovacao-antiga");
+      localStorage.setItem(SESSION, tenantSession());
+      fetchMock.mockImplementation(async () => empty());
+
+      await load();
+
+      expect(localStorage.getItem(ACCESS)).toBeNull();
+      expect(localStorage.getItem(REFRESH)).toBeNull();
+      expect(localStorage.getItem(SESSION)).toBeNull();
+      expect(call(0).url).toBe(`${API}/auth/logout`);
+      expect(call(0).init.body).toBe(JSON.stringify({ refreshToken: "renovacao-antiga" }));
+      expect(call(0).init).not.toHaveProperty("credentials");
+      expect(call(0).headers).not.toHaveProperty(MODE_HEADER);
     });
   });
 

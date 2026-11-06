@@ -13,7 +13,8 @@ para a produção.
 |---|---|---|---|
 | `main` (frontend) | `VITE_SESSION_MODE` | `cookie` | Entra na compilação: mudar exige novo build e nova publicação |
 | `backend` | `Auth__Session__CookieSameSite` | `None` | Só enquanto o staging estiver em `*.up.railway.app` (seção 7 do contrato). Em `*.staging.orken.com.br`, remova: o padrão é `Lax` |
-| `backend` | `Cors__AllowedOrigins__0` | a origem exata do frontend do staging, com `https://` e sem barra no fim | É a mesma lista da conferência de `Origin`. Sem isso, o login responde `403 origin_not_allowed` |
+| `backend` | `Auth__Session__AllowedOrigins__0` | a origem exata do frontend do staging, com `https://` e sem barra no fim | É a lista de quem pode agir sobre o cookie. Sem isso, o login responde `403 origin_not_allowed`. A origem entra sozinha na lista do CORS |
+| `backend` | `Cors__AllowedOrigins__0` | a mesma origem | Para o modo padrão continuar funcionando se o bundle voltar atrás (seção 5). Não dá autoridade sobre o cookie |
 
 Produção não muda nada nesta etapa.
 
@@ -29,7 +30,7 @@ Onde olhar:
 
 - **Application > Cookies:** escolha o host da **API**, não o do frontend. O cookie é daquele host e só aparece lá.
 - **Application > Local Storage / Session Storage:** o host do frontend.
-- **Network:** clique na requisição e veja **Headers** (`Cookie`, `X-Orken-Session`, `Origin`, `Set-Cookie`) e **Response**.
+- **Network:** clique na requisição e veja **Headers** (`Cookie`, `X-Orken-Session`, `Origin`, `Set-Cookie`) e **Response**. As rotas de autenticação respondem `no-store`, e o Chrome não mostra o corpo de uma resposta assim que a página não leu, como a de um 429 ("Failed to load response data"). Isso não é falha: confira o status e os cabeçalhos.
 
 ### Contas
 
@@ -103,10 +104,12 @@ Depois de qualquer login, confira uma vez:
 1. Clique em "Sair da conta". Em **Network**, `auth/logout` responde 204, com `Set-Cookie: __Host-nexo_rt=; expires=...` no passado.
 2. Em **Application > Cookies**, o cookie sumiu. O Local Storage fica sem `nexo:session`.
 3. O botão Voltar e o endereço de `/dashboard` levam ao login. Nenhum `auth/refresh` é enviado.
-4. **Logout logo depois de recarregar:** em **Network**, bloqueie `auth/refresh` (clique direito > **Block request URL**) e recarregue. Desbloqueie e clique
+4. Em **Network**, as respostas de `auth/login`, `auth/refresh`, `auth/logout`, `auth/me` e `auth/verify-email` têm `Cache-Control: no-store`, inclusive um 401 e um 403.
+5. **Logout logo depois de recarregar:** em **Network**, bloqueie `auth/refresh` (clique direito > **Block request URL**) e recarregue. Desbloqueie e clique
    em "Sair da conta" sem recarregar. `auth/logout` vai sem `Authorization`, responde 204 e o cookie some.
-5. **Sem conexão:** coloque em **Offline** e clique em "Sair da conta". A tela vai para o login. Volte para **No throttling** e recarregue: continua no login,
-   sem voltar a entrar sozinho. O cookie ainda está lá até o próximo login, porque o servidor não soube da saída.
+6. **Sem conexão:** coloque em **Offline** e clique em "Sair da conta". A tela vai para o login, e o Local Storage fica com `nexo:pending_sign_out`. O cookie ainda está lá, porque o servidor não soube da saída. Volte
+   para **No throttling** e recarregue: `auth/logout` vai sozinho e responde 204, o cookie some e a marca sai. Continua no login, sem nenhum `auth/refresh`. Recarregue de novo: nenhum `auth/logout`.
+7. **Sem conexão, e login na mesma página:** repita o passo anterior até o Offline, volte a rede e, sem recarregar, entre de novo. Em **Network**, `auth/logout` (204) vem antes de `auth/login`, e a sessão anterior não renova mais.
 
 ### Impersonação
 
@@ -140,7 +143,7 @@ Depois de qualquer login, confira uma vez:
 ### Falhas que não encerram a sessão
 
 1. **Rede fora:** recarregue em **Offline**. A tela continua, com o aviso "Sua sessão continua ativa". Volte a rede e navegue: renova sem novo login.
-2. **429:** no staging, repita `auth/refresh` sem esperar, mais de 60 vezes em 15 minutos, recarregando a mesma sessão. O aviso aparece, com `Retry-After` na resposta, e a sessão
+2. **429:** no staging, repita `auth/refresh` sem esperar, mais de 300 vezes em 15 minutos, recarregando a mesma sessão (um laço no **Console** da aba resolve). O aviso aparece, com `Retry-After` na resposta, e a sessão
    continua. Depois do tempo indicado, volta sozinha.
 3. **401 encerra sem laço:** apague o cookie em **Application > Cookies** e recarregue. Um `auth/refresh` com 401, depois o login. Nenhum pedido repetido.
 
@@ -171,7 +174,28 @@ curl -i -X POST "$API/api/auth/refresh" -H "Origin: $APP" -H "Content-Type: appl
 curl -i "$API/api/auth/me" -H "Cookie: nexo_access=$ACCESS"
 ```
 
+```bash
+# outra grafia do nome: 401, e o cookie não vale nada
+curl -i -X POST "$API/api/auth/refresh" -H "Origin: $APP" -H "X-Orken-Session: cookie" -H "Cookie: __HOST-nexo_rt=$RT"
+
+# o nome exato duas vezes: 401, e nenhum dos dois é gasto
+curl -i -X POST "$API/api/auth/refresh" -H "Origin: $APP" -H "X-Orken-Session: cookie" -H "Cookie: __Host-nexo_rt=$RT; __Host-nexo_rt=$RT"
+
+# um site só da lista do CORS, com o header: 403 origin_not_allowed
+curl -i -X POST "$API/api/auth/refresh" -H "Origin: https://www.orken.com.br" -H "X-Orken-Session: cookie" -H "Cookie: __Host-nexo_rt=$RT"
+```
+
 Depois de cada um, a aba continua funcionando: recarregue, e `auth/refresh` responde 200. Se responder 409 ou 401, a tentativa tocou na sessão, e o fluxo reprovou.
+
+**Página de outro site:** em **Console**, numa aba de qualquer site, com `$API` no lugar do host do staging, mande pedidos simples, sem preflight:
+
+```js
+for (let i = 0; i < 30; i++) fetch(`${API}/api/auth/login`, { method: "POST", mode: "no-cors", credentials: "include", headers: { "Content-Type": "text/plain" }, body: "x" });
+```
+
+Em **Network**, cada um responde 403 (a linha aparece como `opaque`, sem detalhes). Sem esperar a janela do limite, entre na aplicação pelo mesmo navegador: o login funciona, porque nenhum pedido daquele site gastou o limite de login do endereço.
+
+**Quem desiste depois de um 409:** é difícil de produzir à mão. A prova está em `auth.e2e.spec.ts` ("A token someone else spent ends the session for them too"). Para conferir na auditoria: `logout_with_spent_token` aparece depois de um 409 sem ninguém para receber o par novo.
 
 ### Isolamento
 
@@ -179,6 +203,14 @@ Só faz sentido com os domínios `*.staging.orken.com.br`. Com eles:
 
 1. De outro subdomínio do mesmo site, tente gravar o cookie: em **Console** num host irmão, `document.cookie = "__Host-nexo_rt=x; Domain=orken.com.br; Path=/; Secure"`. O navegador recusa, e o cookie do host da API continua com o mesmo valor.
 2. De um host irmão, `fetch` da renovação com `credentials: "include"` e o header: o navegador barra na preflight, e nada muda.
+
+### Host público
+
+Só faz sentido onde `www.orken.com.br` servir um bundle com `VITE_SESSION_MODE=cookie`, ou seja, não dá para conferir em `*.up.railway.app`: fica para a primeira publicação com o modo ligado. A suíte prova o mesmo caminho com o host interceptado ("The host of the public portals"). Lá:
+
+1. `https://www.orken.com.br/login` vai para `https://erp.orken.com.br/login`, com a consulta. O mesmo com `/dashboard`, `/verify-email?token=...` e `/redefinir-senha?token=...`.
+2. `/agendar/<empresa>`, `/rastrear/<token>` e um cardápio ficam em `www`. Em **Network**, nenhum `auth/refresh` nem `auth/me`, e nenhum pedido com `X-Orken-Session`.
+3. **Sessão antiga:** com o bundle atual, entre por `www` e não saia. Depois da publicação, abra `www` de novo: `auth/logout` vai com o token no corpo, sem cookie, responde 204 e o Local Storage de `www` fica sem os tokens.
 
 ### Limpar o armazenamento
 
@@ -207,6 +239,7 @@ Esse é o comportamento definido: enquanto o cookie vale, limpar o armazenamento
 | Migração | | | |
 | CSRF | | | |
 | Isolamento | | | |
+| Host público | | | |
 | Limpar o armazenamento | | | |
 
 ## 5. Voltar atrás

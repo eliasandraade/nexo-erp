@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { canAccessPath, READ_ONLY_SUBSCRIPTION_URL } from "@/modules/auth/hooks/useRoleAccess";
 import { isImpersonating, onSubscriptionRequired } from "@/services/api-client";
+import { useLeaveForSessionApp } from "./useLeaveForSessionApp";
 
 /**
  * Wraps all authenticated routes.
@@ -31,6 +32,7 @@ export function ProtectedRoute() {
   const { session, isReady, sessionRecovery, requestSessionRecovery } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const leaving = useLeaveForSessionApp();
 
   // A write refused for lack of a subscription (402): whoever is consulting stays on the screen, and the session stays. The
   // subscription page is for Diretoria and Gerente: for the other roles a link would only send them back home.
@@ -47,6 +49,8 @@ export function ProtectedRoute() {
   useEffect(() => {
     if (!session && sessionRecovery === "pending") requestSessionRecovery();
   }, [session, sessionRecovery, requestSessionRecovery]);
+
+  if (leaving) return null;
 
   if (!session) {
     if (sessionRecovery === "pending") return null;

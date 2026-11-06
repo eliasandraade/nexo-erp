@@ -999,8 +999,14 @@ test.describe("Failures that say nothing about the session", () => {
     const answer = await limited;
 
     expect(answer.status()).toBe(429);
-    expect((await answer.json()).code).toBe("rate_limited");
     expect(Number(await answer.headerValue("retry-after"))).toBeGreaterThan(0);
+    // The app does not read the body of a 429, and the browser tools never hand over an unread answer with no-store: the same limiter, asked directly.
+    const refused = await fetch(`${API}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Forwarded-For": address },
+      body: JSON.stringify({ refreshToken: syntheticValue() }),
+    });
+    expect((await refused.json()).code).toBe("rate_limited");
 
     // the session stays, and the person is told why the screens are not loading
     await expect(signOutButton(page)).toBeVisible();
@@ -1888,6 +1894,93 @@ test.describe("Migration of a session still in localStorage", () => {
   });
 });
 
+/**
+ * The host of the public portals. In the cookie mode only the app of the ERP has authority over the cookie, so a page that needs a session goes there, and a
+ * portal stays. The names are the ones of production; the browser of the suite gets the bundle under test for them, and the app on the other side is a stand-in.
+ */
+test.describe("The host of the public portals", () => {
+  const WWW = `http://www.orken.com.br:${COOKIE_MODE ? 5198 : 5197}`;
+  const ERP = "https://erp.orken.com.br";
+
+  async function serveBundleAsWww(context: BrowserContext): Promise<void> {
+    await context.route(`${WWW}/**`, async (route) => {
+      const response = await route.fetch({ url: route.request().url().replace(WWW, APP_ORIGIN) });
+      await route.fulfill({ response });
+    });
+    await context.route(`${ERP}/**`, (route) => route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>erp</title>" }));
+  }
+
+  for (const path of ["/login?motivo=sessao-encerrada", "/dashboard", "/verify-email?token=abc", "/redefinir-senha?token=abc"]) {
+    test(`${path} ${COOKIE_MODE ? "goes to the app of the ERP" : "stays where it is"}`, async ({ context, page, apiCalls }) => {
+      await serveBundleAsWww(context);
+
+      await page.goto(`${WWW}${path}`);
+
+      if (COOKIE_MODE) {
+        await expect(page).toHaveURL(`${ERP}${path}`);
+      } else {
+        await expect(page).toHaveURL(new RegExp(`^${WWW.replaceAll(".", "\\.")}`));
+        await page.waitForLoadState("networkidle");
+      }
+      expect(apiCalls.count("/auth/refresh"), "no renewal from this host").toBe(0);
+    });
+  }
+
+  test("A public page stays on it and asks nothing about the session", async ({ context, page, apiCalls }) => {
+    await serveBundleAsWww(context);
+
+    await page.goto(`${WWW}/agendar/empresa-que-nao-existe`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page).toHaveURL(`${WWW}/agendar/empresa-que-nao-existe`);
+    expect(apiCalls.count("/auth/refresh")).toBe(0);
+    expect(apiCalls.count("/auth/me")).toBe(0);
+    expect((await context.cookies(HOST_ORIGIN)).filter((c) => c.name === SESSION_COOKIE)).toEqual([]);
+  });
+});
+
+test.describe("A page of another site", () => {
+  const SIBLING = "https://evil.orken.test:5199";
+  test.use({ ignoreHTTPSErrors: true });
+
+  /** What any page can do with no preflight, in batches. The browser adds the Origin. It cannot read the answers and does not need to. */
+  const flood = (page: Page, url: string, total: number) => page.evaluate(async ({ url, total }) => {
+    for (let sent = 0; sent < total; sent += 20) {
+      await Promise.all(Array.from({ length: Math.min(20, total - sent) }, () =>
+        fetch(url, { method: "POST", mode: "no-cors", credentials: "include", headers: { "Content-Type": "text/plain" }, body: "x" }).catch(() => undefined)));
+    }
+  }, { url, total });
+
+  test("It spends nothing of the sign-in limit of whoever opened it", async ({ context, page, company }) => {
+    const user = await company.createUser("gerente");
+    const attacker = await context.newPage();
+    await attacker.goto(SIBLING);
+
+    await flood(attacker, `${API}/auth/login`, 30);   // the limit is 5
+
+    await page.goto("/login");
+    await submitLogin(page, user.login, user.password);
+    await expect(page).toHaveURL(`${APP_ORIGIN}/workspaces`);
+  });
+
+  test("It spends nothing of the renewal limit of whoever opened it", async ({ context, page, company, device, apiCalls }) => {
+    test.slow(); // past the ceiling of the renewal, a thousand real requests through the whole API
+    const user = await company.createUser("gerente");
+    await signInToDashboard(page, user);
+    const attacker = await context.newPage();
+    await attacker.goto(SIBLING);
+
+    await flood(attacker, `${API}/auth/refresh`, 950);   // the ceiling is 900
+
+    await expireAccessToken(page, await device());
+    apiCalls.reset();
+    await page.getByRole("link", { name: "Produtos" }).click();
+    await expect(page.getByRole("heading", { name: "Produtos" })).toBeVisible();
+    await expect.poll(() => apiCalls.count("/auth/refresh", 200)).toBe(1);
+    expect(apiCalls.count("/auth/refresh", 429)).toBe(0);
+  });
+});
+
 test.describe("Clearing the storage", () => {
   const clearStorage = (page: Page) => page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
 
@@ -1975,8 +2068,10 @@ test.describe("Cookie mode, what only exists there", () => {
     const reading: Promise<void>[] = [];
     context.on("request", (r) => {
       if (!r.url().startsWith(`${API}/`) || r.method() === "OPTIONS") return;
-      reading.push(r.allHeaders().then((headers) => {
-        seen.push({ path: new URL(r.url()).pathname.replace(/^\/api/, ""), cookie: !!headers.cookie, mode: !!headers[MODE_HEADER] });
+      // A call that a navigation cancels before it leaves has no headers to read, and waiting for them never ends.
+      const left = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+      reading.push(Promise.race([r.allHeaders(), left]).then((headers) => {
+        if (headers) seen.push({ path: new URL(r.url()).pathname.replace(/^\/api/, ""), cookie: !!headers.cookie, mode: !!headers[MODE_HEADER] });
       }));
     });
 
@@ -2022,9 +2117,29 @@ test.describe("Cookie mode, what only exists there", () => {
     expect(renewal.status(), "the session ended on the server").toBe(401);
   });
 
-  test("Signing out with no connection stays signed out, and the next sign-in works", async ({ context, page, company }) => {
+  test("A sign-out the server did not hear goes first when the person signs in again on the same page", async ({ context, page, company, device }) => {
     const user = await company.createUser("gerente");
     await signInToDashboard(page, user);
+    const cookie = (await sessionCookie(context))!.value;
+    await page.route(`${API}/auth/logout`, (route) => route.abort("connectionrefused"));
+    await signOutButton(page).click();
+    await expect(page).toHaveURL(`${APP_ORIGIN}/login`);
+    await page.unroute(`${API}/auth/logout`);
+
+    const answered = page.waitForResponse((r) => r.url() === `${API}/auth/logout` && r.request().method() === "POST");
+    await submitLogin(page, user.login, user.password);
+
+    expect((await answered).status()).toBe(204);
+    await expect(page).toHaveURL(`${APP_ORIGIN}/workspaces`);
+    expect((await sessionCookie(context))?.value, "the cookie of the new session").not.toBe(cookie);
+    const renewal = await (await device()).post(`${API}/auth/refresh`, { data: { refreshToken: cookie } });
+    expect(renewal.status(), "the old session ended on the server").toBe(401);
+  });
+
+  test("A sign-out the server did not hear goes again on the next load, and the session ends for real", async ({ context, page, company, device, apiCalls }) => {
+    const user = await company.createUser("gerente");
+    await signInToDashboard(page, user);
+    const cookie = (await sessionCookie(context))!.value;
     await page.route(`${API}/auth/logout`, (route) => route.abort("connectionrefused"));
 
     await signOutButton(page).click();
@@ -2032,12 +2147,23 @@ test.describe("Cookie mode, what only exists there", () => {
     await expect(page).toHaveURL(`${APP_ORIGIN}/login`);
     expect(await sessionCookie(context), "the server did not hear it: the cookie is still there").toBeDefined();
     await page.unroute(`${API}/auth/logout`);
+    apiCalls.reset();
 
-    // and it does not bring the session back
+    // the connection is back: this load finishes it, and it does not bring the session back
+    const answered = page.waitForResponse((r) => r.url() === `${API}/auth/logout` && r.request().method() === "POST");
     await page.reload();
+    expect((await answered).status()).toBe(204);
     await expect(loginField(page)).toBeEditable();
+    await expect.poll(() => sessionCookie(context), "the answer removes it").toBeUndefined();
+    const renewal = await (await device()).post(`${API}/auth/refresh`, { data: { refreshToken: cookie } });
+    expect(renewal.status(), "the session ended on the server").toBe(401);
+    expect(apiCalls.count("/auth/refresh")).toBe(0);
+
+    // once: the next load asks nothing
+    apiCalls.reset();
     await page.goto("/dashboard");
     await expect(page).toHaveURL(`${APP_ORIGIN}/login`);
+    expect(apiCalls.count("/auth/logout")).toBe(0);
 
     await submitLogin(page, user.login, user.password);
     await expect(page).toHaveURL(`${APP_ORIGIN}/workspaces`);

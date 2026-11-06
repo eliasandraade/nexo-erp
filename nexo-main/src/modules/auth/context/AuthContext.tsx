@@ -12,7 +12,7 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import * as authService from "../services/authService";
-import { apiClient, clearTokens, endImpersonationSession, isCookieSessionMode, isImpersonating, onRenewalUnavailable, onSessionEnded, onSessionReplaced, onSignedOutElsewhere, TOKEN_KEYS, type SessionEndReason } from "@/services/api-client";
+import { apiClient, clearTokens, endImpersonationSession, finishPendingSignOut, isCookieSessionMode, isImpersonating, onRenewalUnavailable, onSessionEnded, onSessionReplaced, onSignedOutElsewhere, TOKEN_KEYS, type SessionEndReason } from "@/services/api-client";
 import type { AuthSession, LoginInput } from "../types";
 
 /** Where a session the client dropped on its own takes the person: each page says why (`motivo`). */
@@ -73,6 +73,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   // The API client already took the person to a page that says why: the background validation must not replace it.
   const sessionEndAnnounced = useRef(false);
+
+  // A sign-out the server did not hear goes again now, with the connection back.
+  useEffect(() => { void finishPendingSignOut(); }, []);
 
   // Background validation: confirm the stored session is still valid
   useEffect(() => {

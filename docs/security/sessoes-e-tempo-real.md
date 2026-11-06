@@ -87,15 +87,22 @@ corpo e nenhum cookie é gravado nem lido.
 - **Onde cada coisa fica:** o refresh, no cookie `__Host-nexo_rt` do host da API. O access, numa variável de cada aba. `nexo:session` continua no `localStorage`, sem token.
 - **Quem manda o cookie:** só as chamadas que emitem ou encerram a sessão (`SESSION_ENDPOINTS` em `api-client.ts`). O resto vai só com `Bearer`, inclusive o hub, os envios e os downloads. Um WebSocket é a exceção que o
   JavaScript não controla: o navegador manda o cookie no pedido de abertura. O servidor não o lê ali.
-- **Barreiras contra CSRF:** o header força a preflight, `SessionOriginMiddleware` recusa com `403 origin_not_allowed` qualquer `Origin` fora da lista (ou nenhuma) antes da autenticação e dos limitadores,
-  e o `SameSite`, onde couber. `AllowedOrigins` é uma lista só, usada também pelo CORS. `localhost` entra apenas em `Development`.
-- **Recarregar:** a aba perde o access, então cada carregamento renova uma vez antes de chamar a API. Isso gasta o orçamento da sessão: são 60 carregamentos ou abas novas por 15 min.
+- **Barreiras contra CSRF:** o header força a preflight, `SessionOriginMiddleware` recusa com `403 origin_not_allowed` qualquer `Origin` fora da lista da sessão (ou nenhuma) antes da autenticação e dos limitadores,
+  e o `SameSite`, onde couber. `localhost` entra apenas em `Development`.
+- **Duas listas em `AllowedOrigins`:** o CORS e a guarda das rotas de autenticação usam a lista de quem pode chamar a API, que cresce a cada site de cliente. O cookie só aceita `Auth:Session:AllowedOrigins`, que, sem configuração, é apenas `https://erp.orken.com.br`. Quem está nessa lista
+  entra sozinho na outra. Um ambiente com outro host (staging) precisa dessa variável.
+- **`www.orken.com.br`:** não tem autoridade sobre o cookie. No modo cookie, as páginas que pedem sessão vão para `erp`, e os portais públicos ficam. Uma sessão deixada lá pelo bundle anterior é encerrada quando o host abre.
+- **Nome do cookie:** lido do cabeçalho cru, por nome exato. Outra grafia não vale, e o nome exato duas vezes também não.
+- **Recarregar:** a aba perde o access, então cada carregamento renova uma vez antes de chamar a API. Isso gasta o orçamento da sessão: são 300 carregamentos ou abas novas por 15 min.
 - **Várias abas:** `navigator.locks` põe as renovações em fila, e `BroadcastChannel("orken-session")` entrega o token novo, o login, a troca de loja e o logout. Quem estava na fila e ouviu o token não renova.
 - **Reload no meio de uma renovação:** a renovação vai com `keepalive`, para a resposta com o cookie novo chegar mesmo depois de a página sair. Quem vier nesse meio-tempo recebe 409 e tenta de novo.
 - **Logout:** só precisa do cookie, porque a aba pode ter acabado de carregar. Vai sem `Authorization`, porque um access recusado o barraria antes de encerrar a sessão.
+- **Logout que não chegou:** a tela sai na hora, mas só a API remove o cookie. `nexo:pending_sign_out`, sem credencial, faz o pedido ir de novo no próximo carregamento, ou antes do próximo login na mesma página. Um 4xx encerra a marca; rede fora, 429 e 5xx a mantêm.
+- **Quem desiste depois de um 409, no modo cookie:** avisa o servidor pelo próprio cookie, como no modo padrão.
+- **Respostas guardadas:** as rotas de autenticação respondem `Cache-Control: no-store`, nos dois modos.
 - **Sessão encerrada pelo servidor:** quem recarrega não tem access para ouvir `session_revoked`. No modo cookie, a resposta 401 da renovação traz esse código quando o carimbo mudou, para a tela dizer o mesmo.
 - **Armazenamento limpo com o cookie vivo:** a aba aberta continua. No próximo carregamento de uma página que pede sessão ou do login, uma renovação recupera a sessão. Quem saiu não volta: `nexo:signed_out`, sem credencial, impede essa
-  pergunta depois de um logout, inclusive de um que o servidor não ouviu por falta de conexão. Páginas públicas nunca perguntam.
+  pergunta depois de um logout, inclusive enquanto o servidor não o ouviu. Páginas públicas nunca perguntam.
 - **Empresa suspensa:** quem recarrega perde o access e o servidor recusa a renovação, então vai para o login, sem esperar o token expirar como no modo antigo.
 - **Cookies antigos:** `nexo_access` e `nexo_refresh` não são mais gravados nem lidos. O access nunca vem de cookie, em nenhum modo. Logout e "sair de todos os dispositivos" ainda removem o que um navegador tenha guardado.
 

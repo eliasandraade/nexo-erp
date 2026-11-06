@@ -6,11 +6,12 @@ import {
   clearTokens,
   getImpersonation,
   hasSession,
-  isCookieSessionMode,
+  finishPendingSignOut,
   leaveImpersonation,
   getRefreshToken,
   getStoredSession,
   renewFromCookieWithoutSession,
+  signOutOnServer,
   setStoredSession,
   setTokens,
   withSessionLock,
@@ -77,6 +78,8 @@ export function getCurrentSession(): AuthSession | null {
 export async function login(input: LoginInput): Promise<LoginResponse> {
   // signing in from a tab whose platform access ended: it becomes a normal tab again
   if (getImpersonation()?.ended) leaveImpersonation();
+  // The new cookie will replace the old one, and after that nothing here could end the old session.
+  await finishPendingSignOut();
   try {
     const data = await apiClient.post<BackendLoginResponse | { mfaRequired: true; mfaChallenge: string }>("/auth/login", {
       login:    input.login,
@@ -101,10 +104,7 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
 
 export async function logout(): Promise<void> {
   try {
-    const refreshToken = getRefreshToken();
-    // In the cookie mode the token is in the cookie: only a session not yet migrated has one to send.
-    const body = isCookieSessionMode() ? (refreshToken ? { refreshToken } : undefined) : { refreshToken: refreshToken ?? "" };
-    apiClient.post("/auth/logout", body).catch(() => undefined);
+    void signOutOnServer();
   } finally {
     clearTokens();
   }
