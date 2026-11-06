@@ -743,7 +743,9 @@ export async function getFreshAccessToken(): Promise<string | null> {
   const outcome = await attemptRefresh();
   if (outcome === "ok") return getAccessToken();
   if (getAccessToken()) return token;
-  if (outcome !== "unavailable") announceSessionEnd(endReasonOf(outcome));
+  // In the cookie mode a tab may have a session and no token at all: without a verdict that session is not over.
+  if (outcome === "unavailable" && hasSession()) return null;
+  announceSessionEnd(endReasonOf(outcome));
   return null;
 }
 

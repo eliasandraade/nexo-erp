@@ -305,6 +305,19 @@ describe("the cookie build", () => {
       await expect(getFreshAccessToken()).resolves.toBe(access);
     });
 
+    it("without a verdict the hub gets no token, and the session stays", async () => {
+      const { getFreshAccessToken, hasSession, onSessionEnded } = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      const reasons: string[] = [];
+      onSessionEnded((r) => reasons.push(r));
+      fetchMock.mockResolvedValueOnce(json({ code: "session_renewal_unavailable" }, 503, { "Retry-After": "15" }));
+
+      await expect(getFreshAccessToken()).resolves.toBeNull();
+
+      expect(hasSession()).toBe(true);
+      expect(reasons).toEqual([]);
+    });
+
     it("the token of the hub is null with no session, and nothing is asked", async () => {
       const { getFreshAccessToken } = await load();
 
