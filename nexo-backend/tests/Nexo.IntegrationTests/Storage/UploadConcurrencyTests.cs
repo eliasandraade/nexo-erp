@@ -33,6 +33,22 @@ public sealed class UploadConcurrencyTests(UploadKestrelFactory factory)
 
     private static MultipartUpload Small() => new(64 * 1024, fields: [("context", "product-image")]);
 
+    /// <summary>
+    /// A slot comes back when the response is disposed, after the client already has it: the release must not leave the temp file
+    /// behind, so it cannot come first. A client that asks in that instant hears 429 with a short Retry-After, which is the contract.
+    /// </summary>
+    private static async Task<HttpResponseMessage> PostOnceTheSlotIsBackAsync(HttpClient client)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (true)
+        {
+            var response = await client.PostAsync(Url, Small());
+            if (response.StatusCode != HttpStatusCode.TooManyRequests || DateTime.UtcNow > deadline) return response;
+            response.Dispose();
+            await Task.Delay(50);
+        }
+    }
+
     private static async Task AssertBusyAsync(HttpResponseMessage response)
     {
         var body = await response.Content.ReadAsStringAsync();
@@ -159,7 +175,7 @@ public sealed class UploadConcurrencyTests(UploadKestrelFactory factory)
 
         foreach (var upload in uploads) upload.Body.Resume();
         await Task.WhenAll(uploads.Select(u => u.Response));
-        using var served = await cClient.PostAsync(Url, Small());
+        using var served = await PostOnceTheSlotIsBackAsync(cClient);
         served.StatusCode.Should().Be(HttpStatusCode.OK, "the bound is on what is in flight, not on what happened before");
     }
 
