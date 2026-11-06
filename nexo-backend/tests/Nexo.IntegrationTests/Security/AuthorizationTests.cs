@@ -247,6 +247,53 @@ public class AuthorizationTests
         await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
     }
 
+    /// <summary>
+    /// O cliente precisa distinguir esta recusa de qualquer outro 403. O texto de sempre continua na resposta: quem já lia
+    /// <c>error</c> não muda nada. O código também vale na negociação do hub, que passa pelo mesmo middleware.
+    /// </summary>
+    [Theory]
+    [InlineData(TenantStatus.Suspended)]
+    [InlineData(TenantStatus.Cancelled)]
+    public async Task A_company_out_of_activity_answers_a_stable_code_and_keeps_the_old_text(TenantStatus status)
+    {
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var (client, login) = await AuthClientFactory.LoginWithBodyAsync(_factory, director.Login, director.Password);
+        var platform = await PlatformClientAsync();
+        await platform.PutAsJsonAsync($"/api/platform/tenants/{director.TenantId}/status", new { status = status.ToString() })
+            .ShouldHaveStatusAsync(HttpStatusCode.NoContent, _factory);
+
+        using var read = await client.GetAsync(CompanyRoute);
+        using var write = await client.PostAsJsonAsync(CompanyRoute, new { name = "Nao grava" });
+        using var negotiate = await client.PostAsync("/hubs/restaurant/negotiate?negotiateVersion=1", null);
+
+        foreach (var response in new[] { read, write, negotiate })
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.Forbidden, await _factory.ServerLog.DescribeAsync(response));
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            body.GetProperty("code").GetString().Should().Be("tenant_suspended");
+            body.GetProperty("error").GetString().Should().Be("Tenant account is suspended.");
+        }
+
+        // a sessão não acabou por isso: o token segue identificado, e a empresa reativada volta a responder com ele
+        await platform.PutAsJsonAsync($"/api/platform/tenants/{director.TenantId}/status", new { status = nameof(TenantStatus.Active) })
+            .ShouldHaveStatusAsync(HttpStatusCode.NoContent, _factory);
+        await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        login.AccessToken.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task A_refusal_for_any_other_reason_does_not_carry_the_code_of_a_suspended_company()
+    {
+        var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);
+        var seller = await SyntheticTenant.AddUserAsync(_factory, director, UserRole.Vendedor);
+        var client = await AuthClientFactory.LoginAsync(_factory, seller.Login, seller.Password);
+
+        using var refused = await client.GetAsync(UsersRoute);
+
+        refused.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await refused.Content.ReadAsStringAsync()).Should().NotContain("tenant_suspended");
+    }
+
     // ────────────────────────────────────────────────────────────────────────────
     // ROTAS DA PLATAFORMA (mais rotas em PlatformAuthorizationTests e PlatformSecurityTests)
     // ────────────────────────────────────────────────────────────────────────────

@@ -39,6 +39,8 @@ public static class AuditActions
     public const string UserCreated            = "user_created";
     public const string UserUpdated            = "user_updated";
     public const string UserBlocked            = "user_blocked";
+    /// <summary>A change refused for leaving the company without an active Diretoria. See ILastDirectorRefusalAudit.</summary>
+    public const string UserLastDirectorRefused = "user_last_director_refused";
 
     // Operations
     public const string StockAdjustment        = "stock_adjustment";

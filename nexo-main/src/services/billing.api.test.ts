@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, getAccessToken, getRefreshToken, setTokens } from "./api-client";
-import { createCheckout, getCheckoutAvailability } from "./billing.api";
+import { createCheckout, createPortal, getCheckoutAvailability, listSubscriptions } from "./billing.api";
 
 const API = "http://localhost:5000/api";
 
@@ -42,5 +42,39 @@ describe("billing.api", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getAccessToken()).toBe("tenant-access");
     expect(getRefreshToken()).toBe("tenant-refresh");
+  });
+});
+
+describe("billing.api, the routes the subscription page depends on", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    setTokens("tenant-access", "tenant-refresh");
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("reads the subscriptions of the company", async () => {
+    fetchMock.mockResolvedValueOnce(json([{ moduleKey: "build", status: "Active" }]));
+
+    await expect(listSubscriptions()).resolves.toEqual([{ moduleKey: "build", status: "Active" }]);
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API}/billing/subscriptions`);
+    expect(init.method).toBe("GET");
+  });
+
+  it("opens the portal with a POST and hands back its address", async () => {
+    fetchMock.mockResolvedValueOnce(json({ portalUrl: "https://portal.example/s" }));
+
+    await expect(createPortal()).resolves.toEqual({ portalUrl: "https://portal.example/s" });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API}/billing/portal`);
+    expect(init.method).toBe("POST");
   });
 });

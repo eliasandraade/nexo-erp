@@ -52,7 +52,7 @@ public class PublicPortalExpiredModuleTests
     private static readonly Dictionary<string, string> PublicWrites = new()
     {
         ["POST api/public/service/{slug}/appointments"] = "confere o módulo",
-        ["POST api/public/service/{slug}/appointments/{token}/cancel"] = "confere o módulo",
+        ["POST api/public/service/{slug}/appointments/{token}/cancel"] = "o cliente desmarca o próprio horário também em somente leitura: confere a empresa e a loja ativas",
         ["POST api/public/orders"] = "confere o módulo",
         ["POST api/public/coupons/validate"] = "só leitura: confere um cupom e não grava nada",
         ["POST api/public/build/{companySlug}/{projectSlug}/session"] = "abre a sessão que dá acesso à leitura de um portal com senha",
@@ -130,24 +130,225 @@ public class PublicPortalExpiredModuleTests
 
         var view = await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{portal.Slug}/appointments/{token}");
         view.GetProperty("status").GetString().Should().Be("Scheduled");
-        view.GetProperty("canCancel").GetBoolean().Should().BeFalse();
-        view.GetProperty("onlineChangesPaused").GetBoolean().Should().BeTrue();
+        view.GetProperty("canCancel").GetBoolean().Should().BeTrue("o cliente desmarca o próprio horário também em somente leitura");
+        view.GetProperty("onlineChangesPaused").GetBoolean().Should().BeFalse("pausado quer dizer que nenhuma alteração passa, e a do cliente passa");
     }
 
+    // ── O cliente desmarca o próprio horário também em somente leitura ─────────
+
+    [Theory]
+    [MemberData(nameof(EveryExpiredState))]
+    public async Task An_expired_service_module_lets_the_customer_cancel_their_own_booking(string state)
+    {
+        var portal = await ServicePortalAsync();
+        var slot = await SlotAsync(portal);
+        var token = await BookedTokenAsync(portal, slot);
+        await ExpireAsync(portal.Tenant, "service", state);
+
+        var cancelled = await Ok(Anonymous().PostAsync($"/api/public/service/{portal.Slug}/appointments/{token}/cancel", null));
+
+        cancelled.GetProperty("status").GetString().Should().Be("Cancelled");
+        cancelled.GetProperty("canCancel").GetBoolean().Should().BeFalse();
+        cancelled.GetProperty("onlineChangesPaused").GetBoolean().Should().BeFalse();
+        var row = await AppointmentAsync(portal);
+        row.Status.Should().Be(SvcAppointmentStatus.Cancelled);
+        row.CancellationReason.Should().Be(SvcAppointment.CustomerCancellationReason);
+
+        // e o resto continua fechado: o horário ficou livre, mas ninguém agenda nele pelo portal
+        await ExpectReadOnlyAsync(await BookAsync(portal, slot, NewPhone()));
+    }
+
+    /// <summary>O único caminho aberto é este: a escrita é só a linha do agendamento, sem nada pago ou operacional junto.</summary>
     [Fact]
-    public async Task An_expired_service_module_refuses_a_cancellation_and_the_booking_stays()
+    public async Task A_cancellation_in_read_only_writes_the_appointment_and_nothing_else()
     {
         var portal = await ServicePortalAsync();
         var token = await BookedTokenAsync(portal);
         await ExpireAsync(portal.Tenant, "service", "canceled");
+        var writes = new System.Collections.Concurrent.ConcurrentBag<string>();
+        var count = _factory.Gate.Count(command =>
+        {
+            var isWrite = System.Text.RegularExpressions.Regex.IsMatch(command.CommandText, @"\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromSeconds(1))
+                          && !command.CommandText.Contains("FOR UPDATE", StringComparison.Ordinal);
+            if (isWrite) writes.Add(command.CommandText);
+            return isWrite;
+        });
 
-        using var response = await Anonymous().PostAsync($"/api/public/service/{portal.Slug}/appointments/{token}/cancel", null);
+        await Ok(Anonymous().PostAsync($"/api/public/service/{portal.Slug}/appointments/{token}/cancel", null));
 
-        await ExpectReadOnlyAsync(response);
+        count().Should().Be(1, string.Join(Environment.NewLine, writes));
+        writes.Single().Should().Contain("svc_appointments");
+
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-        (await db.SvcAppointments.IgnoreQueryFilters().SingleAsync(a => a.TenantId == portal.Tenant.TenantId))
-            .Status.Should().Be(SvcAppointmentStatus.Scheduled);
+        var tenantId = portal.Tenant.TenantId;
+        (await db.SvcOrders.IgnoreQueryFilters().CountAsync(o => o.TenantId == tenantId)).Should().Be(0);
+        (await db.SvcPayments.IgnoreQueryFilters().CountAsync(p => p.TenantId == tenantId)).Should().Be(0);
+        (await db.SvcCommissionEntries.IgnoreQueryFilters().CountAsync(c => c.TenantId == tenantId)).Should().Be(0);
+        (await db.ModuleSubscriptions.SingleAsync(s => s.TenantId == tenantId && s.ModuleKey == "service")).Status
+            .Should().Be(SubscriptionStatus.Canceled, "desmarcar um horário não mexe na assinatura");
+    }
+
+    [Fact]
+    public async Task In_read_only_the_link_is_still_the_key()
+    {
+        var portal = await ServicePortalAsync();
+        var other = await ServicePortalAsync();
+        var token = await BookedTokenAsync(portal);
+        var tokenOfTheOther = await BookedTokenAsync(other);
+        await ExpireAsync(portal.Tenant, "service", "canceled");
+
+        foreach (var wrong in new[] { tokenOfTheOther, Guid.NewGuid().ToString("N"), "nao-e-um-link" })
+        {
+            using var response = await Anonymous().PostAsync($"/api/public/service/{portal.Slug}/appointments/{wrong}/cancel", null);
+            response.StatusCode.Should().Be(HttpStatusCode.NotFound, wrong);
+        }
+        (await AppointmentAsync(portal)).Status.Should().Be(SvcAppointmentStatus.Scheduled);
+        (await AppointmentAsync(other)).Status.Should().Be(SvcAppointmentStatus.Scheduled);
+        token.Should().NotBe(tokenOfTheOther);
+    }
+
+    [Fact]
+    public async Task In_read_only_the_lead_time_still_counts()
+    {
+        var portal = await ServicePortalAsync();
+        var token = await BookedTokenAsync(portal);
+        var admin = await LoginAsync(portal.Tenant);
+        // a loja passa a pedir 30 dias de antecedência: o horário, a um ou dois dias, fica dentro do prazo
+        await Ok(admin.PutAsJsonAsync("/api/v1/service/settings/public-booking", new
+        {
+            publicBookingEnabled = true, bookingDaysAhead = 14, minLeadMinutes = 43200, slotIntervalMinutes = 60,
+            showPrices = true, autoConfirmAppointments = false, timeZoneId = "UTC",
+        }));
+        await ExpireAsync(portal.Tenant, "service", "canceled");
+        var pub = Anonymous();
+
+        var view = await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{portal.Slug}/appointments/{token}");
+        view.GetProperty("canCancel").GetBoolean().Should().BeFalse();
+        view.GetProperty("onlineChangesPaused").GetBoolean().Should().BeFalse("o que impede aqui é o prazo, e a tela precisa dizer isso");
+
+        using var response = await pub.PostAsync($"/api/public/service/{portal.Slug}/appointments/{token}/cancel", null);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await AppointmentAsync(portal)).Status.Should().Be(SvcAppointmentStatus.Scheduled);
+    }
+
+    [Fact]
+    public async Task In_read_only_a_booking_with_a_comanda_stays_with_the_store()
+    {
+        var portal = await ServicePortalAsync();
+        var created = await Ok(BookAsync(portal, await SlotAsync(portal), NewPhone()), HttpStatusCode.Created);
+        var token = created.GetProperty("manageToken").GetString()!;
+        var admin = await LoginAsync(portal.Tenant);
+        await Ok(admin.PostAsync($"/api/v1/service/orders/from-appointment/{created.GetProperty("appointmentId").GetGuid()}", null), HttpStatusCode.Created);
+        await ExpireAsync(portal.Tenant, "service", "canceled");
+        var pub = Anonymous();
+
+        var view = await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{portal.Slug}/appointments/{token}");
+        view.GetProperty("canCancel").GetBoolean().Should().BeFalse();
+        view.GetProperty("handledByStore").GetBoolean().Should().BeTrue();
+        view.GetProperty("onlineChangesPaused").GetBoolean().Should().BeFalse();
+
+        using var response = await pub.PostAsync($"/api/public/service/{portal.Slug}/appointments/{token}/cancel", null);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await AppointmentAsync(portal)).Status.Should().Be(SvcAppointmentStatus.Scheduled);
+    }
+
+    [Theory]
+    [InlineData(SvcAppointmentStatus.InProgress)]
+    [InlineData(SvcAppointmentStatus.Completed)]
+    [InlineData(SvcAppointmentStatus.Cancelled)]
+    [InlineData(SvcAppointmentStatus.NoShow)]
+    public async Task In_read_only_a_booking_already_started_or_closed_cannot_be_cancelled(SvcAppointmentStatus status)
+    {
+        var portal = await ServicePortalAsync();
+        var token = await BookedTokenAsync(portal);
+        await using (var scope = _factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+            (await db.SvcAppointments.IgnoreQueryFilters().SingleAsync(a => a.TenantId == portal.Tenant.TenantId)).ChangeStatus(status, null);
+            await db.SaveChangesAsync();
+        }
+        await ExpireAsync(portal.Tenant, "service", "canceled");
+        var pub = Anonymous();
+
+        (await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{portal.Slug}/appointments/{token}"))
+            .GetProperty("canCancel").GetBoolean().Should().BeFalse();
+        using var response = await pub.PostAsync($"/api/public/service/{portal.Slug}/appointments/{token}/cancel", null);
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await AppointmentAsync(portal)).Status.Should().Be(status);
+    }
+
+    [Fact]
+    public async Task Booking_online_switched_off_by_the_store_does_not_stop_a_cancellation_in_read_only()
+    {
+        var portal = await ServicePortalAsync();
+        var token = await BookedTokenAsync(portal);
+        var admin = await LoginAsync(portal.Tenant);
+        await Ok(admin.PutAsJsonAsync("/api/v1/service/settings/public-booking", new
+        {
+            publicBookingEnabled = false, bookingDaysAhead = 14, minLeadMinutes = 30, slotIntervalMinutes = 60,
+            showPrices = true, autoConfirmAppointments = false, timeZoneId = "UTC",
+        }));
+        await ExpireAsync(portal.Tenant, "service", "canceled");
+
+        await Ok(Anonymous().PostAsync($"/api/public/service/{portal.Slug}/appointments/{token}/cancel", null));
+
+        (await AppointmentAsync(portal)).Status.Should().Be(SvcAppointmentStatus.Cancelled);
+    }
+
+    // ── Onde a operação parou de vez: nada muda pelo link ─────────────────────
+
+    /// <summary>
+    /// Somente leitura é a assinatura da empresa, e ela segue funcionando. Suspensão é uma decisão da plataforma, e ninguém da empresa
+    /// entra nem vê o que mudou: a escrita continua fechada, e o cliente é orientado a falar com o estabelecimento.
+    /// </summary>
+    [Theory]
+    [InlineData(TenantStatus.Suspended)]
+    [InlineData(TenantStatus.Cancelled)]
+    public async Task A_company_out_of_activity_takes_no_cancellation_and_the_link_says_changes_are_paused(TenantStatus status)
+    {
+        var portal = await ServicePortalAsync();
+        var token = await BookedTokenAsync(portal);
+        await SetCompanyStatusAsync(portal.Tenant, status);
+
+        await ExpectCancellationPausedAsync(portal, token);
+    }
+
+    [Fact]
+    public async Task A_suspended_company_with_an_expired_module_takes_no_cancellation_either()
+    {
+        var portal = await ServicePortalAsync();
+        var token = await BookedTokenAsync(portal);
+        await ExpireAsync(portal.Tenant, "service", "canceled");
+        await SuspendAsync(portal.Tenant);
+
+        await ExpectCancellationPausedAsync(portal, token);
+    }
+
+    /// <summary>A loja inativa foi fechada pela própria empresa: ninguém atende por ela, e o cliente fala com a empresa.</summary>
+    [Fact]
+    public async Task An_inactive_store_takes_no_cancellation_and_the_link_says_changes_are_paused()
+    {
+        var portal = await ServicePortalAsync();
+        var token = await BookedTokenAsync(portal);
+        await DeactivateStoreAsync(portal);
+
+        await ExpectCancellationPausedAsync(portal, token);
+    }
+
+    private async Task ExpectCancellationPausedAsync(ServicePortal portal, string token)
+    {
+        var pub = Anonymous();
+        var view = await pub.GetFromJsonAsync<JsonElement>($"/api/public/service/{portal.Slug}/appointments/{token}");
+        view.GetProperty("status").GetString().Should().Be("Scheduled", "o link continua legível");
+        view.GetProperty("canCancel").GetBoolean().Should().BeFalse();
+        view.GetProperty("onlineChangesPaused").GetBoolean().Should().BeTrue();
+
+        using var response = await pub.PostAsync($"/api/public/service/{portal.Slug}/appointments/{token}/cancel", null);
+        var raw = await response.Content.ReadAsStringAsync();
+        await ExpectReadOnlyAsync(response);
+        raw.Should().NotContainEquivalentOf("assinatura").And.NotContainEquivalentOf("suspens");
+        (await AppointmentAsync(portal)).Status.Should().Be(SvcAppointmentStatus.Scheduled);
     }
 
     [Fact]
@@ -229,12 +430,7 @@ public class PublicPortalExpiredModuleTests
     {
         var portal = await ServicePortalAsync();
         var slot = await SlotAsync(portal);
-        await using (var scope = _factory.Services.CreateAsyncScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-            (await db.Stores.IgnoreQueryFilters().SingleAsync(s => s.Id == portal.Tenant.StoreId)).Deactivate();
-            await db.SaveChangesAsync();
-        }
+        await DeactivateStoreAsync(portal);
 
         using var response = await BookAsync(portal, slot, NewPhone());
 
@@ -507,12 +703,29 @@ public class PublicPortalExpiredModuleTests
         await db.SaveChangesAsync();
     }
 
-    private async Task SuspendAsync(SyntheticAccount tenant)
+    private Task SuspendAsync(SyntheticAccount tenant) => SetCompanyStatusAsync(tenant, TenantStatus.Suspended);
+
+    private async Task SetCompanyStatusAsync(SyntheticAccount tenant, TenantStatus status)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-        (await db.Tenants.SingleAsync(t => t.Id == tenant.TenantId)).SetStatus(TenantStatus.Suspended);
+        (await db.Tenants.SingleAsync(t => t.Id == tenant.TenantId)).SetStatus(status);
         await db.SaveChangesAsync();
+    }
+
+    private async Task DeactivateStoreAsync(ServicePortal portal)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        (await db.Stores.IgnoreQueryFilters().SingleAsync(s => s.Id == portal.Tenant.StoreId)).Deactivate();
+        await db.SaveChangesAsync();
+    }
+
+    private async Task<SvcAppointment> AppointmentAsync(ServicePortal portal)
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<NexoDbContext>().SvcAppointments.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(a => a.TenantId == portal.Tenant.TenantId);
     }
 
     // Service
@@ -549,9 +762,9 @@ public class PublicPortalExpiredModuleTests
             customerName = "Cliente Portal", phone, catalogItemId = portal.Catalog, professionalId = portal.Professional, startsAt = slot,
         });
 
-    private async Task<string> BookedTokenAsync(ServicePortal portal)
+    private async Task<string> BookedTokenAsync(ServicePortal portal, string? slot = null)
     {
-        var slot = await SlotAsync(portal);
+        slot ??= await SlotAsync(portal);
         var created = await Ok(BookAsync(portal, slot, NewPhone()), HttpStatusCode.Created);
         return created.GetProperty("manageToken").GetString()!;
     }
