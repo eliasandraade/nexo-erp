@@ -90,7 +90,7 @@ public sealed class UploadConcurrencyTests(UploadKestrelFactory factory)
         (await TempWatch.FilesLeftAfterAsync()).Should().Be(0, "nothing stays on disk");
 
         // the slots came back
-        using var after = await client.PostAsync(Url, Small());
+        using var after = await PostOnceTheSlotIsBackAsync(client);
         after.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
