@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Auth;
 using Nexo.Domain.Entities;
+using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
@@ -470,6 +471,66 @@ public sealed class PlatformSecurityTests : IClassFixture<TestWebApplicationFact
 
         (await Json(await client.PostAsJsonAsync("/api/auth/login", new { login = email, password }), HttpStatusCode.TooManyRequests))
             .GetProperty("code").GetString().Should().Be("account_locked", "the right password does not get through a lock");
+    }
+
+    // ── A company that cannot be entered ──────────────────────────────────────
+
+    private const string AccessReason = "Suporte: conferir o cadastro da empresa";
+
+    private async Task<(HttpClient Platform, Guid TenantId)> PlatformAndCompanyAsync()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var platform = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+        return (platform, (await SyntheticTenant.CreateAsync(_factory, "varejo")).TenantId);
+    }
+
+    private async Task<int> AccessesGrantedToAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
+            .CountAsync(r => r.TenantId == tenantId && r.ActionType == AuditActions.PlatformImpersonation);
+    }
+
+    [Fact]
+    public async Task A_company_that_is_not_active_cannot_be_entered()
+    {
+        var (platform, tenantId) = await PlatformAndCompanyAsync();
+        using (var scope = _factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<NexoDbContext>().Tenants.IgnoreQueryFilters().Where(t => t.Id == tenantId)
+                .ExecuteUpdateAsync(set => set.SetProperty(t => t.Status, TenantStatus.Suspended));
+
+        (await Json(await platform.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate", new { reason = AccessReason }), HttpStatusCode.UnprocessableEntity))
+            .TryGetProperty("accessToken", out _).Should().BeFalse();
+
+        (await AccessesGrantedToAsync(tenantId)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_company_with_no_active_director_cannot_be_entered()
+    {
+        var (platform, tenantId) = await PlatformAndCompanyAsync();
+        using (var scope = _factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<NexoDbContext>().Users.IgnoreQueryFilters().Where(u => u.TenantId == tenantId)
+                .ExecuteUpdateAsync(set => set.SetProperty(u => u.Status, UserStatus.Inactive));
+
+        (await Json(await platform.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate", new { reason = AccessReason }), HttpStatusCode.BadRequest))
+            .TryGetProperty("accessToken", out _).Should().BeFalse();
+
+        (await AccessesGrantedToAsync(tenantId)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_company_with_no_active_store_cannot_be_entered()
+    {
+        var (platform, tenantId) = await PlatformAndCompanyAsync();
+        using (var scope = _factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<NexoDbContext>().Stores.IgnoreQueryFilters().Where(s => s.TenantId == tenantId)
+                .ExecuteUpdateAsync(set => set.SetProperty(s => s.Status, StoreStatus.Inactive));
+
+        (await Json(await platform.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate", new { reason = AccessReason }), HttpStatusCode.BadRequest))
+            .TryGetProperty("accessToken", out _).Should().BeFalse();
+
+        (await AccessesGrantedToAsync(tenantId)).Should().Be(0);
     }
 
     private static byte[] FromBase32(string base32)

@@ -163,6 +163,9 @@ public class AccountEntryTests
 
         context.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
         reachedTheEndpoint.Should().BeFalse();
+        context.Response.Body.Position = 0;
+        (await new StreamReader(context.Response.Body).ReadToEndAsync())
+            .Should().Contain("User not found").And.NotContain("session_revoked", "nobody ended this session: the person does not exist");
     }
 
     // ── A token that outlived its user ────────────────────────────────────────

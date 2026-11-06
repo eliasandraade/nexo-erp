@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Infrastructure.Auth;
 using Nexo.Infrastructure.Persistence;
+using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
 using Xunit;
 
@@ -45,11 +46,12 @@ public class SessionStoreBestEffortTests
 
     private async Task<string> ExistingSessionAsync()
     {
+        // A company of its own: the rows of this class must not show up in the session lists other tests read.
+        var account = await SyntheticTenant.CreateAsync(_factory, "varejo");
         using var scope = _factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
-        var user = await db.Users.IgnoreQueryFilters().FirstAsync();
         var jti = Guid.NewGuid().ToString("N");
-        await new SessionStoreService(db).CreateAsync(user.Id, user.TenantId, jti, "10.0.0.1", "test", DateTime.UtcNow.AddDays(7));
+        await new SessionStoreService(scope.ServiceProvider.GetRequiredService<NexoDbContext>())
+            .CreateAsync(account.UserId, account.TenantId, jti, "10.0.0.1", "test", DateTime.UtcNow.AddDays(7));
         return jti;
     }
 
