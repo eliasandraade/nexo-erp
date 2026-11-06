@@ -4,8 +4,11 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Nexo.Api.Controllers;
 using Nexo.IntegrationTests.Helpers;
 using Xunit;
 
@@ -24,9 +27,32 @@ public class CspReportTests
     private const string ReportsJson = "application/reports+json";
     private const string Tracer = "VALOR-QUE-NAO-PODE-IR-PARA-O-LOG";
 
+    /// <summary>
+    /// The endpoint's lines in a log of their own. The host's logger is not safe to read here: every host that stops closes Serilog's
+    /// static logger (Program), which is whichever host was built last, and from then on that host writes to nowhere. With other test
+    /// classes starting and stopping hosts, a line would sometimes not arrive, and "nothing was logged" would prove nothing.
+    /// </summary>
+    private static readonly ServerLogCapture EndpointLog = new();
+
+    private static WebApplicationFactory<Program>? _host;
+
     private readonly TestWebApplicationFactory _factory;
 
     public CspReportTests(TestWebApplicationFactory factory) => _factory = factory;
+
+    private WebApplicationFactory<Program> Host => _host ??= HostWith();
+
+    private WebApplicationFactory<Program> HostWith(params (string Key, string Value)[] settings)
+        => _factory.WithWebHostBuilder(b =>
+        {
+            foreach (var (key, value) in settings) b.UseSetting(key, value);
+            b.ConfigureTestServices(services => services.AddSingleton<ILogger<CspReportsController>>(provider =>
+                new Serilog.Extensions.Logging.SerilogLoggerFactory(new Serilog.LoggerConfiguration()
+                        .Enrich.With(new Nexo.Api.Observability.RequestIdEnricher(provider.GetRequiredService<IHttpContextAccessor>()))
+                        .WriteTo.Sink(EndpointLog)
+                        .CreateLogger(), dispose: true)
+                    .CreateLogger<CspReportsController>()));
+        });
 
     // ── What a browser sends ──────────────────────────────────────────────────
 
@@ -177,7 +203,7 @@ public class CspReportTests
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, Route) { Content = new ByteArrayContent(Encoding.UTF8.GetBytes(ReportUri())) };
         request.Headers.Add("X-Forwarded-For", NewClientAddress());
-        using var response = await _factory.CreateApiClient().SendAsync(request);
+        using var response = await Host.CreateClient().SendAsync(request);
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
@@ -254,7 +280,7 @@ public class CspReportTests
         request.Headers.TransferEncodingChunked = true;
         request.Headers.Add("X-Forwarded-For", NewClientAddress());
 
-        using var response = await _factory.CreateApiClient().SendAsync(request);
+        using var response = await Host.CreateClient().SendAsync(request);
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         (string.Join('\n', LogLines(response)) + Properties(response)).Should().NotContain(Tracer);
@@ -265,8 +291,7 @@ public class CspReportTests
     [Fact]
     public async Task Over_the_limit_the_answer_is_still_204_and_nothing_more_is_logged()
     {
-        var host = _factory.WithWebHostBuilder(b => b.UseSetting("RateLimiting:CspReport:PermitLimit", "2"));
-        var client = host.CreateClient();
+        var client = HostWith(("RateLimiting:CspReport:PermitLimit", "2")).CreateClient();
         var address = NewClientAddress();
 
         (await SendAsync(client, address)).StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -287,12 +312,7 @@ public class CspReportTests
     [Fact]
     public async Task Behind_a_proxy_that_sets_x_real_ip_a_forged_x_forwarded_for_does_not_escape_the_limit()
     {
-        var host = _factory.WithWebHostBuilder(b =>
-        {
-            b.UseSetting("RateLimiting:CspReport:PermitLimit", "1");
-            b.UseSetting("RateLimiting:ClientIpSource", "RealIp");
-        });
-        var client = host.CreateClient();
+        var client = HostWith(("RateLimiting:CspReport:PermitLimit", "1"), ("RateLimiting:ClientIpSource", "RealIp")).CreateClient();
         var real = NewClientAddress();
 
         LogLines(await SendAsync(client, NewClientAddress(), realIp: real)).Should().ContainSingle();
@@ -303,12 +323,7 @@ public class CspReportTests
     [Fact]
     public async Task With_the_limit_off_every_report_is_logged()
     {
-        var host = _factory.WithWebHostBuilder(b =>
-        {
-            b.UseSetting("RateLimiting:CspReport:PermitLimit", "1");
-            b.UseSetting("RateLimiting:CspReport:Enabled", "false");
-        });
-        var client = host.CreateClient();
+        var client = HostWith(("RateLimiting:CspReport:PermitLimit", "1"), ("RateLimiting:CspReport:Enabled", "false")).CreateClient();
         var address = NewClientAddress();
 
         LogLines(await SendAsync(client, address)).Should().ContainSingle();
@@ -404,7 +419,7 @@ public class CspReportTests
     private async Task<HttpResponseMessage> PostAsync(string contentType, string body)
     {
         using var request = NewReport(contentType, body);
-        return await _factory.CreateApiClient().SendAsync(request);
+        return await Host.CreateClient().SendAsync(request);
     }
 
     private static async Task<HttpResponseMessage> SendAsync(HttpClient client, string forwardedFor, string? realIp = null)
@@ -413,17 +428,17 @@ public class CspReportTests
         return await client.SendAsync(request);
     }
 
-    /// <summary>The violation lines of this request: the framework's own lines, if any, are not the endpoint's.</summary>
+    /// <summary>The violation lines of this request.</summary>
     private string[] LogLines(HttpResponseMessage response)
     {
         var id = response.Headers.GetValues("X-Request-Id").Single();
-        return _factory.ServerLog.For(id).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+        return EndpointLog.For(id).Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
             .Where(l => l.Contains("CSP report", StringComparison.Ordinal))
             .ToArray();
     }
 
     private string Properties(HttpResponseMessage response)
-        => _factory.ServerLog.PropertiesFor(response.Headers.GetValues("X-Request-Id").Single());
+        => EndpointLog.PropertiesFor(response.Headers.GetValues("X-Request-Id").Single());
 
     private static int CountOf(string text, string part)
     {
