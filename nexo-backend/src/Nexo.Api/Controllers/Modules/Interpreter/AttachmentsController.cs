@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Modules.Interpreter.Interfaces;
 using Nexo.Domain.Modules.Interpreter;
 using Nexo.Api.Authorization;
+using Nexo.Api.Filters;
+using Nexo.Api.Uploads;
 
 namespace Nexo.Api.Controllers.Modules.Interpreter;
 
@@ -30,38 +33,48 @@ public class AttachmentsController : ControllerBase
     private static readonly byte[] PngMagic  = new byte[] { 0x89, 0x50, 0x4E, 0x47 };
 
     private const long MaxSizeBytes = 10 * 1024 * 1024; // 10 MB
+    private const long MaxRequestBytes = MaxSizeBytes + 1024;
     private const int  MagicReadBytes = 8;
 
     private readonly IAttachmentStorage           _storage;
     private readonly IMovementAttachmentRepository _attachmentRepo;
     private readonly ICurrentTenant               _currentTenant;
+    private readonly UploadAdmission              _uploads;
 
     public AttachmentsController(
         IAttachmentStorage            storage,
         IMovementAttachmentRepository attachmentRepo,
-        ICurrentTenant                currentTenant)
+        ICurrentTenant                currentTenant,
+        UploadAdmission               uploads)
     {
         _storage        = storage;
         _attachmentRepo = attachmentRepo;
         _currentTenant  = currentTenant;
+        _uploads        = uploads;
     }
 
     /// <summary>
-    /// Upload a receipt/invoice before analysis.
+    /// Upload a receipt/invoice before analysis (multipart field <c>file</c>).
     /// Returns an attachmentId that can be passed to POST /interpreter/analyze.
     /// </summary>
     [HttpPost]
     [Consumes("multipart/form-data")]
-    [RequestSizeLimit(MaxSizeBytes + 1024)]
-    public async Task<ActionResult<AttachmentUploadResponse>> Upload(
-        IFormFile file,
-        CancellationToken ct)
+    [EnableRateLimiting(UploadAdmission.RateLimitPolicy)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file")]
+    public async Task<ActionResult<AttachmentUploadResponse>> Upload(CancellationToken ct)
     {
+        const string tooLarge = "O arquivo pode ter até 10 MB.";
+        var upload = await _uploads.ReadAsync(HttpContext, MaxRequestBytes, tooLarge, ct);
+        if (upload.Refusal is { } refusal)
+            return refusal.ToResult(HttpContext);
+
+        var file = upload.Form!.Files.GetFile("file");
         if (file is null || file.Length == 0)
             return BadRequest(new { error = "No file provided." });
 
         if (file.Length > MaxSizeBytes)
-            return BadRequest(new { error = "File exceeds maximum size of 10 MB." });
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = tooLarge, code = UploadAdmission.TooLargeCode });
 
         if (!AllowedContentTypes.Contains(file.ContentType))
             return BadRequest(new { error = "Only PDF, JPG, and PNG files are accepted." });

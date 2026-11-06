@@ -3,6 +3,7 @@ import { Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { uploadFile, type StorageContext } from "@/services/storage.api";
+import { uploadErrorMessage } from "@/services/upload-error";
 
 interface Props {
   context: StorageContext;
@@ -50,8 +51,8 @@ export function ImageUploadButton({
       const result = await uploadFile(file, context);
       onChange(result.publicUrl);
       toast.success(`${label} enviada com sucesso.`);
-    } catch {
-      toast.error(`Falha ao enviar ${label.toLowerCase()}. Tente novamente.`);
+    } catch (e) {
+      toast.error(uploadErrorMessage(e, `Falha ao enviar ${label.toLowerCase()}. Tente novamente.`));
     } finally {
       setLoading(false);
     }

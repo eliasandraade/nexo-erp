@@ -74,8 +74,8 @@ public class RbacMatrixTests
         { "GET",    "/api/varejo/purchases",                   Stocker, true  },
         { "POST",   $"/api/varejo/purchases/{R}/confirm",      Stocker, false },
         { "POST",   $"/api/varejo/purchases/{R}/confirm",      Manager, true  },
-        { "POST",   "/api/integrations/storage/upload",        Seller,  false },
-        { "POST",   "/api/integrations/storage/upload",        Stocker, true  },
+        { "POST",   "/api/integrations/storage/upload?context=product-image", Seller,  false },
+        { "POST",   "/api/integrations/storage/upload?context=product-image", Stocker, true  },
         // ── Gestão ──
         { "GET",    "/api/dashboard/summary",                  Seller,  false },
         { "GET",    "/api/dashboard/summary",                  Stocker, false },
@@ -118,7 +118,7 @@ public class RbacMatrixTests
     {
         var (client, _) = await ClientForAsync(role);
         using var request = new HttpRequestMessage(new HttpMethod(method), url);
-        if (url.EndsWith("/storage/upload"))
+        if (url.Contains("/storage/upload"))
             request.Content = new MultipartFormDataContent { { new StringContent("product-image"), "context" } };
         else if (method is "POST" or "PUT" or "PATCH")
             request.Content = JsonContent.Create(new { });

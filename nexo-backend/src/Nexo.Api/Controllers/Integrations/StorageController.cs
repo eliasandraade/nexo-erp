@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.DTOs;
 using Nexo.Application.Integrations.Options;
 using Nexo.Api.Authorization;
+using Nexo.Api.Filters;
+using Nexo.Api.Uploads;
 
 namespace Nexo.Api.Controllers.Integrations;
 
@@ -58,11 +61,17 @@ public class StorageController : ControllerBase
             ["application/pdf"] = ".pdf",
         };
 
+    private const long MiB = 1024 * 1024;
+
+    /// <summary>The route's ceiling, whatever MaxFileSizeMb says: the file limit moves below it, never above.</summary>
+    private const long MaxBodyBytes = 20 * MiB;
+
     private readonly IStorageProvider         _storage;
     private readonly IPrivateFileUrls         _privateUrls;
     private readonly IIntegrationFeatureFlags _flags;
     private readonly StorageOptions           _opts;
     private readonly ICurrentTenant           _tenant;
+    private readonly UploadAdmission          _uploads;
     private readonly ILogger<StorageController> _logger;
 
     public StorageController(
@@ -71,6 +80,7 @@ public class StorageController : ControllerBase
         IIntegrationFeatureFlags flags,
         IOptions<StorageOptions> opts,
         ICurrentTenant tenant,
+        UploadAdmission uploads,
         ILogger<StorageController> logger)
     {
         _storage     = storage;
@@ -78,24 +88,29 @@ public class StorageController : ControllerBase
         _flags       = flags;
         _opts        = opts.Value;
         _tenant      = tenant;
+        _uploads     = uploads;
         _logger      = logger;
     }
 
     /// <summary>
-    /// Upload a file. Form fields: file, context. Public contexts answer { key, publicUrl };
-    /// private ones answer { key, url } where url is signed and short-lived (never a public URL).
-    /// 404 when storage is off.
+    /// Upload a file. Query: context (it says who may send, the limit and where the file goes, so it must be known before the
+    /// body is read). Form field: file. Public contexts answer { key, publicUrl }; private ones answer { key, url } where url is signed
+    /// and short-lived (never a public URL). 404 when storage is off, 413 over the size limit, 429 with Retry-After while too many
+    /// uploads are in flight. Everything that does not depend on the file is decided before reading a byte of it.
     /// </summary>
     [HttpPost("upload")]
     [Authorize(Roles = AppRoles.Stock)]   // the widest set; each context narrows it below
-    [RequestSizeLimit(20 * 1024 * 1024)]
-    public async Task<IActionResult> Upload(
-        IFormFile file,
-        [FromForm] string context,
-        CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    [EnableRateLimiting(UploadAdmission.RateLimitPolicy)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file", "context")]
+    public async Task<IActionResult> Upload([FromQuery] string? context, CancellationToken ct)
     {
         if (!_flags.StorageEnabled)
             return NotFound(new { error = "Serviço de armazenamento não está habilitado." });
+
+        if (string.IsNullOrWhiteSpace(context))
+            return BadRequest(new { error = "Informe um contexto no endereço do envio. Atualize a página e tente de novo.", code = "upload_context_required" });
 
         if (!Contexts.TryGetValue(context, out var target))
             return BadRequest(new { error = $"Contexto inválido: '{context}'." });
@@ -103,17 +118,30 @@ public class StorageController : ControllerBase
         if (!target.Roles.Any(User.IsInRole))
             return Forbid();
 
-        // private content never goes to the public bucket: refused before the file goes anywhere (binding already buffered the form)
+        // private content never goes to the public bucket: refused before the file goes anywhere
         if (target.IsPrivate && !_storage.CanStorePrivateFiles)
             return StatusCode(503, new { error = "Armazenamento privado ainda não configurado. Arquivos privados ficam indisponíveis até lá.", code = "storage_unavailable" });
+
+        var maxBytes = _opts.MaxFileSizeMb * MiB;
+        var tooLarge = $"Arquivo muito grande. Máximo: {Math.Min(_opts.MaxFileSizeMb, MaxBodyBytes / MiB)}MB.";
+        var read = await _uploads.ReadAsync(HttpContext, Math.Min(maxBytes + UploadAdmission.MultipartOverheadBytes, MaxBodyBytes), tooLarge, ct);
+        if (read.Refusal is { } refusal)
+            return refusal.ToResult(HttpContext);
+
+        // what the form says never changes where the file goes; a form that disagrees (an older client, a forged one) stores nothing
+        if (read.Form!.TryGetValue("context", out var inForm) && !string.Equals(inForm, context, StringComparison.OrdinalIgnoreCase))
+            return BadRequest(new { error = "O contexto do formulário não confere com o do endereço.", code = "upload_context_mismatch" });
+
+        var file = read.Form.Files.GetFile("file");
+        if (file is null)
+            return BadRequest(new { error = "Envie o arquivo no campo file." });
 
         var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
         if (!_opts.AllowedContentTypes.Contains(contentType) || !Extensions.TryGetValue(contentType, out var ext))
             return BadRequest(new { error = $"Tipo de arquivo não permitido: '{contentType}'." });
 
-        var maxBytes = _opts.MaxFileSizeMb * 1024L * 1024L;
         if (file.Length > maxBytes)
-            return BadRequest(new { error = $"Arquivo muito grande. Máximo: {_opts.MaxFileSizeMb}MB." });
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, new { error = tooLarge, code = UploadAdmission.TooLargeCode });
 
         if (file.Length == 0)
             return BadRequest(new { error = "Arquivo vazio não é permitido." });
