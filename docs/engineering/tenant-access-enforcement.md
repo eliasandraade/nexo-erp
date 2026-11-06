@@ -165,9 +165,22 @@ cache.
 - **Rota nova:** `PublicPortalExpiredModuleTests` lista toda escrita anônima sob `api/public/`. Uma rota nova reprova o teste até
   alguém decidir o que ela faz sem acesso.
 
-## O que esta regra não cobre
+## Jobs de fundo
 
-Jobs de fundo não passam por ela:
+Os jobs rodam sem login, por todas as empresas, e nenhum portão os alcança. Cada um filtra pela mesma `ModuleAccessQueries`, sempre
+no banco. Sem acesso agora, a empresa não grava dado de operação e não consome serviço pago.
 
-- `BuildForecastService.EnsureDailyForecastsAsync` grava a previsão do dia e chama a Open-Meteo sem olhar a assinatura.
-- `BuildWeeklyDigestJob` chama o provedor pago para empresas com o Build AI ligado e portal publicado, sem olhar a assinatura.
+| Job | Sem acesso ao módulo | Quando o acesso volta |
+|---|---|---|
+| `BuildProgressSnapshotJob`, snapshots | Não grava o ponto do dia. Nada muda na obra, então a curva não perde informação | Volta a gravar. Não recria os dias parados |
+| `BuildProgressSnapshotJob`, previsão | Não grava e não chama a Open-Meteo | Volta a gravar |
+| `BuildWeeklyDigestJob` | Não gera sugestão e não chama o provedor pago | Gera na semana seguinte em que rodar |
+| `BuildModelProcessingJobRunner` | O modelo espera na fila, sem gastar tentativa | Processa normalmente |
+| `ServiceCustomerEmailsJob` | Não envia e não reivindica o e-mail | Lembrete sai se o horário ainda não passou. Confirmação com mais de 1 dia não sai, como já era |
+| `OverdueTitlesJob` | Fica de fora só a empresa sem **nenhum** módulo com acesso, porque os títulos são do núcleo | A próxima passada recupera o atraso |
+
+- **O título vencido não some da tela:** as listagens calculam o atraso pela data, com ou sem o job.
+- **Fica de fora de propósito:** `AiKeyUpgradeHostedService` só reescreve chaves com a criptografia nova. Não é dado de operação e
+  não consome serviço pago.
+- **Rotas com login:** `GET` de módulo vencido não chama a Open-Meteo (`module_read_only`). As consultas de CEP e CNPJ continuam,
+  porque são do núcleo e os provedores atuais são gratuitos.
