@@ -1,0 +1,58 @@
+name: auth-e2e
+
+# Authentication end to end: the real login page, route guards and API client against the real API on a disposable
+# PostgreSQL (nexo-main/e2e/auth-host, Testcontainers). It depends on the frontend and on the backend at once, so it does not
+# live in frontend-ci.yml, which a backend-only pull request skips. Called by ci.yml and master.yml, on every run.
+on:
+  workflow_call:
+
+jobs:
+  auth-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: nexo-main
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: nexo-main/package-lock.json
+
+      - name: Install (lockfile)
+        run: npm ci --no-audit --no-fund --ignore-scripts
+
+      # Its own step: a backend that does not compile fails here, not as a server that never came up.
+      - name: Build the API host
+        run: dotnet build e2e/auth-host/AuthE2EHost.csproj --nologo -v q
+
+      # Same two steps as frontend-ci.yml, which explains them.
+      - name: Playwright browsers
+        id: browsers
+        continue-on-error: true
+        timeout-minutes: 5
+        run: npm run e2e:install
+
+      - name: Playwright browsers (second attempt)
+        if: steps.browsers.outcome == 'failure'
+        timeout-minutes: 5
+        run: npm run e2e:install
+
+      - name: Authentication end-to-end suite
+        run: npm run test:e2e
+
+      - name: Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-e2e-report
+          path: nexo-main/playwright-report
+          retention-days: 7
