@@ -17,17 +17,18 @@ import { isImpersonating, onSubscriptionRequired } from "@/services/api-client";
  *    enforces every request, and a revoked/expired token still bounces to login.
  * 2. No cached session + validation still pending (`!isReady`) → render null
  *    briefly (resolves synchronously on next tick) to avoid flashing the app.
+ *    In the cookie mode, also while the server says whether the cookie still has a session (the storage may have been cleared).
  * 3. No cached session + ready → redirect to /login.
  *
  * A company in read-only is not redirected: it keeps browsing and exporting its data.
  * See docs/engineering/tenant-access-enforcement.md.
  *
  * The 401 + refresh-failure path is handled inside api-client.ts:
- * it calls clearTokens() which triggers AuthContext to set session = null
- * on the next validateSession() rejection, then navigates to /login.
+ * it calls clearTokens() and tells AuthContext, which sets session = null
+ * and navigates to /login.
  */
 export function ProtectedRoute() {
-  const { session, isReady } = useAuth();
+  const { session, isReady, sessionRecovery, requestSessionRecovery } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -43,7 +44,14 @@ export function ProtectedRoute() {
     });
   }), [role, navigate]);
 
-  if (!session) return isReady ? <Navigate to="/login" replace /> : null;
+  useEffect(() => {
+    if (!session && sessionRecovery === "pending") requestSessionRecovery();
+  }, [session, sessionRecovery, requestSessionRecovery]);
+
+  if (!session) {
+    if (sessionRecovery === "pending") return null;
+    return isReady ? <Navigate to="/login" replace /> : null;
+  }
 
   // A temporary password (set by a manager) is replaced before anything else.
   // (Not in a platform access: the administrator cannot change the user's password there.)

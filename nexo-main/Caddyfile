@@ -48,7 +48,8 @@
 	redir @institutional https://app.orken.com.br{uri} 307
 
 	# The root of erp.orken.com.br is the entry of the ERP, not another institutional page: a visit goes to the sign-in
-	# page with its query string. The session lives in the API's cookie, so it is not visible here; the sign-in page
+	# page with its query string. The session is not visible here (it is in the browser: storage, or a cookie of the API's
+	# own host, depending on the build); the sign-in page
 	# sends a signed-in user on to their own destination (AuthLayout). Any other host keeps the SPA at the root, so
 	# Railway's healthcheck still gets a 200.
 	@erpEntry {

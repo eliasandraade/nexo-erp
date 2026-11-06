@@ -1,15 +1,19 @@
 import {
   ApiError,
+  announceSessionToOtherTabs,
   apiClient,
   beginImpersonation,
   clearTokens,
-  getAccessToken,
   getImpersonation,
+  hasSession,
+  isCookieSessionMode,
   leaveImpersonation,
   getRefreshToken,
   getStoredSession,
+  renewFromCookieWithoutSession,
   setStoredSession,
   setTokens,
+  withSessionLock,
 } from "@/services/api-client";
 import type {
   AuthSession,
@@ -51,6 +55,13 @@ function persistSession(session: AuthSession): void {
   setStoredSession(JSON.stringify(session));
 }
 
+/** A new session in this tab, right after its token is stored. The other tabs hear it in the cookie mode, where nothing else tells them. */
+function startSession(accessToken: string, refreshToken: string | undefined, session: AuthSession): void {
+  setTokens(accessToken, refreshToken);
+  persistSession(session);
+  announceSessionToOtherTabs(JSON.stringify(session));
+}
+
 export function getCurrentSession(): AuthSession | null {
   try {
     const raw = getStoredSession();
@@ -74,8 +85,7 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
     if ("mfaRequired" in data) return { success: false, error: "", mfaChallenge: data.mfaChallenge };
 
     const session = toAuthSession(data.session);
-    setTokens(data.accessToken, data.refreshToken);
-    persistSession(session);
+    startSession(data.accessToken, data.refreshToken, session);
 
     return { success: true, session };
   } catch (err: unknown) {
@@ -92,7 +102,9 @@ export async function login(input: LoginInput): Promise<LoginResponse> {
 export async function logout(): Promise<void> {
   try {
     const refreshToken = getRefreshToken();
-    apiClient.post("/auth/logout", { refreshToken: refreshToken ?? "" }).catch(() => undefined);
+    // In the cookie mode the token is in the cookie: only a session not yet migrated has one to send.
+    const body = isCookieSessionMode() ? (refreshToken ? { refreshToken } : undefined) : { refreshToken: refreshToken ?? "" };
+    apiClient.post("/auth/logout", body).catch(() => undefined);
   } finally {
     clearTokens();
   }
@@ -103,12 +115,14 @@ export async function logout(): Promise<void> {
  * Updates stored tokens and session on success.
  */
 export async function switchStore(storeId: string): Promise<AuthSession> {
-  const refreshToken = getRefreshToken() ?? "";
-  const data = await apiClient.post<BackendSwitchStoreResponse>("/auth/switch-store", { storeId, refreshToken });
-  const session = toAuthSession(data.session);
-  setTokens(data.accessToken, data.refreshToken);
-  persistSession(session);
-  return session;
+  // It spends the refresh token like a renewal, so it waits in the same line.
+  return withSessionLock(async () => {
+    const refreshToken = getRefreshToken() ?? "";
+    const data = await apiClient.post<BackendSwitchStoreResponse>("/auth/switch-store", { storeId, refreshToken });
+    const session = toAuthSession(data.session);
+    startSession(data.accessToken, data.refreshToken, session);
+    return session;
+  });
 }
 
 /**
@@ -121,7 +135,7 @@ export async function validateSession(): Promise<AuthSession | null> {
   try {
     const dto = await apiClient.get<BackendSessionDto>("/auth/me");
     // Signed out while the answer was on its way: it confirms a session that no longer exists.
-    if (!getAccessToken()) return null;
+    if (!hasSession()) return null;
     const session = toAuthSession(dto);
     persistSession(session);
     return session;
@@ -130,6 +144,17 @@ export async function validateSession(): Promise<AuthSession | null> {
     clearTokens();
     return null;
   }
+}
+
+/**
+ * Cookie mode, nothing in the storage on opening a page that needs a session: the storage may have been cleared while the cookie lives. Then
+ * the session comes back with no sign-in. After a sign-out, or once the server said there is none, this asks nothing.
+ */
+export async function recoverSessionFromCookie(): Promise<AuthSession | null> {
+  if (!(await renewFromCookieWithoutSession())) return null;
+  const session = await validateSession();
+  if (session) announceSessionToOtherTabs(JSON.stringify(session));
+  return session;
 }
 
 /** What the platform tab hands to the impersonation tab (never through any storage). */
@@ -179,8 +204,7 @@ export async function verifyEmail(token: string): Promise<VerifyEmailResult> {
       `/auth/verify-email?token=${encodeURIComponent(token)}`
     );
     const session = toAuthSession(data.session);
-    setTokens(data.accessToken, data.refreshToken);
-    persistSession(session);
+    startSession(data.accessToken, data.refreshToken, session);
     if (session.isNewAccount) {
       localStorage.setItem(`nexo:onboarding:${session.userId}`, "true");
     }
@@ -226,8 +250,7 @@ export async function revokeAllSessions(): Promise<void> {
 export async function verifyMfa(challenge: string, code: string | null, recoveryCode: string | null = null): Promise<AuthSession> {
   const data = await apiClient.post<BackendLoginResponse>("/auth/mfa/verify", { challenge, code, recoveryCode });
   const session = toAuthSession(data.session);
-  setTokens(data.accessToken, data.refreshToken);
-  persistSession(session);
+  startSession(data.accessToken, data.refreshToken, session);
   return session;
 }
 

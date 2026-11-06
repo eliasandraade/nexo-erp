@@ -245,7 +245,7 @@ describe("Cookie Handling", () => {
     // httpOnly cookies cannot be accessed via document.cookie
 
     const mockCookie = {
-      name: "nexo_access",
+      name: "__Host-nexo_rt",
       value: "token_value",
       httpOnly: true,
     };
@@ -263,7 +263,7 @@ describe("Cookie Handling", () => {
 
   it("should validate SameSite cookie attribute", () => {
     const mockCookie = {
-      name: "nexo_access",
+      name: "__Host-nexo_rt",
       sameSite: "Strict",
     };
 
