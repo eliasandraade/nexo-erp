@@ -189,4 +189,7 @@ public static class ImpersonationClaims
     public const string ActorId    = "imp_actor_id";
     public const string ActorEmail = "imp_actor_email";
     public const string Reason     = "imp_reason";
+
+    /// <summary>The cache entry that says the administrator already left the session of this token.</summary>
+    public static string EndedKey(string jti) => $"impersonation:ended:{jti}";
 }

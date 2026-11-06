@@ -20,6 +20,7 @@ public sealed class DbCommandGate : DbCommandInterceptor
     }
 
     private Hold? _armed;
+    private Fault? _fault;
     private Func<DbCommand, bool>? _counted;
     private int _count;
 
@@ -59,10 +60,19 @@ public sealed class DbCommandGate : DbCommandInterceptor
     private static bool HasParameter(DbCommand command, object value)
         => command.Parameters.Cast<DbParameter>().Any(p => value.Equals(p.Value));
 
+    /// <summary>Makes the commands that match fail, as a database that stopped answering does, until the result is disposed.</summary>
+    public Fault FailWhile(Func<DbCommand, bool> match)
+    {
+        var fault = new Fault(this, match);
+        Volatile.Write(ref _fault, fault);
+        return fault;
+    }
+
     public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
         InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
     {
         if (Volatile.Read(ref _counted) is { } counted && counted(command)) Interlocked.Increment(ref _count);
+        Volatile.Read(ref _fault)?.ThrowIfMatches(command);
         await WaitIfHeldAsync(command, Moment.BeforeRunning);
         return result;
     }
@@ -80,6 +90,38 @@ public sealed class DbCommandGate : DbCommandInterceptor
         if (hold is null || hold.Moment != moment || !hold.Matches(command)) return Task.CompletedTask;
         if (Interlocked.CompareExchange(ref _armed, null, hold) != hold) return Task.CompletedTask;
         return hold.ReachedAndWaitAsync();
+    }
+
+    /// <summary>A failure in place. Leaving the <c>using</c> ends it, so a test that failed leaves the database answering again.</summary>
+    public sealed class Fault : IDisposable
+    {
+        private static readonly TimeSpan Limit = TimeSpan.FromSeconds(30);
+        private readonly DbCommandGate _gate;
+        private readonly Func<DbCommand, bool> _match;
+        private int _failed;
+
+        internal Fault(DbCommandGate gate, Func<DbCommand, bool> match)
+        {
+            _gate = gate;
+            _match = match;
+        }
+
+        internal void ThrowIfMatches(DbCommand command)
+        {
+            if (!_match(command)) return;
+            Interlocked.Increment(ref _failed);
+            throw new Npgsql.NpgsqlException("The test made this command fail.");
+        }
+
+        /// <summary>Waits for this many commands to have failed.</summary>
+        public async Task FailedAtLeastAsync(int times)
+        {
+            using var limit = new CancellationTokenSource(Limit);
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(20));
+            while (Volatile.Read(ref _failed) < times) await timer.WaitForNextTickAsync(limit.Token);
+        }
+
+        public void Dispose() => Interlocked.CompareExchange(ref _gate._fault, null, this);
     }
 
     /// <summary>Um comando segurado. Sair do <c>using</c> sempre solta, para um teste que falhou não deixar a requisição presa.</summary>

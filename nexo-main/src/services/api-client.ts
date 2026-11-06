@@ -249,8 +249,8 @@ async function attemptRefresh(): Promise<RefreshOutcome> {
       clearTokens();
       return isPlatformRefreshToken(sent) ? "platform_ended" : "failed";
     } catch (error) {
+      // No answer says nothing about the session, so the tokens stay here. A 401 that led here drops them anyway (recoverFromUnauthorized).
       console.error("Token refresh failed:", error);
-      clearTokens();
       return "failed";
     } finally {
       refreshPromise = null;
@@ -258,6 +258,41 @@ async function attemptRefresh(): Promise<RefreshOutcome> {
   })();
 
   return refreshPromise;
+}
+
+/** A token with less than this left is renewed first: a connection opened with it would be closed right after, at its expiry. */
+const TOKEN_MIN_LIFETIME_MS = 30_000;
+
+/** The expiry the token says it has, in milliseconds. Null when it cannot be read: only the server can judge it then. */
+function tokenExpiry(token: string): number | null {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const exp = (JSON.parse(atob(payload)) as { exp?: unknown }).exp;
+    return typeof exp === "number" ? exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The access token for a connection that stays open. The server closes it when its token expires, and a screen that only listens
+ * to the connection makes no other request that would renew the token: the renewal has to happen here. Uses the same single
+ * renewal as the requests. Null means the session is over (the app was already told): there is nothing to connect with.
+ *
+ * Without an answer from the server the session is not over: the token goes as it is, the attempt fails like any other during a
+ * network failure, and the next one tries again.
+ */
+export async function getFreshAccessToken(): Promise<string | null> {
+  const token = getAccessToken();
+  if (!token) return null;
+  const expiry = tokenExpiry(token);
+  if (isImpersonating() || expiry === null || expiry - Date.now() > TOKEN_MIN_LIFETIME_MS) return token;
+
+  const outcome = await attemptRefresh();
+  if (outcome === "ok") return getAccessToken();
+  if (getAccessToken()) return token;
+  emitSessionEnded(outcome === "platform_ended" ? "platform_session_ended" : "session_ended");
+  return null;
 }
 
 /**

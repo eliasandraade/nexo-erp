@@ -411,8 +411,13 @@ public class AuthController : ControllerBase
             return BadRequest(new { error = "Esta sessão não é um acesso da plataforma.", code = "not_impersonation" });
         var jti = User.FindFirstValue(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti) ?? User.FindFirstValue("jti");
         if (jti is not null)
-            await HttpContext.RequestServices.GetRequiredService<ICacheService>().SetAsync($"impersonation:ended:{jti}", new EndedImpersonation(DateTime.UtcNow),
+        {
+            await HttpContext.RequestServices.GetRequiredService<ICacheService>().SetAsync(ImpersonationClaims.EndedKey(jti), new EndedImpersonation(DateTime.UtcNow),
                 TimeSpan.FromMinutes(35), ct);
+            // nothing about this ends in the database, so no commit tells the hub connections of this token
+            await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Hubs.HubSessionSignals>()
+                .PublishAsync(new Nexo.Infrastructure.Hubs.HubSessionChange([], [], [jti]), CancellationToken.None);
+        }
         var audit = HttpContext.RequestServices.GetRequiredService<IAuditWriter>();
         Guid.TryParse(User.FindFirstValue("tenantId"), out var tenantId);
         audit.Stage(AuditActions.PlatformImpersonationEnded, AuditSeverity.Warning, "Tenant", tenantId.ToString(),

@@ -26,6 +26,9 @@ namespace Nexo.Api.Middleware;
 ///
 /// Must run AFTER UseAuthentication() and TenantResolutionMiddleware.
 ///
+/// This covers every request, the negotiation and the opening of a hub connection included. A connection already open sends no
+/// more requests: HubSessionGuard applies the same rule to it.
+///
 /// Platform tokens ("type" == "platform") are checked against their session instead (claim "sid" + stamp, read from
 /// the database on every request: revocation and logout apply at once), and they only reach the platform API and the
 /// few auth endpoints a platform session needs — never a tenant endpoint.
@@ -77,7 +80,7 @@ public class SecurityStampValidationMiddleware
         if (Nexo.Api.Filters.DenyDuringImpersonationAttribute.IsImpersonation(context.User)
             && context.User.FindFirstValue("jti") is { } impJti
             && await context.RequestServices.GetRequiredService<ICacheService>()
-                .GetAsync<Nexo.Api.Controllers.AuthController.EndedImpersonation>($"impersonation:ended:{impJti}", context.RequestAborted) is not null)
+                .GetAsync<Nexo.Api.Controllers.AuthController.EndedImpersonation>(ImpersonationClaims.EndedKey(impJti), context.RequestAborted) is not null)
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
             await context.Response.WriteAsJsonAsync(new { error = "O acesso da plataforma a esta empresa terminou.", code = "impersonation_ended" }, context.RequestAborted);

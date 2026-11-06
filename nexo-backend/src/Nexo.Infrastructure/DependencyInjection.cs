@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
@@ -49,6 +50,7 @@ public static class DependencyInjection
 
         // TenantSaveChangesInterceptor must be singleton (EF interceptors are registered once).
         services.AddSingleton<TenantSaveChangesInterceptor>();
+        services.AddSingleton<HubSessionChangeInterceptor>();
 
         // ── EF Core / PostgreSQL ─────────────────────────────────────────────
         services.AddDbContext<NexoDbContext>((sp, options) =>
@@ -63,7 +65,7 @@ public static class DependencyInjection
 
             // Register the tenant isolation interceptor
             var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
-            options.AddInterceptors(interceptor);
+            options.AddInterceptors(interceptor, sp.GetRequiredService<HubSessionChangeInterceptor>());
 
             // Extra diagnostics in non-production
             // Parameter values (PII) in logs only on a developer machine or the test host — never
@@ -356,7 +358,10 @@ public static class DependencyInjection
         services.AddScoped<DataSeeder>();
 
         // ── SignalR ───────────────────────────────────────────────────────────
-        services.AddSignalR();
+        services.AddSingleton<HubSessionGuard>();
+        services.AddSingleton<HubSessionSignals>();
+        services.AddSingleton<HubSessionFilter>();
+        services.AddSignalR(options => options.AddFilter<HubSessionFilter>());
         services.AddScoped<IRestaurantNotificationService, RestaurantNotificationService>();
 
         // ── Integrations ──────────────────────────────────────────────────────
