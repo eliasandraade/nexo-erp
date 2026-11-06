@@ -1064,14 +1064,8 @@ test.describe("Failures that say nothing about the session", () => {
     const answer = await limited;
 
     expect(answer.status()).toBe(429);
+    expect((await answer.json()).code).toBe("rate_limited");
     expect(Number(await answer.headerValue("retry-after"))).toBeGreaterThan(0);
-    // The app does not read the body of a 429, and the browser tools never hand over an unread answer with no-store: the same limiter, asked directly.
-    const refused = await fetch(`${API}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Forwarded-For": address },
-      body: JSON.stringify({ refreshToken: syntheticValue() }),
-    });
-    expect((await refused.json()).code).toBe("rate_limited");
 
     // the session stays, and the person is told why the screens are not loading
     await expect(signOutButton(page)).toBeVisible();

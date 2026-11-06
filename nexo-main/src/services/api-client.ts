@@ -651,6 +651,8 @@ async function renewThroughCookie(allowWithoutSession: boolean): Promise<Refresh
         return "ok";
       }
 
+      // Read in every case: an answer nobody reads is a request that never ends.
+      const err = await readErrorBody(res);
       // No verdict, and nothing here signs out by itself: that would end the new cookie of whoever won. The other tabs hold back until the server's grace is over, and the
       // token of a tab that won ends that at once. A page reloaded during its renewal has no way to speak: its answer only changes the cookie, which no script can read.
       // The only way to look is to present it, once, after the same wait the normal mode gives the pair of the winner. A cookie that is still the old one changes nothing inside the grace.
@@ -666,7 +668,6 @@ async function renewThroughCookie(allowWithoutSession: boolean): Promise<Refresh
         noteRenewalUnavailable(res.status, retryAfterMs(res));
         return "unavailable";
       }
-      const err = await readErrorBody(res);
       // Asking whether the cookie has a session, this tab has none to end. What is in the storage now is another tab's sign-in.
       if (allowWithoutSession) {
         localStorage.setItem(SIGNED_OUT_KEY, "1");

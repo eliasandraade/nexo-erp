@@ -469,7 +469,7 @@ describe("the cookie build", () => {
       onSessionEnded((r) => reasons.push(r));
       fetchMock.mockImplementation(async () => conflict());
 
-      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE, status: 409 });
+      await expect(apiClient.get("/a")).rejects.toMatchObject({ code: SESSION_RENEWAL_UNAVAILABLE_CODE, status: 503 });
 
       expect(renewals(), "the burst is over: two presentations, not seven").toHaveLength(2);
       expect(signOuts()).toHaveLength(0);
@@ -478,6 +478,20 @@ describe("the cookie build", () => {
       expect(localStorage.getItem(SIGNED_OUT)).toBeNull();
       expect(reasons).toEqual([]);
     }, 10_000);
+
+    it.each([
+      ["401", () => json({ code: "session_ended" }, 401)],
+      ["429", () => json({ code: "rate_limited" }, 429, { "Retry-After": "30" })],
+    ])("the body of a %s on the renewal is read: an answer nobody reads is a request that never ends", async (_, answer) => {
+      const { apiClient } = await load();
+      localStorage.setItem(SESSION, tenantSession());
+      const refused = answer();
+      fetchMock.mockResolvedValueOnce(refused);
+
+      await apiClient.get("/a").catch(() => undefined);
+
+      expect(refused.bodyUsed).toBe(true);
+    });
 
     it("the rest of this page does not present it again until the time the server gave", async () => {
       const { apiClient } = await load();

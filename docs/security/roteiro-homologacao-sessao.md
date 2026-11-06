@@ -30,7 +30,7 @@ Onde olhar:
 
 - **Application > Cookies:** escolha o host da **API**, não o do frontend. O cookie é daquele host e só aparece lá.
 - **Application > Local Storage / Session Storage:** o host do frontend.
-- **Network:** clique na requisição e veja **Headers** (`Cookie`, `X-Orken-Session`, `Origin`, `Set-Cookie`) e **Response**. As rotas de autenticação respondem `no-store`, e o Chrome não mostra o corpo de uma resposta assim que a página não leu, como a de um 429 ("Failed to load response data"). Isso não é falha: confira o status e os cabeçalhos.
+- **Network:** clique na requisição e veja **Headers** (`Cookie`, `X-Orken-Session`, `Origin`, `Set-Cookie`) e **Response**.
 
 ### Contas
 
