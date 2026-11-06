@@ -393,6 +393,38 @@ public class BuildCommercialTests
     }
 
     [Fact]
+    public async Task The_client_refuses_a_change_order_on_the_portal_and_it_changes_no_money()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var company = await CompanyAsync(admin);
+        var projectId = await ProjectAsync(admin, "Obra com aditivo recusado");
+        var co = await Json(await admin.PostAsJsonAsync($"/api/v1/build/projects/{projectId}/change-orders",
+            new { title = "Piso melhor", costImpact = 900m }), HttpStatusCode.Created);
+        var coId = co.GetProperty("id").GetGuid();
+        await Json(await admin.PostAsync($"/api/v1/build/change-orders/{coId}/send", null), HttpStatusCode.OK);
+        var password = PortalPassword();
+        var portal = await PortalAsync(admin, company, projectId, password);
+        var client = await SessionAsync(portal, password);
+        var decision = $"{portal}/change-orders/{co.GetProperty("publicId").GetGuid()}/decision";
+
+        var decided = await Json(await client.PostAsJsonAsync(decision,
+            new { decision = "reject", comment = "Fora do combinado.", signerName = "Maria Cliente" }), HttpStatusCode.OK);
+
+        decided.GetProperty("status").GetString().Should().Be("Rejected");
+        decided.GetProperty("canDecide").GetBoolean().Should().BeFalse();
+
+        var internalCo = await Json(await admin.GetAsync($"/api/v1/build/change-orders/{coId}"), HttpStatusCode.OK);
+        internalCo.GetProperty("decidedBy").GetString().Should().Be("Cliente (portal)");
+        internalCo.GetProperty("signerName").GetString().Should().Be("Maria Cliente");
+        internalCo.GetProperty("appliedToBudget").GetBoolean().Should().BeFalse();
+        var summary = await Json(await admin.GetAsync($"/api/v1/build/projects/{projectId}/financial-summary"), HttpStatusCode.OK);
+        summary.GetProperty("approvedChangeOrdersTotal").GetDecimal().Should().Be(0m);
+
+        (await Code(await client.PostAsJsonAsync(decision, new { decision = "approve", signerName = "Maria Cliente" }), HttpStatusCode.Conflict))
+            .Should().Be("change_order_already_decided", "a refusal is final too");
+    }
+
+    [Fact]
     public async Task Change_orders_cannot_be_decided_on_a_public_portal_nor_across_projects_or_tenants()
     {
         var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
