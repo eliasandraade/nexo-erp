@@ -308,6 +308,170 @@ public sealed class PlatformSecurityTests : IClassFixture<TestWebApplicationFact
         actions.Should().Contain(["platform_note_created", "platform_note_pinned", "platform_note_deleted"]);
     }
 
+    // ── Refresh token reused, sign-out and second step, on the platform routes ───
+
+    private async Task<Guid> IdOfAsync(string email)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<NexoDbContext>().PlatformUsers
+            .Where(u => u.Email == email).Select(u => u.Id).SingleAsync();
+    }
+
+    private async Task<(byte[] Secret, List<string> Codes)> TurnTwoStepOnAsync(string email, string password)
+    {
+        var client = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+        var secret = FromBase32((await Json(await client.PostAsJsonAsync("/api/platform/auth/mfa/setup", new { password }))).GetProperty("secret").GetString()!);
+        var codes = (await Json(await client.PostAsJsonAsync("/api/platform/auth/mfa/enable", new { code = Totp.Code(secret, Totp.StepAt(DateTime.UtcNow)) })))
+            .GetProperty("recoveryCodes").EnumerateArray().Select(x => x.GetString()!).ToList();
+        return (secret, codes);
+    }
+
+    private async Task<string> ChallengeOfAsync(string email, string password)
+        => (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("mfaChallenge").GetString()!;
+
+    [Fact]
+    public async Task A_refresh_token_used_again_after_the_grace_ends_the_session_and_is_recorded()
+    {
+        var (email, password) = await NewPlatformUserAsync("support");
+        var first = (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("refreshToken").GetString()!;
+        var rotated = await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = first }));
+        var next = rotated.GetProperty("refreshToken").GetString()!;
+        var signedIn = Bearer(_factory.CreateApiClient(), rotated.GetProperty("accessToken").GetString()!);
+        var userId = await IdOfAsync(email);
+
+        // The grace is for another tab of the same person: past it, the old token in someone's hands is a theft.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var past = DateTime.UtcNow.AddHours(-1);
+            (await scope.ServiceProvider.GetRequiredService<NexoDbContext>().PlatformSessions
+                .Where(s => s.PlatformUserId == userId)
+                .ExecuteUpdateAsync(set => set.SetProperty(s => s.RotatedAt, past))).Should().Be(1);
+        }
+
+        (await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = first }), HttpStatusCode.Unauthorized))
+            .GetProperty("code").GetString().Should().Be("session_ended");
+
+        (await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = next }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the session ended for whoever holds the newer token too");
+        (await signedIn.GetAsync("/api/platform/stats")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var check = _factory.Services.CreateScope();
+        var actions = await check.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
+            .Where(r => r.ActorName == email).Select(r => r.ActionType).ToListAsync();
+        actions.Should().Contain("platform_session_revoked");
+    }
+
+    [Fact]
+    public async Task The_platform_refresh_route_answers_each_refusal_with_its_code()
+    {
+        var (email, password) = await NewPlatformUserAsync("support");
+        var client = _factory.CreateApiClient();
+
+        (await Json(await client.PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = "p.never-issued" }), HttpStatusCode.Unauthorized))
+            .GetProperty("code").GetString().Should().Be("invalid_refresh");
+
+        var first = (await Json(await Login(client, email, password))).GetProperty("refreshToken").GetString()!;
+        (await client.PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = first })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await Json(await client.PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = first }), HttpStatusCode.Conflict))
+            .GetProperty("code").GetString().Should().Be("refresh_already_rotated");
+    }
+
+    [Fact]
+    public async Task Signing_out_on_the_platform_route_ends_the_session_at_once()
+    {
+        var (email, password) = await NewPlatformUserAsync("support");
+        var login = await Json(await Login(_factory.CreateApiClient(), email, password));
+        var platform = Bearer(_factory.CreateApiClient(), login.GetProperty("accessToken").GetString()!);
+        (await platform.GetAsync("/api/platform/stats")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await platform.PostAsync("/api/platform/auth/logout", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await platform.GetAsync("/api/platform/stats")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = login.GetProperty("refreshToken").GetString() }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Turning_two_step_off_refuses_a_wrong_password_and_takes_a_recovery_code_in_the_code_field()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var (secret, codes) = await TurnTwoStepOnAsync(email, password);
+        var verified = await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify",
+            new { mfaChallenge = await ChallengeOfAsync(email, password), code = Totp.Code(secret, Totp.StepAt(DateTime.UtcNow) + 1) }));
+        var signedIn = Bearer(_factory.CreateApiClient(), verified.GetProperty("accessToken").GetString()!);
+
+        (await Json(await signedIn.PostAsJsonAsync("/api/platform/auth/mfa/disable", new { password = "wrong", code = codes[0] }), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("invalid_password");
+        (await Login(_factory.CreateApiClient(), email, password)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ChallengeOfAsync(email, password)).Should().NotBeNullOrEmpty("it stays on, and the recovery code was not spent");
+
+        (await signedIn.PostAsJsonAsync("/api/platform/auth/mfa/disable", new { password, code = codes[0] })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await Json(await Login(_factory.CreateApiClient(), email, password))).TryGetProperty("mfaChallenge", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Another_administrator_turns_two_step_off_for_a_colleague_who_lost_the_phone()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        await TurnTwoStepOnAsync(email, password);
+        await ChallengeOfAsync(email, password);   // on: the password alone is not enough now
+        var (adminEmail, adminPassword) = await NewPlatformUserAsync();
+        var admin = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), adminEmail, adminPassword))).GetProperty("accessToken").GetString()!);
+        var targetId = await IdOfAsync(email);
+
+        (await admin.PostAsync($"/api/platform/auth/users/{targetId}/mfa/reset", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString().Should().NotBeNullOrEmpty();
+        using var scope = _factory.Services.CreateScope();
+        var records = await scope.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
+            .Where(r => r.EntityId == targetId.ToString() && r.ActionType == "platform_mfa_disabled").ToListAsync();
+        var record = records.Should().ContainSingle().Subject;
+        record.ActorName.Should().Be(adminEmail, "the record names who turned it off, not the person it was done to");
+        record.Description.Should().Contain($"por {adminEmail}");
+    }
+
+    [Theory]
+    [InlineData("/api/platform/auth/mfa/verify", "mfaChallenge")]
+    [InlineData("/api/auth/mfa/verify", "challenge")]
+    public async Task A_second_step_with_a_challenge_nobody_issued_is_refused(string route, string field)
+    {
+        var body = new Dictionary<string, string> { [field] = "p.never-issued", ["code"] = "123456" };
+
+        (await Json(await _factory.CreateApiClient().PostAsJsonAsync(route, body), HttpStatusCode.Unauthorized))
+            .GetProperty("code").GetString().Should().Be("invalid_challenge");
+    }
+
+    [Theory]
+    [InlineData("/api/platform/auth/mfa/verify", "mfaChallenge")]
+    [InlineData("/api/auth/mfa/verify", "challenge")]
+    public async Task Too_many_wrong_codes_lock_the_platform_second_step(string route, string field)
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        await TurnTwoStepOnAsync(email, password);
+        var challenge = await ChallengeOfAsync(email, password);
+        var wrong = new Dictionary<string, string> { [field] = challenge, ["code"] = "000000" };
+
+        for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
+            (await _factory.CreateApiClient().PostAsJsonAsync(route, wrong)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        (await Json(await _factory.CreateApiClient().PostAsJsonAsync(route, wrong), HttpStatusCode.TooManyRequests))
+            .GetProperty("code").GetString().Should().Be("account_locked");
+    }
+
+    [Fact]
+    public async Task Too_many_wrong_passwords_lock_a_platform_account_on_the_shared_sign_in_form()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var client = _factory.CreateApiClient();
+
+        for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
+            (await client.PostAsJsonAsync("/api/auth/login", new { login = email, password = "wrong" })).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        (await Json(await client.PostAsJsonAsync("/api/auth/login", new { login = email, password }), HttpStatusCode.TooManyRequests))
+            .GetProperty("code").GetString().Should().Be("account_locked", "the right password does not get through a lock");
+    }
+
     private static byte[] FromBase32(string base32)
     {
         const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
