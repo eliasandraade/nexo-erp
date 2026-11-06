@@ -339,7 +339,7 @@ export function connectToOtherTabs(): void {
   globalThis.addEventListener?.("pageshow", () => { pageIsLeaving = false; });
   // A browser with no BroadcastChannel hears of a sign-out only by this, and a token left in memory would say this tab still has a session. A cleared storage (key null) is no sign-out.
   globalThis.addEventListener?.("storage", (e: StorageEvent) => {
-    if (e.storageArea !== localStorage || e.key !== TOKEN_KEYS.session || e.newValue !== null || isImpersonating()) return;
+    if (e.storageArea !== localStorage || e.key !== TOKEN_KEYS.session || e.newValue !== null) return;
     accessInMemory = null;
     sessionEpoch++;
   });
