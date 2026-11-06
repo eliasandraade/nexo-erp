@@ -132,6 +132,7 @@ public class ExceptionHandlingMiddleware
             code,
         };
 
-        await ctx.Response.WriteAsync(JsonSerializer.Serialize(body, JsonOpts));
+        // Not RequestAborted: a caller that left would turn this error answer into a second, unhandled exception.
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(body, JsonOpts), CancellationToken.None);
     }
 }
