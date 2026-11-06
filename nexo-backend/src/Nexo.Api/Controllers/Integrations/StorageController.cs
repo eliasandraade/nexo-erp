@@ -103,7 +103,7 @@ public class StorageController : ControllerBase
         if (!target.Roles.Any(User.IsInRole))
             return Forbid();
 
-        // private content never goes to the public bucket: refused before the file is even read
+        // private content never goes to the public bucket: refused before the file goes anywhere (binding already buffered the form)
         if (target.IsPrivate && !_storage.CanStorePrivateFiles)
             return StatusCode(503, new { error = "Armazenamento privado ainda não configurado. Arquivos privados ficam indisponíveis até lá.", code = "storage_unavailable" });
 
