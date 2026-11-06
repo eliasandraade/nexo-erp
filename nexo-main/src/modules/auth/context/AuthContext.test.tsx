@@ -4,10 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./AuthContext";
 import LoginPage from "../pages/LoginPage";
+import { toast } from "sonner";
 import { apiClient, beginImpersonation, setTokens, TOKEN_KEYS } from "@/services/api-client";
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 
 const REVOKED = () => json({ error: "Sua sessão foi encerrada. Entre de novo.", code: "session_revoked" }, 401);
 const REFRESH_REFUSED = () => json({ error: "Invalid or expired refresh token.", code: "session_ended" }, 401);
@@ -88,6 +89,27 @@ describe("AuthProvider: a sessão que o servidor encerrou", () => {
     });
 
     await waitFor(() => expect(where()).toBe("/login?motivo=sessao-encerrada|sem sessão"));
+  });
+
+  it.each([
+    ["429", () => json({ code: "rate_limited" }, 429, { "Retry-After": "600" }), /Muitas renovações/],
+    ["503", () => json({ code: "session_renewal_unavailable" }, 503, { "Retry-After": "15" }), /não conseguiu renovar/],
+    ["sem conexão", () => { throw new TypeError("Failed to fetch"); }, /Sem conexão/],
+  ])("renovação sem veredito ao abrir o app (%s): a sessão fica, a pessoa fica na página e fica sabendo", async (_, answer, notice) => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const warned = vi.spyOn(toast, "warning");
+    fetchMock.mockResolvedValueOnce(json({}, 401)).mockImplementationOnce(async () => answer());
+
+    renderApp();
+
+    await waitFor(() => expect(warned).toHaveBeenCalledTimes(1));
+    expect(warned.mock.calls[0][0]).toMatch(notice);
+    expect(warned.mock.calls[0][0]).toMatch(/Sua sessão continua ativa/);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(where()).toBe("/usuarios|com sessão");
+    expect(localStorage.getItem(TOKEN_KEYS.refresh)).toBe("tenant-refresh");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.restoreAllMocks();
   });
 
   it("uma aba de acesso da plataforma ignora o que acontece com a sessão do administrador", async () => {

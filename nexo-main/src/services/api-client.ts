@@ -162,7 +162,10 @@ export function setStoredSession(sessionJson: string): void {
 export function setTokens(access: string, refresh: string | null | undefined): void {
   if (access) tokenStore().setItem(TOKEN_KEYS.access, access);
   // an impersonation tab never keeps a refresh token
-  if (refresh && !isImpersonating()) localStorage.setItem(TOKEN_KEYS.refresh, refresh);
+  if (refresh && !isImpersonating()) {
+    localStorage.setItem(TOKEN_KEYS.refresh, refresh);
+    localStorage.removeItem(RENEWAL_WAIT_KEY);
+  }
 }
 
 export function clearTokens(): void {
@@ -178,11 +181,103 @@ export function clearTokens(): void {
   localStorage.removeItem(TOKEN_KEYS.access);
   localStorage.removeItem(TOKEN_KEYS.refresh);
   localStorage.removeItem(TOKEN_KEYS.session);
+  localStorage.removeItem(RENEWAL_WAIT_KEY);
 }
 
 // ── Refresh ───────────────────────────────────────────────────────────────────
 
-type RefreshOutcome = "ok" | "failed" | "platform_ended";
+/**
+ * Only a refusal from the server ends a session: a 401, or a 409 after the wait for the pair of the tab that won the race.
+ * Everything else says nothing about the session (no connection, 429, 5xx, a proxy's answer): that is "unavailable", the tokens
+ * stay, and the call that needed the renewal fails with a temporary error.
+ */
+type RefreshOutcome = "ok" | "refused" | "platform_ended" | "unavailable";
+
+/** Code of the temporary error of a call whose renewal got no verdict. */
+export const SESSION_RENEWAL_UNAVAILABLE_CODE = "session_renewal_unavailable";
+
+/**
+ * Until when no tab sends a renewal, shared through localStorage: every tab of the browser renews the same session, and without
+ * this each one, and each call of each one, would ask again. It holds no credential, and it survives a reload on purpose.
+ */
+const RENEWAL_WAIT_KEY = "nexo:renewal_wait";
+
+interface RenewalWait {
+  until: number;
+  /** What the last attempt got: the status of the answer, 0 without one. */
+  status: number;
+  attempts: number;
+}
+
+/** Whatever a server or a clock says, a session is never held back for longer than this. */
+const RENEWAL_WAIT_MAX_MS = 3_600_000;
+const RENEWAL_BACKOFF_FIRST_MS = 2000;
+const RENEWAL_BACKOFF_MAX_MS = 60_000;
+const RENEWAL_SPREAD_MAX_MS = 5000;
+
+function readRenewalWait(): RenewalWait | null {
+  try {
+    const wait = JSON.parse(localStorage.getItem(RENEWAL_WAIT_KEY) ?? "null") as Partial<RenewalWait> | null;
+    if (typeof wait?.until !== "number" || typeof wait.status !== "number" || typeof wait.attempts !== "number") return null;
+    return wait.until - Date.now() > RENEWAL_WAIT_MAX_MS ? null : (wait as RenewalWait);
+  } catch {
+    return null; // unreadable: the same as no wait
+  }
+}
+
+/** The Retry-After of the answer in milliseconds (seconds or a date), when there is one. */
+function retryAfterMs(res: Response): number | null {
+  const value = res.headers.get("Retry-After");
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? null : Math.max(0, date - Date.now());
+}
+
+/**
+ * The next attempt waits what the server asked for or, when it did not say, twice as long as the last one. A little on top
+ * spreads the terminals of a store, which all got the same answer at the same moment.
+ */
+function noteRenewalUnavailable(status: number, retryAfter: number | null): void {
+  const attempts = (readRenewalWait()?.attempts ?? 0) + 1;
+  const asked = retryAfter ?? Math.min(RENEWAL_BACKOFF_MAX_MS, RENEWAL_BACKOFF_FIRST_MS * 2 ** (attempts - 1));
+  const spread = Math.random() * Math.min(asked * 0.2, RENEWAL_SPREAD_MAX_MS);
+  const until = Date.now() + Math.min(RENEWAL_WAIT_MAX_MS, asked + spread);
+  try {
+    localStorage.setItem(RENEWAL_WAIT_KEY, JSON.stringify({ until, status, attempts } satisfies RenewalWait));
+  } catch {
+    // storage refused: the wait is lost, and that is no reason to fail the call any other way
+  }
+}
+
+function timeLeftInWords(ms: number): string {
+  const seconds = Math.ceil(ms / 1000);
+  if (seconds > 90) return `em cerca de ${Math.ceil(seconds / 60)} minutos`;
+  return seconds > 5 ? `em ${seconds} segundos` : "em instantes";
+}
+
+const RENEWAL_UNAVAILABLE_EVENT = "orken:session-renewal-unavailable";
+
+/** Subscribes to the renewals that got no verdict, with the text for the person; returns the unsubscribe function. */
+export function onRenewalUnavailable(handler: (message: string) => void): () => void {
+  const listener = (e: Event) => handler((e as CustomEvent<string>).detail);
+  globalThis.addEventListener(RENEWAL_UNAVAILABLE_EVENT, listener);
+  return () => globalThis.removeEventListener(RENEWAL_UNAVAILABLE_EVENT, listener);
+}
+
+/** The error of a call that could not renew the session. Never a 401: everything that reads a 401 takes it for a refusal. */
+function renewalUnavailableError(): ApiError {
+  const wait = readRenewalWait();
+  const left = Math.max(0, (wait?.until ?? 0) - Date.now());
+  const status = wait?.status ?? 0;
+  const cause = status === 0 ? "Sem conexão com o servidor para renovar sua sessão."
+    : status === 429 ? "Muitas renovações de sessão em pouco tempo."
+    : "O servidor não conseguiu renovar sua sessão agora.";
+  const message = `${cause} Sua sessão continua ativa: tente de novo ${timeLeftInWords(left)}.`;
+  globalThis.dispatchEvent(new CustomEvent<string>(RENEWAL_UNAVAILABLE_EVENT, { detail: message }));
+  return new ApiError(status, message, SESSION_RENEWAL_UNAVAILABLE_CODE, undefined, undefined, undefined, Math.ceil(left / 1000));
+}
 
 /** Refresh tokens of platform administrators start with "p." (rotated on every refresh). */
 const isPlatformRefreshToken = (token: string) => token.startsWith("p.");
@@ -221,13 +316,15 @@ async function readErrorBody(res: Response): Promise<ErrorBody | null> {
 let refreshPromise: Promise<RefreshOutcome> | null = null;
 
 async function attemptRefresh(): Promise<RefreshOutcome> {
-  if (isImpersonating()) return "failed";   // the impersonation token is never renewed
+  if (isImpersonating()) return "refused";   // the impersonation token is never renewed
   if (refreshPromise) return refreshPromise;
 
   // checked before the shared promise exists: an IIFE that returns synchronously would run its `finally` before the
-  // assignment below and leave a settled "failed" promise cached, so no later 401 would ever refresh again
+  // assignment below and leave a settled "refused" promise cached, so no later 401 would ever refresh again
   const sent = localStorage.getItem(TOKEN_KEYS.refresh);
-  if (!sent) return "failed";
+  if (!sent) return "refused";
+  const wait = readRenewalWait();
+  if (wait && wait.until > Date.now()) return "unavailable";
 
   refreshPromise = (async (): Promise<RefreshOutcome> => {
     try {
@@ -240,18 +337,24 @@ async function attemptRefresh(): Promise<RefreshOutcome> {
       if (res.ok) {
         const data = await res.json();
         if (data.accessToken) setTokens(data.accessToken, data.refreshToken ?? "");
+        localStorage.removeItem(RENEWAL_WAIT_KEY);
         return "ok";
       }
 
+      if (res.status !== 401 && res.status !== 409) {
+        noteRenewalUnavailable(res.status, retryAfterMs(res));
+        return "unavailable";
+      }
       const err = await readErrorBody(res);
       // Another tab renewed the same session a moment ago and stores the new pair in localStorage: use it.
       if (res.status === 409 && err?.code === "refresh_already_rotated" && await waitForRotatedToken(sent)) return "ok";
       clearTokens();
-      return isPlatformRefreshToken(sent) ? "platform_ended" : "failed";
+      return isPlatformRefreshToken(sent) ? "platform_ended" : "refused";
     } catch (error) {
-      // No answer says nothing about the session, so the tokens stay here. A 401 that led here drops them anyway (recoverFromUnauthorized).
+      // No answer says nothing about the session, so the tokens stay.
       console.error("Token refresh failed:", error);
-      return "failed";
+      noteRenewalUnavailable(0, null);
+      return "unavailable";
     } finally {
       refreshPromise = null;
     }
@@ -279,8 +382,8 @@ function tokenExpiry(token: string): number | null {
  * to the connection makes no other request that would renew the token: the renewal has to happen here. Uses the same single
  * renewal as the requests. Null means the session is over (the app was already told): there is nothing to connect with.
  *
- * Without an answer from the server the session is not over: the token goes as it is, the attempt fails like any other during a
- * network failure, and the next one tries again.
+ * Without a verdict from the server (no connection, 429, 5xx) the session is not over: the token goes as it is, the attempt fails
+ * like any other during a network failure, and a later one tries again, after the wait the renewal is under.
  */
 export async function getFreshAccessToken(): Promise<string | null> {
   const token = getAccessToken();
@@ -296,8 +399,9 @@ export async function getFreshAccessToken(): Promise<string | null> {
 }
 
 /**
- * A 401 on an authenticated call. True when the request may be sent again (once) with a renewed token;
- * otherwise the local session is already dropped (and the app told, when it must leave the page).
+ * A 401 on an authenticated call. True when the request may be sent again (once) with a renewed token. False when the local
+ * session is already dropped (and the app told, when it must leave the page). Throws the temporary error when the renewal got no
+ * verdict: the session stays, and only this call fails. A revoked token is a verdict in itself, so that one still ends here.
  */
 async function recoverFromUnauthorized(usedToken: string | null, code: string | undefined, isRetry: boolean): Promise<boolean> {
   if (isImpersonating()) {
@@ -322,6 +426,7 @@ async function recoverFromUnauthorized(usedToken: string | null, code: string | 
       emitSessionEnded("platform_session_ended");
       return false;
     }
+    if (outcome === "unavailable" && code !== "session_revoked") throw renewalUnavailableError();
   }
   clearTokens();
   if (sessionInUse) emitSessionEnded(code === "session_revoked" ? "session_revoked" : "session_ended");
@@ -507,7 +612,9 @@ export class ApiError extends Error {
     /** The body's { details } list, when it sends one (e.g. the reason an AI provider failed). */
     public readonly details?: string[],
     /** The body's own { error } text, kept apart from `message` (which prefers `details`). */
-    public readonly serverMessage?: string
+    public readonly serverMessage?: string,
+    /** When it makes sense to try again, in seconds, when known. */
+    public readonly retryAfterSeconds?: number
   ) {
     super(message);
     this.name = "ApiError";
