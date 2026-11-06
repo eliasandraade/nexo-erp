@@ -27,7 +27,7 @@ public sealed class BrasilApiCnpjProvider : ICnpjLookupProvider
 
     public async Task<CnpjLookupResult?> LookupAsync(string cnpj, CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"/cnpj/v1/{cnpj}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/cnpj/v1/{Uri.EscapeDataString(cnpj)}");
         request.Options.Set(ProviderNameKey, "BrasilApi:Cnpj");
 
         using var response = await _http.SendAsync(request, ct);

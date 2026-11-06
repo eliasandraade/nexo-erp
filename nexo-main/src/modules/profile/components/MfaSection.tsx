@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { copyToClipboard } from "@/lib/clipboard";
-import { ApiError } from "@/services/api-client";
+import { ApiError, clearTokens } from "@/services/api-client";
 import { disableMfa, enableMfa, fetchMfaStatus, startMfaSetup } from "@/modules/auth/services/authService";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -46,7 +46,15 @@ export function MfaSection() {
   });
   const enable = useMutation({
     mutationFn: () => enableMfa(code),
-    onSuccess: (d) => { setRecovery(d.recoveryCodes); setSetup(null); setCode(""); void qc.invalidateQueries({ queryKey: KEY }); },
+    onSuccess: (d) => {
+      // The server ended every session, this one included: never send its token again (a background refetch
+      // would otherwise end the page before the codes are saved).
+      clearTokens();
+      void qc.cancelQueries();
+      setRecovery(d.recoveryCodes);
+      setSetup(null);
+      setCode("");
+    },
     onError: (e) => fail(e, "Código inválido."),
   });
   const disable = useMutation({

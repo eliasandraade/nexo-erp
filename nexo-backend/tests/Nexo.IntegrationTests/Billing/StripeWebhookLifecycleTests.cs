@@ -329,7 +329,7 @@ public class StripeWebhookLifecycleTests
     }
 
     [Fact]
-    public async Task A_canceled_subscription_closes_the_real_module_gate_at_once()
+    public async Task A_canceled_subscription_closes_the_writes_at_the_real_module_gate_at_once()
     {
         var (client, tenantId) = await TenantUserAsync();
         var subId = NewSubscriptionId();
@@ -342,7 +342,9 @@ public class StripeWebhookLifecycleTests
         Stripe.Set(subId, "canceled");
         (await DeliverAsync(SubscriptionEvent("customer.subscription.deleted", subId, status: "canceled"))).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await client.GetAsync("/api/v1/build/budget-templates")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        // somente leitura: a consulta segue, e a escrita para na hora
+        (await client.GetAsync("/api/v1/build/budget-templates")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await client.PostAsJsonAsync("/api/v1/build/budget-templates", new { })).StatusCode.Should().Be(HttpStatusCode.PaymentRequired);
     }
 
     [Fact]

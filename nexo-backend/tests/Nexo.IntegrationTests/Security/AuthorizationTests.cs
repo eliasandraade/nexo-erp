@@ -68,7 +68,7 @@ public class AuthorizationTests
         await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
         await client.GetAsync(CompanyRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
 
-        // a concessão existe, mas venceu. Outra empresa, para a recusa acima não vir do cache.
+        // a concessão existe, mas venceu: somente leitura (decisão do dono). Outra empresa, para a recusa acima não vir do cache.
         var expired = await SyntheticTenant.CreateAsync(_factory, "build");
         using (var scope = _factory.Services.CreateScope())
         {
@@ -77,7 +77,8 @@ public class AuthorizationTests
             await db.SaveChangesAsync();
         }
         var expiredClient = await AuthClientFactory.LoginAsync(_factory, expired.Login, expired.Password);
-        await expiredClient.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+        await expiredClient.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        await expiredClient.PostAsJsonAsync(route, new { }).ShouldHaveStatusAsync(HttpStatusCode.PaymentRequired, _factory);
     }
 
     [Theory]
@@ -98,9 +99,11 @@ public class AuthorizationTests
         await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
         await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);   // agora o acesso está no cache
 
+        // revogar deixa a linha Canceled: o módulo fica vencido, legível e sem escrita, na hora
         await platform.DeleteAsync($"/api/platform/tenants/{director.TenantId}/modules/{module}")
             .ShouldHaveStatusAsync(HttpStatusCode.NoContent, _factory);
-        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.Forbidden, _factory);
+        await client.GetAsync(route).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        await client.PostAsJsonAsync(route, new { }).ShouldHaveStatusAsync(HttpStatusCode.PaymentRequired, _factory);
     }
 
     // ────────────────────────────────────────────────────────────────────────────
@@ -146,7 +149,7 @@ public class AuthorizationTests
         (await db.Users.IgnoreQueryFilters().SingleAsync(u => u.Id == seller.UserId)).Role.Should().Be(UserRole.Vendedor, "a alteração recusada não muda o papel");
     }
 
-    [Fact(Skip = "Defeito em aberto, issue #137: o papel vem do token e mudar o papel não troca o security stamp. Hoje responde 200 até o token expirar.")]
+    [Fact]
     public async Task DemotedUser_LosesAccess_WithTheTokenAlreadyIssued()
     {
         var director = await SyntheticTenant.CreateAsync(_factory, AnyModule);

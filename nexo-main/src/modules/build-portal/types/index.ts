@@ -66,6 +66,8 @@ export interface Portal {
   downloads?: { name: string; url?: string; date: string }[];
   pagination?: { timeline?: string; photos?: number; captures?: number };
   visibility?: "public" | "private";
+  /** The portal can be read and takes no decisions or requests right now. */
+  readOnly?: boolean;
   indexable?: boolean;
   weather?: { date: string; description: string; impact?: string }[];
   captures?: {

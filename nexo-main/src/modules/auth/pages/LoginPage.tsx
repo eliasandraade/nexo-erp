@@ -32,6 +32,7 @@ export default function LoginPage() {
     "mfa": "Verificação em duas etapas ativada. Entre de novo com a senha e o código do app.",
     "mfa-desativada": "Verificação em duas etapas desativada. Entre de novo.",
     "sessao-encerrada": "Sua sessão foi encerrada. Entre de novo.",
+    "sessao-revogada": "Seu acesso foi alterado e, por segurança, sua sessão foi encerrada. Entre de novo.",
   } as Record<string, string>)[params.get("motivo") ?? ""];
   const queryClient = useQueryClient();
   const formRef    = useRef<HTMLFormElement>(null);

@@ -10,7 +10,7 @@ PR ──(ci-gate)──> master ──(CI completo)──> staging ──(valid
 
 | Etapa | O que acontece | Quem garante |
 |---|---|---|
-| PR para `master` | Roda `ci.yml`: o que o diff tocou, mais o SonarCloud. O merge exige `ci-gate` verde | Proteção da branch `master` |
+| PR para `master` | Roda `ci.yml`: o que o diff tocou, mais o SonarCloud e a autenticação de ponta a ponta (`auth-e2e`), que rodam sempre. O merge exige `ci-gate` verde | Proteção da branch `master` |
 | Push em `master` | Roda `master.yml`: tudo, sem pular nada. Railway publica no **staging** depois do CI | `master.yml` e "Wait for CI" do Railway |
 | Promoção | `production` avança para um SHA com `master-gate` verde. Railway publica em **produção** | Proteção da branch `production` |
 
@@ -18,8 +18,8 @@ PR ──(ci-gate)──> master ──(CI completo)──> staging ──(valid
 
 - **`ci-gate`** (`ci.yml`): veredito de uma PR. Sempre reporta, então nunca fica pendente por causa de um job que o diff
   pulou. Um job pulado só vale se o diff não tocou aquela área; falha ou cancelamento reprova.
-- **`master-gate`** (`master.yml`): só existe em commit que chegou à `master` e passou em tudo (backend, frontend e
-  SonarCloud), sem nada pulado.
+- **`master-gate`** (`master.yml`): só existe em commit que chegou à `master` e passou em tudo (backend, frontend,
+  `auth-e2e` e SonarCloud), sem nada pulado.
 
 O `master-gate` fica num workflow próprio de propósito. Para checks obrigatórios, o GitHub trata como sucesso um job pulado
 por condição. Se ele fosse um job que a PR apenas pula, a ponta de uma branch não mesclada passaria pela proteção de
@@ -94,6 +94,7 @@ STAGING_API=https://backend-staging-d8d0.up.railway.app STAGING_WEB=https://main
 | Dados | Sintéticos, do `DataSeeder` (rodam fora de produção) | Reais |
 | Swagger | Ligado | Desligado |
 | Stripe | Desligado até haver chave `sk_test_` | Chave live |
+| Novos checkouts (`Billing__NewCheckoutsEnabled`, [detalhes](stripe-homologacao.md#bloqueio-de-novos-checkouts)) | Bloqueados. A homologação precisa de `true` junto com a chave `sk_test_` | Bloqueados. `true` exige autorização comercial explícita do dono e homologação concluída |
 | Storage (R2) e e-mail (Resend) | Desligados | Ligados |
 | Orken ID | `account.staging.orken.com.br` | `account.orken.com.br` |
 
@@ -118,10 +119,11 @@ código; valem só para dados de teste, e por isso nada real pode entrar neste a
 ### Domínios
 
 Staging roda nos domínios gerados pelo Railway. `*.up.railway.app` é um sufixo público, então o `main` e o `backend` são
-sites diferentes para o navegador e o cookie `nexo_refresh` (`SameSite=Lax`) não acompanha as chamadas: o login funciona
-com o token em memória, mas recarregar a página encerra a sessão. Isso é limite do domínio, não defeito do produto.
+sites diferentes para o navegador. Isso não afeta a sessão do SPA: ele não usa os cookies `nexo_access` e `nexo_refresh` em
+nenhum ambiente, guarda os tokens em `localStorage` e chama a API com o header `Authorization`
+([evidência](../audits/2026-11-05-sonarcloud-seguranca-evidencias.md)). Conferido no código e em host local, não com login real em staging.
 
-Para o staging se comportar como produção, os dois hosts precisam ser do mesmo site:
+Para o staging ter a mesma relação de sites de produção, os dois hosts precisam ser do mesmo site:
 `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br`. Depois de criar os registros DNS:
 
 1. inclua os domínios em `.railway/railway.ts` (fora do ramo de produção) e rode o `apply` no staging;

@@ -43,7 +43,8 @@ public record SessionDto(
     string Type = "tenant",
     bool IsNewAccount = false,
     DateTime? TrialEndsAt = null,
-    bool RequirePasswordChange = false);
+    bool RequirePasswordChange = false,
+    List<string>? ReadOnlyModules = null);
 
 public record LoginResponse(
     string AccessToken,

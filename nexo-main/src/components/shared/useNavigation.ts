@@ -1,5 +1,6 @@
 import { appRoutes, type RouteGroup } from "@/app/router/routes";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { readableModules } from "@/modules/auth/hooks/useRoleAccess";
 import { useWorkspace } from "@/modules/workspace/WorkspaceContext";
 import { useHasServiceModule } from "@/modules/service/hooks/useHasServiceModule";
 import { useServicePresetOptional } from "@/modules/service/context/ServicePresetContext";
@@ -10,8 +11,9 @@ export function useNavigation() {
   const { active } = useWorkspace();
   const hasService = useHasServiceModule();
   const servicePreset = useServicePresetOptional();
+  const modules = session ? readableModules(session) : [];
   const visibleRoutes = appRoutes.filter((route) => {
-    if (route.moduleKey && !session?.modules.includes(route.moduleKey)) return false;
+    if (route.moduleKey && !modules.includes(route.moduleKey)) return false;
     // Service is a module family (decision D1): any vertical key unlocks the group, so it
     // can't use a single `moduleKey`. Capability-gated surfaces (decision D2) appear only
     // when the resolved preset enables them — preset is null outside the Service area.

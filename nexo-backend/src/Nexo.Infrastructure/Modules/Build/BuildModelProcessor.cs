@@ -25,7 +25,8 @@ public interface IBuildModelProcessor
 /// <summary>
 /// The model processing worker (system-wide, no current tenant: every query names the job's tenant).
 ///   - claim: one atomic UPDATE … WHERE id = (SELECT … FOR UPDATE SKIP LOCKED) RETURNING id — two workers never take the same
-///     job; the claim sets a lock that expires (a crashed worker's job is taken again), at most 3 attempts;
+///     job; the claim sets a lock that expires (a crashed worker's job is taken again), at most 3 attempts. Only jobs of
+///     companies with access to the module now: the others wait in the queue, spend no attempt and run if access returns;
 ///   - Parse: reads the private source file into a temporary file and extracts zones/elements (IFC via xBIM, GLB/glTF JSON,
 ///     DXF layer names) in one transaction (elements in batches of 1000) — a failure leaves nothing half-written;
 ///   - Convert (only when Build:Models:IfcConvertPath points to an existing IfcConvert binary): IFC → GLB with element
@@ -90,6 +91,7 @@ public sealed class BuildModelProcessor : IBuildModelProcessor
     private async Task<Guid?> ClaimAsync(CancellationToken ct)
     {
         var lockSeconds = (int)(_options.JobTimeout + TimeSpan.FromMinutes(5)).TotalSeconds;
+        var withAccess = await ModuleAccessQueries.TenantsWithAccess(_db, PublicBuildPortal.ModuleKey, DateTime.UtcNow).ToArrayAsync(ct);
         var ids = await _db.Database.SqlQueryRaw<Guid>(
             """
             UPDATE nexo.bld_model_processing_jobs
@@ -97,11 +99,12 @@ public sealed class BuildModelProcessor : IBuildModelProcessor
                    locked_until = now() + make_interval(secs => {0})
              WHERE id = (SELECT id FROM nexo.bld_model_processing_jobs
                           WHERE (status = 1 OR (status = 2 AND locked_until < now())) AND attempts < {1}
+                            AND tenant_id = ANY({2})
                           ORDER BY created_at
                           FOR UPDATE SKIP LOCKED
                           LIMIT 1)
             RETURNING id AS "Value"
-            """, lockSeconds, BuildModelProcessingJob.MaxAttempts).ToListAsync(ct);
+            """, lockSeconds, BuildModelProcessingJob.MaxAttempts, withAccess).ToListAsync(ct);
         return ids.Count == 0 ? null : ids[0];
     }
 

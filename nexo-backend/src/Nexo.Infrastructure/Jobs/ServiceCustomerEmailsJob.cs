@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Modules.Service;
+using Nexo.Infrastructure.Modules;
 using Nexo.Infrastructure.Persistence;
 
 namespace Nexo.Infrastructure.Jobs;
@@ -18,6 +19,9 @@ namespace Nexo.Infrastructure.Jobs;
 /// A system job across every tenant, every two minutes. Each e-mail is claimed with a conditional
 /// UPDATE before it is sent, so several instances never send it twice: at most once, never retried
 /// (a provider failure is logged, not repeated to the customer).
+///
+/// A company without access to the Service module sends nothing and claims nothing: its e-mails stay pending and go out
+/// if access returns while they still make sense.
 /// </summary>
 public class ServiceCustomerEmailsJob : BackgroundService
 {
@@ -89,14 +93,14 @@ public class ServiceCustomerEmailsJob : BackgroundService
     }
 
     /// <summary>Open, upcoming bookings of stores with e-mails on, whose customer has an address.</summary>
-    private static IQueryable<Candidate> Candidates(NexoDbContext db, DateTime nowUtc) =>
+    private static IQueryable<Candidate> Candidates(NexoDbContext db, DateTime nowUtc, IQueryable<Guid> withAccess) =>
         from a in db.SvcAppointments.IgnoreQueryFilters()
         join s in db.SvcSettings.IgnoreQueryFilters() on new { a.TenantId, a.StoreId } equals new { s.TenantId, s.StoreId }
         join c in db.Customers.IgnoreQueryFilters() on new { Id = a.CustomerId, a.TenantId } equals new { c.Id, c.TenantId }
         join st in db.Stores.IgnoreQueryFilters() on a.StoreId equals st.Id
         join cat in db.SvcCatalogItems.IgnoreQueryFilters() on a.CatalogItemId equals cat.Id
         join p in db.SvcProfessionals.IgnoreQueryFilters() on a.ProfessionalId equals p.Id
-        where s.CustomerEmailsEnabled && a.PublicToken != null
+        where withAccess.Contains(a.TenantId) && s.CustomerEmailsEnabled && a.PublicToken != null
            && c.IsActive && c.Email != null && c.Email != ""
            && a.StartsAt > nowUtc
            && (a.Status == SvcAppointmentStatus.Scheduled || a.Status == SvcAppointmentStatus.Confirmed)
@@ -119,10 +123,11 @@ public class ServiceCustomerEmailsJob : BackgroundService
         TimeSpan? pause = null)
     {
         var confirmationsSince = nowUtc.AddDays(-1);      // a confirmation days late would only confuse
-        var confirmations = await Candidates(db, nowUtc)
+        var withAccess = ModuleAccessQueries.TenantsWithAccess(db, ServicePresetRegistry.Family, DateTime.UtcNow);
+        var confirmations = await Candidates(db, nowUtc, withAccess)
             .Where(x => x.ConfirmationPending && x.CreatedAt >= confirmationsSince)
             .OrderBy(x => x.CreatedAt).Take(BatchSize).AsNoTracking().ToListAsync(ct);
-        var reminders = await Candidates(db, nowUtc)
+        var reminders = await Candidates(db, nowUtc, withAccess)
             .Where(x => x.ReminderSentAt == null && x.StartsAt <= nowUtc.AddHours(x.ReminderHours))
             .OrderBy(x => x.StartsAt).Take(BatchSize).AsNoTracking().ToListAsync(ct);
 

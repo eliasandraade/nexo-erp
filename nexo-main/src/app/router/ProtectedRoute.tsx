@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useAuth } from "@/modules/auth/context/AuthContext";
-import { canAccessPath } from "@/modules/auth/hooks/useRoleAccess";
+import { canAccessPath, READ_ONLY_SUBSCRIPTION_URL } from "@/modules/auth/hooks/useRoleAccess";
 import { isImpersonating, onSubscriptionRequired } from "@/services/api-client";
 
 /**
@@ -17,7 +18,9 @@ import { isImpersonating, onSubscriptionRequired } from "@/services/api-client";
  * 2. No cached session + validation still pending (`!isReady`) → render null
  *    briefly (resolves synchronously on next tick) to avoid flashing the app.
  * 3. No cached session + ready → redirect to /login.
- *    3a. Trial expired + no active modules → redirect to /assinatura.
+ *
+ * A company in read-only is not redirected: it keeps browsing and exporting its data.
+ * See docs/engineering/tenant-access-enforcement.md.
  *
  * The 401 + refresh-failure path is handled inside api-client.ts:
  * it calls clearTokens() which triggers AuthContext to set session = null
@@ -28,13 +31,17 @@ export function ProtectedRoute() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // A write refused for lack of a subscription (402): the session stays, and whoever can open the subscription page goes
-  // there. The other roles stay put, since that page would only send them back home: the failed call's message tells them.
+  // A write refused for lack of a subscription (402): whoever is consulting stays on the screen, and the session stays. The
+  // subscription page is for Diretoria and Gerente: for the other roles a link would only send them back home.
   const role = session?.role;
-  const modules = session?.modules;
   useEffect(() => onSubscriptionRequired(() => {
-    if (role && canAccessPath(role, modules ?? [], "/assinatura")) navigate("/assinatura?motivo=somente-leitura");
-  }), [role, modules, navigate]);
+    toast.warning("Nada foi registrado: esta área está somente para consulta.", {
+      id: "subscription-required",
+      action: role && canAccessPath(role, [], "/assinatura")
+        ? { label: "Ver assinatura", onClick: () => navigate(READ_ONLY_SUBSCRIPTION_URL) }
+        : undefined,
+    });
+  }), [role, navigate]);
 
   if (!session) return isReady ? <Navigate to="/login" replace /> : null;
 
@@ -42,18 +49,6 @@ export function ProtectedRoute() {
   // (Not in a platform access: the administrator cannot change the user's password there.)
   if (session.requirePasswordChange && !isImpersonating() && !location.pathname.startsWith("/perfil")) {
     return <Navigate to="/perfil?trocar-senha=1" replace />;
-  }
-
-  // If trial has expired and no paid modules are active, force the upgrade page.
-  // Allow /assinatura and /perfil so the user can still manage their account.
-  const BYPASS = ["/assinatura", "/perfil"];
-  const trialExpired =
-    !!session.trialEndsAt &&
-    new Date(session.trialEndsAt) <= new Date() &&
-    session.modules.length === 0;
-
-  if (trialExpired && !BYPASS.some((p) => location.pathname.startsWith(p))) {
-    return <Navigate to="/assinatura" replace />;
   }
 
   return <Outlet />;

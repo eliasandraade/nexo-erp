@@ -175,6 +175,14 @@ public class RegistrationService
             .Select(s => s.CurrentPeriodEnd)
             .FirstOrDefaultAsync(ct);
 
+        // Whoever verifies the e-mail after the trial ended lands in read-only like any other login.
+        var subscriptions = await _db.ModuleSubscriptions
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(s => s.TenantId == tenant.Id)
+            .ToListAsync(ct);
+        var expiredModules = ModuleSubscription.ExpiredKeys(subscriptions, DateTime.UtcNow);
+
         var stores = await _db.Stores
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -215,7 +223,8 @@ public class RegistrationService
                 StoreIds:      storeIds.Select(id => id.ToString()).ToList(),
                 CompanyName:   companyName,
                 IsNewAccount:  true,
-                TrialEndsAt:   trialEndsAt));
+                TrialEndsAt:   trialEndsAt,
+                ReadOnlyModules: expiredModules.ToList()));
     }
 
     /// <summary>

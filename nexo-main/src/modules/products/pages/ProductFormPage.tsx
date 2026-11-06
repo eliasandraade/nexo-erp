@@ -13,6 +13,7 @@ import { emptyProduct, dtoToProduct } from "../types";
 import type { Product } from "../types";
 import { useProduct, useCategories, useCreateProduct, useUpdateProduct, useSetProductActive } from "../hooks/use-products";
 import { useAuth } from "@/modules/auth/context/AuthContext";
+import { readableModules } from "@/modules/auth/hooks/useRoleAccess";
 import { toast } from "sonner";
 import { downloadPdf } from "@/services/pdf.api";
 import { ProductFiscalDialog } from "@/modules/fiscal/components/ProductFiscalDialog";
@@ -35,7 +36,7 @@ export default function ProductFormPage() {
   const location = useLocation();
   const { session } = useAuth();
   const isNew = !id;
-  const hasRestauranteModule = session?.modules?.includes("restaurante") ?? false;
+  const hasRestauranteModule = session ? readableModules(session).includes("restaurante") : false;
 
   const { data: dto, isLoading: loadingProduct } = useProduct(id);
   const { data: categories = [] } = useCategories();

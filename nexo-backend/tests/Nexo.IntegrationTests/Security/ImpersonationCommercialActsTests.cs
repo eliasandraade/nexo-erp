@@ -37,7 +37,7 @@ public class ImpersonationCommercialActsTests
     public async Task An_impersonation_cannot_open_the_stripe_checkout()
     {
         var stripe = new FakeBillingProvider();
-        var host = HostWithStripe(stripe);
+        var host = HostWithStripe(stripe, newCheckoutsOpen: true);
         var (tenantId, email) = await NewTenantAsync();
         var imp = On(host, await ImpersonateAsync(tenantId));
         var body = new { moduleKey = "restaurante", billingPeriod = "monthly" };
@@ -51,6 +51,22 @@ public class ImpersonationCommercialActsTests
         var own = await owner.PostAsJsonAsync("/api/billing/checkout", body);
         own.StatusCode.Should().Be(HttpStatusCode.OK, await own.Content.ReadAsStringAsync());
         stripe.Calls.Should().Contain(nameof(IBillingProvider.CreateCheckoutSessionAsync), "o dono continua assinando");
+    }
+
+    [Fact]
+    public async Task With_new_checkouts_blocked_an_impersonation_keeps_its_own_refusal_and_can_read_the_switch()
+    {
+        var stripe = new FakeBillingProvider();
+        var host = HostWithStripe(stripe);
+        var (tenantId, _) = await NewTenantAsync();
+        var imp = On(host, await ImpersonateAsync(tenantId));
+
+        await ExpectForbiddenAsync(imp.PostAsJsonAsync("/api/billing/checkout", new { moduleKey = "restaurante", billingPeriod = "monthly" }));
+
+        stripe.Calls.Should().BeEmpty();
+        // ler se a contratação está aberta segue liberado, como ler as assinaturas
+        var read = await imp.GetAsync("/api/billing/checkout-availability");
+        read.StatusCode.Should().Be(HttpStatusCode.OK, await read.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -230,9 +246,10 @@ public class ImpersonationCommercialActsTests
     }
 
     /// <summary>O host da suíte com o Stripe ligado e um provedor falso: nada sai do teste, e dá para ver o que teria saído.</summary>
-    private WebApplicationFactory<Program> HostWithStripe(FakeBillingProvider stripe) => _factory.WithWebHostBuilder(b =>
+    private WebApplicationFactory<Program> HostWithStripe(FakeBillingProvider stripe, bool newCheckoutsOpen = false) => _factory.WithWebHostBuilder(b =>
     {
         b.UseSetting("Integrations:Features:StripeEnabled", "true");
+        if (newCheckoutsOpen) b.UseSetting("Billing:NewCheckoutsEnabled", "true");
         b.UseSetting("Integrations:Stripe:PriceIds:restaurante_monthly", "price_teste");
         b.ConfigureTestServices(services =>
         {
@@ -256,7 +273,7 @@ public class ImpersonationCommercialActsTests
         public Task<string> GetOrCreateCustomerAsync(Guid tenantId, string email, string companyName, CancellationToken ct = default)
         {
             Calls.Add(nameof(GetOrCreateCustomerAsync));
-            return Task.FromResult("cus_teste");
+            return Task.FromResult($"cus_{tenantId:N}");
         }
 
         public Task<CheckoutSessionResult> CreateCheckoutSessionAsync(CreateCheckoutRequest request, CancellationToken ct = default)
