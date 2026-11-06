@@ -83,10 +83,10 @@ public class PublicMenuService
         }
 
         var storeName       = foodSettings?.DisplayName ?? store.Name;
-        // Inactive store or no active Orken Menu subscription: the menu still shows, orders don't open
+        // Inactive store, suspended company or no active Orken Menu subscription: the menu still shows, orders don't open
         var acceptingOrders = (foodSettings?.AcceptingOrders ?? true)
                               && store.Status == StoreStatus.Active
-                              && (await _tenants.GetActiveModuleKeysAsync(store.TenantId, ct)).Contains(RestaurantModuleKey);
+                              && await _tenants.HasLiveModuleAsync(store.TenantId, RestaurantModuleKey, ct);
         var deliveryEnabled = foodSettings?.DeliveryEnabled ?? true;
         var takeawayEnabled = foodSettings?.TakeawayEnabled ?? true;
 
