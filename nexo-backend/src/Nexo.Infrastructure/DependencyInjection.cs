@@ -323,6 +323,9 @@ public static class DependencyInjection
         // ── Audit ─────────────────────────────────────────────────────────────
         services.AddScoped<IAuditWriter, AuditWriterService>();
         services.AddScoped<AuditQueryService>();
+        services.AddSingleton<LastDirectorRefusalAudit>();
+        services.AddSingleton<ILastDirectorRefusalAudit>(sp => sp.GetRequiredService<LastDirectorRefusalAudit>());
+        services.AddHostedService(sp => sp.GetRequiredService<LastDirectorRefusalAudit>());
 
         // ── Reports ───────────────────────────────────────────────────────────
         services.AddScoped<Nexo.Infrastructure.Reports.ReportsService>();

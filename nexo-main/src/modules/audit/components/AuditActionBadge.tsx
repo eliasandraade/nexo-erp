@@ -14,6 +14,7 @@ const variantMap: Record<AuditActionType, "success" | "warning" | "danger" | "in
   manager_authorization: "warning",
   user_created: "info",
   user_updated: "neutral",
+  user_last_director_refused: "warning",
 };
 
 interface AuditActionBadgeProps {

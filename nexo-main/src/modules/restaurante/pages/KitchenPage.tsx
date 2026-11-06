@@ -2,8 +2,8 @@ import { useEffect } from "react";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { KitchenBoard } from "../components/KitchenBoard";
 import { KitchenConnectionBadge } from "../components/KitchenConnectionBadge";
-import { useKitchenSocket } from "../hooks/useKitchenSocket";
-import { useKitchenItems } from "../hooks/useKitchenItems";
+import { KitchenSuspendedNotice } from "../components/KitchenSuspendedNotice";
+import { useKitchenScreen } from "../hooks/useKitchenScreen";
 import { UserDropdown } from "@/components/shared/UserDropdown";
 import { RestauranteBreadcrumb } from "../components/RestauranteBreadcrumb";
 
@@ -11,13 +11,7 @@ export default function KitchenPage() {
   const { session } = useAuth();
   const storeId     = session?.storeId ?? "";
 
-  const { connectionMode } = useKitchenSocket(storeId);
-
-  // Polling is only active when SignalR has failed; interval driven by hook
-  const { data: items = [] } = useKitchenItems(
-    storeId,
-    connectionMode === "polling" ? 10_000 : undefined
-  );
+  const { items, connectionMode, suspended, checksByItself, checking, checkAgain } = useKitchenScreen(storeId);
 
   // Auto-fullscreen on first visit
   useEffect(() => {
@@ -34,14 +28,18 @@ export default function KitchenPage() {
       <div className="flex items-center justify-between gap-3 mb-4">
         <RestauranteBreadcrumb dark />
         <div className="flex items-center gap-3">
-          <KitchenConnectionBadge mode={connectionMode} />
+          {!suspended && <KitchenConnectionBadge mode={connectionMode} />}
           <UserDropdown variant="dark" />
         </div>
       </div>
 
+      {suspended && (
+        <KitchenSuspendedNotice checksByItself={checksByItself} checking={checking} onCheckAgain={checkAgain} />
+      )}
+
       {/* Board */}
       <div className="flex-1 overflow-hidden">
-        <KitchenBoard items={items} storeId={storeId} />
+        <KitchenBoard items={items} storeId={storeId} readOnly={suspended} />
       </div>
     </div>
   );

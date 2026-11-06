@@ -620,6 +620,52 @@ public class StripeWebhookLifecycleTests
     }
 
     [Fact]
+    public async Task A_checkout_of_a_company_that_does_not_exist_is_recorded_and_activates_nothing()
+    {
+        var unknownTenant = Guid.NewGuid();
+        var subId = NewSubscriptionId();
+        var body = CheckoutEvent(unknownTenant, "build", subId);
+
+        (await DeliverAsync(body)).StatusCode.Should().Be(HttpStatusCode.OK, "answering an error would only make Stripe repeat it");
+
+        (await ProcessedCountAsync(EventId(body))).Should().Be(1);
+        (await RowOrNullAsync(unknownTenant, "build")).Should().BeNull();
+        Stripe.Reads(subId).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_second_checkout_over_a_live_subscription_moves_the_row_to_the_new_one_so_its_events_still_arrive()
+    {
+        var (tenantId, _) = await PaidSubscriptionAsync();
+        var newSubId = NewSubscriptionId();
+        Stripe.Set(newSubId, "active", priceId: "price_annual", interval: "year");
+
+        (await DeliverAsync(CheckoutEvent(tenantId, "build", newSubId))).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var row = await RowOrNullAsync(tenantId, "build");
+        row!.StripeSubscriptionId.Should().Be(newSubId, "otherwise updates and cancellations of the new one find no row");
+        row.StripePriceId.Should().Be("price_annual");
+        row.PlanType.Should().Be(PlanType.Annual);
+
+        // The proof that it follows the new subscription: its cancellation closes the access.
+        Stripe.Set(newSubId, "canceled");
+        (await DeliverAsync(SubscriptionEvent("customer.subscription.deleted", newSubId, status: "canceled"))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await HasAccessAsync(tenantId)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_price_with_an_interval_that_is_not_annual_is_recorded_as_monthly()
+    {
+        var tenantId = await NewTenantAsync();
+        var subId = NewSubscriptionId();
+        Stripe.Set(subId, "active", interval: "week");
+
+        (await DeliverAsync(CheckoutEvent(tenantId, "build", subId))).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await RowAsync(subId)).PlanType.Should().Be(PlanType.Monthly);
+    }
+
+    [Fact]
     public async Task The_webhook_does_not_exist_when_stripe_is_disabled()
     {
         var body = SubscriptionEvent("customer.subscription.updated", NewSubscriptionId(), status: "active");

@@ -5,6 +5,17 @@ pela plataforma ou pelo link de e-mail), ligar a verificação em duas etapas, "
 plataforma. Todos trocam o carimbo (`SecurityStamp`) no banco. Empresa suspensa ou cancelada não troca carimbo, mas perde o acesso
 do mesmo jeito.
 
+## Empresa suspensa ou cancelada
+
+Toda chamada dos usuários, a negociação do hub incluída, responde `403` com `code: "tenant_suspended"`. O campo `error` continua com o
+texto de sempre. A sessão não acaba: reativada a empresa, o mesmo token volta a valer.
+
+A tela da cozinha trata esse código (`useKitchenScreen`): mostra o aviso, desliga o hub, troca o polling de 10 s por uma verificação por
+minuto e volta sozinha quando o acesso retorna. As verificações param antes de o token expirar, porque `POST /auth/refresh` recusa a
+renovação de uma empresa fora de atividade e o cliente derruba a sessão quando a renovação é recusada. Depois disso, a tela fica parada com
+o aviso e quem está nela pede a verificação. Se o acesso já voltou, a renovação funciona e a tela retoma. Se a empresa continua suspensa, o
+caminho é o de qualquer sessão que não renova: a tela de entrada.
+
 ## Requisições HTTP
 
 `SecurityStampValidationMiddleware` compara o carimbo do token com o banco a cada requisição, sem cache (issue #137): a resposta da

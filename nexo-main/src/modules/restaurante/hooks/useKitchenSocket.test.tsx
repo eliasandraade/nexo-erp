@@ -321,6 +321,44 @@ describe("useKitchenSocket and the session", () => {
     });
   });
 
+  describe("while paused: the company has no access, so every call would be refused", () => {
+    it("does not connect", async () => {
+      signIn(tokenExpiringIn(600));
+      renderHook(() => useKitchenSocket(STORE, { paused: true }), { wrapper });
+
+      await act(async () => undefined);
+
+      expect(connection.start).not.toHaveBeenCalled();
+    });
+
+    it("stops the connection and the polling timer, and asks for nothing", async () => {
+      vi.useFakeTimers();
+      signIn(tokenExpiringIn(600));
+      const { rerender } = renderHook(({ paused }) => useKitchenSocket(STORE, { paused }), { wrapper, initialProps: { paused: false } });
+      await vi.advanceTimersByTimeAsync(0);
+      await act(async () => connection.close());
+      const invalidate = vi.spyOn(client, "invalidateQueries");
+
+      rerender({ paused: true });
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(connection.stop).toHaveBeenCalled();
+      expect(invalidate).not.toHaveBeenCalled();
+    });
+
+    it("connects again with a new connection when it resumes", async () => {
+      signIn(tokenExpiringIn(600));
+      const { result, rerender } = renderHook(({ paused }) => useKitchenSocket(STORE, { paused }), { wrapper, initialProps: { paused: true } });
+      expect(connection.start).not.toHaveBeenCalled();
+
+      rerender({ paused: false });
+
+      await waitFor(() => expect(connection.invoke).toHaveBeenCalledWith("JoinStore", STORE));
+      expect(connection.start).toHaveBeenCalledTimes(1);
+      expect(result.current.connectionMode).toBe("realtime");
+    });
+  });
+
   describe("reconnecting at the token expiry", () => {
     it("joins the store again and refreshes the data, without leaving realtime", async () => {
       signIn(tokenExpiringIn(600));
