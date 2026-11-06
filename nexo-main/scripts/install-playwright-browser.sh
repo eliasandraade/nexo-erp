@@ -3,17 +3,20 @@
 # system libraries normally come with the machine, so apt is only touched when Chromium really does not open. The Ubuntu mirror
 # behind apt has hung for 26 minutes (2026-11-05) and then again several times on 2026-11-06.
 #
-# A time limit around `install-deps` ends npx, not the apt-get it started as root. That apt-get goes on holding the dpkg lock, and
+# A time limit around `install-deps` ends Playwright, not the apt-get it started as root. That apt-get goes on holding the dpkg lock, and
 # every later attempt fails at once with "Could not get lock". So each failed attempt also kills what it left behind.
 #
 # PLAYWRIGHT_FORCE_DEPS=1 goes through the apt path even if Chromium opens, to exercise it.
 set -u
 
+# The binary from the lockfile: npx could fetch a package on demand.
+PLAYWRIGHT=./node_modules/.bin/playwright
+
 opens() {
   node --input-type=module -e "import { chromium } from '@playwright/test'; const browser = await chromium.launch(); await browser.close();"
 }
 
-npx playwright install chromium || exit 1
+"$PLAYWRIGHT" install chromium || exit 1
 
 if [ "${PLAYWRIGHT_FORCE_DEPS:-}" != "1" ] && opens; then
   echo "Chromium opens with what this machine already has: apt not needed."
@@ -22,7 +25,7 @@ fi
 
 for attempt in 1 2; do
   echo "Installing the system libraries through apt, attempt $attempt"
-  if timeout --kill-after=10 240 npx playwright install-deps chromium && opens; then
+  if timeout --kill-after=10 240 "$PLAYWRIGHT" install-deps chromium && opens; then
     exit 0
   fi
   sudo pkill -9 -x apt-get || true
