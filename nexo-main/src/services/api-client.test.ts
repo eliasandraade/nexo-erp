@@ -5,6 +5,7 @@ import {
   beginImpersonation,
   clearTokens,
   getAccessToken,
+  getFreshAccessToken,
   getImpersonation,
   getRefreshToken,
   getStoredSession,
@@ -389,5 +390,61 @@ describe("api-client", () => {
       expect(SUBSCRIPTION_REQUIRED_MESSAGE).toMatch(/suporte/);
       expect(SUBSCRIPTION_REQUIRED_MESSAGE).not.toMatch(/\b(assine|contrate|compre|comprar)\b/i);
     });
+  });
+});
+
+describe("api-client, what a screen receives from a refusal", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const reply = (body: unknown, status: number) =>
+    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("takes the text from `message` when the server has no `error`", async () => {
+    fetchMock.mockResolvedValueOnce(reply({ message: "Mensagem do servidor." }, 422));
+
+    const error = await apiClient.get("/x").catch((e: unknown) => e);
+
+    expect((error as ApiError).message).toBe("Mensagem do servidor.");
+    expect((error as ApiError).serverMessage).toBe("Mensagem do servidor.");
+  });
+
+  it("a body that is not JSON still becomes an ApiError with the status text", async () => {
+    fetchMock.mockResolvedValueOnce(new Response("<html>gateway</html>", { status: 503, statusText: "Service Unavailable" }));
+
+    const error = await apiClient.get("/x").catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(503);
+    expect((error as ApiError).message).toBe("Service Unavailable");
+  });
+
+  it("an upload refused without details takes the text from `message`", async () => {
+    fetchMock.mockResolvedValueOnce(reply({ message: "Arquivo grande demais." }, 413));
+
+    const error = await apiClient.postForm("/upload", new FormData()).catch((e: unknown) => e);
+
+    expect((error as ApiError).message).toBe("Arquivo grande demais.");
+  });
+
+  it("a connection that stays open has nothing to connect with when nobody is signed in", async () => {
+    await expect(getFreshAccessToken()).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("an access token that needs no renewal goes as it is, with no call to the server", async () => {
+    const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }));
+    const token = `h.${payload}.s`;
+    setTokens(token, "refresh");
+
+    await expect(getFreshAccessToken()).resolves.toBe(token);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
