@@ -306,9 +306,9 @@ public class DeliveryOrderService : IDeliveryOrderSyncService
         var foodSettings = await _settings.GetByStoreIdAsync(store.Id, store.TenantId, ct);
         if (foodSettings is not null && !foodSettings.AcceptingOrders)
             throw new DomainException("O restaurante não está aceitando pedidos no momento.");
-        // An inactive store, or a tenant without an active Orken Menu, can't receive orders it can't accept
+        // An inactive store, a suspended company or a tenant without an active Orken Menu can't receive orders it can't accept
         if (store.Status != StoreStatus.Active
-            || !(await _tenants.GetActiveModuleKeysAsync(store.TenantId, ct)).Contains(PublicMenuService.RestaurantModuleKey))
+            || !await _tenants.HasLiveModuleAsync(store.TenantId, PublicMenuService.RestaurantModuleKey, ct))
             throw new DomainException("O restaurante não está aceitando pedidos no momento.");
 
         var orderType = EnumInput.Parse<DeliveryOrderType>(request.OrderType, "Tipo de pedido inválido");

@@ -235,6 +235,7 @@ export function adaptPortal(
     sectionErrors: errors,
     refreshAt: new Date(Date.now() + refreshDelay(expires)).toISOString(),
     visibility: b.portal.access === "Public" ? "public" : "private",
+    readOnly: b.readOnly,
     indexable: false,
     title: b.portal.title ?? undefined,
     welcome: b.portal.welcomeMessage ?? undefined,

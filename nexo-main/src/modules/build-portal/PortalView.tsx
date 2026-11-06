@@ -114,6 +114,15 @@ export function PortalView({
             </button>
           </aside>
         )}
+        {p.readOnly && (
+          <aside className="mb-section" role="status">
+            <h2>Portal disponível só para consulta</h2>
+            <p>
+              Você pode ver as informações da sua obra, mas decisões e pedidos
+              estão indisponíveis por aqui no momento. Fale com a construtora.
+            </p>
+          </aside>
+        )}
         <section className="mb-hero" id="overview">
           <div className="mb-hero-copy">
             <p className="mb-eyebrow">

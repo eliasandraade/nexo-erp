@@ -1,4 +1,4 @@
-// Orken Build — Portal do Cliente (API pública), contrato v1.6
+// Orken Build — Portal do Cliente (API pública), contrato v1.7
 // GERADO de docs/build/openapi-portal.json por BuildPortalOpenApiTests — não edite à mão.
 // Regenerar (em nexo-backend): ORKEN_WRITE_PORTAL_OPENAPI=1 dotnet test tests/Nexo.IntegrationTests --filter "FullyQualifiedName~BuildPortalOpenApiTests"
 // Campos com `?` podem vir null ou ausentes. Datas: "yyyy-MM-dd" (date) ou ISO 8601 (date-time).
@@ -70,6 +70,7 @@ export interface PublicBuildAssistanceOpenRequest {
 export interface PublicBuildBootstrapDto {
   contractVersion: string;
   sections: string[];
+  readOnly: boolean;
   portal: PublicBuildPortalDto;
   company: PublicBuildCompanyDto;
   project: PublicBuildProjectDto;

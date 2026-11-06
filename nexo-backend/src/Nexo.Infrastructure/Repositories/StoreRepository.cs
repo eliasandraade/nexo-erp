@@ -53,6 +53,10 @@ public class TenantRepository : ITenantRepository
         return ModuleSubscription.ExpiredKeys(rows, DateTime.UtcNow);
     }
 
+    public Task<bool> HasLiveModuleAsync(Guid tenantId, string moduleKey, CancellationToken ct = default)
+        => Nexo.Infrastructure.Modules.ModuleAccessQueries.TenantsWithAccess(_context, moduleKey, DateTime.UtcNow)
+            .AnyAsync(id => id == tenantId, ct);
+
     public async Task<DateTime?> GetTrialEndsAtAsync(Guid tenantId, CancellationToken ct = default)
     {
         return await _context.ModuleSubscriptions

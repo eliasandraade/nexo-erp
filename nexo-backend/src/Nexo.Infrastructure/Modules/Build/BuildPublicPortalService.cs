@@ -75,10 +75,13 @@ public sealed partial class BuildPublicPortalService
     }
 
     /// <param name="Visibility">The portal's visibility, minus what the platform turned off for the tenant (3D).</param>
+    /// <param name="ReadOnly">The company has no access to the module now: the portal reads and takes no writes.</param>
     private sealed record Ctx(BuildPortalCompany Company, BuildProjectPortal Portal, BuildProject Project,
-        BuildPortalVisibility Visibility)
+        BuildPortalVisibility Visibility, bool ReadOnly)
     {
         public Guid TenantId => Portal.TenantId;
+        /// <summary>Whether the client can act through this portal: a password portal of a company with the module.</summary>
+        public bool CanAct => Portal.Access == BuildPortalAccess.Password && !ReadOnly;
     }
 
     // ── Bootstrap ─────────────────────────────────────────────────────────────
@@ -99,6 +102,7 @@ public sealed partial class BuildPublicPortalService
         return new PublicBuildBootstrapDto
         {
             Sections = EnabledSections(vis),
+            ReadOnly = ctx.ReadOnly,
             Portal = new PublicBuildPortalDto(ctx.Portal.Title, ctx.Portal.WelcomeMessage, ctx.Portal.PrimaryColor,
                 ctx.Portal.AccentColor, _media.BrandingUrl(ctx.Portal.LogoKey, ctx.TenantId) ?? CompanyLogo(ctx),
                 _media.BrandingUrl(ctx.Portal.CoverKey, ctx.TenantId), ctx.Portal.Access.ToString()),
@@ -122,7 +126,8 @@ public sealed partial class BuildPublicPortalService
                 ? new PublicBuildScheduleDto(ctx.Project.StartDate, ctx.Project.ExpectedEndDate,
                     c.Result.Stages.Select(s => new PublicBuildScheduleStageDto(s.Name, s.Order, s.PlannedStart, s.PlannedEnd)).ToList())
                 : null,
-            Weather = vis.Weather ? await WeatherAsync(ctx.Project, ct) : null,
+            // a read-only portal shows what is on file and calls no outside provider
+            Weather = vis.Weather && !ctx.ReadOnly ? await WeatherAsync(ctx.Project, ct) : null,
             FinancialSummary = vis.FinancialSummary ? await FinancialAsync(ctx, today, ct) : null,
             Contact = vis.Contact ? Contact(ctx) : null,
             LatestUpdates = vis.ClientUpdates ? await LatestUpdatesAsync(ctx, ct) : null,
@@ -421,6 +426,7 @@ public sealed partial class BuildPublicPortalService
         var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
         await EnsureAccessAsync(ctx, token, ct);   // before anything that reveals the portal's configuration
         EnsureDecisionPortal(ctx);
+        EnsureTakesWrites(ctx);
         if (!ctx.Visibility.ChangeOrders) throw BuildPortalAccessException.SectionDisabled();
 
         var decision = request?.Decision?.Trim().ToLowerInvariant();
@@ -479,7 +485,7 @@ public sealed partial class BuildPublicPortalService
         var stages = await _db.BldStages.IgnoreQueryFilters().AsNoTracking()
             .Where(s => s.TenantId == tid && s.ProjectId == ctx.Project.Id && stageIds.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
-        var canDecide = ctx.Portal.Access == BuildPortalAccess.Password;
+        var canDecide = ctx.CanAct;
         // money (cost impact, unit price, line total) only when the company shows the financial summary; who signed the
         // decision is not echoed back (the client knows; decidedAt and the status are enough)
         var money = ctx.Visibility.FinancialSummary;
@@ -532,6 +538,7 @@ public sealed partial class BuildPublicPortalService
         var ctx = await ResolveAsync(companySlug, projectSlug, tracking: false, ct);
         await EnsureAccessAsync(ctx, token, ct);   // before anything that reveals the portal's configuration
         EnsureDecisionPortal(ctx);
+        EnsureTakesWrites(ctx);
         if (!ctx.Visibility.Selections) throw BuildPortalAccessException.SectionDisabled();
 
         var tid = ctx.TenantId;
@@ -582,7 +589,7 @@ public sealed partial class BuildPublicPortalService
             .Where(s => s.TenantId == tid && s.ProjectId == ctx.Project.Id && stageIds.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id, s => s.Name, ct);
         var today = BusinessClock.Today();
-        var password = ctx.Portal.Access == BuildPortalAccess.Password;
+        var canChoose = ctx.CanAct;
         var expires = DateTimeOffset.UtcNow.Add(BuildPortalMedia.SignedUrlTtl);
         return list.Select(s =>
         {
@@ -597,7 +604,7 @@ public sealed partial class BuildPublicPortalService
                 Deadline = s.Deadline,
                 DeadlinePassed = s.IsDeadlinePassed(today),
                 Status = s.Status.ToString(),
-                CanChoose = password && s.Status == BuildSelectionStatus.Open && !s.IsDeadlinePassed(today),
+                CanChoose = canChoose && s.Status == BuildSelectionStatus.Open && !s.IsDeadlinePassed(today),
                 ChosenOptionId = chosen?.PublicId,
                 ClientComment = s.ClientComment,
                 DecidedAt = s.DecidedAt is { } d ? Utc(d) : null,
@@ -669,6 +676,15 @@ public sealed partial class BuildPublicPortalService
                 "Decisões pelo portal exigem um portal com senha. Fale com a construtora.");
     }
 
+    /// <summary>A company with no access to the module now takes no writes through the portal. Neutral on purpose: the visitor is not the customer.</summary>
+    private void EnsureTakesWrites(Ctx ctx)
+    {
+        if (!ctx.ReadOnly) return;
+        _logger.LogWarning("Build portal write refused: no access to the module. TenantId={TenantId} PortalId={PortalId}", ctx.TenantId, ctx.Portal.Id);
+        throw new BuildPortalAccessException(403, PublicBuildPortal.CodeReadOnly,
+            "Este portal está disponível só para consulta no momento. Para decidir ou pedir algo, fale com a construtora.");
+    }
+
     private static BuildPortalAccessException ItemNotFound()
         => new(404, PublicBuildPortal.CodeItemNotFound, "Item não encontrado neste portal.");
 
@@ -694,7 +710,9 @@ public sealed partial class BuildPublicPortalService
         var visibility = portal.Visibility.EffectiveFor(portal.Access);
         if (visibility.Model3d && !await Build3DEnabledAsync(company.TenantId, ct))
             visibility = visibility with { Model3d = false };   // the platform switched 3D off for this company
-        return new Ctx(company, portal, project, visibility);
+        var hasModule = await ModuleAccessQueries.TenantsWithAccess(_db, PublicBuildPortal.ModuleKey, DateTime.UtcNow)
+            .AnyAsync(id => id == company.TenantId, ct);
+        return new Ctx(company, portal, project, visibility, !hasModule);
     }
 
     private async Task EnsureAccessAsync(Ctx ctx, string? token, CancellationToken ct)

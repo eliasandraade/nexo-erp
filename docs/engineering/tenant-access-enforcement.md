@@ -142,11 +142,32 @@ e os vencidos, e é o que os guardas de rota, o menu e a escolha de área usam p
 Os botões de escrita não são escondidos: o 402 cobre. A mensagem não promete compra: hoje só `restaurante` e `build` têm preço, e
 quem testa `varejo` não tem o que comprar. A decisão é do dono (`docs/audits/2026-11-04-auditoria-comercial-e-fiscal.md`, §2.11).
 
+## Portais públicos (`api/public/*`)
+
+Quem usa um portal não tem login, então nenhum portão de módulo o alcança: cada portal confere sozinho. A conferência é
+`ModuleAccessQueries`: a regra única, mais a empresa `Active`, sempre no banco. Vencimento e suspensão valem na hora, sem esperar
+cache.
+
+| Portal | Continua funcionando sem acesso | Recusado sem acesso |
+|---|---|---|
+| Agendamento (Service) | cabeçalho, catálogo, profissionais, horários, o link do cliente | agendar e cancelar: **403** `portal_read_only` |
+| Cliente da obra (Build) | todas as leituras, abrir e encerrar a sessão de um portal com senha | decidir aditivo, escolher opção, aceitar entrega, abrir chamado, enviar foto, avaliar: **403** `portal_read_only` |
+| Cardápio (Menu) | cardápio, zonas de entrega, acompanhar pedido | novo pedido: **422**, como já era |
+
+- **A mensagem é neutra.** Quem visita é cliente da empresa e não precisa saber da assinatura dela: por isso 403 com
+  `portal_read_only`, e não o 402 `subscription_required` de quem tem login.
+- **A tela sabe antes:** `isBookingEnabled` e `canCancel` (Service), `acceptingOrders` (Menu), `readOnly` e os indicadores
+  `can*` (Build) vêm falsos, então a ação nem é oferecida.
+- **Cancelamento pelo cliente também para.** Sem acesso, nada muda pelo portal. A tela do link diz para falar com o
+  estabelecimento, e `onlineChangesPaused` diferencia isso de um prazo vencido.
+- **O portal só de consulta não chama provedor externo:** o bootstrap do Build não traz `weather`.
+- **Suspensão da empresa e loja inativa** também recusam a escrita, nos três portais.
+- **Rota nova:** `PublicPortalExpiredModuleTests` lista toda escrita anônima sob `api/public/`. Uma rota nova reprova o teste até
+  alguém decidir o que ela faz sem acesso.
+
 ## O que esta regra não cobre
 
-Jobs de fundo e rotas anônimas não passam por ela:
+Jobs de fundo não passam por ela:
 
 - `BuildForecastService.EnsureDailyForecastsAsync` grava a previsão do dia e chama a Open-Meteo sem olhar a assinatura.
 - `BuildWeeklyDigestJob` chama o provedor pago para empresas com o Build AI ligado e portal publicado, sem olhar a assinatura.
-- O agendamento público do Service e o portal do cliente do Build (`api/public/*`, anônimos) continuam gravando em módulo vencido.
-  O cardápio e os pedidos públicos do restaurante já olham o acesso.
