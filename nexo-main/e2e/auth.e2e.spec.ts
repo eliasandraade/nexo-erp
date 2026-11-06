@@ -1363,7 +1363,10 @@ test.describe("Several tabs", () => {
     await expect.poll(() => apiCalls.pending.size).toBe(0);
     expect(apiCalls.count("/auth/refresh", 401)).toBe(0);
     expect(apiCalls.count("/auth/refresh", 200)).toBeGreaterThanOrEqual(1);
-    if (COOKIE_MODE) expect(apiCalls.count("/auth/refresh", 200), "the tabs in line take the token of the first one").toBe(1);
+    if (COOKIE_MODE) {
+      expect(apiCalls.count("/auth/refresh", 200), "the tabs in line take the token of the first one").toBe(1);
+      expect(apiCalls.count("/auth/refresh", 409), "in line, no tab presents a cookie already replaced").toBe(0);
+    }
     expect((await sessionTokens(page)).access).not.toBe(expired);
 
     // and the session goes on: each tab reloads and works
