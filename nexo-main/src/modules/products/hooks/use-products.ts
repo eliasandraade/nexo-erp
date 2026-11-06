@@ -63,7 +63,7 @@ export function useCreateProduct() {
   return useMutation({
     mutationFn: (payload: CreateProductPayload) => createProduct(payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
+      void qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
     },
   });
 }
@@ -74,7 +74,7 @@ export function useUpdateProduct(id: string) {
     mutationFn: (payload: UpdateProductPayload) => updateProduct(id, payload),
     onSuccess: (updated) => {
       qc.setQueryData([...PRODUCTS_KEY, id], updated);
-      qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
+      void qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
     },
   });
 }
@@ -85,8 +85,8 @@ export function useSetProductActive(id: string) {
     mutationFn: (active: boolean) =>
       active ? activateProduct(id) : deactivateProduct(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [...PRODUCTS_KEY, id] });
-      qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
+      void qc.invalidateQueries({ queryKey: [...PRODUCTS_KEY, id] });
+      void qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
     },
   });
 }
@@ -114,8 +114,8 @@ export function useDeleteCategory() {
   return useMutation({
     mutationFn: (id: string) => deleteCategory(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: CATEGORIES_KEY });
-      qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
+      void qc.invalidateQueries({ queryKey: CATEGORIES_KEY });
+      void qc.invalidateQueries({ queryKey: PRODUCTS_KEY });
     },
   });
 }
