@@ -426,6 +426,9 @@ public sealed class RefreshRateLimitingRedisTests : IClassFixture<RedisWebApplic
         _ = host.Services;
         var (login, _) = await NewSessionAsync();
         var address = NewAddress();
+        // the first request of a host is slow for reasons of its own: what is measured below is the outage
+        var (warmUp, _) = await NewSessionAsync();
+        await RenewOkAsync(host, address, warmUp.RefreshToken);
 
         await BeginAsync(outage);
         HttpResponseMessage during;
@@ -442,6 +445,7 @@ public sealed class RefreshRateLimitingRedisTests : IClassFixture<RedisWebApplic
 
         _output.WriteLine($"{outage}: answered {(int)during.StatusCode} in {clock.ElapsedMilliseconds} ms");
         during.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5), "an outage does not hold the terminal");
         during.Headers.RetryAfter!.Delta!.Value.TotalSeconds.Should().BeGreaterThan(0);
         var body = await during.Content.ReadFromJsonAsync<JsonElement>();
         body.GetProperty("code").GetString().Should().Be("session_renewal_unavailable");

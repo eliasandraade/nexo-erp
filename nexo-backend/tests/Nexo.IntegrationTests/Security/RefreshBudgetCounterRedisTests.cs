@@ -46,10 +46,15 @@ public sealed class RefreshBudgetCounterRedisTests : IClassFixture<RedisWebAppli
 
         var counts = await Task.WhenAll(Enumerable.Range(0, callers).Select(_ => CountAsync(key, Window)));
 
-        counts.Should().NotContainNulls();
-        counts.Select(c => c!.Value.Count).Should().BeEquivalentTo(Enumerable.Range(1, callers).Select(i => (long)i), "no two callers share a slot");
-        counts.Should().OnlyContain(c => c!.Value.Remaining > TimeSpan.Zero && c.Value.Remaining <= Window);
-        ((long)await _factory.RedisDatabase.StringGetAsync(key)).Should().Be(callers);
+        // A caller on a busy machine may run out of time and skip its answer, which is the fail-open at work. Its count still lands.
+        var answered = counts.Where(c => c is not null).Select(c => c!.Value).ToList();
+        answered.Count.Should().BeGreaterThan(callers * 9 / 10);
+        answered.Select(c => c.Count).Should().OnlyHaveUniqueItems("no two callers share a slot");
+        answered.Should().OnlyContain(c => c.Count >= 1 && c.Count <= callers && c.Remaining > TimeSpan.Zero && c.Remaining <= Window);
+        var total = 0L;
+        for (var wait = Stopwatch.StartNew(); total != callers && wait.Elapsed < TimeSpan.FromSeconds(5); await Task.Delay(50))
+            total = (long)await _factory.RedisDatabase.StringGetAsync(key);
+        total.Should().Be(callers, "every count landed, once");
         (await _factory.RedisDatabase.KeyTimeToLiveAsync(key)).Should().NotBeNull();
     }
 

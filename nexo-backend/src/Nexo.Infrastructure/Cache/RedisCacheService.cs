@@ -51,10 +51,9 @@ public class RedisCacheService : ICacheService
     private static readonly TimeSpan _circuitCooldown = TimeSpan.FromSeconds(10);
     private static long s_circuitResetAtTicks; // UtcNow ticks until which Redis is treated as "down"
 
-    // A count is optional and sits in front of work that does need Redis, so it waits less than a call that decides something,
-    // and running out of time here does not open the circuit. If it did, one slow count would turn every refresh-token lookup
-    // of the process into "no such token" for the whole cooldown.
-    private static readonly TimeSpan _countTimeout = TimeSpan.FromMilliseconds(200);
+    // A count is optional and sits in front of work that does need Redis, so running out of time here only skips it and does
+    // not open the circuit. If it did, one slow count would turn every refresh-token lookup of the process into "no such token"
+    // for the whole cooldown.
     private static readonly TimeSpan _countWarningInterval = TimeSpan.FromMinutes(1);
     private static long s_nextCountWarningTicks;
 
@@ -225,7 +224,7 @@ public class RedisCacheService : ICacheService
         {
             var result = (RedisResult[]?)await _redis.GetDatabase()
                 .ScriptEvaluateAsync(CountInWindowScript, [key], [(long)window.TotalMilliseconds])
-                .WaitAsync(_countTimeout, ct);
+                .WaitAsync(_callTimeout, ct);
             return new WindowCount((long)result![0], TimeSpan.FromMilliseconds((long)result[1]));
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -244,6 +243,6 @@ public class RedisCacheService : ICacheService
         var next = Volatile.Read(ref s_nextCountWarningTicks);
         if (now < next || Interlocked.CompareExchange(ref s_nextCountWarningTicks, now + _countWarningInterval.Ticks, next) != next) return;
         _logger.LogWarning(ex, "Redis did not answer a count for key '{Key}' in {Milliseconds} ms: this count was skipped (fail-open).",
-            key, _countTimeout.TotalMilliseconds);
+            key, _callTimeout.TotalMilliseconds);
     }
 }

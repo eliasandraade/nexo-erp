@@ -117,6 +117,25 @@ describe("a renewal without a verdict keeps the session", () => {
       expect(ended).toEqual(["session_ended"]);
     });
 
+    // A limit of the rotation, stated here so nobody reads "no connection keeps the session" as more than it is: if the server
+    // did rotate and only the answer was lost, the new pair is gone, and the next attempt presents a spent token.
+    it("an answer lost after the server rotated still ends the session on the next attempt", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
+      fetchMock.mockResolvedValueOnce(expiredCall()).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      await expect(apiClient.get("/products")).rejects.toMatchObject({ status: 0, code: UNAVAILABLE });
+      sessionIsIntact();
+
+      vi.setSystemTime(new Date("2026-11-06T12:00:10Z"));
+      fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(json({ code: "refresh_already_rotated" }, 409));
+      const next = apiClient.get("/products").catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(3100);
+
+      await expect(next).resolves.toMatchObject({ status: 401 });
+      expect(getAccessToken()).toBeNull();
+      expect(ended).toEqual(["session_ended"]);
+    });
+
     it("a platform session is treated the same: 429 keeps it, 401 ends it", async () => {
       clearTokens();
       setTokens("p-access", "p.refresh");
