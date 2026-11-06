@@ -70,6 +70,12 @@ public class UserRepository : IUserRepository
     public async Task SaveChangesAsync(CancellationToken ct = default)
         => await _context.SaveChangesAsync(ct);
 
+    public Task LockDirectorsAsync(Guid tenantId, CancellationToken ct = default)
+        => LastDirectorGuard.LockAsync(_context, tenantId, ct);
+
+    public Task<bool> HasAnotherActiveDirectorAsync(Guid tenantId, Guid userId, CancellationToken ct = default)
+        => LastDirectorGuard.ActiveDirectors(_context, tenantId).AnyAsync(u => u.Id != userId, ct);
+
     public async Task<bool> TryClaimMfaStepAsync(Guid userId, long step, CancellationToken ct = default)
         => await _context.Users.IgnoreQueryFilters()
             .Where(u => u.Id == userId && (u.MfaLastUsedStep == null || u.MfaLastUsedStep < step))

@@ -99,6 +99,8 @@ public sealed class SessionRevocationRedisTests : IClassFixture<RedisWebApplicat
     public async Task Changing_your_own_role_ends_your_own_session()
     {
         var (director, account, _) = await _kit.NewCompanyAsync(UserRole.Vendedor);
+        // the company keeps a director: leaving as the last one is refused (LastDirectorTests)
+        await SyntheticTenant.AddUserAsync(_factory, account, UserRole.Diretoria);
 
         await _kit.ChangeRoleAsync(director, account, "gerente");
 
@@ -106,6 +108,36 @@ public sealed class SessionRevocationRedisTests : IClassFixture<RedisWebApplicat
         var (renewed, relogin) = await _kit.SignInAsync(account);
         relogin.Session.Role.Should().Be("gerente");
         await renewed.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+    }
+
+    /// <summary>
+    /// A change refused for being the last director's stops before anything of the session: the stamp, the session rows, the
+    /// refresh entry and the cached info are all as they were, and the token goes on working.
+    /// </summary>
+    [Theory]
+    [InlineData("gerente", "active")]
+    [InlineData("diretoria", "blocked")]
+    public async Task A_refused_change_touches_nothing_of_the_session(string role, string status)
+    {
+        var (director, account, _) = await _kit.NewCompanyAsync(UserRole.Vendedor);
+        var (client, login) = await _kit.SignInAsync(account);
+        await client.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        var stampBefore = await _kit.SecurityStampOfAsync(account.UserId);
+        var sessionsBefore = (await client.GetFromJsonAsync<JsonElement>("/api/auth/sessions")).GetArrayLength();
+
+        using (var refused = await director.PutAsJsonAsync($"{UsersRoute}/{account.UserId}", UpdateBody(account, role, status)))
+        {
+            refused.StatusCode.Should().Be(HttpStatusCode.Conflict, await _factory.ServerLog.DescribeAsync(refused));
+            (await refused.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString().Should().Be("last_director");
+        }
+
+        (await _kit.SecurityStampOfAsync(account.UserId)).Should().Be(stampBefore);
+        (await client.GetFromJsonAsync<JsonElement>("/api/auth/sessions")).GetArrayLength().Should().Be(sessionsBefore);
+        (await _factory.RedisDatabase.KeyExistsAsync($"refresh:valid:{JtiOf(login.RefreshToken)}")).Should().BeTrue("the refresh entry stays in Redis");
+        (await _factory.RedisDatabase.KeyExistsAsync($"user:{account.UserId}:info")).Should().BeTrue();
+        await director.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        await client.GetAsync(UsersRoute).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
+        await _kit.RefreshAsync(login.RefreshToken).ShouldHaveStatusAsync(HttpStatusCode.OK, _factory);
     }
 
     [Fact]

@@ -214,6 +214,9 @@ public class User : TenantEntity
     public bool IsManager() =>
         Role == UserRole.Gerente || Role == UserRole.Diretoria;
 
+    /// <summary>Who keeps a company administrable: a company must not lose its last one (see LastDirectorException).</summary>
+    public bool IsActiveDirector => Role == UserRole.Diretoria && Status == UserStatus.Active;
+
     /// <summary>Throws ForbiddenException if the user cannot authorize management actions.</summary>
     public void EnsureCanAuthorize()
     {
