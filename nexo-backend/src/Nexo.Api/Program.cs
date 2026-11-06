@@ -32,7 +32,8 @@ try
         cfg.ReadFrom.Configuration(ctx.Configuration)
            .ReadFrom.Services(services)
            .Enrich.FromLogContext()
-           .Enrich.With(new Nexo.Api.Observability.RequestIdEnricher(services.GetRequiredService<IHttpContextAccessor>()));
+           .Enrich.With(new Nexo.Api.Observability.RequestIdEnricher(services.GetRequiredService<IHttpContextAccessor>()))
+           .Enrich.With(new Nexo.Api.Observability.AccessTokenLogRedactor());
 
         // Structured logs: one JSON object per line outside development (RequestId, TenantId,
         // UserId, Route… become searchable fields in the platform's log viewer); readable text in dev.
@@ -67,6 +68,8 @@ try
         builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Build.BuildWeeklyDigestJob>();
         // Re-seals AI provider keys still in the legacy Base64 form once a master key is configured (after migrations).
         builder.Services.AddHostedService<Nexo.Infrastructure.Modules.Interpreter.AiKeyUpgradeHostedService>();
+        // Closes hub connections whose session ended even if the immediate signal was lost; hears the signals of other instances.
+        builder.Services.AddHostedService<HubSessionSweepJob>();
     }
 
     // ── JWT Authentication ────────────────────────────────────────────────────
@@ -549,7 +552,9 @@ try
     // After the security headers, so a refused write carries them too.
     app.UseMiddleware<TenantAccessMiddleware>();
 
-    app.MapHub<RestaurantHub>("/hubs/restaurant");
+    // The token is checked when a connection opens: without this, a connection outlives it. The client is told it may reconnect,
+    // with a renewed token. An ended session is another path: HubSessionGuard closes it for good, at once.
+    app.MapHub<RestaurantHub>("/hubs/restaurant", options => options.CloseOnAuthenticationExpiration = true);
     app.MapControllers();
     Nexo.Api.Health.HealthEndpoints.MapOrkenHealth(app);
     Nexo.Api.Orken.OrkenOperationsEndpoints.MapOrkenOperations(app);

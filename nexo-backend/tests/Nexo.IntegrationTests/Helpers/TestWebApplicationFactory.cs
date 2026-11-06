@@ -88,7 +88,7 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
                 });
 
                 var interceptor = sp.GetRequiredService<TenantSaveChangesInterceptor>();
-                opts.AddInterceptors(interceptor, sp.GetRequiredService<SqlCommandCounter>(), Gate);
+                opts.AddInterceptors(interceptor, sp.GetRequiredService<Nexo.Infrastructure.Hubs.HubSessionChangeInterceptor>(), sp.GetRequiredService<SqlCommandCounter>(), Gate);
                 // a page or batch without an order is nondeterministic: fail the test instead of logging a warning
                 opts.ConfigureWarnings(w => w.Throw(Microsoft.EntityFrameworkCore.Diagnostics.CoreEventId.RowLimitingOperationWithoutOrderByWarning));
             });
