@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Common;
 using Nexo.Application.Common.Interfaces;
+using Nexo.Application.Modules.Build;
 using Nexo.Domain.Modules.Build;
 using Nexo.Domain.Modules.Interpreter;
 using Nexo.Infrastructure.Persistence;
@@ -13,8 +14,8 @@ namespace Nexo.Infrastructure.Modules.Build;
 
 /// <summary>
 /// Optional weekly client digest (<c>Build:Ai:WeeklyDigestJob:Enabled</c>, default false; never in Testing). On Mondays (Brazil)
-/// it creates one Pending WeeklyDigest suggestion per project with a published portal, in companies with the Build AI on,
-/// unless the project already has one from this week. Each project runs in its own scope with the tenant set; the usage
+/// it creates one Pending WeeklyDigest suggestion per project with a published portal, in companies with the Build AI on and
+/// access to the module now (the text may come from a paid provider), unless the project already has one from this week. Each project runs in its own scope with the tenant set; the usage
 /// limits of the AI runtime apply (over the limit → the deterministic text). It never publishes: a person reviews, accepts
 /// (draft update) and publishes.
 /// </summary>
@@ -69,8 +70,9 @@ public sealed class BuildWeeklyDigestJob : BackgroundService
         {
             var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
             var aiTenants = await db.BldTenantSettings.AsNoTracking().Where(s => s.BuildAiEnabled).Select(s => s.TenantId).ToListAsync(ct);
+            var withAccess = ModuleAccessQueries.TenantsWithAccess(db, PublicBuildPortal.ModuleKey, DateTime.UtcNow);
             targets = await db.BldProjectPortals.IgnoreQueryFilters().AsNoTracking()
-                .Where(p => p.IsPublished && aiTenants.Contains(p.TenantId))
+                .Where(p => p.IsPublished && aiTenants.Contains(p.TenantId) && withAccess.Contains(p.TenantId))
                 .Where(p => !db.BldAiSuggestions.IgnoreQueryFilters().Any(s => s.TenantId == p.TenantId && s.ProjectId == p.ProjectId
                     && s.Capability == BuildAiCapability.WeeklyDigest && s.CreatedAt >= weekStart))
                 .Select(p => new ValueTuple<Guid, Guid>(p.TenantId, p.ProjectId)).ToListAsync(ct);
