@@ -121,7 +121,7 @@ describe("a renewal without a verdict keeps the session", () => {
         const error = await callAndLetTheWaitGoBy() as ApiError;
 
         expect(error).toBeInstanceOf(ApiError);
-        expect(error.status).toBe(409);
+        expect(error.status, "a screen reads a 409 as a conflict of its own record").toBe(503);
         expect(error.code).toBe(UNAVAILABLE);
         expect(error.message).toMatch(/sessão continua ativa/);
         sessionIsIntact();
@@ -142,16 +142,18 @@ describe("a renewal without a verdict keeps the session", () => {
         sessionIsIntact();
       });
 
-      it("the time is written down for the other tabs before anything else", async () => {
-        let waitWhenAnswered: string | null = null;
+      it("the time the server gave is written down for the other tabs before anything else", async () => {
+        vi.useRealTimers();
         fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict(27));
-        const call = callAndLetTheWaitGoBy();
-        await vi.advanceTimersByTimeAsync(100);
-        waitWhenAnswered = localStorage.getItem(RENEWAL_WAIT_KEY);
+
+        const call = apiClient.get("/products").catch((e: unknown) => e);
+        await vi.waitFor(() => expect(localStorage.getItem(RENEWAL_WAIT_KEY)).not.toBeNull());
+        const left = JSON.parse(localStorage.getItem(RENEWAL_WAIT_KEY)!).until - Date.now();
         await call;
 
-        expect(JSON.parse(waitWhenAnswered!).until).toBeGreaterThanOrEqual(Date.parse("2026-11-06T12:00:27Z"));
-      });
+        expect(left).toBeGreaterThan(26_000);
+        expect(left).toBeLessThanOrEqual(27_000);
+      }, 10_000);
 
       it("with no Retry-After, it waits the whole grace", async () => {
         fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(conflict());
@@ -244,6 +246,24 @@ describe("a renewal without a verdict keeps the session", () => {
         expect(JSON.parse(signOuts()[0][1].body)).toEqual({ refreshToken: "refresh-1" });
         expect(getRefreshToken()).toBeNull();
       });
+    });
+
+    // An answer nobody reads is a request that never ends: with no-store the browser tools never see it finish, and neither does a test waiting for them.
+    it.each([
+      ["401", () => json({ code: "session_ended" }, 401)],
+      ["409", () => json({ code: "refresh_already_rotated" }, 409, { "Retry-After": "27" })],
+      ["429", () => tooMany(120)],
+    ])("the body of a %s on the renewal is read", async (_, answer) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-11-06T12:00:00Z"));
+      const refused = answer();
+      fetchMock.mockResolvedValueOnce(expiredCall()).mockResolvedValueOnce(refused);
+
+      const call = apiClient.get("/products").catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(3100);
+      await call;
+
+      expect(refused.bodyUsed).toBe(true);
     });
 
     it("a plain 401 needs no such call: the server already said the session is over", async () => {
