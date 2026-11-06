@@ -695,13 +695,36 @@ test.describe("Session ended by the server", () => {
 });
 
 /**
- * Only a refusal from the server ends a session. The two fixme tests below show where the app does not hold to that: when the
- * renewal itself gets no verdict (429 or no connection), api-client.ts drops the tokens and sends the person to the login.
- * The limiter makes the 429 reachable in normal use: 5 renewals per 15 minutes per address, shared by every device of a store
- * behind one address. Fixing it is not only client code: keeping the session means failing every screen until the window
- * ends, where today a new sign-in works at once (the login has its own budget), so the limit itself has to be decided first.
+ * Only a refusal from the server ends a session: a 401, or a 409 after the wait for the tab that won the race. When the renewal
+ * itself gets no verdict (429, 5xx or no connection), the session stays, the screens fail with an error the person can read, and
+ * the next renewal waits for what the server asked for. Keeping the session means failing the screens until then, so the limit
+ * had to stop being reachable in normal use first: the renewal has its own policy (docs/security/sessao-auditoria-e-migracao.md,
+ * section 4), with room for a store behind one address, and what remains over it is abuse or a client in a loop.
  */
 test.describe("Failures that say nothing about the session", () => {
+  const STILL_ACTIVE = /Sua sessão continua ativa/;
+  const WAIT_KEY = "nexo:renewal_wait";
+  const CEILING = 900; // RateLimiting:AuthRefresh:PermitLimit, the production default
+  const SESSION_BUDGET = 60; // RateLimiting:AuthRefresh:FamilyBudget, the production default
+
+  /** Plain requests from one address: an API client of the test framework records each call, which takes minutes for this many. */
+  async function floodRenewals(address: string, total: number): Promise<void> {
+    for (let sent = 0; sent < total; sent += 50) {
+      const answers = await Promise.all(Array.from({ length: Math.min(50, total - sent) }, () => fetch(`${API}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Forwarded-For": address },
+        body: JSON.stringify({ refreshToken: syntheticValue() }),
+      })));
+      await Promise.all(answers.map((answer) => answer.text()));
+    }
+  }
+
+  /** How much longer the page is waiting to renew again, in milliseconds. */
+  const renewalWaitLeft = (page: Page) => page.evaluate((key) => {
+    const stored = localStorage.getItem(key);
+    return stored ? (JSON.parse(stored) as { until: number }).until - Date.now() : 0;
+  }, WAIT_KEY);
+
   test("A network failure on opening the app keeps the session", async ({ page, company }) => {
     const user = await company.createUser("gerente");
     await signInToDashboard(page, user);
@@ -739,44 +762,158 @@ test.describe("Failures that say nothing about the session", () => {
     expect(await storedSession(page)).toMatchObject({ access: before.access, refresh: before.refresh });
   });
 
-  // Bug, left open: see the comment above the describe.
-  test.fixme("A 429 on the token renewal keeps the session", async ({ context, page, company, device, playwright }) => {
+  test("A 429 on the token renewal keeps the session", async ({ context, page, company, device, apiCalls }) => {
+    test.slow(); // the flood below is a thousand real requests through the whole API
     const user = await company.createUser("gerente");
     const address = clientAddress();
     await context.setExtraHTTPHeaders({ "X-Forwarded-For": address });
     await signInToDashboard(page, user);
     const before = await storedSession(page);
 
-    // the renewal shares a limit per address: other devices behind the same address (a store's network) spend it
-    const sameNetwork = await playwright.request.newContext({ extraHTTPHeaders: { "X-Forwarded-For": address } });
-    for (let renewal = 0; renewal < 5; renewal++) {
-      await sameNetwork.post(`${API}/auth/refresh`, { data: { refreshToken: syntheticValue() } });
-    }
-    await sameNetwork.dispose();
-    await expireAccessToken(page, await device());
+    // the real limiter: a flood from the same address (a store's network) spends the ceiling of the renewal
+    await floodRenewals(address, CEILING);
+    const expired = await expireAccessToken(page, await device());
+    apiCalls.reset();
 
     const limited = page.waitForResponse(`${API}/auth/refresh`);
     await page.reload();
-    expect((await limited).status()).toBe(429);
+    const answer = await limited;
 
+    expect(answer.status()).toBe(429);
+    expect((await answer.json()).code).toBe("rate_limited");
+    expect(Number(await answer.headerValue("retry-after"))).toBeGreaterThan(0);
+
+    // the session stays, and the person is told why the screens are not loading
+    await expect(signOutButton(page)).toBeVisible();
+    await expect(page.getByText(STILL_ACTIVE)).toBeVisible();
     await expect(page).toHaveURL(`${APP_ORIGIN}/dashboard`);
-    expect((await storedSession(page)).refresh).toBe(before.refresh);
+    expect(await storedSession(page)).toMatchObject({ access: expired, refresh: before.refresh, session: before.session });
+
+    // nothing asks again during the wait: not another screen, not a reload, not another tab
+    await page.getByRole("link", { name: "Produtos" }).click();
+    await expect(page.getByRole("heading", { name: "Produtos" })).toBeVisible();
+    await page.reload();
+    await expect(signOutButton(page)).toBeVisible();
+    const otherTab = await context.newPage();
+    await otherTab.goto("/dashboard");
+    await expect(signOutButton(otherTab)).toBeVisible();
+    await expect.poll(() => apiCalls.pending.size).toBe(0);
+    expect(apiCalls.count("/auth/refresh"), "one renewal, whatever else the app did").toBe(1);
+    expect(await storedSession(page)).toMatchObject({ refresh: before.refresh });
+    await expect(page).toHaveURL(`${APP_ORIGIN}/produtos`);
   });
 
-  // Bug, left open: see the comment above the describe.
-  test.fixme("A network failure on the token renewal keeps the session", async ({ page, company, device }) => {
+  test("A session over its own renewal budget gets a 429 and stays, and another session behind the same address renews", async ({ context, page, company, device, playwright, apiCalls }) => {
+    const user = await company.createUser("gerente");
+    const address = clientAddress();
+    await context.setExtraHTTPHeaders({ "X-Forwarded-For": address });
+    await signInToDashboard(page, user);
+
+    // a copy of this session renewing in a loop, each time with the token it just got
+    const sameNetwork = await playwright.request.newContext({ extraHTTPHeaders: { "X-Forwarded-For": address } });
+    let { refresh } = await storedSession(page);
+    for (let renewal = 0; renewal < SESSION_BUDGET; renewal++) {
+      const renewed = await sameNetwork.post(`${API}/auth/refresh`, { data: { refreshToken: refresh } });
+      expect(renewed.status(), await renewed.text()).toBe(200);
+      refresh = (await renewed.json()).refreshToken as string;
+    }
+    await setStored(page, REFRESH_TOKEN_KEY, refresh!);
+    await expireAccessToken(page, await device());
+    apiCalls.reset();
+
+    const limited = page.waitForResponse(`${API}/auth/refresh`);
+    await page.reload();
+    const answer = await limited;
+
+    expect(answer.status()).toBe(429);
+    expect(Number(await answer.headerValue("retry-after"))).toBeGreaterThan(0);
+    await expect(signOutButton(page)).toBeVisible();
+    await expect(page.getByText(STILL_ACTIVE)).toBeVisible();
+    expect((await storedSession(page)).refresh).toBe(refresh);
+
+    // the budget is of that session: someone else in the same store goes on
+    const other = await company.createUser("gerente");
+    const signedIn = await (await device()).post(`${API}/auth/login`, { data: { login: other.login, password: other.password } });
+    const renewal = await sameNetwork.post(`${API}/auth/refresh`, { data: { refreshToken: (await signedIn.json()).refreshToken } });
+    expect(renewal.status(), await renewal.text()).toBe(200);
+    await sameNetwork.dispose();
+  });
+
+  test("A network failure on the token renewal keeps the session, and it renews when the network is back", async ({ page, company, device, apiCalls }) => {
     const user = await company.createUser("gerente");
     await signInToDashboard(page, user);
     const before = await storedSession(page);
-    await expireAccessToken(page, await device());
+    const expired = await expireAccessToken(page, await device());
     await page.route(`${API}/auth/refresh`, (route) => route.abort("connectionrefused"));
 
     const failed = page.waitForEvent("requestfailed", (r) => r.url() === `${API}/auth/refresh`);
     await page.reload();
     await failed;
 
+    await expect(signOutButton(page)).toBeVisible();
+    await expect(page.getByText(STILL_ACTIVE)).toBeVisible();
     await expect(page).toHaveURL(`${APP_ORIGIN}/dashboard`);
+    expect(await storedSession(page)).toMatchObject({ access: expired, refresh: before.refresh, session: before.session });
+
+    // the network comes back: once the short wait is over, the next screen renews against the real API, with no new sign-in
+    await page.unroute(`${API}/auth/refresh`);
+    await expect.poll(() => renewalWaitLeft(page)).toBeLessThanOrEqual(0);
+    apiCalls.reset();
+    await page.getByRole("link", { name: "Produtos" }).click();
+
+    await expect(page.getByRole("heading", { name: "Produtos" })).toBeVisible();
+    await expect.poll(() => apiCalls.calls.some((c) => c.path.startsWith("/products") && c.status === 200)).toBe(true);
+    expect(apiCalls.count("/auth/refresh", 200)).toBe(1);
+    const after = await storedSession(page);
+    expect(after.access).not.toBe(expired);
+    expect(after.refresh).not.toBe(before.refresh);
+    expect(await page.evaluate((key) => localStorage.getItem(key), WAIT_KEY)).toBeNull();
+    await expect(page).toHaveURL(`${APP_ORIGIN}/produtos`);
+  });
+
+  test("A server error on the token renewal keeps the session and Retry-After is respected", async ({ page, company, device, apiCalls }) => {
+    const user = await company.createUser("gerente");
+    await signInToDashboard(page, user);
+    const before = await storedSession(page);
+    await expireAccessToken(page, await device());
+    // replaced response, once: the real API has no way to fail on demand. It says 3 seconds; then the real API answers.
+    const retryAfterSeconds = 3;
+    const seen: number[] = [];
+    await page.route(`${API}/auth/refresh`, async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      seen.push(Date.now());
+      if (seen.length > 1) return route.continue();
+      return route.fulfill({
+        status: 503,
+        headers: { "Access-Control-Allow-Origin": APP_ORIGIN, "Access-Control-Expose-Headers": "Retry-After", "Retry-After": String(retryAfterSeconds) },
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Indisponível.", code: "session_renewal_unavailable", retryAfterSeconds }),
+      });
+    });
+    apiCalls.reset();
+
+    const answered = page.waitForResponse(`${API}/auth/refresh`);
+    await page.reload();
+    expect((await answered).status()).toBe(503);
+
+    await expect(signOutButton(page)).toBeVisible();
+    await expect(page.getByText(STILL_ACTIVE)).toBeVisible();
     expect((await storedSession(page)).refresh).toBe(before.refresh);
+
+    // during the wait, a screen fails without asking again
+    await page.getByRole("link", { name: "Produtos" }).click();
+    await expect(page.getByRole("heading", { name: "Produtos" })).toBeVisible();
+    await expect.poll(() => apiCalls.pending.size).toBe(0);
+    if (await renewalWaitLeft(page) > 0) expect(seen).toHaveLength(1);
+
+    // after it, the next call renews against the real API
+    await expect.poll(() => renewalWaitLeft(page)).toBeLessThanOrEqual(0);
+    await page.reload();
+    await expect.poll(() => apiCalls.count("/auth/refresh", 200)).toBe(1);
+    expect(seen).toHaveLength(2);
+    expect(seen[1] - seen[0], "not before the time the server asked for").toBeGreaterThanOrEqual(retryAfterSeconds * 1000);
+    await expect(signOutButton(page)).toBeVisible();
+    expect((await storedSession(page)).refresh).not.toBe(before.refresh);
   });
 });
 
