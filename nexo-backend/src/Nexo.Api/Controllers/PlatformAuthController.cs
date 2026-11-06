@@ -109,7 +109,7 @@ public class PlatformAuthController : ControllerBase
     [Authorize(Policy = "PlatformAdmin")]
     public async Task<IActionResult> ResetMfa(Guid id, CancellationToken ct)
     {
-        await _auth.AdminResetMfaAsync(id, UserId, User.FindFirstValue("email"), ct);
+        await _auth.AdminResetMfaAsync(id, UserId, User.FindFirstValue(ClaimTypes.Email) ?? User.FindFirstValue("email"), ct);
         return NoContent();
     }
 
