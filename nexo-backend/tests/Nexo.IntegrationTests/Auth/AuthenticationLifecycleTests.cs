@@ -138,22 +138,19 @@ public class AuthenticationLifecycleTests
     }
 
     /// <summary>
-    /// O token vem no corpo (é o que o app manda). Sem ele a validação do corpo responde 400 antes de qualquer leitura de
-    /// cookie: o cookie sozinho não renova a sessão.
+    /// O token vem no corpo (é o que o app manda sem o cabeçalho do modo). Sem ele, a resposta é 400: o cookie antigo não é lido.
     /// </summary>
     [Fact]
     public async Task RefreshToken_FromCookie_IsRefusedWithoutJsonBody()
     {
-        // 1. Login (sets cookies)
+        // 1. Login
         var loginResponse = await _client.PostAsJsonAsync("/api/auth/login",
             TestCredentials.AdminLoginPayload());
+        var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
 
-        // 2. Create new client with cookies
+        // 2. The token in the cookie of older versions
         var cookieClient = _factory.CreateApiClient();
-        foreach (var cookie in loginResponse.Headers.GetValues("Set-Cookie"))
-        {
-            cookieClient.DefaultRequestHeaders.Add("Cookie", ParseCookieForRequest(cookie));
-        }
+        cookieClient.DefaultRequestHeaders.Add("Cookie", $"nexo_refresh={loginBody!.RefreshToken}");
 
         // 3. Refresh without providing token in body
         var refreshResponse = await cookieClient.PostAsJsonAsync("/api/auth/refresh",
@@ -175,10 +172,7 @@ public class AuthenticationLifecycleTests
             TestCredentials.AdminLoginPayload());
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
 
-        // 2. Logout — send the refresh token in the body. The test transport is HTTP, and
-        //    the nexo_refresh cookie is marked Secure, so it is NOT sent back over HTTP;
-        //    the cookie-fallback path can't see it. Passing the token explicitly exercises
-        //    the actual revocation logic (and matches a Bearer/token-based SPA client).
+        // 2. Logout — send the refresh token in the body, as the SPA does without the header of the mode.
         _client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", loginBody!.AccessToken);
         var logoutResponse = await _client.PostAsJsonAsync("/api/auth/logout",
@@ -335,13 +329,4 @@ public class AuthenticationLifecycleTests
         await AuthClientFactory.LoginAsync(_factory, director.Login, director.Password);
     }
 
-    // ────────────────────────────────────────────────────────────────────────────
-    // HELPERS
-    // ────────────────────────────────────────────────────────────────────────────
-
-    private static string ParseCookieForRequest(string setCookieHeader)
-    {
-        var parts = setCookieHeader.Split(';');
-        return parts[0]; // Just the name=value part
-    }
 }

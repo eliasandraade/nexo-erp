@@ -224,7 +224,7 @@ public class RegistrationService
                 CompanyName:   companyName,
                 IsNewAccount:  true,
                 TrialEndsAt:   trialEndsAt,
-                ReadOnlyModules: expiredModules.ToList()));
+                ReadOnlyModules: expiredModules.ToList())) { RefreshTokenExpiresAt = tokens.RefreshTokenExpiresAt };
     }
 
     /// <summary>

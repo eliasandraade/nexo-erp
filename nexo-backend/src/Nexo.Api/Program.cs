@@ -115,17 +115,7 @@ try
                     if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
                         ctx.Token = accessToken;
 
-                    // Cookie fallback: only read nexo_access cookie when there is no
-                    // Authorization header. The header always wins — the cookie is a
-                    // legacy fallback for environments that can't send the header.
-                    if (string.IsNullOrEmpty(ctx.Token)
-                        && !ctx.Request.Headers.ContainsKey("Authorization"))
-                    {
-                        var cookieToken = ctx.Request.Cookies["nexo_access"];
-                        if (!string.IsNullOrEmpty(cookieToken))
-                            ctx.Token = cookieToken;
-                    }
-
+                    // An access token never comes from a cookie: a browser attaches one by itself, and that is what CSRF needs.
                     return Task.CompletedTask;
                 }
             };
@@ -146,35 +136,30 @@ try
         options.AddPolicy("PlatformAdmin", policy =>
             policy.RequireAuthenticatedUser().RequireClaim("type", "platform").RequireRole("super_admin")
                   .RequireAssertion(ctx => !adminNeedsMfa || ctx.User.HasClaim("platform_mfa", "true")));
+        options.AddPolicy(BrowserSession.SignOutPolicy, policy =>
+            policy.RequireAssertion(ctx => ctx.User.Identity?.IsAuthenticated == true
+                                           || (ctx.Resource is HttpContext http && BrowserSession.IsCookieMode(http.Request))));
     });
 
     // Tokens de serviço do Orken ID (leitura de agregados pela Orken Platform). Desligado sem OrkenId:Issuer.
     Nexo.Api.Orken.OrkenOperationsEndpoints.AddOrkenServiceAuthentication(builder);
 
     // ── CORS ──────────────────────────────────────────────────────────────────
+    // One list of origins, for this policy and for the check of the Origin in the cookie mode (SessionOriginMiddleware).
+    var allowedOrigins = new AllowedOrigins(builder.Configuration, builder.Environment);
+    builder.Services.AddSingleton(allowedOrigins);
+    builder.Services.AddSingleton(new BrowserSession(builder.Configuration, allowedOrigins));
+
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("NexoFrontend", policy =>
         {
-            // Always include known origins; Railway env Cors:AllowedOrigins can add more.
-            var builtInOrigins = new[]
-            {
-                "http://localhost:3000",
-                "http://localhost:8080",
-                "http://localhost:5173",
-                "https://erp.orken.com.br",
-                "https://www.orken.com.br",
-            };
-
-            var configOrigins = builder.Configuration
-                .GetSection("Cors:AllowedOrigins")
-                .Get<string[]>() ?? [];
-
-            var origins = builtInOrigins.Concat(configOrigins).Distinct().ToArray();
-
-            policy.WithOrigins(origins)
+            policy.WithOrigins(allowedOrigins.All)
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
-                  .AllowAnyHeader()
+                  // What the clients of this repository send across origins: the session and the JSON of the app, the SignalR client
+                  // on the negotiation, and the session and revalidation of the client portal. Anything else takes a line here.
+                  .WithHeaders("Content-Type", "Authorization", BrowserSession.ModeHeader, "X-Requested-With", "X-SignalR-User-Agent",
+                      "X-Build-Portal-Session", "If-None-Match")
                   .AllowCredentials()
                   // Cache the CORS preflight (OPTIONS) for 24h. The SPA lives on a
                   // different origin (erp.orken.com.br) than the API, so without this
@@ -512,6 +497,8 @@ try
         });
     }
 
+    // Before authentication and the limiters: a refused Origin reads nothing and spends nothing.
+    app.UseMiddleware<SessionOriginMiddleware>();
     app.UseAuthentication();
     // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
     // HttpContext.User is empty, so every caller, even one without a session, shared a single budget per path.

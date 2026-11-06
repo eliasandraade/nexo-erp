@@ -198,6 +198,17 @@ public sealed class PlatformAuthService
         await _db.SaveChangesAsync(ct);
     }
 
+    /// <summary>A sign-out with nothing but the refresh token: in the cookie mode, a tab that just reloaded has no access token yet.</summary>
+    public async Task LogoutByRefreshTokenAsync(string refreshToken, CancellationToken ct)
+    {
+        var hash = Hash(refreshToken);
+        var session = await _db.PlatformSessions.AsNoTracking()
+            .Where(s => !s.PendingMfa && (s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash))
+            .Select(s => new { s.Id, s.PlatformUserId })
+            .FirstOrDefaultAsync(ct);
+        if (session is not null) await LogoutAsync(session.PlatformUserId, session.Id, ct);
+    }
+
     public async Task<IReadOnlyList<PlatformSessionView>> SessionsAsync(Guid userId, Guid? currentSessionId, CancellationToken ct)
     {
         var now = DateTime.UtcNow;

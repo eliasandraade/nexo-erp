@@ -13,7 +13,7 @@ public record LogoutRequest(string RefreshToken);
 /// <summary>
 /// Switches the active store. The refresh token is OPTIONAL: when present (in the body),
 /// the server revokes it atomically while issuing the new store-scoped token pair; when
-/// absent, the controller falls back to the nexo_refresh cookie (cookie-based auth flow).
+/// absent, in the cookie mode the controller takes it from the session cookie.
 ///
 /// RefreshToken MUST stay nullable. With [ApiController] + nullable reference types, a
 /// non-nullable string here is treated as [Required], so a body carrying only { storeId }
@@ -50,7 +50,12 @@ public record LoginResponse(
     string AccessToken,
     string RefreshToken,
     DateTime AccessTokenExpiresAt,
-    SessionDto Session);
+    SessionDto Session)
+{
+    /// <summary>When the refresh token expires: the lifetime of the session cookie. Not part of the answer.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public DateTime RefreshTokenExpiresAt { get; init; }
+}
 
 public record RefreshResponse(
     string AccessToken,
