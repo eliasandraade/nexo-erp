@@ -168,9 +168,11 @@ public static class AuthE2EHost
             builder.UseContentRoot(Path.Combine(root, "src", "Nexo.Api"));
             // the frontend under test is a separate origin, as in production: the API's own CORS policy must let it in
             builder.UseSetting("Cors:AllowedOrigins:0", FrontendOrigin);
-            // the base factory turns the sign-in limiter off for the shared integration suite; here it is under test, at
-            // the production defaults, with each test of the suite as its own client address (X-Forwarded-For)
+            // the base factory turns the sign-in and renewal limits off for the shared integration suite; here they are under
+            // test, at the production defaults, with each test of the suite as its own client address (X-Forwarded-For)
             builder.UseSetting("RateLimiting:AuthLogin:Enabled", "true");
+            builder.UseSetting("RateLimiting:AuthRefresh:Enabled", "true");
+            builder.UseSetting("RateLimiting:AuthLogout:Enabled", "true");
             // the browsers of the suite share one client address, and a run sends more reports than a person would
             builder.UseSetting("RateLimiting:CspReport:Enabled", "false");
             builder.UseSetting("Integrations:Features:StorageEnabled", "true");

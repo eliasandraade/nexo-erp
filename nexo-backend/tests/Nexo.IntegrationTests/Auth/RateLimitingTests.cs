@@ -14,7 +14,7 @@ namespace Nexo.IntegrationTests.Auth;
 /// Rate limiting and brute force protection test suite.
 /// Validates:
 /// - Login endpoint is rate limited
-/// - Refresh endpoint is rate limited
+/// - Refresh endpoint has its own ceiling (the rest of its policy: RefreshRateLimitingRedisTests)
 /// - Rate limiting windows work correctly
 /// - Too many requests returns 429
 /// - Limiting is partitioned per client IP
@@ -244,57 +244,61 @@ public class RateLimitingTests : IDisposable
     // ────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Refresh_WithinRateLimit_Succeeds()
+    public async Task Refresh_DoesNotShareTheLoginLimit()
     {
-        var client = NewClient();
-
-        // Login to get a refresh token
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-
+        // Same address and a spent login limit: the renewal has a ceiling of its own, far above this number of calls.
+        var client = NewClient(forwardedFor: "203.0.113.60");
+        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", TestCredentials.AdminLoginPayload());
         loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var loginBody = await loginResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         var refreshToken = loginBody.GetProperty("refreshToken").GetString()!;
-        refreshToken.Should().NotBeNullOrEmpty();
-
-        // Login and refresh use SEPARATE partitions (keyed by path), so the login
-        // above does not consume the refresh budget: all 5 refreshes succeed.
         for (int i = 0; i < 5; i++)
-        {
-            var response = await client.PostAsJsonAsync("/api/auth/refresh",
-                TestCredentials.RefreshPayload(refreshToken));
+            await client.PostAsJsonAsync("/api/auth/login", TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrongpass"));
 
-            response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
-                $"Refresh request {i + 1}/5 should not be rate limited");
+        for (int i = 0; i < 6; i++)
+        {
+            var response = await client.PostAsJsonAsync("/api/auth/refresh", TestCredentials.RefreshPayload(refreshToken));
+            response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests, $"Refresh request {i + 1}/6 is under the ceiling");
         }
     }
 
     [Fact]
-    public async Task Refresh_ExceedsRateLimit_Returns429()
+    public async Task Refresh_ExceedsCeiling_Returns429()
     {
-        var client = NewClient();
+        await using var host = _factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("RateLimiting:AuthRefresh:Enabled", "true");
+            b.UseSetting("RateLimiting:AuthRefresh:PermitLimit", "5");
+        });
+        var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        // Login
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-
-        loginResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var loginBody = await loginResponse.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-        var refreshToken = loginBody.GetProperty("refreshToken").GetString()!;
-        refreshToken.Should().NotBeNullOrEmpty();
-
-        // Make 6 refresh requests
         HttpStatusCode lastStatus = HttpStatusCode.OK;
         for (int i = 0; i < 6; i++)
         {
-            var response = await client.PostAsJsonAsync("/api/auth/refresh",
-                TestCredentials.RefreshPayload(refreshToken));
+            var response = await client.PostAsJsonAsync("/api/auth/refresh", TestCredentials.RefreshPayload(TestCredentials.MalformedToken));
             lastStatus = response.StatusCode;
         }
 
-        // 6th request should be rate limited
-        lastStatus.Should().Be(HttpStatusCode.TooManyRequests,
-            "6th refresh attempt should be rate limited (429)");
+        lastStatus.Should().Be(HttpStatusCode.TooManyRequests, "6th refresh attempt is over this host's ceiling of 5");
+    }
+
+    /// <summary>The Redis budgets on this suite's cache, which is what the shared integration host and the end-to-end host use.</summary>
+    [Fact]
+    public async Task Refresh_FailureBudget_WorksOnTheInMemoryCacheToo()
+    {
+        await using var host = _factory.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("RateLimiting:AuthRefresh:Enabled", "true");
+            b.UseSetting("RateLimiting:AuthRefresh:FailureBudget", "2");
+        });
+        var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        client.DefaultRequestHeaders.Add("X-Forwarded-For", "203.0.113.61");
+
+        var statuses = new List<HttpStatusCode>();
+        for (int i = 0; i < 3; i++)
+            statuses.Add((await client.PostAsJsonAsync("/api/auth/refresh", TestCredentials.RefreshPayload(TestCredentials.MalformedToken))).StatusCode);
+
+        statuses.Should().Equal(HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests);
     }
 
     // ────────────────────────────────────────────────────────────────────────────

@@ -237,7 +237,9 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("refresh")]
     [AllowAnonymous]
-    [EnableRateLimiting("auth-login")]
+    [EnableRateLimiting(Nexo.Api.Middleware.AuthRefreshRateLimit.Policy)]
+    [RequestSizeLimit(TokenBodyLimitBytes)]
+    [Nexo.Api.Filters.RefusesLargeBody(TokenBodyLimitBytes)]
     public async Task<ActionResult<RefreshResponse>> Refresh(
         [FromBody] RefreshTokenRequest request,
         CancellationToken ct)
@@ -251,21 +253,29 @@ public class AuthController : ControllerBase
                 return BadRequest(new { error = "Refresh token is required." });
         }
 
+        var clientIp = HttpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(HttpContext);
+
         if (Nexo.Infrastructure.Auth.PlatformAuthService.IsPlatformToken(refreshToken))
         {
-            var (tokens, error) = await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>()
-                .RefreshAsync(refreshToken, ct);
+            var (tokens, error, retryAfter) = await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>()
+                .RefreshAsync(refreshToken, clientIp, ct);
             return tokens is not null
                 ? Ok(new RefreshResponse(tokens.AccessToken, tokens.AccessTokenExpiresAt, tokens.RefreshToken, tokens.RefreshTokenExpiresAt))
-                : (ActionResult)PlatformAuthController.RefreshRefusedResult(this, error);
+                : (ActionResult)PlatformAuthController.RefreshRefusedResult(this, error, retryAfter);
         }
 
-        var outcome = await _authService.RefreshAsync(new RefreshTokenRequest(refreshToken), ct);
+        var outcome = await _authService.RefreshAsync(new RefreshTokenRequest(refreshToken), clientIp, ct);
 
-        // 409: outra aba trocou este token há instantes e grava o par novo no armazenamento compartilhado — o
-        // cliente usa esse par em vez de encerrar a sessão. Qualquer outra recusa é 401.
+        // Neither of these says anything about the session: the client keeps it and comes back after the time given.
+        if (outcome.ErrorCode == RefreshErrors.OverBudget)
+            return Nexo.Api.Middleware.RateLimitRejection.OverBudgetResult(this, outcome.RetryAfter!.Value);
+        if (outcome.ErrorCode == RefreshErrors.Unavailable)
+            return Nexo.Api.Middleware.RateLimitRejection.RenewalUnavailableResult(this, outcome.RetryAfter!.Value);
+
+        // 409: outra aba trocou este token há instantes e grava o par novo no armazenamento compartilhado. O cliente usa
+        // esse par, ou volta depois do tempo informado, quando o servidor julga o token. Qualquer outra recusa é 401.
         if (outcome.ErrorCode == RefreshErrors.AlreadyRotated)
-            return Conflict(new { error = "Esta sessão acabou de ser renovada em outra aba.", code = outcome.ErrorCode });
+            return Nexo.Api.Middleware.RateLimitRejection.AlreadyRotatedResult(this, outcome.RetryAfter ?? AuthService.RotationGrace);
         if (outcome.Tokens is not { } result)
             return Unauthorized(new { error = "Invalid or expired refresh token.", code = outcome.ErrorCode ?? RefreshErrors.Invalid });
 
@@ -369,6 +379,8 @@ public class AuthController : ControllerBase
 
         if (outcome.ErrorCode == RefreshErrors.AlreadyRotated)
             return Conflict(new { error = "Esta sessão acabou de ser renovada em outra aba. Tente de novo.", code = outcome.ErrorCode });
+        if (outcome.ErrorCode == RefreshErrors.Unavailable)
+            return Nexo.Api.Middleware.RateLimitRejection.RenewalUnavailableResult(this, RefreshErrors.UnavailableRetry);
         // sem o refresh token válido da própria sessão não há par novo (o access token sozinho não abre sessão)
         if (outcome.ErrorCode == RefreshErrors.Invalid)
             return Unauthorized(new { error = "Sessão inválida ou encerrada. Entre de novo.", code = outcome.ErrorCode });
@@ -431,8 +443,20 @@ public class AuthController : ControllerBase
 
     public sealed record EndedImpersonation(DateTime At);
 
+    /// <summary>A refresh token fits with room to spare, and nothing bigger is worth binding, hashing and looking up for someone with no session.</summary>
+    /// <summary>What a body with nothing but a token can need. Without it these anonymous routes take the 30 MB of Kestrel, read before anything answers.</summary>
+    internal const int TokenBodyLimitBytes = 16 * 1024;
+
+    /// <summary>
+    /// Ends the session of the token presented, and its whole family. It takes an access token or, without one, the refresh token itself: whoever holds it
+    /// could renew it anyway. That is the way out of a client that lost the race for its own token and is about to give up: its access token has usually
+    /// expired by then, and inside the grace this is the only moment the server can hear that someone else holds the new one.
+    /// </summary>
     [HttpPost("logout")]
-    [Authorize]
+    [AllowAnonymous]
+    [EnableRateLimiting(Nexo.Api.Middleware.AuthLogoutRateLimit.Policy)]
+    [RequestSizeLimit(TokenBodyLimitBytes)]
+    [Nexo.Api.Filters.RefusesLargeBody(TokenBodyLimitBytes)]
     public async Task<IActionResult> Logout(
         [FromBody] LogoutRequest? request,
         CancellationToken ct)
@@ -443,11 +467,18 @@ public class AuthController : ControllerBase
             // Try to get from cookie
             refreshToken = Request.Cookies["nexo_refresh"];
         }
-        
+
+        var signedIn = User.Identity?.IsAuthenticated == true;
+        if (!signedIn && string.IsNullOrWhiteSpace(request?.RefreshToken)) return Challenge();
+
         if (User.FindFirstValue("type") == "platform")
         {
             if (Guid.TryParse(User.FindFirstValue("platformUserId"), out var platformUserId) && Guid.TryParse(User.FindFirstValue("sid"), out var sid))
                 await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>().LogoutAsync(platformUserId, sid, ct);
+        }
+        else if (Nexo.Infrastructure.Auth.PlatformAuthService.IsPlatformToken(refreshToken))
+        {
+            await HttpContext.RequestServices.GetRequiredService<Nexo.Infrastructure.Auth.PlatformAuthService>().LogoutByRefreshTokenAsync(refreshToken, ct);
         }
         else if (!string.IsNullOrWhiteSpace(refreshToken))
         {

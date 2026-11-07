@@ -225,13 +225,13 @@ describe("apiClient.postForm and request error mapping", () => {
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([`${API}/a`, `${API}/a`, `${API}/auth/refresh`, `${API}/a`]);
   });
 
-  it("a refresh that throws drops the session", async () => {
+  it("a refresh that throws keeps the session: no answer says nothing about it", async () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     localStorage.setItem(TOKEN_KEYS.access, "old");
     localStorage.setItem(TOKEN_KEYS.refresh, "r1");
     fetchMock.mockResolvedValueOnce(json({ error: "expired" }, 401)).mockRejectedValueOnce(new Error("offline"));
-    await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 401, message: "expired" });
-    expect(localStorage.getItem(TOKEN_KEYS.refresh)).toBeNull();
+    await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 0, code: "session_renewal_unavailable" });
+    expect(localStorage.getItem(TOKEN_KEYS.refresh)).toBe("r1");
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([`${API}/a`, `${API}/auth/refresh`]);
     expect(err).toHaveBeenCalled();
     err.mockRestore();

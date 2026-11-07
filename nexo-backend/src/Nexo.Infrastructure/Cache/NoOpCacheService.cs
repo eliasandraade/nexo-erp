@@ -33,4 +33,16 @@ public class NoOpCacheService : ICacheService
 
     public Task SetFlagAsync(string key, TimeSpan ttl, CancellationToken ct = default)
         => Task.CompletedTask;
+
+    public Task<WindowCount?> CountInWindowAsync(string key, TimeSpan window, CancellationToken ct = default)
+        => Task.FromResult<WindowCount?>(null);
+
+    public Task<bool?> TryClaimAsync(CacheClaim claim, CancellationToken ct = default)
+        => Task.FromResult<bool?>(null);
+
+    public Task<bool?> CommitClaimAsync(CacheClaim claim, string spentKey, IReadOnlyList<CacheWrite> writes, TimeSpan lifetime, CancellationToken ct = default)
+        => Task.FromResult<bool?>(null);
+
+    /// <summary>Nothing to wait for: this is how the deployment was configured, not an outage that will end.</summary>
+    public bool IsUnavailable => false;
 }

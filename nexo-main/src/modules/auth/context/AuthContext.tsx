@@ -10,8 +10,9 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import * as authService from "../services/authService";
-import { apiClient, clearTokens, endImpersonationSession, isImpersonating, onSessionEnded, TOKEN_KEYS, type SessionEndReason } from "@/services/api-client";
+import { apiClient, clearTokens, endImpersonationSession, isImpersonating, onRenewalUnavailable, onSessionEnded, TOKEN_KEYS, type SessionEndReason } from "@/services/api-client";
 import type { AuthSession, LoginInput } from "../types";
 
 /** Where a session the client dropped on its own takes the person: each page says why (`motivo`). */
@@ -133,6 +134,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [navigate, queryClient]);
 
   useEffect(() => onSessionEnded(leaveEndedSession), [leaveEndedSession]);
+
+  // The session could not be renewed right now and it stays: the screens show their own errors, and this says why, once.
+  useEffect(() => onRenewalUnavailable((message) => {
+    toast.warning(message, { id: "session-renewal-unavailable" });
+  }), []);
 
   // Another tab dropped the session they share (the server ended it, or the person signed out there): without a token
   // this tab would only collect errors. An impersonation tab has its own session and stays.

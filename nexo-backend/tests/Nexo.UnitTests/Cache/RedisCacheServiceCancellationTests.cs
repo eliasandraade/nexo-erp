@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using NSubstitute.Extensions;
+using Nexo.Application.Common.Interfaces;
 using Nexo.Infrastructure.Cache;
 using StackExchange.Redis;
 
@@ -36,6 +37,7 @@ public class RedisCacheServiceCancellationTests
         _database.ReturnsForAll(new TaskCompletionSource<RedisValue>().Task);
         _database.ReturnsForAll(new TaskCompletionSource<bool>().Task);
         _database.ReturnsForAll(new TaskCompletionSource<long>().Task);
+        _database.ReturnsForAll(new TaskCompletionSource<RedisResult>().Task);
     }
 
     private async Task<bool> NextCallReachesRedisAsync()
@@ -54,6 +56,9 @@ public class RedisCacheServiceCancellationTests
         "EXISTS" => _cache.ExistsAsync("k", ct),
         "INCR" => _cache.IncrementAsync("k", TimeSpan.FromMinutes(1), ct),
         "SETFLAG" => _cache.SetFlagAsync("k", TimeSpan.FromMinutes(1), ct),
+        "COUNT" => _cache.CountInWindowAsync("k", TimeSpan.FromMinutes(1), ct),
+        "CLAIM" => _cache.TryClaimAsync(new CacheClaim("k", "owner", TimeSpan.FromSeconds(2)), ct),
+        "COMMIT" => _cache.CommitClaimAsync(new CacheClaim("k", "owner", TimeSpan.FromSeconds(2)), "spent", [new CacheWrite("next", new object())], TimeSpan.FromMinutes(1), ct),
         _ => throw new ArgumentOutOfRangeException(nameof(operation)),
     };
 
@@ -64,6 +69,9 @@ public class RedisCacheServiceCancellationTests
     [InlineData("EXISTS")]
     [InlineData("INCR")]
     [InlineData("SETFLAG")]
+    [InlineData("COUNT")]
+    [InlineData("CLAIM")]
+    [InlineData("COMMIT")]
     public async Task Cancelled_call_propagates_and_keeps_the_circuit_closed(string operation)
     {
         RedisNeverAnswers();
@@ -112,5 +120,46 @@ public class RedisCacheServiceCancellationTests
 
         result.Should().BeNull("o cache falha aberto");
         (await NextCallReachesRedisAsync()).Should().BeFalse("o circuito abriu");
+    }
+
+    /// <summary>
+    /// A count sits in front of the lookup of a refresh token. If its timeout opened the circuit, that lookup would answer "no
+    /// such token" for the whole cooldown: one slow count would become a false verdict on the sessions of the process.
+    /// </summary>
+    [Fact]
+    public async Task Timeout_of_a_count_returns_nothing_and_keeps_the_circuit_closed()
+    {
+        RedisNeverAnswers();
+
+        var result = await _cache.CountInWindowAsync("k", TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        result.Should().BeNull();
+        _cache.IsUnavailable.Should().BeFalse();
+        (await NextCallReachesRedisAsync()).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Error_of_a_count_returns_nothing_and_keeps_the_circuit_closed()
+    {
+        _database.ReturnsForAll(Task.FromException<RedisResult>(new RedisTimeoutException("sem resposta", CommandStatus.Unknown)));
+
+        var result = await _cache.CountInWindowAsync("k", TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        result.Should().BeNull();
+        _cache.IsUnavailable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_count_with_the_circuit_open_does_not_touch_redis()
+    {
+        _database.ReturnsForAll(Task.FromException<RedisValue>(new RedisTimeoutException("sem resposta", CommandStatus.Unknown)));
+        await _cache.GetAsync<object>("k", CancellationToken.None);
+        _cache.IsUnavailable.Should().BeTrue();
+        _redis.ClearReceivedCalls();
+
+        var result = await _cache.CountInWindowAsync("k", TimeSpan.FromMinutes(1), CancellationToken.None);
+
+        result.Should().BeNull();
+        _redis.ReceivedCalls().Should().BeEmpty();
     }
 }

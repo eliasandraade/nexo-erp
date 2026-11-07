@@ -153,27 +153,15 @@ try
     Nexo.Api.Orken.OrkenOperationsEndpoints.AddOrkenServiceAuthentication(builder);
 
     // ── CORS ──────────────────────────────────────────────────────────────────
+    // One list, for this policy and for the guard of the auth routes. Railway env Cors:AllowedOrigins can add more.
+    var allowedOrigins = new AllowedOrigins(builder.Configuration);
+    builder.Services.AddSingleton(allowedOrigins);
+
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("NexoFrontend", policy =>
         {
-            // Always include known origins; Railway env Cors:AllowedOrigins can add more.
-            var builtInOrigins = new[]
-            {
-                "http://localhost:3000",
-                "http://localhost:8080",
-                "http://localhost:5173",
-                "https://erp.orken.com.br",
-                "https://www.orken.com.br",
-            };
-
-            var configOrigins = builder.Configuration
-                .GetSection("Cors:AllowedOrigins")
-                .Get<string[]>() ?? [];
-
-            var origins = builtInOrigins.Concat(configOrigins).Distinct().ToArray();
-
-            policy.WithOrigins(origins)
+            policy.WithOrigins(allowedOrigins.All)
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
                   .AllowAnyHeader()
                   .AllowCredentials()
@@ -203,7 +191,8 @@ try
     builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
 
     // ── Rate Limiting ────────────────────────────────────────────────────────
-    // "auth-login" protects /auth/login and /auth/refresh from brute force.
+    // "auth-login" protects the sign-in and account recovery routes from brute force. The renewal has its own policy
+    // ("auth-refresh", AuthRefreshRateLimit): a limit shared with the sign-in signs out the terminals of a store.
     //
     // Config-driven (RateLimiting:AuthLogin:{Enabled,PermitLimit,WindowSeconds})
     // so the integration suite can disable it (the previous global limiter caused
@@ -229,15 +218,7 @@ try
             if (!authLoginEnabled)
                 return RateLimitPartition.GetNoLimiter("auth-login:disabled");
 
-            // Prefer the client IP from X-Forwarded-For (Railway sits behind a
-            // proxy); fall back to the socket address. NOTE: a client could spoof
-            // X-Forwarded-For — to harden, configure ForwardedHeaders middleware
-            // with KnownProxies and partition on the resolved RemoteIpAddress.
-            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
-                ? forwardedFor.Split(',')[0].Trim()
-                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
+            var clientIp = httpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(httpContext);
             var partitionKey = $"{clientIp}|{httpContext.Request.Path}";
 
             return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
@@ -373,6 +354,11 @@ try
         options.AddPolicy<string, Nexo.Api.Security.CspReportRateLimitPolicy>(Nexo.Api.Security.CspReportRateLimitPolicy.Name);
     });
 
+    builder.Services.Configure<RateLimiterOptions>(options =>
+    {
+        Nexo.Api.Middleware.AuthRefreshRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp);
+        Nexo.Api.Middleware.AuthLogoutRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp);
+    });
     builder.Services.AddUploadLimits(builder.Configuration);
 
     // ── Controllers ───────────────────────────────────────────────────────────
@@ -522,6 +508,8 @@ try
     }
 
     app.UseMiddleware<UploadBodyMiddleware>();
+    // Before authentication and the limiters: a page of another site spends nothing of anybody.
+    app.UseMiddleware<AuthOriginGuardMiddleware>();
     app.UseAuthentication();
     // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
     // HttpContext.User is empty, so every caller, even one without a session, shared a single budget per path.

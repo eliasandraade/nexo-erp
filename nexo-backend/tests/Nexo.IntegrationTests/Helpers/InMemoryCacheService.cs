@@ -95,4 +95,43 @@ public sealed class InMemoryCacheService : ICacheService
         _cache.Set(key, "1", new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = ttl });
         return Task.CompletedTask;
     }
+
+    private sealed record WindowCounter(long Count, DateTime EndsAt);
+
+    public Task<WindowCount?> CountInWindowAsync(string key, TimeSpan window, CancellationToken ct = default)
+    {
+        lock (CounterLock)
+        {
+            var now = DateTime.UtcNow;
+            var current = _cache.TryGetValue(key, out WindowCounter? found) && found!.EndsAt > now ? found : new WindowCounter(0, now + window);
+            var next = current with { Count = current.Count + 1 };
+            _cache.Set(key, next, new MemoryCacheEntryOptions { AbsoluteExpiration = next.EndsAt });
+            return Task.FromResult<WindowCount?>(new WindowCount(next.Count, next.EndsAt - now));
+        }
+    }
+
+    public Task<bool?> TryClaimAsync(CacheClaim claim, CancellationToken ct = default)
+    {
+        lock (CounterLock)
+        {
+            if (_cache.TryGetValue(claim.Key, out _)) return Task.FromResult<bool?>(false);
+            _cache.Set(claim.Key, claim.Owner, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = claim.Lifetime });
+            return Task.FromResult<bool?>(true);
+        }
+    }
+
+    public Task<bool?> CommitClaimAsync(CacheClaim claim, string spentKey, IReadOnlyList<CacheWrite> writes, TimeSpan lifetime, CancellationToken ct = default)
+    {
+        lock (CounterLock)
+        {
+            if (!_cache.TryGetValue(claim.Key, out string? owner) || owner != claim.Owner || !_cache.TryGetValue(spentKey, out _))
+                return Task.FromResult<bool?>(false);
+            foreach (var write in writes)
+                _cache.Set(write.Key, JsonSerializer.Serialize(write.Value, write.Value.GetType(), JsonOptions), new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = lifetime });
+            _cache.Remove(spentKey);
+            return Task.FromResult<bool?>(true);
+        }
+    }
+
+    public bool IsUnavailable => false;
 }

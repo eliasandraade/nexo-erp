@@ -42,11 +42,14 @@ public class PlatformAuthController : ControllerBase
 
     [HttpPost("refresh")]
     [AllowAnonymous]
-    [EnableRateLimiting("auth-login")]
+    [EnableRateLimiting(Nexo.Api.Middleware.AuthRefreshRateLimit.Policy)]
+    [RequestSizeLimit(AuthController.TokenBodyLimitBytes)]
+    [Nexo.Api.Filters.RefusesLargeBody(AuthController.TokenBodyLimitBytes)]
     public async Task<IActionResult> Refresh([FromBody] PlatformRefreshRequest request, CancellationToken ct)
     {
-        var (tokens, error) = await _auth.RefreshAsync(request.RefreshToken ?? "", ct);
-        return tokens is not null ? Ok(TokensView(tokens)) : RefreshRefused(error);
+        var clientIp = HttpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(HttpContext);
+        var (tokens, error, retryAfter) = await _auth.RefreshAsync(request.RefreshToken ?? "", clientIp, ct);
+        return tokens is not null ? Ok(TokensView(tokens)) : RefreshRefusedResult(this, error, retryAfter);
     }
 
     [HttpPost("logout")]
@@ -120,11 +123,12 @@ public class PlatformAuthController : ControllerBase
         refreshTokenExpiresAt = t.RefreshTokenExpiresAt,
     };
 
-    internal static IActionResult RefreshRefusedResult(ControllerBase c, string? error) => error == "refresh_already_rotated"
-        ? c.Conflict(new { error = "Esta sessão acabou de ser renovada em outra aba.", code = error })
-        : c.Unauthorized(new { error = "Sessão da plataforma encerrada. Entre de novo.", code = error ?? "session_ended" });
-
-    private IActionResult RefreshRefused(string? error) => RefreshRefusedResult(this, error);
+    internal static IActionResult RefreshRefusedResult(ControllerBase c, string? error, TimeSpan? retryAfter)
+    {
+        if (error == "refresh_already_rotated") return Nexo.Api.Middleware.RateLimitRejection.AlreadyRotatedResult(c, retryAfter ?? PlatformAuthService.RotationGrace);
+        if (retryAfter is { } wait) return Nexo.Api.Middleware.RateLimitRejection.OverBudgetResult(c, wait);
+        return c.Unauthorized(new { error = "Sessão da plataforma encerrada. Entre de novo.", code = error ?? "session_ended" });
+    }
 
     private IActionResult Answer(PlatformSignIn result)
     {
