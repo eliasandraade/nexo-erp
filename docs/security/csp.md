@@ -6,7 +6,7 @@ cabeçalho aplicado continua sendo `Content-Security-Policy: frame-ancestors 'no
 
 **Por que isto existe:** o token de sessão e o de renovação, de 7 dias, ficam no `localStorage` (decisão D1 em
 `docs/audits/2026-11-05-sonarcloud-seguranca-evidencias.md`). Sem `script-src`, qualquer XSS lê os dois. A troca do lugar dos tokens é
-outra frente. Esta reduz a chance de o script injetado rodar, e passar para o modo que bloqueia é o passo que dá o efeito.
+outra frente. Esta reduz a chance de o script injetado rodar, e passar para o modo que bloqueia é o passo que dá o efeito. No modo cookie (`docs/security/sessao-auditoria-e-migracao.md`), o token de renovação sai dali, mas um script na página ainda age pela própria aba: a seção 9 daquele documento conta com esta política.
 
 `www.orken.com.br` e `erp.orken.com.br` são o mesmo serviço, o mesmo bundle e o mesmo `Caddyfile`, então têm a mesma política.
 

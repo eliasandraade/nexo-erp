@@ -1,10 +1,19 @@
-import { Link, Navigate, Outlet } from "react-router-dom";
+import { useEffect } from "react";
+import { Link, Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/modules/auth/context/AuthContext";
 import { Brand } from "@/components/shared/Brand";
 import { resolvePostLogin } from "@/modules/workspace/resolvePostLogin";
 import { readLastWorkspace } from "@/modules/workspace/persistence";
+import { useLeaveForSessionApp } from "@/app/router/useLeaveForSessionApp";
 export function AuthLayout() {
-  const { session } = useAuth();
+  const { session, sessionRecovery, requestSessionRecovery } = useAuth();
+  const { pathname } = useLocation();
+  const leaving = useLeaveForSessionApp();
+  // Only on the sign-in page: the others of this layout make their own calls (a verification link signs in by itself).
+  useEffect(() => {
+    if (!session && sessionRecovery === "pending" && pathname === "/login") requestSessionRecovery();
+  }, [session, sessionRecovery, pathname, requestSessionRecovery]);
+  if (leaving) return null;
   // Already signed in (the root of the ERP sends everyone here): the same destination as right after signing in.
   if (session) return <Navigate to={resolvePostLogin(session, readLastWorkspace(session))} replace />;
   return <div className="flex min-h-dvh flex-col bg-background">

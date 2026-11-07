@@ -116,17 +116,7 @@ try
                     if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
                         ctx.Token = accessToken;
 
-                    // Cookie fallback: only read nexo_access cookie when there is no
-                    // Authorization header. The header always wins — the cookie is a
-                    // legacy fallback for environments that can't send the header.
-                    if (string.IsNullOrEmpty(ctx.Token)
-                        && !ctx.Request.Headers.ContainsKey("Authorization"))
-                    {
-                        var cookieToken = ctx.Request.Cookies["nexo_access"];
-                        if (!string.IsNullOrEmpty(cookieToken))
-                            ctx.Token = cookieToken;
-                    }
-
+                    // An access token never comes from a cookie: a browser attaches one by itself, and that is what CSRF needs.
                     return Task.CompletedTask;
                 }
             };
@@ -153,9 +143,10 @@ try
     Nexo.Api.Orken.OrkenOperationsEndpoints.AddOrkenServiceAuthentication(builder);
 
     // ── CORS ──────────────────────────────────────────────────────────────────
-    // One list, for this policy and for the guard of the auth routes. Railway env Cors:AllowedOrigins can add more.
-    var allowedOrigins = new AllowedOrigins(builder.Configuration);
+    // One list of origins, for this policy, for the guard of the auth routes and for the check of the Origin in the cookie mode.
+    var allowedOrigins = new AllowedOrigins(builder.Configuration, builder.Environment);
     builder.Services.AddSingleton(allowedOrigins);
+    builder.Services.AddSingleton(new BrowserSession(builder.Configuration, allowedOrigins));
 
     builder.Services.AddCors(options =>
     {
@@ -163,7 +154,10 @@ try
         {
             policy.WithOrigins(allowedOrigins.All)
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
-                  .AllowAnyHeader()
+                  // What the clients of this repository send across origins: the session and the JSON of the app, the SignalR client
+                  // on the negotiation, and the session and revalidation of the client portal. Anything else takes a line here.
+                  .WithHeaders("Content-Type", "Authorization", BrowserSession.ModeHeader, "X-Requested-With", "X-SignalR-User-Agent",
+                      "X-Build-Portal-Session", "If-None-Match")
                   .AllowCredentials()
                   // Cache the CORS preflight (OPTIONS) for 24h. The SPA lives on a
                   // different origin (erp.orken.com.br) than the API, so without this
@@ -508,8 +502,9 @@ try
     }
 
     app.UseMiddleware<UploadBodyMiddleware>();
-    // Before authentication and the limiters: a page of another site spends nothing of anybody.
+    // Before authentication and the limiters: a page of another site spends nothing of anybody, and a refused Origin reads nothing.
     app.UseMiddleware<AuthOriginGuardMiddleware>();
+    app.UseMiddleware<SessionOriginMiddleware>();
     app.UseAuthentication();
     // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
     // HttpContext.User is empty, so every caller, even one without a session, shared a single budget per path.

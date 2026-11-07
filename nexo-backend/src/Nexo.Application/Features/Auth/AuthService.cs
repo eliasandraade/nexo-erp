@@ -180,7 +180,7 @@ public class AuthService
             tokens.AccessToken,
             tokens.RefreshToken,
             tokens.AccessTokenExpiresAt,
-            session));
+            session) { RefreshTokenExpiresAt = tokens.RefreshTokenExpiresAt });
     }
 
     /// <summary>Counts the wrong password (maybe locking the account) and audits it.</summary>
@@ -255,7 +255,7 @@ public class AuthService
         // spurious 401 on every refresh once the cache actually persists the token.
         var user = await _users.GetByIdAcrossTenantsAsync(claims.UserId, ct);
         if (user is null || user.Status == Domain.Enums.UserStatus.Inactive || user.Status == Domain.Enums.UserStatus.Blocked)
-            return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
+            return RefreshOutcome.EndedByAChange();
 
         // Defence in depth: the user loaded cross-tenant must match the token's tenant
         // claim and the stored entry. Guards against a token whose userId/tenantId were
@@ -267,7 +267,7 @@ public class AuthService
         if (entry.SecurityStamp is not null && entry.SecurityStamp != user.SecurityStamp)
         {
             await _cache.RemoveAsync(cacheKey, ct);
-            return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
+            return RefreshOutcome.EndedByAChange();
         }
 
         // A sign-out during an outage reached only the database: when the cache came back, from its snapshot, this entry came back valid and the family unmarked.
@@ -339,8 +339,9 @@ public class AuthService
         if (await IsFamilyRevokedAsync(claims.Family, ct)) return RefreshOutcome.Fail(RefreshErrors.SessionEnded);
 
         var head = await _cache.GetAsync<RefreshFamilyHead>(FamilyKey(claims.Family), ct);
-        // família desconhecida (expirada, ou anterior a este controle) ou o próprio token atual já revogado (logout)
-        if (head is null || head.CurrentJti == claims.Jti) return RefreshOutcome.Fail(RefreshErrors.Invalid);
+        // família desconhecida (expirada, ou anterior a este controle) ou o próprio token atual já revogado. O logout marca a família
+        // (acima), e a validade deste token ainda não venceu: quem apagou a entrada foi o fim das sessões da pessoa (papel, situação, senha).
+        if (head is null || head.CurrentJti == claims.Jti) return RefreshOutcome.Fail(RefreshErrors.Invalid) with { PersonChanged = true };
 
         var sinceRotation = DateTime.UtcNow - head.RotatedAt;
         if (head.PreviousJti == claims.Jti && sinceRotation < RotationGrace)
@@ -634,8 +635,12 @@ public static class SwitchStoreErrors
 
 public sealed record RefreshOutcome(RefreshResponse? Tokens, string? ErrorCode, TimeSpan? RetryAfter = null)
 {
+    /// <summary>The session ended because something about the person changed (role, status, password, every session revoked).</summary>
+    public bool PersonChanged { get; init; }
+
     public static RefreshOutcome Ok(RefreshResponse tokens) => new(tokens, null);
     public static RefreshOutcome Fail(string code) => new(null, code);
+    public static RefreshOutcome EndedByAChange() => new(null, RefreshErrors.SessionEnded) { PersonChanged = true };
     public static RefreshOutcome OverBudget(TimeSpan retryAfter) => new(null, RefreshErrors.OverBudget, retryAfter);
     public static RefreshOutcome Unavailable(TimeSpan? retryAfter = null) => new(null, RefreshErrors.Unavailable, retryAfter ?? RefreshErrors.UnavailableRetry);
     public static RefreshOutcome AlreadyRotated(TimeSpan retryAfter) => new(null, RefreshErrors.AlreadyRotated, retryAfter);

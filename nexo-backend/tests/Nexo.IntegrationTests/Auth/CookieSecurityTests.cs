@@ -11,328 +11,122 @@ using Microsoft.Extensions.Hosting;
 using Nexo.Application.Features.Auth;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
+using static Nexo.IntegrationTests.Auth.BrowserSessionKit;
 
 namespace Nexo.IntegrationTests.Auth;
 
 /// <summary>
-/// Comprehensive cookie security validation suite.
-/// Ensures HttpOnly, Secure, SameSite, Path, Domain flags are correct,
-/// and that cookies are properly managed during login, refresh, and logout.
-///
-/// The SPA does not use these cookies: it calls with the Bearer header and keeps the tokens in localStorage, so the flags
-/// here protect only clients that do send cookies. See docs/audits/2026-11-05-sonarcloud-seguranca-evidencias.md.
+/// The attributes of the cookies of this API, in every environment. The session cookie and what happens to it are in
+/// <see cref="SessionCookieModeTests"/>; here, what does not depend on the flow: a request without the mode header gets no cookie, the
+/// cookie of the mode is the same everywhere, and a sign-out removes the cookies an older version may have left in a browser.
 /// </summary>
 [Collection("Integration")]
 public class CookieSecurityTests
 {
     private readonly TestWebApplicationFactory _factory;
+    private readonly BrowserSessionKit _kit;
     private readonly HttpClient _client;
 
     public CookieSecurityTests(TestWebApplicationFactory factory)
     {
         _factory = factory;
+        _kit = new BrowserSessionKit(factory);
         _client = factory.CreateApiClient();
     }
 
-    // ────────────────────────────────────────────────────────────────────────────
-    // LOGIN: Verify cookies are set with correct flags
-    // ────────────────────────────────────────────────────────────────────────────
-
     [Fact]
-    public async Task Login_SetsCookies_WithHttpOnlyFlag()
+    public async Task Login_without_the_mode_header_sets_no_cookie_at_all()
     {
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
+        var response = await _client.PostAsJsonAsync("/api/auth/login", TestCredentials.AdminLoginPayload());
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-        var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
-        var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
-
-        // ContainEquivalentOf == case-insensitive Contains. RFC 6265 cookie attribute
-        // names are case-insensitive and ASP.NET Core emits them lowercase ("httponly").
-        accessCookie.Should().ContainEquivalentOf("HttpOnly",
-            "access token cookie must be HttpOnly to prevent XSS theft");
-        refreshCookie.Should().ContainEquivalentOf("HttpOnly",
-            "refresh token cookie must be HttpOnly to prevent XSS theft");
+        ShouldSetNoCookie(response);
     }
 
     [Fact]
-    public async Task Login_SetsCookies_WithSameSiteLax()
+    public async Task Refresh_without_the_mode_header_sets_no_cookie_at_all()
     {
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
+        var login = await _client.PostAsJsonAsync("/api/auth/login", TestCredentials.AdminLoginPayload());
+        var body = await login.Content.ReadFromJsonAsync<LoginResponse>();
+
+        var response = await _client.PostAsJsonAsync("/api/auth/refresh", TestCredentials.RefreshPayload(body!.RefreshToken));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-        var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
-        var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
-
-        // The SPA (erp.orken.com.br, www.orken.com.br) and the API (api.erp.orken.com.br) share the registrable domain
-        // orken.com.br: every call is same-site, so Lax reaches them all while browsers keep the cookies off
-        // cross-site requests (CSRF), on top of the Bearer header, HttpOnly + Secure and the CORS allow-list.
-        accessCookie.Should().ContainEquivalentOf("SameSite=Lax", "same-site API calls only need Lax");
-        refreshCookie.Should().ContainEquivalentOf("SameSite=Lax", "refresh-token rotation is same-site too");
+        ShouldSetNoCookie(response);
     }
 
     [Fact]
-    public async Task Login_SetsCookies_WithPathRoot()
-    {
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-        var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
-        var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
-
-        accessCookie.Should().ContainEquivalentOf("Path=/",
-            "cookies must be sent to all paths under the domain");
-        refreshCookie.Should().ContainEquivalentOf("Path=/",
-            "refresh cookie must be available to all paths for token rotation");
-    }
-
-    [Fact]
-    public async Task Login_SetsCookies_WithValidExpiry()
-    {
-        var beforeLogin = DateTimeOffset.UtcNow;
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-        var afterLogin = DateTimeOffset.UtcNow;
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-        var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
-        var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
-
-        // Access token should expire in ~15 minutes
-        var accessExpiry = ExtractCookieExpiry(accessCookie);
-        var accessTtl = (accessExpiry - beforeLogin).TotalMinutes;
-        accessTtl.Should().BeGreaterThan(14.5).And.BeLessThan(15.5);
-        // access token should expire in approximately 15 minutes
-
-        // Refresh token should expire ~7 days out. The cookie's Expires is set to
-        // UtcNow.AddDays(7) on the server and serialized to whole-second precision, so the
-        // span measured from beforeLogin lands a fraction under 168h — assert ≈7 days with
-        // a small tolerance rather than a strict > 168 (which fails by microseconds).
-        var refreshExpiry = ExtractCookieExpiry(refreshCookie);
-        var refreshTtl = (refreshExpiry - beforeLogin).TotalHours;
-        refreshTtl.Should().BeGreaterThan(167.9,
-            "refresh token should expire in ~7 days");
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // LOGOUT: Verify cookies are properly deleted
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Logout_DeletesCookies_BySettingExpireInPast()
-    {
-        // 1. Login to get tokens
-        var loginResponse = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-        var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
-
-        // 2. Set auth header for the logout request
-        _client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", loginBody!.AccessToken);
-
-        // 3. Logout
-        var logoutResponse = await _client.PostAsync("/api/auth/logout", null);
-        logoutResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
-
-        // 4. Verify Set-Cookie headers contain expiration in the past
-        var setCookieHeaders = logoutResponse.Headers.GetValues("Set-Cookie");
-        var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
-        var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
-
-        // When a cookie is deleted, its Expires should be in the past
-        var accessExpiry = ExtractCookieExpiry(accessCookie);
-        var refreshExpiry = ExtractCookieExpiry(refreshCookie);
-
-        accessExpiry.Should().BeBefore(DateTimeOffset.UtcNow.AddSeconds(5),
-            "access cookie must have expiry in the past to clear it from browser");
-        refreshExpiry.Should().BeBefore(DateTimeOffset.UtcNow.AddSeconds(5),
-            "refresh cookie must have expiry in the past to clear it from browser");
-    }
-
-    [Fact]
-    public async Task Logout_DeletedCookies_HaveConsistentFlags_WithLoginCookies()
-    {
-        // Login
-        var loginResponse = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-        var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
-        _client.DefaultRequestHeaders.Authorization =
-            new AuthenticationHeaderValue("Bearer", loginBody!.AccessToken);
-
-        // Logout
-        var logoutResponse = await _client.PostAsync("/api/auth/logout", null);
-        var setCookieHeaders = logoutResponse.Headers.GetValues("Set-Cookie");
-
-        var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
-        var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
-
-        // Deleted cookies must have the same flags (for browser to match and replace).
-        // Case-insensitive checks + SameSite=Lax — see Login_SetsCookies_WithSameSiteLax.
-        accessCookie.Should().ContainEquivalentOf("HttpOnly");
-        accessCookie.Should().ContainEquivalentOf("SameSite=Lax");
-        accessCookie.Should().ContainEquivalentOf("Path=/");
-
-        refreshCookie.Should().ContainEquivalentOf("HttpOnly");
-        refreshCookie.Should().ContainEquivalentOf("SameSite=Lax");
-        refreshCookie.Should().ContainEquivalentOf("Path=/");
-
-        Attributes(accessCookie).Should().Contain("secure");
-        Attributes(refreshCookie).Should().Contain("secure");
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // REFRESH: Verify cookies are rotated correctly
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Refresh_RotatesCookies_WithNewValues()
-    {
-        // 1. Login
-        var loginResponse = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-        var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
-
-        // 2. Extract cookies from login response
-        var loginSetCookieHeaders = loginResponse.Headers.GetValues("Set-Cookie");
-        var loginAccessCookie = ExtractSetCookieValue(loginSetCookieHeaders, "nexo_access");
-
-        // 3. Refresh (send refresh token in body)
-        var refreshResponse = await _client.PostAsJsonAsync("/api/auth/refresh",
-            TestCredentials.RefreshPayload(loginBody!.RefreshToken));
-        refreshResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        // 4. Extract cookies from refresh response
-        var refreshSetCookieHeaders = refreshResponse.Headers.GetValues("Set-Cookie");
-        var refreshAccessCookie = ExtractSetCookieValue(refreshSetCookieHeaders, "nexo_access");
-
-        // 5. Verify cookies were rotated (new value)
-        refreshAccessCookie.Should().NotBe(loginAccessCookie,
-            "access token should be rotated (new value) on refresh");
-    }
-
-    [Fact]
-    public async Task Refresh_RotatedCookies_StillHaveCorrectFlags()
-    {
-        // Login
-        var loginResponse = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-        var loginBody = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>();
-
-        // Refresh
-        var refreshResponse = await _client.PostAsJsonAsync("/api/auth/refresh",
-            TestCredentials.RefreshPayload(loginBody!.RefreshToken));
-
-        var setCookieHeaders = refreshResponse.Headers.GetValues("Set-Cookie");
-        var accessCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_access");
-        var refreshCookie = ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh");
-
-        // Verify security flags are still correct after rotation.
-        // Case-insensitive checks + SameSite=Lax — see Login_SetsCookies_WithSameSiteLax.
-        accessCookie.Should().ContainEquivalentOf("HttpOnly");
-        accessCookie.Should().ContainEquivalentOf("SameSite=Lax");
-        accessCookie.Should().ContainEquivalentOf("Path=/");
-
-        refreshCookie.Should().ContainEquivalentOf("HttpOnly");
-        refreshCookie.Should().ContainEquivalentOf("SameSite=Lax");
-        refreshCookie.Should().ContainEquivalentOf("Path=/");
-
-        Attributes(accessCookie).Should().Contain("secure");
-        Attributes(refreshCookie).Should().Contain("secure");
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // SWITCH STORE: new cookies, same flags
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task SwitchStore_Cookies_CarryEveryFlag()
+    public async Task Switch_store_without_the_mode_header_sets_no_cookie_at_all()
     {
         var (client, login) = await AuthClientFactory.LoginAsAdminWithBodyAsync(_factory);
 
         var response = await client.PostAsJsonAsync("/api/auth/switch-store",
             new { storeId = login.Session.StoreIds[0], refreshToken = login.RefreshToken });
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-        foreach (var name in new[] { "nexo_access", "nexo_refresh" })
-            Attributes(ExtractSetCookieHeader(setCookieHeaders, name))
-                .Should().Contain(["secure", "httponly", "samesite=lax", "path=/"], name);
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // COOKIES NOT ACCESSIBLE VIA JAVASCRIPT
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Cookies_AreHttpOnly_SoJsCannotAccess()
-    {
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
-
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-
-        // Every cookie must have HttpOnly flag
-        foreach (var setCookie in setCookieHeaders)
-        {
-            if (setCookie.StartsWith("nexo_"))
-            {
-                setCookie.Should().ContainEquivalentOf("HttpOnly",
-                    $"Cookie must be HttpOnly to prevent XSS access: {setCookie}");
-            }
-        }
-    }
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // SECURE FLAG: comes from the environment name, never from the request scheme.
-    // TLS ends at the proxy, so the API always sees plain HTTP.
-    // ────────────────────────────────────────────────────────────────────────────
-
-    [Fact]
-    public async Task Login_Cookies_AreSecure_EvenOverPlainHttp()
-    {
-        var response = await _client.PostAsJsonAsync("/api/auth/login",
-            TestCredentials.AdminLoginPayload());
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        _client.BaseAddress!.Scheme.Should().Be("http", "this host stands in for the API behind the proxy");
-
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-        Attributes(ExtractSetCookieHeader(setCookieHeaders, "nexo_access")).Should().Contain("secure");
-        Attributes(ExtractSetCookieHeader(setCookieHeaders, "nexo_refresh")).Should().Contain("secure");
+        ShouldSetNoCookie(response);
     }
 
+    [Fact]
+    public async Task Logout_removes_the_cookies_of_older_versions_with_the_flags_they_had()
+    {
+        var login = await _client.PostAsJsonAsync("/api/auth/login", TestCredentials.AdminLoginPayload());
+        var body = await login.Content.ReadFromJsonAsync<LoginResponse>();
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", body!.AccessToken);
+
+        var response = await _client.PostAsync("/api/auth/logout", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        ShouldExpireTheOldCookies(response);
+        foreach (var cookie in SetCookies(response))
+            Attributes(cookie).Should().Contain(["secure", "httponly", "samesite=lax", "path=/"]);
+    }
+
+    [Fact]
+    public async Task The_session_cookie_is_secure_over_plain_http()
+    {
+        var account = await _kit.NewAccountAsync();
+
+        var response = await _kit.PostAsync("/api/auth/login", TestCredentials.LoginPayload(account.Login, account.Password));
+
+        _kit.Client().BaseAddress!.Scheme.Should().Be("http", "this host stands in for the API behind the proxy, where TLS has ended");
+        Attributes(SetCookies(response).Single()).Should().Contain("secure");
+    }
+
+    /// <summary>A browser refuses a __Host- cookie that is not Secure, so Development gets the same one.</summary>
     [Theory]
-    [InlineData("Production", true, "samesite=lax")]
-    [InlineData("Staging", true, "samesite=lax")]
-    [InlineData("Development", false, "samesite=strict")]
-    public async Task Login_Cookie_Flags_FollowTheEnvironment(string environment, bool secure, string sameSite)
+    [InlineData("Production")]
+    [InlineData("Staging")]
+    [InlineData("Development")]
+    public async Task The_session_cookie_is_the_same_in_every_environment(string environment)
     {
         await using var host = HostIn(environment);
-        var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var kit = _kit.On(host);
+        var account = await _kit.NewAccountAsync();
 
-        var response = await client.PostAsJsonAsync("/api/auth/login", TestCredentials.AdminLoginPayload());
+        var response = await kit.PostAsync("/api/auth/login", TestCredentials.LoginPayload(account.Login, account.Password));
+
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var setCookieHeaders = response.Headers.GetValues("Set-Cookie");
-        foreach (var name in new[] { "nexo_access", "nexo_refresh" })
-        {
-            var attributes = Attributes(ExtractSetCookieHeader(setCookieHeaders, name));
-            attributes.Should().Contain(["httponly", sameSite], name);
-            if (secure) attributes.Should().Contain("secure", name);
-            else attributes.Should().NotContain("secure", name);
-        }
+        ShouldSetTheSessionCookie(response, TokenExpiry(CookieValue(response)));
     }
+
+    [Fact]
+    public async Task Removing_the_cookie_with_SameSite_None_keeps_SameSite_None()
+    {
+        await using var host = _factory.WithWebHostBuilder(b => b.UseSetting("Auth:Session:CookieSameSite", "None"));
+        var kit = _kit.On(host);
+        var account = await _kit.NewAccountAsync();
+        var session = await kit.SignInAsync(account.Login, account.Password);
+
+        var response = await kit.PostAsync("/api/auth/logout", sessionCookie: session.Cookie);
+
+        // on a response from another site, a browser refuses a Set-Cookie with SameSite=Lax: the removal would never happen
+        Attributes(SetCookies(response).Single(c => c.StartsWith(CookieName, StringComparison.Ordinal))).Should().Contain("samesite=none");
+    }
+
+    /// <summary>The attributes after the value, lower-cased: a JWT value could contain any of these words by chance.</summary>
+    private static string[] Attributes(string setCookieHeader)
+        => setCookieHeader.Split(';').Skip(1).Select(p => p.Trim().ToLowerInvariant()).ToArray();
 
     /// <summary>The real startup in another environment: strict ones demand a random signing secret.</summary>
     private WebApplicationFactory<Program> HostIn(string environment)
@@ -348,51 +142,4 @@ public class CookieSecurityTests
                     s.Remove(job);
             });
         });
-
-    // ────────────────────────────────────────────────────────────────────────────
-    // HELPERS
-    // ────────────────────────────────────────────────────────────────────────────
-
-    private static string ExtractSetCookieHeader(IEnumerable<string> setCookieHeaders, string cookieName)
-    {
-        var cookie = setCookieHeaders.FirstOrDefault(c => c.StartsWith(cookieName));
-        cookie.Should().NotBeNull($"Set-Cookie header for '{cookieName}' not found");
-        return cookie!;
-    }
-
-    /// <summary>The attributes after the value, lower-cased: a JWT value could contain any of these words by chance.</summary>
-    private static string[] Attributes(string setCookieHeader)
-        => setCookieHeader.Split(';').Skip(1).Select(p => p.Trim().ToLowerInvariant()).ToArray();
-
-    private static string ExtractSetCookieValue(IEnumerable<string> setCookieHeaders, string cookieName)
-    {
-        var header = ExtractSetCookieHeader(setCookieHeaders, cookieName);
-        var parts = header.Split(';');
-        var value = parts[0].Split('=', 2);
-        return value.Length > 1 ? value[1] : string.Empty;
-    }
-
-    private static DateTimeOffset ExtractCookieExpiry(string setCookieHeader)
-    {
-        var parts = setCookieHeader.Split(';');
-        // Case-insensitive: ASP.NET Core emits "expires=" (lowercase) per its Set-Cookie
-        // serialization; RFC 6265 attribute names are case-insensitive.
-        var expiresLine = parts.FirstOrDefault(p =>
-            p.Trim().StartsWith("Expires=", StringComparison.OrdinalIgnoreCase));
-
-        if (expiresLine == null)
-            return DateTimeOffset.MinValue;
-
-        var eq = expiresLine.IndexOf('=');
-        var expiryStr = expiresLine[(eq + 1)..].Trim();
-        if (DateTimeOffset.TryParseExact(expiryStr, "ddd, dd MMM yyyy HH:mm:ss 'GMT'",
-            System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.AssumeUniversal,
-            out var expiry))
-        {
-            return expiry;
-        }
-
-        return DateTimeOffset.MinValue;
-    }
 }

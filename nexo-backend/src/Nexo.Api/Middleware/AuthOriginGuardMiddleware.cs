@@ -5,6 +5,7 @@ namespace Nexo.Api.Middleware;
 /// does not need to: the limiters count the request before MVC refuses the content type, so one open tab spends the renewal and sign-in budgets
 /// of everyone behind that person's address. A browser always says where such a request came from, so it is answered here, before the limiters,
 /// when that place is not ours. With no Origin the caller is not a browser page, and it goes on as before.
+/// Whatever these routes answer carries or decides a session, tokens on the GET of verify-email included, so no cache keeps any of it, in either mode.
 /// </summary>
 public sealed class AuthOriginGuardMiddleware
 {
@@ -25,13 +26,16 @@ public sealed class AuthOriginGuardMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (IsAuthRoute(context.Request.Path)
-            && context.Request.Headers.TryGetValue("Origin", out var origin)
-            && !_origins.Contains(origin.ToString()))
+        if (IsAuthRoute(context.Request.Path))
         {
-            context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            await context.Response.WriteAsJsonAsync(new { error = "Origem não permitida.", code = RefusedCode }, context.RequestAborted);
-            return;
+            context.Response.Headers.CacheControl = "no-store";
+
+            if (context.Request.Headers.TryGetValue("Origin", out var origin) && !_origins.Contains(origin.ToString()))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsJsonAsync(new { error = "Origem não permitida.", code = RefusedCode }, context.RequestAborted);
+                return;
+            }
         }
         await _next(context);
     }

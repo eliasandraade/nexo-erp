@@ -90,6 +90,7 @@ public class UsersController : ControllerBase
     /// </summary>
     [HttpPost("{id:guid}/change-password")]
     [Nexo.Api.Filters.DenyDuringImpersonation]
+    [Nexo.Api.Filters.EndsBrowserSession]
     [EnableRateLimiting("credential-check")]
     public async Task<IActionResult> ChangePassword(
         Guid id,

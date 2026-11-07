@@ -142,3 +142,10 @@ Os conjuntos estão em `Nexo.Api/Authorization/AppRoles.cs`:
   auditoria uma única vez, mesmo com a auditoria falhando ou travada, sem mudar a resposta nem prender o lock.
 - **`PendingUserEditTests`** (comportamento): editar um usuário nunca libera o acesso de quem não confirmou o e-mail, e parar e
   reativar a pessoa não contorna o link.
+
+## Sessão no navegador
+
+A autorização de todas as rotas vem só do access token em `Authorization: Bearer` (no hub, também em `access_token` na query). Nenhuma rota autentica por cookie.
+
+O cookie `__Host-nexo_rt` é o refresh token: vale apenas em `auth/refresh`, `auth/switch-store` e `auth/logout` (e em `platform/auth/refresh`), com `X-Orken-Session: cookie` e `Origin` da lista. `auth/logout`
+é a única rota que aceita a requisição sem access token: com o cookie, nesse modo, ou com o refresh token no corpo, nos dois modos. Detalhes em [sessoes-e-tempo-real.md](sessoes-e-tempo-real.md).

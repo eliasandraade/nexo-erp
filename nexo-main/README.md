@@ -120,6 +120,7 @@ O servidor de desenvolvimento ficará disponível em `http://localhost:8080`.
 | `npm test` | Executa os testes com Vitest |
 | `npm run test:watch` | Testes em modo watch |
 | `npm run test:e2e` | Autenticação de ponta a ponta contra a API real (precisa de Docker e do SDK .NET 8; sobe tudo sozinho) |
+| `npm run test:e2e:cookie` | A mesma suíte, contra o bundle de `VITE_SESSION_MODE=cookie` |
 | `npm run test:e2e:csp` | Content-Security-Policy sob um navegador real: bundle de produção, `Caddyfile` real e API real (precisa de Docker e do SDK .NET 8; sobe tudo sozinho). Ver `docs/security/csp.md` |
 
 ---

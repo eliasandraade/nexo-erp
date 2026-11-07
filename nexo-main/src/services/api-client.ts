@@ -4,12 +4,16 @@
  * Token storage keys are shared with authService so both modules read/write
  * the same values without circular imports.
  *
- * Two storage modes:
+ * Three storage modes:
  *  - normal: tokens + session live in localStorage (shared by every tab of the signed-in user);
- *  - impersonation (a platform administrator acting as a tenant, tab-scoped): the tab carries the
+ *  - cookie (a build with VITE_SESSION_MODE=cookie): the refresh token lives in an HttpOnly cookie of the API that no script can read,
+ *    the access token in a variable of each tab, and the session in localStorage, so a page draws at once and tabs know of each other.
+ *    See docs/security/sessao-auditoria-e-migracao.md, section 3. The normal mode stays until the two are proven equivalent;
+ *  - impersonation (a platform administrator acting as a tenant, tab-scoped), in either build: the tab carries the
  *    `orken:impersonation` marker in sessionStorage and then reads/writes its access token and session ONLY
  *    in sessionStorage. It never refreshes (the impersonation token has no refresh token) and never reads,
- *    overwrites or clears the administrator's own localStorage session.
+ *    overwrites or clears the administrator's own localStorage session. It never sends the mode header or
+ *    credentials either, so the administrator's cookie is not even on its requests.
  */
 
 export const TOKEN_KEYS = {
@@ -23,6 +27,79 @@ export const IMPERSONATION_KEY = "orken:impersonation";
 
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+
+// ── Session mode ──────────────────────────────────────────────────────────────
+
+const builtForSessionCookie = () => import.meta.env.VITE_SESSION_MODE === "cookie";
+
+/** The same bundle also serves the public portals of the clients here. The API gives this origin no authority over the cookie, only the app of the ERP has it. */
+const PUBLIC_PORTAL_HOST = "www.orken.com.br";
+const SESSION_APP_ORIGIN = "https://erp.orken.com.br";
+
+const isPublicPortalHost = () => builtForSessionCookie() && globalThis.location?.hostname === PUBLIC_PORTAL_HOST;
+
+/** Where a page that needs a session lives, when it is not here. Null wherever the session is at home, and always in the default build. */
+export function sessionAppUrl(): string | null {
+  if (!isPublicPortalHost()) return null;
+  const { pathname, search, hash } = globalThis.location;
+  return `${SESSION_APP_ORIGIN}${pathname}${search}${hash}`;
+}
+
+/** The refresh token of this build is in the cookie of the API. Chosen at build time: the default is the storage of the normal mode. */
+export function isCookieSessionMode(): boolean {
+  return builtForSessionCookie() && !isPublicPortalHost();
+}
+
+/** The session of THIS tab is the one in the cookie. Never in an impersonation tab, which must not even send the cookie. */
+function usesSessionCookie(): boolean {
+  return isCookieSessionMode() && !isImpersonating();
+}
+
+const SESSION_MODE_HEADER = "X-Orken-Session";
+
+/**
+ * The calls that issue or end a session of this browser: the only ones with credentials and the mode header. Everything else
+ * authenticates with the Bearer header alone, which CSRF does not reach.
+ */
+const SESSION_ENDPOINTS = new Set([
+  "/auth/login",
+  "/auth/mfa/verify",
+  "/auth/verify-email",
+  "/auth/refresh",
+  "/auth/switch-store",
+  "/auth/logout",
+  "/auth/sessions/revoke-all",
+  "/auth/mfa/enable",
+  "/platform/auth/login",
+  "/platform/auth/mfa/verify",
+  "/platform/auth/refresh",
+  "/platform/auth/logout",
+  "/platform/auth/sessions/revoke-all",
+  "/platform/auth/mfa/enable",
+  "/platform/auth/mfa/disable",
+]);
+const OWN_PASSWORD_ENDPOINT = /^\/users\/[^/]+\/change-password$/;
+
+const withoutQuery = (path: string) => path.split("?")[0];
+
+function isSessionEndpoint(path: string): boolean {
+  const route = withoutQuery(path);
+  return SESSION_ENDPOINTS.has(route) || OWN_PASSWORD_ENDPOINT.test(route);
+}
+
+/** These answer without an access token: a tab that just reloaded does not renew first to call them. */
+const NO_ACCESS_TOKEN_NEEDED = new Set([
+  "/auth/login",
+  "/auth/mfa/verify",
+  "/auth/verify-email",
+  "/auth/logout",
+  "/auth/register",
+  "/auth/resend-verification",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+  "/platform/auth/login",
+  "/platform/auth/mfa/verify",
+]);
 
 // ── Impersonation mode ────────────────────────────────────────────────────────
 
@@ -58,6 +135,7 @@ function tokenStore(): Storage {
 
 /** Turns this tab into an impersonation tab: the token and the session stay in this tab only. */
 export function beginImpersonation(accessToken: string, sessionJson: string, info: Omit<ImpersonationInfo, "ended">): void {
+  accessInMemory = null;
   sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ ...info, ended: false }));
   sessionStorage.setItem(TOKEN_KEYS.access, accessToken);
   sessionStorage.setItem(TOKEN_KEYS.session, sessionJson);
@@ -140,10 +218,26 @@ function subscriptionRequiredError(status: number, body: ErrorBody | null): ApiE
 
 // ── Token helpers ─────────────────────────────────────────────────────────────
 
-// The storage is the source of truth (no in-memory copy): when another tab renews the shared session,
-// this tab must use the new token at once.
+// In the normal mode the storage is the source of truth (no in-memory copy): when another tab renews the shared session,
+// this tab must use the new token at once. In the cookie mode the token is in this variable and the other tabs hand over a new one.
+// A token still in localStorage is of a session not yet migrated to the cookie, and it goes on working until that happens.
+let accessInMemory: string | null = null;
+
+/** Goes up when the session of this tab ends or is replaced: the answer to a renewal sent before that is not applied. */
+let sessionEpoch = 0;
+
 export function getAccessToken(): string | null {
+  if (usesSessionCookie()) return accessInMemory ?? localStorage.getItem(TOKEN_KEYS.access);
   return tokenStore().getItem(TOKEN_KEYS.access);
+}
+
+/**
+ * Whether this tab has a session. Not the same as having an access token: in the cookie mode a tab that just reloaded has none
+ * until the first renewal, and its session is still there.
+ */
+export function hasSession(): boolean {
+  if (!usesSessionCookie()) return getAccessToken() !== null;
+  return accessInMemory !== null || localStorage.getItem(TOKEN_KEYS.session) !== null;
 }
 
 /** The refresh token of the signed-in user; never one in an impersonation tab. */
@@ -160,6 +254,12 @@ export function setStoredSession(sessionJson: string): void {
 }
 
 export function setTokens(access: string, refresh: string | null | undefined): void {
+  if (usesSessionCookie()) {
+    if (access) accessInMemory = access;
+    sessionEpoch++;
+    forgetStoredTokens();
+    return;
+  }
   if (access) tokenStore().setItem(TOKEN_KEYS.access, access);
   // an impersonation tab never keeps a refresh token
   if (refresh && !isImpersonating()) {
@@ -178,10 +278,153 @@ export function clearTokens(): void {
     sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ ...impersonation, ended: true }));
     return;
   }
+  const hadSession = hasSession();
   localStorage.removeItem(TOKEN_KEYS.access);
   localStorage.removeItem(TOKEN_KEYS.refresh);
   localStorage.removeItem(TOKEN_KEYS.session);
   localStorage.removeItem(RENEWAL_WAIT_KEY);
+  if (!isCookieSessionMode()) return;
+  accessInMemory = null;
+  sessionEpoch++;
+  localStorage.setItem(SIGNED_OUT_KEY, "1");
+  if (hadSession) postToOtherTabs({ type: "signed-out" });
+}
+
+/** The tokens of a session that was in localStorage: they go only here, after an answer of 200 from the server. */
+function forgetStoredTokens(): void {
+  localStorage.removeItem(TOKEN_KEYS.access);
+  localStorage.removeItem(TOKEN_KEYS.refresh);
+  localStorage.removeItem(RENEWAL_WAIT_KEY);
+  localStorage.removeItem(SIGNED_OUT_KEY);
+  localStorage.removeItem(PENDING_SIGN_OUT_KEY);
+}
+
+// ── Other tabs (cookie mode) ──────────────────────────────────────────────────
+
+/**
+ * This browser saw the session end, and there is no point asking the server whether the cookie still works. Nothing in localStorage
+ * and no such mark means the storage was cleared (or a first visit), and then a single renewal says if a session is still there.
+ * It holds no credential. It also keeps a sign-out that the server never heard (no connection) from coming back by itself.
+ */
+const SIGNED_OUT_KEY = "nexo:signed_out";
+
+/**
+ * A sign-out the server has not answered yet. The tab forgets the session at once, but only the API can remove the cookie: with no connection it stays alive in the
+ * browser, and the session with it. This goes again on the next load, or before the next sign-in. It holds no credential.
+ */
+const PENDING_SIGN_OUT_KEY = "nexo:pending_sign_out";
+
+const SESSION_CHANNEL = "orken-session";
+const SESSION_REPLACED_EVENT = "orken:session-replaced";
+const SIGNED_OUT_ELSEWHERE_EVENT = "orken:signed-out-elsewhere";
+
+/** Holding the renewal lock a moment longer lets the tabs in line hear the new token before they get the lock. */
+const RENEWAL_LOCK_SETTLE_MS = 50;
+const RENEWAL_LOCK = "orken-session-renewal";
+/** A tab that does not let go is no reason to stop: past this, the renewal goes without the lock and the 409 sorts it out. */
+const RENEWAL_LOCK_WAIT_MS = 10_000;
+
+type SessionMessage =
+  | { type: "token"; accessToken: string }
+  | { type: "session"; accessToken: string; session: string }
+  | { type: "signed-out" };
+
+let sessionChannel: BroadcastChannel | null = null;
+
+/** Opens the channel of the session, once. Without BroadcastChannel, the `storage` event of `nexo:session` is what tells the other tabs. */
+export function connectToOtherTabs(): void {
+  if (!isCookieSessionMode()) return;
+  globalThis.addEventListener?.("pagehide", () => { pageIsLeaving = true; });
+  // back from the back/forward cache: the same page, with the same variables, working again
+  globalThis.addEventListener?.("pageshow", () => { pageIsLeaving = false; });
+  // A browser with no BroadcastChannel hears of a sign-out only by this, and a token left in memory would say this tab still has a session. A cleared storage (key null) is no sign-out.
+  globalThis.addEventListener?.("storage", (e: StorageEvent) => {
+    if (e.storageArea !== localStorage || e.key !== TOKEN_KEYS.session || e.newValue !== null) return;
+    accessInMemory = null;
+    sessionEpoch++;
+  });
+  if (sessionChannel || typeof BroadcastChannel === "undefined") return;
+  sessionChannel = new BroadcastChannel(SESSION_CHANNEL);
+  sessionChannel.onmessage = (e: MessageEvent<SessionMessage>) => hearOtherTab(e.data);
+}
+
+function postToOtherTabs(message: SessionMessage): void {
+  sessionChannel?.postMessage(message);
+}
+
+function hearOtherTab(message: SessionMessage): void {
+  if (!message || isImpersonating()) return;   // the session of an impersonation tab is its own
+  if (message.type === "token") {
+    accessInMemory = message.accessToken;
+    localStorage.removeItem(RENEWAL_WAIT_KEY);
+    return;
+  }
+  sessionEpoch++;
+  if (message.type === "session") {
+    accessInMemory = message.accessToken;
+    localStorage.removeItem(RENEWAL_WAIT_KEY);
+    globalThis.dispatchEvent(new CustomEvent<string>(SESSION_REPLACED_EVENT, { detail: message.session }));
+    return;
+  }
+  accessInMemory = null;
+  globalThis.dispatchEvent(new Event(SIGNED_OUT_ELSEWHERE_EVENT));
+}
+
+/** Tells the other tabs of a new session (a sign-in, another store): the new token and who it is. */
+export function announceSessionToOtherTabs(sessionJson: string): void {
+  if (usesSessionCookie() && accessInMemory) postToOtherTabs({ type: "session", accessToken: accessInMemory, session: sessionJson });
+}
+
+/** Another tab signed in or moved to another store; returns the unsubscribe function. */
+export function onSessionReplaced(handler: (sessionJson: string) => void): () => void {
+  const listener = (e: Event) => handler((e as CustomEvent<string>).detail);
+  globalThis.addEventListener(SESSION_REPLACED_EVENT, listener);
+  return () => globalThis.removeEventListener(SESSION_REPLACED_EVENT, listener);
+}
+
+/** Another tab saw the session end; returns the unsubscribe function. */
+export function onSignedOutElsewhere(handler: () => void): () => void {
+  globalThis.addEventListener(SIGNED_OUT_ELSEWHERE_EVENT, handler);
+  return () => globalThis.removeEventListener(SIGNED_OUT_ELSEWHERE_EVENT, handler);
+}
+
+let renewalLockHeld = false;
+
+/**
+ * The page is going away. A reload cancels what is in flight on this side, and that is no failure of the network: taken for one, the wait it
+ * leaves would make the next page fail its first calls instead of renewing.
+ */
+let pageIsLeaving = false;
+
+/**
+ * Runs `work` as the only tab of this browser renewing the session, so nobody presents a cookie that another tab has just replaced.
+ * Without navigator.locks (or past the wait) it simply runs, and a 409 sends it to wait as in the normal mode. Whoever already holds
+ * the lock in this tab does not ask again: a call inside it may need a renewal, and asking would wait for itself forever.
+ */
+export async function withSessionLock<T>(work: () => Promise<T>): Promise<T> {
+  if (!usesSessionCookie() || renewalLockHeld || !globalThis.navigator?.locks) return work();
+  return new Promise<T>((resolve, reject) => {
+    let started = false;
+    const giveUp = new AbortController();
+    const waiting = setTimeout(() => giveUp.abort(), RENEWAL_LOCK_WAIT_MS);
+    globalThis.navigator.locks.request(RENEWAL_LOCK, { signal: giveUp.signal }, async () => {
+      clearTimeout(waiting);
+      started = true;
+      renewalLockHeld = true;
+      try {
+        resolve(await work());
+        await sleep(RENEWAL_LOCK_SETTLE_MS);
+      } catch (error) {
+        reject(error);
+      } finally {
+        renewalLockHeld = false;
+      }
+    }).catch((error: unknown) => {
+      clearTimeout(waiting);
+      if (!started) work().then(resolve, reject);
+      else reject(error);
+    });
+  });
 }
 
 // ── Refresh ───────────────────────────────────────────────────────────────────
@@ -191,7 +434,7 @@ export function clearTokens(): void {
  * "unavailable", the tokens stay, and the call that needed the renewal fails with a temporary error. A 409 above all: signing out after one would end the new pair of the tab
  * that won the race. The token waits for the end of the server's grace and goes again, and then the server says what it is: a renewal, or the reuse of a copy.
  */
-type RefreshOutcome = "ok" | "refused" | "platform_ended" | "unavailable";
+type RefreshOutcome = "ok" | "refused" | "revoked" | "platform_ended" | "unavailable";
 
 /** Code of the temporary error of a call whose renewal got no verdict. */
 export const SESSION_RENEWAL_UNAVAILABLE_CODE = "session_renewal_unavailable";
@@ -320,11 +563,168 @@ async function readErrorBody(res: Response): Promise<ErrorBody | null> {
   }
 }
 
+/** Ends the session of a token, by the token alone: for a session on a host that no longer has one. Best effort: it does not wait. */
+async function endSessionOfToken(token: string): Promise<void> {
+  try {
+    await fetch(`${BASE_URL}/auth/logout`, {
+      method: "POST",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: token }),
+    });
+  } catch {
+    // no connection: the session ends at its expiry
+  }
+}
+
 let refreshPromise: Promise<RefreshOutcome> | null = null;
 
-async function attemptRefresh(): Promise<RefreshOutcome> {
+/** What the access token says about whose it is, for the check below. */
+function ownerOfToken(token: string): string | null {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const claims = JSON.parse(atob(payload)) as { userId?: unknown; platformUserId?: unknown };
+    const owner = claims.userId ?? claims.platformUserId;
+    return typeof owner === "string" ? owner : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The cookie belongs to the browser, not to this tab: a sign-in as someone else in a tab this one cannot hear (a browser with no BroadcastChannel,
+ * a tab asleep when the message went by) replaces it. A tab showing one person must not go on working as another.
+ */
+function tokenIsOfAnotherPerson(token: string): boolean {
+  try {
+    const owner = ownerOfToken(token);
+    const shown = (JSON.parse(localStorage.getItem(TOKEN_KEYS.session) ?? "null") as { userId?: unknown } | null)?.userId;
+    return owner !== null && typeof shown === "string" && owner !== shown;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The renewal of the cookie mode: only the cookie (or, once, the token of a session still in localStorage) and only one tab at a time.
+ * keepalive, because a reload during the renewal would otherwise cancel the request after the server rotated the token: the new cookie
+ * would be lost with the answer, and the old one, spent, would end the session at the next attempt.
+ */
+async function renewThroughCookie(allowWithoutSession: boolean): Promise<RefreshOutcome> {
+  const tokenBefore = accessInMemory;
+  const epoch = sessionEpoch;
+  /** The session changed under this renewal: signed out, or another sign-in. Whatever this answer says is about the old one. */
+  const staleOutcome = (): RefreshOutcome => (accessInMemory ? "ok" : "refused");
+
+  return withSessionLock(async (): Promise<RefreshOutcome> => {
+    // Another tab renewed while this one waited in line: its token is already here.
+    if (accessInMemory && accessInMemory !== tokenBefore) return "ok";
+    if (epoch !== sessionEpoch) return staleOutcome();
+    if (!allowWithoutSession && !hasSession()) return "refused";
+    if (holdsBackRenewal()) return "unavailable";
+
+    let lookedAgain = false;
+    for (;;) {
+      presentedOnThisPage = true;
+      const stored = localStorage.getItem(TOKEN_KEYS.refresh);
+      const res = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        keepalive: true,
+        headers: { "Content-Type": "application/json", [SESSION_MODE_HEADER]: "cookie" },
+        body: stored ? JSON.stringify({ refreshToken: stored }) : undefined,
+      });
+      if (epoch !== sessionEpoch) return staleOutcome();
+
+      if (res.ok) {
+        const data = (await res.json()) as { accessToken?: string };
+        if (epoch !== sessionEpoch) return staleOutcome();
+        if (data.accessToken) {
+          if (tokenIsOfAnotherPerson(data.accessToken)) {
+            clearTokens();
+            return "refused";
+          }
+          accessInMemory = data.accessToken;
+          postToOtherTabs({ type: "token", accessToken: data.accessToken });
+        }
+        forgetStoredTokens();
+        return "ok";
+      }
+
+      // Read in every case: an answer nobody reads is a request that never ends.
+      const err = await readErrorBody(res);
+      // No verdict, and nothing here signs out by itself: that would end the new cookie of whoever won. The other tabs hold back until the server's grace is over, and the
+      // token of a tab that won ends that at once. A page reloaded during its renewal has no way to speak: its answer only changes the cookie, which no script can read.
+      // The only way to look is to present it, once, after the same wait the normal mode gives the pair of the winner. A cookie that is still the old one changes nothing inside the grace.
+      if (res.status === 409) {
+        noteRenewalUnavailable(409, retryAfterMs(res) ?? ROTATION_GRACE_MS);
+        if (lookedAgain) return "unavailable";
+        lookedAgain = true;
+        if (await waitForTokenOfOtherTab(tokenBefore, Date.now() + ROTATION_WAIT_MS)) return "ok";
+        if (epoch !== sessionEpoch) return staleOutcome();
+        continue;
+      }
+      if (res.status !== 401) {
+        noteRenewalUnavailable(res.status, retryAfterMs(res));
+        return "unavailable";
+      }
+      // Asking whether the cookie has a session, this tab has none to end. What is in the storage now is another tab's sign-in.
+      if (allowWithoutSession) {
+        localStorage.setItem(SIGNED_OUT_KEY, "1");
+        return "refused";
+      }
+      const platform = isPlatformSession();
+      clearTokens();
+      if (platform) return "platform_ended";
+      return err?.code === "session_revoked" ? "revoked" : "refused";
+    }
+  }).catch((error: unknown): RefreshOutcome => {
+    // No answer says nothing about the session, so it stays.
+    if (pageIsLeaving) return "unavailable";
+    console.error("Token refresh failed:", error);
+    noteRenewalUnavailable(0, null);
+    return "unavailable";
+  });
+}
+
+/** Waits for the token of the tab that won. True when it came. */
+async function waitForTokenOfOtherTab(tokenBefore: string | null, deadline: number): Promise<boolean> {
+  for (;;) {
+    if (accessInMemory && accessInMemory !== tokenBefore) return true;
+    if (Date.now() >= deadline) return false;
+    await sleep(50);
+  }
+}
+
+/**
+ * Whether this page keeps from presenting the cookie now. The wait after a 409 does not hold a page that has just loaded: the answer the page before it never got to read may have
+ * left a new cookie, and without this a person who pressed F5 twice would look at a dead screen until the end of the grace.
+ */
+let presentedOnThisPage = false;
+
+function holdsBackRenewal(): boolean {
+  const wait = readRenewalWait();
+  return wait !== null && wait.until > Date.now() && (wait.status !== 409 || presentedOnThisPage);
+}
+
+function isPlatformSession(): boolean {
+  try {
+    return (JSON.parse(localStorage.getItem(TOKEN_KEYS.session) ?? "null") as { type?: unknown } | null)?.type === "platform";
+  } catch {
+    return false;
+  }
+}
+
+async function attemptRefresh(allowWithoutSession = false): Promise<RefreshOutcome> {
   if (isImpersonating()) return "refused";   // the impersonation token is never renewed
   if (refreshPromise) return refreshPromise;
+
+  if (isCookieSessionMode()) {
+    if (!allowWithoutSession && !hasSession()) return "refused";
+    if (holdsBackRenewal()) return "unavailable";
+    refreshPromise = renewThroughCookie(allowWithoutSession).finally(() => { refreshPromise = null; });
+    return refreshPromise;
+  }
 
   // checked before the shared promise exists: an IIFE that returns synchronously would run its `finally` before the
   // assignment below and leave a settled "refused" promise cached, so no later 401 would ever refresh again
@@ -401,15 +801,57 @@ function tokenExpiry(token: string): number | null {
  */
 export async function getFreshAccessToken(): Promise<string | null> {
   const token = getAccessToken();
-  if (!token) return null;
-  const expiry = tokenExpiry(token);
-  if (isImpersonating() || expiry === null || expiry - Date.now() > TOKEN_MIN_LIFETIME_MS) return token;
+  if (!token) {
+    // In the cookie mode a tab that just reloaded has a session and no token yet: this is what fetches the first one.
+    if (!usesSessionCookie() || !hasSession()) return null;
+  } else {
+    const expiry = tokenExpiry(token);
+    if (isImpersonating() || expiry === null || expiry - Date.now() > TOKEN_MIN_LIFETIME_MS) return token;
+  }
 
   const outcome = await attemptRefresh();
   if (outcome === "ok") return getAccessToken();
   if (getAccessToken()) return token;
-  emitSessionEnded(outcome === "platform_ended" ? "platform_session_ended" : "session_ended");
+  // In the cookie mode a tab may have a session and no token at all: without a verdict that session is not over.
+  if (outcome === "unavailable" && hasSession()) return null;
+  announceSessionEnd(endReasonOf(outcome));
   return null;
+}
+
+const endReasonOf = (outcome: RefreshOutcome): SessionEndReason =>
+  outcome === "platform_ended" ? "platform_session_ended" : outcome === "revoked" ? "session_revoked" : "session_ended";
+
+let announcedEpoch = -1;
+
+/** Several calls may be waiting on the same refused renewal: the app hears it once. */
+function announceSessionEnd(reason: SessionEndReason): void {
+  if (usesSessionCookie()) {
+    if (announcedEpoch === sessionEpoch) return;
+    announcedEpoch = sessionEpoch;
+  }
+  emitSessionEnded(reason);
+}
+
+/**
+ * Cookie mode: this tab has a session and no access token, because it just loaded. The first call fetches the token before going, instead
+ * of going without one to be refused. Without a verdict the call fails with the temporary error, and a refusal ends the session.
+ */
+async function renewBeforeCall(path: string): Promise<void> {
+  if (!usesSessionCookie() || accessInMemory !== null || !hasSession() || NO_ACCESS_TOKEN_NEEDED.has(withoutQuery(path))) return;
+  const outcome = await attemptRefresh();
+  if (outcome === "ok") return;
+  if (outcome === "unavailable") {
+    if (getAccessToken()) return;   // a session not yet migrated still has its token
+    throw renewalUnavailableError();
+  }
+  announceSessionEnd(endReasonOf(outcome));
+  throw new ApiError(401, "Sua sessão foi encerrada. Entre de novo.", outcome === "revoked" ? "session_revoked" : "session_ended");
+}
+
+/** Cookie mode, nothing in the storage: a single renewal says whether the cookie still has a session (the storage may have been cleared). */
+export async function renewFromCookieWithoutSession(): Promise<boolean> {
+  if (!usesSessionCookie() || hasSession() || localStorage.getItem(SIGNED_OUT_KEY)) return false;
+  return (await attemptRefresh(true)) === "ok";
 }
 
 /**
@@ -430,6 +872,7 @@ async function recoverFromUnauthorized(usedToken: string | null, code: string | 
   // Tokens already gone means the page dropped them on purpose (recovery codes on screen, signing out): a late answer
   // to a call it sent before that ends nothing. A call that never had a token had no session to end.
   const sessionInUse = usedToken !== null && getAccessToken() === usedToken;
+  let revoked = code === "session_revoked";
   if (!isRetry) {
     // another tab may have renewed the shared session already
     const current = getAccessToken();
@@ -441,9 +884,10 @@ async function recoverFromUnauthorized(usedToken: string | null, code: string | 
       return false;
     }
     if (outcome === "unavailable" && code !== "session_revoked") throw renewalUnavailableError();
+    revoked ||= outcome === "revoked";
   }
   clearTokens();
-  if (sessionInUse) emitSessionEnded(code === "session_revoked" ? "session_revoked" : "session_ended");
+  if (sessionInUse) emitSessionEnded(revoked ? "session_revoked" : "session_ended");
   return false;
 }
 
@@ -474,13 +918,23 @@ async function request<T>(
     "Content-Type": "application/json",
   };
 
+  if (usesSessionCookie()) await renewBeforeCall(path);
+
+  // A sign-out in the cookie mode goes by the cookie alone: an access token that is already refused (revoked, or a suspended company)
+  // would stop the request before it ends the session, and the cookie would stay.
+  const cookieCall = usesSessionCookie() && isSessionEndpoint(path);
+  const signingOut = cookieCall && withoutQuery(path) === "/auth/logout";
+
   const token = getAccessToken();
-  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (token && !signingOut) headers["Authorization"] = `Bearer ${token}`;
+  if (cookieCall) headers[SESSION_MODE_HEADER] = "cookie";
 
   const res = await fetch(url, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    // keepalive: a sign-out still reaches the server when the tab closes right after the click
+    ...(cookieCall ? { credentials: "include" as const, keepalive: signingOut } : {}),
   });
 
   if (res.status === 401) {
@@ -529,6 +983,8 @@ function uploadRefusalText(status: number): string | undefined {
 
 async function requestForm<T>(path: string, form: FormData, isRetry = false): Promise<T> {
   const url = apiUrl(path);
+
+  if (usesSessionCookie()) await renewBeforeCall(path);
 
   const headers: Record<string, string> = {};
   const token = getAccessToken();
@@ -598,6 +1054,7 @@ function sendXhr(method: "POST" | "PUT", url: string, form: FormData, token: str
  */
 async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormData, onProgress?: UploadProgressHandler,
   isRetry = false): Promise<T> {
+  if (usesSessionCookie()) await renewBeforeCall(path);
   const token = getAccessToken();
   const res = await sendXhr(method, apiUrl(path), form, token, onProgress);
   const body = parseJson(res.text);
@@ -619,6 +1076,20 @@ async function uploadForm<T>(method: "POST" | "PUT", path: string, form: FormDat
   return JSON.parse(res.text) as T;
 }
 
+/** A session the bundle of before this mode kept on the host of the public portals: this host has no session now, and nothing there would ever end that one. */
+function endSessionLeftOnPublicHost(): void {
+  if (!isPublicPortalHost()) return;
+  const token = localStorage.getItem(TOKEN_KEYS.refresh);
+  if (token) void endSessionOfToken(token);
+  localStorage.removeItem(TOKEN_KEYS.access);
+  localStorage.removeItem(TOKEN_KEYS.refresh);
+  localStorage.removeItem(TOKEN_KEYS.session);
+  localStorage.removeItem(RENEWAL_WAIT_KEY);
+}
+
+connectToOtherTabs();
+endSessionLeftOnPublicHost();
+
 // ── Public client ─────────────────────────────────────────────────────────────
 
 export const apiClient = {
@@ -632,6 +1103,38 @@ export const apiClient = {
   delete:   <T>(path: string)                   => request<T>("DELETE", path),
   postForm: <T>(path: string, form: FormData)   => requestForm<T>(path, form),
 };
+
+// ── Sign-out ──────────────────────────────────────────────────────────────────
+
+/** Sends it and settles the mark. A 4xx is an answer that another attempt would get again (401: there is nothing left to end). No answer, a 429 or a 5xx is no answer at all. */
+async function sendSignOut(body: unknown): Promise<void> {
+  localStorage.setItem(PENDING_SIGN_OUT_KEY, "1");
+  try {
+    await apiClient.post("/auth/logout", body);
+    localStorage.removeItem(PENDING_SIGN_OUT_KEY);
+  } catch (error) {
+    if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 429) localStorage.removeItem(PENDING_SIGN_OUT_KEY);
+  }
+}
+
+/** Tells the server. Nobody waits for the answer, and a failure here changes nothing for the person, who is signed out of this browser either way. */
+export async function signOutOnServer(): Promise<void> {
+  const refreshToken = getRefreshToken();
+  // In the cookie mode the token is in the cookie: only a session not yet migrated has one to send.
+  const body = isCookieSessionMode() ? (refreshToken ? { refreshToken } : undefined) : { refreshToken: refreshToken ?? "" };
+  if (usesSessionCookie()) await sendSignOut(body);
+  else await apiClient.post("/auth/logout", body).catch(() => undefined);
+}
+
+/** The sign-out the server did not hear, by the cookie, once per load. With a session here it is too late: a sign-in has happened, and the cookie now is of that session. */
+export async function finishPendingSignOut(): Promise<void> {
+  if (!usesSessionCookie() || localStorage.getItem(PENDING_SIGN_OUT_KEY) === null) return;
+  if (hasSession()) {
+    localStorage.removeItem(PENDING_SIGN_OUT_KEY);
+    return;
+  }
+  await sendSignOut(undefined);
+}
 
 // ── Error type ────────────────────────────────────────────────────────────────
 

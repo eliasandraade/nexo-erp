@@ -16,6 +16,9 @@ RUN npm ci --no-audit --no-fund --ignore-scripts
 # service variable to a Dockerfile build when the ARG is declared, and without this one a staging bundle would call
 # the production API.
 ARG VITE_API_BASE_URL
+# "cookie" builds the bundle whose refresh token is in the cookie of the API (docs/security/sessao-auditoria-e-migracao.md). Unset: the normal
+# mode. It is in the code of the bundle, so changing it takes a new build.
+ARG VITE_SESSION_MODE
 COPY . .
 RUN npm run build
 

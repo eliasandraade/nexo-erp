@@ -17,8 +17,15 @@ namespace Nexo.Api.Controllers;
 public class PlatformAuthController : ControllerBase
 {
     private readonly PlatformAuthService _auth;
+    private readonly Nexo.Api.Middleware.BrowserSession _browser;
 
-    public PlatformAuthController(PlatformAuthService auth) => _auth = auth;
+    public PlatformAuthController(PlatformAuthService auth, Nexo.Api.Middleware.BrowserSession browser)
+    {
+        _auth = auth;
+        _browser = browser;
+    }
+
+    private bool CookieMode => Nexo.Api.Middleware.BrowserSession.IsCookieMode(Request);
 
     private Guid UserId => Guid.Parse(User.FindFirstValue("platformUserId")!);
     private Guid? SessionId => Guid.TryParse(User.FindFirstValue("sid"), out var id) ? id : null;
@@ -45,14 +52,20 @@ public class PlatformAuthController : ControllerBase
     [EnableRateLimiting(Nexo.Api.Middleware.AuthRefreshRateLimit.Policy)]
     [RequestSizeLimit(AuthController.TokenBodyLimitBytes)]
     [Nexo.Api.Filters.RefusesLargeBody(AuthController.TokenBodyLimitBytes)]
-    public async Task<IActionResult> Refresh([FromBody] PlatformRefreshRequest request, CancellationToken ct)
+    public async Task<IActionResult> Refresh(
+        [FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] PlatformRefreshRequest? request,
+        CancellationToken ct)
     {
         var clientIp = HttpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(HttpContext);
-        var (tokens, error, retryAfter) = await _auth.RefreshAsync(request.RefreshToken ?? "", clientIp, ct);
-        return tokens is not null ? Ok(TokensView(tokens)) : RefreshRefusedResult(this, error, retryAfter);
+        var (tokens, error, retryAfter) = await _auth.RefreshAsync(_browser.PresentedToken(Request, request?.RefreshToken) ?? "", clientIp, ct);
+        if (tokens is null) return RefreshRefusedResult(this, error, retryAfter);
+        if (!CookieMode) return Ok(TokensView(tokens));
+        _browser.SetCookie(Response, tokens.RefreshToken, tokens.RefreshTokenExpiresAt);
+        return Ok(new { accessToken = tokens.AccessToken, expiresAt = tokens.AccessTokenExpiresAt });
     }
 
     [HttpPost("logout")]
+    [Nexo.Api.Filters.EndsBrowserSession]
     public async Task<IActionResult> Logout(CancellationToken ct)
     {
         if (SessionId is { } sid) await _auth.LogoutAsync(UserId, sid, ct);
@@ -81,10 +94,12 @@ public class PlatformAuthController : ControllerBase
 
     /// <summary>Turns it on; answers the recovery codes once. Every session ends (sign in again with the code).</summary>
     [HttpPost("mfa/enable")]
+    [Nexo.Api.Filters.EndsBrowserSession]
     public async Task<IActionResult> EnableMfa([FromBody] PlatformCodeRequest request, CancellationToken ct)
         => Ok(new { recoveryCodes = await _auth.EnableMfaAsync(UserId, request.Code, ct) });
 
     [HttpPost("mfa/disable")]
+    [Nexo.Api.Filters.EndsBrowserSession]
     public async Task<IActionResult> DisableMfa([FromBody] PlatformMfaDisableRequest request, CancellationToken ct)
     {
         await _auth.DisableMfaAsync(UserId, request.Password, request.Code, request.RecoveryCode, ct);
@@ -100,6 +115,7 @@ public class PlatformAuthController : ControllerBase
 
     /// <summary>Ends every session of the signed-in administrator, this one included.</summary>
     [HttpPost("sessions/revoke-all")]
+    [Nexo.Api.Filters.EndsBrowserSession]
     public async Task<IActionResult> RevokeAll(CancellationToken ct)
     {
         await _auth.RevokeAllAsync(UserId, UserId, "encerradas pelo próprio administrador", ct);
@@ -133,16 +149,28 @@ public class PlatformAuthController : ControllerBase
     private IActionResult Answer(PlatformSignIn result)
     {
         if (result.Tokens is { } tokens)
+        {
+            if (!CookieMode)
+                return Ok(new
+                {
+                    accessToken = tokens.AccessToken,
+                    expiresAt = tokens.AccessTokenExpiresAt,
+                    refreshToken = tokens.RefreshToken,
+                    refreshTokenExpiresAt = tokens.RefreshTokenExpiresAt,
+                    email = result.User!.Email,
+                    role = result.User.Role,
+                    mfaVerified = result.User.MfaEnabled,
+                });
+            _browser.SetCookie(Response, tokens.RefreshToken, tokens.RefreshTokenExpiresAt);
             return Ok(new
             {
                 accessToken = tokens.AccessToken,
                 expiresAt = tokens.AccessTokenExpiresAt,
-                refreshToken = tokens.RefreshToken,
-                refreshTokenExpiresAt = tokens.RefreshTokenExpiresAt,
                 email = result.User!.Email,
                 role = result.User.Role,
                 mfaVerified = result.User.MfaEnabled,
             });
+        }
         if (result.MfaChallenge is { } challenge) return Ok(new { mfaRequired = true, mfaChallenge = challenge });
         return result.ErrorCode switch
         {
