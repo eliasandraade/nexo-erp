@@ -2118,6 +2118,19 @@ test.describe("Clearing the storage", () => {
   });
 });
 
+/** A reload over a load still committing. For an instant the browser may be between documents, which is the browser's answer and not the app's. */
+async function reloadOnTopOfALoad(page: Page) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await page.reload({ waitUntil: "commit" });
+      return;
+    } catch (error) {
+      if (attempt === 4 || !String(error).includes("Not attached to an active page")) throw error;
+      await page.waitForTimeout(100);
+    }
+  }
+}
+
 test.describe("Cookie mode, what only exists there", () => {
   test.skip(!COOKIE_MODE, "the normal mode has no cookie and no renewal on a page load");
 
@@ -2333,7 +2346,7 @@ test.describe("Cookie mode, what only exists there", () => {
     await signInToDashboard(page, user);
     apiCalls.reset();
 
-    for (let reload = 0; reload < 6; reload++) await page.reload({ waitUntil: "commit" });
+    for (let reload = 0; reload < 6; reload++) await reloadOnTopOfALoad(page);
     await page.reload();
 
     await expect(signOutButton(page)).toBeVisible();
