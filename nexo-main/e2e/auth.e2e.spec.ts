@@ -2118,11 +2118,14 @@ test.describe("Clearing the storage", () => {
   });
 });
 
-/** A reload over a load still committing. For an instant the browser may be between documents, which is the browser's answer and not the app's. */
-async function reloadOnTopOfALoad(page: Page) {
+/**
+ * A reload over a load still committing. For an instant the browser may be between documents, which is the browser's answer and not the app's.
+ * The last reload of a series is one too: it waits for the load instead of the commit.
+ */
+async function reloadOnTopOfALoad(page: Page, waitUntil: "commit" | "load" = "commit") {
   for (let attempt = 0; ; attempt++) {
     try {
-      await page.reload({ waitUntil: "commit" });
+      await page.reload({ waitUntil });
       return;
     } catch (error) {
       if (attempt === 4 || !String(error).includes("Not attached to an active page")) throw error;
@@ -2347,7 +2350,7 @@ test.describe("Cookie mode, what only exists there", () => {
     apiCalls.reset();
 
     for (let reload = 0; reload < 6; reload++) await reloadOnTopOfALoad(page);
-    await page.reload();
+    await reloadOnTopOfALoad(page, "load");
 
     await expect(signOutButton(page)).toBeVisible();
     await expect(page).toHaveURL(`${APP_ORIGIN}/dashboard`);
