@@ -434,6 +434,22 @@ test.describe("what the production server sends", () => {
     expect(policy.get("report-uri")).toEqual([`${API}/csp-reports`]);
   });
 
+  // A browser keeps a response with no Cache-Control and a Last-Modified for a tenth of its age without asking the server, so a
+  // client route left without the header kept an old shell (and the build mode it carries) for hours after a deploy or a rollback.
+  test("the app shell on every client route must be revalidated; only hashed assets are kept for good", async ({ http }) => {
+    for (const path of ["/", "/index.html", "/login", "/dashboard", "/agendar/x", "/verify-email?token=x", "/favicon.ico"]) {
+      const response = await http.get(`${APP_ORIGIN}${path}`);
+      expect(response.status(), path).toBe(200);
+      expect(response.headers()["cache-control"], path).toBe("no-cache");
+    }
+
+    const script = /<script[^>]+src="(\/assets\/[^"]+\.js)"/.exec(await (await http.get(`${APP_ORIGIN}/login`)).text())?.[1];
+    expect(script, "the shell loads a hashed script").toBeTruthy();
+    const asset = await http.get(`${APP_ORIGIN}${script}`);
+    expect(asset.status()).toBe(200);
+    expect(asset.headers()["cache-control"]).toBe("public, max-age=31536000, immutable");
+  });
+
 });
 
 // ── Real flows: nothing raised, nothing reported ─────────────────────────────────────────────────────────────────────────
