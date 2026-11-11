@@ -9,20 +9,32 @@ desta lista. As rodadas automatizadas estão no [registro](homologacao-sessao-st
 
 ## Antes de começar
 
-- **Endereços:** `https://erp.staging.orken.com.br` (app) e `https://api.erp.staging.orken.com.br` (API). Os dois precisam responder antes de
-  qualquer linha. Nos endereços `*.up.railway.app`, Safari e Firefox podem recusar o cookie, e isso não reprova nada.
+- **Endereços:**
+  - app: <https://erp.staging.orken.com.br/login>;
+  - plataforma: <https://erp.staging.orken.com.br/platform>;
+  - API: `https://api.erp.staging.orken.com.br`. Ela só aparece nas ferramentas do navegador; não é para abrir.
+
+  Os dois precisam abrir com cadeado válido antes de qualquer linha. Não use os endereços `*.up.railway.app`: neles o cookie atravessa
+  sites diferentes, e Safari e Firefox podem recusá-lo.
 - **Navegadores:** Chrome ou Edge, Firefox e Safari (macOS; iPhone se der), todos atualizados. Use uma janela anônima nova por fluxo, salvo
   quando o passo pede o mesmo navegador.
 - **Ferramentas (F12):** em **Network**, marque **Preserve log**.
   - O cookie aparece em **Application > Cookies** (no Firefox, **Armazenamento > Cookies**; no Safari, **Armazenamento**), no host da **API**.
   - Ele se chama `__Host-nexo_rt` e precisa estar com HttpOnly, Secure e SameSite `Lax`.
-- **Contas:** só as de teste do staging. São as empresas semente, mais as contas sintéticas `homolog.*` da empresa `grupo-mix-8f62ac`:
-  - um gerente com verificação em duas etapas;
-  - um vendedor;
-  - um bloqueado e um inativo;
-  - um administrador da plataforma, que precisa ter a verificação em duas etapas ligada para a impersonação.
+- **Contas:** só as de teste do staging. As senhas não ficam neste arquivo.
 
-  As senhas não ficam neste arquivo.
+  | Conta | Onde está a senha | Para quê |
+  |---|---|---|
+  | `lucas.mix` (Diretoria, Grupo Mix, 2 lojas) | Seeder do projeto: `nexo-backend/src/Nexo.Infrastructure/Persistence/Seed/DataSeeder.cs` | Login, abas, troca de loja, logout, sem conexão, migração, rollback |
+  | Uma conta de teste com duas etapas | Ative em `/perfil` > verificação em duas etapas, com o seu aplicativo autenticador. Guarde os códigos de recuperação. Desative no fim | MFA (linhas 4 a 6) |
+  | Administrador da plataforma | Railway > projeto `nexoerp` > ambiente `staging` > serviço `backend` > Variables: `Seed__PlatformEmail` e `Seed__PlatformPassword` | Impersonação e plataforma (linhas 11 e 12). A impersonação exige duas etapas: ative em `/platform/seguranca` e desative no fim |
+  | Contas bloqueada, inativa e vendedor | Crie em `/usuarios` com a Diretoria, ou peça ao operador | Linhas 1 e 2 |
+
+- **E-mail no staging:** o staging não envia e-mail, porque não tem `Resend:ApiKey`.
+  - **Verificação (linha 14):** o link vai para o log. Railway > `staging` > `backend` > Logs, procure `VERIFICATION EMAIL`.
+  - **Redefinição (linha 13):** o log registra só o assunto. Peça a redefinição pela tela, e o operador entrega o link da conta de teste
+    na hora do teste.
+  - **Recebimento real dos dois e-mails:** só dá para conferir onde houver um provedor configurado.
 - **Em caso de falha:** anote o passo, o navegador, o horário e o `X-Request-Id` da resposta, e marque **Não**.
 
 ## Lista

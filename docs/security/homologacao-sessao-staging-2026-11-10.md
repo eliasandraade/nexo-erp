@@ -13,8 +13,8 @@ automatizadas: um navegador real abriu as telas, e a API e o banco foram lidos o
 **A segunda promoção continua bloqueada.** O candidato passou a ser `c6c2cfc`, porque `633a301` não tem a correção do cache do HTML. Os
 fluxos do contrato passaram no Chromium, e a volta atrás passou depois do PR #181. Faltam duas condições:
 
-1. **Safari e Firefox reais.** Dependem do DNS de `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br`. Em 2026-11-11, o DNS
-   autoritativo de `orken.com.br` ainda responde NXDOMAIN para os dois nomes (seção 4).
+1. **Safari e Firefox reais.** Dependem dos domínios `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br` com certificado válido.
+   Os CNAMEs já estão criados. Faltam os dois TXT de verificação do Railway, sem os quais o certificado não sai (seção 4).
 2. **Homologação humana e aprovação explícita dos resultados** ([checklist](checklist-homologacao-humana-sessao.md)).
 
 ## 1. Ambiente
@@ -231,16 +231,23 @@ O roteiro foi corrigido.
 
 ## 4. DNS do staging
 
-Os domínios próprios já estão criados no Railway, no ambiente de staging, com a porta 8080. O certificado espera a validação. Falta criar os
-registros no DNS de `orken.com.br`, que fica no GoDaddy (`ns57` e `ns58.domaincontrol.com`). Em 2026-11-11, o servidor autoritativo ainda
-responde `NXDOMAIN` para os dois nomes. O Railway não pede TXT, só os dois CNAMEs.
+Os domínios próprios já estão criados no Railway, no ambiente de staging, com a porta 8080. O DNS de `orken.com.br` fica no GoDaddy
+(`ns57` e `ns58.domaincontrol.com`). O Railway pede dois tipos de registro por domínio:
 
-| Nome | Tipo | Destino |
-|---|---|---|
-| `erp.staging` | CNAME | `px0521nt.up.railway.app` |
-| `api.erp.staging` | CNAME | `vns3l2lk.up.railway.app` |
+- um CNAME, para o tráfego;
+- um TXT, que prova a propriedade. A lista de registros de tráfego do Railway não traz o TXT; ele aparece em `verificationDnsHost` e
+  `verificationToken` do status do domínio.
 
-Depois que eles resolverem, faça nesta ordem:
+Sem o TXT, o domínio fica `verified: false`, o certificado não é emitido e o Railway responde 404 "Application not found" nesse nome.
+
+| Nome | Tipo | Valor | Situação em 2026-11-11 (15h UTC) |
+|---|---|---|---|
+| `erp.staging` | CNAME | `px0521nt.up.railway.app` | Criado: responde nos autoritativos, no Google, no Cloudflare e no OpenDNS |
+| `api.erp.staging` | CNAME | `vns3l2lk.up.railway.app` | Criado: responde nos autoritativos, no Google, no Cloudflare e no OpenDNS |
+| `_railway-verify.erp.staging` | TXT | `railway-verify=02e65e60aa8e239aef3a7c402011c4eac17b4de053970633d5d72ff7d57b060c` | **Falta** |
+| `_railway-verify.api.erp.staging` | TXT | `railway-verify=0f9d8c238757af613f20be485634b3e254d8ef3a6c67b62a9236a2bb923cb43d` | **Falta** |
+
+Depois que os quatro resolverem e o certificado sair, faça nesta ordem:
 
 1. Troque no staging a origem em `Auth__Session__AllowedOrigins__0` e em `Cors__AllowedOrigins__0` para `https://erp.staging.orken.com.br`.
 2. Aponte o frontend para `https://api.erp.staging.orken.com.br`.
