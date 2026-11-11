@@ -1,19 +1,21 @@
-# Homologação da sessão em cookie no staging: rodada de 2026-11-10
+# Homologação da sessão em cookie no staging: rodadas de 2026-11-10 e 2026-11-11
 
-Registro da execução do [roteiro](roteiro-homologacao-sessao.md) no staging, antes da promoção de `633a30165c5bd3e20fb4143988323f8c01d31382`
-para a produção. A rodada é automatizada: um navegador real abriu as telas, e a API e o banco foram lidos onde o roteiro manda olhar. Ela não
-substitui a parte humana do roteiro, listada na seção 5.
+Registro da execução do [roteiro](roteiro-homologacao-sessao.md) no staging, antes da segunda promoção para a produção. As rodadas são
+automatizadas: um navegador real abriu as telas, e a API e o banco foram lidos onde o roteiro manda olhar. Elas não substituem a parte humana
+([checklist](checklist-homologacao-humana-sessao.md)).
+
+- **Primeira rodada (2026-11-10):** o roteiro inteiro, com o staging em `633a301`.
+- **Segunda rodada (2026-11-11):** o cache do HTML e a volta atrás completa, com o staging em `c6c2cfc` (o PR #181 já mesclado). Está na
+  seção 2.1.
 
 ## Veredito
 
-**A promoção de `633a301` continua bloqueada.** Os fluxos do contrato passaram no Chromium, mas três condições ainda faltam:
+**A segunda promoção continua bloqueada.** O candidato passou a ser `c6c2cfc`, porque `633a301` não tem a correção do cache do HTML. Os
+fluxos do contrato passaram no Chromium, e a volta atrás passou depois do PR #181. Faltam duas condições:
 
-1. **Volta do bundle.** Ela não chega a um navegador que já tinha aberto o app. O servidor do frontend não manda `Cache-Control` no HTML das
-   rotas do cliente, e o navegador guarda esse HTML por horas sem consultar o servidor (seção 3.1). A correção está no PR #181, ainda sem merge.
-   Depois dele, a volta do bundle precisa ser repetida no staging.
-2. **Safari e Firefox reais.** Esse teste depende do DNS de `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br`. Os dois CNAMEs não
-   existem ainda (seção 4).
-3. **Revisão humana dos passos que exigem digitar credenciais numa tela, e aprovação explícita dos resultados** (seção 5).
+1. **Safari e Firefox reais.** Dependem do DNS de `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br`. Em 2026-11-11, o DNS
+   autoritativo de `orken.com.br` ainda responde NXDOMAIN para os dois nomes (seção 4).
+2. **Homologação humana e aprovação explícita dos resultados** ([checklist](checklist-homologacao-humana-sessao.md)).
 
 ## 1. Ambiente
 
@@ -67,11 +69,84 @@ rede ou na tela.
 | Limpar o armazenamento | Passou em parte | Itens 1 a 3. O item 4 (página pública sem `auth/refresh`) não entrou nesta rodada |
 | Isolamento | Não executado | Exige os domínios `*.staging.orken.com.br` |
 | Host público | Não executado | Só existe na primeira publicação com o modo ligado em `www` (roteiro) |
-| Voltar atrás | **Reprovou** | A volta da API e a restauração passaram. A volta do bundle não chegou ao navegador que já tinha o app aberto (seção 3.1) |
+| Voltar atrás | Reprovou na 1ª rodada; passou na 2ª | Na 1ª, a volta da API e a restauração passaram, mas a volta do bundle não chegou ao navegador que já tinha o app aberto (seção 3.1). Na 2ª, depois do PR #181, a volta completa passou (seção 2.1) |
 
 Depois da restauração, o teste de fumaça (o bundle nunca chama a API de produção) e a conferência completa do modo cookie passaram de novo no
 staging, às 22:55 e às 23:11 UTC: 33 verificações, incluindo seis renovações simultâneas (uma vence, cinco recebem 409), a carência, o reuso
 auditado, o logout e as três abas.
+
+## 2.1 Segunda rodada: cache do HTML e volta atrás, depois do PR #181 (2026-11-11)
+
+Staging em `c6c2cfc`, publicado às 04:02 UTC, depois de o `master-gate` passar nesse SHA.
+
+### Cache do HTML
+
+| Verificação | Resultado |
+|---|---|
+| Antes do PR #181 (linha de base, staging em `633a301`) | 107 de 109 caminhos sem `Cache-Control`. Só `/` e `/index.html` tinham `no-cache` |
+| Depois: as 100 rotas do roteador do app, mais `/index.html`, consultas, uma rota inexistente e os arquivos da raiz (`favicon.ico`, `robots.txt`, `site.webmanifest`, imagens) | 109 de 109 com `200` e `Cache-Control: no-cache` |
+| Assets com hash citados pelo HTML | 5 de 5 com `public, max-age=31536000, immutable` |
+| Segunda visita a `/dashboard` num Chromium com perfil persistente | O HTML veio do servidor, não do cache do disco |
+| Depois da volta atrás e da restauração | O mesmo: 109 com `no-cache` e 5 imutáveis |
+
+### Volta atrás com abas e sessões abertas
+
+Quatro pessoas em perfis persistentes do Chromium, mantidos através das publicações:
+- **A:** uma aba aberta antes de tudo e não recarregada;
+- **B:** uma sessão que ninguém usa até o fim;
+- **C:** uma sessão cujo navegador reabre o app durante a volta;
+- **D:** uma sessão aberta no modo de hoje durante a volta e mantida até o fim.
+
+| Passo | Verificação | Resultado |
+|---|---|---|
+| Antes | A, B e C entram no modo cookie. A segunda visita de C pede o HTML ao servidor | Passou |
+| Bundle sem o modo (`c6c2cfc`, variável desligada) | Publicado | Passou |
+| | A, sem recarregar: continua com o bundle que já estava na memória e segue funcionando (6 chamadas, todas 200 ou 204, nenhum arquivo falhou) | Passou |
+| | C reabre o app: recebe o HTML novo do servidor, vai ao login, e o bundle não manda o header do modo nem usa o cookie | Passou. **Era a falha da 1ª rodada** |
+| | D entra no modo de hoje: tokens no corpo, renova com o token no corpo | Passou |
+| API em `8a164ce` | Publicada | Passou |
+| | D, aberta durante toda a volta da API: renova na API anterior, sem novo login | Passou |
+| | A, com o token ainda válido: segue funcionando na API anterior | Passou |
+| | A recarregada durante a volta: HTML novo do servidor e vai ao login, como quem migrou. O cookie não é tocado | Passou |
+| Restauração (API e depois bundle no modo cookie, `c6c2cfc`) | Publicadas | Passou |
+| | B, que ninguém usou: abre logada pelo cookie, sem novo login | Passou |
+| | C, que foi ao login durante a volta e não entrou de novo: abre logada pelo cookie, sem novo login | Passou |
+| | A recarregada: entra pelo cookie, que a volta não tocou | Passou |
+| | D: migra para o cookie sem novo login (token no corpo e o header, depois só o cookie), e o Local Storage fica sem tokens | Passou |
+| Depois | Teste de fumaça (o bundle nunca chama a API de produção) e as 33 verificações do modo cookie | Passou |
+| Estado final | Staging em `c6c2cfc` nos dois serviços, com `VITE_SESSION_MODE=cookie`. Produção em `8a164ce`, sem nenhuma variável de sessão | Conferido |
+
+**Conclusão:** a volta não perdeu nenhuma sessão fora do previsto. Durante a volta do bundle, só quem estava no modo cookie e recarregou foi
+ao login. A sessão do modo de hoje atravessou a volta e a restauração. Depois da restauração, todas voltaram sem novo login, porque o cookie
+continua válido e nada na volta o gasta.
+
+### Aba aberta com o token vencido enquanto a API está na versão anterior
+
+Na rodada acima, a navegação da aba A depois da espera não fez nenhuma chamada à API. Por isso a renovação contra a API anterior não chegou a
+acontecer, e a verificação passou sem ter sido exercida. O caso foi repetido à parte, com uma aba E:
+
+1. A aba E abre no modo cookie e fica aberta.
+2. A API vai para `8a164ce`.
+3. Depois que o token vence, a aba E abre três telas que ela ainda não tinha aberto.
+4. A API volta para `c6c2cfc`.
+
+As duas primeiras tentativas falharam por causa do instrumento:
+
+- **1ª tentativa:** esperou 15,5 minutos, mas a API aceita o token por 15 minutos mais 1 minuto de tolerância de relógio (`ClockSkew` em
+  `Program.cs`). As chamadas ainda receberam 200. O token do CLI do Railway também venceu durante a espera, e a API do staging ficou em
+  `8a164ce` por 17 minutos, até ser restaurada à mão.
+- **2ª tentativa:** a renovação foi exercida. Mas o aviso é um toast que some em segundos, e a tela só foi lida no fim.
+
+A 3ª tentativa registrou o toast no instante em que ele apareceu:
+
+| Verificação | Resultado |
+|---|---|
+| Com o token vencido, a aba chama a API anterior e a renovação pelo cookie acontece | Passou: `auth/refresh` 400 três vezes, com o header do modo e o cookie |
+| A API anterior não dá veredito (nenhum 401 na renovação). A aba fica, com o aviso, sem ir ao login e sem `auth/logout` | Passou: o aviso foi "Sua sessão continua ativa: tente de novo em instantes" |
+| A API volta: a mesma aba, sem recarregar e sem novo login, renova pelo cookie | Passou: `auth/refresh` 200 |
+
+Depois disso, o staging ficou em `c6c2cfc` nos dois serviços. As 33 verificações do modo cookie passaram de novo (05:55 UTC), e as 109 rotas
+continuaram com `no-cache`.
 
 ## 3. Falhas e o que cada uma é
 
@@ -98,9 +173,9 @@ Um perfil novo, no mesmo momento, recebeu o bundle sem o modo e funcionou como o
 - O problema já existe em produção e vale para qualquer publicação. Não é regressão de `8a164ce`.
 - Para a sessão em cookie ele pesa mais, por causa da ordem da volta (seção 5 do roteiro): primeiro o bundle, depois a API. Se a API voltar enquanto navegadores ainda rodam o bundle do modo cookie guardado no cache, essas sessões caem.
 
-**Correção:** PR #181. Tudo o que não é asset com hash passa a receber `no-cache`: o navegador revalida com o `ETag` e recebe 304 quando nada
-mudou. O teste novo fica na suíte `csp-e2e`, que serve o `Caddyfile` real. Depois do merge, repetir no staging a volta do bundle com um perfil
-que já tenha aberto o app.
+**Correção:** PR #181, mesclado em `c6c2cfc` em 2026-11-11. Tudo o que não é asset com hash passa a receber `no-cache`: o navegador
+revalida com o `ETag` e recebe 304 quando nada mudou. O teste novo fica na suíte `csp-e2e`, que serve o `Caddyfile` real. A volta foi
+repetida com perfis que já tinham aberto o app, e passou (seção 2.1).
 
 ### 3.2 Firefox não abriu (limite do equipamento, sem conclusão sobre o produto)
 
@@ -156,8 +231,9 @@ O roteiro foi corrigido.
 
 ## 4. DNS do staging
 
-Os domínios próprios já estão criados no Railway, no ambiente de staging. Falta criar os registros no DNS de `orken.com.br`. Em 2026-11-10,
-os dois nomes ainda respondem `NXDOMAIN`.
+Os domínios próprios já estão criados no Railway, no ambiente de staging, com a porta 8080. O certificado espera a validação. Falta criar os
+registros no DNS de `orken.com.br`, que fica no GoDaddy (`ns57` e `ns58.domaincontrol.com`). Em 2026-11-11, o servidor autoritativo ainda
+responde `NXDOMAIN` para os dois nomes. O Railway não pede TXT, só os dois CNAMEs.
 
 | Nome | Tipo | Destino |
 |---|---|---|
@@ -173,7 +249,8 @@ Depois que eles resolverem, faça nesta ordem:
 
 ## 5. O que fica para a revisão humana
 
-Passos que exigem digitar a senha numa tela, ou um navegador que esta rodada não tem:
+A lista para marcar está na [checklist](checklist-homologacao-humana-sessao.md). São os passos que exigem digitar a senha numa tela, ou um
+navegador que estas rodadas não têm:
 
 - Safari e Firefox reais, nos domínios `*.staging.orken.com.br`.
 - Isolamento, nos mesmos domínios.
@@ -183,7 +260,7 @@ Passos que exigem digitar a senha numa tela, ou um navegador que esta rodada nã
 - Pedido de redefinição pela tela, com o e-mail recebido, e o aviso no login depois da nova senha.
 - Migração, item 6 (aba do bundle anterior aberta durante a publicação).
 - Limpar o armazenamento, item 4 (página pública sem `auth/refresh`).
-- Volta do bundle de novo, depois do merge do PR #181.
+- A volta atrás observada por uma pessoa, com o operador publicando (linha 18 da checklist). A rodada automatizada passou (seção 2.1).
 - Host público, na primeira publicação com o modo ligado.
 
 ## 6. Anexo: cada verificação
@@ -467,3 +544,56 @@ navegador que terminou com alguma verificação reprovada. As causas estão na s
 | 11-10 22:19 | navegador: recuperação e verificação de e-mail | **falhou** | (0, 0, 1) |
 | 11-10 22:36 | navegador: volta do bundle | **falhou** | (0, 1) |
 | 11-10 22:38 | navegador: volta da API | passou | 0 |
+
+### Anexo: Voltar atrás (2ª rodada), 2026-11-11
+
+As linhas de `rollback2-expired-tab` são as três tentativas da aba com o token vencido. As falhas das duas primeiras são do instrumento
+(seção 2.1).
+
+| Horário (UTC) | Fase | Verificação | Resultado | Detalhe |
+|---|---|---|---|---|
+| 11-11 04:04 | rollback2 | antes: aba A aberta no bundle do modo cookie (painel e produtos), e fica aberta sem recarregar | passou | {"signIn":200,"path":"/dashboard","refresh":"200+modo+cookie+novo-cookie"} |
+| 11-11 04:04 | rollback2 | antes: sessão B aberta no bundle do modo cookie, depois o navegador fecha | passou | {"signIn":200,"path":"/dashboard"} |
+| 11-11 04:05 | rollback2 | antes: sessão C aberta no bundle do modo cookie, depois o navegador fecha | passou | {"signIn":200,"path":"/dashboard"} |
+| 11-11 04:05 | rollback2 | antes: a segunda visita a /dashboard pede o HTML ao servidor (no-cache), não ao cache do disco | passou | {"status":200,"fromDiskCache":false,"cacheControl":"no-cache"} |
+| 11-11 04:06 | rollback2 | bundle publicado de novo sem o modo cookie (c6c2cfc, variável desligada) | passou | {"ok":true,"commit":"c6c2cfc","status":"SUCCESS"} |
+| 11-11 04:06 | rollback2 | aba A, sem recarregar: continua no bundle que já estava na memória e segue funcionando (a API aceita os dois modos) | passou | {"path":"/dashboard","calls":6,"statuses":"200 204","assetsFailed":0} |
+| 11-11 04:06 | rollback2 | sessão C, o navegador abre o app de novo: recebe o HTML novo do servidor, não o do cache | passou | {"status":200,"fromDiskCache":false,"cacheControl":"no-cache"} |
+| 11-11 04:06 | rollback2 | sessão C: vai para o login (quem migrou entra de novo enquanto o bundle está de volta) | passou | /login |
+| 11-11 04:06 | rollback2 | sessão C: o bundle sem o modo não manda o header do modo nem usa o cookie | passou | 401 |
+| 11-11 04:06 | rollback2 | sessão D, aberta com o bundle de hoje: tokens no corpo, renova com o token no corpo, sem modo e sem cookie | passou | {"signIn":200,"path":"/dashboard","refresh":"200+corpo"} |
+| 11-11 04:07 | rollback2 | API publicada no commit de produção (8a164ce) | passou | {"ok":true,"commit":"8a164ce","status":"SUCCESS"} |
+| 11-11 04:07 | rollback2 | sessão D, aberta durante toda a volta da API: continua e renova na API anterior, sem novo login | passou | {"path":"/dashboard","refresh":"200+corpo+cookie-antigo"} |
+| 11-11 04:07 | rollback2 | aba A, ainda sem recarregar, com o token de acesso ainda válido: segue funcionando na API anterior | passou | {"path":"/produtos","calls":1,"statuses":"200"} |
+| 11-11 04:07 | rollback2 | esperando o token de acesso da aba A vencer | informação | 724 s |
+| 11-11 04:20 | rollback2 | aba A com o token vencido, na API anterior: a renovação sem corpo é recusada sem veredito sobre a sessão; a aba não vai ao login nem manda auth/logout | passou | {"path":"/dashboard","notice":false,"auth":"nenhum"} |
+| 11-11 04:20 | rollback2 | aba A recarregada durante a volta: HTML novo do servidor; vai para o login, como quem migrou (o cookie fica intacto) | passou | {"doc":{"status":200,"fromDiskCache":false,"cacheControl":"no-cache"},"path":"/login","auth":"401"} |
+| 11-11 04:20 | rollback2 | restaurado: API de volta a c6c2cfc | passou | {"ok":true,"commit":"c6c2cfc","status":"SUCCESS"} |
+| 11-11 04:21 | rollback2 | restaurado: bundle de volta ao modo cookie (c6c2cfc) | passou | {"ok":true,"commit":"c6c2cfc","status":"SUCCESS"} |
+| 11-11 04:21 | rollback2 | sessão B, que ninguém usou durante a volta: abre logada pelo cookie, sem novo login | passou | {"path":"/dashboard","refresh":"200+modo+cookie+novo-cookie"} |
+| 11-11 04:22 | rollback2 | sessão C, que foi ao login durante a volta e não entrou de novo: abre logada pelo cookie, sem novo login | passou | {"path":"/dashboard","refresh":"200+modo+cookie+novo-cookie"} |
+| 11-11 04:22 | rollback2 | aba A recarregada depois da restauração: entra pelo cookie, que a volta não tocou | passou | {"path":"/workspaces","refresh":"200+modo+cookie+novo-cookie"} |
+| 11-11 04:22 | rollback2 | sessão D, aberta no bundle de hoje: migra para o cookie sem novo login (token no corpo e o header; 200 com cookie, sem refreshToken) | passou | {"path":"/dashboard","refresh":"200+modo+corpo+novo-cookie","leftInStorage":[]} |
+| 11-11 04:22 | rollback2 | sessão D, recarregada de novo: renova só pelo cookie | passou | {"path":"/dashboard","refresh":"200+modo+cookie+novo-cookie"} |
+| 11-11 04:22 | rollback2 | arquivos do bundle que falharam ao carregar nas abas abertas durante as publicações | informação | {"a":0,"d":0} |
+| 11-11 04:56 | rollback2-expired-tab | aba E aberta no bundle do modo cookie, e fica aberta sem recarregar | passou | {"signIn":200,"path":"/dashboard"} |
+| 11-11 04:58 | rollback2-expired-tab | API publicada no commit de produção (8a164ce), com a aba E aberta | passou | {"ok":true,"commit":"8a164ce","status":"SUCCESS"} |
+| 11-11 04:58 | rollback2-expired-tab | esperando o token de acesso da aba E vencer | informação | 818 s |
+| 11-11 05:12 | rollback2-expired-tab | aba E com o token vencido chama a API anterior: a renovação pelo cookie é exercida | **falhou** | {"renewals":"nenhum","apiCalls":3} |
+| 11-11 05:12 | rollback2-expired-tab | aba E: a API anterior não dá veredito (não é 401); a aba fica, com o aviso de sessão ativa, sem login e sem auth/logout | **falhou** | {"path":"/fornecedores","notice":false,"auth":"nenhum","statuses":"200"} |
+| 11-11 05:12 | rollback2-expired-tab | erro inesperado no navegador (aba com token vencido) | **falhou** | Error: Command failed: python (caminho local) backend c6c2cfcb9c1a799a4a3025f201042850c703d1f5 |
+| 11-11 05:12 | rollback2-expired-tab | restauração de segurança da API depois de um erro | **falhou** | {"ok":false,"status":"Error: Command failed: python (caminho local)"} |
+| 11-11 05:15 | rollback2-expired-tab | aba E aberta no bundle do modo cookie, e fica aberta sem recarregar | passou | {"signIn":200,"path":"/dashboard"} |
+| 11-11 05:15 | rollback2-expired-tab | API publicada no commit de produção (8a164ce), com a aba E aberta | passou | {"ok":true,"commit":"8a164ce","status":"SUCCESS"} |
+| 11-11 05:15 | rollback2-expired-tab | esperando o token de acesso da aba E vencer | informação | 999 s |
+| 11-11 05:32 | rollback2-expired-tab | aba E com o token vencido chama a API anterior: a renovação pelo cookie é exercida | passou | {"renewals":"/auth/refresh:400+modo+cookie /auth/refresh:400+modo+cookie /auth/refresh:400+modo+cookie","apiCalls":3} |
+| 11-11 05:32 | rollback2-expired-tab | aba E: a API anterior não dá veredito (não é 401); a aba fica, com o aviso de sessão ativa, sem login e sem auth/logout | **falhou** | {"path":"/fornecedores","notice":false,"auth":"/auth/refresh:400+modo+cookie /auth/refresh:400+modo+cookie /auth/refresh:400+modo+cookie","statuses":"401"} |
+| 11-11 05:33 | rollback2-expired-tab | API de volta a c6c2cfc | passou | {"ok":true,"commit":"c6c2cfc","status":"SUCCESS"} |
+| 11-11 05:34 | rollback2-expired-tab | aba E, sem recarregar e sem novo login: volta a renovar pelo cookie quando a API volta | passou | {"path":"/dashboard","auth":"/auth/refresh:200+modo+cookie"} |
+| 11-11 05:35 | rollback2-expired-tab | aba E aberta no bundle do modo cookie, e fica aberta sem recarregar | passou | {"signIn":200,"path":"/dashboard"} |
+| 11-11 05:36 | rollback2-expired-tab | API publicada no commit de produção (8a164ce), com a aba E aberta | passou | {"ok":true,"commit":"8a164ce","status":"SUCCESS"} |
+| 11-11 05:36 | rollback2-expired-tab | esperando o token de acesso da aba E vencer | informação | 999 s |
+| 11-11 05:53 | rollback2-expired-tab | aba E com o token vencido chama a API anterior: a renovação pelo cookie é exercida | passou | {"renewals":"/auth/refresh:400+modo+cookie /auth/refresh:400+modo+cookie /auth/refresh:400+modo+cookie","apiCalls":3} |
+| 11-11 05:53 | rollback2-expired-tab | aba E: a API anterior não dá veredito (não é 401); a aba fica, com o aviso de sessão ativa, sem login e sem auth/logout | passou | {"path":"/fornecedores","notice":true,"text":" Sua sessão continua ativa: tente de novo em instantes","auth":"/auth/refresh:400+modo+cookie /auth/refresh:400+mo |
+| 11-11 05:53 | rollback2-expired-tab | API de volta a c6c2cfc | passou | {"ok":true,"commit":"c6c2cfc","status":"SUCCESS"} |
+| 11-11 05:54 | rollback2-expired-tab | aba E, sem recarregar e sem novo login: volta a renovar pelo cookie quando a API volta | passou | {"path":"/dashboard","auth":"/auth/refresh:200+modo+cookie"} |

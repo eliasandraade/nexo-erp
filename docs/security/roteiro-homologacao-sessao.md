@@ -283,6 +283,12 @@ A volta foi executada no staging em 2026-11-10 ([registro](homologacao-sessao-st
 - A volta do bundle não chegou ao navegador que já tinha o app aberto, pelo motivo acima.
 - A restauração voltou o staging ao modo cookie, com a conferência completa passando.
 
+Em 2026-11-11, depois do PR #181, a volta completa passou com abas e sessões abertas
+([registro](homologacao-sessao-staging-2026-11-10.md), seção 2.1). Uma aba no modo cookie que fica aberta sem recarregar continua com o bundle
+que já estava na memória. Se o token dela vencer enquanto a API está na versão anterior, a renovação recebe 400. A aba mostra o aviso de
+sessão ativa, sem ir ao login e sem `auth/logout`. Quando a API volta, ela renova pelo cookie sem novo login. Se for recarregada antes disso,
+vai ao login, como quem migrou.
+
 ## 6. Riscos aceitos
 
 Não são reprovação. A lista completa, com as condições, está na seção 9 do contrato:
