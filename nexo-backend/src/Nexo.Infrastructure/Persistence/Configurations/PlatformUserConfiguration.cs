@@ -63,6 +63,8 @@ public class PlatformSessionConfiguration : IEntityTypeConfiguration<PlatformSes
         builder.Property(x => x.SecurityStamp).HasColumnName("security_stamp").HasMaxLength(64).IsRequired();
         builder.Property(x => x.MfaVerified).HasColumnName("mfa_verified").IsRequired();
         builder.Property(x => x.PendingMfa).HasColumnName("pending_mfa").IsRequired();
+        // Default in the database: a version of the API that does not know the column still inserts sessions.
+        builder.Property(x => x.MfaAttempts).HasColumnName("mfa_attempts").HasDefaultValue(0).IsRequired();
         builder.Property(x => x.ExpiresAt).HasColumnName("expires_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.LastUsedAt).HasColumnName("last_used_at").HasColumnType("timestamptz").IsRequired();
         builder.Property(x => x.RevokedAt).HasColumnName("revoked_at").HasColumnType("timestamptz");

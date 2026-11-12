@@ -86,6 +86,7 @@ public class PlatformAuthController : ControllerBase
     }
 
     [HttpPost("mfa/setup")]
+    [EnableRateLimiting("credential-check")]
     public async Task<IActionResult> StartMfaSetup([FromBody] PlatformPasswordRequest request, CancellationToken ct)
     {
         var setup = await _auth.StartMfaSetupAsync(UserId, request.Password, ct);
@@ -99,6 +100,7 @@ public class PlatformAuthController : ControllerBase
         => Ok(new { recoveryCodes = await _auth.EnableMfaAsync(UserId, request.Code, ct) });
 
     [HttpPost("mfa/disable")]
+    [EnableRateLimiting("credential-check")]
     [Nexo.Api.Filters.EndsBrowserSession]
     public async Task<IActionResult> DisableMfa([FromBody] PlatformMfaDisableRequest request, CancellationToken ct)
     {
