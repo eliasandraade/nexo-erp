@@ -142,6 +142,70 @@ public class RateLimitingTests : IDisposable
         response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "another spelling of the route is the same route");
     }
 
+    // ────────────────────────────────────────────────────────────────────────────
+    // PUBLIC PORTALS: the same reading of the client address as every other limit
+    // ────────────────────────────────────────────────────────────────────────────
+
+    private WebApplicationFactory<Program> PublicPortalsHost(int permitLimit)
+        => _factory.WithWebHostBuilder(b =>
+        {
+            foreach (var section in new[] { "PublicOrders", "PublicBooking" })
+            {
+                b.UseSetting($"RateLimiting:{section}:Enabled", "true");
+                b.UseSetting($"RateLimiting:{section}:PermitLimit", permitLimit.ToString());
+                b.UseSetting($"RateLimiting:{section}:WindowSeconds", "900");
+            }
+        });
+
+    private static HttpClient PortalVisitor(WebApplicationFactory<Program> host, string? forwardedFor)
+    {
+        var client = host.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        if (forwardedFor is not null)
+            client.DefaultRequestHeaders.TryAddWithoutValidation("X-Forwarded-For", forwardedFor);
+        return client;
+    }
+
+    // Two anonymous routes that answer without touching anything: a coupon of a shop that does not exist, an appointment that does not exist.
+    private static Task<HttpResponseMessage> AskPublicOrders(HttpClient client)
+        => client.PostAsJsonAsync("/api/public/coupons/validate", new { publicSlug = "loja-que-nao-existe", code = "NADA", subtotal = 10m });
+
+    private static Task<HttpResponseMessage> AskPublicBooking(HttpClient client)
+        => client.GetAsync($"/api/public/service/loja-que-nao-existe/appointments/{new string('a', 32)}");
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PublicPortals_LimitByClientAddress_AndAnotherAddressKeepsItsOwnBudget(bool orders)
+    {
+        await using var host = PublicPortalsHost(permitLimit: 2);
+        Func<HttpClient, Task<HttpResponseMessage>> ask = orders ? AskPublicOrders : AskPublicBooking;
+        var visitor = PortalVisitor(host, "203.0.113.60");
+
+        (await ask(visitor)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+        (await ask(visitor)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+        (await ask(visitor)).StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "the third call is over this address's budget");
+
+        (await ask(PortalVisitor(host, "203.0.113.61"))).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
+            "another address has not called yet");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PublicPortals_AHeaderThatIsNotAnAddress_BuysNoBudgetOfItsOwn(bool orders)
+    {
+        await using var host = PublicPortalsHost(permitLimit: 2);
+        Func<HttpClient, Task<HttpResponseMessage>> ask = orders ? AskPublicOrders : AskPublicBooking;
+
+        // Each of these used to be a partition of its own. None holds an address, so all of them are the connection's address.
+        (await ask(PortalVisitor(host, "qualquer-coisa-1"))).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+        (await ask(PortalVisitor(host, "qualquer-coisa-2"))).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+        (await ask(PortalVisitor(host, "qualquer-coisa-3"))).StatusCode.Should().Be(HttpStatusCode.TooManyRequests,
+            "text that is not an address does not start a new budget");
+        (await ask(PortalVisitor(host, null))).StatusCode.Should().Be(HttpStatusCode.TooManyRequests,
+            "and it is the same budget as a call with no header at all");
+    }
+
     [Fact]
     public async Task Login_Budget_IsNotSharedWithAnotherRouteOfTheSamePolicy()
     {
