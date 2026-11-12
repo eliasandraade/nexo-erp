@@ -124,6 +124,11 @@ public class PlatformSession : BaseEntity
     /// minutes and grants nothing. Kept in the database, so a cache outage never locks an administrator out.
     /// </summary>
     public bool PendingMfa { get; private set; }
+    /// <summary>
+    /// How many codes this challenge was already asked to check. Counted in the database and before each check, so a challenge
+    /// takes a few codes and no more, with or without the cache, and however many arrive at once.
+    /// </summary>
+    public int MfaAttempts { get; private set; }
     public DateTime ExpiresAt { get; private set; }
     public DateTime LastUsedAt { get; private set; }
     public DateTime? RevokedAt { get; private set; }

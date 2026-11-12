@@ -35,6 +35,8 @@ public sealed class PlatformAuthService
     /// <summary>A second tab refreshing with the token another tab has just rotated is a race, not a theft.</summary>
     public static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
     public const int RecoveryCodeCount = 8;
+    /// <summary>Codes one challenge takes. After them the challenge is over: the password again, and the count of the account goes on.</summary>
+    public const int MaxCodesPerChallenge = 5;
 
     private readonly NexoDbContext _db;
     private readonly IPasswordHasher _hasher;
@@ -82,16 +84,17 @@ public sealed class PlatformAuthService
             await _db.SaveChangesAsync(ct);
             return new PlatformSignIn(null, null, "invalid_credentials", user);
         }
-        await _attempts.ResetAsync(account, ct);
-
         if (user.MfaEnabled)
         {
+            // The wrong-attempt count is NOT reset here (only after the code), as in the tenant sign-in: otherwise entering the
+            // known password again between guesses would allow endless code guessing.
             var challenge = NewToken();
             _db.PlatformSessions.Add(PlatformSession.Start(user.Id, Hash(challenge), user.SecurityStamp, mfaVerified: false,
                 DateTime.UtcNow.Add(ChallengeLifetime), ip, userAgent, pendingMfa: true));
             await _db.SaveChangesAsync(ct);
             return new PlatformSignIn(null, challenge, null, user);
         }
+        await _attempts.ResetAsync(account, ct);
         var tokens = await StartSessionAsync(user, mfaVerified: false, ip, userAgent, ct);
         return new PlatformSignIn(tokens, null, null, user);
     }
@@ -106,6 +109,20 @@ public sealed class PlatformAuthService
         var user = await _db.PlatformUsers.FirstAsync(u => u.Id == pending.PlatformUserId, ct);
         var account = LoginAttemptGuard.ForPlatform(user.Id);
         if (await _attempts.IsLockedAsync(account, ct)) return new PlatformSignIn(null, null, "account_locked", user);
+
+        // One of the codes of this challenge is spent before the code is looked at, in one statement: a burst of guesses on the same
+        // challenge cannot all be checked. When none is left the challenge ends, and the next step is the password again.
+        var mayCheck = await _db.PlatformSessions
+            .Where(s => s.Id == pending.Id && s.PendingMfa && s.RevokedAt == null && s.MfaAttempts < MaxCodesPerChallenge)
+            .ExecuteUpdateAsync(x => x.SetProperty(s => s.MfaAttempts, s => s.MfaAttempts + 1), ct) == 1;
+        if (!mayCheck)
+        {
+            pending.Revoke("mfa_attempts");
+            Audit(AuditActions.PlatformMfaFailed, AuditSeverity.Warning, user, $"Desafio de verificação encerrado por excesso de códigos ({user.Email}).");
+            await _db.SaveChangesAsync(ct);
+            return new PlatformSignIn(null, null, "invalid_challenge", null);
+        }
+
         if (!user.MfaEnabled || !await CheckCodeAsync(user, code, recoveryCode, ct))
         {
             await _attempts.RegisterFailureAsync(account, ct);
@@ -278,8 +295,7 @@ public sealed class PlatformAuthService
     {
         var user = await LoadAsync(userId, ct);
         if (user.MfaEnabled) throw new DomainException("A verificação em duas etapas já está ativa.", "mfa_already_enabled");
-        if (string.IsNullOrEmpty(password) || !_hasher.Verify(password, user.PasswordHash))
-            throw new DomainException("Senha incorreta.", "invalid_password");
+        await ProvePasswordAsync(user, password, ct);
         var secret = Totp.NewSecret();
         user.StartMfaSetup(_protector.Protect(secret, user.Id));
         await _db.SaveChangesAsync(ct);
@@ -306,9 +322,12 @@ public sealed class PlatformAuthService
     {
         var user = await LoadAsync(userId, ct);
         if (!user.MfaEnabled) return;
-        if (string.IsNullOrEmpty(password) || !_hasher.Verify(password, user.PasswordHash))
-            throw new DomainException("Senha incorreta.", "invalid_password");
-        if (!await CheckCodeAsync(user, code, recoveryCode, ct)) throw new DomainException("Código inválido.", "invalid_code");
+        await ProvePasswordAsync(user, password, ct);
+        if (!await CheckCodeAsync(user, code, recoveryCode, ct))
+        {
+            await _attempts.RegisterFailureAsync(LoginAttemptGuard.ForPlatform(user.Id), ct);
+            throw new DomainException("Código inválido.", "invalid_code");
+        }
         user.DisableMfa();
         Audit(AuditActions.PlatformMfaDisabled, AuditSeverity.Critical, user, $"Verificação em duas etapas desativada por {user.Email}; todas as sessões encerradas.");
         await _db.SaveChangesAsync(ct);
@@ -324,6 +343,22 @@ public sealed class PlatformAuthService
         Audit(AuditActions.PlatformMfaDisabled, AuditSeverity.Critical, user, $"Verificação em duas etapas de {user.Email} desativada por {actorEmail}.",
             new { actorId }, actorId, actorEmail);
         await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The password again, inside a session. Wrong ones count on the same lock as the sign-in, so a session left open is not a
+    /// place to guess the password without limit.
+    /// </summary>
+    private async Task ProvePasswordAsync(PlatformUser user, string? password, CancellationToken ct)
+    {
+        var account = LoginAttemptGuard.ForPlatform(user.Id);
+        if (await _attempts.IsLockedAsync(account, ct))
+            throw new DomainException("Muitas tentativas. Tente de novo em 15 minutos.", "account_locked");
+        if (string.IsNullOrEmpty(password) || !_hasher.Verify(password, user.PasswordHash))
+        {
+            await _attempts.RegisterFailureAsync(account, ct);
+            throw new DomainException("Senha incorreta.", "invalid_password");
+        }
     }
 
     private async Task<bool> CheckCodeAsync(PlatformUser user, string? code, string? recoveryCode, CancellationToken ct)

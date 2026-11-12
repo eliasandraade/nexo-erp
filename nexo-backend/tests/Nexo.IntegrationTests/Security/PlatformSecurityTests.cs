@@ -450,14 +450,95 @@ public sealed class PlatformSecurityTests : IClassFixture<TestWebApplicationFact
     {
         var (email, password) = await NewPlatformUserAsync();
         await TurnTwoStepOnAsync(email, password);
-        var challenge = await ChallengeOfAsync(email, password);
-        var wrong = new Dictionary<string, string> { [field] = challenge, ["code"] = "000000" };
+        Dictionary<string, string> wrong = new();
 
+        // A challenge takes a few codes, so the password is entered again along the way: that must not start the count over.
         for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
-            (await _factory.CreateApiClient().PostAsJsonAsync(route, wrong)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        {
+            if (i % (Nexo.Infrastructure.Auth.PlatformAuthService.MaxCodesPerChallenge - 1) == 0)
+                wrong = new Dictionary<string, string> { [field] = await ChallengeOfAsync(email, password), ["code"] = "000000" };
+            (await Json(await _factory.CreateApiClient().PostAsJsonAsync(route, wrong), HttpStatusCode.Unauthorized))
+                .GetProperty("code").GetString().Should().Be("invalid_code");
+        }
 
         (await Json(await _factory.CreateApiClient().PostAsJsonAsync(route, wrong), HttpStatusCode.TooManyRequests))
             .GetProperty("code").GetString().Should().Be("account_locked");
+        (await Json(await Login(_factory.CreateApiClient(), email, password), HttpStatusCode.TooManyRequests))
+            .GetProperty("code").GetString().Should().Be("account_locked", "the right password does not get through the lock either");
+    }
+
+    [Fact]
+    public async Task The_password_again_between_wrong_codes_does_not_start_the_count_over()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var (secret, _) = await TurnTwoStepOnAsync(email, password);
+
+        // One wrong code per sign-in, the password right every time: before, each right password cleared the count and this went on forever.
+        for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
+        {
+            var challenge = await ChallengeOfAsync(email, password);
+            (await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = "000000" }), HttpStatusCode.Unauthorized))
+                .GetProperty("code").GetString().Should().Be("invalid_code");
+        }
+
+        (await Json(await Login(_factory.CreateApiClient(), email, password), HttpStatusCode.TooManyRequests))
+            .GetProperty("code").GetString().Should().Be("account_locked");
+        _ = secret;
+    }
+
+    [Fact]
+    public async Task A_challenge_takes_a_few_codes_and_then_only_the_password_opens_another()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var (secret, _) = await TurnTwoStepOnAsync(email, password);
+        var challenge = await ChallengeOfAsync(email, password);
+
+        for (var i = 0; i < Nexo.Infrastructure.Auth.PlatformAuthService.MaxCodesPerChallenge; i++)
+            (await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = "000000" }), HttpStatusCode.Unauthorized))
+                .GetProperty("code").GetString().Should().Be("invalid_code");
+
+        // The right code now: the challenge is over, whatever comes with it.
+        var right = Totp.Code(secret, Totp.StepAt(DateTime.UtcNow) + 1);
+        (await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = right }), HttpStatusCode.Unauthorized))
+            .GetProperty("code").GetString().Should().Be("invalid_challenge");
+
+        // A new challenge, by the password, takes the right code: nothing here locked the account (five failures, under the limit).
+        var next = await ChallengeOfAsync(email, password);
+        (await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = next, code = right }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Many_codes_at_once_on_one_challenge_are_not_all_checked()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        await TurnTwoStepOnAsync(email, password);
+        var challenge = await ChallengeOfAsync(email, password);
+
+        var answers = await Task.WhenAll(Enumerable.Range(0, 20).Select(async i =>
+        {
+            var response = await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = (100000 + i).ToString() });
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            return body.TryGetProperty("code", out var code) ? code.GetString() : null;
+        }));
+
+        answers.Count(code => code == "invalid_code").Should().BeLessOrEqualTo(Nexo.Infrastructure.Auth.PlatformAuthService.MaxCodesPerChallenge,
+            "a code is only looked at after one of the attempts of the challenge was taken, in the database");
+        answers.Should().OnlyContain(code => code == "invalid_code" || code == "invalid_challenge" || code == "account_locked");
+    }
+
+    [Fact]
+    public async Task Wrong_passwords_inside_a_session_count_on_the_lock_of_the_account()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var session = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+
+        for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
+            (await Json(await session.PostAsJsonAsync("/api/platform/auth/mfa/setup", new { password = "wrong" }), HttpStatusCode.UnprocessableEntity))
+                .GetProperty("code").GetString().Should().Be("invalid_password");
+
+        (await Json(await session.PostAsJsonAsync("/api/platform/auth/mfa/setup", new { password }), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("account_locked", "the setup is not a place to guess the password without limit");
     }
 
     [Fact]
