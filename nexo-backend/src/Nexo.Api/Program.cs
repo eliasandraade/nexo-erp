@@ -193,10 +193,12 @@ try
     // a shared-window 429 cascade across the whole suite), while the dedicated
     // RateLimitingTests re-enable it explicitly.
     //
-    // PARTITIONED per (client IP + endpoint path) — the previous
+    // PARTITIONED per (client IP + route) — the previous
     // AddFixedWindowLimiter("auth-login") used a SINGLE GLOBAL bucket, so 5 failed
     // logins from anyone locked out every user for 15 min. Now each client gets
-    // its own budget, and login vs refresh are counted separately.
+    // its own budget, and login vs refresh are counted separately. The route is the
+    // one the request was matched to (RateLimitKeys), never the address as written:
+    // another letter case or a trailing slash reaches the same action.
     var authLoginEnabled = builder.Configuration.GetValue("RateLimiting:AuthLogin:Enabled", true);
     var authLoginPermit  = builder.Configuration.GetValue("RateLimiting:AuthLogin:PermitLimit", 5);
     var authLoginWindow  = builder.Configuration.GetValue("RateLimiting:AuthLogin:WindowSeconds", 900);
@@ -213,7 +215,7 @@ try
                 return RateLimitPartition.GetNoLimiter("auth-login:disabled");
 
             var clientIp = httpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(httpContext);
-            var partitionKey = $"{clientIp}|{httpContext.Request.Path}";
+            var partitionKey = $"{clientIp}|{Nexo.Api.Middleware.RateLimitKeys.Route(httpContext)}";
 
             return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
                 new FixedWindowRateLimiterOptions
@@ -241,7 +243,7 @@ try
                 ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                 ?? "anonymous";
 
-            return RateLimitPartition.GetFixedWindowLimiter($"cred|{userId}|{httpContext.Request.Path}", _ =>
+            return RateLimitPartition.GetFixedWindowLimiter($"cred|{userId}|{Nexo.Api.Middleware.RateLimitKeys.Route(httpContext)}", _ =>
                 new FixedWindowRateLimiterOptions
                 {
                     PermitLimit          = credPermit,
@@ -262,10 +264,8 @@ try
             if (!pubEnabled)
                 return RateLimitPartition.GetNoLimiter("public-booking:disabled");
 
-            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
-                ? forwardedFor.Split(',')[0].Trim()
-                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            // The same reading of the client address as every other limit: a header only counts when it holds an address.
+            var clientIp = httpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(httpContext);
 
             return RateLimitPartition.GetFixedWindowLimiter($"pub-booking|{clientIp}", _ =>
                 new FixedWindowRateLimiterOptions
@@ -291,10 +291,8 @@ try
             if (!enabled)
                 return RateLimitPartition.GetNoLimiter("public-orders:disabled");
 
-            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
-                ? forwardedFor.Split(',')[0].Trim()
-                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            // The same reading of the client address as every other limit: a header only counts when it holds an address.
+            var clientIp = httpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(httpContext);
 
             return RateLimitPartition.GetFixedWindowLimiter($"pub-orders|{clientIp}", _ =>
                 new FixedWindowRateLimiterOptions
