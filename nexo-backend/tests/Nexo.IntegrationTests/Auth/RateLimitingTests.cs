@@ -104,8 +104,55 @@ public class RateLimitingTests : IDisposable
         return client;
     }
 
-    private static Task<HttpResponseMessage> CheckCredentialAsync(HttpClient client)
-        => client.PostAsJsonAsync("/api/auth/verify-manager", new VerifyManagerRequest("ninguem", "senha-errada"));
+    private static Task<HttpResponseMessage> CheckCredentialAsync(HttpClient client, string path = "/api/auth/verify-manager")
+        => client.PostAsJsonAsync(path, new VerifyManagerRequest("ninguem", "senha-errada"));
+
+    // Routing ignores letter case and a trailing slash: every spelling reaches the same action, so every spelling spends the same budget.
+    [Theory]
+    [InlineData("/api/auth/Verify-Manager")]
+    [InlineData("/API/AUTH/VERIFY-MANAGER")]
+    [InlineData("/api/auth/verify-manager/")]
+    public async Task CredentialCheck_AnotherSpellingOfTheRoute_SpendsTheSameBudget(string otherSpelling)
+    {
+        await using var host = CredentialCheckHost(permitLimit: 2);
+        var user = await SignedInClientAsync(host);
+
+        (await CheckCredentialAsync(user)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+        (await CheckCredentialAsync(user)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+
+        var response = await CheckCredentialAsync(user, otherSpelling);
+        response.StatusCode.Should().NotBe(HttpStatusCode.NotFound, "the spelling must reach the same action, or this test proves nothing");
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "another spelling of the route is the same route");
+    }
+
+    [Theory]
+    [InlineData("/api/auth/Login")]
+    [InlineData("/API/AUTH/LOGIN")]
+    [InlineData("/api/auth/login/")]
+    public async Task Login_AnotherSpellingOfTheRoute_SpendsTheSameBudget(string otherSpelling)
+    {
+        var client = NewClient(forwardedFor: "203.0.113.40");
+        var payload = TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrongpass");
+
+        for (var i = 0; i < 5; i++)
+            (await client.PostAsJsonAsync("/api/auth/login", payload)).StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests);
+
+        var response = await client.PostAsJsonAsync(otherSpelling, payload);
+        response.StatusCode.Should().NotBe(HttpStatusCode.NotFound, "the spelling must reach the same action, or this test proves nothing");
+        response.StatusCode.Should().Be(HttpStatusCode.TooManyRequests, "another spelling of the route is the same route");
+    }
+
+    [Fact]
+    public async Task Login_Budget_IsNotSharedWithAnotherRouteOfTheSamePolicy()
+    {
+        var client = NewClient(forwardedFor: "203.0.113.41");
+        var payload = TestCredentials.LoginPayload(TestCredentials.AdminLogin, "wrongpass");
+        for (var i = 0; i < 6; i++)
+            await client.PostAsJsonAsync("/api/auth/login", payload);
+
+        var other = await client.PostAsJsonAsync("/api/auth/forgot-password", new { email = "ninguem@orken.test" });
+        other.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests, "each route keeps a budget of its own, as before");
+    }
 
     // ────────────────────────────────────────────────────────────────────────────
     // LOGIN RATE LIMITING
