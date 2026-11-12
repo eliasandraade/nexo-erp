@@ -37,6 +37,28 @@ desta lista. As rodadas automatizadas estão no [registro](homologacao-sessao-st
   - **Recebimento real dos dois e-mails:** só dá para conferir onde houver um provedor configurado.
 - **Em caso de falha:** anote o passo, o navegador, o horário e o `X-Request-Id` da resposta, e marque **Não**.
 
+## O que as rodadas automatizadas já mostraram
+
+Serve de contexto, não de aprovação. A coluna "Automatizado" diz o que um navegador comandado por roteiro já fez nos domínios próprios do
+staging ([registro](homologacao-sessao-staging-2026-11-10.md), seção 2.2). **Nenhuma linha da lista abaixo foi marcada por causa disso.**
+
+| # da lista | Automatizado no Chromium | Automatizado no WebKit do Playwright | Ainda só com uma pessoa |
+|---|---|---|---|
+| 1, 2, 3 (login e logout) | Passou | Passou | Safari e Firefox reais |
+| 4 (código da segunda etapa) | Passou, com código calculado pelo roteiro | Passou | Com o seu aplicativo autenticador |
+| 5, 6 (código de recuperação, desafio expirado) | Passou pela API, nos endereços antigos | Não executado | As telas |
+| 7 (troca de loja) | Passou | Passou | Safari e Firefox reais |
+| 8, 9, 10 (várias abas) | Passou | Passou | Safari e Firefox reais |
+| 11 (impersonação) | Passou | Passou | Com o seu segundo fator de administrador |
+| 12 (encerrar todas, na plataforma) | Passou nos endereços antigos | Não executado | A tela, nos domínios novos |
+| 13 (redefinição de senha) | Passou a partir do link | Passou a partir do link | O pedido pela tela e o recebimento do link |
+| 14 (verificação de e-mail) | Passou nos endereços antigos | Não executado | O link visto no log |
+| 15 (migração de sessão) | Passou, na volta do bundle | Não executado | Com o operador publicando |
+| 16 (sem conexão: navegar) | Passou nos endereços antigos | Não executado | Todos os navegadores |
+| 17 (sem conexão: sair e entrar de novo) | Passou | Passou | Safari e Firefox reais |
+| 18 (rollback) | Passou | Não executado | Com o operador publicando |
+| 19 (isolamento entre subdomínios) | Passou | Não executado | Safari e Firefox reais |
+
 ## Lista
 
 Marque cada célula com **Sim** (fiz e vi o resultado), **Não** (falhou) ou **—** (não se aplica).

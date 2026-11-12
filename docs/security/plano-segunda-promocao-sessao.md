@@ -1,28 +1,43 @@
 # Segunda promoção: sessão em cookie
 
-Dossiê da promoção que leva a sessão em cookie para a produção. **Nada aqui foi executado na produção.** A promoção espera a homologação nos
-navegadores, a homologação humana e a autorização explícita do proprietário.
+Dossiê da promoção que leva a sessão em cookie para a produção. **Nada aqui foi executado na produção, e nenhuma promoção está autorizada.** A promoção
+espera as correções em revisão, a homologação nos navegadores, a homologação humana e a autorização explícita do proprietário.
 
 ## 1. Commit candidato
 
-**`c6c2cfcb9c1a799a4a3025f201042850c703d1f5`**: o merge do PR #181, hoje a ponta de `master` com código.
+**Ainda não existe.** O candidato será o commit da `master` que contiver, além do que já está em `c6c2cfc`, as correções em revisão e a
+decisão sobre a regra do login. O SHA exato entra aqui quando o último desses PRs for mesclado e o `master-gate` passar nele.
 
-`633a301` deixou de ser candidato: ele não tem a correção do cache do HTML, e sem ela a volta do bundle não chega a quem está com o app aberto
-([registro](homologacao-sessao-staging-2026-11-10.md), seção 3.1). Se um PR só de documentação entrar depois, o candidato pode ser a nova ponta.
-O código continua o mesmo, mas o `master-gate` precisa estar verde naquele SHA exato.
+`c6c2cfc` e `633a301` deixaram de ser candidatos. Nenhum dos dois, nem a ponta da `master`, é promovido automaticamente.
 
 O que o candidato leva além da produção atual (`8a164ce`):
 
-| PR | O que muda | Migração de banco |
-|---|---|---|
-| #176 | Política de renovação: teto por sessão, 409 com carência de 30 s, 429 e falhas de rede sem encerrar a sessão | Não |
-| #178 | Sessão em cookie em modo duplo: a API aceita os dois modos, e o bundle escolhe na compilação por `VITE_SESSION_MODE` | Não |
-| #181 | `Cache-Control: no-cache` no HTML de todas as rotas do app | Não |
+| PR | O que muda | Migração de banco | Estado |
+|---|---|---|---|
+| #176 | Política de renovação: teto por sessão, 409 com carência de 30 s, 429 e falhas de rede sem encerrar a sessão | Não | Na `master` |
+| #178 | Sessão em cookie em modo duplo: a API aceita os dois modos, e o bundle escolhe na compilação por `VITE_SESSION_MODE` | Não | Na `master` |
+| #181 | `Cache-Control: no-cache` no HTML de todas as rotas do app | Não | Na `master` |
+| #183 | Limites de autenticação contados pela rota casada | Não | Em revisão |
+| #184 | Login da plataforma: contagem da segunda etapa e teto de códigos por desafio | **Sim:** coluna `mfa_attempts` em `platform_sessions` | Em revisão |
+| A abrir | Regra do login (unicidade), depois da decisão do proprietário | **Provável:** índice único | Aguardando decisão |
 
 **Variáveis de produção:** nenhuma nova, além de `VITE_SESSION_MODE=cookie` no `main`, na etapa 2. Os padrões do código já servem à produção:
 - a lista da sessão é `erp.orken.com.br`;
 - o CORS aceita `erp` e `www`;
 - `SameSite` é `Lax`.
+
+### Migrações e compatibilidade do esquema
+
+A API aplica as migrações ao iniciar, e voltar a API não as desfaz. Por isso cada migração do candidato precisa ser compatível com a versão
+anterior (`8a164ce`):
+
+| Migração | O que faz | Compatível com `8a164ce` |
+|---|---|---|
+| `PlatformMfaChallengeAttempts` (#184) | Acrescenta `mfa_attempts integer not null default 0` | Sim. A API anterior insere sessões sem conhecer a coluna, e o banco preenche 0 |
+| Índice único do login (a abrir) | Impede dois logins iguais | Sim para leitura e login. Ao criar um login repetido, a API anterior passaria a receber erro do banco, onde hoje aceita. Antes de aplicar: contar repetições em produção (0 em 2026-11-12) |
+
+Nenhuma dessas migrações apaga ou reescreve dados. Restaurar um backup só seria necessário se uma migração falhasse no meio; as duas são
+instruções únicas e transacionais.
 
 ## 2. CI e Quality Gate
 
@@ -50,9 +65,10 @@ Detalhes no [registro](homologacao-sessao-staging-2026-11-10.md), seção 2.1.
 
 | Navegador | Situação |
 |---|---|
-| Chromium | Passou: as duas rodadas automatizadas, mais as suítes `auth-e2e` e `csp-e2e` |
-| Firefox | **Pendente.** Depende do DNS do staging e da troca para `SameSite=Lax` |
-| Safari | **Pendente.** Depende do DNS do staging e da troca para `SameSite=Lax` |
+| Chromium | Passou: as três rodadas automatizadas, incluindo os domínios próprios com `SameSite=Lax`, mais as suítes `auth-e2e` e `csp-e2e` |
+| WebKit do Playwright | Passou no que executou nos domínios próprios. Cinco itens não rodaram (CSRF, isolamento e expiração), por limite do motor no Windows. Não substitui o Safari |
+| Firefox | **Pendente.** Sem Firefox na máquina de teste; fica para a checklist humana |
+| Safari | **Pendente.** Só em aparelho Apple; fica para a checklist humana |
 
 ## 5. Testes humanos
 
@@ -75,46 +91,69 @@ Detalhes no [registro](homologacao-sessao-staging-2026-11-10.md), seção 2.1.
 
 ## 7. Plano
 
-### Recomendação: duas etapas
+### Condições para começar
 
-1. **Etapa 1: promover `c6c2cfc` sem `VITE_SESSION_MODE`.**
-   - O bundle continua no modo de hoje, e ninguém migra.
-   - Entram a política de renovação, a API em modo duplo e o `no-cache` do HTML.
+Todas precisam estar cumpridas. Qualquer uma em falta bloqueia a promoção:
+
+1. PRs do candidato mesclados, um por vez, cada um com o CI verde no SHA exato.
+2. `master-gate` verde no SHA do candidato, e staging em `SUCCESS` nesse SHA.
+3. Bateria de navegadores completa nos domínios próprios do staging (`erp.staging.orken.com.br`), sem falha em aberto.
+4. [Checklist humana](checklist-homologacao-humana-sessao.md) preenchida por uma pessoa, em Chrome ou Edge, Firefox e Safari.
+5. Volta atrás repetida no staging com o candidato, incluindo a API anterior sobre o esquema novo.
+6. Backup verificado (abaixo) e autorização explícita do proprietário, para cada etapa.
+
+### Duas etapas
+
+1. **Etapa 1: promover o candidato sem `VITE_SESSION_MODE`.**
+   - O bundle continua no modo de hoje, e ninguém migra de sessão.
+   - Entram a política de renovação, a API em modo duplo, o `no-cache` do HTML e as correções dos PRs #183 e #184.
    - No staging, uma sessão no modo de hoje funcionou e renovou nessa combinação (bundle sem o modo, API nova), e a suíte `auth-e2e` no modo
      storage está verde.
-2. **Etapa 2: ligar o modo cookie.** Depois de um período sem incidente na etapa 1:
+2. **Etapa 2: ligar o modo cookie.** Só depois da homologação e de um período sem incidente na etapa 1:
    - definir `VITE_SESSION_MODE=cookie` no `main` de produção;
    - publicar de novo o mesmo commit;
    - cada pessoa migra na próxima recarga, sem novo login.
 
-Separadas, a volta de cada etapa é menor. Ligar tudo de uma vez também funciona: é o que o staging validou, com os mesmos passos.
-
-### Backup, antes de cada etapa
+### Backup e restauração, antes de cada etapa
 
 1. Backup manual do volume do Postgres de produção no Railway, com o id anotado.
 2. Cópia lógica (`pg_dump`) lida de volta por inteiro, com as contagens das tabelas principais comparadas com o banco ao vivo. Depois, a cópia
    é apagada do contêiner.
 3. Contagens de referência: empresas, usuários, sessões ativas, assinaturas e auditoria. Elas são comparadas depois da publicação.
+4. **Restauração:** o caminho é restaurar o backup do volume pelo Railway. Ele nunca foi ensaiado. Ensaiar uma vez no staging (restaurar um
+   backup do volume e conferir as contagens) antes da etapa 1.
 
 ### Publicação
 
 1. Conferir:
    - `production` em `8a164ce`;
-   - `master-gate` verde no SHA exato do candidato;
-   - staging em `SUCCESS` nesse SHA;
+   - as condições da seção acima;
    - `Billing__NewCheckoutsEnabled` ausente;
    - Tax Intelligence sem variáveis.
-2. Etapa 1: `scripts/promote-production.sh c6c2cfcb9c1a799a4a3025f201042850c703d1f5`.
+2. Etapa 1: `scripts/promote-production.sh <SHA completo do candidato>`.
 3. Etapa 2, quando autorizada: a variável no `main` de produção e o novo deploy do `main` no mesmo commit.
 4. Depois de cada etapa, verificar:
-   - backend e frontend em `SUCCESS` no SHA certo;
+   - backend e frontend em `SUCCESS` no SHA certo, e as migrações aplicadas (log de início da API);
    - `/health`;
    - `Cache-Control: no-cache` em todas as rotas de `erp.orken.com.br` e `www.orken.com.br`, e assets imutáveis;
    - login real feito por uma pessoa, recarga, logout e upload;
+   - login do administrador da plataforma com o código;
    - portais públicos;
-   - relatórios de CSP e `error_events`;
-   - métricas do Cockpit;
    - contagens de referência.
+
+### Observabilidade e critérios de bloqueio
+
+Acompanhar por 24 horas depois de cada etapa. Qualquer item abaixo interrompe a sequência e aciona a volta:
+
+| Sinal | Onde ver | Bloqueia quando |
+|---|---|---|
+| Erros da API | `error_events` e log do backend | Aparece um tipo de erro novo em rota de autenticação, ou qualquer erro de migração |
+| Logins | Auditoria: logins com sucesso e com falha | Pessoas que entravam deixam de entrar, ou as falhas sobem sem explicação |
+| Renovação de sessão | Respostas de `auth/refresh` no log | 401 em série para sessões que estavam ativas |
+| Limites | Respostas 429 nas rotas de autenticação | Uma loja inteira recebe 429 em uso normal |
+| Relatórios de CSP | Log da API | Violação nova em fluxo do produto |
+| Cockpit | Métricas do ERP | A coleta falha, ou as contagens divergem das de referência |
+| Dados | Contagens de referência | Qualquer diferença não explicada |
 
 ### Volta atrás
 
@@ -122,8 +161,9 @@ Separadas, a volta de cada etapa é menor. Ligar tudo de uma vez também funcion
   - Com o `no-cache`, a próxima navegação de cada pessoa já recebe o bundle sem o modo.
   - Quem migrou entra de novo.
   - O cookie fica no navegador. Se o modo voltar, ele vale de novo, como o staging mostrou.
-- **Etapa 1, ou as duas:** no painel do Railway, "Redeploy" das implantações de `8a164ce`, **primeiro o `main`, depois o `backend`**. Não há
-  migração de banco entre `8a164ce` e `c6c2cfc`. A API de `8a164ce` rodou sobre o banco do candidato no staging, com login e renovação
-  funcionando.
+- **Etapa 1, ou as duas:** no painel do Railway, "Redeploy" das implantações de `8a164ce`, **primeiro o `main`, depois o `backend`**.
+  - O banco fica com as migrações do candidato. Elas são compatíveis com `8a164ce` (seção 1), e isso precisa ser provado no staging antes:
+    a API de `8a164ce` sobre o esquema do candidato, com login, renovação e login da plataforma.
   - `production` só anda para a frente. A próxima promoção publica de novo o que estiver nela, então uma volta definitiva é um `git revert`
     promovido.
+- **Restauração do banco:** só se uma migração falhar ou houver perda de dados. É a última opção, e depende do ensaio de restauração acima.

@@ -1,4 +1,4 @@
-# Homologação da sessão em cookie no staging: rodadas de 2026-11-10 e 2026-11-11
+# Homologação da sessão em cookie no staging: rodadas de 2026-11-10 a 2026-11-12
 
 Registro da execução do [roteiro](roteiro-homologacao-sessao.md) no staging, antes da segunda promoção para a produção. As rodadas são
 automatizadas: um navegador real abriu as telas, e a API e o banco foram lidos onde o roteiro manda olhar. Elas não substituem a parte humana
@@ -7,15 +7,19 @@ automatizadas: um navegador real abriu as telas, e a API e o banco foram lidos o
 - **Primeira rodada (2026-11-10):** o roteiro inteiro, com o staging em `633a301`.
 - **Segunda rodada (2026-11-11):** o cache do HTML e a volta atrás completa, com o staging em `c6c2cfc` (o PR #181 já mesclado). Está na
   seção 2.1.
+- **Terceira rodada (2026-11-11 e 2026-11-12):** os domínios próprios do staging com `SameSite=Lax`, em Chromium e no WebKit do
+  Playwright. Está na seção 2.2.
 
 ## Veredito
 
-**A segunda promoção continua bloqueada.** O candidato passou a ser `c6c2cfc`, porque `633a301` não tem a correção do cache do HTML. Os
-fluxos do contrato passaram no Chromium, e a volta atrás passou depois do PR #181. Faltam duas condições:
+**A segunda promoção continua bloqueada.** Os fluxos do contrato passaram no Chromium, nos endereços antigos e nos domínios próprios com
+`SameSite=Lax`, e a volta atrás passou depois do PR #181. Nenhuma falha de produto ficou em aberto nas três rodadas. Faltam:
 
-1. **Safari e Firefox reais.** Dependem dos domínios `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br` com certificado válido.
-   Os CNAMEs já estão criados. Faltam os dois TXT de verificação do Railway, sem os quais o certificado não sai (seção 4).
+1. **Safari e Firefox reais.** O WebKit do Playwright passou no que conseguiu executar, mas não substitui o Safari, e cinco itens não
+   rodaram nele (seção 2.2). Não há Firefox nesta máquina.
 2. **Homologação humana e aprovação explícita dos resultados** ([checklist](checklist-homologacao-humana-sessao.md)).
+3. **O candidato da promoção.** Ele ainda não existe: depende de correções em revisão ([plano](plano-segunda-promocao-sessao.md), seção 1).
+   Quando existir, a volta atrás e a conferência do modo cookie precisam ser repetidas nele.
 
 ## 1. Ambiente
 
@@ -148,6 +152,65 @@ A 3ª tentativa registrou o toast no instante em que ele apareceu:
 Depois disso, o staging ficou em `c6c2cfc` nos dois serviços. As 33 verificações do modo cookie passaram de novo (05:55 UTC), e as 109 rotas
 continuaram com `no-cache`.
 
+## 2.2 Terceira rodada: domínios próprios com `SameSite=Lax` (2026-11-11 e 2026-11-12)
+
+Staging em `c6c2cfc`, em `https://erp.staging.orken.com.br` e `https://api.erp.staging.orken.com.br`.
+
+### Preparo
+
+| Verificação | Resultado |
+|---|---|
+| CNAME e TXT de verificação dos dois nomes, nos servidores autoritativos e em três resolvedores públicos | Valores exatos |
+| Railway: domínios verificados e certificados emitidos | `verified: true`; certificado válido para cada nome (Let's Encrypt, TLS 1.3) |
+| Variáveis do staging | Origens da sessão, do CORS e do frontend em `https://erp.staging.orken.com.br`; API do bundle em `api.erp.staging`; `Auth__Session__CookieSameSite` removida (vale `Lax`); `VITE_SESSION_MODE=cookie` |
+| `Cache-Control` no host novo | 109 de 109 rotas com `no-cache`; 5 de 5 assets imutáveis; segunda visita pedida ao servidor |
+| Conferência do modo cookie | 33 verificações passaram; o cabeçalho `Set-Cookie` traz `SameSite=Lax` |
+| Volta do bundle no host novo, com abas e sessões abertas | Passou, incluindo a migração de volta para o cookie sem novo login |
+
+### Bateria por motor
+
+O login, o código da segunda etapa e a nova senha foram digitados nas telas, com as contas de teste. O administrador da plataforma entrou
+pela API. Cada linha vale para os dois motores, salvo quando indicado.
+
+| Fluxo | Chromium | WebKit do Playwright |
+|---|---|---|
+| Login pela tela: destino do papel, cabeçalho do modo, cookie, sem `refreshToken` | Passou | Passou |
+| Cookie: HttpOnly, Secure, Path `/`, só no host da API, cerca de 7 dias | Passou, com `SameSite=Lax` | Passou; o motor reporta `SameSite=None` (ver abaixo) |
+| Sem cookie antigo, sem token no armazenamento, cookie invisível ao script | Passou | Passou |
+| Renovação ao recarregar e em recargas seguidas | Passou | Passou |
+| Quatro abas recarregadas juntas | Passou | Passou |
+| Troca de loja em duas abas | Passou | Passou |
+| Logout: 204, cookie some, as outras abas saem | Passou | Passou |
+| Login numa aba tira a outra da tela de login | Passou | Passou |
+| Logout sem conexão: marca de saída pendente, cookie ainda presente | Passou | Passou |
+| De volta à rede, novo login na mesma página: `auth/logout` vai antes de `auth/login`, e a sessão antiga não renova | Passou | Passou |
+| Segunda etapa pela tela: passo sem cookie, código errado mantém o passo, código certo entra | Passou | Passou |
+| Redefinição de senha pelo formulário do link; a janela antiga vai ao login e o cookie antigo recebe 401 | Passou | Passou |
+| Impersonação: faixa do acesso, só `Authorization`, token curto na aba, sair fecha a aba, administrador intacto | Passou | Passou (o motor não mostra o cabeçalho `Cookie` dos pedidos) |
+| Chamada com o cabeçalho do modo a partir de outro site: barrada pelo CORS | Passou | **Não executado** |
+| A mesma chamada a partir de `www.orken.com.br` (irmão, na lista do CORS): 403 `origin_not_allowed`, sessão intacta | Passou | **Não executado** |
+| Subdomínio irmão não grava `__Host-nexo_rt` com `Domain=orken.com.br` | Passou | **Não executado** |
+| Aba parada com o token de acesso vencido renova sozinha | Passou | **Não executado** |
+| Sessão encerrada no servidor: as abas vão ao login com o motivo, sem laço | Passou | **Não executado** |
+
+Os cinco itens não executados no WebKit pararam no mesmo ponto: o WebKit do Playwright no Windows recusou o certificado de sites externos
+(`example.com` e `www.orken.com.br`) com erro de TLS. É limite do motor nesta máquina. Esses itens ficam para o Safari real.
+
+### Falhas desta rodada e a causa de cada uma
+
+Todas foram do roteiro de teste. Cada uma foi repetida com o roteiro corrigido, e passou.
+
+| Falha | Causa | Repetição |
+|---|---|---|
+| Logout sem conexão: a aba ficava em `/workspaces`, sem marca de saída | O roteiro procurava o botão "Sair da conta" na tela de escolha de módulo, que não tem a barra lateral, e ignorava o erro do clique. Nenhum logout era pedido | Clicando na barra lateral de `/dashboard`: passou nos dois motores |
+| `SameSite=None` no WebKit | O servidor envia `Lax` (lido no cabeçalho) e o Chromium guarda `Lax`. Só o WebKit do Playwright no Windows reporta `None` | Atributo registrado como informação nesse motor; o Safari real decide |
+| Impersonação: botão não encontrado | O roteiro abria o link da empresa direto num navegador que só tinha o cookie, e a plataforma cai na tela inicial (observação da seção 3.6) | Entrando pela tela inicial: passou nos dois motores |
+| Chamada a partir de `www` "lida" | O critério esperava bloqueio do CORS. `www.orken.com.br` está na lista do CORS, então a resposta é legível, e ela é a recusa definida no contrato (403) | Conferindo o status e o código: passou no Chromium |
+| Código da segunda etapa recusado no complemento | O roteiro reusou o passo de tempo que o preparo tinha acabado de gastar | Esperando o passo seguinte: passou |
+
+Durante os complementos, o limite de 5 logins por 15 minutos da rota da plataforma segurou o desligamento da verificação em duas etapas
+temporária do administrador do staging por cerca de 20 minutos. Ela foi desligada às 06:12 UTC, conferida no banco.
+
 ## 3. Falhas e o que cada uma é
 
 ### 3.1 Volta do bundle: o HTML do app fica no cache do navegador (falha real, fora do código da sessão)
@@ -231,6 +294,8 @@ O roteiro foi corrigido.
 
 ## 4. DNS do staging
 
+**Concluído em 2026-11-11:** os quatro registros abaixo existem, os dois domínios estão verificados no Railway e têm certificado válido.
+
 Os domínios próprios já estão criados no Railway, no ambiente de staging, com a porta 8080. O DNS de `orken.com.br` fica no GoDaddy
 (`ns57` e `ns58.domaincontrol.com`). O Railway pede dois tipos de registro por domínio:
 
@@ -244,8 +309,8 @@ Sem o TXT, o domínio fica `verified: false`, o certificado não é emitido e o 
 |---|---|---|---|
 | `erp.staging` | CNAME | `px0521nt.up.railway.app` | Criado: responde nos autoritativos, no Google, no Cloudflare e no OpenDNS |
 | `api.erp.staging` | CNAME | `vns3l2lk.up.railway.app` | Criado: responde nos autoritativos, no Google, no Cloudflare e no OpenDNS |
-| `_railway-verify.erp.staging` | TXT | `railway-verify=02e65e60aa8e239aef3a7c402011c4eac17b4de053970633d5d72ff7d57b060c` | **Falta** |
-| `_railway-verify.api.erp.staging` | TXT | `railway-verify=0f9d8c238757af613f20be485634b3e254d8ef3a6c67b62a9236a2bb923cb43d` | **Falta** |
+| `_railway-verify.erp.staging` | TXT | `railway-verify=02e65e60aa8e239aef3a7c402011c4eac17b4de053970633d5d72ff7d57b060c` | Criado em 2026-11-11 |
+| `_railway-verify.api.erp.staging` | TXT | `railway-verify=0f9d8c238757af613f20be485634b3e254d8ef3a6c67b62a9236a2bb923cb43d` | Criado em 2026-11-11 |
 
 Depois que os quatro resolverem e o certificado sair, faça nesta ordem:
 
