@@ -41,7 +41,7 @@ export function ProfessionalHoursDialog({
         workingHoursJson:         json,
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: serviceKeys.professionals() });
+      void qc.invalidateQueries({ queryKey: serviceKeys.professionals() });
       onClose();
     },
   });
