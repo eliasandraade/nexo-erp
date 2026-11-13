@@ -33,9 +33,11 @@ namespace Nexo.Infrastructure.Cache;
 ///   user:blocked:{userId}        → User block flag (no TTL)
 ///   refresh:valid:{jti}          → Valid refresh token data (TTL 7d)
 ///   refresh:blacklist:{jti}      → Revoked refresh token flag (TTL 7d)
-///   refresh:claim:{jti}          → Reserva de uso único da troca de um refresh token (TTL 1 min)
+///   refresh:claim:{jti}          → Reserva de uso único da troca de um refresh token (TTL 2 s)
 ///   refresh:family:{fid}         → Token atual e anterior da família (sessão) e hora da troca (TTL = vida do refresh)
 ///   refresh:family:{fid}:revoked → Família encerrada: logout ou token já usado reapresentado (TTL = vida do refresh)
+///   refresh:budget:ip:{ip}       → Invalid refresh tokens from this address in the current window (RateLimiting:AuthRefresh)
+///   refresh:budget:family:{fid}  → Renewals of this session in the current window (RateLimiting:AuthRefresh)
 /// </summary>
 public class RedisCacheService : ICacheService
 {
@@ -48,6 +50,38 @@ public class RedisCacheService : ICacheService
     // request), so the state must be static to be shared process-wide.
     private static readonly TimeSpan _circuitCooldown = TimeSpan.FromSeconds(10);
     private static long s_circuitResetAtTicks; // UtcNow ticks until which Redis is treated as "down"
+
+    // A count is optional and sits in front of work that does need Redis, so running out of time here only skips it and does
+    // not open the circuit. If it did, one slow count would turn every refresh-token lookup of the process into "no such token"
+    // for the whole cooldown.
+    private static readonly TimeSpan _countWarningInterval = TimeSpan.FromMinutes(1);
+    private static long s_nextCountWarningTicks;
+
+    // One atomic step. The lifetime is set whenever the counter has none, which also heals one left without it.
+    private const string CountInWindowScript = """
+        local count = redis.call('INCR', KEYS[1])
+        local ttl = redis.call('PTTL', KEYS[1])
+        if ttl < 0 then
+          ttl = tonumber(ARGV[1])
+          redis.call('PEXPIRE', KEYS[1], ttl)
+        end
+        return { count, ttl }
+        """;
+
+    // A hold that nobody can leave without a lifetime. One left like that by the old code, a counter with no expiry, gets it here.
+    private const string ClaimScript = """
+        if redis.call('SET', KEYS[1], ARGV[1], 'NX', 'PX', ARGV[2]) then return 1 end
+        if redis.call('PTTL', KEYS[1]) < 0 then redis.call('PEXPIRE', KEYS[1], ARGV[2]) end
+        return 0
+        """;
+
+    // KEYS: the claim, the key spent, then the keys to write. ARGV: the owner, their lifetime, then the values, each at the same position as its key.
+    private const string CommitClaimScript = """
+        if redis.call('GET', KEYS[1]) ~= ARGV[1] or redis.call('EXISTS', KEYS[2]) == 0 then return 0 end
+        for i = 3, #KEYS do redis.call('SET', KEYS[i], ARGV[i], 'PX', ARGV[2]) end
+        redis.call('DEL', KEYS[2])
+        return 1
+        """;
 
     private readonly IConnectionMultiplexer _redis;
     private readonly ILogger<RedisCacheService> _logger;
@@ -172,10 +206,10 @@ public class RedisCacheService : ICacheService
         if (RedisUnavailable) return null;
         try
         {
-            var db = _redis.GetDatabase();
-            var value = await db.StringIncrementAsync(key).WaitAsync(_callTimeout, ct);
-            if (value == 1) await db.KeyExpireAsync(key, window).WaitAsync(_callTimeout, ct);
-            return value;
+            var result = (RedisResult[]?)await _redis.GetDatabase()
+                .ScriptEvaluateAsync(CountInWindowScript, [key], [(long)window.TotalMilliseconds])
+                .WaitAsync(_callTimeout, ct);
+            return (long)result![0];
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
@@ -196,5 +230,71 @@ public class RedisCacheService : ICacheService
         {
             TripCircuit(ex, "SETFLAG", key);
         }
+    }
+
+    public async Task<WindowCount?> CountInWindowAsync(string key, TimeSpan window, CancellationToken ct = default)
+    {
+        if (RedisUnavailable) return null;
+        try
+        {
+            var result = (RedisResult[]?)await _redis.GetDatabase()
+                .ScriptEvaluateAsync(CountInWindowScript, [key], [(long)window.TotalMilliseconds])
+                .WaitAsync(_callTimeout, ct);
+            return new WindowCount((long)result![0], TimeSpan.FromMilliseconds((long)result[1]));
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            WarnCountSkipped(ex, key);
+            return null;
+        }
+    }
+
+    public async Task<bool?> TryClaimAsync(CacheClaim claim, CancellationToken ct = default)
+    {
+        if (RedisUnavailable) return null;
+        try
+        {
+            var taken = await _redis.GetDatabase()
+                .ScriptEvaluateAsync(ClaimScript, [claim.Key], [claim.Owner, (long)claim.Lifetime.TotalMilliseconds])
+                .WaitAsync(_callTimeout, ct);
+            return (long)taken == 1;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            TripCircuit(ex, "CLAIM", claim.Key);
+            return null;
+        }
+    }
+
+    public async Task<bool?> CommitClaimAsync(CacheClaim claim, string spentKey, IReadOnlyList<CacheWrite> writes, TimeSpan lifetime, CancellationToken ct = default)
+    {
+        if (RedisUnavailable) return null;
+        try
+        {
+            RedisKey[] keys = [claim.Key, spentKey, .. writes.Select(w => (RedisKey)w.Key)];
+            RedisValue[] values = [claim.Owner, (long)lifetime.TotalMilliseconds, .. writes.Select(w => (RedisValue)JsonSerializer.Serialize(w.Value, w.Value.GetType(), JsonOptions))];
+            // Longer than the claim lives: a command that ran out of this time finds the claim over when it finally runs, and changes nothing.
+            var done = await _redis.GetDatabase()
+                .ScriptEvaluateAsync(CommitClaimScript, keys, values)
+                .WaitAsync(claim.Lifetime + _callTimeout, ct);
+            return (long)done == 1;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            TripCircuit(ex, "COMMIT", claim.Key);
+            return null;
+        }
+    }
+
+    public bool IsUnavailable => RedisUnavailable;
+
+    /// <summary>A budget that stopped counting is worth knowing about, once a minute at most.</summary>
+    private void WarnCountSkipped(Exception ex, string key)
+    {
+        var now = DateTime.UtcNow.Ticks;
+        var next = Volatile.Read(ref s_nextCountWarningTicks);
+        if (now < next || Interlocked.CompareExchange(ref s_nextCountWarningTicks, now + _countWarningInterval.Ticks, next) != next) return;
+        _logger.LogWarning(ex, "Redis did not answer a count for key '{Key}' in {Milliseconds} ms: this count was skipped (fail-open).",
+            key, _callTimeout.TotalMilliseconds);
     }
 }

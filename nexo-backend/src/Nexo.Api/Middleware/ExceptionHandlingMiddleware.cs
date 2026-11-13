@@ -79,7 +79,17 @@ public class ExceptionHandlingMiddleware
         {
             // Two requests creating the same thing (a duplicate document, module, login…): a conflict, not a bug.
             _logger.LogInformation("Unique constraint hit: {Constraint}.", ((Npgsql.PostgresException)ex.InnerException).ConstraintName);
-            await WriteErrorAsync(ctx, 409, "Já existe um registro com estes dados.", null, "duplicate");
+            // Two requests creating the same login at once: the one that lost hears the same as the check would have said.
+            if (Nexo.Infrastructure.Auth.LoginRegistry.LostTheLogin(ex))
+                await WriteErrorAsync(ctx, 409, "Este login já é usado por outra conta.", null, "login_taken");
+            else
+                await WriteErrorAsync(ctx, 409, "Já existe um registro com estes dados.", null, "duplicate");
+        }
+        catch (BadHttpRequestException ex) when (!ctx.RequestAborted.IsCancellationRequested)
+        {
+            // Kestrel refused what the client sent while MVC read it (over the size limit, cut in the middle), and says with which status. Nothing failed here.
+            _logger.LogInformation("Request refused by the server while reading it: {Status}.", ex.StatusCode);
+            await WriteErrorAsync(ctx, ex.StatusCode, ex.StatusCode == StatusCodes.Status413PayloadTooLarge ? "O corpo da requisição é grande demais." : "Requisição inválida.");
         }
         catch (OperationCanceledException) when (ctx.RequestAborted.IsCancellationRequested)
         {
@@ -132,6 +142,7 @@ public class ExceptionHandlingMiddleware
             code,
         };
 
-        await ctx.Response.WriteAsync(JsonSerializer.Serialize(body, JsonOpts));
+        // Not RequestAborted: a caller that left would turn this error answer into a second, unhandled exception.
+        await ctx.Response.WriteAsync(JsonSerializer.Serialize(body, JsonOpts), CancellationToken.None);
     }
 }

@@ -35,6 +35,8 @@ public sealed class PlatformAuthService
     /// <summary>A second tab refreshing with the token another tab has just rotated is a race, not a theft.</summary>
     public static readonly TimeSpan RotationGrace = TimeSpan.FromSeconds(30);
     public const int RecoveryCodeCount = 8;
+    /// <summary>Codes one challenge takes. After them the challenge is over: the password again, and the count of the account goes on.</summary>
+    public const int MaxCodesPerChallenge = 5;
 
     private readonly NexoDbContext _db;
     private readonly IPasswordHasher _hasher;
@@ -42,10 +44,11 @@ public sealed class PlatformAuthService
     private readonly IMfaSecretProtector _protector;
     private readonly LoginAttemptGuard _attempts;
     private readonly IAuditWriter _audit;
+    private readonly RefreshBudget _budget;
     private readonly TimeSpan _sessionLifetime;
 
     public PlatformAuthService(NexoDbContext db, IPasswordHasher hasher, IJwtTokenService jwt, IMfaSecretProtector protector,
-        LoginAttemptGuard attempts, IAuditWriter audit, IConfiguration config)
+        LoginAttemptGuard attempts, IAuditWriter audit, RefreshBudget budget, IConfiguration config)
     {
         _db = db;
         _hasher = hasher;
@@ -53,6 +56,7 @@ public sealed class PlatformAuthService
         _protector = protector;
         _attempts = attempts;
         _audit = audit;
+        _budget = budget;
         _sessionLifetime = TimeSpan.FromHours(Math.Clamp(config.GetValue("Platform:SessionHours", 12), 1, 24));
     }
 
@@ -80,16 +84,17 @@ public sealed class PlatformAuthService
             await _db.SaveChangesAsync(ct);
             return new PlatformSignIn(null, null, "invalid_credentials", user);
         }
-        await _attempts.ResetAsync(account, ct);
-
         if (user.MfaEnabled)
         {
+            // The wrong-attempt count is NOT reset here (only after the code), as in the tenant sign-in: otherwise entering the
+            // known password again between guesses would allow endless code guessing.
             var challenge = NewToken();
             _db.PlatformSessions.Add(PlatformSession.Start(user.Id, Hash(challenge), user.SecurityStamp, mfaVerified: false,
                 DateTime.UtcNow.Add(ChallengeLifetime), ip, userAgent, pendingMfa: true));
             await _db.SaveChangesAsync(ct);
             return new PlatformSignIn(null, challenge, null, user);
         }
+        await _attempts.ResetAsync(account, ct);
         var tokens = await StartSessionAsync(user, mfaVerified: false, ip, userAgent, ct);
         return new PlatformSignIn(tokens, null, null, user);
     }
@@ -104,6 +109,20 @@ public sealed class PlatformAuthService
         var user = await _db.PlatformUsers.FirstAsync(u => u.Id == pending.PlatformUserId, ct);
         var account = LoginAttemptGuard.ForPlatform(user.Id);
         if (await _attempts.IsLockedAsync(account, ct)) return new PlatformSignIn(null, null, "account_locked", user);
+
+        // One of the codes of this challenge is spent before the code is looked at, in one statement: a burst of guesses on the same
+        // challenge cannot all be checked. When none is left the challenge ends, and the next step is the password again.
+        var mayCheck = await _db.PlatformSessions
+            .Where(s => s.Id == pending.Id && s.PendingMfa && s.RevokedAt == null && s.MfaAttempts < MaxCodesPerChallenge)
+            .ExecuteUpdateAsync(x => x.SetProperty(s => s.MfaAttempts, s => s.MfaAttempts + 1), ct) == 1;
+        if (!mayCheck)
+        {
+            pending.Revoke("mfa_attempts");
+            Audit(AuditActions.PlatformMfaFailed, AuditSeverity.Warning, user, $"Desafio de verificação encerrado por excesso de códigos ({user.Email}).");
+            await _db.SaveChangesAsync(ct);
+            return new PlatformSignIn(null, null, "invalid_challenge", null);
+        }
+
         if (!user.MfaEnabled || !await CheckCodeAsync(user, code, recoveryCode, ct))
         {
             await _attempts.RegisterFailureAsync(account, ct);
@@ -140,26 +159,37 @@ public sealed class PlatformAuthService
     /// <summary>
     /// Rotates the refresh token. The old one stops working at once (conditional update: two concurrent refreshes can't
     /// both win). Presented again within <see cref="RotationGrace"/> → "already rotated" (the other tab won; read the new
-    /// token); later → treated as stolen: the session ends.
+    /// token); later → treated as stolen: the session ends. Same renewal policy as the company sessions (<see cref="RefreshBudget"/>):
+    /// these tokens are opaque, so an unknown one plays the part of a bad signature, and the session is the family. The session
+    /// lives in the database: without Redis the budgets stop counting and the renewal goes on.
     /// </summary>
-    public async Task<(PlatformTokens? Tokens, string? ErrorCode)> RefreshAsync(string refreshToken, CancellationToken ct)
+    public async Task<(PlatformTokens? Tokens, string? ErrorCode, TimeSpan? RetryAfter)> RefreshAsync(string refreshToken, string? clientIp, CancellationToken ct)
     {
         var hash = Hash(refreshToken);
         var now = DateTime.UtcNow;
         var session = await _db.PlatformSessions.FirstOrDefaultAsync(s => !s.PendingMfa && (s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash), ct);
-        if (session is null) return (null, "invalid_refresh");
+        if (session is null)
+        {
+            return clientIp is not null && !string.IsNullOrWhiteSpace(refreshToken) && await _budget.SpendFailureAsync(clientIp, ct) is { } wait
+                ? (null, RefreshErrors.OverBudget, wait)
+                : (null, "invalid_refresh", null);
+        }
         var user = await _db.PlatformUsers.FirstOrDefaultAsync(u => u.Id == session.PlatformUserId, ct);
-        if (user is null || !session.IsActiveAt(now, user.SecurityStamp)) return (null, "session_ended");
+        if (user is null || !session.IsActiveAt(now, user.SecurityStamp)) return (null, "session_ended", null);
 
         if (session.PreviousRefreshTokenHash == hash)
         {
-            if (session.RotatedAt is { } rotated && now - rotated < RotationGrace) return (null, "refresh_already_rotated");
+            if (session.RotatedAt is { } rotated && now - rotated < RotationGrace) return (null, "refresh_already_rotated", RotationGrace - (now - rotated));
             session.Revoke("refresh_reuse");
             Audit(AuditActions.PlatformSessionRevoked, AuditSeverity.Critical, user, "Sessão da plataforma encerrada: refresh token reutilizado (possível roubo).",
                 new { sessionId = session.Id });
             await _db.SaveChangesAsync(ct);
-            return (null, "session_ended");
+            return (null, "session_ended", null);
         }
+
+        // after the reuse check, as in the company sessions: being over budget never hides a reused token
+        if (await _budget.SpendFamilyAsync($"platform:{session.Id}", ct) is { } over)
+            return (null, RefreshErrors.OverBudget, over);
 
         var next = NewToken();
         var rotatedRows = await _db.PlatformSessions
@@ -169,10 +199,10 @@ public sealed class PlatformAuthService
                 .SetProperty(s => s.RefreshTokenHash, Hash(next))
                 .SetProperty(s => s.RotatedAt, now)
                 .SetProperty(s => s.LastUsedAt, now), ct);
-        if (rotatedRows != 1) return (null, "refresh_already_rotated");
+        if (rotatedRows != 1) return (null, "refresh_already_rotated", RotationGrace);
 
         var access = _jwt.GeneratePlatformToken(user, session.Id, session.MfaVerified);
-        return (new PlatformTokens(access.AccessToken, access.ExpiresAt, next, session.ExpiresAt), null);
+        return (new PlatformTokens(access.AccessToken, access.ExpiresAt, next, session.ExpiresAt), null, null);
     }
 
     public async Task LogoutAsync(Guid userId, Guid sessionId, CancellationToken ct)
@@ -182,6 +212,27 @@ public sealed class PlatformAuthService
         session.Revoke("logout");
         var user = await _db.PlatformUsers.FirstAsync(u => u.Id == userId, ct);
         Audit(AuditActions.PlatformLoggedOut, AuditSeverity.Info, user, $"Logout da plataforma ({user.Email}).", new { sessionId });
+        await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>A sign-out with nothing but the refresh token: a tab that just reloaded has no access token yet, and a client giving up holds a spent one.</summary>
+    public async Task LogoutByRefreshTokenAsync(string refreshToken, CancellationToken ct)
+    {
+        var hash = Hash(refreshToken);
+        var session = await _db.PlatformSessions
+            .FirstOrDefaultAsync(s => !s.PendingMfa && (s.RefreshTokenHash == hash || s.PreviousRefreshTokenHash == hash), ct);
+        if (session is null) return;
+        if (session.RefreshTokenHash == hash)
+        {
+            await LogoutAsync(session.PlatformUserId, session.Id, ct);
+            return;
+        }
+        if (session.RevokedAt is not null) return;
+
+        session.Revoke("logout_with_spent_token");
+        var user = await _db.PlatformUsers.FirstAsync(u => u.Id == session.PlatformUserId, ct);
+        Audit(AuditActions.PlatformSessionRevoked, AuditSeverity.Warning, user, "Sessão da plataforma encerrada com um refresh token já trocado: pode ser uma corrida ou uma cópia do token.",
+            new { sessionId = session.Id, reason = "logout_with_spent_token" });
         await _db.SaveChangesAsync(ct);
     }
 
@@ -244,8 +295,7 @@ public sealed class PlatformAuthService
     {
         var user = await LoadAsync(userId, ct);
         if (user.MfaEnabled) throw new DomainException("A verificação em duas etapas já está ativa.", "mfa_already_enabled");
-        if (string.IsNullOrEmpty(password) || !_hasher.Verify(password, user.PasswordHash))
-            throw new DomainException("Senha incorreta.", "invalid_password");
+        await ProvePasswordAsync(user, password, ct);
         var secret = Totp.NewSecret();
         user.StartMfaSetup(_protector.Protect(secret, user.Id));
         await _db.SaveChangesAsync(ct);
@@ -272,9 +322,12 @@ public sealed class PlatformAuthService
     {
         var user = await LoadAsync(userId, ct);
         if (!user.MfaEnabled) return;
-        if (string.IsNullOrEmpty(password) || !_hasher.Verify(password, user.PasswordHash))
-            throw new DomainException("Senha incorreta.", "invalid_password");
-        if (!await CheckCodeAsync(user, code, recoveryCode, ct)) throw new DomainException("Código inválido.", "invalid_code");
+        await ProvePasswordAsync(user, password, ct);
+        if (!await CheckCodeAsync(user, code, recoveryCode, ct))
+        {
+            await _attempts.RegisterFailureAsync(LoginAttemptGuard.ForPlatform(user.Id), ct);
+            throw new DomainException("Código inválido.", "invalid_code");
+        }
         user.DisableMfa();
         Audit(AuditActions.PlatformMfaDisabled, AuditSeverity.Critical, user, $"Verificação em duas etapas desativada por {user.Email}; todas as sessões encerradas.");
         await _db.SaveChangesAsync(ct);
@@ -290,6 +343,22 @@ public sealed class PlatformAuthService
         Audit(AuditActions.PlatformMfaDisabled, AuditSeverity.Critical, user, $"Verificação em duas etapas de {user.Email} desativada por {actorEmail}.",
             new { actorId }, actorId, actorEmail);
         await _db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// The password again, inside a session. Wrong ones count on the same lock as the sign-in, so a session left open is not a
+    /// place to guess the password without limit.
+    /// </summary>
+    private async Task ProvePasswordAsync(PlatformUser user, string? password, CancellationToken ct)
+    {
+        var account = LoginAttemptGuard.ForPlatform(user.Id);
+        if (await _attempts.IsLockedAsync(account, ct))
+            throw new DomainException("Muitas tentativas. Tente de novo em 15 minutos.", "account_locked");
+        if (string.IsNullOrEmpty(password) || !_hasher.Verify(password, user.PasswordHash))
+        {
+            await _attempts.RegisterFailureAsync(account, ct);
+            throw new DomainException("Senha incorreta.", "invalid_password");
+        }
     }
 
     private async Task<bool> CheckCodeAsync(PlatformUser user, string? code, string? recoveryCode, CancellationToken ct)

@@ -2,8 +2,10 @@ using FluentAssertions;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Primitives;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Nexo.Application.Common.Interfaces;
@@ -11,6 +13,8 @@ using Nexo.Application.Integrations.Contracts;
 using Nexo.Application.Integrations.DTOs;
 using Nexo.Application.Integrations.Options;
 using Nexo.Api.Controllers.Integrations;
+using Nexo.Api.Uploads;
+using Nexo.Infrastructure.Modules.Build;
 using Xunit;
 
 namespace Nexo.UnitTests.Integrations;
@@ -55,6 +59,7 @@ public class StorageControllerTests
             flags,
             opts,
             tenant,
+            Admission(),
             NullLogger<StorageController>.Instance)
         {
             ControllerContext = new ControllerContext
@@ -78,11 +83,30 @@ public class StorageControllerTests
         file.ContentType.Returns(contentType);
         file.Length.Returns(size);
         file.FileName.Returns(fileName);
+        file.Name.Returns("file");
         var bytes = new byte[size > 0 ? (int)size : 0];
         var signature = Signature(contentType);
         if (bytes.Length >= signature.Length) signature.CopyTo(bytes, 0);
         file.OpenReadStream().Returns(_ => new MemoryStream(bytes));
         return file;
+    }
+
+    /// <summary>In-flight bounds are exercised on a real host (Storage/UploadConcurrencyTests); these tests have no response to release a slot.</summary>
+    private static UploadAdmission Admission()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Uploads:InFlight:Enabled"] = "false" })
+            .Build();
+        return new UploadAdmission(config, new BuildTwinOptions(config));
+    }
+
+    /// <summary>Calls the action with <paramref name="file"/> as the request's already-read form.</summary>
+    private static Task<IActionResult> UploadAsync(Sut sut, IFormFile file, string context, CancellationToken ct)
+    {
+        var request = sut.Controller.ControllerContext.HttpContext.Request;
+        request.ContentType = "multipart/form-data; boundary=test";
+        request.Form = new FormCollection(new Dictionary<string, StringValues>(), new FormFileCollection { file });
+        return sut.Controller.Upload(context, ct);
     }
 
     // ── Upload tests ──────────────────────────────────────────────────────────
@@ -93,7 +117,7 @@ public class StorageControllerTests
         var sut  = Build(storageEnabled: false);
         var file = MakeFile();
 
-        var result = await sut.Controller.Upload(file, "product-image", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "product-image", CancellationToken.None);
 
         result.Should().BeOfType<NotFoundObjectResult>();
         await sut.Provider.DidNotReceive().UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>());
@@ -117,7 +141,7 @@ public class StorageControllerTests
         var sut  = Build();
         var file = MakeFile();
 
-        var result = await sut.Controller.Upload(file, "invalid-context", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "invalid-context", CancellationToken.None);
 
         result.Should().BeOfType<BadRequestObjectResult>();
     }
@@ -128,21 +152,22 @@ public class StorageControllerTests
         var sut  = Build();
         var file = MakeFile(contentType: "application/zip", fileName: "archive.zip");
 
-        var result = await sut.Controller.Upload(file, "product-image", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "product-image", CancellationToken.None);
 
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
-    public async Task Upload_FileTooLarge_ReturnsBadRequest()
+    public async Task Upload_FileTooLarge_Returns413()
     {
         var sut  = Build(maxFileSizeMb: 1);
         // 2 MB — exceeds the 1 MB limit
         var file = MakeFile(size: 2 * 1024 * 1024);
 
-        var result = await sut.Controller.Upload(file, "product-image", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "product-image", CancellationToken.None);
 
-        result.Should().BeOfType<BadRequestObjectResult>();
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        await sut.Provider.DidNotReceive().UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -151,7 +176,7 @@ public class StorageControllerTests
         var sut  = Build();
         var file = MakeFile(size: 0);
 
-        var result = await sut.Controller.Upload(file, "product-image", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "product-image", CancellationToken.None);
 
         result.Should().BeOfType<BadRequestObjectResult>();
     }
@@ -166,7 +191,7 @@ public class StorageControllerTests
            .UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>())
            .Returns(new StorageUploadResult("tenants/test/products/abc.jpg", "https://cdn.example.com/abc.jpg"));
 
-        var result = await sut.Controller.Upload(file, "product-image", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "product-image", CancellationToken.None);
 
         var ok = result.Should().BeOfType<OkObjectResult>().Subject;
         ok.Value.Should().BeEquivalentTo(new
@@ -186,7 +211,7 @@ public class StorageControllerTests
            .UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>())
            .ThrowsAsync(new Exception("Storage unavailable"));
 
-        var result = await sut.Controller.Upload(file, "product-image", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "product-image", CancellationToken.None);
 
         var status = result.Should().BeOfType<ObjectResult>().Subject;
         status.StatusCode.Should().Be(503);
@@ -204,7 +229,7 @@ public class StorageControllerTests
            .UploadAsync(Arg.Do<StorageUploadRequest>(r => captured = r), Arg.Any<CancellationToken>())
            .Returns(new StorageUploadResult("key", "https://cdn.example.com/key"));
 
-        await sut.Controller.Upload(file, "product-image", CancellationToken.None);
+        await UploadAsync(sut, file, "product-image", CancellationToken.None);
 
         captured.Should().NotBeNull();
         captured!.ObjectKey.Should().Contain(TenantId.ToString());
@@ -224,7 +249,7 @@ public class StorageControllerTests
            .UploadAsync(Arg.Do<StorageUploadRequest>(r => captured = r), Arg.Any<CancellationToken>())
            .Returns(new StorageUploadResult("key", "https://cdn.example.com/key"));
 
-        var result = await sut.Controller.Upload(file, "build-daily-log", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "build-daily-log", CancellationToken.None);
 
         result.Should().BeOfType<OkObjectResult>();
         captured.Should().NotBeNull();
@@ -243,7 +268,7 @@ public class StorageControllerTests
            .UploadAsync(Arg.Do<StorageUploadRequest>(r => captured = r), Arg.Any<CancellationToken>())
            .Returns(new StorageUploadResult("key", "https://cdn.example.com/key"));
 
-        var result = await sut.Controller.Upload(file, "service-record", CancellationToken.None);
+        var result = await UploadAsync(sut, file, "service-record", CancellationToken.None);
 
         result.Should().BeOfType<OkObjectResult>();
         captured.Should().NotBeNull();
@@ -262,7 +287,7 @@ public class StorageControllerTests
            .UploadAsync(Arg.Do<StorageUploadRequest>(r => captured = r), Arg.Any<CancellationToken>())
            .Returns(new StorageUploadResult("key", "https://cdn.example.com/key"));
 
-        await sut.Controller.Upload(file, "product-image", CancellationToken.None);
+        await UploadAsync(sut, file, "product-image", CancellationToken.None);
 
         captured.Should().NotBeNull();
         captured!.ContentType.Should().Be("image/webp");
@@ -306,7 +331,7 @@ public class StorageControllerTests
     {
         var sut = Build(privateStorage: false);
 
-        var result = await sut.Controller.Upload(MakeFile(), context, CancellationToken.None);
+        var result = await UploadAsync(sut, MakeFile(), context, CancellationToken.None);
 
         var refused = result.Should().BeOfType<ObjectResult>().Subject;
         refused.StatusCode.Should().Be(503);
@@ -324,7 +349,7 @@ public class StorageControllerTests
         sut.Provider.UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>())
             .Returns(c => new StorageUploadResult(c.Arg<StorageUploadRequest>().ObjectKey, "https://assets.example/x"));
 
-        var result = await sut.Controller.Upload(MakeFile(), context, CancellationToken.None);
+        var result = await UploadAsync(sut, MakeFile(), context, CancellationToken.None);
 
         result.Should().BeOfType<OkObjectResult>();
         await sut.Provider.Received(1).UploadAsync(
@@ -360,7 +385,7 @@ public class StorageControllerTests
            .UploadAsync(Arg.Do<StorageUploadRequest>(r => captured = r), Arg.Any<CancellationToken>())
            .Returns(c => new StorageUploadResult(c.Arg<StorageUploadRequest>().ObjectKey, string.Empty));
 
-        var result = await sut.Controller.Upload(MakeFile(contentType: "application/pdf", fileName: "exame.pdf"), "service-record", CancellationToken.None);
+        var result = await UploadAsync(sut, MakeFile(contentType: "application/pdf", fileName: "exame.pdf"), "service-record", CancellationToken.None);
 
         captured!.ObjectKey.Should().StartWith($"private/tenants/{TenantId}/service/records/");
         var body = result.Should().BeOfType<OkObjectResult>().Subject.Value!;
@@ -375,10 +400,10 @@ public class StorageControllerTests
         sut.Provider.UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>())
            .Returns(new StorageUploadResult("k", "https://cdn/k"));
 
-        (await sut.Controller.Upload(MakeFile(), "product-image", CancellationToken.None)).Should().BeOfType<OkObjectResult>();
-        (await sut.Controller.Upload(MakeFile(), "service-record", CancellationToken.None)).Should().BeOfType<ForbidResult>();
-        (await sut.Controller.Upload(MakeFile(), "build-daily-log", CancellationToken.None)).Should().BeOfType<ForbidResult>();
-        (await sut.Controller.Upload(MakeFile(), "restaurant-logo", CancellationToken.None)).Should().BeOfType<ForbidResult>();
+        (await UploadAsync(sut, MakeFile(), "product-image", CancellationToken.None)).Should().BeOfType<OkObjectResult>();
+        (await UploadAsync(sut, MakeFile(), "service-record", CancellationToken.None)).Should().BeOfType<ForbidResult>();
+        (await UploadAsync(sut, MakeFile(), "build-daily-log", CancellationToken.None)).Should().BeOfType<ForbidResult>();
+        (await UploadAsync(sut, MakeFile(), "restaurant-logo", CancellationToken.None)).Should().BeOfType<ForbidResult>();
     }
 
     [Fact]
@@ -389,9 +414,10 @@ public class StorageControllerTests
         zip.ContentType.Returns("image/jpeg");
         zip.Length.Returns(100);
         zip.FileName.Returns("foto.jpg");
+        zip.Name.Returns("file");
         zip.OpenReadStream().Returns(_ => new MemoryStream([0x50, 0x4B, 0x03, 0x04, 0, 0, 0, 0, 0, 0, 0, 0]));
 
-        (await sut.Controller.Upload(zip, "product-image", CancellationToken.None)).Should().BeOfType<BadRequestObjectResult>();
+        (await UploadAsync(sut, zip, "product-image", CancellationToken.None)).Should().BeOfType<BadRequestObjectResult>();
         await sut.Provider.DidNotReceive().UploadAsync(Arg.Any<StorageUploadRequest>(), Arg.Any<CancellationToken>());
     }
 

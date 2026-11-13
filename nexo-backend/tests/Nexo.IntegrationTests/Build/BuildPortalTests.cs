@@ -314,6 +314,36 @@ public class BuildPortalTests
     }
 
     [Fact]
+    public async Task A_portal_with_no_password_opens_no_session()
+    {
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var (company, project) = await PublishedPortalAsync(admin, await ProjectAsync(admin));
+
+        var refused = await Json(await Anonymous().PostAsJsonAsync($"/api/public/build/{company}/{project}/session", new { password = "any-text" }), HttpStatusCode.BadRequest);
+
+        refused.GetProperty("code").GetString().Should().Be("portal_password_not_required");
+        refused.TryGetProperty("token", out _).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(10)]      // no session has it
+    [InlineData(4096)]    // longer than any session token: refused before it is even looked up
+    public async Task A_value_that_cannot_be_a_session_is_refused_as_an_ended_session_and_shows_nothing(int length)
+    {
+        var token = new string('x', length);
+        var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var (company, project) = await PublishedPortalAsync(admin, await ProjectAsync(admin), access: "Password", password: PortalPassword());
+        var client = Anonymous();
+        client.DefaultRequestHeaders.Add(SessionHeader, token);
+
+        var refused = await Json(await client.GetAsync($"/api/public/build/{company}/{project}"), HttpStatusCode.Unauthorized);
+
+        refused.GetProperty("code").GetString().Should().Be("portal_session_expired");
+        refused.TryGetProperty("project", out _).Should().BeFalse();
+        refused.TryGetProperty("stages", out _).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Wrong_passwords_lock_only_the_guessing_client_not_the_real_one()
     {
         var admin = await AuthClientFactory.LoginAsAdminAsync(_factory);

@@ -71,6 +71,30 @@ for host in "$WWW" "$ERP"; do
     if [[ "${headers,,}" == *"${h,,}"* ]]; then echo "ok   $host / redirect sends $h"; else echo "FAIL $host / redirect without $h"; fail=1; fi
   done
 done
+
+# Content-Security-Policy (docs/security/csp.md). The enforced header stays exactly what it was: the full policy is report-only,
+# it cannot block anything, and it reports to the production API when this server gets no environment of its own.
+for host in "$WWW" "$ERP"; do
+  for path in "/login" "/agendar/barbearia" "/solutie/shoppingeusebio"; do
+    headers=$(curl -s -o /dev/null -D - -H "Host: $host" "$BASE$path" | tr -d '\r')
+    enforced=$(grep -i '^content-security-policy:' <<<"$headers")
+    if [[ "${enforced,,}" == "content-security-policy: frame-ancestors 'none'" ]]; then
+      echo "ok   $host $path enforces only frame-ancestors"
+    else
+      echo "FAIL $host $path enforced policy: ${enforced:-(none)}"
+      fail=1
+    fi
+    report_only=$(grep -i '^content-security-policy-report-only:' <<<"$headers")
+    for part in "default-src 'none'" "script-src 'self' 'wasm-unsafe-eval';" "object-src blob:;" "frame-src blob:;" "worker-src 'self';" "frame-ancestors 'none'" \
+      "connect-src 'self' blob: https://api.erp.orken.com.br wss://api.erp.orken.com.br " "report-uri https://api.erp.orken.com.br/api/csp-reports"; do
+      if [[ "$report_only" == *"$part"* ]]; then echo "ok   $host $path report-only has $part"; else echo "FAIL $host $path report-only without $part"; fail=1; fi
+    done
+    for banned in "unsafe-eval'" "script-src 'unsafe-inline'" "script-src 'self' 'unsafe-inline'" " * " " https: "; do
+      if [[ "${report_only//wasm-unsafe-eval/}" == *"$banned"* ]]; then echo "FAIL $host $path report-only has $banned"; fail=1; fi
+    done
+  done
+done
+
 asset=$(curl -s -H "Host: $ERP" "$BASE/login" | grep -oE '/assets/[^"]+\.js' | head -n 1)
 cache=$(curl -s -o /dev/null -D - -H "Host: $WWW" "$BASE$asset" | tr -d '\r')
 if [[ -n "$asset" && "${cache,,}" == *"cache-control: public, max-age=31536000, immutable"* ]]; then

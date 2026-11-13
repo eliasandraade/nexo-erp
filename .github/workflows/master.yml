@@ -29,6 +29,9 @@ jobs:
   auth-e2e:
     uses: ./.github/workflows/auth-e2e.yml
 
+  csp-e2e:
+    uses: ./.github/workflows/csp-e2e.yml
+
   sonarcloud:
     uses: ./.github/workflows/sonarcloud.yml
     secrets:
@@ -36,7 +39,7 @@ jobs:
 
   master-gate:
     if: always()
-    needs: [backend, frontend, auth-e2e, sonarcloud]
+    needs: [backend, frontend, auth-e2e, csp-e2e, sonarcloud]
     runs-on: ubuntu-latest
     steps:
       - name: Verdict
@@ -44,7 +47,8 @@ jobs:
           BACKEND: ${{ needs.backend.result }}
           FRONTEND: ${{ needs.frontend.result }}
           AUTH_E2E: ${{ needs.auth-e2e.result }}
+          CSP_E2E: ${{ needs.csp-e2e.result }}
           SONAR: ${{ needs.sonarcloud.result }}
         run: |
-          echo "backend=$BACKEND frontend=$FRONTEND auth-e2e=$AUTH_E2E sonarcloud=$SONAR"
-          [ "$BACKEND" = "success" ] && [ "$FRONTEND" = "success" ] && [ "$AUTH_E2E" = "success" ] && [ "$SONAR" = "success" ]
+          echo "backend=$BACKEND frontend=$FRONTEND auth-e2e=$AUTH_E2E csp-e2e=$CSP_E2E sonarcloud=$SONAR"
+          [ "$BACKEND" = "success" ] && [ "$FRONTEND" = "success" ] && [ "$AUTH_E2E" = "success" ] && [ "$CSP_E2E" = "success" ] && [ "$SONAR" = "success" ]

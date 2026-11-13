@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Trash2, ImagePlus, ImageOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { uploadErrorMessage } from "@/services/upload-error";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,6 +43,9 @@ import { useProducts } from "@/modules/products/hooks/use-products";
 import type { PrepStepDto, RecipeCardDto } from "../types/recipe-card.types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** The API's limit for this image. */
+const RECIPE_IMAGE_MAX_MB = 5;
 
 function fmt(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -206,13 +211,17 @@ function RecipeCardEditor({ card, productId }: EditorProps) {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    uploadImageMut.mutate(file, {
-      onSuccess: () => toast.success("Imagem atualizada!"),
-      onError:   () => toast.error("Erro ao enviar imagem."),
-    });
     // reset input so the same file can be re-selected
     e.target.value = "";
+    if (!file) return;
+    if (file.size > RECIPE_IMAGE_MAX_MB * 1024 * 1024) {
+      toast.error(`Imagem muito grande. Máximo: ${RECIPE_IMAGE_MAX_MB}MB.`);
+      return;
+    }
+    uploadImageMut.mutate(file, {
+      onSuccess: () => toast.success("Imagem atualizada!"),
+      onError:   (err) => toast.error(uploadErrorMessage(err, "Erro ao enviar imagem.")),
+    });
   };
 
   return (

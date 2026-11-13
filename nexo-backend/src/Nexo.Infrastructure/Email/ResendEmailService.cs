@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -108,6 +109,9 @@ public class ResendEmailService : IEmailService
 
     private static string BuildVerificationHtml(string name, string verificationUrl)
     {
+        // Typed in an anonymous form, for any address, and sent from the company's own domain: text, never markup.
+        name = WebUtility.HtmlEncode(name);
+        verificationUrl = WebUtility.HtmlEncode(verificationUrl);
         return $"""
         <!DOCTYPE html>
         <html lang="pt-BR">

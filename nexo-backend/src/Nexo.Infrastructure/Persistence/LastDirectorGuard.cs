@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Nexo.Application.Common.Interfaces;
 using Nexo.Domain.Entities;
 using Nexo.Domain.Enums;
 using Nexo.Domain.Exceptions;
@@ -17,6 +18,9 @@ namespace Nexo.Infrastructure.Persistence;
 /// can only raise the count, and a count that has not seen it yet errs on the safe side.
 ///
 /// Only what removes a director is refused. A company already at zero can still be changed, otherwise it could not be repaired.
+///
+/// A refusal goes to the security audit on its own connection (<see cref="ILastDirectorRefusalAudit"/>), since the transaction
+/// rolls back. Nothing here waits for that entry, so the lock is never held for it.
 /// </summary>
 internal static class LastDirectorGuard
 {
@@ -38,9 +42,22 @@ internal static class LastDirectorGuard
             var arriving = ofTheCompany.Where(Arrives).Select(e => e.Entity.Id);
 
             if (active.Exists(leaving.Contains) && !active.Except(leaving).Concat(arriving).Any())
+            {
+                db.LastDirectorRefusals?.Record(tenantId, LastDirectorRefusalSources.DataContext, AttemptsOn(ofTheCompany, active, leaving));
                 throw new LastDirectorException();
+            }
         }
     }
+
+    /// <summary>The directors this save was taking out, as the save had them: the attempt, not what the database still says.</summary>
+    private static List<LastDirectorAttempt> AttemptsOn(List<EntityEntry<User>> entries, List<Guid> active, HashSet<Guid> leaving)
+        => entries.Where(e => leaving.Contains(e.Entity.Id) && active.Contains(e.Entity.Id))
+            .Select(e => new LastDirectorAttempt(
+                e.Entity.Id,
+                e.Entity.Role.ToString().ToLowerInvariant(),
+                e.Entity.Status.ToString().ToLowerInvariant(),
+                e.State == EntityState.Deleted))
+            .ToList();
 
     /// <summary>
     /// Takes the company's lock, for as long as the transaction lasts. The wait for it is bounded, so a stalled change cannot

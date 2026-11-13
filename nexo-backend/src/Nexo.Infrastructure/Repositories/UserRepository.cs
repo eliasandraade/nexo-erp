@@ -12,7 +12,8 @@ namespace Nexo.Infrastructure.Repositories;
 ///
 /// Exception: GetByLoginAsync and GetByEmailAsync bypass the filter because login is a
 /// cross-tenant operation — the caller provides credentials, not a tenant identity, and
-/// the request arrives before any tenant context is established.
+/// the request arrives before any tenant context is established. LoginExistsAsync bypasses it
+/// for the same reason: a login is unique across every company.
 /// </summary>
 public class UserRepository : IUserRepository
 {
@@ -53,8 +54,10 @@ public class UserRepository : IUserRepository
         => await _context.Users.IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == email, ct);
 
-    public async Task<bool> LoginExistsAsync(string login, CancellationToken ct = default)
-        => await _context.Users.AnyAsync(u => u.Login == login, ct);
+    // Not scoped to the company: GetByLoginAsync above is not either, and a login two companies could both
+    // create would make sign-in pick one of them.
+    public Task<bool> LoginExistsAsync(string login, CancellationToken ct = default)
+        => Nexo.Infrastructure.Auth.LoginRegistry.IsTakenAsync(_context, login, ct);
 
     public async Task<bool> EmailExistsAsync(string email, CancellationToken ct = default)
         => await _context.Users.AnyAsync(u => u.Email == email, ct);

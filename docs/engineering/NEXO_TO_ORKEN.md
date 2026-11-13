@@ -22,7 +22,7 @@ Regra usada: corrigir tudo o que alguém vê; manter o que é interno quando ren
 | Namespaces e projetos .NET | `Nexo.Api`, `Nexo.Domain`… (~700 arquivos) | ninguém fora do time vê; o nome não aparece em resposta nem em tela | renomear projetos, soluções, pipelines e referências de uma vez; risco de quebrar build e histórico sem ganho ao cliente |
 | Pastas do repositório | `nexo-backend/`, `nexo-main/` | caminhos usados pela Railway, pelo CI e pelos Dockerfiles | reconfigurar serviços na Railway (ação fora do código) |
 | Banco de dados | schema `nexo`, banco/usuário locais `nexo` | o schema está em todas as migrações e tabelas de produção | migração que move todas as tabelas de schema — destrutiva no sentido operacional, sem benefício |
-| Cookies de sessão | `nexo_access`, `nexo_refresh` | invisíveis na tela | renomear desloga todo mundo; exige período de transição lendo os dois nomes |
+| Cookie de sessão | `__Host-nexo_rt` (`nexo_access` e `nexo_refresh` não são mais usados) | invisível na tela | renomear desloga todo mundo; exige período de transição lendo os dois nomes |
 | Emissor e público do token (JWT) | `nexo-api`, `nexo-frontend`, `nexo-platform`, `nexo-refresh` | invisíveis; validados em cada requisição | trocar invalida todos os tokens emitidos (todos saem da conta) e mexe em configuração/segredos da implantação |
 | Chaves do navegador (localStorage) | `nexo:session`, `nexo:access_token`, `nexo:refresh_token`, `nexo:impersonate`, `nexo:onboarding`, `nexo:pending_email`, `nexo:setup-dismissed` | invisíveis | trocar desloga quem está com o app aberto e esquece preferências |
 | Política de CORS | `NexoFrontend` | nome interno da política | nenhum benefício |

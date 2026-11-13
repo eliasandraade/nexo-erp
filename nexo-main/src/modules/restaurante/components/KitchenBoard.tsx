@@ -8,10 +8,12 @@ const COLUMNS: { status: KitchenItem["status"]; label: string; empty: string }[]
 ];
 
 export function KitchenBoard({
-  items, storeId,
+  items, storeId, readOnly = false,
 }: {
   items: KitchenItem[];
   storeId: string;
+  /** The cards stay on screen, without the action the server would refuse. */
+  readOnly?: boolean;
 }) {
   return (
     <div className="grid grid-cols-3 gap-4 h-full overflow-hidden">
@@ -33,7 +35,7 @@ export function KitchenBoard({
               </p>
             ) : (
               col.map((item) => (
-                <KitchenCard key={item.itemId} item={item} storeId={storeId} />
+                <KitchenCard key={item.itemId} item={item} storeId={storeId} readOnly={readOnly} />
               ))
             )}
           </div>

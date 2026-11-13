@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Features.Auth;
 using Nexo.Domain.Entities;
+using Nexo.Domain.Enums;
 using Nexo.Infrastructure.Persistence;
 using Nexo.IntegrationTests.Common;
 using Nexo.IntegrationTests.Helpers;
@@ -306,6 +307,311 @@ public sealed class PlatformSecurityTests : IClassFixture<TestWebApplicationFact
         var actions = await scope.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
             .Where(r => r.EntityId == noteId.ToString()).Select(r => r.ActionType).ToListAsync();
         actions.Should().Contain(["platform_note_created", "platform_note_pinned", "platform_note_deleted"]);
+    }
+
+    // ── Refresh token reused, sign-out and second step, on the platform routes ───
+
+    private async Task<Guid> IdOfAsync(string email)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<NexoDbContext>().PlatformUsers
+            .Where(u => u.Email == email).Select(u => u.Id).SingleAsync();
+    }
+
+    private async Task<(byte[] Secret, List<string> Codes)> TurnTwoStepOnAsync(string email, string password)
+    {
+        var client = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+        var secret = FromBase32((await Json(await client.PostAsJsonAsync("/api/platform/auth/mfa/setup", new { password }))).GetProperty("secret").GetString()!);
+        var codes = (await Json(await client.PostAsJsonAsync("/api/platform/auth/mfa/enable", new { code = Totp.Code(secret, Totp.StepAt(DateTime.UtcNow)) })))
+            .GetProperty("recoveryCodes").EnumerateArray().Select(x => x.GetString()!).ToList();
+        return (secret, codes);
+    }
+
+    private async Task<string> ChallengeOfAsync(string email, string password)
+        => (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("mfaChallenge").GetString()!;
+
+    [Fact]
+    public async Task A_refresh_token_used_again_after_the_grace_ends_the_session_and_is_recorded()
+    {
+        var (email, password) = await NewPlatformUserAsync("support");
+        var first = (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("refreshToken").GetString()!;
+        var rotated = await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = first }));
+        var next = rotated.GetProperty("refreshToken").GetString()!;
+        var signedIn = Bearer(_factory.CreateApiClient(), rotated.GetProperty("accessToken").GetString()!);
+        var userId = await IdOfAsync(email);
+
+        // The grace is for another tab of the same person: past it, the old token in someone's hands is a theft.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var past = DateTime.UtcNow.AddHours(-1);
+            (await scope.ServiceProvider.GetRequiredService<NexoDbContext>().PlatformSessions
+                .Where(s => s.PlatformUserId == userId)
+                .ExecuteUpdateAsync(set => set.SetProperty(s => s.RotatedAt, past))).Should().Be(1);
+        }
+
+        (await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = first }), HttpStatusCode.Unauthorized))
+            .GetProperty("code").GetString().Should().Be("session_ended");
+
+        (await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = next }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the session ended for whoever holds the newer token too");
+        (await signedIn.GetAsync("/api/platform/stats")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var check = _factory.Services.CreateScope();
+        var actions = await check.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
+            .Where(r => r.ActorName == email).Select(r => r.ActionType).ToListAsync();
+        actions.Should().Contain("platform_session_revoked");
+    }
+
+    [Fact]
+    public async Task The_platform_refresh_route_answers_each_refusal_with_its_code()
+    {
+        var (email, password) = await NewPlatformUserAsync("support");
+        var client = _factory.CreateApiClient();
+
+        (await Json(await client.PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = "p.never-issued" }), HttpStatusCode.Unauthorized))
+            .GetProperty("code").GetString().Should().Be("invalid_refresh");
+
+        var first = (await Json(await Login(client, email, password))).GetProperty("refreshToken").GetString()!;
+        (await client.PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = first })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await Json(await client.PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = first }), HttpStatusCode.Conflict))
+            .GetProperty("code").GetString().Should().Be("refresh_already_rotated");
+    }
+
+    [Fact]
+    public async Task Signing_out_on_the_platform_route_ends_the_session_at_once()
+    {
+        var (email, password) = await NewPlatformUserAsync("support");
+        var login = await Json(await Login(_factory.CreateApiClient(), email, password));
+        var platform = Bearer(_factory.CreateApiClient(), login.GetProperty("accessToken").GetString()!);
+        (await platform.GetAsync("/api/platform/stats")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await platform.PostAsync("/api/platform/auth/logout", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await platform.GetAsync("/api/platform/stats")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/refresh", new { refreshToken = login.GetProperty("refreshToken").GetString() }))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Turning_two_step_off_refuses_a_wrong_password_and_takes_a_recovery_code_in_the_code_field()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var (secret, codes) = await TurnTwoStepOnAsync(email, password);
+        var verified = await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify",
+            new { mfaChallenge = await ChallengeOfAsync(email, password), code = Totp.Code(secret, Totp.StepAt(DateTime.UtcNow) + 1) }));
+        var signedIn = Bearer(_factory.CreateApiClient(), verified.GetProperty("accessToken").GetString()!);
+
+        (await Json(await signedIn.PostAsJsonAsync("/api/platform/auth/mfa/disable", new { password = "wrong", code = codes[0] }), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("invalid_password");
+        (await Login(_factory.CreateApiClient(), email, password)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ChallengeOfAsync(email, password)).Should().NotBeNullOrEmpty("it stays on, and the recovery code was not spent");
+
+        (await signedIn.PostAsJsonAsync("/api/platform/auth/mfa/disable", new { password, code = codes[0] })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await Json(await Login(_factory.CreateApiClient(), email, password))).TryGetProperty("mfaChallenge", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Another_administrator_turns_two_step_off_for_a_colleague_who_lost_the_phone()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        await TurnTwoStepOnAsync(email, password);
+        await ChallengeOfAsync(email, password);   // on: the password alone is not enough now
+        var (adminEmail, adminPassword) = await NewPlatformUserAsync();
+        var admin = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), adminEmail, adminPassword))).GetProperty("accessToken").GetString()!);
+        var targetId = await IdOfAsync(email);
+
+        (await admin.PostAsync($"/api/platform/auth/users/{targetId}/mfa/reset", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString().Should().NotBeNullOrEmpty();
+        using var scope = _factory.Services.CreateScope();
+        var records = await scope.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
+            .Where(r => r.EntityId == targetId.ToString() && r.ActionType == "platform_mfa_disabled").ToListAsync();
+        var record = records.Should().ContainSingle().Subject;
+        record.ActorName.Should().Be(adminEmail, "the record names who turned it off, not the person it was done to");
+        record.Description.Should().Contain($"por {adminEmail}");
+    }
+
+    [Theory]
+    [InlineData("/api/platform/auth/mfa/verify", "mfaChallenge")]
+    [InlineData("/api/auth/mfa/verify", "challenge")]
+    public async Task A_second_step_with_a_challenge_nobody_issued_is_refused(string route, string field)
+    {
+        var body = new Dictionary<string, string> { [field] = "p.never-issued", ["code"] = "123456" };
+
+        (await Json(await _factory.CreateApiClient().PostAsJsonAsync(route, body), HttpStatusCode.Unauthorized))
+            .GetProperty("code").GetString().Should().Be("invalid_challenge");
+    }
+
+    [Theory]
+    [InlineData("/api/platform/auth/mfa/verify", "mfaChallenge")]
+    [InlineData("/api/auth/mfa/verify", "challenge")]
+    public async Task Too_many_wrong_codes_lock_the_platform_second_step(string route, string field)
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        await TurnTwoStepOnAsync(email, password);
+        Dictionary<string, string> wrong = new();
+
+        // A challenge takes a few codes, so the password is entered again along the way: that must not start the count over.
+        for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
+        {
+            if (i % (Nexo.Infrastructure.Auth.PlatformAuthService.MaxCodesPerChallenge - 1) == 0)
+                wrong = new Dictionary<string, string> { [field] = await ChallengeOfAsync(email, password), ["code"] = "000000" };
+            (await Json(await _factory.CreateApiClient().PostAsJsonAsync(route, wrong), HttpStatusCode.Unauthorized))
+                .GetProperty("code").GetString().Should().Be("invalid_code");
+        }
+
+        (await Json(await _factory.CreateApiClient().PostAsJsonAsync(route, wrong), HttpStatusCode.TooManyRequests))
+            .GetProperty("code").GetString().Should().Be("account_locked");
+        (await Json(await Login(_factory.CreateApiClient(), email, password), HttpStatusCode.TooManyRequests))
+            .GetProperty("code").GetString().Should().Be("account_locked", "the right password does not get through the lock either");
+    }
+
+    [Fact]
+    public async Task The_password_again_between_wrong_codes_does_not_start_the_count_over()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var (secret, _) = await TurnTwoStepOnAsync(email, password);
+
+        // One wrong code per sign-in, the password right every time: before, each right password cleared the count and this went on forever.
+        for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
+        {
+            var challenge = await ChallengeOfAsync(email, password);
+            (await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = "000000" }), HttpStatusCode.Unauthorized))
+                .GetProperty("code").GetString().Should().Be("invalid_code");
+        }
+
+        (await Json(await Login(_factory.CreateApiClient(), email, password), HttpStatusCode.TooManyRequests))
+            .GetProperty("code").GetString().Should().Be("account_locked");
+        _ = secret;
+    }
+
+    [Fact]
+    public async Task A_challenge_takes_a_few_codes_and_then_only_the_password_opens_another()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var (secret, _) = await TurnTwoStepOnAsync(email, password);
+        var challenge = await ChallengeOfAsync(email, password);
+
+        for (var i = 0; i < Nexo.Infrastructure.Auth.PlatformAuthService.MaxCodesPerChallenge; i++)
+            (await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = "000000" }), HttpStatusCode.Unauthorized))
+                .GetProperty("code").GetString().Should().Be("invalid_code");
+
+        // The right code now: the challenge is over, whatever comes with it.
+        var right = Totp.Code(secret, Totp.StepAt(DateTime.UtcNow) + 1);
+        (await Json(await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = right }), HttpStatusCode.Unauthorized))
+            .GetProperty("code").GetString().Should().Be("invalid_challenge");
+
+        // A new challenge, by the password, takes the right code: nothing here locked the account (five failures, under the limit).
+        var next = await ChallengeOfAsync(email, password);
+        (await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = next, code = right }))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Many_codes_at_once_on_one_challenge_are_not_all_checked()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        await TurnTwoStepOnAsync(email, password);
+        var challenge = await ChallengeOfAsync(email, password);
+
+        var answers = await Task.WhenAll(Enumerable.Range(0, 20).Select(async i =>
+        {
+            var response = await _factory.CreateApiClient().PostAsJsonAsync("/api/platform/auth/mfa/verify", new { mfaChallenge = challenge, code = (100000 + i).ToString() });
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            return body.TryGetProperty("code", out var code) ? code.GetString() : null;
+        }));
+
+        answers.Count(code => code == "invalid_code").Should().BeLessOrEqualTo(Nexo.Infrastructure.Auth.PlatformAuthService.MaxCodesPerChallenge,
+            "a code is only looked at after one of the attempts of the challenge was taken, in the database");
+        answers.Should().OnlyContain(code => code == "invalid_code" || code == "invalid_challenge" || code == "account_locked");
+    }
+
+    [Fact]
+    public async Task Wrong_passwords_inside_a_session_count_on_the_lock_of_the_account()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var session = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+
+        for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
+            (await Json(await session.PostAsJsonAsync("/api/platform/auth/mfa/setup", new { password = "wrong" }), HttpStatusCode.UnprocessableEntity))
+                .GetProperty("code").GetString().Should().Be("invalid_password");
+
+        (await Json(await session.PostAsJsonAsync("/api/platform/auth/mfa/setup", new { password }), HttpStatusCode.UnprocessableEntity))
+            .GetProperty("code").GetString().Should().Be("account_locked", "the setup is not a place to guess the password without limit");
+    }
+
+    [Fact]
+    public async Task Too_many_wrong_passwords_lock_a_platform_account_on_the_shared_sign_in_form()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var client = _factory.CreateApiClient();
+
+        for (var i = 0; i < LoginAttemptGuard.MaxFailures; i++)
+            (await client.PostAsJsonAsync("/api/auth/login", new { login = email, password = "wrong" })).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        (await Json(await client.PostAsJsonAsync("/api/auth/login", new { login = email, password }), HttpStatusCode.TooManyRequests))
+            .GetProperty("code").GetString().Should().Be("account_locked", "the right password does not get through a lock");
+    }
+
+    // ── A company that cannot be entered ──────────────────────────────────────
+
+    private const string AccessReason = "Suporte: conferir o cadastro da empresa";
+
+    private async Task<(HttpClient Platform, Guid TenantId)> PlatformAndCompanyAsync()
+    {
+        var (email, password) = await NewPlatformUserAsync();
+        var platform = Bearer(_factory.CreateApiClient(), (await Json(await Login(_factory.CreateApiClient(), email, password))).GetProperty("accessToken").GetString()!);
+        return (platform, (await SyntheticTenant.CreateAsync(_factory, "varejo")).TenantId);
+    }
+
+    private async Task<int> AccessesGrantedToAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<NexoDbContext>().AuditRecords.IgnoreQueryFilters()
+            .CountAsync(r => r.TenantId == tenantId && r.ActionType == AuditActions.PlatformImpersonation);
+    }
+
+    [Fact]
+    public async Task A_company_that_is_not_active_cannot_be_entered()
+    {
+        var (platform, tenantId) = await PlatformAndCompanyAsync();
+        using (var scope = _factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<NexoDbContext>().Tenants.IgnoreQueryFilters().Where(t => t.Id == tenantId)
+                .ExecuteUpdateAsync(set => set.SetProperty(t => t.Status, TenantStatus.Suspended));
+
+        (await Json(await platform.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate", new { reason = AccessReason }), HttpStatusCode.UnprocessableEntity))
+            .TryGetProperty("accessToken", out _).Should().BeFalse();
+
+        (await AccessesGrantedToAsync(tenantId)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_company_with_no_active_director_cannot_be_entered()
+    {
+        var (platform, tenantId) = await PlatformAndCompanyAsync();
+        using (var scope = _factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<NexoDbContext>().Users.IgnoreQueryFilters().Where(u => u.TenantId == tenantId)
+                .ExecuteUpdateAsync(set => set.SetProperty(u => u.Status, UserStatus.Inactive));
+
+        (await Json(await platform.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate", new { reason = AccessReason }), HttpStatusCode.BadRequest))
+            .TryGetProperty("accessToken", out _).Should().BeFalse();
+
+        (await AccessesGrantedToAsync(tenantId)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_company_with_no_active_store_cannot_be_entered()
+    {
+        var (platform, tenantId) = await PlatformAndCompanyAsync();
+        using (var scope = _factory.Services.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<NexoDbContext>().Stores.IgnoreQueryFilters().Where(s => s.TenantId == tenantId)
+                .ExecuteUpdateAsync(set => set.SetProperty(s => s.Status, StoreStatus.Inactive));
+
+        (await Json(await platform.PostAsJsonAsync($"/api/platform/tenants/{tenantId}/impersonate", new { reason = AccessReason }), HttpStatusCode.BadRequest))
+            .TryGetProperty("accessToken", out _).Should().BeFalse();
+
+        (await AccessesGrantedToAsync(tenantId)).Should().Be(0);
     }
 
     private static byte[] FromBase32(string base32)

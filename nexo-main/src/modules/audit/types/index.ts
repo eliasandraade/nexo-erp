@@ -9,7 +9,8 @@ export type AuditActionType =
   | "sale_item_cancelled"
   | "manager_authorization"
   | "user_created"
-  | "user_updated";
+  | "user_updated"
+  | "user_last_director_refused";
 
 export type AuditSeverity = "info" | "warning" | "critical";
 
@@ -25,6 +26,7 @@ export const auditActionTypeLabels: Record<AuditActionType, string> = {
   manager_authorization: "Autorização gerencial",
   user_created: "Usuário criado",
   user_updated: "Usuário atualizado",
+  user_last_director_refused: "Alteração recusada (última Diretoria)",
 };
 
 export const auditSeverityLabels: Record<AuditSeverity, string> = {

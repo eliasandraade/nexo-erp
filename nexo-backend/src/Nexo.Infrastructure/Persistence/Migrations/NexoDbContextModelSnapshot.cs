@@ -19,7 +19,7 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 #pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("nexo")
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "8.0.33")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -1457,6 +1457,12 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamptz")
                         .HasColumnName("last_used_at");
 
+                    b.Property<int>("MfaAttempts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("mfa_attempts");
+
                     b.Property<bool>("MfaVerified")
                         .HasColumnType("boolean")
                         .HasColumnName("mfa_verified");
@@ -2893,6 +2899,9 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasColumnName("verification_token_expiry");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Login")
+                        .IsUnique();
 
                     b.HasIndex("PasswordResetTokenHash")
                         .IsUnique()

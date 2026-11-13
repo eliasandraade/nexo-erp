@@ -62,10 +62,45 @@ public class RegistrationService
             .IgnoreQueryFilters()
             .AnyAsync(u => u.Email == email, ct);
         if (emailExists) return "email_already_registered";
+        // The e-mail becomes the login of this account, and a login is unique across every company (and is no
+        // platform operator's e-mail): one already taken as a login counts as registered.
+        if (await LoginRegistry.IsTakenAsync(_db, email, ct)) return "email_already_registered";
 
         // 2. Validate password length
         if (request.Password.Length < 6) return "password_too_short";
 
+        // One transaction for the whole account. When two requests for the same e-mail arrive together, both pass
+        // the checks above and the unique index on the login refuses the second: nothing of it stays behind
+        // (no company without a user), and it hears the same answer as if it had arrived later.
+        (Guid TenantId, Guid UserId, string Token) created;
+        await using (var transaction = await _db.Database.BeginTransactionAsync(ct))
+        {
+            try
+            {
+                created = await CreateAccountAsync(email, name, request.Password, ct);
+                await transaction.CommitAsync(ct);
+            }
+            catch (DbUpdateException ex) when (LoginRegistry.LostTheLogin(ex))
+            {
+                return "email_already_registered";
+            }
+        }
+
+        // 9. Send verification email
+        var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
+        var verificationUrl = $"{frontendUrl}/verify-email?token={created.Token}";
+        await _email.SendVerificationEmailAsync(email, name, verificationUrl, ct);
+
+        _logger.LogInformation(
+            "Registration: new tenant {TenantId}, user {UserId}, email {Email}",
+            created.TenantId, created.UserId, email);
+
+        return null; // success
+    }
+
+    /// <summary>Company, trial, store, user, settings, accounts and the verification token. Runs inside the caller's transaction.</summary>
+    private async Task<(Guid TenantId, Guid UserId, string Token)> CreateAccountAsync(string email, string name, string password, CancellationToken ct)
+    {
         // 3. Create tenant
         // TaxId uses a unique placeholder (≤20 chars) — the user will fill the real CNPJ in settings.
         // Empty string would violate the unique index when multiple tenants register.
@@ -96,17 +131,16 @@ public class RegistrationService
             fullName:     name,
             email:        email,
             login:        email,
-            passwordHash: _hasher.Hash(request.Password),
+            passwordHash: _hasher.Hash(password),
             role:         UserRole.Diretoria);
         user.SetStatus(UserStatus.PendingVerification);
         _db.Users.Add(user);
         await _db.SaveChangesAsync(ct);
 
         // 7. Create default AppSettings
-        var escapedName = name.Replace("\"", "\\\"");
         var settings = AppSettings.CreateForTenant(
             tenantId:      tenant.Id,
-            companyJson:   $"{{\"name\":\"{escapedName}\",\"tradeName\":\"{escapedName}\",\"cnpj\":\"\",\"email\":\"{email}\",\"phone\":\"\"}}",
+            companyJson:   System.Text.Json.JsonSerializer.Serialize(new { name, tradeName = name, cnpj = "", email, phone = "" }),
             operationJson: "{\"defaultOperator\":\"\"}",
             inventoryJson: "{\"noMovementAlertDays\":30,\"minStockBehavior\":\"alert\",\"enableLowStockAlerts\":true,\"enableZeroStockAlerts\":true,\"enableHighRotationAlerts\":false}",
             commissionJson:"{\"defaultCommissionRate\":3,\"enableProductCommission\":false,\"policyNotes\":\"\"}",
@@ -125,16 +159,7 @@ public class RegistrationService
         user.SetVerificationToken(token, DateTime.UtcNow.AddHours(24));
         await _db.SaveChangesAsync(ct);
 
-        // 9. Send verification email
-        var frontendUrl = _config["App:FrontendUrl"] ?? "http://localhost:5173";
-        var verificationUrl = $"{frontendUrl}/verify-email?token={token}";
-        await _email.SendVerificationEmailAsync(email, name, verificationUrl, ct);
-
-        _logger.LogInformation(
-            "Registration: new tenant {TenantId}, user {UserId}, email {Email}",
-            tenant.Id, user.Id, email);
-
-        return null; // success
+        return (tenant.Id, user.Id, token);
     }
 
     /// <summary>
@@ -224,7 +249,7 @@ public class RegistrationService
                 CompanyName:   companyName,
                 IsNewAccount:  true,
                 TrialEndsAt:   trialEndsAt,
-                ReadOnlyModules: expiredModules.ToList()));
+                ReadOnlyModules: expiredModules.ToList())) { RefreshTokenExpiresAt = tokens.RefreshTokenExpiresAt };
     }
 
     /// <summary>
