@@ -22,6 +22,16 @@ testes, e os PRs que só acrescentam testes). Nenhum deles traz migração nem m
 
 Se a decisão for promover sem essas correções, o candidato continua `834737d`.
 
+**Situação em 2026-11-13, fim do dia:** o candidato final ainda não existe.
+
+| Commit da `master` | Origem | `master-gate` | Quality Gate |
+|---|---|---|---|
+| `d529674` | #188 | Verde | ERROR: confiabilidade C, cobertura 79,8% |
+| `09c6233` | #189 | Verde | ERROR: só confiabilidade C, cobertura 81,5% |
+| `8112852` | #165 | **Vermelho**, pela falha conhecida do `auth-e2e` (seção 2) | ERROR: só confiabilidade C, cobertura 81,9% |
+
+O que falta: #166, #167 e #147 mesclados, o `S8733` aceito no painel e o Quality Gate em OK.
+
 O que o candidato leva além da produção atual (`8a164ce`):
 
 | PR | O que muda | Migração de banco | Estado |
@@ -88,10 +98,12 @@ Quando o login e o e-mail colidem juntos, na mesma empresa, o índice do e-mail 
 | `master-gate` em `038040f` (#185), `6b909ae` (#187) e `834737d` (#186) | Verde nos três. Staging em `SUCCESS` em `834737d` |
 | SDK do CI | Fixado em .NET 8 pelo `global.json`. Uma imagem nova do runner trazia o SDK 11, que não compila o host dos testes |
 | PR #181 no SHA exato do merge (`7e7ae73`) | Tudo verde: `ci-gate`, `frontend`, `auth-e2e` cookie (101 passaram) e storage, `csp-e2e` (31 passaram, incluindo o teste novo), `sonarcloud`, SonarCloud Code Analysis e GitGuardian |
-| Quality Gate geral do SonarCloud em `master` | **ERROR em 2 condições do código novo** em `834737d`: confiabilidade C (o limite é A) e cobertura de 77,4% (o mínimo é 80%). Os limites não foram reduzidos |
-| Por que o `master-gate` passa com o Quality Gate em ERROR | No push para a `master`, o job `sonarcloud` envia a análise com `sonar.qualitygate.wait=false` e termina com sucesso; o `master-gate` exige o job, não o veredito. O check separado "SonarCloud Code Analysis" carrega o veredito e não é exigido por nenhuma proteção. Nos PRs, o job espera o veredito do código do PR e reprova |
-| Confiabilidade C | 138 bugs abertos: 137 `S9383` (promessas sem tratamento declarado; nenhuma rejeita, ver `docs/audits/2026-11-06-sonarcloud-confiabilidade-por-achado.md`) e 1 `S8733` (consulta com dois `Include`). Os `void` dos PRs #147, #165, #166 e #167 tiram os 137; o `S8733` depende de decisão do proprietário |
-| Cobertura 77,4% | Faltam cerca de 1.740 linhas e condições cobertas, quase todas em telas sem nenhum teste. Os PRs de teste cobrem fluxos dessas telas |
+| Quality Gate geral do SonarCloud em `master` em `834737d` | ERROR em 2 condições do código novo: confiabilidade C (o limite é A) e cobertura de 77,4% (o mínimo é 80%). Os limites não foram reduzidos |
+| Por que o `master-gate` passava com o Quality Gate em ERROR | No push para a `master`, o job `sonarcloud` enviava a análise com `sonar.qualitygate.wait=false` e terminava com sucesso; o `master-gate` exige o job, não o veredito. O check separado "SonarCloud Code Analysis" carrega o veredito e não é exigido por nenhuma proteção. A correção está no PR #191 (rascunho), que só é mesclado depois do Quality Gate OK na `master` |
+| Confiabilidade C | 138 bugs abertos: 137 `S9383` (promessas sem tratamento declarado; nenhuma rejeita, ver `docs/audits/2026-11-06-sonarcloud-confiabilidade-por-achado.md`) e 1 `S8733` (consulta com dois `Include`). Os `void` dos PRs #147, #165, #166 e #167 tiram os 137. O `S8733` foi decidido pelo proprietário em 2026-11-13: aceitar no painel como risco conhecido, com a issue #190 para o limite de pagamentos por venda |
+| Cobertura | Com os PRs de teste #188 (`d529674`) e #189 (`09c6233`), a cobertura do código novo na `master` foi de 77,4% para 79,8% e depois **81,5%**. Condição cumprida |
+| PRs do SonarCloud, mesclados um por vez | #188 → `d529674` e #189 → `09c6233`, `master-gate` verde nos dois. #165 → `8112852`: **`master-gate` vermelho** pela falha conhecida do `auth-e2e` (cookie) descrita na linha abaixo, cuja correção ainda não está na `master`. Cobertura em 81,9% nesse commit. A sequência parou aqui; #166, #167 e #147 aguardam decisão do proprietário |
+| `auth-e2e` instável no bloco "The hub of the kitchen" | Causa medida: o host de teste copiava corpo num 204, e o Kestrel fechava a conexão que o cliente reaproveitava. Corrigido no PR #147 (`566a793`), sem mudar nenhuma verificação. Apareceu no PR #147 (13/11 12:53Z) e no `master-gate` de `8112852` (13/11 19:18Z) |
 
 ## 3. Volta atrás no staging
 
@@ -131,7 +143,7 @@ Detalhes no [registro](homologacao-sessao-staging-2026-11-10.md), seção 2.1.
   O limite de login é de 5 por 15 minutos por IP; numa rede com muitas pessoas atrás do mesmo endereço, isso aparece primeiro.
 - **CSP em modo de relatório.** O cookie HttpOnly impede levar a sessão para fora, mas um XSS ainda age enquanto a página está aberta, até o
   `script-src` passar a bloquear.
-- **Quality Gate** em ERROR no código novo (seção 2).
+- **Quality Gate:** situação atual na seção 2.
 - **Fora da sessão, já conhecidos:** a chave do Stripe é de produção e nunca recebeu webhook, e `api/billing/webhook` lê o corpo inteiro antes
   da assinatura. Nada disso muda com esta promoção.
 
@@ -148,11 +160,13 @@ Todas precisam estar cumpridas. Qualquer uma em falta bloqueia a promoção:
 5. API anterior sobre o esquema novo: **cumprida** no ensaio local de 2026-11-13 (seção 8.0), com o candidato `834737d`. Se o candidato
    final trouxer migração nova, o ensaio é repetido.
 6. Backup verificado (abaixo) e autorização explícita do proprietário, para cada etapa.
-7. Contenção do GitHub aplicada: o ruleset de `production` ativo, com só a conta do proprietário na exceção. Os apps instalados ficam,
-   por decisão do proprietário (2026-11-13); os riscos que sobram estão registrados no documento privado da contenção.
+7. Contenção do GitHub aplicada: **cumprida** em 2026-11-13. O ruleset de `production` está ativo, com só a conta do proprietário na
+   exceção, e a proteção clássica não mudou. Os apps instalados ficam, por decisão do proprietário. Os riscos que sobram estão registrados
+   no documento privado da contenção.
 8. Quality Gate da `master` no SonarCloud em OK no candidato final.
-   - Em `834737d` ele está em ERROR: confiabilidade do código novo C (exigido A) e cobertura do código novo 77,4% (exigido 80%).
-   - O `master-gate` não depende dele: no push para a `master`, a análise é enviada sem esperar o veredito (seção 2).
+   - Em `834737d` ele estava em ERROR: confiabilidade do código novo C (exigido A) e cobertura do código novo 77,4% (exigido 80%). A
+     cobertura já está em 81,5% em `09c6233`. A confiabilidade depende dos PRs de `void` e do `S8733` aceito no painel (seção 2).
+   - O `master-gate` ainda não depende dele (seção 2). O PR #191 passa a exigir o veredito e só é mesclado com o gate em OK.
    - Os limites não serão reduzidos. Se o proprietário decidir promover com ele em ERROR, a decisão fica registrada aqui.
 
 ### Duas etapas
@@ -215,8 +229,9 @@ Cada etapa tem uma decisão antes (pode publicar?) e uma depois (pode seguir?). 
 2. Cópia lógica (`pg_dump`) lida de volta por inteiro, com as contagens das tabelas principais comparadas com o banco ao vivo. Depois, a cópia
    é apagada do contêiner.
 3. Contagens de referência: empresas, usuários, sessões ativas, assinaturas e auditoria. Elas são comparadas depois da publicação.
-4. **Restauração:** o caminho principal é restaurar o backup do volume pelo Railway, e ele nunca foi ensaiado. Ensaiar uma vez num
-   ambiente descartável do Railway (seção 8.2) antes da etapa 1. Nunca sobre o staging ou a produção em funcionamento.
+4. **Restauração:** o caminho principal é restaurar o backup do volume pelo Railway. Ele foi ensaiado em 2026-11-13 num ambiente
+   descartável (seção 8.2): o banco voltou idêntico ao momento do backup, e a API subiu sobre ele. A restauração cria um volume novo e
+   só vale depois de aplicada a troca pendente ("Deploy" no painel). Nunca ensaiar sobre o staging ou a produção em funcionamento.
    - Em 2026-11-12 foi ensaiada no staging a restauração da cópia lógica: o `pg_dump` foi restaurado num banco descartável e comparado
      com o banco ao vivo, tabela por tabela (161 tabelas, 1.125 linhas, idênticas).
 
@@ -266,7 +281,8 @@ Acompanhar por 24 horas depois de cada etapa. Qualquer item abaixo interrompe a 
     do login).
   - `production` só anda para a frente. A próxima promoção publica de novo o que estiver nela, então uma volta definitiva é um `git revert`
     promovido.
-- **Restauração do banco:** só se uma migração falhar ou houver perda de dados. É a última opção, e depende do ensaio de restauração acima.
+- **Restauração do banco:** só se uma migração falhar ou houver perda de dados. É a última opção. O ensaio da seção 8.2 passou: restaurar
+  o backup do dia, aplicar a troca de volume pendente e confirmar que a API sobe e aplica as migrações que faltarem.
 
 ## 8. Ensaios antes da etapa 1
 
@@ -356,54 +372,50 @@ passo 1).
 **Se falhar:** publicar de volta o candidato (passo 5), registrar o passo e o horário, e manter a promoção bloqueada até a causa ser
 entendida.
 
-### 8.2 Restauração de um backup do volume
+### 8.2 Restauração de um backup do volume: resultado (2026-11-13, ambiente descartável)
 
-O caminho principal de restauração é o backup do volume pelo Railway, e ele nunca foi ensaiado. A restauração no Railway é feita **sobre o
-próprio volume**: o banco volta inteiro ao momento do backup, e tudo o que foi gravado depois se perde. Um backup só pode ser restaurado
-no volume de onde saiu (a API do Railway não oferece outro destino). Por isso o ensaio não pode usar o volume do staging em funcionamento:
-ele precisa de um ambiente descartável próprio.
+**Cumprido.** O ensaio rodou num ambiente descartável do Railway (`ensaio-restauracao`), autorizado pelo proprietário, e foi apagado no fim.
 
-O Railway também oferece a restauração para um ponto no tempo, que cria um serviço de banco novo. Ela exige trocar a conexão da API e
-fica fora deste ensaio.
+**Como a restauração do Railway funciona de fato.** Ela não grava sobre o volume em uso, ao contrário do que este plano supunha:
+1. O pedido de restauração cria um **volume novo** a partir do backup e deixa uma troca pendente no ambiente: o serviço passa a montar o
+   volume novo, e o antigo fica desmontado.
+2. Nada muda até essa troca ser aplicada. No painel, ela aparece como mudança pendente e precisa de "Deploy"; pela API,
+   `environmentPatchCommitStaged`.
+3. Ao aplicar, o Postgres reinicia já sobre o volume restaurado. O volume antigo continua no projeto até ser apagado, o que dá uma volta
+   da própria restauração.
 
-**Ambiente descartável (precisa de autorização do proprietário, porque cria recursos no projeto do Railway em que a produção está):**
+**Isolamento:**
+- O ambiente foi criado **sem origem**, sem copiar nenhuma variável do staging, e com publicações iniciais desligadas.
+- Ele teve só três serviços próprios: Postgres, Redis e backend. Todos os segredos foram gerados no momento: senha do banco, senha do
+  Redis, `Jwt__Secret` e senhas do seed. Sem `Secrets__MasterKey`, as integrações ficaram desligadas, sem domínio público e sem gatilho de
+  branch.
+- Antes de cada operação, o script conferiu que o ambiente e a instância de volume eram os do ensaio.
+- Antes e depois de cada etapa, o script comparou a produção e o staging com uma fotografia inicial: implantações, volumes, serviços e
+  ambientes.
+  - A produção ficou idêntica o tempo todo.
+  - No staging, os únicos movimentos foram as implantações normais de `backend` e `main` com commits da `master` (merges do #188 e do
+    #189). Postgres, Redis e volumes ficaram idênticos.
+- No fim, o ambiente, os três serviços e os dois volumes do ensaio foram apagados. O projeto voltou a 2 ambientes, 4 serviços e 2 volumes,
+  como antes.
 
-1. Criar o ambiente `ensaio-restauracao` a partir do staging, sem publicações iniciais (`environmentCreate` com
-   `sourceEnvironmentId` do staging, `skipInitialDeploys: true`). Ele recebe volume próprio e variáveis próprias, sem domínio próprio.
-2. Publicar só o Postgres e carregar nele a cópia lógica mais recente do staging, verificada.
-3. Publicar o `backend` do candidato apontando para esse Postgres, para medir quando a API volta a responder.
-4. No fim, apagar o ambiente inteiro e conferir que staging e produção ficaram como estavam (serviços, commits e variáveis).
-
-**Antes:**
-
-1. Registrar as contagens de todas as tabelas, a impressão digital das linhas de `users` e o número de migrações.
-2. Backup B0 do volume e cópia lógica D0 verificada. São a volta do próprio ensaio.
-3. Backup B1 do volume e, logo em seguida, a cópia lógica D1. As contagens de D1 são o resultado esperado da restauração.
-4. Uma gravação de marcação **depois** de B1: por exemplo, um usuário sintético novo. Ela precisa sumir com a restauração.
-
-Tudo isso no ambiente descartável. O staging e a produção não entram no ensaio.
-
-**Passos:**
-
-| # | Passo | O que medir ou conferir |
+| # | Passo | Resultado |
 |---|---|---|
-| 1 | Restaurar B1 pelo painel do Railway, no serviço Postgres do ambiente descartável | O horário do início e o fim do reinício do Postgres |
-| 2 | Esperar o Postgres aceitar conexões e a API responder `/health` | O tempo total fora do ar |
-| 3 | Comparar com D1, tabela por tabela | Contagens idênticas |
-| 4 | Procurar a marcação do passo 4 de "Antes" | Ausente: prova que o banco voltou ao momento de B1 |
-| 5 | Conferir o histórico de migrações | Igual ao de B1. Se B1 for anterior a uma migração, a API a aplica de novo ao reiniciar, e isso também é conferido |
-| 6 | Login de empresa, renovação, logout e login da plataforma | Funcionam |
-| 7 | Publicar a API de novo, se ela não tiver se reconectado sozinha | Registrar se foi preciso |
+| 1 | Carregar a cópia lógica do staging de 13/11 01:27Z no Postgres descartável | 161 tabelas, 1.145 linhas, 78 migrações. Assinatura D0: contagem e hash de todas as linhas de cada tabela |
+| 2 | Backup B1 do volume (`dd5bda27`, 18:35:49Z) | Listado no Railway |
+| 3 | Dano depois de B1: tabela de marcação criada e a migração mais recente apagada do histórico | D1 diferente de D0 (162 tabelas, 77 migrações) |
+| 4 | Restaurar B1 e aplicar a troca de volume | Postgres de volta em cerca de 8 s depois de aplicada a troca (implantação de 18:48:35 a 18:48:43Z) |
+| 5 | Comparar com D0 | **Idêntico**: 161 tabelas, mesmas contagens e mesmos hashes, marcação ausente, 78 migrações, nenhuma constraint ou índice inválido |
+| 6 | Publicar a API da `master` (`09c6233`) sobre o banco restaurado | `SUCCESS` com o health check `/health` do Railway. A API aplicou a migração que faltava ao backup (`UsersLoginUniqueEverywhere`, 79 no total, com o índice `IX_users_login`) e só criou o usuário de plataforma do próprio seed do ensaio. Nenhum erro no log |
 
-**Critério de aprovação:**
+**Não coberto:** login de empresa, renovação e logout contra a API restaurada. Ela não teve domínio público, por isolamento, e o critério
+do ensaio era integridade e início da API. Esses fluxos seguem cobertos pelo ensaio local da seção 8.0 e pela regressão no staging.
 
-- banco idêntico a D1;
-- marcação ausente;
-- API funcionando;
-- tempo fora do ar medido.
-
-**Se falhar:** restaurar B0 e, se B0 também falhar, recriar o banco a partir de D0. O resultado e o tempo medido entram neste
-documento, e a seção "Volta atrás" passa a citar o tempo real de restauração.
+**Para a produção:**
+- Restaurar exige aplicar a troca pendente. Até lá, nada muda.
+- O tempo fora do ar medido foi o reinício do Postgres sobre o volume novo, alguns segundos com este tamanho de banco. A API reconecta
+  sozinha ou é publicada de novo.
+- Tudo o que foi gravado depois do backup se perde, como já estava previsto.
+- O volume anterior fica desmontado no projeto. Ele só é apagado depois de a restauração ser aceita.
 
 **Na produção:** além do backup manual antes de cada etapa, o volume tem backups automáticos diários, retidos por 6 dias, e semanais,
 retidos por 27 dias. A restauração na produção continua sendo a última opção, porque perde tudo o que foi gravado depois do backup.
