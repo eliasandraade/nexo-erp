@@ -135,8 +135,11 @@ Todas precisam estar cumpridas. Qualquer uma em falta bloqueia a promoção:
 4. [Checklist humana](checklist-homologacao-humana-sessao.md) preenchida por uma pessoa, em Chrome ou Edge, Firefox e Safari.
 5. Volta atrás repetida no staging com o candidato, incluindo a API anterior sobre o esquema novo.
 6. Backup verificado (abaixo) e autorização explícita do proprietário, para cada etapa.
-7. Contenção do GitHub aplicada: só o administrador atualiza `production`, e nenhum app desnecessário tem escrita em conteúdo e em
-   workflows no repositório.
+7. Contenção do GitHub aplicada: só a conta do proprietário atualiza `production`, e nenhum app desnecessário tem escrita em conteúdo e
+   em workflows no repositório.
+8. **Pendência registrada:** o Quality Gate da `master` no SonarCloud está em ERROR em `834737d`, embora o `master-gate` tenha passado.
+   - Condições: confiabilidade do código novo C, onde o exigido é A; cobertura do código novo 77,4%, onde o exigido é 80%.
+   - Os limites não serão reduzidos. O proprietário decide se ela bloqueia a promoção.
 
 ### Duas etapas
 
