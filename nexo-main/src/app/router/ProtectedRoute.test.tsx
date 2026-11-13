@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { ProtectedRoute } from "./ProtectedRoute";
-import { apiClient, getAccessToken, SUBSCRIPTION_REQUIRED_CODE, TOKEN_KEYS } from "@/services/api-client";
+import { apiClient, getAccessToken, IMPERSONATION_KEY, SUBSCRIPTION_REQUIRED_CODE, TOKEN_KEYS } from "@/services/api-client";
 import type { AuthSession } from "@/modules/auth/types";
 
 const useAuthMock = vi.fn();
@@ -90,5 +90,61 @@ describe("ProtectedRoute, escrita recusada por falta de assinatura", () => {
     await blockedWrite();
 
     expect(new Set(warning.mock.calls.map((c) => (c[1] as { id?: string }).id)).size).toBe(1);
+  });
+});
+
+describe("ProtectedRoute, who gets in", () => {
+  function renderWith(session: Partial<AuthSession> | null, isReady = true, path = "/clientes") {
+    useAuthMock.mockReturnValue({ session, isReady });
+    return render(
+      <MemoryRouter initialEntries={[path]}>
+        <Routes>
+          <Route element={<ProtectedRoute />}>
+            <Route path="*" element={<Where />} />
+          </Route>
+          <Route path="/login" element={<p data-testid="where">/login</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+  }
+
+  const person = { type: "tenant", role: "gerente", modules: ["varejo"], trialEndsAt: null } as unknown as AuthSession;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+
+  it("without a session and with the validation done, goes to the login", () => {
+    renderWith(null);
+
+    expect(screen.getByTestId("where").textContent).toBe("/login");
+  });
+
+  it("without a session and with the validation still running, shows nothing and does not bounce to the login", () => {
+    const { container } = renderWith(null, false);
+
+    expect(container.textContent).toBe("");
+  });
+
+  it("a temporary password has to be replaced before anything else", () => {
+    renderWith({ ...person, requirePasswordChange: true });
+
+    expect(screen.getByTestId("where").textContent).toBe("/perfil?trocar-senha=1");
+  });
+
+  it("the profile, where the password is replaced, stays open", () => {
+    renderWith({ ...person, requirePasswordChange: true }, true, "/perfil");
+
+    expect(screen.getByTestId("where").textContent).toBe("/perfil");
+  });
+
+  it("in a platform access the administrator is not sent to change the password of the person", () => {
+    sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ tenant: "T", user: "U", expiresAt: null }));
+
+    renderWith({ ...person, requirePasswordChange: true });
+
+    expect(screen.getByTestId("where").textContent).toBe("/clientes");
   });
 });

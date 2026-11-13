@@ -17,6 +17,7 @@ public class UserService
     private readonly IUserSessionRevoker? _sessions;
     private readonly IUserInviter? _inviter;
     private readonly Nexo.Application.Features.Auth.LoginAttemptGuard? _attempts;
+    private readonly ILastDirectorRefusalAudit? _lastDirectorRefusals;
 
     public UserService(
         IUserRepository users,
@@ -27,8 +28,10 @@ public class UserService
         IUnitOfWork uow,
         IUserSessionRevoker? sessions = null,
         IUserInviter? inviter = null,
-        Nexo.Application.Features.Auth.LoginAttemptGuard? attempts = null)
+        Nexo.Application.Features.Auth.LoginAttemptGuard? attempts = null,
+        ILastDirectorRefusalAudit? lastDirectorRefusals = null)
     {
+        _lastDirectorRefusals = lastDirectorRefusals;
         _uow = uow;
         _attempts = attempts;
         _inviter = inviter;
@@ -55,8 +58,10 @@ public class UserService
 
     public async Task<UserDto> CreateAsync(CreateUserRequest request, CancellationToken ct = default)
     {
+        // Across every company, not just this one: sign-in receives a login and no company. The answer does not
+        // say where the login is taken.
         if (await _users.LoginExistsAsync(request.Login, ct))
-            throw new ConflictException($"Login '{request.Login}' is already in use.");
+            throw new ConflictException("Este login já é usado por outra conta.", "login_taken");
 
         if (!string.IsNullOrWhiteSpace(request.Email) && await _users.EmailExistsAsync(request.Email, ct))
             throw new ConflictException($"Email '{request.Email}' is already in use.");
@@ -123,16 +128,22 @@ public class UserService
             ?? throw new NotFoundException("User", id);
 
         var role = ParseRole(request.Role);
-        var status = request.Status is null ? user.Status : ParseStatus(request.Status);
+        var status = request.Status is null ? user.Status : StatusAfterEdit(user, ParseStatus(request.Status));
 
         // Before anything changes: a refused request writes nothing, bumps no stamp and revokes no session.
         var leavesTheDirectors = user.IsActiveDirector && (role != UserRole.Diretoria || status != UserStatus.Active);
         if (leavesTheDirectors && !await _users.HasAnotherActiveDirectorAsync(user.TenantId, user.Id, ct))
+        {
+            // This transaction is about to roll back: the record of the attempt goes out on its own and nothing here waits for it.
+            _lastDirectorRefusals?.Record(user.TenantId, LastDirectorRefusalSources.UserUpdate,
+                [new LastDirectorAttempt(user.Id, role.ToString().ToLowerInvariant(), status.ToString().ToLowerInvariant())]);
             throw new LastDirectorException();
+        }
 
         var previousEmail = user.Email;
         var previousStatus = user.Status;
         var previousRole = user.Role;
+        var neverVerified = user.EmailNeverVerified;
 
         user.UpdateProfile(
             fullName: request.FullName,
@@ -146,9 +157,13 @@ public class UserService
 
         // A pending invite/reset link went to the old address (maybe a typo): it must stop working.
         // Same when the account is blocked or deactivated.
-        if (!string.Equals(previousEmail, user.Email, StringComparison.OrdinalIgnoreCase)
-            || user.Status is not (UserStatus.Active or UserStatus.PendingVerification))
+        var emailChanged = !string.Equals(previousEmail, user.Email, StringComparison.OrdinalIgnoreCase);
+        if (emailChanged || user.Status is not (UserStatus.Active or UserStatus.PendingVerification))
             user.ClearPasswordResetToken();
+
+        // The verification link too: it proves nothing about a new address, and whoever was stopped starts over with a new link.
+        if (neverVerified && (emailChanged || user.Status != previousStatus))
+            user.InvalidateVerificationLink();
 
         // Every session ends now, for whoever the change touches (the person changing their own role included). The token
         // carries the role, and the tenant middleware trusts its cached "Active" for up to 5 minutes: what stops a token
@@ -246,7 +261,8 @@ public class UserService
         CancellationToken ct = default)
     {
         var users = await _users.GetAllAsync(ct);
-        var user = users.FirstOrDefault(u => u.Login == request.Login);
+        var login = User.NormalizeLogin(request.Login);
+        var user = users.FirstOrDefault(u => u.Login == login);
 
         if (user is null)
             return new ValidateManagerResponse(false, "Usuário não encontrado.", null, null);
@@ -293,6 +309,29 @@ public class UserService
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// What an edit does to the status. The e-mail link is the only way from an unproven address to active, so:
+    /// a pending user stays pending and asking for active is refused; they can be stopped (inactive, blocked); and reactivating
+    /// someone stopped before verifying puts them back to pending, or stopping and reactivating would be a detour around the link.
+    /// Nobody else goes to pending through an edit.
+    /// </summary>
+    private static UserStatus StatusAfterEdit(User user, UserStatus requested)
+    {
+        if (requested == UserStatus.Active && user.Status == UserStatus.PendingVerification)
+            throw new ConflictException(
+                "Este usuário ainda não confirmou o e-mail, e o acesso só é liberado pelo link enviado. Reenvie o convite para ele.",
+                "email_not_verified");
+
+        var stoppedBeforeVerifying = user.EmailNeverVerified && user.Status is UserStatus.Inactive or UserStatus.Blocked;
+        if (requested == UserStatus.Active && stoppedBeforeVerifying)
+            return UserStatus.PendingVerification;
+
+        if (requested == UserStatus.PendingVerification && user.Status != UserStatus.PendingVerification && !stoppedBeforeVerifying)
+            throw new ConflictException("A situação \"aguardando verificação\" não pode ser escolhida para este usuário.", "status_not_editable");
+
+        return requested;
+    }
+
     private static UserRole ParseRole(string role) =>
         role.ToLowerInvariant() switch
         {
@@ -310,6 +349,7 @@ public class UserService
             "active"   => UserStatus.Active,
             "inactive" => UserStatus.Inactive,
             "blocked"  => UserStatus.Blocked,
+            "pendingverification" => UserStatus.PendingVerification,
             _ => throw new DomainException($"Unknown status '{status}'."),
         };
 

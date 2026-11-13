@@ -91,7 +91,7 @@ public class PosDiscountPolicy
 
     private async Task<User> VerifyManagerAsync(ManagerApprovalRequest approval, Sale sale, string shown, CancellationToken ct)
     {
-        var manager = await _users.GetByLoginInTenantAsync(approval.Login.Trim().ToLowerInvariant(), _user.TenantId, ct);
+        var manager = await _users.GetByLoginInTenantAsync(User.NormalizeLogin(approval.Login), _user.TenantId, ct);
         var lockKey = manager is null ? null : LoginAttemptGuard.ForPosApproval(manager.Id);
         if (lockKey is not null && await _attempts.IsLockedAsync(lockKey, ct))
             throw new DomainException("Muitas tentativas de autorização. Aguarde alguns minutos.", NeedsManagerCode);

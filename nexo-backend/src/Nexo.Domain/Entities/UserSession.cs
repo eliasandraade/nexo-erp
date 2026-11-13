@@ -61,12 +61,13 @@ public class UserSession : BaseEntity
 
     /// <summary>
     /// Called on token rotation: updates the JTI to the new refresh token
-    /// so the platform can revoke it if needed.
+    /// so the platform can revoke it if needed, and the expiry to that token's: a terminal that keeps renewing outlives its first seven days.
     /// </summary>
-    public void Touch(string newRefreshJti)
+    public void Touch(string newRefreshJti, DateTime expiresAt)
     {
         RefreshJti = newRefreshJti;
         LastUsedAt = DateTime.UtcNow;
+        ExpiresAt = expiresAt;
         SetUpdatedAt();
     }
 

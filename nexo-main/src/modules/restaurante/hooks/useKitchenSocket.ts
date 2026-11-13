@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import * as signalR from "@microsoft/signalr";
 import { useQueryClient } from "@tanstack/react-query";
-import { getAccessToken, getFreshAccessToken } from "@/services/api-client";
+import { getFreshAccessToken, hasSession, isCookieSessionMode } from "@/services/api-client";
 import { KITCHEN_KEY } from "./useKitchenItems";
 import { TABLES_KEY } from "./useRestauranteTables";
 import { ORDERS_KEY } from "./useActiveOrder";
@@ -39,6 +39,8 @@ const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:5000/ap
 
 interface UseKitchenSocketOptions {
   onItemReady?: (tableNumber: string | null, productName: string) => void;
+  /** No connection, no retries and no polling: the company has no access now. Turning it off connects again from scratch. */
+  paused?: boolean;
 }
 
 /**
@@ -55,16 +57,16 @@ interface UseKitchenSocketOptions {
  *  - when the token expires, allowing a reconnect: the client comes back by itself with a renewed token, about once per token.
  *  - when the session ended (role, status or password changed, sessions revoked, company suspended), for good: no reconnect, and
  *    the data is asked for at once, so the 401 of that call takes the person out through the same path as any other request.
- * Without a token nothing is retried: the session is over and the app is leaving the page.
+ * Without a session nothing is retried: it is over and the app is leaving the page.
  *
  * Guard: only connects when storeId is non-empty (user is authenticated + store resolved)
- * AND a valid access token is present.
+ * AND there is a session. In the cookie mode a tab that just reloaded has no access token yet: the factory below fetches the first one.
  */
 export function useKitchenSocket(
   storeId: string,
   options: UseKitchenSocketOptions = {}
 ) {
-  const { onItemReady } = options;
+  const { onItemReady, paused = false } = options;
   const qc               = useQueryClient();
   const connectionRef    = useRef<signalR.HubConnection | null>(null);
   const retryCountRef    = useRef(0);
@@ -94,12 +96,10 @@ export function useKitchenSocket(
 
   useEffect(() => {
     // Only connect when a store is resolved (implies authenticated).
-    if (!storeId) return;
+    if (!storeId || paused) return;
 
-    // Do not attempt connection if there is no access token at hook mount time.
-    // This guards against the brief window between ProtectedRoute rendering and
-    // the token being available in memory / localStorage.
-    if (!getAccessToken()) return;
+    // Do not attempt connection if there is no session at hook mount time.
+    if (!hasSession()) return;
 
     // Local cancellation flag — each effect run gets its own copy.
     // Avoids race conditions if storeId changes while a retry delay is in flight.
@@ -112,10 +112,12 @@ export function useKitchenSocket(
         // Allow both transports so Railway's reverse proxy has a fallback
         // if WebSocket upgrades are not available.
         transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.LongPolling,
+        // The client sends credentials by default. In the cookie mode only the session calls do: the hub authenticates with the token.
+        withCredentials: !isCookieSessionMode(),
       })
       .withAutomaticReconnect({
         nextRetryDelayInMilliseconds: ({ previousRetryCount }) =>
-          getAccessToken() ? RECONNECT_DELAYS[previousRetryCount] ?? null : null,
+          hasSession() ? RECONNECT_DELAYS[previousRetryCount] ?? null : null,
       })
       .configureLogging(silentNegotiationLogger)
       .build();
@@ -159,7 +161,7 @@ export function useKitchenSocket(
     });
 
     connection.onclose(() => {
-      if (cancelled || !getAccessToken()) return;
+      if (cancelled || !hasSession()) return;
       startPolling();
       // Now, not at the next tick of the polling: if the server closed because the session ended, this call is what says so.
       invalidateAll();
@@ -168,7 +170,7 @@ export function useKitchenSocket(
     // Attempt initial connection with manual retry before falling back to polling.
     // `cancelled` is captured in each effect's closure, so cleanup sets its own copy.
     const attemptConnect = async (attempt: number): Promise<void> => {
-      if (cancelled || !getAccessToken()) return;
+      if (cancelled || !hasSession()) return;
 
       try {
         await connection.start();
@@ -179,7 +181,7 @@ export function useKitchenSocket(
         stopPolling();
         await connection.invoke("JoinStore", storeId);
       } catch (err) {
-        if (cancelled || !getAccessToken()) return;  // cleanup already ran or the session is over — don't retry, don't poll
+        if (cancelled || !hasSession()) return;  // cleanup already ran or the session is over — don't retry, don't poll
 
         const nextDelay = INITIAL_RETRY_DELAYS_MS[attempt];
         if (nextDelay !== undefined) {
@@ -204,7 +206,7 @@ export function useKitchenSocket(
       stopPolling();
       connection.stop();
     };
-  }, [storeId, invalidateAll, startPolling, stopPolling]);
+  }, [storeId, paused, invalidateAll, startPolling, stopPolling]);
 
   return { connectionMode: mode };
 }

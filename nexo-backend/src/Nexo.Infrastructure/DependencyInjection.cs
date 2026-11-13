@@ -309,12 +309,23 @@ public static class DependencyInjection
         services.AddScoped<AccountSecurityService>();
         services.AddSingleton<IMfaSecretProtector, MfaSecretProtector>();
         services.AddScoped<Nexo.Infrastructure.Auth.PlatformAuthService>();
+        services.AddSingleton(new Nexo.Application.Features.Auth.RefreshBudgetOptions
+        {
+            Enabled       = configuration.GetValue("RateLimiting:AuthRefresh:Enabled", true),
+            FailureBudget = Math.Max(0, configuration.GetValue("RateLimiting:AuthRefresh:FailureBudget", 30)),
+            FailureWindow = TimeSpan.FromSeconds(Math.Max(1, configuration.GetValue("RateLimiting:AuthRefresh:FailureWindowSeconds", 900))),
+            FamilyBudget  = Math.Max(0, configuration.GetValue("RateLimiting:AuthRefresh:FamilyBudget", 300)),
+            FamilyWindow  = TimeSpan.FromSeconds(Math.Max(1, configuration.GetValue("RateLimiting:AuthRefresh:FamilyWindowSeconds", 900))),
+        });
         services.AddScoped<IUserSessionRevoker>(sp => sp.GetRequiredService<AccountSecurityService>());
         services.AddScoped<IUserInviter>(sp => sp.GetRequiredService<AccountSecurityService>());
 
         // ── Audit ─────────────────────────────────────────────────────────────
         services.AddScoped<IAuditWriter, AuditWriterService>();
         services.AddScoped<AuditQueryService>();
+        services.AddSingleton<LastDirectorRefusalAudit>();
+        services.AddSingleton<ILastDirectorRefusalAudit>(sp => sp.GetRequiredService<LastDirectorRefusalAudit>());
+        services.AddHostedService(sp => sp.GetRequiredService<LastDirectorRefusalAudit>());
 
         // ── Reports ───────────────────────────────────────────────────────────
         services.AddScoped<Nexo.Infrastructure.Reports.ReportsService>();

@@ -4,11 +4,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Nexo.Api.Controllers;
 using Nexo.Application.Common.Interfaces;
 using Nexo.Application.Integrations.Billing;
 using Nexo.Application.Integrations.Options;
 using Nexo.Domain.Entities;
+using Nexo.Domain.Enums;
 using Xunit;
 
 namespace Nexo.UnitTests.Integrations;
@@ -312,5 +314,187 @@ public sealed class BillingControllerTests
         var ok     = Assert.IsType<OkObjectResult>(result);
         var url    = ok.Value!.GetType().GetProperty("portalUrl")!.GetValue(ok.Value)!.ToString();
         Assert.Equal("https://billing.stripe.com/session/test", url);
+    }
+
+    // ── A second purchase of what the company already has ─────────────────────
+
+    private static string? ErrorOf(IActionResult result)
+    {
+        var value = Assert.IsAssignableFrom<ObjectResult>(result).Value!;
+        return value.GetType().GetProperty("error")!.GetValue(value)?.ToString();
+    }
+
+    private static ModuleSubscription StripeRow(string module = "restaurante") => ModuleSubscription.CreateFromStripe(
+        Guid.NewGuid(), module, "sub_fixture", "price_fixture", PlanType.Monthly, DateTime.UtcNow, DateTime.UtcNow.AddDays(30));
+
+    private static async Task<IActionResult> CheckoutWith(Sut sut, ModuleSubscription row)
+    {
+        sut.Tenants.GetByIdAsync(sut.CurrentTenant.Id, Arg.Any<CancellationToken>()).Returns(MakeTenant("cus_existing"));
+        sut.Subscriptions.GetByTenantIdAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns([row]);
+        sut.Billing
+            .CreateCheckoutSessionAsync(Arg.Any<CreateCheckoutRequest>(), Arg.Any<CancellationToken>())
+            .Returns(new CheckoutSessionResult("cs_fixture", "https://checkout.example/cs_fixture"));
+        return await sut.Controller.CreateCheckout(
+            new BillingController.CreateCheckoutBody("restaurante", "monthly", null, null), default);
+    }
+
+    [Fact]
+    public async Task CreateCheckout_ModuleStillBilledInStripe_Answers409AndOpensNoSecondSubscription()
+    {
+        var sut = Build(newCheckouts: "true");
+
+        var result = await CheckoutWith(sut, StripeRow());
+
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.Contains("Gerenciar assinatura", ErrorOf(result));
+        await sut.Billing.DidNotReceive().CreateCheckoutSessionAsync(Arg.Any<CreateCheckoutRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateCheckout_LatePaymentStillBillsTheOldCard_Answers409()
+    {
+        var sut = Build(newCheckouts: "true");
+        var row = StripeRow();
+        row.MarkPastDue(DateTime.UtcNow.AddDays(-30));   // grace over: no access, and Stripe still bills it
+
+        var result = await CheckoutWith(sut, row);
+
+        Assert.False(row.IsActive());
+        Assert.IsType<ConflictObjectResult>(result);
+        await sut.Billing.DidNotReceive().CreateCheckoutSessionAsync(Arg.Any<CreateCheckoutRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateCheckout_ActiveAdminGrant_Answers409SoAPaymentDoesNotReplaceIt()
+    {
+        var sut = Build(newCheckouts: "true");
+
+        var result = await CheckoutWith(sut, ModuleSubscription.CreateAdminGrant(Guid.NewGuid(), "restaurante"));
+
+        Assert.IsType<ConflictObjectResult>(result);
+        Assert.Contains("já está liberado", ErrorOf(result));
+        await sut.Billing.DidNotReceive().CreateCheckoutSessionAsync(Arg.Any<CreateCheckoutRequest>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateCheckout_RunningTrial_MayStillBuy()
+    {
+        var sut = Build(newCheckouts: "true");
+
+        var result = await CheckoutWith(sut, ModuleSubscription.CreateTrial(Guid.NewGuid(), "restaurante"));
+
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateCheckout_CanceledStripeSubscription_MayBuyAgain()
+    {
+        var sut = Build(newCheckouts: "true");
+        var row = StripeRow();
+        row.Cancel();
+
+        var result = await CheckoutWith(sut, row);
+
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    [Fact]
+    public async Task CreateCheckout_SubscriptionOfAnotherModule_DoesNotBlock()
+    {
+        var sut = Build(newCheckouts: "true");
+
+        var result = await CheckoutWith(sut, StripeRow(module: "build"));
+
+        Assert.IsType<OkObjectResult>(result);
+    }
+
+    // ── Stripe does not answer ────────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateCheckout_StripeFails_Answers502WithoutItsDetails()
+    {
+        var sut = Build(newCheckouts: "true");
+        sut.Tenants.GetByIdAsync(sut.CurrentTenant.Id, Arg.Any<CancellationToken>()).Returns(MakeTenant("cus_existing"));
+        sut.Billing
+            .CreateCheckoutSessionAsync(Arg.Any<CreateCheckoutRequest>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("provider detail that must not reach the customer"));
+
+        var result = await sut.Controller.CreateCheckout(
+            new BillingController.CreateCheckoutBody("restaurante", "monthly", null, null), default);
+
+        Assert.Equal(502, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.DoesNotContain("provider detail", ErrorOf(result));
+    }
+
+    [Fact]
+    public async Task CreateCheckout_CustomerCreationFails_DoesNotPersistACustomerId()
+    {
+        var sut = Build(newCheckouts: "true");
+        sut.Tenants.GetByIdAsync(sut.CurrentTenant.Id, Arg.Any<CancellationToken>()).Returns(MakeTenant());
+        sut.Billing
+            .GetOrCreateCustomerAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("provider detail"));
+
+        var result = await sut.Controller.CreateCheckout(
+            new BillingController.CreateCheckoutBody("restaurante", "monthly", null, null), default);
+
+        Assert.Equal(502, Assert.IsType<ObjectResult>(result).StatusCode);
+        await sut.Tenants.DidNotReceive().SetStripeCustomerIdAsync(Arg.Any<Guid>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreatePortal_StripeFails_Answers502WithoutItsDetails()
+    {
+        var sut = Build();
+        sut.Tenants.GetByIdAsync(sut.CurrentTenant.Id, Arg.Any<CancellationToken>()).Returns(MakeTenant("cus_existing"));
+        sut.Billing
+            .CreatePortalSessionAsync("cus_existing", Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("provider detail that must not reach the customer"));
+
+        var result = await sut.Controller.CreatePortal(null, default);
+
+        Assert.Equal(502, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.DoesNotContain("provider detail", ErrorOf(result));
+    }
+
+    // ── Webhook: what makes Stripe deliver the event again ────────────────────
+
+    private sealed class BrokenBody : MemoryStream
+    {
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+            => throw new IOException("the connection dropped while reading the body");
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+            => throw new IOException("the connection dropped while reading the body");
+    }
+
+    [Fact]
+    public async Task Webhook_BodyCannotBeRead_Answers400AndHandlesNothing()
+    {
+        var sut = Build();
+        var http = sut.Controller.ControllerContext.HttpContext;
+        http.Request.Body = new BrokenBody();
+        http.Request.Headers["Stripe-Signature"] = "t=1,v1=abc";
+
+        var result = await sut.Controller.Webhook(default);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        await sut.WebhookService.DidNotReceive().HandleAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Webhook_HandlingFails_Answers500SoStripeDeliversAgain()
+    {
+        var sut = Build();
+        var http = sut.Controller.ControllerContext.HttpContext;
+        http.Request.Body = new MemoryStream("{}"u8.ToArray());
+        http.Request.Headers["Stripe-Signature"] = "t=1,v1=abc";
+        sut.WebhookService
+            .HandleAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .ThrowsAsync(new InvalidOperationException("database detail"));
+
+        var result = await sut.Controller.Webhook(default);
+
+        Assert.Equal(500, Assert.IsType<ObjectResult>(result).StatusCode);
+        Assert.DoesNotContain("database detail", ErrorOf(result));
     }
 }

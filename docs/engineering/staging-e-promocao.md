@@ -10,7 +10,7 @@ PR ──(ci-gate)──> master ──(CI completo)──> staging ──(valid
 
 | Etapa | O que acontece | Quem garante |
 |---|---|---|
-| PR para `master` | Roda `ci.yml`: o que o diff tocou, mais o SonarCloud e a autenticação de ponta a ponta (`auth-e2e`), que rodam sempre. O merge exige `ci-gate` verde | Proteção da branch `master` |
+| PR para `master` | Roda `ci.yml`: o que o diff tocou, mais o SonarCloud, a autenticação de ponta a ponta (`auth-e2e`) e a CSP sob um navegador real (`csp-e2e`), que rodam sempre. O merge exige `ci-gate` verde | Proteção da branch `master` |
 | Push em `master` | Roda `master.yml`: tudo, sem pular nada. Railway publica no **staging** depois do CI | `master.yml` e "Wait for CI" do Railway |
 | Promoção | `production` avança para um SHA com `master-gate` verde. Railway publica em **produção** | Proteção da branch `production` |
 
@@ -19,7 +19,7 @@ PR ──(ci-gate)──> master ──(CI completo)──> staging ──(valid
 - **`ci-gate`** (`ci.yml`): veredito de uma PR. Sempre reporta, então nunca fica pendente por causa de um job que o diff
   pulou. Um job pulado só vale se o diff não tocou aquela área; falha ou cancelamento reprova.
 - **`master-gate`** (`master.yml`): só existe em commit que chegou à `master` e passou em tudo (backend, frontend,
-  `auth-e2e` e SonarCloud), sem nada pulado.
+  `auth-e2e`, `csp-e2e` e SonarCloud), sem nada pulado.
 
 O `master-gate` fica num workflow próprio de propósito. Para checks obrigatórios, o GitHub trata como sucesso um job pulado
 por condição. Se ele fosse um job que a PR apenas pula, a ponta de uma branch não mesclada passaria pela proteção de
@@ -46,6 +46,19 @@ scripts/promote-production.sh <sha-completo>
 O script recusa um SHA fora da `master`, atrás de `production` ou sem `master-gate` verde, e mostra os commits que vão
 entrar. Ele não é a trava: quem recusa de fato é o GitHub. Um `git push origin <sha>:production` sem o check também é
 recusado, inclusive para administradores.
+
+O script confere duas coisas que a trava do GitHub não vê:
+
+- **De onde veio o check.** Só vale o `master-gate` da execução de `.github/workflows/master.yml` disparada pelo push
+  desse commit na `master`. Um job com o mesmo nome em outro workflow, evento ou branch não conta.
+- **Se o que roda o check mudou.** Quando há diferença em `.github/`, no próprio script ou no `global.json` entre
+  `production` e o SHA, ele lista os arquivos e recusa. Leia a diferença e rode de novo com `--ci-changes-reviewed`.
+
+Para rodar todas as conferências sem promover:
+
+```bash
+scripts/promote-production.sh <sha-completo> --check
+```
 
 Depois da promoção, confira no Railway que `backend` e `main` estão em `SUCCESS` com esse SHA, e rode o production-watch
 da Platform.
@@ -119,15 +132,15 @@ código; valem só para dados de teste, e por isso nada real pode entrar neste a
 ### Domínios
 
 Staging roda nos domínios gerados pelo Railway. `*.up.railway.app` é um sufixo público, então o `main` e o `backend` são
-sites diferentes para o navegador. Isso não afeta a sessão do SPA: ele não usa os cookies `nexo_access` e `nexo_refresh` em
-nenhum ambiente, guarda os tokens em `localStorage` e chama a API com o header `Authorization`
-([evidência](../audits/2026-11-05-sonarcloud-seguranca-evidencias.md)). Conferido no código e em host local, não com login real em staging.
+sites diferentes para o navegador. Isso não afeta o modo atual da sessão, que guarda os tokens em `localStorage` e não usa cookie. O modo cookie
+(`VITE_SESSION_MODE=cookie` no `main`) precisa de `Auth__Session__AllowedOrigins__0` com a origem do frontend no `backend` e de `Auth__Session__CookieSameSite=None` enquanto o staging estiver nesse domínio: veja
+[o roteiro de homologação](../security/roteiro-homologacao-sessao.md).
 
 Para o staging ter a mesma relação de sites de produção, os dois hosts precisam ser do mesmo site:
 `erp.staging.orken.com.br` e `api.erp.staging.orken.com.br`. Depois de criar os registros DNS:
 
 1. inclua os domínios em `.railway/railway.ts` (fora do ramo de produção) e rode o `apply` no staging;
-2. troque `App__FrontendUrl`, `Cors__AllowedOrigins__0` e `VITE_API_BASE_URL` para os novos hosts;
+2. troque `App__FrontendUrl`, `Cors__AllowedOrigins__0`, `Auth__Session__AllowedOrigins__0` e `VITE_API_BASE_URL` para os novos hosts, e remova `Auth__Session__CookieSameSite`;
 3. publique de novo o `main`, porque a API fica fixada no bundle durante o build.
 
 ### Custo

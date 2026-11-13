@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.RateLimiting;
 using Nexo.Api.Filters;
 using Nexo.Api.Middleware;
+using Nexo.Api.Uploads;
 using Nexo.Application.Modules.Build;
 using Nexo.Infrastructure.Modules.Build;
 
@@ -39,11 +39,13 @@ public class PublicBuildPortalController : ControllerBase
 
     private readonly BuildPublicPortalService _portal;
     private readonly ClientIpResolver _clientIp;
+    private readonly UploadAdmission _uploads;
 
-    public PublicBuildPortalController(BuildPublicPortalService portal, ClientIpResolver clientIp)
+    public PublicBuildPortalController(BuildPublicPortalService portal, ClientIpResolver clientIp, UploadAdmission uploads)
     {
         _portal = portal;
         _clientIp = clientIp;
+        _uploads = uploads;
     }
 
     /// <summary>The opaque session of a password portal (absent on a public portal or before unlocking).</summary>
@@ -247,7 +249,6 @@ public class PublicBuildPortalController : ControllerBase
     [EnableRateLimiting("build-portal-decision")]
     [DisableFormValueModelBinding]
     [MultipartFileBody("file")]
-    [RequestSizeLimit(MaxUploadRequestBytes)]
     [ProducesResponseType(typeof(PublicBuildAssistanceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status413PayloadTooLarge)]
     [ProducesResponseType(typeof(PublicBuildErrorDto), StatusCodes.Status503ServiceUnavailable)]
@@ -256,7 +257,7 @@ public class PublicBuildPortalController : ControllerBase
     {
         NoStore();
         var target = await _portal.AuthorizeAssistanceUploadAsync(companySlug, projectSlug, SessionToken, publicId, ct);
-        var file = await ReadUploadAsync(ct);
+        var file = await ReadUploadAsync(target, ct);
         if (file is null || file.Length == 0)
             throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileType, "Envie uma imagem no campo file.");
         var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
@@ -271,33 +272,21 @@ public class PublicBuildPortalController : ControllerBase
         return Ok(await _portal.StoreAssistancePhotoAsync(target, stream, contentType, extension, file.Length, ct));
     }
 
-    /// <summary>The multipart field <c>file</c>, read only now (after authorization), within the upload limits.</summary>
-    private async Task<IFormFile?> ReadUploadAsync(CancellationToken ct)
+    /// <summary>
+    /// The multipart field <c>file</c>, read only now (after authorization), within the upload limits. The photo counts against the
+    /// in-flight bounds of the portal's company, and of the client's IP inside it: there is no signed-in user to count it against.
+    /// </summary>
+    private async Task<IFormFile?> ReadUploadAsync(PublicBuildAssistanceUploadTarget target, CancellationToken ct)
     {
-        if (!Request.HasFormContentType)
+        // Deliberately not IFormFile binding: [DisableFormValueModelBinding] keeps an anonymous body unread until the
+        // portal session is authorized, and these limits answer 413 file_too_large instead of a binding 400.
+        var caller = new UploadCaller(target.TenantId.ToString(), "portal|" + _clientIp.Resolve(HttpContext));
+        var read = await _uploads.ReadAsync(HttpContext, caller, MaxUploadRequestBytes, "A imagem pode ter até 8 MB.", ct);
+        if (read.Refusal is { Status: StatusCodes.Status400BadRequest })
             throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileType, "Envie uma imagem no campo file.");
-        try
-        {
-            var form = await Request.ReadFormAsync(new FormOptions
-            {
-                MultipartBodyLengthLimit = MaxUploadRequestBytes,
-                ValueCountLimit = 16,
-                ValueLengthLimit = 4 * 1024,
-                MultipartHeadersLengthLimit = 16 * 1024,
-            }, ct);
-            // Deliberately not IFormFile binding: [DisableFormValueModelBinding] keeps an anonymous body unread until the
-            // portal session is authorized, and these limits answer 413 file_too_large instead of a binding 400.
-            return form.Files.GetFile("file"); // NOSONAR — csharpsquid:S6932, read after authorization on purpose
-        }
-        catch (InvalidDataException)
-        {
-            // a multipart section or the whole body beyond the limits
-            throw new BuildPortalAccessException(413, PublicBuildPortal.CodeFileTooLarge, "A imagem pode ter até 8 MB.");
-        }
-        catch (IOException)
-        {
-            throw new BuildPortalAccessException(400, PublicBuildPortal.CodeInvalidFileType, "Envie uma imagem no campo file.");
-        }
+        if (read.Refusal is { } refusal)
+            throw new BuildPortalAccessException(refusal.Status, refusal.Code, refusal.Message, retryAfterSeconds: refusal.RetryAfterSeconds);
+        return read.Form!.Files.GetFile("file");
     }
 
     /// <summary>The client rates a resolved request (1–5), once.</summary>

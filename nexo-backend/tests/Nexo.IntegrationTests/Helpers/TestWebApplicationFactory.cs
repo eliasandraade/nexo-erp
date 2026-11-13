@@ -141,6 +141,8 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         // cascade. RateLimitingTests re-enable it explicitly via
         // WithRateLimitingEnabled() so the limiter itself stays under test.
         builder.UseSetting("RateLimiting:AuthLogin:Enabled", "false");
+        builder.UseSetting("RateLimiting:AuthRefresh:Enabled", "false");
+        builder.UseSetting("RateLimiting:AuthLogout:Enabled", "false");
 
         // Same reasoning for the public booking limiter: the shared suite fires many public
         // POSTs from one client IP; with the limiter on, the window is exhausted and later
@@ -151,6 +153,9 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>, IAsyncL
         builder.UseSetting("RateLimiting:BuildPortalAuth:Enabled", "false");
         builder.UseSetting("RateLimiting:BuildPortalDecision:Enabled", "false");
         builder.UseSetting("RateLimiting:CredentialCheck:Enabled", "false");
+        // Same for uploads, in-flight bounds included: some suites race uploads on purpose. The Storage/Upload* tests turn them on.
+        builder.UseSetting("RateLimiting:Uploads:Enabled", "false");
+        builder.UseSetting("Uploads:InFlight:Enabled", "false");
 
         // Tax Intelligence is off unless configured (kill switch). The suite turns it on explicitly and relaxes
         // only the approval enforcement — the Mode stays unconfigured (Disabled) — so tests can use rules created

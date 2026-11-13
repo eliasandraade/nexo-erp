@@ -60,14 +60,15 @@ public sealed class BuildFileTooLargeException : Exception
 }
 
 /// <summary>
-/// An upload copied to a temporary file (deleted on dispose) while its SHA-256 is computed: the first bytes decide the format,
-/// then the same file is validated and stored. The client's file name is kept for display only.
+/// An upload with its SHA-256 computed: the first bytes decide the format, then the same file is validated and stored. The file stays
+/// where the request's form spooled it (removed when the response completes): copying it here would double what an upload takes on
+/// disk. The client's file name is kept for display only.
 /// </summary>
 public sealed class BuildUploadBuffer : IAsyncDisposable, IDisposable
 {
-    private readonly FileStream _file;
+    private readonly Stream _file;
 
-    private BuildUploadBuffer(FileStream file, long length, string sha256, byte[] head, string fileName)
+    private BuildUploadBuffer(Stream file, long length, string sha256, byte[] head, string fileName)
     {
         _file = file;
         Length = length;
@@ -81,35 +82,27 @@ public sealed class BuildUploadBuffer : IAsyncDisposable, IDisposable
     public byte[] Head { get; }
     public string FileName { get; }
 
-    public static async Task<BuildUploadBuffer> FromAsync(Stream source, string? fileName, long maxBytes, CancellationToken ct)
+    /// <summary>Takes over <paramref name="source"/>, which must be seekable, and reads it once to hash it. Disposing the buffer disposes it.</summary>
+    public static async Task<BuildUploadBuffer> FromAsync(Stream source, string? fileName, CancellationToken ct)
     {
-        var path = Path.Combine(Path.GetTempPath(), "orken-build-" + Guid.NewGuid().ToString("N"));
-        var file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None, 81920,
-            FileOptions.DeleteOnClose | FileOptions.Asynchronous);
         try
         {
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
             var buffer = new byte[81920];
-            long total = 0;
             int read;
+            source.Position = 0;
             while ((read = await source.ReadAsync(buffer, ct)) > 0)
-            {
-                total += read;
-                if (total > maxBytes) throw new BuildFileTooLargeException($"Arquivo grande demais: o limite é {maxBytes / (1024 * 1024)} MB.");
                 hash.AppendData(buffer, 0, read);
-                await file.WriteAsync(buffer.AsMemory(0, read), ct);
-            }
-            await file.FlushAsync(ct);
-            file.Position = 0;
-            var head = new byte[(int)Math.Min(BuildFileSignatures.HeadLength, total)];
-            await file.ReadExactlyAsync(head, ct);
-            file.Position = 0;
-            return new BuildUploadBuffer(file, total, Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant(), head,
+            source.Position = 0;
+            var head = new byte[(int)Math.Min(BuildFileSignatures.HeadLength, source.Length)];
+            await source.ReadExactlyAsync(head, ct);
+            source.Position = 0;
+            return new BuildUploadBuffer(source, source.Length, Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant(), head,
                 string.IsNullOrWhiteSpace(fileName) ? "arquivo" : Path.GetFileName(fileName));
         }
         catch
         {
-            await file.DisposeAsync();
+            await source.DisposeAsync();
             throw;
         }
     }

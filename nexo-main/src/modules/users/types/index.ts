@@ -1,4 +1,4 @@
-export type UserStatus = "active" | "inactive" | "blocked";
+export type UserStatus = "active" | "inactive" | "blocked" | "pendingverification";
 export type UserRole = "diretoria" | "gerente" | "vendedor" | "estoquista" | "cozinha";
 
 export interface User {
@@ -77,12 +77,14 @@ export const statusLabels: Record<UserStatus, string> = {
   active: "Ativo",
   inactive: "Inativo",
   blocked: "Bloqueado",
+  pendingverification: "Aguardando verificação",
 };
 
 export const statusVariant: Record<UserStatus, "success" | "neutral" | "danger"> = {
   active: "success",
   inactive: "neutral",
   blocked: "danger",
+  pendingverification: "neutral",
 };
 
 export const permissionModules: PermissionModule[] = [

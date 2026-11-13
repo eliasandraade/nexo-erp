@@ -8,8 +8,9 @@ public class UpdateUserRequestValidator : AbstractValidator<UpdateUserRequest>
     private static readonly string[] ValidRoles =
         ["diretoria", "gerente", "vendedor", "estoquista", "cozinha"];
 
+    // Every status the API returns comes back from the users screen. Which change is allowed depends on the user: UserService decides.
     private static readonly string[] ValidStatuses =
-        ["active", "inactive", "blocked"];
+        ["active", "inactive", "blocked", "pendingverification"];
 
     public UpdateUserRequestValidator()
     {

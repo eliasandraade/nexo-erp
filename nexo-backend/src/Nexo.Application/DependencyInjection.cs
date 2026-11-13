@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<Nexo.Application.Features.Sales.PosDiscountPolicy>();
         services.AddScoped<LoginAttemptGuard>();
+        services.AddScoped<RefreshBudget>();
         services.AddScoped<MfaService>();
         services.AddScoped<IMfaChallengeService>(sp => sp.GetRequiredService<MfaService>());
         services.AddScoped<UserService>();

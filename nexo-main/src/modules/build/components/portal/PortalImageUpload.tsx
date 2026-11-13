@@ -2,8 +2,8 @@ import { useRef, useState } from "react";
 import { ImageIcon, Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { ApiError } from "@/services/api-client";
 import { uploadFile } from "@/services/storage.api";
+import { uploadErrorMessage } from "@/services/upload-error";
 
 const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
 const MAX_MB = 10;
@@ -36,9 +36,7 @@ export function PortalImageUpload({ context, previewUrl, hasImage, label, wide, 
       onChange(key, publicUrl);
       toast.success(`${label} enviada. Salve para aplicar.`);
     } catch (e) {
-      toast.error(e instanceof ApiError && e.status === 404
-        ? "Upload de imagens indisponível neste ambiente."
-        : `Falha ao enviar ${label.toLowerCase()}. Tente novamente.`);
+      toast.error(uploadErrorMessage(e, `Falha ao enviar ${label.toLowerCase()}. Tente novamente.`, "Upload de imagens indisponível neste ambiente."));
     } finally {
       setLoading(false);
     }

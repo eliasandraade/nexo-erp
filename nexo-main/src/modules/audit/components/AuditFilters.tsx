@@ -26,6 +26,7 @@ const ACTION_TYPES: AuditActionType[] = [
   "manager_authorization",
   "user_created",
   "user_updated",
+  "user_last_director_refused",
 ];
 
 const SEVERITIES: AuditSeverity[] = ["critical", "warning", "info"];
