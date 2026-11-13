@@ -79,6 +79,8 @@ public static class PortalReviewHost
             foreach (var h in response.Headers.Concat(response.Content.Headers))
                 ctx.Response.Headers[h.Key] = h.Value.ToArray();
             ctx.Response.Headers.Remove("transfer-encoding");
+            // A 304 (If-None-Match) or 204 has no body: copying one makes Kestrel throw and close a keep-alive connection.
+            if (ctx.Response.StatusCode is StatusCodes.Status204NoContent or StatusCodes.Status304NotModified) return;
             await response.Content.CopyToAsync(ctx.Response.Body);
         });
 
