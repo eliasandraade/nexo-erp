@@ -37,27 +37,75 @@ desta lista. As rodadas automatizadas estão no [registro](homologacao-sessao-st
   - **Recebimento real dos dois e-mails:** só dá para conferir onde houver um provedor configurado.
 - **Em caso de falha:** anote o passo, o navegador, o horário e o `X-Request-Id` da resposta, e marque **Não**.
 
-## O que as rodadas automatizadas já mostraram
+## O que já está comprovado e o que ainda depende de uma pessoa
 
-Serve de contexto, não de aprovação. A coluna "Automatizado" diz o que um navegador comandado por roteiro já fez nos domínios próprios do
-staging ([registro](homologacao-sessao-staging-2026-11-10.md), seção 2.2). **Nenhuma linha da lista abaixo foi marcada por causa disso.**
+Serve de contexto, não de aprovação. "Comprovado" quer dizer que um navegador comandado por roteiro executou o fluxo e o resultado
+bateu ([registro](homologacao-sessao-staging-2026-11-10.md), seções 2 a 2.2). **Nenhuma linha da lista abaixo foi marcada por causa disso.**
+Toda linha continua precisando de uma pessoa, nos três navegadores, no commit candidato.
 
-| # da lista | Automatizado no Chromium | Automatizado no WebKit do Playwright | Ainda só com uma pessoa |
-|---|---|---|---|
-| 1, 2, 3 (login e logout) | Passou | Passou | Safari e Firefox reais |
-| 4 (código da segunda etapa) | Passou, com código calculado pelo roteiro | Passou | Com o seu aplicativo autenticador |
-| 5, 6 (código de recuperação, desafio expirado) | Passou pela API, nos endereços antigos | Não executado | As telas |
-| 7 (troca de loja) | Passou | Passou | Safari e Firefox reais |
-| 8, 9, 10 (várias abas) | Passou | Passou | Safari e Firefox reais |
-| 11 (impersonação) | Passou | Passou | Com o seu segundo fator de administrador |
-| 12 (encerrar todas, na plataforma) | Passou nos endereços antigos | Não executado | A tela, nos domínios novos |
-| 13 (redefinição de senha) | Passou a partir do link | Passou a partir do link | O pedido pela tela e o recebimento do link |
-| 14 (verificação de e-mail) | Passou nos endereços antigos | Não executado | O link visto no log |
-| 15 (migração de sessão) | Passou, na volta do bundle | Não executado | Com o operador publicando |
-| 16 (sem conexão: navegar) | Passou nos endereços antigos | Não executado | Todos os navegadores |
-| 17 (sem conexão: sair e entrar de novo) | Passou | Passou | Safari e Firefox reais |
-| 18 (rollback) | Passou | Não executado | Com o operador publicando |
-| 19 (isolamento entre subdomínios) | Passou | Não executado | Safari e Firefox reais |
+### Em que commit a evidência foi tirada
+
+- **Rodadas automatizadas:** `633a301` (endereços `*.up.railway.app`) e `c6c2cfc` (domínios próprios do staging, com `SameSite=Lax`).
+- **Candidato:** `834737d`, com as correções de segurança #183 a #187 depois dessas rodadas. Elas mexem no limite de tentativas por rota
+  (#183), no contador de códigos da segunda etapa da plataforma (#184) e no login único (#185). Os testes de API dessas correções passaram no
+  staging, mas as telas não foram repetidas nesse commit.
+- **Se o candidato mudar** (as correções do SonarCloud, que só acrescentam testes e `void`), a lista é feita no commit final, que o
+  [plano da promoção](plano-segunda-promocao-sessao.md) fixa.
+
+### Grupo A: comprovado em dois motores, nos domínios próprios
+
+Chromium e WebKit do Playwright, em `c6c2cfc`. **Falta:** Firefox real, Safari real e uma pessoa.
+
+| # | Fluxo |
+|---|---|
+| 1 | Login (gerente e vendedor), cookie no host da API, Local Storage sem tokens |
+| 2 | Login recusado |
+| 3 | Logout |
+| 7 | Troca de loja com duas abas |
+| 8, 9, 10 | Várias abas: recarregar, login e logout |
+| 17 | Sem conexão: sair e entrar de novo |
+
+### Grupo B: comprovado, menos o passo que só uma pessoa faz
+
+Chromium e WebKit do Playwright, em `c6c2cfc`. **Falta:** o passo da coluna, mais Firefox e Safari reais.
+
+| # | Fluxo | O que o roteiro não fez |
+|---|---|---|
+| 4 | Código da segunda etapa | O código veio do roteiro, não de um aplicativo autenticador |
+| 11 | Impersonação | O segundo fator do administrador entrou pela API. O WebKit do Playwright não mostra o cabeçalho `Cookie` dos pedidos: a ausência dele só se confere no Safari real |
+| 13 | Redefinição de senha | Começou pelo link. O pedido pela tela "Esqueci minha senha" e o recebimento do link não foram exercitados |
+
+### Grupo C: comprovado só no Chromium ou só nos endereços antigos
+
+**Falta:** os domínios próprios onde indicado, o WebKit/Safari, o Firefox e uma pessoa.
+
+| # | Fluxo | O que existe |
+|---|---|---|
+| 5 | Código de recuperação | Só pela API, nos endereços antigos. A tela nunca foi exercitada |
+| 6 | Desafio expirado | Só pela API, nos endereços antigos. A tela nunca foi exercitada |
+| 12 | Encerrar todas, na plataforma | Chromium, nos endereços antigos |
+| 14 | Verificação de e-mail | Chromium, nos endereços antigos |
+| 16 | Sem conexão: navegar | Chromium, nos endereços antigos |
+| 19 | Isolamento entre subdomínios | Chromium, nos domínios próprios. No WebKit não rodou (certificado de site externo recusado pelo motor nesta máquina) |
+
+### Grupo D: dependem do operador publicando
+
+Chromium, com o operador publicando durante o teste. **Falta:** repetir com uma pessoa nos três navegadores, com o operador.
+
+| # | Fluxo | O que existe |
+|---|---|---|
+| 15 | Migração de sessão | A volta do bundle no host novo levou a sessão de volta ao cookie sem novo login |
+| 18 | Rollback sem perda indevida | Volta do bundle e da API `8a164ce` com abas abertas, nos endereços antigos e no host novo |
+
+### Resumo
+
+| Situação | Linhas |
+|---|---|
+| Comprovadas em Chromium e WebKit; faltam Firefox, Safari e a pessoa | 1, 2, 3, 7, 8, 9, 10, 17 |
+| Comprovadas menos um passo humano | 4, 11, 13 |
+| Comprovadas só no Chromium ou nos endereços antigos | 5, 6, 12, 14, 16, 19 |
+| Dependem do operador | 15, 18 |
+| Aprovadas por uma pessoa | **Nenhuma** |
 
 ## Lista
 

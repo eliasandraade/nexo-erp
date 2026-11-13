@@ -13,6 +13,15 @@ A regra do login foi decidida pelo proprietário em 2026-11-12: o login é únic
 
 `0b9a398`, `c6c2cfc` e `633a301` não são candidatos. Nenhum commit é promovido automaticamente.
 
+**Candidato final:** o commit da `master` que fechar as correções do SonarCloud (PRs #147, #165, #166 e #167, que só acrescentam `void` e
+testes, e os PRs que só acrescentam testes). Nenhum deles traz migração nem muda comportamento. O SHA final entra aqui quando existir, com:
+
+- `master-gate` verde nesse SHA;
+- Quality Gate da `master` no SonarCloud em OK nesse SHA;
+- staging em `SUCCESS` nesse SHA.
+
+Se a decisão for promover sem essas correções, o candidato continua `834737d`.
+
 O que o candidato leva além da produção atual (`8a164ce`):
 
 | PR | O que muda | Migração de banco | Estado |
@@ -79,7 +88,10 @@ Quando o login e o e-mail colidem juntos, na mesma empresa, o índice do e-mail 
 | `master-gate` em `038040f` (#185), `6b909ae` (#187) e `834737d` (#186) | Verde nos três. Staging em `SUCCESS` em `834737d` |
 | SDK do CI | Fixado em .NET 8 pelo `global.json`. Uma imagem nova do runner trazia o SDK 11, que não compila o host dos testes |
 | PR #181 no SHA exato do merge (`7e7ae73`) | Tudo verde: `ci-gate`, `frontend`, `auth-e2e` cookie (101 passaram) e storage, `csp-e2e` (31 passaram, incluindo o teste novo), `sonarcloud`, SonarCloud Code Analysis e GitGuardian |
-| Quality Gate geral do SonarCloud em `master` | **ERROR em 2 condições do código novo**: confiabilidade C (o limite é A) e cobertura de 77,3% (o mínimo é 80%). É o mesmo estado de `633a301`; o PR #181 não mudou nenhuma das duas. Os limites não foram reduzidos. Levar o gate a verde depende das decisões já abertas sobre os PRs de `S9383` e o período do código novo |
+| Quality Gate geral do SonarCloud em `master` | **ERROR em 2 condições do código novo** em `834737d`: confiabilidade C (o limite é A) e cobertura de 77,4% (o mínimo é 80%). Os limites não foram reduzidos |
+| Por que o `master-gate` passa com o Quality Gate em ERROR | No push para a `master`, o job `sonarcloud` envia a análise com `sonar.qualitygate.wait=false` e termina com sucesso; o `master-gate` exige o job, não o veredito. O check separado "SonarCloud Code Analysis" carrega o veredito e não é exigido por nenhuma proteção. Nos PRs, o job espera o veredito do código do PR e reprova |
+| Confiabilidade C | 138 bugs abertos: 137 `S9383` (promessas sem tratamento declarado; nenhuma rejeita, ver `docs/audits/2026-11-06-sonarcloud-confiabilidade-por-achado.md`) e 1 `S8733` (consulta com dois `Include`). Os `void` dos PRs #147, #165, #166 e #167 tiram os 137; o `S8733` depende de decisão do proprietário |
+| Cobertura 77,4% | Faltam cerca de 1.740 linhas e condições cobertas, quase todas em telas sem nenhum teste. Os PRs de teste cobrem fluxos dessas telas |
 
 ## 3. Volta atrás no staging
 
@@ -133,13 +145,15 @@ Todas precisam estar cumpridas. Qualquer uma em falta bloqueia a promoção:
 2. `master-gate` verde no SHA do candidato, e staging em `SUCCESS` nesse SHA.
 3. Bateria de navegadores completa nos domínios próprios do staging (`erp.staging.orken.com.br`), sem falha em aberto.
 4. [Checklist humana](checklist-homologacao-humana-sessao.md) preenchida por uma pessoa, em Chrome ou Edge, Firefox e Safari.
-5. Volta atrás repetida no staging com o candidato, incluindo a API anterior sobre o esquema novo.
+5. API anterior sobre o esquema novo: **cumprida** no ensaio local de 2026-11-13 (seção 8.0), com o candidato `834737d`. Se o candidato
+   final trouxer migração nova, o ensaio é repetido.
 6. Backup verificado (abaixo) e autorização explícita do proprietário, para cada etapa.
-7. Contenção do GitHub aplicada: só a conta do proprietário atualiza `production`, e nenhum app desnecessário tem escrita em conteúdo e
-   em workflows no repositório.
-8. **Pendência registrada:** o Quality Gate da `master` no SonarCloud está em ERROR em `834737d`, embora o `master-gate` tenha passado.
-   - Condições: confiabilidade do código novo C, onde o exigido é A; cobertura do código novo 77,4%, onde o exigido é 80%.
-   - Os limites não serão reduzidos. O proprietário decide se ela bloqueia a promoção.
+7. Contenção do GitHub aplicada: o ruleset de `production` ativo, com só a conta do proprietário na exceção. Os apps instalados ficam,
+   por decisão do proprietário (2026-11-13); os riscos que sobram estão registrados no documento privado da contenção.
+8. Quality Gate da `master` no SonarCloud em OK no candidato final.
+   - Em `834737d` ele está em ERROR: confiabilidade do código novo C (exigido A) e cobertura do código novo 77,4% (exigido 80%).
+   - O `master-gate` não depende dele: no push para a `master`, a análise é enviada sem esperar o veredito (seção 2).
+   - Os limites não serão reduzidos. Se o proprietário decidir promover com ele em ERROR, a decisão fica registrada aqui.
 
 ### Duas etapas
 
@@ -153,14 +167,56 @@ Todas precisam estar cumpridas. Qualquer uma em falta bloqueia a promoção:
    - publicar de novo o mesmo commit;
    - cada pessoa migra na próxima recarga, sem novo login.
 
+### Critérios de aprovação de cada etapa
+
+Cada etapa tem uma decisão antes (pode publicar?) e uma depois (pode seguir?). As duas são do proprietário, por escrito.
+
+**Etapa 1: candidato sem `VITE_SESSION_MODE`**
+
+| Antes de publicar | Exigido |
+|---|---|
+| Candidato | SHA final fixado na seção 1, `master-gate` verde e staging em `SUCCESS` nele |
+| Condições | 1, 2, 5, 6, 7 e 8 da lista acima. A 3 e a 4 (navegadores e checklist humana) valem para a etapa 2, porque a etapa 1 não liga o cookie |
+| Regressão do modo de hoje no staging, no SHA final | Login, renovação e logout de empresa; login da plataforma com a segunda etapa; criação de usuário com login repetido recusada com 409 `login_taken` |
+| Ensaios | 8.0 cumprido; 8.2 (restauração do volume em ambiente descartável) cumprido |
+| Backup | Backup manual do volume de produção com id anotado e cópia lógica verificada, no mesmo dia |
+| Produção antes | `production` em `8a164ce`; `Billing__NewCheckoutsEnabled` ausente; Tax Intelligence sem variáveis; nenhuma variável de sessão |
+
+| Depois de publicar (24 h) | Para seguir |
+|---|---|
+| Implantações | `backend` e `main` em `SUCCESS` no SHA final; 79 migrações no log de início, sem erro |
+| Uso real | Login, recarga, logout e upload feitos por uma pessoa; login da plataforma com o código; portais públicos abrem |
+| Sinais | Nenhum item da tabela de bloqueio abaixo disparou |
+| Dados | Contagens de referência iguais, salvo o uso normal explicado |
+
+**Etapa 2: ligar o modo cookie**
+
+| Antes de publicar | Exigido |
+|---|---|
+| Etapa 1 | No ar há pelo menos 7 dias, sem incidente aberto |
+| Navegadores | Condição 3 cumprida no SHA da etapa 1 |
+| Checklist humana | Condição 4: as 19 linhas com **Sim** em Chrome ou Edge, Firefox e Safari, ou **—** justificado, assinadas pelo proprietário |
+| Backup | Novo backup manual do volume e cópia lógica verificada, no mesmo dia |
+| Variável | Só `VITE_SESSION_MODE=cookie` no `main` de produção; nada no `backend` |
+
+| Depois de publicar (24 h) | Para seguir |
+|---|---|
+| Migração | Pessoas logadas passam ao cookie na recarga, sem novo login (amostra conferida pela auditoria e pelo log de `auth/refresh`) |
+| Renovação | Nenhuma série de 401 em `auth/refresh` para sessões ativas |
+| Limites | Nenhuma loja inteira recebendo 429 em uso normal |
+| CSP | Nenhuma violação nova em fluxo do produto |
+| Volta atrás | Pronta e testada: retirar a variável e publicar o `main` de novo |
+
+**Qualquer critério em falta:** a etapa não começa ou é revertida pela seção "Volta atrás", e a decisão volta ao proprietário.
+
 ### Backup e restauração, antes de cada etapa
 
 1. Backup manual do volume do Postgres de produção no Railway, com o id anotado.
 2. Cópia lógica (`pg_dump`) lida de volta por inteiro, com as contagens das tabelas principais comparadas com o banco ao vivo. Depois, a cópia
    é apagada do contêiner.
 3. Contagens de referência: empresas, usuários, sessões ativas, assinaturas e auditoria. Elas são comparadas depois da publicação.
-4. **Restauração:** o caminho principal é restaurar o backup do volume pelo Railway, e ele nunca foi ensaiado. Ensaiar uma vez no
-   staging (restaurar um backup do volume e conferir as contagens) antes da etapa 1.
+4. **Restauração:** o caminho principal é restaurar o backup do volume pelo Railway, e ele nunca foi ensaiado. Ensaiar uma vez num
+   ambiente descartável do Railway (seção 8.2) antes da etapa 1. Nunca sobre o staging ou a produção em funcionamento.
    - Em 2026-11-12 foi ensaiada no staging a restauração da cópia lógica: o `pg_dump` foi restaurado num banco descartável e comparado
      com o banco ao vivo, tabela por tabela (161 tabelas, 1.125 linhas, idênticas).
 
@@ -212,14 +268,56 @@ Acompanhar por 24 horas depois de cada etapa. Qualquer item abaixo interrompe a 
     promovido.
 - **Restauração do banco:** só se uma migração falhar ou houver perda de dados. É a última opção, e depende do ensaio de restauração acima.
 
-## 8. Ensaios no staging antes da etapa 1
+## 8. Ensaios antes da etapa 1
 
-Os dois ensaios rodam só no staging, com o candidato já publicado nele, e cada um precisa de autorização antes de começar. Nenhum toca a
-produção.
+Decisão do proprietário em 2026-11-13: os ensaios rodam só em ambiente descartável. Nenhuma restauração é feita sobre o staging ou a produção
+em funcionamento. Nenhum ensaio toca a produção.
 
-### 8.1 Volta atrás completa com o candidato
+### 8.0 Resultado: API anterior sobre o esquema novo, em ambiente local descartável (2026-11-13)
 
-Prova que o caminho da seção "Volta atrás" funciona com o esquema novo: a API de `8a164ce` roda sobre as migrações do candidato.
+**Ambiente:**
+
+- Postgres 18 local, criado só para o ensaio, com a cópia lógica do staging de 2026-11-12 10:51Z (`sha256 446ae51b…`). Ela tem 77
+  migrações, o mesmo esquema da produção.
+- Redis descartável em contêiner.
+- As APIs de `834737d` (candidato) e `8a164ce` (produção) compiladas em Release, uma de cada vez, na mesma base.
+- Tudo foi apagado no fim. Nada saiu da máquina.
+
+**Sequência:** candidato aplica as migrações → API `8a164ce` sobre o esquema novo → candidato de novo.
+
+| Fase | Verificação | Resultado |
+|---|---|---|
+| Antes | Migrações; linhas de `users` | 77; 29 linhas, impressão digital registrada |
+| Candidato | Sobe e aplica as duas migrações | 79 migrações, índice `IX_users_login` e coluna `mfa_attempts` presentes, sem erro no log |
+| Candidato | Linhas de `users` depois da migração | Idênticas às de antes |
+| Candidato | Login, `auth/me` e renovação de empresa, no modo de hoje e no modo cookie | 200 em todos. No modo cookie, o cookie é emitido e o corpo não traz `refreshToken` |
+| Candidato | Login da plataforma; ativar a segunda etapa; sessão pendente | Entra; `mfa_attempts = 0` na sessão pendente |
+| Candidato | Código logo depois da ativação | 401: o passo de 30 s já tinha sido gasto na ativação, e o servidor recusa reutilizar o passo (`MfaLastUsedStep`). É a proteção contra reutilização. Com o passo seguinte, entrou (fases 2 e 3) |
+| `8a164ce` | Sobe sobre 79 migrações | Sobe em 30 s, sem tentar aplicar nem desfazer nada |
+| `8a164ce` | Sessão aberta no candidato, no modo de hoje | Renova (200) |
+| `8a164ce` | Login, `auth/me`, renovação e logout de empresa | 200, 200, 200 e 204 |
+| `8a164ce` | Criar usuário com login novo | 201 |
+| `8a164ce` | Criar usuário com o login de outra empresa | **409 `duplicate`**, nunca 500. O índice recusa, e o log registra o erro do banco (2 linhas de nível `error` do EF), que é a recusa esperada |
+| `8a164ce` | Cadastro público com e-mail já cadastrado | 409 `email_already_registered` |
+| `8a164ce` | Login da plataforma com a segunda etapa | Entra; a sessão pendente grava `mfa_attempts = 0` pelo padrão do banco |
+| Candidato de novo | Sessão que atravessou a API anterior | Renova (200) |
+| Candidato de novo | Login de outra empresa | 409 `login_taken` |
+| Candidato de novo | Plataforma com a segunda etapa | Entra |
+| Fim | Tabelas alteradas | Só as que os passos tocam: `users` +2, `user_sessions` +4, `platform_sessions` +4, `platform_users` +1 (operador do ensaio), `audit_records` +11 |
+
+**Conclusão:** a volta da API para `8a164ce` sobre o esquema do candidato funciona, e a sessão no modo de hoje atravessa a ida e a volta sem
+novo login. Na volta, um login repetido entre empresas recebe 409 `duplicate` em vez de `login_taken`. O log da API mostra duas linhas de
+erro do banco para cada tentativa dessas: a seção "Observabilidade" não deve tratar esse caso como incidente durante uma volta atrás.
+
+**O que este ensaio não cobre:** a publicação real no Railway, o bundle e as abas abertas durante as publicações. Isso foi exercitado na 2ª
+rodada (seção 3), com `c6c2cfc` no lugar do candidato. A única diferença do candidato para essa rodada no caminho de volta é o esquema, e o
+esquema é o que este ensaio provou.
+
+### 8.1 Volta atrás completa com o candidato, no Railway
+
+Opcional depois do 8.0. Se o proprietário quiser repeti-lo com a publicação real, ele roda no staging com o candidato publicado e com
+autorização própria. Ele publica versões, mas não restaura banco. Prova que o caminho da seção "Volta atrás" funciona com o esquema novo: a
+API de `8a164ce` roda sobre as migrações do candidato.
 
 **Antes:**
 
@@ -261,11 +359,20 @@ entendida.
 ### 8.2 Restauração de um backup do volume
 
 O caminho principal de restauração é o backup do volume pelo Railway, e ele nunca foi ensaiado. A restauração no Railway é feita **sobre o
-próprio volume**: o banco volta inteiro ao momento do backup, e tudo o que foi gravado depois se perde. No staging isso é aceitável,
-porque os dados são sintéticos.
+próprio volume**: o banco volta inteiro ao momento do backup, e tudo o que foi gravado depois se perde. Um backup só pode ser restaurado
+no volume de onde saiu (a API do Railway não oferece outro destino). Por isso o ensaio não pode usar o volume do staging em funcionamento:
+ele precisa de um ambiente descartável próprio.
 
 O Railway também oferece a restauração para um ponto no tempo, que cria um serviço de banco novo. Ela exige trocar a conexão da API e
 fica fora deste ensaio.
+
+**Ambiente descartável (precisa de autorização do proprietário, porque cria recursos no projeto do Railway em que a produção está):**
+
+1. Criar o ambiente `ensaio-restauracao` a partir do staging, sem publicações iniciais (`environmentCreate` com
+   `sourceEnvironmentId` do staging, `skipInitialDeploys: true`). Ele recebe volume próprio e variáveis próprias, sem domínio próprio.
+2. Publicar só o Postgres e carregar nele a cópia lógica mais recente do staging, verificada.
+3. Publicar o `backend` do candidato apontando para esse Postgres, para medir quando a API volta a responder.
+4. No fim, apagar o ambiente inteiro e conferir que staging e produção ficaram como estavam (serviços, commits e variáveis).
 
 **Antes:**
 
@@ -274,11 +381,13 @@ fica fora deste ensaio.
 3. Backup B1 do volume e, logo em seguida, a cópia lógica D1. As contagens de D1 são o resultado esperado da restauração.
 4. Uma gravação de marcação **depois** de B1: por exemplo, um usuário sintético novo. Ela precisa sumir com a restauração.
 
+Tudo isso no ambiente descartável. O staging e a produção não entram no ensaio.
+
 **Passos:**
 
 | # | Passo | O que medir ou conferir |
 |---|---|---|
-| 1 | Restaurar B1 pelo painel do Railway, no serviço Postgres do staging | O horário do início e o fim do reinício do Postgres |
+| 1 | Restaurar B1 pelo painel do Railway, no serviço Postgres do ambiente descartável | O horário do início e o fim do reinício do Postgres |
 | 2 | Esperar o Postgres aceitar conexões e a API responder `/health` | O tempo total fora do ar |
 | 3 | Comparar com D1, tabela por tabela | Contagens idênticas |
 | 4 | Procurar a marcação do passo 4 de "Antes" | Ausente: prova que o banco voltou ao momento de B1 |
