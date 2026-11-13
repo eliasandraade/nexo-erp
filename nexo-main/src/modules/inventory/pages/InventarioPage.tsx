@@ -33,8 +33,8 @@ export default function InventarioPage() {
   const selected = counts?.find((c) => c.id === selectedId) ?? counts?.find((c) => c.status === "Open") ?? null;
 
   const refresh = () => {
-    qc.invalidateQueries({ queryKey: COUNTS_KEY });
-    qc.invalidateQueries({ queryKey: STOCK_KEY });
+    void qc.invalidateQueries({ queryKey: COUNTS_KEY });
+    void qc.invalidateQueries({ queryKey: STOCK_KEY });
   };
   const open = useMutation({
     mutationFn: () => openCount({}),
