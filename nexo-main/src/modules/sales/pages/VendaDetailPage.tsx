@@ -62,10 +62,10 @@ export default function VendaDetailPage() {
   const returnMutation = useMutation({
     mutationFn: (req: CreateSaleReturnRequest) => createSaleReturn(id!, req),
     onSuccess: (r) => {
-      queryClient.invalidateQueries({ queryKey: ["sale", id] });
-      queryClient.invalidateQueries({ queryKey: ["sales"] });
-      queryClient.invalidateQueries({ queryKey: ["cash"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-operational"] });
+      void queryClient.invalidateQueries({ queryKey: ["sale", id] });
+      void queryClient.invalidateQueries({ queryKey: ["sales"] });
+      void queryClient.invalidateQueries({ queryKey: ["cash"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-operational"] });
       setReturnDialogOpen(false);
       setReturnError(null);
       toast.success(`Devolução registrada: ${formatCurrency(r.refundAmount)} reembolsados.`);
@@ -76,18 +76,18 @@ export default function VendaDetailPage() {
   const cancelSaleMutation = useMutation({
     mutationFn: (payload: CancellationConfirmPayload) => cancelSale(id!, payload.reason),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["sale", id] });
-      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      void queryClient.invalidateQueries({ queryKey: ["sale", id] });
+      void queryClient.invalidateQueries({ queryKey: ["sales"] });
       // Commissions derive from sales — cancellation reverses them immediately.
-      queryClient.invalidateQueries({ queryKey: ["commissions-overall"] });
-      queryClient.invalidateQueries({ queryKey: ["commissions-by-seller"] });
-      queryClient.invalidateQueries({ queryKey: ["commission-records"] });
+      void queryClient.invalidateQueries({ queryKey: ["commissions-overall"] });
+      void queryClient.invalidateQueries({ queryKey: ["commissions-by-seller"] });
+      void queryClient.invalidateQueries({ queryKey: ["commission-records"] });
       // Dashboard + insights may reflect commission/sales changes.
-      queryClient.invalidateQueries({ queryKey: ["dashboard-operational"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-seller-ranking"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard-insights"] });
-      queryClient.invalidateQueries({ queryKey: ["insights"] });
-      queryClient.invalidateQueries({ queryKey: ["insights-stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-operational"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-seller-ranking"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard-insights"] });
+      void queryClient.invalidateQueries({ queryKey: ["insights"] });
+      void queryClient.invalidateQueries({ queryKey: ["insights-stats"] });
       setCancelDialogOpen(false);
       toast.success("Venda cancelada.");
     },
