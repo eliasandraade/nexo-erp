@@ -194,3 +194,90 @@ Acompanhar por 24 horas depois de cada etapa. Qualquer item abaixo interrompe a 
   - `production` só anda para a frente. A próxima promoção publica de novo o que estiver nela, então uma volta definitiva é um `git revert`
     promovido.
 - **Restauração do banco:** só se uma migração falhar ou houver perda de dados. É a última opção, e depende do ensaio de restauração acima.
+
+## 8. Ensaios no staging antes da etapa 1
+
+Os dois ensaios rodam só no staging, com o candidato já publicado nele, e cada um precisa de autorização antes de começar. Nenhum toca a
+produção.
+
+### 8.1 Volta atrás completa com o candidato
+
+Prova que o caminho da seção "Volta atrás" funciona com o esquema novo: a API de `8a164ce` roda sobre as migrações do candidato.
+
+**Antes:**
+
+- Staging em `SUCCESS` no SHA do candidato, com `VITE_SESSION_MODE=cookie`.
+- Backup verificado, como na seção 7: cópia lógica restaurada num banco descartável e comparada tabela por tabela, mais um backup manual
+  do volume.
+- Duas sessões abertas na mesma máquina, em janelas separadas:
+  - S1, no modo cookie, com o bundle atual;
+  - S2, aberta no passo 2, no modo de hoje.
+
+**Passos e o que precisa acontecer:**
+
+| # | Passo | O que precisa acontecer |
+|---|---|---|
+| 1 | Retirar `VITE_SESSION_MODE` do `main` e publicar o `main` de novo no mesmo commit | S1, ao recarregar, vai ao login. Um login novo funciona no modo de hoje (é a S2) |
+| 2 | Publicar o `main` de `8a164ce` (primeiro o `main`) | S2 continua logada ao recarregar |
+| 3 | Publicar o `backend` de `8a164ce` | A API sobe sem erro de migração. Ela encontra no histórico migrações que não conhece e não desfaz nenhuma |
+| 4 | Com a API de `8a164ce` sobre o esquema do candidato | Ver a tabela seguinte |
+| 5 | Publicar o `backend` do candidato, depois o `main` do candidato com `VITE_SESSION_MODE=cookie` | S2 passa ao cookie ao recarregar, sem novo login. Um login novo cria o cookie |
+
+O passo 4 confere a API de `8a164ce` sobre o esquema do candidato:
+
+| Verificação | Resultado esperado |
+|---|---|
+| `/health` | 200 |
+| Login, renovação e logout de empresa | 200, 200 e 204 |
+| Login do administrador da plataforma, sem e com a segunda etapa | Entra. A sessão pendente grava `mfa_attempts = 0` pelo padrão do banco |
+| Criar usuário com um login novo | Criado |
+| Criar usuário com um login que existe em outra empresa | O índice recusa e a API responde 409. Nunca 500 |
+| Cadastro público com um e-mail já cadastrado | 409, como hoje |
+| Linhas de `users` e contagens das tabelas principais | Iguais às de antes do ensaio, mais o que os passos criaram |
+
+**Critério de aprovação:** todos os passos e verificações, sem nenhuma resposta 500 e sem perda de sessão fora das previstas (S1 no
+passo 1).
+
+**Se falhar:** publicar de volta o candidato (passo 5), registrar o passo e o horário, e manter a promoção bloqueada até a causa ser
+entendida.
+
+### 8.2 Restauração de um backup do volume
+
+O caminho principal de restauração é o backup do volume pelo Railway, e ele nunca foi ensaiado. A restauração no Railway é feita **sobre o
+próprio volume**: o banco volta inteiro ao momento do backup, e tudo o que foi gravado depois se perde. No staging isso é aceitável,
+porque os dados são sintéticos.
+
+O Railway também oferece a restauração para um ponto no tempo, que cria um serviço de banco novo. Ela exige trocar a conexão da API e
+fica fora deste ensaio.
+
+**Antes:**
+
+1. Registrar as contagens de todas as tabelas, a impressão digital das linhas de `users` e o número de migrações.
+2. Backup B0 do volume e cópia lógica D0 verificada. São a volta do próprio ensaio.
+3. Backup B1 do volume e, logo em seguida, a cópia lógica D1. As contagens de D1 são o resultado esperado da restauração.
+4. Uma gravação de marcação **depois** de B1: por exemplo, um usuário sintético novo. Ela precisa sumir com a restauração.
+
+**Passos:**
+
+| # | Passo | O que medir ou conferir |
+|---|---|---|
+| 1 | Restaurar B1 pelo painel do Railway, no serviço Postgres do staging | O horário do início e o fim do reinício do Postgres |
+| 2 | Esperar o Postgres aceitar conexões e a API responder `/health` | O tempo total fora do ar |
+| 3 | Comparar com D1, tabela por tabela | Contagens idênticas |
+| 4 | Procurar a marcação do passo 4 de "Antes" | Ausente: prova que o banco voltou ao momento de B1 |
+| 5 | Conferir o histórico de migrações | Igual ao de B1. Se B1 for anterior a uma migração, a API a aplica de novo ao reiniciar, e isso também é conferido |
+| 6 | Login de empresa, renovação, logout e login da plataforma | Funcionam |
+| 7 | Publicar a API de novo, se ela não tiver se reconectado sozinha | Registrar se foi preciso |
+
+**Critério de aprovação:**
+
+- banco idêntico a D1;
+- marcação ausente;
+- API funcionando;
+- tempo fora do ar medido.
+
+**Se falhar:** restaurar B0 e, se B0 também falhar, recriar o banco a partir de D0. O resultado e o tempo medido entram neste
+documento, e a seção "Volta atrás" passa a citar o tempo real de restauração.
+
+**Na produção:** além do backup manual antes de cada etapa, o volume tem backups automáticos diários, retidos por 6 dias, e semanais,
+retidos por 27 dias. A restauração na produção continua sendo a última opção, porque perde tudo o que foi gravado depois do backup.
