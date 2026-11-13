@@ -43,6 +43,12 @@ public interface IJwtTokenService
     /// </summary>
     RefreshTokenClaims? ValidateRefreshToken(string refreshToken);
 
+    /// <summary>
+    /// True when this is a refresh token we issued (signature, issuer and audience), whether or not it is still in date. Tells a
+    /// session that simply ran out from a token somebody made up, which <see cref="ValidateRefreshToken"/> answers the same way.
+    /// </summary>
+    bool IsRefreshTokenOurs(string refreshToken);
+
     /// <summary>Returns when the access token expires (UTC) from now.</summary>
     DateTime GetAccessTokenExpiration();
 

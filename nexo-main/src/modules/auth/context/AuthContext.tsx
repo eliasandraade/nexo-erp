@@ -10,8 +10,9 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import * as authService from "../services/authService";
-import { apiClient, clearTokens, endImpersonationSession, isImpersonating, onSessionEnded, TOKEN_KEYS, type SessionEndReason } from "@/services/api-client";
+import { apiClient, clearTokens, endImpersonationSession, finishPendingSignOut, isCookieSessionMode, isImpersonating, onRenewalUnavailable, onSessionEnded, onSessionReplaced, onSignedOutElsewhere, TOKEN_KEYS, type SessionEndReason } from "@/services/api-client";
 import type { AuthSession, LoginInput } from "../types";
 
 /** Where a session the client dropped on its own takes the person: each page says why (`motivo`). */
@@ -27,6 +28,12 @@ interface AuthContextValue {
   session: AuthSession | null;
   /** True once the background /auth/me validation has completed. */
   isReady: boolean;
+  /**
+   * Cookie mode, nothing in the storage on opening the app: whether the cookie may still have a session. "pending" until a page that needs a
+   * session asks (requestSessionRecovery) and the server answers. Always "done" in the normal mode, and on public pages nothing asks.
+   */
+  sessionRecovery: "pending" | "done";
+  requestSessionRecovery: () => void;
   /**
    * Attempt login. Returns error message on failure, null on success.
    * Also returns the session type so the caller can redirect appropriately.
@@ -58,10 +65,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => (isImpersonationEntry() ? null : authService.getCurrentSession())
   );
   const [isReady, setIsReady] = useState(false);
+  const [sessionRecovery, setSessionRecovery] = useState<"pending" | "done">(() =>
+    isCookieSessionMode() && !isImpersonationEntry() && !isImpersonating() && !authService.getCurrentSession() ? "pending" : "done"
+  );
+  const recoveryAsked = useRef(false);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   // The API client already took the person to a page that says why: the background validation must not replace it.
   const sessionEndAnnounced = useRef(false);
+
+  // A sign-out the server did not hear goes again now, with the connection back.
+  useEffect(() => { void finishPendingSignOut(); }, []);
 
   // Background validation: confirm the stored session is still valid
   useEffect(() => {
@@ -93,6 +107,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsReady(true);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const requestSessionRecovery = useCallback(() => {
+    if (recoveryAsked.current) return;
+    recoveryAsked.current = true;
+    authService.recoverSessionFromCookie()
+      .then((fresh) => { if (fresh) setSession(fresh); })
+      .catch(() => undefined)   // no answer: nothing to recover from, and the login page is there
+      .finally(() => setSessionRecovery("done"));
   }, []);
 
   const login = useCallback(async (input: LoginInput) => {
@@ -134,19 +157,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => onSessionEnded(leaveEndedSession), [leaveEndedSession]);
 
+  // The session could not be renewed right now and it stays: the screens show their own errors, and this says why, once.
+  useEffect(() => onRenewalUnavailable((message) => {
+    toast.warning(message, { id: "session-renewal-unavailable" });
+  }), []);
+
   // Another tab dropped the session they share (the server ended it, or the person signed out there): without a token
   // this tab would only collect errors. An impersonation tab has its own session and stays.
   const signedIn = session !== null;
   useEffect(() => {
     if (!signedIn) return;
+    // In the cookie mode no token is in the storage, and the session is what is removed with it. A cleared storage (key null) is no sign-out.
+    const watched = isCookieSessionMode() ? TOKEN_KEYS.session : TOKEN_KEYS.access;
     const onStorage = (e: StorageEvent) => {
-      if (e.storageArea === localStorage && e.key === TOKEN_KEYS.access && e.newValue === null && !isImpersonating()) {
+      if (e.storageArea === localStorage && e.key === watched && e.newValue === null && !isImpersonating()) {
         leaveEndedSession("session_ended");
       }
     };
     globalThis.addEventListener("storage", onStorage);
-    return () => globalThis.removeEventListener("storage", onStorage);
+    const stopHearing = onSignedOutElsewhere(() => leaveEndedSession("session_ended"));
+    return () => {
+      globalThis.removeEventListener("storage", onStorage);
+      stopHearing();
+    };
   }, [signedIn, leaveEndedSession]);
+
+  // Another tab signed in or moved to another store: this one follows, and what it cached belongs to the old session or store.
+  useEffect(() => onSessionReplaced((sessionJson) => {
+    if (isImpersonationEntry()) return;
+    setSession(JSON.parse(sessionJson) as AuthSession);
+    queryClient.clear();
+  }), [queryClient]);
 
   const switchStore = useCallback(async (storeId: string): Promise<void> => {
     const fresh = await authService.switchStore(storeId);
@@ -161,8 +202,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ session, isReady, login, logout, endLocalSession, switchStore, setSessionFromVerify }),
-    [session, isReady, login, logout, endLocalSession, switchStore, setSessionFromVerify]
+    () => ({ session, isReady, sessionRecovery, requestSessionRecovery, login, logout, endLocalSession, switchStore, setSessionFromVerify }),
+    [session, isReady, sessionRecovery, requestSessionRecovery, login, logout, endLocalSession, switchStore, setSessionFromVerify]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

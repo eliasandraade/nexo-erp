@@ -1,12 +1,9 @@
 /**
- * PDF download helper.
- *
- * Uses the same auth token mechanism as api-client.ts: reads the in-memory
- * token first via getAccessToken(), which falls back to localStorage
- * "nexo:access_token" on a hard reload.
+ * PDF download helper. The token is the one api-client.ts keeps. In the cookie mode a tab that just reloaded may have none yet, and one
+ * about to expire would fail the download with no second chance: this call has no renewal of its own, so it gets a good one first.
  */
 
-import { getAccessToken } from "./api-client";
+import { getAccessToken, getFreshAccessToken, isCookieSessionMode } from "./api-client";
 
 const BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
@@ -17,7 +14,7 @@ export function downloadPdf(path: string, filename: string): Promise<void> {
 
 /** Fetches an authenticated file (PDF, CSV…) and hands it to the browser as a download. */
 export async function downloadFile(path: string, filename: string, failure: string): Promise<void> {
-  const token = getAccessToken();
+  const token = isCookieSessionMode() ? await getFreshAccessToken() : getAccessToken();
 
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;

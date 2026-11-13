@@ -17,8 +17,8 @@ A raiz de `www` responde 307 para `https://app.orken.com.br/`, mantendo a query 
 
 - **Servidor:** o `Caddyfile` faz o redirecionamento só em visitas (`GET` e `HEAD`) ao host `www.orken.com.br` no
   caminho `/`, antes do fallback da SPA. O Caddy normaliza o caminho antes, então `//` e `/./` também contam como raiz.
-  O destino é sempre `https://app.orken.com.br/`. Um `POST` na raiz continua com o 405 de antes. Os seis cabeçalhos de
-  segurança saem também no 307.
+  O destino é sempre `https://app.orken.com.br/`. Um `POST` na raiz continua com o 405 de antes. Os cabeçalhos de
+  segurança, inclusive a [CSP](../security/csp.md), saem também no 307.
 - **Cliente:** links internos para `/` não passam pelo servidor (o logo das telas de login). Para eles, o roteador faz a
   mesma coisa (`src/app/router/institutionalEntry.ts`).
 
@@ -27,7 +27,7 @@ A raiz de `www` responde 307 para `https://app.orken.com.br/`, mantendo a query 
 A raiz de `erp` responde 307 para `/login`, mantendo a query string. Isso também vale só para `GET` e `HEAD`, com os
 mesmos cabeçalhos.
 
-- **Sessão:** a sessão do ERP fica no cookie da API (`api.erp.orken.com.br`), e o servidor do frontend não a vê. Por
+- **Sessão:** a sessão do ERP fica no navegador (no `localStorage` ou, no modo cookie, num cookie do host da API), e o servidor do frontend não a vê. Por
   isso o servidor manda todos ao login. O `AuthLayout` leva quem já tem sessão ao mesmo destino de logo depois de
   entrar (`resolvePostLogin`: `/platform`, a última área de trabalho guardada, a área única, `/workspaces` ou a casa do
   papel). Nenhum desses destinos é `/`, então não há laço.

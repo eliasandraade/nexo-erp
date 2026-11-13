@@ -1,7 +1,11 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.RateLimiting;
 using Nexo.Api.Authorization;
 using Nexo.Api.Filters;
+using Nexo.Api.Uploads;
 using Nexo.Application.Modules.Build;
 using Nexo.Infrastructure.Modules.Build;
 
@@ -21,12 +25,12 @@ namespace Nexo.Api.Controllers.Modules.Build;
 public class BuildRealityCapturesController : ControllerBase
 {
     private readonly BuildRealityCaptureService _captures;
-    private readonly BuildTwinOptions _options;
+    private readonly UploadAdmission _uploads;
 
-    public BuildRealityCapturesController(BuildRealityCaptureService captures, BuildTwinOptions options)
+    public BuildRealityCapturesController(BuildRealityCaptureService captures, UploadAdmission uploads)
     {
         _captures = captures;
-        _options = options;
+        _uploads = uploads;
     }
 
     [HttpGet("projects/{projectId:guid}/reality-captures")]
@@ -37,19 +41,43 @@ public class BuildRealityCapturesController : ControllerBase
     /// <summary>
     /// Multipart: <c>file</c>, <c>type</c> (Photo, Photo360, Video, Drone, PointCloud), <c>title</c>, optional <c>capturedAt</c>,
     /// <c>stageId</c>, <c>zoneId</c>, <c>elementExternalId</c>, <c>notes</c>, <c>clientVisible</c>. The content is checked by its
-    /// first bytes (JPEG/PNG/WebP, MP4/MOV/WebM, LAS/E57).
+    /// first bytes (JPEG/PNG/WebP, MP4/MOV/WebM, LAS/E57). The query's optional <c>type</c> applies that type's limit before the body
+    /// is read; without it, the largest limit applies until the file's family is known.
     /// </summary>
     [HttpPost("projects/{projectId:guid}/reality-captures")]
-    [BuildUploadLimit(BuildUploadKind.RealityCapture)]
-    public async Task<ActionResult<BuildRealityCaptureDto>> Create(Guid projectId, IFormFile? file, [FromForm] string? type,
-        [FromForm] string? title, [FromForm] DateTimeOffset? capturedAt, [FromForm] Guid? stageId, [FromForm] Guid? zoneId,
-        [FromForm] string? elementExternalId, [FromForm] string? notes, [FromForm] bool? clientVisible, CancellationToken ct)
+    [Consumes("multipart/form-data")]
+    [EnableRateLimiting(UploadAdmission.RateLimitPolicy)]
+    [DisableFormValueModelBinding]
+    [MultipartFileBody("file", "type", "title", "capturedAt", "stageId", "zoneId", "elementExternalId", "notes", "clientVisible")]
+    public async Task<ActionResult<BuildRealityCaptureDto>> Create(Guid projectId, [FromQuery(Name = "type")] string? declaredType, CancellationToken ct)
     {
-        await using var buffer = await BuildTwinController.BufferAsync(file, _options.MaxCaptureBytes, ct);
+        var maxBytes = await _captures.EnsureCanUploadAsync(projectId, declaredType, ct);
+        var read = await _uploads.ReadAsync(HttpContext, maxBytes + UploadAdmission.MultipartOverheadBytes,
+            $"Arquivo grande demais: o limite é {maxBytes / (1024 * 1024)} MB.", ct);
+        if (read.Refusal is { } refusal) return refusal.ToResult(HttpContext);
+
+        var fields = new CaptureFields();
+        if (!await TryUpdateModelAsync(fields, "", new FormValueProvider(BindingSource.Form, read.Form!, CultureInfo.CurrentCulture)))
+            return ValidationProblem(ModelState);
+
+        await using var buffer = await BuildTwinController.BufferAsync(read.Form!, maxBytes, ct);
         var dto = await _captures.CreateAsync(projectId,
-            new BuildRealityCaptureService.CreateCapture(type ?? "", title ?? "", capturedAt, stageId, zoneId, elementExternalId, notes,
-                clientVisible ?? false), buffer, ct);
+            new BuildRealityCaptureService.CreateCapture(fields.Type ?? declaredType ?? "", fields.Title ?? "", fields.CapturedAt, fields.StageId,
+                fields.ZoneId, fields.ElementExternalId, fields.Notes, fields.ClientVisible ?? false), buffer, ct);
         return StatusCode(StatusCodes.Status201Created, dto);
+    }
+
+    /// <summary>The text fields of the form, converted by the framework's binders once the form has been read.</summary>
+    private sealed class CaptureFields
+    {
+        public string? Type { get; set; }
+        public string? Title { get; set; }
+        public DateTimeOffset? CapturedAt { get; set; }
+        public Guid? StageId { get; set; }
+        public Guid? ZoneId { get; set; }
+        public string? ElementExternalId { get; set; }
+        public string? Notes { get; set; }
+        public bool? ClientVisible { get; set; }
     }
 
     [HttpGet("reality-captures/{id:guid}")]

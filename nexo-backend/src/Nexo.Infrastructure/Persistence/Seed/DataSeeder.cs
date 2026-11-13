@@ -89,7 +89,7 @@ public class DataSeeder
             return;
         }
 
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
+        var tenant = await DefaultTenantAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for admin user.");
 
         // Seed:AdminPassword must be provided via config (appsettings / env var / test override).
@@ -126,7 +126,7 @@ public class DataSeeder
             return;
         }
 
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
+        var tenant = await DefaultTenantAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for settings.");
 
         var settings = AppSettings.CreateForTenant(
@@ -184,7 +184,7 @@ public class DataSeeder
             return;
         }
 
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
+        var tenant = await DefaultTenantAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for financial accounts.");
 
         var accounts = new[]
@@ -214,7 +214,7 @@ public class DataSeeder
             return;
         }
 
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
+        var tenant = await DefaultTenantAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for module subscriptions.");
 
         // Grant "varejo" and "build" to the default tenant (no platform user at seed time)
@@ -466,7 +466,7 @@ public class DataSeeder
         }
 
         // 2. ModuleSubscription for the default tenant (Andrade Systems)
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct);
+        var tenant = await DefaultTenantAsync(ct);
         if (tenant is null)
         {
             _logger.LogDebug("Seed: no tenant found — skipping 'build' subscription.");
@@ -492,6 +492,13 @@ public class DataSeeder
                 "Seed: tenant {TenantId} already has 'build' subscription, skipping.", tenant.Id);
         }
     }
+
+    /// <summary>
+    /// The company the demo data belongs to: the oldest one. A first row without an order follows the physical order of the table, which
+    /// any change to a company rewrites, so a later boot would hand the demo modules to another company.
+    /// </summary>
+    private Task<Tenant?> DefaultTenantAsync(CancellationToken ct)
+        => _context.Tenants.OrderBy(t => t.CreatedAt).ThenBy(t => t.Id).FirstOrDefaultAsync(ct);
 
     // ── Service module family (idempotent — runs even on already-seeded DBs) ────
 
@@ -524,7 +531,7 @@ public class DataSeeder
         // 2. Grant the single 'service' module to the default tenant and configure a sample preset
         //    for its default store, so the engine is exercisable in dev/test (mirrors the new flow:
         //    commercial module + per-store preset, NOT a per-vertical module).
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct);
+        var tenant = await DefaultTenantAsync(ct);
         if (tenant is null)
         {
             _logger.LogDebug("Seed: no tenant found — skipping service subscription.");
@@ -544,7 +551,9 @@ public class DataSeeder
 
         var store = await _context.Stores
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(s => s.TenantId == tenant.Id, ct);
+            .Where(s => s.TenantId == tenant.Id)
+            .OrderBy(s => s.CreatedAt).ThenBy(s => s.Id)
+            .FirstOrDefaultAsync(ct);
         if (store is not null)
         {
             var hasSettings = await _context.SvcSettings
@@ -573,7 +582,7 @@ public class DataSeeder
             return;
         }
 
-        var tenant = await _context.Tenants.FirstOrDefaultAsync(ct)
+        var tenant = await DefaultTenantAsync(ct)
             ?? throw new InvalidOperationException("Seed: no tenant found for default store.");
 
         var subscription = await _context.ModuleSubscriptions

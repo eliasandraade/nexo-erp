@@ -38,16 +38,24 @@ function form(file: File, context: string) {
 }
 
 /**
+ * The context goes in the address: the server decides who may send, the limit and where the file goes before reading the body.
+ * The form field stays for an API not yet deployed with this, and the server refuses a form that disagrees with the address.
+ */
+function uploadUrl(context: string) {
+  return `/integrations/storage/upload?context=${encodeURIComponent(context)}`;
+}
+
+/**
  * Uploads a file via backend storage endpoint.
  * Never calls R2/external storage directly.
  */
 export async function uploadFile(file: File, context: StorageContext): Promise<StorageUploadResult> {
-  return apiClient.postForm<StorageUploadResult>("/integrations/storage/upload", form(file, context));
+  return apiClient.postForm<StorageUploadResult>(uploadUrl(context), form(file, context));
 }
 
 /** Uploads a private file; keep the returned key on the record and ask for fresh URLs when showing it. */
 export async function uploadPrivateFile(file: File, context: PrivateStorageContext): Promise<PrivateUploadResult> {
-  return apiClient.postForm<PrivateUploadResult>("/integrations/storage/upload", form(file, context));
+  return apiClient.postForm<PrivateUploadResult>(uploadUrl(context), form(file, context));
 }
 
 /** A fresh signed URL (about 15 minutes) for one of the company's private files. */
