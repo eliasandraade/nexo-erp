@@ -5,12 +5,13 @@ espera as correções em revisão, a homologação nos navegadores, a homologaç
 
 ## 1. Commit candidato
 
-**Ainda não existe.** O candidato será o commit da `master` que contiver, além do que já está em `0b9a398`, o login único em todo o
-sistema (PR #185). O SHA exato entra aqui quando esse PR for mesclado e o `master-gate` passar nele.
+**Candidato: `834737db3f9c5a5db32b7a495f353d4400e5b2a4`** (`master`, merge do PR #186), com `master-gate` verde em 2026-11-13 03:47Z e
+staging em `SUCCESS` nesse SHA. Ele contém todas as correções P0 de código desta remediação. A promoção continua **não autorizada**:
+ser candidato só quer dizer que é este SHA que os ensaios e a homologação precisam validar.
 
 A regra do login foi decidida pelo proprietário em 2026-11-12: o login é único em todo o Orken ERP.
 
-`0b9a398`, `c6c2cfc` e `633a301` não são candidatos. Nenhum deles, nem a ponta da `master`, é promovido automaticamente.
+`0b9a398`, `c6c2cfc` e `633a301` não são candidatos. Nenhum commit é promovido automaticamente.
 
 O que o candidato leva além da produção atual (`8a164ce`):
 
@@ -21,8 +22,9 @@ O que o candidato leva além da produção atual (`8a164ce`):
 | #181 | `Cache-Control: no-cache` no HTML de todas as rotas do app | Não | Na `master` |
 | #183 | Limites de autenticação contados pela rota casada | Não | Na `master` (`0b9a398`, 2026-11-12) |
 | #184 | Login da plataforma: contagem da segunda etapa e teto de códigos por desafio | **Sim:** coluna `mfa_attempts` em `platform_sessions` | Na `master` (`9e5a653`, 2026-11-12) |
-| #185 | Login único em todo o sistema: uma normalização, uma verificação nos três caminhos que criam conta e índice único. Traz também o `global.json` que fixa o SDK .NET 8 no CI | **Sim:** índice único `IX_users_login` em `users (login)` | Em revisão |
-| #186 | Script de promoção: confere a origem do `master-gate` e mostra mudanças nos workflows | Não | Em revisão. Não muda o que é publicado |
+| #185 | Login único em todo o sistema: uma normalização, uma verificação nos três caminhos que criam conta e índice único. Traz também o `global.json` que fixa o SDK .NET 8 no CI | **Sim:** índice único `IX_users_login` em `users (login)` | Na `master` (`038040f`, 2026-11-13) |
+| #187 | Estabilidade do teste de saída da impersonação: os cabeçalhos são lidos no envio, e a verificação de que a requisição não leva `Cookie` continua | Não | Na `master` (`6b909ae`, 2026-11-13) |
+| #186 | Script de promoção: confere a origem do `master-gate` e mostra mudanças nos workflows | Não | Na `master` (`834737d`, 2026-11-13). Não muda o que é publicado |
 
 **Variáveis de produção:** nenhuma nova, além de `VITE_SESSION_MODE=cookie` no `main`, na etapa 2. Os padrões do código já servem à produção:
 - a lista da sessão é `erp.orken.com.br`;
@@ -52,7 +54,16 @@ O que foi conferido para a migração do login, em 2026-11-12:
 | Reversão na mesma cópia | Removeu o índice e o registro da migração; linhas idênticas; aplicou de novo em seguida |
 | Mesma migração sobre uma cópia com um login repetido plantado | Recusou antes de criar o índice, sem alterar nada |
 
-A migração ainda **não** foi aplicada no staging real: isso acontece no merge do #185.
+No staging real, a migração foi aplicada no merge do #185 (2026-11-13), depois de um backup verificado. O resultado:
+
+- 79 migrações e o índice criado;
+- as 29 linhas de `users` idênticas às de antes;
+- contas existentes entram em qualquer grafia do login;
+- um login de outra empresa e o `admin` do seed são recusados com 409 `login_taken`;
+- oito criações simultâneas do mesmo login, por duas empresas, criam uma conta e recebem sete 409 `login_taken`, sem 500.
+
+Quando o login e o e-mail colidem juntos, na mesma empresa, o índice do e-mail pode responder primeiro, e quem perde recebe 409
+`duplicate`. Também nunca 500.
 
 ## 2. CI e Quality Gate
 
@@ -64,6 +75,9 @@ A migração ainda **não** foi aplicada no staging real: isso acontece no merge
 | PR #183 no SHA exato do merge (`9fe337c`, já com o #184) | Tudo verde; cobertura do código novo em 100% |
 | `master-gate` em `0b9a398` (merge do #183) | Verde (2026-11-12). Staging em `SUCCESS` nesse commit |
 | Regressão no staging depois de cada merge | Passou: login, renovação e logout de empresa; login da plataforma; segunda etapa da plataforma com o contador gravado por desafio; outra grafia de uma rota limitada gasta o mesmo orçamento |
+| PR #185 no SHA exato do merge (`b614b94`) | Tudo verde: 1.254 testes de unidade e 1.821 de integração, cobertura do código novo em 100% |
+| `master-gate` em `038040f` (#185), `6b909ae` (#187) e `834737d` (#186) | Verde nos três. Staging em `SUCCESS` em `834737d` |
+| SDK do CI | Fixado em .NET 8 pelo `global.json`. Uma imagem nova do runner trazia o SDK 11, que não compila o host dos testes |
 | PR #181 no SHA exato do merge (`7e7ae73`) | Tudo verde: `ci-gate`, `frontend`, `auth-e2e` cookie (101 passaram) e storage, `csp-e2e` (31 passaram, incluindo o teste novo), `sonarcloud`, SonarCloud Code Analysis e GitGuardian |
 | Quality Gate geral do SonarCloud em `master` | **ERROR em 2 condições do código novo**: confiabilidade C (o limite é A) e cobertura de 77,3% (o mínimo é 80%). É o mesmo estado de `633a301`; o PR #181 não mudou nenhuma das duas. Os limites não foram reduzidos. Levar o gate a verde depende das decisões já abertas sobre os PRs de `S9383` e o período do código novo |
 
