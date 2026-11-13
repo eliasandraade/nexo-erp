@@ -47,6 +47,19 @@ O script recusa um SHA fora da `master`, atrás de `production` ou sem `master-g
 entrar. Ele não é a trava: quem recusa de fato é o GitHub. Um `git push origin <sha>:production` sem o check também é
 recusado, inclusive para administradores.
 
+O script confere duas coisas que a trava do GitHub não vê:
+
+- **De onde veio o check.** Só vale o `master-gate` da execução de `.github/workflows/master.yml` disparada pelo push
+  desse commit na `master`. Um job com o mesmo nome em outro workflow, evento ou branch não conta.
+- **Se o que roda o check mudou.** Quando há diferença em `.github/`, no próprio script ou no `global.json` entre
+  `production` e o SHA, ele lista os arquivos e recusa. Leia a diferença e rode de novo com `--ci-changes-reviewed`.
+
+Para rodar todas as conferências sem promover:
+
+```bash
+scripts/promote-production.sh <sha-completo> --check
+```
+
 Depois da promoção, confira no Railway que `backend` e `main` estão em `SUCCESS` com esse SHA, e rode o production-watch
 da Platform.
 
