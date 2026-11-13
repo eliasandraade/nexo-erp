@@ -30,7 +30,7 @@ export function useCreateSupplier() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (form: SupplierFormInput) => createSupplier(form),
-    onSuccess:  () => { qc.invalidateQueries({ queryKey: SUPPLIERS_KEY }); },
+    onSuccess:  () => { void qc.invalidateQueries({ queryKey: SUPPLIERS_KEY }); },
   });
 }
 
@@ -40,7 +40,7 @@ export function useUpdateSupplier(id: string) {
     mutationFn: (form: SupplierFormInput) => updateSupplier(id, form),
     onSuccess:  (updated) => {
       qc.setQueryData([...SUPPLIERS_KEY, id], updated);
-      qc.invalidateQueries({ queryKey: SUPPLIERS_KEY });
+      void qc.invalidateQueries({ queryKey: SUPPLIERS_KEY });
     },
   });
 }
@@ -51,8 +51,8 @@ export function useSetSupplierActive(id: string) {
     mutationFn: (active: boolean) =>
       active ? activateSupplier(id) : deactivateSupplier(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [...SUPPLIERS_KEY, id] });
-      qc.invalidateQueries({ queryKey: SUPPLIERS_KEY });
+      void qc.invalidateQueries({ queryKey: [...SUPPLIERS_KEY, id] });
+      void qc.invalidateQueries({ queryKey: SUPPLIERS_KEY });
     },
   });
 }
