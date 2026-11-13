@@ -94,17 +94,17 @@ export function useCompleteSale() {
     onSuccess: () => {
       pending.current = null;
       // Cash session balance changed
-      qc.invalidateQueries({ queryKey: CASH_KEY });
+      void qc.invalidateQueries({ queryKey: CASH_KEY });
       // Stock levels reduced
-      qc.invalidateQueries({ queryKey: STOCK_KEY });
+      void qc.invalidateQueries({ queryKey: STOCK_KEY });
       // Sales list and detail
-      qc.invalidateQueries({ queryKey: ["sales"] });
+      void qc.invalidateQueries({ queryKey: ["sales"] });
       // Dashboard widgets that derive from sales
-      qc.invalidateQueries({ queryKey: ["dashboard-operational"] });
-      qc.invalidateQueries({ queryKey: ["dashboard-top-products"] });
-      qc.invalidateQueries({ queryKey: ["dashboard-sales-chart"] });
-      qc.invalidateQueries({ queryKey: ["dashboard-insights"] });
-      qc.invalidateQueries({ queryKey: ["dashboard-alerts"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-operational"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-top-products"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-sales-chart"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-insights"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard-alerts"] });
     },
   });
 }

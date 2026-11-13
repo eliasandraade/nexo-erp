@@ -45,9 +45,9 @@ export function useConfirmMovement(projectId: string) {
     mutationFn: ({ draftId, req }: { draftId: string; req: ConfirmMovementRequest }) =>
       confirmMovement(draftId, req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectFinancial(projectId) });
-      qc.invalidateQueries({ queryKey: MOVEMENT_KEYS.projectMovements(projectId) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.projectFinancial(projectId) });
+      void qc.invalidateQueries({ queryKey: MOVEMENT_KEYS.projectMovements(projectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
       void qc.invalidateQueries({ queryKey: BUILD_KEYS.progressAll(projectId) });   // cost per stage
     },
   });
@@ -59,9 +59,9 @@ export function useVoidMovement(projectId: string) {
   return useMutation({
     mutationFn: (id: string) => voidMovement(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.projectFinancial(projectId) });
-      qc.invalidateQueries({ queryKey: MOVEMENT_KEYS.projectMovements(projectId) });
-      qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.projectFinancial(projectId) });
+      void qc.invalidateQueries({ queryKey: MOVEMENT_KEYS.projectMovements(projectId) });
+      void qc.invalidateQueries({ queryKey: BUILD_KEYS.dashboard() });
       void qc.invalidateQueries({ queryKey: BUILD_KEYS.progressAll(projectId) });   // cost per stage
     },
   });
