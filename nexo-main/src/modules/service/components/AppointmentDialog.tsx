@@ -58,7 +58,8 @@ export function AppointmentDialog({ open, onClose, appointment, defaultDate }: A
   const [subjectId, setSubjectId] = useState("");
   const [date, setDate] = useState("");
   const [time, setTime] = useState("09:00");
-  const [duration, setDuration] = useState(30);
+  // Text, not a number: an emptied field stays empty instead of turning into 0 minutes.
+  const [duration, setDuration] = useState("30");
   const [notes, setNotes] = useState("");
 
   const selectedCatalog = useMemo(
@@ -80,7 +81,7 @@ export function AppointmentDialog({ open, onClose, appointment, defaultDate }: A
       setSubjectId(appointment.subjectId ?? "");
       setDate(toDateInput(start));
       setTime(toTimeInput(start));
-      setDuration(Math.max(5, Math.round((end.getTime() - start.getTime()) / 60000)));
+      setDuration(String(Math.max(5, Math.round((end.getTime() - start.getTime()) / 60000))));
       setNotes(appointment.notes ?? "");
     } else {
       setCustomerId("");
@@ -89,14 +90,14 @@ export function AppointmentDialog({ open, onClose, appointment, defaultDate }: A
       setSubjectId("");
       setDate(defaultDate ?? toDateInput(new Date()));
       setTime("09:00");
-      setDuration(30);
+      setDuration("30");
       setNotes("");
     }
   }, [open, appointment, defaultDate]);
 
   // When the service changes, adopt its default duration.
   useEffect(() => {
-    if (selectedCatalog && !appointment) setDuration(selectedCatalog.durationMinutes);
+    if (selectedCatalog && !appointment) setDuration(String(selectedCatalog.durationMinutes));
   }, [selectedCatalog, appointment]);
 
   const handleSave = async () => {
@@ -109,9 +110,16 @@ export function AppointmentDialog({ open, onClose, appointment, defaultDate }: A
       return;
     }
 
+    // Same rule as the catalog and the API: whole minutes, more than zero. An empty field is not 0 minutes.
+    const minutes = Number(duration);
+    if (duration.trim() === "" || !Number.isInteger(minutes) || minutes <= 0) {
+      toast.error("Informe a duração em minutos inteiros, maior que zero.");
+      return;
+    }
+
     const start = new Date(`${date}T${time}`);
     if (Number.isNaN(start.getTime())) { toast.error("Data/horário inválidos."); return; }
-    const end = new Date(start.getTime() + duration * 60000);
+    const end = new Date(start.getTime() + minutes * 60000);
 
     const body: SaveAppointmentRequest = {
       customerId,
@@ -208,7 +216,7 @@ export function AppointmentDialog({ open, onClose, appointment, defaultDate }: A
             <div className="space-y-1.5">
               <Label htmlFor="appt-duration">Duração (min)</Label>
               <Input id="appt-duration" type="number" min={5} step={5} value={duration}
-                onChange={(e) => setDuration(Number(e.target.value))} disabled={isPending} />
+                onChange={(e) => setDuration(e.target.value)} disabled={isPending} />
             </div>
           </div>
 

@@ -300,6 +300,61 @@ public class ServiceAppointmentsTests
     }
 
     [Fact]
+    public async Task Zero_duration_returns_400_and_books_nothing()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c);
+        var at = Base.AddDays(10);
+
+        var resp = await PostAppointment(c, ctx, at, at);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resp.Content.ReadAsStringAsync()).Should().Contain("StartsAt must be before EndsAt.");
+        (await AppointmentsOfAsync(ctx.CustomerId)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Missing_end_returns_400_naming_it_and_books_nothing()
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c);
+
+        var resp = await c.PostAsJsonAsync("/api/v1/service/appointments", new
+        {
+            customerId = ctx.CustomerId, professionalId = ctx.ProfessionalId, catalogItemId = ctx.CatalogItemId,
+            startsAt = Base.AddDays(11),
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var body = await resp.Content.ReadAsStringAsync();
+        body.Should().Contain("EndsAt is required.");
+        body.Should().NotContain("StartsAt must be before EndsAt.");
+        (await AppointmentsOfAsync(ctx.CustomerId)).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-30)]
+    public async Task Rescheduling_to_a_zero_or_negative_duration_returns_400_and_keeps_the_booking(int minutes)
+    {
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c);
+        var start = Base.AddDays(12);
+        var id = await CreateAppointmentAsync(c, ctx, start, start.AddHours(1));
+
+        var put = await c.PutAsJsonAsync($"/api/v1/service/appointments/{id}", new
+        {
+            customerId = ctx.CustomerId, professionalId = ctx.ProfessionalId, catalogItemId = ctx.CatalogItemId,
+            startsAt = start, endsAt = start.AddMinutes(minutes),
+        });
+
+        put.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var kept = await (await c.GetAsync($"/api/v1/service/appointments/{id}")).Content.ReadFromJsonAsync<JsonElement>();
+        kept.GetProperty("startsAt").GetDateTime().Should().Be(start);
+        kept.GetProperty("endsAt").GetDateTime().Should().Be(start.AddHours(1));
+    }
+
+    [Fact]
     public async Task Unknown_professional_returns_404()
     {
         var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
@@ -376,6 +431,14 @@ public class ServiceAppointmentsTests
         var r = await PostAppointment(c, ctx, s, e);
         r.StatusCode.Should().Be(HttpStatusCode.Created);
         return (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+    }
+
+    /// <summary>The appointments of a customer straight from the database, past every filter.</summary>
+    private async Task<List<SvcAppointment>> AppointmentsOfAsync(Guid customerId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NexoDbContext>();
+        return await db.Set<SvcAppointment>().IgnoreQueryFilters().AsNoTracking().Where(a => a.CustomerId == customerId).ToListAsync();
     }
 
     private static async Task<HttpStatusCode> Patch(HttpClient c, Guid id, string status, string? reason = null)

@@ -68,8 +68,13 @@ internal static class SvcValidationRules
         v.RuleFor(x => x.CustomerId).NotEmpty().WithMessage("CustomerId is required.");
         v.RuleFor(x => x.ProfessionalId).NotEmpty().WithMessage("ProfessionalId is required.");
         v.RuleFor(x => x.CatalogItemId).NotEmpty().WithMessage("CatalogItemId is required.");
+        // A missing date arrives as DateTime.MinValue: say which one is missing instead of reporting the order of the two.
+        v.RuleFor(x => x.StartsAt).NotEmpty().WithMessage("StartsAt is required.");
+        v.RuleFor(x => x.EndsAt).NotEmpty().WithMessage("EndsAt is required.");
+        // The duration is EndsAt - StartsAt: zero or negative never reaches the agenda.
         v.RuleFor(x => x).Must(r => r.StartsAt < r.EndsAt)
-            .WithMessage("StartsAt must be before EndsAt.");
+            .WithMessage("StartsAt must be before EndsAt.")
+            .When(r => r.StartsAt != default && r.EndsAt != default);
         v.RuleFor(x => x.Notes).MaximumLength(2000).When(x => x.Notes is not null);
     }
 }

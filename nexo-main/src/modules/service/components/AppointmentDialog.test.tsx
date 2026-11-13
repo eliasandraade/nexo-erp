@@ -142,6 +142,36 @@ describe("AppointmentDialog — novo agendamento", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["vazia", ""],
+    ["zero", "0"],
+    ["negativa", "-15"],
+    ["fracionada", "2.5"],
+  ])("duração %s não envia nada e avisa", async (_, value) => {
+    const { dialog, onClose } = renderDialog({ defaultDate: "2026-11-20" });
+    await fillRequired(dialog);
+    const field = within(dialog).getByLabelText("Duração (min)");
+    fireEvent.change(field, { target: { value } });
+    // o campo esvaziado continua vazio, não vira 0
+    if (value === "") expect(field).toHaveValue(null);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
+
+    expect(toast.error).toHaveBeenLastCalledWith("Informe a duração em minutos inteiros, maior que zero.");
+    expect(api.createAppointment).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("um minuto é a menor duração aceita", async () => {
+    const { dialog } = renderDialog({ defaultDate: "2026-11-20" });
+    await fillRequired(dialog);
+    fireEvent.change(within(dialog).getByLabelText("Duração (min)"), { target: { value: "1" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(api.createAppointment).toHaveBeenCalledWith(expect.objectContaining({
+      startsAt: at("2026-11-20", "09:00"), endsAt: at("2026-11-20", "09:01"),
+    })));
+  });
+
   it("serviço que exige pet: pede o pet do tutor e envia junto", async () => {
     const { dialog } = renderDialog({ defaultDate: "2026-11-20" });
     await fillRequired(dialog, "Banho e tosa");
@@ -255,6 +285,17 @@ describe("AppointmentDialog — remarcar", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Esse profissional já tem um agendamento nesse horário."));
     // o pet informado segue mesmo quando o serviço não o exige
     expect(api.updateAppointment.mock.calls[0][1]).toMatchObject({ subjectId: "sub9", notes: null });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("remarcar com a duração zerada não envia nada", async () => {
+    const { dialog, onClose } = renderDialog({ appointment: existing });
+    await waitFor(() => expect(selects(dialog)[2]).toHaveTextContent("Corte"));
+    fireEvent.change(within(dialog).getByLabelText("Duração (min)"), { target: { value: "0" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
+
+    expect(toast.error).toHaveBeenLastCalledWith("Informe a duração em minutos inteiros, maior que zero.");
+    expect(api.updateAppointment).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
   });
 });
