@@ -58,8 +58,10 @@ public class UserService
 
     public async Task<UserDto> CreateAsync(CreateUserRequest request, CancellationToken ct = default)
     {
+        // Across every company, not just this one: sign-in receives a login and no company. The answer does not
+        // say where the login is taken.
         if (await _users.LoginExistsAsync(request.Login, ct))
-            throw new ConflictException($"Login '{request.Login}' is already in use.");
+            throw new ConflictException("Este login já é usado por outra conta.", "login_taken");
 
         if (!string.IsNullOrWhiteSpace(request.Email) && await _users.EmailExistsAsync(request.Email, ct))
             throw new ConflictException($"Email '{request.Email}' is already in use.");
@@ -259,7 +261,8 @@ public class UserService
         CancellationToken ct = default)
     {
         var users = await _users.GetAllAsync(ct);
-        var user = users.FirstOrDefault(u => u.Login == request.Login);
+        var login = User.NormalizeLogin(request.Login);
+        var user = users.FirstOrDefault(u => u.Login == login);
 
         if (user is null)
             return new ValidateManagerResponse(false, "Usuário não encontrado.", null, null);

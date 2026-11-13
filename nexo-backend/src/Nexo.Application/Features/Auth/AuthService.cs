@@ -59,7 +59,7 @@ public class AuthService
         string? userAgent = null,
         CancellationToken ct = default)
     {
-        var user = await _users.GetByLoginAsync(request.Login.Trim().ToLowerInvariant(), ct);
+        var user = await _users.GetByLoginAsync(Nexo.Domain.Entities.User.NormalizeLogin(request.Login), ct);
         if (user is null) return LoginOutcome.Fail("invalid_credentials");
 
         if (user.Status == UserStatus.PendingVerification)
@@ -563,7 +563,7 @@ public class AuthService
         // ANOTHER tenant authorize privileged actions (sale cancellation, high
         // discounts) in this tenant — a cross-tenant authorization bug.
         var user = await _users.GetByLoginInTenantAsync(
-            request.Login.Trim().ToLowerInvariant(), _currentTenant.Id, ct);
+            Nexo.Domain.Entities.User.NormalizeLogin(request.Login), _currentTenant.Id, ct);
 
         if (user is null || user.Status != UserStatus.Active)
             return new VerifyManagerResponse(false, null, null, null);

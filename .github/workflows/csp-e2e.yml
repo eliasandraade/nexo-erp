@@ -22,6 +22,10 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
+      # The runner image may bring a newer SDK than the project's. global.json keeps every build on .NET 8; this shows which one ran.
+      - name: SDK in use
+        run: dotnet --version
+
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
