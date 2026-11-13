@@ -11,8 +11,10 @@ import {
   TOKEN_KEYS,
   type SessionEndReason,
 } from "@/services/api-client";
+import { ORDERS_KEY } from "./useActiveOrder";
 import { KITCHEN_KEY } from "./useKitchenItems";
 import { useKitchenSocket } from "./useKitchenSocket";
+import { TABLES_KEY } from "./useRestauranteTables";
 
 interface FakeOptions {
   accessTokenFactory: () => string | Promise<string>;
@@ -356,6 +358,86 @@ describe("useKitchenSocket and the session", () => {
       await waitFor(() => expect(connection.invoke).toHaveBeenCalledWith("JoinStore", STORE));
       expect(connection.start).toHaveBeenCalledTimes(1);
       expect(result.current.connectionMode).toBe("realtime");
+    });
+  });
+
+  describe("events from the kitchen hub", () => {
+    // O que a cozinha e o salão têm na tela: os itens da cozinha, as mesas e as comandas da loja.
+    const screens = () => {
+      const fetches = { kitchen: vi.fn(), tables: vi.fn(), orders: vi.fn() };
+      fetches.kitchen.mockResolvedValue([
+        { itemId: "it-7", tableNumber: "4", productName: "Moqueca" },
+      ]);
+      fetches.tables.mockResolvedValue([]);
+      fetches.orders.mockResolvedValue([]);
+      return fetches;
+    };
+    const handlerOf = (event: string) =>
+      connection.on.mock.calls.find(([name]) => name === event)?.[1] as (...args: unknown[]) => void;
+
+    function renderScreens(fetches: ReturnType<typeof screens>, onItemReady?: (table: string | null, product: string) => void) {
+      return renderHook(() => {
+        useQuery({ queryKey: KITCHEN_KEY(STORE), queryFn: fetches.kitchen });
+        useQuery({ queryKey: TABLES_KEY(STORE), queryFn: fetches.tables });
+        useQuery({ queryKey: ORDERS_KEY(STORE), queryFn: fetches.orders });
+        useKitchenSocket(STORE, { onItemReady });
+      }, { wrapper });
+    }
+
+    it.each(["NewItemAdded", "OrderStatusChanged", "TableStatusChanged"])(
+      "%s makes the kitchen, the tables and the orders ask for their data again",
+      async (event) => {
+        signIn(tokenExpiringIn(600));
+        const fetches = screens();
+        renderScreens(fetches);
+        await waitFor(() => expect(connection.invoke).toHaveBeenCalledWith("JoinStore", STORE));
+        await waitFor(() => expect(fetches.orders).toHaveBeenCalledTimes(1));
+
+        await act(async () => handlerOf(event)());
+
+        await waitFor(() => expect(fetches.kitchen).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(fetches.tables).toHaveBeenCalledTimes(2));
+        await waitFor(() => expect(fetches.orders).toHaveBeenCalledTimes(2));
+      },
+    );
+
+    it("an item marked ready is announced with the table and the dish on screen, then everything refreshes", async () => {
+      signIn(tokenExpiringIn(600));
+      const fetches = screens();
+      const onItemReady = vi.fn();
+      renderScreens(fetches, onItemReady);
+      await waitFor(() => expect(connection.invoke).toHaveBeenCalledWith("JoinStore", STORE));
+      await waitFor(() => expect(client.getQueryData(KITCHEN_KEY(STORE))).toHaveLength(1));
+
+      await act(async () => handlerOf("OrderItemStatusChanged")("cmd-1", "it-7", "Ready"));
+
+      expect(onItemReady).toHaveBeenCalledWith("4", "Moqueca");
+      await waitFor(() => expect(fetches.orders).toHaveBeenCalledTimes(2));
+      expect(fetches.kitchen).toHaveBeenCalledTimes(2);
+    });
+
+    it("an item that only changed to preparing is not announced, but the screens still refresh", async () => {
+      signIn(tokenExpiringIn(600));
+      const fetches = screens();
+      const onItemReady = vi.fn();
+      renderScreens(fetches, onItemReady);
+      await waitFor(() => expect(connection.invoke).toHaveBeenCalledWith("JoinStore", STORE));
+      await waitFor(() => expect(fetches.tables).toHaveBeenCalledTimes(1));
+
+      await act(async () => handlerOf("OrderItemStatusChanged")("cmd-1", "it-7", "Preparing"));
+
+      expect(onItemReady).not.toHaveBeenCalled();
+      await waitFor(() => expect(fetches.tables).toHaveBeenCalledTimes(2));
+    });
+
+    it("leaving the screen closes the connection", async () => {
+      signIn(tokenExpiringIn(600));
+      const { unmount } = renderHook(() => useKitchenSocket(STORE), { wrapper });
+      await waitFor(() => expect(connection.invoke).toHaveBeenCalledWith("JoinStore", STORE));
+
+      unmount();
+
+      expect(connection.stop).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -20,12 +20,12 @@ function AreaRow({ area, tables }: { area: AreaDto; tables: TableDto[] }) {
 
   const updateAreaMut = useMutation({
     mutationFn: () => updateArea(area.id, { name, description: area.description, isActive: area.isActive }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["restaurante-areas-setup"] }); setEditing(false); },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["restaurante-areas-setup"] }); setEditing(false); },
   });
 
   const addTableMut = useMutation({
     mutationFn: () => createTable({ areaId: area.id, number: tableNum.trim(), capacity: parseInt(tableCap) || 4 }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["restaurante-tables-setup"] }); setTableNum(""); setTableCap("4"); setAddingTable(false); },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["restaurante-tables-setup"] }); setTableNum(""); setTableCap("4"); setAddingTable(false); },
   });
 
   const toggleActiveMut = useMutation({
@@ -146,7 +146,7 @@ function TableRowItem({ table }: { table: TableDto }) {
 
   const mut = useMutation({
     mutationFn: () => updateTable(table.id, { areaId: table.areaId, number: num, capacity: parseInt(cap) || table.capacity, isActive: table.isActive }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["restaurante-tables-setup"] }); setEditing(false); },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ["restaurante-tables-setup"] }); setEditing(false); },
   });
 
   const toggleMut = useMutation({
@@ -204,7 +204,7 @@ export default function RestauranteSetupPage() {
   const createAreaMut = useMutation({
     mutationFn: () => createArea({ name: newAreaName.trim() }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["restaurante-areas-setup"] });
+      void qc.invalidateQueries({ queryKey: ["restaurante-areas-setup"] });
       setNewAreaName("");
       setAddingArea(false);
     },
