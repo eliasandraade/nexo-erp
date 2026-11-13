@@ -119,7 +119,7 @@ export function CartSheet({
 
   const handleCepChange = (value: string) => {
     setCep(value);
-    if (value.replace(/\D/g, "").length === 8) lookupCep(value);
+    if (value.replace(/\D/g, "").length === 8) void lookupCep(value);
   };
 
   const handleApplyCoupon = async () => {

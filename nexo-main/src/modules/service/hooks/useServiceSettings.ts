@@ -21,8 +21,8 @@ export function useSetServicePreset() {
   return useMutation({
     mutationFn: (presetKey: string) => setServicePreset(presetKey),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: serviceKeys.settings() });
-      qc.invalidateQueries({ queryKey: serviceKeys.preset() });
+      void qc.invalidateQueries({ queryKey: serviceKeys.settings() });
+      void qc.invalidateQueries({ queryKey: serviceKeys.preset() });
     },
   });
 }

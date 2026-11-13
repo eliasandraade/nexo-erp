@@ -37,7 +37,7 @@ function usePackageMutation<TArgs>(fn: (args: TArgs) => Promise<SvcPackageDto>) 
     mutationFn: fn,
     onSuccess: (pkg) => {
       qc.setQueryData(serviceKeys.package(pkg.id), pkg);
-      qc.invalidateQueries({ queryKey: serviceKeys.packages() });
+      void qc.invalidateQueries({ queryKey: serviceKeys.packages() });
     },
   });
 }

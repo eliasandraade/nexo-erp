@@ -22,10 +22,10 @@ import { ORDERS_KEY } from "./useActiveOrder";
 function useInvalidateOnSuccess(storeId: string) {
   const qc = useQueryClient();
   return () => {
-    qc.invalidateQueries({ queryKey: TABLES_KEY(storeId) });
-    qc.invalidateQueries({ queryKey: ORDERS_KEY(storeId) });
-    qc.invalidateQueries({ queryKey: ["orders", "active", storeId] });   // comanda opened from a table
-    qc.invalidateQueries({ queryKey: ["kitchen-items", storeId] });
+    void qc.invalidateQueries({ queryKey: TABLES_KEY(storeId) });
+    void qc.invalidateQueries({ queryKey: ORDERS_KEY(storeId) });
+    void qc.invalidateQueries({ queryKey: ["orders", "active", storeId] });   // comanda opened from a table
+    void qc.invalidateQueries({ queryKey: ["kitchen-items", storeId] });
   };
 }
 
@@ -101,11 +101,11 @@ export function usePayOrder(storeId: string) {
     mutationFn: ({ orderId, req }: { orderId: string; req: PayOrderRequest }) =>
       payOrder(orderId, req),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: TABLES_KEY(storeId) });
-      qc.invalidateQueries({ queryKey: ORDERS_KEY(storeId) });
-      qc.invalidateQueries({ queryKey: ["kitchen-items", storeId] });
-      qc.invalidateQueries({ queryKey: ["sales"] });
-      qc.invalidateQueries({ queryKey: ["cash"] });
+      void qc.invalidateQueries({ queryKey: TABLES_KEY(storeId) });
+      void qc.invalidateQueries({ queryKey: ORDERS_KEY(storeId) });
+      void qc.invalidateQueries({ queryKey: ["kitchen-items", storeId] });
+      void qc.invalidateQueries({ queryKey: ["sales"] });
+      void qc.invalidateQueries({ queryKey: ["cash"] });
     },
     onError: () => toast.error("Erro ao processar pagamento. Tente novamente."),
   });

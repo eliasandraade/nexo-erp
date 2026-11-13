@@ -33,7 +33,7 @@ export function useUpdatePublicBookingSettings() {
     onSuccess: (data) => {
       // Seed the cache + invalidate so the sidebar/overview react immediately (Agenda visibility).
       qc.setQueryData(serviceKeys.publicBooking(), data);
-      qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
+      void qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
     },
   });
 }
@@ -45,7 +45,7 @@ export function useUpdateCustomerEmails() {
     mutationFn: (body: UpdateCustomerEmailsRequest) => updateCustomerEmails(body),
     onSuccess: (data) => {
       qc.setQueryData(serviceKeys.publicBooking(), data);
-      qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
+      void qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
     },
   });
 }
@@ -57,7 +57,7 @@ export function useUpdatePortalBranding() {
     mutationFn: (body: UpdatePortalBrandingRequest) => updatePortalBranding(body),
     onSuccess: (data) => {
       qc.setQueryData(serviceKeys.publicBooking(), data);
-      qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
+      void qc.invalidateQueries({ queryKey: serviceKeys.publicBooking() });
     },
   });
 }

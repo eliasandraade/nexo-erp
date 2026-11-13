@@ -635,7 +635,7 @@ function TabDiario({ projectId }: { projectId: string }) {
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       e.target.value = "";
-                      if (f) handleUploadPhoto(log.id, f);
+                      if (f) void handleUploadPhoto(log.id, f);
                     }}
                   />
                 </label>

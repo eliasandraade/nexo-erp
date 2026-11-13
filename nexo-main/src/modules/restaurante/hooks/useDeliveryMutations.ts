@@ -28,7 +28,7 @@ export function useAcceptDelivery(storeId: string) {
     mutationFn: ({ id, req }: { id: string; req: AcceptDeliveryRequest }) =>
       acceptDeliveryOrder(id, req),
     onSuccess: () => {
-      invalidate();
+      void invalidate();
       toast.success("Pedido aceito — comanda aberta na cozinha.");
     },
     onError: () => toast.error("Erro ao aceitar pedido. Tente novamente."),
@@ -43,7 +43,7 @@ export function useRejectDelivery(storeId: string) {
     mutationFn: ({ id, req }: { id: string; req: RejectDeliveryRequest }) =>
       rejectDeliveryOrder(id, req),
     onSuccess: () => {
-      invalidate();
+      void invalidate();
       toast.success("Pedido rejeitado.");
     },
     onError: () => toast.error("Erro ao rejeitar pedido. Tente novamente."),
@@ -58,7 +58,7 @@ export function useAdvanceDelivery(storeId: string) {
     mutationFn: ({ id, req }: { id: string; req: UpdateDeliveryStatusRequest }) =>
       updateDeliveryStatus(id, req),
     onSuccess: (order) => {
-      invalidate();
+      void invalidate();
       const label =
         order.status === "Delivered"
           ? order.orderType === "Takeaway"
@@ -78,7 +78,7 @@ export function useCancelDelivery(storeId: string) {
   return useMutation({
     mutationFn: (id: string) => cancelDeliveryOrder(id),
     onSuccess: () => {
-      invalidate();
+      void invalidate();
       toast.success("Pedido cancelado.");
     },
     onError: () => toast.error("Erro ao cancelar pedido. Tente novamente."),
@@ -93,7 +93,7 @@ export function useCreateManualDelivery(storeId: string) {
     mutationFn: (req: CreateManualDeliveryRequest) =>
       createManualDeliveryOrder(req),
     onSuccess: (order) => {
-      invalidate();
+      void invalidate();
       toast.success(`Pedido #${order.orderNumber} criado com sucesso.`);
     },
     onError: () => toast.error("Erro ao criar pedido. Verifique os dados e tente novamente."),
