@@ -6,12 +6,19 @@ namespace Nexo.Domain.Entities;
 
 /// <summary>
 /// Represents a user belonging to a specific tenant.
-/// Login is the unique identifier for authentication within a tenant (not email).
+/// Login is what the person types to sign in (not the e-mail), and it is unique across every company:
+/// sign-in arrives without a company, so one login can only ever mean one account.
 /// PasswordHash is always a BCrypt hash — never store plaintext.
 /// </summary>
 public class User : TenantEntity
 {
     private User() { } // EF Core constructor
+
+    /// <summary>
+    /// The one spelling of a login: what is stored, what is looked up and what is compared. Every place that
+    /// reads a login from a person goes through here, so "Maria " and "maria" are never two accounts.
+    /// </summary>
+    public static string NormalizeLogin(string? login) => (login ?? string.Empty).Trim().ToLowerInvariant();
 
     public string FullName { get; private set; } = string.Empty;
     public string Email { get; private set; } = string.Empty;
@@ -68,7 +75,7 @@ public class User : TenantEntity
         {
             FullName = fullName.Trim(),
             Email = email.Trim().ToLowerInvariant(),
-            Login = login.Trim().ToLowerInvariant(),
+            Login = NormalizeLogin(login),
             PasswordHash = passwordHash,
             Phone = phone?.Trim(),
             Role = role,

@@ -37,6 +37,12 @@ public interface IUserRepository
     Task<User?> GetByLoginInTenantAsync(string login, Guid tenantId, CancellationToken ct = default);
 
     Task<User?> GetByEmailAsync(string email, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether a login is already taken ANYWHERE: by a user of any company, or by a platform operator
+    /// (whose e-mail is their login on the shared sign-in form). Bypasses the tenant filter on purpose,
+    /// because sign-in looks a login up without a company. The login is normalized here.
+    /// </summary>
     Task<bool> LoginExistsAsync(string login, CancellationToken ct = default);
     Task<bool> EmailExistsAsync(string email, CancellationToken ct = default);
     Task<IReadOnlyList<User>> GetAllAsync(CancellationToken ct = default);

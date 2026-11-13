@@ -79,7 +79,11 @@ public class ExceptionHandlingMiddleware
         {
             // Two requests creating the same thing (a duplicate document, module, login…): a conflict, not a bug.
             _logger.LogInformation("Unique constraint hit: {Constraint}.", ((Npgsql.PostgresException)ex.InnerException).ConstraintName);
-            await WriteErrorAsync(ctx, 409, "Já existe um registro com estes dados.", null, "duplicate");
+            // Two requests creating the same login at once: the one that lost hears the same as the check would have said.
+            if (Nexo.Infrastructure.Auth.LoginRegistry.LostTheLogin(ex))
+                await WriteErrorAsync(ctx, 409, "Este login já é usado por outra conta.", null, "login_taken");
+            else
+                await WriteErrorAsync(ctx, 409, "Já existe um registro com estes dados.", null, "duplicate");
         }
         catch (BadHttpRequestException ex) when (!ctx.RequestAborted.IsCancellationRequested)
         {

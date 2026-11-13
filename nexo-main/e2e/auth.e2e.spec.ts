@@ -1599,9 +1599,17 @@ test.describe("Access of the platform to a company", () => {
     await expect(tab).not.toHaveURL(/\/impersonate/);
     keepsOldTokens.add(context);
 
+    // The headers are asked for when the request leaves. The tab closes itself as soon as the answer arrives, and asking a closed
+    // tab for the headers of its request fails with "Target page, context or browser has been closed".
+    let endedHeaders: Promise<Record<string, string>> | undefined;
+    tab.on("request", (r) => {
+      if (r.url() === `${API}/auth/impersonation/end` && r.method() === "POST") endedHeaders = r.allHeaders();
+    });
     const ended = tab.waitForRequest((r) => r.url() === `${API}/auth/impersonation/end` && r.method() === "POST");
     await tab.getByRole("button", { name: "Sair do acesso" }).click();
-    expect((await (await ended).allHeaders()).cookie).toBeUndefined();
+    await ended;
+    expect(endedHeaders, "the request that ends the access was seen leaving").toBeDefined();
+    expect((await endedHeaders!).cookie).toBeUndefined();
     // a tab opened by the platform closes by itself; if it could not, it says the access ended
     await expect.poll(() => tab.isClosed() || tab.url().includes("/acesso-encerrado")).toBe(true);
 

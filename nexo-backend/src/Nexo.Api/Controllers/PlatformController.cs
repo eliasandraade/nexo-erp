@@ -239,9 +239,7 @@ public class PlatformController : ControllerBase
         if (taxId.Length > 0 && await _db.Tenants.IgnoreQueryFilters().AnyAsync(t => t.TaxId == req.TaxId || t.TaxId == taxId, ct))
             return Conflict(new { error = "CNPJ/CPF já cadastrado para outra empresa.", code = "tenant_tax_id_taken" });
         // Sign-in looks users up across every company: a login must be unique everywhere, or one of them can't enter.
-        var login = (req.AdminLogin ?? "").Trim().ToLowerInvariant();
-        if (await _db.Users.IgnoreQueryFilters().AnyAsync(u => u.Login == login, ct)
-            || await _db.PlatformUsers.AnyAsync(u => u.Email == login, ct))
+        if (await Nexo.Infrastructure.Auth.LoginRegistry.IsTakenAsync(_db, req.AdminLogin, ct))
             return Conflict(new { error = "Este login já é usado por outra conta.", code = "login_taken" });
 
         var platformUserId = GetPlatformUserId();
