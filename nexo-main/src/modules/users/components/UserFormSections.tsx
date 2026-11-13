@@ -13,6 +13,10 @@ interface Props {
   errors: Record<string, string>;
 }
 
+/** Only the link sent by e-mail activates someone who is pending: the form can stop them, not let them in. */
+const statusOptions = (status: UserStatus): UserStatus[] =>
+  status === "pendingverification" ? ["pendingverification", "inactive"] : ["active", "inactive"];
+
 export function UserMainDataSection({ form, onChange, errors }: Props) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -41,13 +45,18 @@ export function UserMainDataSection({ form, onChange, errors }: Props) {
       <div className="space-y-1.5">
         <Label>Status</Label>
         <Select value={form.status} onValueChange={(v) => onChange({ status: v as UserStatus })}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label="Status"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {(["active", "inactive"] as UserStatus[]).map((s) => (
+            {statusOptions(form.status).map((s) => (
               <SelectItem key={s} value={s}>{statusLabels[s]}</SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {form.status === "pendingverification" && (
+          <p className="text-xs text-muted-foreground">
+            O acesso só é liberado pelo link enviado por e-mail. Para mandar outro, use Reenviar convite na aba Segurança.
+          </p>
+        )}
       </div>
     </div>
   );

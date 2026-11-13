@@ -93,6 +93,7 @@ jest-cache/
 playwright-report/
 test-results/
 nexo-main/dist-e2e/
+nexo-main/dist-e2e-cookie/
 
 # Playwright artifacts
 screenshots/

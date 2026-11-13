@@ -229,6 +229,8 @@ PRs abertas quando esta seção foi escrita, cada uma com o gate da própria an�
 
 ### 7.5 O que depende do painel
 
+> **Substituída em 06/11/2026 no que diz respeito a `S9383`, `S8949` e `S8733`.** O dono descartou as respostas em lote. Cada achado foi examinado em [`2026-11-06-sonarcloud-confiabilidade-por-achado.md`](2026-11-06-sonarcloud-confiabilidade-por-achado.md), e as justificativas abaixo não devem ser coladas no painel.
+
 As decisões são do dono do projeto. Em ordem de efeito no gate.
 
 **1. Período de "código novo"** (*Administration → New Code*)

@@ -63,7 +63,45 @@ public class UserServiceTests
             Phone:    null,
             Notes:    null));
 
-        await act.Should().ThrowAsync<ConflictException>();
+        (await act.Should().ThrowAsync<ConflictException>()).Which.Code.Should().Be("login_taken");
+        await _users.DidNotReceive().AddAsync(Arg.Any<User>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateAsync_AsksForTheLoginAcrossEveryCompany_BeforeAnythingElse()
+    {
+        _users.LoginExistsAsync("Joao.Silva", Arg.Any<CancellationToken>()).Returns(true);
+
+        var sut = CreateSut();
+        var act = () => sut.CreateAsync(new CreateUserRequest(
+            FullName: "João Silva",
+            Email:    "joao@loja.com",
+            Login:    "Joao.Silva",
+            Password: "senha123",
+            Role:     "vendedor",
+            Phone:    null,
+            Notes:    null));
+
+        var refused = (await act.Should().ThrowAsync<ConflictException>()).Which;
+        refused.Code.Should().Be("login_taken");
+        refused.Message.Should().NotContain("Joao", "the answer repeats nothing of what was typed and names no company");
+        await _users.DidNotReceive().EmailExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("maria.gerente")]
+    [InlineData("MARIA.GERENTE")]
+    [InlineData("  Maria.Gerente ")]
+    public async Task ValidateManagerAsync_FindsTheManager_InAnySpellingOfTheLogin(string typed)
+    {
+        var manager = User.Create(Guid.NewGuid(), "Maria Gerente", "maria@loja.com", "maria.gerente", "hashed", UserRole.Gerente);
+        _users.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new List<User> { manager });
+        _hasher.Verify("senha123", "hashed").Returns(true);
+
+        var result = await CreateSut().ValidateManagerAsync(new ValidateManagerRequest(typed, "senha123"));
+
+        result.Success.Should().BeTrue();
+        result.FullName.Should().Be("Maria Gerente");
     }
 
     [Fact]
@@ -196,5 +234,82 @@ public class UserServiceTests
 
         await _users.DidNotReceiveWithAnyArgs().HasAnotherActiveDirectorAsync(default, default);
         await _sessions.DidNotReceiveWithAnyArgs().RevokeAllAsync(default);
+    }
+
+    // ── UpdateAsync: the status of whoever never proved the address ───────────
+
+    private User ExistingUser(UserStatus status)
+    {
+        var tenantId = Guid.NewGuid();
+        var user = User.Create(tenantId, "A", "a@b.com", "a", "hash", UserRole.Vendedor);
+        user.SetStatus(status);
+        _tenant.Id.Returns(tenantId);
+        _users.GetByIdAsync(user.Id, Arg.Any<CancellationToken>()).Returns(user);
+        return user;
+    }
+
+    [Theory]
+    [InlineData("pendingverification")]
+    [InlineData("PendingVerification")]
+    [InlineData(null)]
+    public async Task UpdateAsync_OfAPendingUser_KeepsThemPending(string? status)
+    {
+        var user = ExistingUser(UserStatus.PendingVerification);
+
+        var result = await CreateSut().UpdateAsync(user.Id, EditOf(user, "vendedor", status));
+
+        user.Status.Should().Be(UserStatus.PendingVerification);
+        result.Status.Should().Be("pendingverification");
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RefusesToActivateAPendingUser_AndTouchesNothing()
+    {
+        var user = ExistingUser(UserStatus.PendingVerification);
+
+        var act = () => CreateSut().UpdateAsync(user.Id, new UpdateUserRequest("Outro Nome", user.Email, "vendedor", null, null, "active"));
+
+        (await act.Should().ThrowAsync<ConflictException>()).Which.Code.Should().Be("email_not_verified");
+        user.Status.Should().Be(UserStatus.PendingVerification);
+        user.FullName.Should().Be("A");
+        await _users.DidNotReceiveWithAnyArgs().SaveChangesAsync(default);
+    }
+
+    [Theory]
+    [InlineData(UserStatus.Active)]
+    [InlineData(UserStatus.Inactive)]
+    [InlineData(UserStatus.Blocked)]
+    public async Task UpdateAsync_DoesNotSendBackToPendingWhoeverProvedTheAddress(UserStatus current)
+    {
+        var user = ExistingUser(current);
+
+        var act = () => CreateSut().UpdateAsync(user.Id, EditOf(user, "vendedor", "pendingverification"));
+
+        (await act.Should().ThrowAsync<ConflictException>()).Which.Code.Should().Be("status_not_editable");
+        user.Status.Should().Be(current);
+    }
+
+    [Theory]
+    [InlineData(UserStatus.Inactive)]
+    [InlineData(UserStatus.Blocked)]
+    public async Task UpdateAsync_ReactivatingWhoNeverVerified_GoesBackToPending(UserStatus stoppedAs)
+    {
+        var user = ExistingUser(UserStatus.PendingVerification);
+        await CreateSut().UpdateAsync(user.Id, EditOf(user, "vendedor", stoppedAs.ToString()));
+        user.Status.Should().Be(stoppedAs);
+
+        var result = await CreateSut().UpdateAsync(user.Id, EditOf(user, "vendedor", "active"));
+
+        user.Status.Should().Be(UserStatus.PendingVerification);
+        result.Status.Should().Be("pendingverification");
+    }
+
+    [Fact]
+    public void The_validator_takes_the_status_the_api_itself_returns()
+    {
+        var validator = new Nexo.Application.Validators.Users.UpdateUserRequestValidator();
+
+        validator.Validate(new UpdateUserRequest("A", "a@b.com", "vendedor", null, null, "pendingverification")).IsValid.Should().BeTrue();
+        validator.Validate(new UpdateUserRequest("A", "a@b.com", "vendedor", null, null, "qualquer")).IsValid.Should().BeFalse();
     }
 }

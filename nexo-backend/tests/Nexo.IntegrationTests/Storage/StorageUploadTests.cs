@@ -44,7 +44,7 @@ public class StorageUploadTests
         content.Add(file, "file", "obra.jpg");
         content.Add(new StringContent("build-daily-log"), "context");
 
-        var resp = await _client.PostAsync("/api/integrations/storage/upload", content);
+        var resp = await _client.PostAsync("/api/integrations/storage/upload?context=build-daily-log", content);
 
         // Must never be a 5xx — the disabled gate returns a controlled 404.
         ((int)resp.StatusCode).Should().BeLessThan(500,

@@ -66,8 +66,8 @@ vi.mock("@microsoft/signalr", () => {
 const API = "http://localhost:5000/api";
 const STORE = "11111111-1111-1111-1111-111111111111";
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", ...headers } });
 
 /** The token of the app, with only the expiry the client reads. The signature is the server's business. */
 const tokenExpiringIn = (seconds: number) => {
@@ -185,6 +185,25 @@ describe("useKitchenSocket and the session", () => {
       expect(delayAfter(0)).toBe(0);
     });
 
+    it.each([
+      ["a 429", () => json({ code: "rate_limited" }, 429, { "Retry-After": "600" })],
+      ["a 503", () => json({ code: "session_renewal_unavailable" }, 503, { "Retry-After": "15" })],
+      ["a 502 of the edge", () => new Response("Bad gateway", { status: 502 })],
+    ])("%s during the renewal does not end the session, and the attempts that follow do not ask again during the wait", async (_, answer) => {
+      const expired = tokenExpiringIn(-120);
+      signIn(expired);
+      fetchMock.mockResolvedValueOnce(answer());
+      renderHook(() => useKitchenSocket(STORE), { wrapper });
+
+      await expect(tokenOfTheConnection()).resolves.toBe(expired);
+      await expect(tokenOfTheConnection()).resolves.toBe(expired);
+
+      expect(ended).toEqual([]);
+      expect(getRefreshToken()).toBe("refresh-1");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(delayAfter(0)).toBe(0);
+    });
+
     it("a platform access tab never renews: its token is sent as it is and the server decides", async () => {
       const token = tokenExpiringIn(-120);
       beginImpersonation(token, JSON.stringify({ type: "tenant", name: "Ana" }), { tenant: "Padaria", user: "Ana", expiresAt: "2026-11-05T12:30:00Z" });
@@ -213,6 +232,27 @@ describe("useKitchenSocket and the session", () => {
       const delays = [0, 1, 2, 3, 4].map(delayAfter);
 
       expect(delays).toEqual([0, 2000, 5000, 10_000, null]);
+    });
+
+    it("with the renewal over its limit the first attempts end in polling, with one renewal and the session intact", async () => {
+      vi.useFakeTimers();
+      const expired = tokenExpiringIn(-120);
+      signIn(expired);
+      fetchMock.mockResolvedValue(json({ code: "rate_limited" }, 429, { "Retry-After": "600" }));
+      connection.start.mockImplementation(async () => {
+        await (fake.options as FakeOptions).accessTokenFactory();
+        throw new Error("401");
+      });
+      vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      const { result } = renderHook(() => useKitchenSocket(STORE), { wrapper });
+
+      await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+
+      expect(connection.start).toHaveBeenCalledTimes(4);
+      expect(result.current.connectionMode).toBe("polling");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(ended).toEqual([]);
+      expect(getAccessToken()).toBe(expired);
     });
 
     it("stops the first connection attempts as soon as the session is over", async () => {
@@ -278,6 +318,44 @@ describe("useKitchenSocket and the session", () => {
 
       expect(result.current.connectionMode).toBe("realtime");
       expect(invalidate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("while paused: the company has no access, so every call would be refused", () => {
+    it("does not connect", async () => {
+      signIn(tokenExpiringIn(600));
+      renderHook(() => useKitchenSocket(STORE, { paused: true }), { wrapper });
+
+      await act(async () => undefined);
+
+      expect(connection.start).not.toHaveBeenCalled();
+    });
+
+    it("stops the connection and the polling timer, and asks for nothing", async () => {
+      vi.useFakeTimers();
+      signIn(tokenExpiringIn(600));
+      const { rerender } = renderHook(({ paused }) => useKitchenSocket(STORE, { paused }), { wrapper, initialProps: { paused: false } });
+      await vi.advanceTimersByTimeAsync(0);
+      await act(async () => connection.close());
+      const invalidate = vi.spyOn(client, "invalidateQueries");
+
+      rerender({ paused: true });
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(connection.stop).toHaveBeenCalled();
+      expect(invalidate).not.toHaveBeenCalled();
+    });
+
+    it("connects again with a new connection when it resumes", async () => {
+      signIn(tokenExpiringIn(600));
+      const { result, rerender } = renderHook(({ paused }) => useKitchenSocket(STORE, { paused }), { wrapper, initialProps: { paused: true } });
+      expect(connection.start).not.toHaveBeenCalled();
+
+      rerender({ paused: false });
+
+      await waitFor(() => expect(connection.invoke).toHaveBeenCalledWith("JoinStore", STORE));
+      expect(connection.start).toHaveBeenCalledTimes(1);
+      expect(result.current.connectionMode).toBe("realtime");
     });
   });
 

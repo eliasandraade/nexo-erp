@@ -75,4 +75,27 @@ describe("ImpersonatePage", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("O acesso não chegou a esta aba"));
     expect(screen.getByRole("link", { name: "Voltar à plataforma" })).toHaveAttribute("href", "/platform");
   });
+
+  it("shows the reason when the platform refused the access", async () => {
+    vi.spyOn(handoff, "requestImpersonation").mockRejectedValue(new handoff.HandoffError("failed", "Esta empresa está suspensa."));
+    show("?k=nonce-3");
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Esta empresa está suspensa."));
+  });
+
+  it("leaving the page cancels the request, and its failure shows nothing", async () => {
+    let rejectLater: (error: Error) => void = () => undefined;
+    const request = vi.spyOn(handoff, "requestImpersonation").mockImplementation(
+      () => new Promise((_resolve, reject) => { rejectLater = reject; }),
+    );
+    const { unmount } = show("?k=nonce-4");
+
+    const { signal } = request.mock.calls[0][1] as { signal: AbortSignal };
+    expect(signal.aborted).toBe(false);
+    unmount();
+    expect(signal.aborted).toBe(true);
+
+    rejectLater(new handoff.HandoffError("timeout", "Pedido de acesso cancelado."));
+    await Promise.resolve();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

@@ -107,5 +107,8 @@ public sealed record PublicAppointmentViewDto(
     DateTime CancelDeadline,
     /// <summary>True when only the store can cancel it now: it already has a comanda or was paid with a package.</summary>
     bool     HandledByStore = false,
-    /// <summary>True when the company takes no changes through the portal now (no access to the module): talk to the store.</summary>
+    /// <summary>
+    /// True when no change goes through the portal now, whatever the rules of this booking: the company is out of activity or the
+    /// store is inactive. An expired subscription does not pause it. Talk to the store.
+    /// </summary>
     bool     OnlineChangesPaused = false);

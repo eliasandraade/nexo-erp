@@ -4,15 +4,21 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 namespace Nexo.Api.Filters;
 
 /// <summary>
-/// Documents a multipart body with one file field for an action that reads the form itself (no <c>IFormFile</c>
-/// parameter — see <see cref="DisableFormValueModelBindingAttribute"/>), so the OpenAPI document keeps describing the upload.
+/// Documents a multipart body with one file field (and any text fields) for an action that reads the form itself (no
+/// <c>IFormFile</c> parameter — see <see cref="DisableFormValueModelBindingAttribute"/>), so the OpenAPI document keeps describing the upload.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method)]
 public sealed class MultipartFileBodyAttribute : Attribute
 {
-    public MultipartFileBodyAttribute(string field) => Field = field;
+    public MultipartFileBodyAttribute(string field, params string[] textFields)
+    {
+        Field = field;
+        TextFields = textFields;
+    }
 
     public string Field { get; }
+
+    public string[] TextFields { get; }
 }
 
 /// <summary>Swagger: turns <see cref="MultipartFileBodyAttribute"/> into a <c>multipart/form-data</c> request body.</summary>
@@ -23,17 +29,20 @@ public sealed class MultipartFileBodyOperationFilter : IOperationFilter
         var attribute = context.MethodInfo.GetCustomAttributes(typeof(MultipartFileBodyAttribute), false)
             .OfType<MultipartFileBodyAttribute>().FirstOrDefault();
         if (attribute is null) return;
+        var schema = new OpenApiSchema
+        {
+            Type = "object",
+            Properties = { [attribute.Field] = new OpenApiSchema { Type = "string", Format = "binary" } },
+        };
+        foreach (var field in attribute.TextFields)
+            schema.Properties[field] = new OpenApiSchema { Type = "string" };
         operation.RequestBody = new OpenApiRequestBody
         {
             Content =
             {
                 ["multipart/form-data"] = new OpenApiMediaType
                 {
-                    Schema = new OpenApiSchema
-                    {
-                        Type = "object",
-                        Properties = { [attribute.Field] = new OpenApiSchema { Type = "string", Format = "binary" } },
-                    },
+                    Schema = schema,
                     Encoding = { [attribute.Field] = new OpenApiEncoding { Style = ParameterStyle.Form } },
                 },
             },

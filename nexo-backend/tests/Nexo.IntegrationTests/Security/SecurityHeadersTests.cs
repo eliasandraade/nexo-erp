@@ -177,7 +177,7 @@ public class SecurityHeadersTests
         var response = await _client.SendAsync(new HttpRequestMessage(HttpMethod.Options, "/api/auth/me")
         {
             Headers = {
-                { "Origin", "http://localhost:3000" },
+                { "Origin", "https://erp.orken.com.br" },
                 { "Access-Control-Request-Method", "GET" }
             }
         });
@@ -249,12 +249,12 @@ public class SecurityHeadersTests
         var response = await _client.SendAsync(new HttpRequestMessage(HttpMethod.Options, "/api/auth/me")
         {
             Headers = {
-                { "Origin", "http://localhost:3000" },
+                { "Origin", "https://erp.orken.com.br" },
                 { "Access-Control-Request-Method", "TRACE" }
             }
         });
 
-        response.Headers.GetValues("Access-Control-Allow-Origin").Should().ContainSingle().Which.Should().Be("http://localhost:3000");
+        response.Headers.GetValues("Access-Control-Allow-Origin").Should().ContainSingle().Which.Should().Be("https://erp.orken.com.br");
         var methods = response.Headers.GetValues("Access-Control-Allow-Methods")
             .SelectMany(m => m.Split(',').Select(s => s.Trim().ToUpperInvariant())).ToList();
         methods.Should().BeEquivalentTo("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS");

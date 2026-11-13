@@ -26,6 +26,8 @@ export default function ManageBookingPage() {
   const qc = useQueryClient();
   const portalQ = usePortal(slug);
   const theme = getPortalTheme(portalQ.data?.presetKey);
+  // A company in read-only takes the cancellation and no new booking: the page promises nothing that the portal would refuse.
+  const bookingOff = portalQ.data?.isBookingEnabled === false;
   const key = ["svc-portal-booking", slug, token];
   const bookingQ = useQuery({
     queryKey: key, queryFn: () => getAppointmentByToken(slug, token),
@@ -98,7 +100,9 @@ export default function ManageBookingPage() {
           <div ref={confirmRef} tabIndex={-1} className="outline-none">
             <p className="text-sm font-semibold">Cancelar este agendamento?</p>
           </div>
-          <Muted className="mt-1 block text-[12px]">O horário fica livre para outra pessoa.</Muted>
+          <Muted className="mt-1 block text-[12px]">
+            {bookingOff ? "Este horário deixa de ficar reservado para você." : "O horário fica livre para outra pessoa."}
+          </Muted>
           <div className="mt-3 grid grid-cols-2 gap-2.5">
             <Btn variant="soft" onClick={() => setConfirming(false)} disabled={cancel.isPending}>Manter</Btn>
             <Btn onClick={() => cancel.mutate()} disabled={cancel.isPending}>
@@ -117,7 +121,7 @@ export default function ManageBookingPage() {
             : `O prazo para cancelar por aqui terminou em ${deadline}. Para desmarcar, fale com o estabelecimento.`}
         </Muted>
       )}
-      {cancelled && (
+      {cancelled && !bookingOff && (
         <div className="mt-5 text-center">
           <Link to={`/agendar/${slug}`} className="text-[13px] font-semibold underline underline-offset-2" style={{ color: "var(--p-accent)" }}>
             Agendar outro horário

@@ -56,6 +56,14 @@ public sealed class BuildDocumentService
         _ => null,
     };
 
+    /// <summary>What can be refused before reading a document's body: the project and a place to store it.</summary>
+    public async Task EnsureCanUploadAsync(Guid projectId, CancellationToken ct)
+    {
+        await BuildScope.EnsureProjectAsync(_db, Tid, projectId, ct);
+        if (!_flags.StorageEnabled || !_storage.CanStorePrivateFiles)
+            throw new BuildStorageUnavailableException("Armazenamento de arquivos indisponível.");
+    }
+
     public async Task<BuildDocumentDto> CreateAsync(Guid projectId, string? category, string? title, DateOnly? validUntil, bool clientVisible,
         BuildUploadBuffer file, CancellationToken ct)
     {

@@ -60,8 +60,9 @@ passados são imutáveis; um job horário (`BuildProgressSnapshotJob`) garante u
 | PUT | `/api/v1/build/client-updates/{id}` | editar (não arquivadas) |
 | POST | `/api/v1/build/client-updates/{id}/publish` · `/archive` | só publicadas aparecem no portal |
 
-Logo e capa: enviar por `POST /api/integrations/storage/upload` com contexto `build-portal-logo` ou
-`build-portal-cover` (públicos, papéis de gestão) e usar a `key` devolvida (`tenants/{tenant}/build/portal/...`).
+Logo e capa: enviar por `POST /api/integrations/storage/upload?context=build-portal-logo` (ou `build-portal-cover`; públicos,
+papéis de gestão) e usar a `key` devolvida (`tenants/{tenant}/build/portal/...`). O contexto vai no endereço: quem envia, o limite e o
+destino são decididos antes de ler o corpo.
 
 Segurança do portal (revisão v1.5 do contrato público):
 
@@ -238,7 +239,7 @@ Mesmas regras de acesso (gestão + módulo `build`), mesmo padrão de erros, tod
 Ações que podem ser disparadas duas vezes ao mesmo tempo (concluir vistoria, transições de NC, entrega, aceite, avaliação)
 usam o status como token de concorrência → `409`.
 
-**Uploads privados** (`POST /api/integrations/storage/upload`, papel de gestão): contextos novos `build-quality`
+**Uploads privados** (`POST /api/integrations/storage/upload?context=...`, papel de gestão): contextos novos `build-quality`
 (fotos de vistoria/NC, pasta `build/quality`), `build-handover` (documentos da entrega, `build/handover`, PDF aceito) e
 `build-assistance` (fotos de chamados, `build/assistance`). As chaves só são aceitas se forem do próprio tenant e da
 pasta certa (`422 invalid_file_key`).

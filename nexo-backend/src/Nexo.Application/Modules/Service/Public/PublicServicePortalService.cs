@@ -19,8 +19,9 @@ namespace Nexo.Application.Modules.Service.Public;
 /// snapshotted from the catalog, and availability/overlap are recomputed from the database. No
 /// internal identifiers, costs, commissions or other customers' data leave this service.
 ///
-/// A company with no access to the Service module now keeps its portal readable and takes no writes: no booking and no
-/// change to one (<see cref="EnsureTakesWritesAsync"/>). The visitor sees a neutral message, never the company's subscription.
+/// A company with no access to the Service module now keeps its portal readable and takes no new booking
+/// (<see cref="EnsureTakesBookingsAsync"/>). The one write that stays open is the customer cancelling their own booking
+/// (<see cref="TakesCustomerCancellationAsync"/>). The visitor sees a neutral message, never the company's subscription.
 /// </summary>
 public sealed class PublicServicePortalService
 {
@@ -75,7 +76,7 @@ public sealed class PublicServicePortalService
             Capabilities:                  ctx.Preset.Capabilities,
             ShowPrices:                    ctx.Settings.ShowPrices,
             RequiresProfessionalSelection: true, // v1 decision: a professional is always chosen first
-            IsBookingEnabled:              ctx.Settings.PublicBookingEnabled && await TakesWritesAsync(ctx, ct),
+            IsBookingEnabled:              ctx.Settings.PublicBookingEnabled && await TakesBookingsAsync(ctx, ct),
             DisplayName:                   ctx.Settings.DisplayName,
             Description:                   ctx.Settings.Description,
             LogoUrl:                       ctx.Settings.LogoUrl,
@@ -165,7 +166,7 @@ public sealed class PublicServicePortalService
         string slug, CreatePublicAppointmentRequest request, CancellationToken ct = default)
     {
         var ctx = await ResolveBookableAsync(slug, ct);
-        await EnsureTakesWritesAsync(ctx, ReadOnlyBookingMessage, ct);
+        await EnsureTakesBookingsAsync(ctx, ct);
 
         var catalog = await LoadActiveCatalogAsync(ctx, request.CatalogItemId, ct);
         var professional = await LoadActiveProfessionalAsync(ctx, request.ProfessionalId, ct);
@@ -259,13 +260,20 @@ public sealed class PublicServicePortalService
     /// <summary>
     /// The customer cancels their own booking. Allowed while it has not started and up to the same
     /// lead a booking needs (MinLeadMinutes); later than that, they talk to the store. Works even if
-    /// online booking was switched off since — it only frees a slot. Not while the company has no access to the module:
-    /// then nothing changes through the portal.
+    /// online booking was switched off since — it only frees a slot. Works too while the company is read-only: a lapsed subscription
+    /// must not tie the customer to a time they cannot make. Writes this row only: no e-mail goes out for a cancellation, and the
+    /// e-mails job skips a cancelled booking. Not while the company is out of activity or the store is inactive (see
+    /// <see cref="TakesCustomerCancellationAsync"/>).
     /// </summary>
     public async Task<PublicAppointmentViewDto> CancelByTokenAsync(string slug, string token, CancellationToken ct = default)
     {
         var ctx = await ResolveAsync(slug, ct);
-        await EnsureTakesWritesAsync(ctx, ReadOnlyChangeMessage, ct);
+        if (!await TakesCustomerCancellationAsync(ctx, ct))
+        {
+            _logger.LogWarning("Public cancellation refused: the company or the store is not active. TenantId={TenantId} StoreId={StoreId}",
+                ctx.Store.TenantId, ctx.Store.Id);
+            throw new ForbiddenException(PausedChangeMessage, ReadOnlyCode);
+        }
         var key = NormalizeToken(token);
         await using var tx = await _uow.BeginTransactionAsync(ct);
         // vs. the team changing it right now: each side saves the whole row, so they take turns
@@ -305,7 +313,7 @@ public sealed class PublicServicePortalService
         var professional = await _professionals.GetByIdPublicAsync(appt.ProfessionalId, ctx.Store.TenantId, ctx.Store.Id, ct);
         var open = appt.Status is SvcAppointmentStatus.Scheduled or SvcAppointmentStatus.Confirmed;
         var handledByStore = open && await _appointments.HasChargesPublicAsync(appt.Id, ctx.Store.TenantId, ct);
-        var paused = open && !await TakesWritesAsync(ctx, ct);
+        var paused = open && !await TakesCustomerCancellationAsync(ctx, ct);
         return new PublicAppointmentViewDto(
             Status:           appt.Status.ToString(),
             StartsAt:         appt.StartsAt,
@@ -325,21 +333,31 @@ public sealed class PublicServicePortalService
 
     private const string ReadOnlyBookingMessage =
         "Este estabelecimento não está recebendo agendamentos online no momento. Fale diretamente com ele.";
-    private const string ReadOnlyChangeMessage =
+    private const string PausedChangeMessage =
         "Este estabelecimento não está alterando agendamentos online no momento. Para desmarcar, fale diretamente com ele.";
 
     /// <summary>The store is active and the company has access to the Service module right now (no cache).</summary>
-    private async Task<bool> TakesWritesAsync(PortalContext ctx, CancellationToken ct)
+    private async Task<bool> TakesBookingsAsync(PortalContext ctx, CancellationToken ct)
         => ctx.Store.Status == StoreStatus.Active
            && await _tenants.HasLiveModuleAsync(ctx.Store.TenantId, ServicePresetRegistry.Family, ct);
 
-    private async Task EnsureTakesWritesAsync(PortalContext ctx, string message, CancellationToken ct)
+    private async Task EnsureTakesBookingsAsync(PortalContext ctx, CancellationToken ct)
     {
-        if (await TakesWritesAsync(ctx, ct)) return;
-        _logger.LogWarning("Public booking write refused: no access to the Service module. TenantId={TenantId} StoreId={StoreId}",
+        if (await TakesBookingsAsync(ctx, ct)) return;
+        _logger.LogWarning("Public booking refused: no access to the Service module. TenantId={TenantId} StoreId={StoreId}",
             ctx.Store.TenantId, ctx.Store.Id);
-        throw new ForbiddenException(message, ReadOnlyCode);
+        throw new ForbiddenException(ReadOnlyBookingMessage, ReadOnlyCode);
     }
+
+    /// <summary>
+    /// Whether the customer's own cancellation goes through: the store and the company are active (no cache). The subscription does
+    /// not count here, and only here. A read-only company is still operating and its customers still count on their bookings. A
+    /// suspended or cancelled company was stopped by the platform, and a store inactive was closed by the company: nobody there
+    /// would see the change, so the link stays readable and points to the store.
+    /// </summary>
+    private async Task<bool> TakesCustomerCancellationAsync(PortalContext ctx, CancellationToken ct)
+        => ctx.Store.Status == StoreStatus.Active
+           && (await _tenants.GetByIdAsync(ctx.Store.TenantId, ct))?.Status == TenantStatus.Active;
 
     /// <summary>Resolves the slug to a configured Service store. 404 when the slug is unknown or not a Service store.</summary>
     private async Task<PortalContext> ResolveAsync(string slug, CancellationToken ct)

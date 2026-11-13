@@ -151,4 +151,41 @@ public class MfaTests
         var renewed = await FirstStepAsync(user.Login, user.Password);
         (await SecondStepAsync(renewed, "111111")).StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
     }
+
+    [Fact]
+    public async Task The_status_follows_the_setup_and_counts_the_recovery_codes()
+    {
+        var user = await NewUserAsync();
+        var (client, _) = await AuthClientFactory.LoginWithBodyAsync(_factory, user.Login, user.Password);
+
+        async Task<JsonElement> StatusOf(HttpClient c) => await (await c.GetAsync("/api/auth/mfa")).Content.ReadFromJsonAsync<JsonElement>();
+        HttpClient WithToken(string token)
+        {
+            var c = _factory.CreateApiClient();
+            c.DefaultRequestHeaders.Authorization = new("Bearer", token);
+            return c;
+        }
+
+        var off = await StatusOf(client);
+        off.GetProperty("enabled").GetBoolean().Should().BeFalse();
+        off.GetProperty("setupPending").GetBoolean().Should().BeFalse();
+        off.GetProperty("recoveryCodesLeft").GetInt32().Should().Be(0);
+
+        (await client.PostAsJsonAsync("/api/auth/mfa/setup", new { user.Password })).StatusCode.Should().Be(HttpStatusCode.OK);
+        var pending = await StatusOf(client);
+        pending.GetProperty("enabled").GetBoolean().Should().BeFalse("a code has not confirmed it yet");
+        pending.GetProperty("setupPending").GetBoolean().Should().BeTrue();
+
+        var (secret, codes) = await EnableAsync(client, user.Password);
+
+        var signIn = await SecondStepAsync(await FirstStepAsync(user.Login, user.Password), CodeAt(secret, 1));
+        var on = await StatusOf(WithToken((await signIn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!));
+        on.GetProperty("enabled").GetBoolean().Should().BeTrue();
+        on.GetProperty("setupPending").GetBoolean().Should().BeFalse();
+        on.GetProperty("recoveryCodesLeft").GetInt32().Should().Be(codes.Length);
+
+        var withRecovery = await SecondStepAsync(await FirstStepAsync(user.Login, user.Password), null, codes[0]);
+        var after = await StatusOf(WithToken((await withRecovery.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("accessToken").GetString()!));
+        after.GetProperty("recoveryCodesLeft").GetInt32().Should().Be(codes.Length - 1, "a recovery code works once");
+    }
 }

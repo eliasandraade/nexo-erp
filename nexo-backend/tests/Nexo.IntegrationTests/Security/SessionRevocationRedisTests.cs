@@ -382,7 +382,8 @@ public sealed class SessionRevocationRedisTests : IClassFixture<RedisWebApplicat
 
     /// <summary>
     /// Renovação em voo: ela leu a pessoa antes do commit (papel antigo e carimbo antigo, do mesmo instante) ou depois dele.
-    /// No primeiro caso a resposta pode até trazer um par, mas ele já nasce morto; no segundo, nem isso.
+    /// No primeiro caso, a linha da sessão já está revogada quando ela a confere, e a família acaba ali. Se essa revogação falhar, a resposta pode até
+    /// trazer um par, mas ele já nasce morto. No segundo, nem isso.
     /// </summary>
     [Theory]
     [InlineData(DbCommandGate.Moment.AfterRunning)]
@@ -402,9 +403,8 @@ public sealed class SessionRevocationRedisTests : IClassFixture<RedisWebApplicat
 
         await AssertNoUsablePairAsync(await refreshing);
         await _kit.ShouldBeRevokedAsync(client, UsersRoute);
-        await _kit.RefreshAsync(login.RefreshToken).ShouldHaveStatusAsync(
-            heldAt == DbCommandGate.Moment.AfterRunning ? HttpStatusCode.Conflict : HttpStatusCode.Unauthorized, _factory,
-            "o token gasto na renovação em voo não abre mais nada");
+        await _kit.RefreshAsync(login.RefreshToken).ShouldHaveStatusAsync(HttpStatusCode.Unauthorized, _factory,
+            "o token da renovação em voo não abre mais nada");
 
         (await _kit.SignInAsync(target)).Body.Session.Role.Should().Be("vendedor");
     }

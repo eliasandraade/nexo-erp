@@ -26,7 +26,7 @@ infraestrutura com janela de migração — não de polish visual.
 > Nota: o novo módulo de workspaces já nasce com a convenção correta
 > (`orken:last-module:{tenantId}:{userId}`).
 
-### 2. Cookies de autenticação (`nexo_access`, `nexo_refresh`)
+### 2. Cookie de sessão (`__Host-nexo_rt`)
 Definidos no **backend** (`Nexo.Api`). Renomear exige mudar backend + frontend juntos,
 com janela em que ambos os nomes são aceitos. Coordenar com `nexo-backend`.
 

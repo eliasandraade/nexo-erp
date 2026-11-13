@@ -198,3 +198,73 @@ describe("AssinaturaPage, contratação de novos módulos", () => {
     expect(botaoAssinar()).toHaveLength(0);
   });
 });
+
+describe("AssinaturaPage, a volta do Stripe e os erros que a tela precisa dizer", () => {
+  it("ao voltar do checkout pago, confirma sem repetir o aviso a cada renderização", async () => {
+    renderAt("/assinatura?sucesso=1");
+
+    await screen.findByText("Gestão de Obras");
+    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("Assinatura confirmada"), { id: "checkout-success" });
+  });
+
+  it("sem voltar do checkout, não confirma nada", async () => {
+    renderAt("/assinatura");
+
+    await screen.findByText("Gestão de Obras");
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("o plano anual é o que vai para o checkout quando escolhido", async () => {
+    vi.mocked(createCheckout).mockRejectedValue(new ApiError(500, "falhou"));
+    renderAt("/assinatura");
+    await screen.findByText("Gestão de Obras");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Anual/ }));
+    fireEvent.click(botaoAssinar()[0]);
+
+    await waitFor(() => expect(createCheckout).toHaveBeenCalledWith(expect.any(String), "annual"));
+  });
+
+  it("uma falha sem resposta do servidor no checkout mostra um texto próprio e libera o botão", async () => {
+    vi.mocked(createCheckout).mockRejectedValue(new TypeError("Failed to fetch"));
+    renderAt("/assinatura");
+    await screen.findByText("Gestão de Obras");
+
+    fireEvent.click(botaoAssinar()[0]);
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Erro ao iniciar checkout."));
+    expect((botaoAssinar()[0] as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  describe("gerenciar a assinatura", () => {
+    const gerenciar = () => screen.findByRole("button", { name: /Gerenciar assinatura/ });
+
+    beforeEach(() => vi.mocked(listSubscriptions).mockResolvedValue([assinaturaViva]));
+
+    it("recusado, mostra o motivo do servidor e libera o botão", async () => {
+      vi.mocked(createPortal).mockRejectedValue(new ApiError(502, "Erro ao comunicar com Stripe. Tente novamente."));
+      renderAt("/assinatura");
+
+      fireEvent.click(await gerenciar());
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Erro ao comunicar com Stripe. Tente novamente."));
+      expect(((await gerenciar()) as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it("sem resposta do servidor, mostra um texto próprio, nunca o erro do navegador", async () => {
+      vi.mocked(createPortal).mockRejectedValue(new TypeError("Failed to fetch"));
+      renderAt("/assinatura");
+
+      fireEvent.click(await gerenciar());
+
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Erro ao abrir portal de assinatura."));
+    });
+  });
+
+  it("um status que a tela não conhece aparece como veio, sem quebrar a página", async () => {
+    vi.mocked(listSubscriptions).mockResolvedValue([{ ...assinaturaViva, status: "StatusNovo", currentPeriodEnd: null }]);
+    renderAt("/assinatura");
+
+    expect(await screen.findByText("StatusNovo")).toBeTruthy();
+  });
+});

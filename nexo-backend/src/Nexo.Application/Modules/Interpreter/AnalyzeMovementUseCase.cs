@@ -162,6 +162,7 @@ public class AnalyzeMovementUseCase
 
         if (_telemetry is not null)
         {
+            // Not awaited, and not tied to the request: the movement is committed, so a caller that left must not lose its row.
             _ = _telemetry.WriteAsync(new TelemetryEntry(
                 TenantId:             tenantId,
                 UserId:               userId,
@@ -183,7 +184,7 @@ public class AnalyzeMovementUseCase
                 RequiresInputCount:   requiresInputCount,
                 AmountConfidence:     analysisOutput.Amount.Confidence,
                 DateConfidence:       analysisOutput.Date.Confidence,
-                ModelId:              run.ModelId));
+                ModelId:              run.ModelId), CancellationToken.None);
         }
 
         return BuildResponse(movement.Id, analysisOutput, extractionResult, interpretation, suggestion);

@@ -167,6 +167,16 @@ describe("apiClient.postForm and request error mapping", () => {
     await expect(apiClient.postForm("/x", form)).resolves.toBeUndefined();
   });
 
+  it("a refusal without a JSON body from the server still has a message in Portuguese", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("<html>busy</html>", { status: 429, statusText: "Too Many Requests" }))
+      .mockResolvedValueOnce(new Response("<html>big</html>", { status: 413, statusText: "Payload Too Large" }))
+      .mockResolvedValueOnce(json({ error: "Há muitos envios em andamento agora.", details: [], code: "upload_busy" }, 429));
+    await expect(apiClient.postForm("/x", new FormData())).rejects.toMatchObject({ status: 429, message: "Muitas tentativas. Aguarde um pouco e tente de novo." });
+    await expect(apiClient.postForm("/x", new FormData())).rejects.toMatchObject({ status: 413, message: "Arquivo grande demais para o envio." });
+    await expect(apiClient.postForm("/x", new FormData())).rejects.toMatchObject({ status: 429, code: "upload_busy", message: "Há muitos envios em andamento agora." });
+  });
+
   it("postForm maps errors (details or message) and renews on 401", async () => {
     fetchMock
       .mockResolvedValueOnce(json({ details: ["tipo", "tamanho"] }, 400))
@@ -215,13 +225,13 @@ describe("apiClient.postForm and request error mapping", () => {
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([`${API}/a`, `${API}/a`, `${API}/auth/refresh`, `${API}/a`]);
   });
 
-  it("a refresh that throws drops the session", async () => {
+  it("a refresh that throws keeps the session: no answer says nothing about it", async () => {
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     localStorage.setItem(TOKEN_KEYS.access, "old");
     localStorage.setItem(TOKEN_KEYS.refresh, "r1");
     fetchMock.mockResolvedValueOnce(json({ error: "expired" }, 401)).mockRejectedValueOnce(new Error("offline"));
-    await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 401, message: "expired" });
-    expect(localStorage.getItem(TOKEN_KEYS.refresh)).toBeNull();
+    await expect(apiClient.get("/a")).rejects.toMatchObject({ status: 0, code: "session_renewal_unavailable" });
+    expect(localStorage.getItem(TOKEN_KEYS.refresh)).toBe("r1");
     expect(fetchMock.mock.calls.map((c) => c[0])).toEqual([`${API}/a`, `${API}/auth/refresh`]);
     expect(err).toHaveBeenCalled();
     err.mockRestore();

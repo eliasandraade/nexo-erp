@@ -391,7 +391,8 @@ export function uploadRealityCapture(projectId: string, input: CreateRealityCapt
   if (input.elementExternalId?.trim()) form.append("elementExternalId", input.elementExternalId.trim());
   if (input.notes?.trim()) form.append("notes", input.notes.trim());
   form.append("clientVisible", input.clientVisible ? "true" : "false");
-  return apiClient.upload<BuildRealityCaptureDto>("POST", `${B}/projects/${projectId}/reality-captures`, form, onProgress);
+  // the type in the address lets the server apply that type's limit before reading the body
+  return apiClient.upload<BuildRealityCaptureDto>("POST", `${B}/projects/${projectId}/reality-captures?type=${encodeURIComponent(input.type)}`, form, onProgress);
 }
 
 export const updateRealityCapture = (id: string, req: UpdateRealityCaptureRequest) =>

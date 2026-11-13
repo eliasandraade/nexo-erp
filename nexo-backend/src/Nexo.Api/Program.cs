@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Nexo.Api.Middleware;
+using Nexo.Api.Uploads;
 using Nexo.Application;
 using Nexo.Application.Integrations.Billing;
 using Nexo.Infrastructure;
@@ -115,17 +116,7 @@ try
                     if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
                         ctx.Token = accessToken;
 
-                    // Cookie fallback: only read nexo_access cookie when there is no
-                    // Authorization header. The header always wins — the cookie is a
-                    // legacy fallback for environments that can't send the header.
-                    if (string.IsNullOrEmpty(ctx.Token)
-                        && !ctx.Request.Headers.ContainsKey("Authorization"))
-                    {
-                        var cookieToken = ctx.Request.Cookies["nexo_access"];
-                        if (!string.IsNullOrEmpty(cookieToken))
-                            ctx.Token = cookieToken;
-                    }
-
+                    // An access token never comes from a cookie: a browser attaches one by itself, and that is what CSRF needs.
                     return Task.CompletedTask;
                 }
             };
@@ -152,29 +143,21 @@ try
     Nexo.Api.Orken.OrkenOperationsEndpoints.AddOrkenServiceAuthentication(builder);
 
     // ── CORS ──────────────────────────────────────────────────────────────────
+    // One list of origins, for this policy, for the guard of the auth routes and for the check of the Origin in the cookie mode.
+    var allowedOrigins = new AllowedOrigins(builder.Configuration, builder.Environment);
+    builder.Services.AddSingleton(allowedOrigins);
+    builder.Services.AddSingleton(new BrowserSession(builder.Configuration, allowedOrigins));
+
     builder.Services.AddCors(options =>
     {
         options.AddPolicy("NexoFrontend", policy =>
         {
-            // Always include known origins; Railway env Cors:AllowedOrigins can add more.
-            var builtInOrigins = new[]
-            {
-                "http://localhost:3000",
-                "http://localhost:8080",
-                "http://localhost:5173",
-                "https://erp.orken.com.br",
-                "https://www.orken.com.br",
-            };
-
-            var configOrigins = builder.Configuration
-                .GetSection("Cors:AllowedOrigins")
-                .Get<string[]>() ?? [];
-
-            var origins = builtInOrigins.Concat(configOrigins).Distinct().ToArray();
-
-            policy.WithOrigins(origins)
+            policy.WithOrigins(allowedOrigins.All)
                   .WithMethods("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
-                  .AllowAnyHeader()
+                  // What the clients of this repository send across origins: the session and the JSON of the app, the SignalR client
+                  // on the negotiation, and the session and revalidation of the client portal. Anything else takes a line here.
+                  .WithHeaders("Content-Type", "Authorization", BrowserSession.ModeHeader, "X-Requested-With", "X-SignalR-User-Agent",
+                      "X-Build-Portal-Session", "If-None-Match")
                   .AllowCredentials()
                   // Cache the CORS preflight (OPTIONS) for 24h. The SPA lives on a
                   // different origin (erp.orken.com.br) than the API, so without this
@@ -202,17 +185,20 @@ try
     builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
 
     // ── Rate Limiting ────────────────────────────────────────────────────────
-    // "auth-login" protects /auth/login and /auth/refresh from brute force.
+    // "auth-login" protects the sign-in and account recovery routes from brute force. The renewal has its own policy
+    // ("auth-refresh", AuthRefreshRateLimit): a limit shared with the sign-in signs out the terminals of a store.
     //
     // Config-driven (RateLimiting:AuthLogin:{Enabled,PermitLimit,WindowSeconds})
     // so the integration suite can disable it (the previous global limiter caused
     // a shared-window 429 cascade across the whole suite), while the dedicated
     // RateLimitingTests re-enable it explicitly.
     //
-    // PARTITIONED per (client IP + endpoint path) — the previous
+    // PARTITIONED per (client IP + route) — the previous
     // AddFixedWindowLimiter("auth-login") used a SINGLE GLOBAL bucket, so 5 failed
     // logins from anyone locked out every user for 15 min. Now each client gets
-    // its own budget, and login vs refresh are counted separately.
+    // its own budget, and login vs refresh are counted separately. The route is the
+    // one the request was matched to (RateLimitKeys), never the address as written:
+    // another letter case or a trailing slash reaches the same action.
     var authLoginEnabled = builder.Configuration.GetValue("RateLimiting:AuthLogin:Enabled", true);
     var authLoginPermit  = builder.Configuration.GetValue("RateLimiting:AuthLogin:PermitLimit", 5);
     var authLoginWindow  = builder.Configuration.GetValue("RateLimiting:AuthLogin:WindowSeconds", 900);
@@ -228,16 +214,8 @@ try
             if (!authLoginEnabled)
                 return RateLimitPartition.GetNoLimiter("auth-login:disabled");
 
-            // Prefer the client IP from X-Forwarded-For (Railway sits behind a
-            // proxy); fall back to the socket address. NOTE: a client could spoof
-            // X-Forwarded-For — to harden, configure ForwardedHeaders middleware
-            // with KnownProxies and partition on the resolved RemoteIpAddress.
-            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
-                ? forwardedFor.Split(',')[0].Trim()
-                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-
-            var partitionKey = $"{clientIp}|{httpContext.Request.Path}";
+            var clientIp = httpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(httpContext);
+            var partitionKey = $"{clientIp}|{Nexo.Api.Middleware.RateLimitKeys.Route(httpContext)}";
 
             return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ =>
                 new FixedWindowRateLimiterOptions
@@ -265,7 +243,7 @@ try
                 ?? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                 ?? "anonymous";
 
-            return RateLimitPartition.GetFixedWindowLimiter($"cred|{userId}|{httpContext.Request.Path}", _ =>
+            return RateLimitPartition.GetFixedWindowLimiter($"cred|{userId}|{Nexo.Api.Middleware.RateLimitKeys.Route(httpContext)}", _ =>
                 new FixedWindowRateLimiterOptions
                 {
                     PermitLimit          = credPermit,
@@ -286,10 +264,8 @@ try
             if (!pubEnabled)
                 return RateLimitPartition.GetNoLimiter("public-booking:disabled");
 
-            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
-                ? forwardedFor.Split(',')[0].Trim()
-                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            // The same reading of the client address as every other limit: a header only counts when it holds an address.
+            var clientIp = httpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(httpContext);
 
             return RateLimitPartition.GetFixedWindowLimiter($"pub-booking|{clientIp}", _ =>
                 new FixedWindowRateLimiterOptions
@@ -315,10 +291,8 @@ try
             if (!enabled)
                 return RateLimitPartition.GetNoLimiter("public-orders:disabled");
 
-            var forwardedFor = httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault();
-            var clientIp = !string.IsNullOrWhiteSpace(forwardedFor)
-                ? forwardedFor.Split(',')[0].Trim()
-                : httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            // The same reading of the client address as every other limit: a header only counts when it holds an address.
+            var clientIp = httpContext.RequestServices.GetRequiredService<Nexo.Api.Middleware.ClientIpResolver>().Resolve(httpContext);
 
             return RateLimitPartition.GetFixedWindowLimiter($"pub-orders|{clientIp}", _ =>
                 new FixedWindowRateLimiterOptions
@@ -368,7 +342,16 @@ try
         AddIpPolicy("build-portal-auth", "BuildPortalAuth", 10, 300);
         // client decisions (change orders, selections): writes, so tighter than reads
         AddIpPolicy("build-portal-decision", "BuildPortalDecision", 30, 300);
+        // Content-Security-Policy reports (RateLimiting:CspReport:*): its rejection is the same 204, so it has a class of its own.
+        options.AddPolicy<string, Nexo.Api.Security.CspReportRateLimitPolicy>(Nexo.Api.Security.CspReportRateLimitPolicy.Name);
     });
+
+    builder.Services.Configure<RateLimiterOptions>(options =>
+    {
+        Nexo.Api.Middleware.AuthRefreshRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp);
+        Nexo.Api.Middleware.AuthLogoutRateLimit.AddPolicy(options, builder.Configuration, buildPortalClientIp);
+    });
+    builder.Services.AddUploadLimits(builder.Configuration);
 
     // ── Controllers ───────────────────────────────────────────────────────────
     // JsonStringEnumConverter: serializes all enums as their string names
@@ -516,6 +499,10 @@ try
         });
     }
 
+    app.UseMiddleware<UploadBodyMiddleware>();
+    // Before authentication and the limiters: a page of another site spends nothing of anybody, and a refused Origin reads nothing.
+    app.UseMiddleware<AuthOriginGuardMiddleware>();
+    app.UseMiddleware<SessionOriginMiddleware>();
     app.UseAuthentication();
     // After authentication: the "credential-check" policy partitions by the signed-in user. Before this point
     // HttpContext.User is empty, so every caller, even one without a session, shared a single budget per path.
@@ -565,6 +552,7 @@ try
     app.Logger.LogInformation("[Billing] New checkouts are {NewCheckouts} ({Setting})",
         BillingRules.NewCheckoutsEnabled(app.Configuration[BillingRules.NewCheckoutsSetting]) ? "open" : "blocked",
         BillingRules.NewCheckoutsSetting);
+    app.Services.GetRequiredService<UploadAdmission>().LogCeiling(app.Logger);
 
     Log.Information("Nexo API starting on {Urls}", string.Join(", ", app.Urls));
     await app.RunAsync();

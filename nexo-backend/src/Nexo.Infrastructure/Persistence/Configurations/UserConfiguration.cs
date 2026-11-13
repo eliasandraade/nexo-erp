@@ -99,7 +99,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnType("timestamptz")
             .IsRequired();
 
-        // Unique within a tenant (not globally)
+        // A login is unique across every company: sign-in receives a login and no company (UserRepository.GetByLoginAsync).
+        // The value is stored already normalized (User.NormalizeLogin), so the plain column is the comparison.
+        builder.HasIndex(x => x.Login).IsUnique();
+        // Kept for the lookups scoped to a company (GetByLoginInTenantAsync).
         builder.HasIndex(x => new { x.TenantId, x.Login }).IsUnique();
         builder.HasIndex(x => new { x.TenantId, x.Email }).IsUnique();
         builder.HasIndex(x => x.TenantId);

@@ -99,11 +99,14 @@ public sealed class RedisWebApplicationFactory : TestWebApplicationFactory
     /// Espera o cache voltar a funcionar pelo caminho que a aplicação usa: conexão refeita e disjuntor fechado (até 10 s
     /// depois da última falha). Espera por uma condição; o resultado de nenhum teste depende deste tempo.
     /// </summary>
-    public async Task WaitForCacheAsync()
+    public Task WaitForCacheAsync() => WaitForCacheAsync(Services);
+
+    /// <summary>The same wait on a host derived from this one: each host has its own connection, which comes back on its own.</summary>
+    public async Task WaitForCacheAsync(IServiceProvider services)
     {
         var key = $"teste:sonda:{Guid.NewGuid():N}";
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-        using var scope = Services.CreateScope();
+        using var scope = services.CreateScope();
         var cache = scope.ServiceProvider.GetRequiredService<ICacheService>();
         while (true)
         {
