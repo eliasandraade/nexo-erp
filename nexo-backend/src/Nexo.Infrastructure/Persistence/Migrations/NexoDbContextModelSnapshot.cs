@@ -2900,6 +2900,9 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Login")
+                        .IsUnique();
+
                     b.HasIndex("PasswordResetTokenHash")
                         .IsUnique()
                         .HasDatabaseName("ux_users_password_reset_token_hash")

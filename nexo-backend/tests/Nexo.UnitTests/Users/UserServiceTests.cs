@@ -63,7 +63,45 @@ public class UserServiceTests
             Phone:    null,
             Notes:    null));
 
-        await act.Should().ThrowAsync<ConflictException>();
+        (await act.Should().ThrowAsync<ConflictException>()).Which.Code.Should().Be("login_taken");
+        await _users.DidNotReceive().AddAsync(Arg.Any<User>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CreateAsync_AsksForTheLoginAcrossEveryCompany_BeforeAnythingElse()
+    {
+        _users.LoginExistsAsync("Joao.Silva", Arg.Any<CancellationToken>()).Returns(true);
+
+        var sut = CreateSut();
+        var act = () => sut.CreateAsync(new CreateUserRequest(
+            FullName: "João Silva",
+            Email:    "joao@loja.com",
+            Login:    "Joao.Silva",
+            Password: "senha123",
+            Role:     "vendedor",
+            Phone:    null,
+            Notes:    null));
+
+        var refused = (await act.Should().ThrowAsync<ConflictException>()).Which;
+        refused.Code.Should().Be("login_taken");
+        refused.Message.Should().NotContain("Joao", "the answer repeats nothing of what was typed and names no company");
+        await _users.DidNotReceive().EmailExistsAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("maria.gerente")]
+    [InlineData("MARIA.GERENTE")]
+    [InlineData("  Maria.Gerente ")]
+    public async Task ValidateManagerAsync_FindsTheManager_InAnySpellingOfTheLogin(string typed)
+    {
+        var manager = User.Create(Guid.NewGuid(), "Maria Gerente", "maria@loja.com", "maria.gerente", "hashed", UserRole.Gerente);
+        _users.GetAllAsync(Arg.Any<CancellationToken>()).Returns(new List<User> { manager });
+        _hasher.Verify("senha123", "hashed").Returns(true);
+
+        var result = await CreateSut().ValidateManagerAsync(new ValidateManagerRequest(typed, "senha123"));
+
+        result.Success.Should().BeTrue();
+        result.FullName.Should().Be("Maria Gerente");
     }
 
     [Fact]
