@@ -22,8 +22,23 @@ testes, e os PRs que só acrescentam testes). Nenhum deles traz migração nem m
 
 Se a decisão for promover sem essas correções, o candidato continua `834737d`.
 
-**Candidato final, em 2026-11-14: `10397e6`** (merge do #167). Cumpre as três condições acima: `master-gate` verde, Quality Gate OK
-e staging em `SUCCESS` (backend e main) nesse SHA. A promoção continua dependendo das condições da seção 5 e da autorização do proprietário.
+**Candidato final, em 2026-11-14: `d76504783dda7716a3ee0548026c5b2ae9f94072` (`d765047`, merge do #192).** Cumpre as três condições
+acima: `master-gate` verde, Quality Gate OK (confiabilidade A, cobertura 83,9%) e staging em `SUCCESS` (backend e main) nesse SHA. A
+promoção continua dependendo das condições da seção 7 e da autorização do proprietário.
+
+**Regressão do modo de hoje no staging em `d765047`** (2026-11-14, contas de teste, sem o cabeçalho do modo cookie), 34 verificações,
+nenhuma falha:
+
+- Empresa, com duas contas: login com os dois tokens no corpo e nenhum cookie; `/api/auth/me`; renovação pelo corpo com par novo; o
+  token renovado vale; logout; depois dele o token não renova (401). Login em maiúsculas e com espaços entra; senha errada dá 401;
+  renovação sem token dá 400.
+- Plataforma: login com tokens no corpo; a sessão alcança a plataforma; renovação; logout; depois dele o token não renova (401).
+- Segunda etapa da plataforma, ligada só durante o teste no administrador do staging: a senha abre um desafio sem sessão; código errado
+  recusado (401 `invalid_code`) e contado no desafio; código certo entra e alcança a plataforma; no fim, a segunda etapa desligada de
+  novo (0 administradores com ela, como antes).
+- Login repetido: a Diretoria de outra empresa tenta criar um usuário com um login existente e recebe 409 `login_taken`; nenhuma conta
+  criada. 79 migrações no banco do staging.
+- O frontend do staging responde 200 em `/` e `/login`, com `Cache-Control: no-cache`.
 
 | Commit da `master` | Origem | `master-gate` | Quality Gate |
 |---|---|---|---|
@@ -33,12 +48,16 @@ e staging em `SUCCESS` (backend e main) nesse SHA. A promoção continua depende
 | `4983330` | #147, com a correção do `auth-e2e` | Verde | ERROR: só confiabilidade C, cobertura 82,2% |
 | `83f3616` | #166 | Verde | ERROR: só confiabilidade C, cobertura 82,6% |
 | `10397e6` | #167 | Verde | **OK**: confiabilidade A, cobertura 83,9% |
+| `6965766` | #191: o `master-gate` passa a exigir o veredito do Quality Gate | Verde, já esperando o veredito | OK: confiabilidade A, cobertura 83,9% |
+| `d765047` | #192: duração do agendamento | Verde | **OK**: confiabilidade A, cobertura 83,9% |
 
 Cada PR foi atualizado contra a `master` do momento e mesclado só com todos os checks verdes no SHA novo (#147 em `75ec780`, #166 em
-`0355af9`, #167 em `0cec4c1`). O #147 entrou antes do #166 e do #167, por decisão do proprietário, para levar a correção do `auth-e2e`.
+`0355af9`, #167 em `0cec4c1`, #191 em `8e40387`, #192 em `2666f01`). O #147 entrou antes do #166 e do #167, por decisão do proprietário,
+para levar a correção do `auth-e2e`.
 
-De `834737d` para `10397e6` não entra migração nem mudança em `.github`, `global.json` ou no script de promoção. Fora testes e
-documentação, só mudam arquivos do frontend, pelos `void`. O ensaio da API anterior sobre o esquema novo (seção 8.0) continua valendo.
+De `834737d` para `d765047` não entra migração. Fora testes e documentação, mudam arquivos do frontend (os `void` e o campo de duração
+do agendamento, #192) e o `.github/workflows/sonarcloud.yml` (#191). O ensaio da API anterior sobre o esquema novo (seção 8.0) continua
+valendo.
 
 O que o candidato leva além da produção atual (`8a164ce`):
 
@@ -107,10 +126,10 @@ Quando o login e o e-mail colidem juntos, na mesma empresa, o índice do e-mail 
 | SDK do CI | Fixado em .NET 8 pelo `global.json`. Uma imagem nova do runner trazia o SDK 11, que não compila o host dos testes |
 | PR #181 no SHA exato do merge (`7e7ae73`) | Tudo verde: `ci-gate`, `frontend`, `auth-e2e` cookie (101 passaram) e storage, `csp-e2e` (31 passaram, incluindo o teste novo), `sonarcloud`, SonarCloud Code Analysis e GitGuardian |
 | Quality Gate geral do SonarCloud em `master` em `834737d` | ERROR em 2 condições do código novo: confiabilidade C (o limite é A) e cobertura de 77,4% (o mínimo é 80%). Os limites não foram reduzidos |
-| Por que o `master-gate` passava com o Quality Gate em ERROR | No push para a `master`, o job `sonarcloud` enviava a análise com `sonar.qualitygate.wait=false` e terminava com sucesso; o `master-gate` exige o job, não o veredito. O check separado "SonarCloud Code Analysis" carrega o veredito e não é exigido por nenhuma proteção. A correção está no PR #191 (rascunho), que só é mesclado depois do Quality Gate OK na `master` |
+| Por que o `master-gate` passava com o Quality Gate em ERROR | No push para a `master`, o job `sonarcloud` enviava a análise com `sonar.qualitygate.wait=false` e terminava com sucesso; o `master-gate` exige o job, não o veredito. O check separado "SonarCloud Code Analysis" carrega o veredito e não é exigido por nenhuma proteção. Corrigido pelo PR #191, mesclado em `6965766` com o Quality Gate já em OK: o job espera o veredito também no push, e o `master-gate` de `6965766` e de `d765047` só passou com ele aprovado |
 | Confiabilidade C | 138 bugs abertos: 137 `S9383` (promessas sem tratamento declarado; nenhuma rejeita, ver `docs/audits/2026-11-06-sonarcloud-confiabilidade-por-achado.md`) e 1 `S8733` (consulta com dois `Include`). Os `void` dos PRs #147, #165, #166 e #167 tiram os 137. O `S8733` foi decidido pelo proprietário em 2026-11-13: aceitar no painel como risco conhecido, com a issue #190 para o limite de pagamentos por venda. Em `10397e6` a confiabilidade do código novo é A (`new_bugs` = 0) com o `S8733` ainda aberto: a medida do código novo não o conta, mas ele segue como o único bug do projeto (confiabilidade geral C). O aceite no painel continua com o proprietário |
 | Cobertura | Com os PRs de teste #188 (`d529674`) e #189 (`09c6233`), a cobertura do código novo na `master` foi de 77,4% para 79,8% e depois **81,5%**. Condição cumprida |
-| PRs do SonarCloud, mesclados um por vez | #188 → `d529674` e #189 → `09c6233`, `master-gate` verde nos dois. #165 → `8112852`: **`master-gate` vermelho** pela falha conhecida do `auth-e2e` (cookie) descrita na linha abaixo, cuja correção ainda não está na `master`. Cobertura em 81,9% nesse commit. Por decisão do proprietário, o #147 entrou em seguida: #147 → `4983330`, #166 → `83f3616`, #167 → `10397e6`, com `master-gate` verde nos três e Quality Gate OK no último |
+| PRs do SonarCloud, mesclados um por vez | #188 → `d529674` e #189 → `09c6233`, `master-gate` verde nos dois. #165 → `8112852`: **`master-gate` vermelho** pela falha conhecida do `auth-e2e` (cookie) descrita na linha abaixo, cuja correção ainda não está na `master`. Cobertura em 81,9% nesse commit. Por decisão do proprietário, o #147 entrou em seguida: #147 → `4983330`, #166 → `83f3616`, #167 → `10397e6`, com `master-gate` verde nos três e Quality Gate OK no último. Depois, #191 → `6965766` e #192 → `d765047`, `master-gate` verde e Quality Gate OK nos dois |
 | `auth-e2e` instável no bloco "The hub of the kitchen" | Causa medida: o host de teste copiava corpo num 204, e o Kestrel fechava a conexão que o cliente reaproveitava. Corrigido no PR #147 (`566a793`), sem mudar nenhuma verificação. Apareceu no PR #147 (13/11 12:53Z) e no `master-gate` de `8112852` (13/11 19:18Z). Com a correção na `master`, os dois `auth-e2e` passaram em todos os commits seguintes, nos PRs e na `master`, sem nova execução |
 
 ## 3. Volta atrás no staging
@@ -173,8 +192,8 @@ Todas precisam estar cumpridas. Qualquer uma em falta bloqueia a promoção:
    no documento privado da contenção.
 8. Quality Gate da `master` no SonarCloud em OK no candidato final: **cumprida** em `10397e6` (confiabilidade A, cobertura 83,9%).
    - Em `834737d` ele estava em ERROR: confiabilidade do código novo C (exigido A) e cobertura do código novo 77,4% (exigido 80%).
-   - O `master-gate` ainda não depende dele (seção 2). O PR #191 passa a exigir o veredito; com o gate em OK, o merge dele depende só da
-     decisão do proprietário.
+   - O `master-gate` passou a depender dele com o PR #191 (`6965766`). No push de `6965766` o job `sonarcloud` esperou o veredito
+     ("QUALITY GATE STATUS: PASSED") e o `master-gate` exigiu `sonarcloud=success`.
    - Os limites não serão reduzidos. Se o proprietário decidir promover com ele em ERROR, a decisão fica registrada aqui.
 
 ### Duas etapas
@@ -199,7 +218,7 @@ Cada etapa tem uma decisão antes (pode publicar?) e uma depois (pode seguir?). 
 |---|---|
 | Candidato | SHA final fixado na seção 1, `master-gate` verde e staging em `SUCCESS` nele |
 | Condições | 1, 2, 5, 6, 7 e 8 da lista acima. A 3 e a 4 (navegadores e checklist humana) valem para a etapa 2, porque a etapa 1 não liga o cookie |
-| Regressão do modo de hoje no staging, no SHA final | Login, renovação e logout de empresa; login da plataforma com a segunda etapa; criação de usuário com login repetido recusada com 409 `login_taken` |
+| Regressão do modo de hoje no staging, no SHA final | Login, renovação e logout de empresa; login da plataforma com a segunda etapa; criação de usuário com login repetido recusada com 409 `login_taken`. **Cumprida** em `d765047` em 2026-11-14 (seção 1) |
 | Ensaios | 8.0 cumprido; 8.2 (restauração do volume em ambiente descartável) cumprido |
 | Backup | Backup manual do volume de produção com id anotado e cópia lógica verificada, no mesmo dia |
 | Produção antes | `production` em `8a164ce`; `Billing__NewCheckoutsEnabled` ausente; Tax Intelligence sem variáveis; nenhuma variável de sessão |
@@ -252,7 +271,12 @@ Cada etapa tem uma decisão antes (pode publicar?) e uma depois (pode seguir?). 
    - Tax Intelligence sem variáveis.
 2. Etapa 1: `scripts/promote-production.sh <SHA completo do candidato>`.
    - Com o PR #186 na `master`, o script lista o que mudou em `.github/`, nele próprio e no `global.json` desde `8a164ce`, e recusa.
-     Ler essa diferença e repetir com `--ci-changes-reviewed`.
+     Ler essa diferença e repetir com `--ci-changes-reviewed`. A revisão explícita é obrigatória.
+   - Diferença de `8a164ce` para `d765047`, revisada em 2026-11-14: `auth-e2e.yml` (matriz `storage`/`cookie` e passo "SDK in use"),
+     `backend-tests.yml` e `csp-e2e.yml` (passo "SDK in use"), `sonarcloud.yml` (passo "SDK in use", espera pelo veredito do Quality Gate
+     e falha sem `SONAR_TOKEN` num push), `global.json` (novo, SDK 8) e o próprio script (confere a origem do `master-gate`, mostra esta
+     diferença). Nenhuma permissão, gatilho, `continue-on-error` ou segredo novo; as linhas removidas do script são a checagem antiga do
+     `master-gate`, trocada pela mais estrita. Todas as mudanças só tornam o CI mais exigente.
 3. Etapa 2, quando autorizada: a variável no `main` de produção e o novo deploy do `main` no mesmo commit.
 4. Depois de cada etapa, verificar:
    - backend e frontend em `SUCCESS` no SHA certo, e as migrações aplicadas (log de início da API);
