@@ -81,7 +81,8 @@ export function AppointmentDialog({ open, onClose, appointment, defaultDate }: A
       setSubjectId(appointment.subjectId ?? "");
       setDate(toDateInput(start));
       setTime(toTimeInput(start));
-      setDuration(String(Math.max(5, Math.round((end.getTime() - start.getTime()) / 60000))));
+      // The booking's own length, at least the 1 minute the catalog allows: a short one is never stretched on reschedule.
+      setDuration(String(Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000))));
       setNotes(appointment.notes ?? "");
     } else {
       setCustomerId("");
@@ -215,7 +216,7 @@ export function AppointmentDialog({ open, onClose, appointment, defaultDate }: A
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="appt-duration">Duração (min)</Label>
-              <Input id="appt-duration" type="number" min={5} step={5} value={duration}
+              <Input id="appt-duration" type="number" min={1} step={1} value={duration}
                 onChange={(e) => setDuration(e.target.value)} disabled={isPending} />
             </div>
           </div>

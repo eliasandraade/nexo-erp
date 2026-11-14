@@ -314,6 +314,21 @@ public class ServiceAppointmentsTests
     }
 
     [Fact]
+    public async Task One_minute_is_the_shortest_booking_and_is_kept_as_sent()
+    {
+        // Same lower bound as the catalog (DurationMinutes > 0) and the dialog (min 1, step 1).
+        var c = await AuthClientFactory.LoginAsAdminAsync(_factory);
+        var ctx = await SetupAsync(c);
+        var start = Base.AddDays(13);
+
+        var id = await CreateAppointmentAsync(c, ctx, start, start.AddMinutes(1));
+
+        var saved = await (await c.GetAsync($"/api/v1/service/appointments/{id}")).Content.ReadFromJsonAsync<JsonElement>();
+        saved.GetProperty("startsAt").GetDateTime().Should().Be(start);
+        saved.GetProperty("endsAt").GetDateTime().Should().Be(start.AddMinutes(1));
+    }
+
+    [Fact]
     public async Task Missing_end_returns_400_naming_it_and_books_nothing()
     {
         var c = await AuthClientFactory.LoginAsAdminAsync(_factory);

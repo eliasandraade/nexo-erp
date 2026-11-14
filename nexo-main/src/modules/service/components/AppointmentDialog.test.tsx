@@ -163,6 +163,10 @@ describe("AppointmentDialog — novo agendamento", () => {
 
   it("um minuto é a menor duração aceita", async () => {
     const { dialog } = renderDialog({ defaultDate: "2026-11-20" });
+    // O campo segue a regra do catálogo (minutos inteiros a partir de 1), não um passo de 5
+    const field = within(dialog).getByLabelText("Duração (min)");
+    expect(field).toHaveAttribute("min", "1");
+    expect(field).toHaveAttribute("step", "1");
     await fillRequired(dialog);
     fireEvent.change(within(dialog).getByLabelText("Duração (min)"), { target: { value: "1" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
@@ -286,6 +290,20 @@ describe("AppointmentDialog — remarcar", () => {
     // o pet informado segue mesmo quando o serviço não o exige
     expect(api.updateAppointment.mock.calls[0][1]).toMatchObject({ subjectId: "sub9", notes: null });
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("remarcar um agendamento de 3 minutos mantém os 3 minutos", async () => {
+    const short = { ...existing, endsAt: new Date(2026, 10, 20, 9, 18).toISOString() };
+    const { dialog } = renderDialog({ appointment: short });
+    await waitFor(() => expect(selects(dialog)[2]).toHaveTextContent("Corte"));
+    expect(within(dialog).getByLabelText("Duração (min)")).toHaveValue(3);
+
+    fireEvent.change(within(dialog).getByLabelText("Hora *"), { target: { value: "10:00" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Salvar" }));
+
+    await waitFor(() => expect(api.updateAppointment).toHaveBeenCalledWith("a1", expect.objectContaining({
+      startsAt: at("2026-11-20", "10:00"), endsAt: at("2026-11-20", "10:03"),
+    })));
   });
 
   it("remarcar com a duração zerada não envia nada", async () => {
