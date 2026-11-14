@@ -22,15 +22,23 @@ testes, e os PRs que só acrescentam testes). Nenhum deles traz migração nem m
 
 Se a decisão for promover sem essas correções, o candidato continua `834737d`.
 
-**Situação em 2026-11-13, fim do dia:** o candidato final ainda não existe.
+**Candidato final, em 2026-11-14: `10397e6`** (merge do #167). Cumpre as três condições acima: `master-gate` verde, Quality Gate OK
+e staging em `SUCCESS` (backend e main) nesse SHA. A promoção continua dependendo das condições da seção 5 e da autorização do proprietário.
 
 | Commit da `master` | Origem | `master-gate` | Quality Gate |
 |---|---|---|---|
 | `d529674` | #188 | Verde | ERROR: confiabilidade C, cobertura 79,8% |
 | `09c6233` | #189 | Verde | ERROR: só confiabilidade C, cobertura 81,5% |
 | `8112852` | #165 | **Vermelho**, pela falha conhecida do `auth-e2e` (seção 2) | ERROR: só confiabilidade C, cobertura 81,9% |
+| `4983330` | #147, com a correção do `auth-e2e` | Verde | ERROR: só confiabilidade C, cobertura 82,2% |
+| `83f3616` | #166 | Verde | ERROR: só confiabilidade C, cobertura 82,6% |
+| `10397e6` | #167 | Verde | **OK**: confiabilidade A, cobertura 83,9% |
 
-O que falta: #166, #167 e #147 mesclados, o `S8733` aceito no painel e o Quality Gate em OK.
+Cada PR foi atualizado contra a `master` do momento e mesclado só com todos os checks verdes no SHA novo (#147 em `75ec780`, #166 em
+`0355af9`, #167 em `0cec4c1`). O #147 entrou antes do #166 e do #167, por decisão do proprietário, para levar a correção do `auth-e2e`.
+
+De `834737d` para `10397e6` não entra migração nem mudança em `.github`, `global.json` ou no script de promoção. Fora testes e
+documentação, só mudam arquivos do frontend, pelos `void`. O ensaio da API anterior sobre o esquema novo (seção 8.0) continua valendo.
 
 O que o candidato leva além da produção atual (`8a164ce`):
 
@@ -100,10 +108,10 @@ Quando o login e o e-mail colidem juntos, na mesma empresa, o índice do e-mail 
 | PR #181 no SHA exato do merge (`7e7ae73`) | Tudo verde: `ci-gate`, `frontend`, `auth-e2e` cookie (101 passaram) e storage, `csp-e2e` (31 passaram, incluindo o teste novo), `sonarcloud`, SonarCloud Code Analysis e GitGuardian |
 | Quality Gate geral do SonarCloud em `master` em `834737d` | ERROR em 2 condições do código novo: confiabilidade C (o limite é A) e cobertura de 77,4% (o mínimo é 80%). Os limites não foram reduzidos |
 | Por que o `master-gate` passava com o Quality Gate em ERROR | No push para a `master`, o job `sonarcloud` enviava a análise com `sonar.qualitygate.wait=false` e terminava com sucesso; o `master-gate` exige o job, não o veredito. O check separado "SonarCloud Code Analysis" carrega o veredito e não é exigido por nenhuma proteção. A correção está no PR #191 (rascunho), que só é mesclado depois do Quality Gate OK na `master` |
-| Confiabilidade C | 138 bugs abertos: 137 `S9383` (promessas sem tratamento declarado; nenhuma rejeita, ver `docs/audits/2026-11-06-sonarcloud-confiabilidade-por-achado.md`) e 1 `S8733` (consulta com dois `Include`). Os `void` dos PRs #147, #165, #166 e #167 tiram os 137. O `S8733` foi decidido pelo proprietário em 2026-11-13: aceitar no painel como risco conhecido, com a issue #190 para o limite de pagamentos por venda |
+| Confiabilidade C | 138 bugs abertos: 137 `S9383` (promessas sem tratamento declarado; nenhuma rejeita, ver `docs/audits/2026-11-06-sonarcloud-confiabilidade-por-achado.md`) e 1 `S8733` (consulta com dois `Include`). Os `void` dos PRs #147, #165, #166 e #167 tiram os 137. O `S8733` foi decidido pelo proprietário em 2026-11-13: aceitar no painel como risco conhecido, com a issue #190 para o limite de pagamentos por venda. Em `10397e6` a confiabilidade do código novo é A (`new_bugs` = 0) com o `S8733` ainda aberto: a medida do código novo não o conta, mas ele segue como o único bug do projeto (confiabilidade geral C). O aceite no painel continua com o proprietário |
 | Cobertura | Com os PRs de teste #188 (`d529674`) e #189 (`09c6233`), a cobertura do código novo na `master` foi de 77,4% para 79,8% e depois **81,5%**. Condição cumprida |
-| PRs do SonarCloud, mesclados um por vez | #188 → `d529674` e #189 → `09c6233`, `master-gate` verde nos dois. #165 → `8112852`: **`master-gate` vermelho** pela falha conhecida do `auth-e2e` (cookie) descrita na linha abaixo, cuja correção ainda não está na `master`. Cobertura em 81,9% nesse commit. A sequência parou aqui; #166, #167 e #147 aguardam decisão do proprietário |
-| `auth-e2e` instável no bloco "The hub of the kitchen" | Causa medida: o host de teste copiava corpo num 204, e o Kestrel fechava a conexão que o cliente reaproveitava. Corrigido no PR #147 (`566a793`), sem mudar nenhuma verificação. Apareceu no PR #147 (13/11 12:53Z) e no `master-gate` de `8112852` (13/11 19:18Z) |
+| PRs do SonarCloud, mesclados um por vez | #188 → `d529674` e #189 → `09c6233`, `master-gate` verde nos dois. #165 → `8112852`: **`master-gate` vermelho** pela falha conhecida do `auth-e2e` (cookie) descrita na linha abaixo, cuja correção ainda não está na `master`. Cobertura em 81,9% nesse commit. Por decisão do proprietário, o #147 entrou em seguida: #147 → `4983330`, #166 → `83f3616`, #167 → `10397e6`, com `master-gate` verde nos três e Quality Gate OK no último |
+| `auth-e2e` instável no bloco "The hub of the kitchen" | Causa medida: o host de teste copiava corpo num 204, e o Kestrel fechava a conexão que o cliente reaproveitava. Corrigido no PR #147 (`566a793`), sem mudar nenhuma verificação. Apareceu no PR #147 (13/11 12:53Z) e no `master-gate` de `8112852` (13/11 19:18Z). Com a correção na `master`, os dois `auth-e2e` passaram em todos os commits seguintes, nos PRs e na `master`, sem nova execução |
 
 ## 3. Volta atrás no staging
 
@@ -163,10 +171,10 @@ Todas precisam estar cumpridas. Qualquer uma em falta bloqueia a promoção:
 7. Contenção do GitHub aplicada: **cumprida** em 2026-11-13. O ruleset de `production` está ativo, com só a conta do proprietário na
    exceção, e a proteção clássica não mudou. Os apps instalados ficam, por decisão do proprietário. Os riscos que sobram estão registrados
    no documento privado da contenção.
-8. Quality Gate da `master` no SonarCloud em OK no candidato final.
-   - Em `834737d` ele estava em ERROR: confiabilidade do código novo C (exigido A) e cobertura do código novo 77,4% (exigido 80%). A
-     cobertura já está em 81,5% em `09c6233`. A confiabilidade depende dos PRs de `void` e do `S8733` aceito no painel (seção 2).
-   - O `master-gate` ainda não depende dele (seção 2). O PR #191 passa a exigir o veredito e só é mesclado com o gate em OK.
+8. Quality Gate da `master` no SonarCloud em OK no candidato final: **cumprida** em `10397e6` (confiabilidade A, cobertura 83,9%).
+   - Em `834737d` ele estava em ERROR: confiabilidade do código novo C (exigido A) e cobertura do código novo 77,4% (exigido 80%).
+   - O `master-gate` ainda não depende dele (seção 2). O PR #191 passa a exigir o veredito; com o gate em OK, o merge dele depende só da
+     decisão do proprietário.
    - Os limites não serão reduzidos. Se o proprietário decidir promover com ele em ERROR, a decisão fica registrada aqui.
 
 ### Duas etapas
