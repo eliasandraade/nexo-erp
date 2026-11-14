@@ -83,7 +83,10 @@ Depois de qualquer login, confira uma vez:
 3. Pressione F5 várias vezes em sequência, sem esperar. A sessão continua, e nenhum `auth/refresh` responde 401.
 4. **Reload no meio da renovação:** em **Network**, escolha **Slow 3G**, recarregue e recarregue de novo enquanto `auth/refresh` estiver pendente. Volte
    para **No throttling**. A sessão continua. Até dois 409 por carregamento no `auth/refresh` são aceitáveis (a aba espera 3 s e olha mais uma vez). Mais que isso reprova, e também reprova um 401 ou qualquer `auth/logout`.
-5. **Resposta que demora:** se a resposta da renovação levar mais de 3 s, a tela mostra o aviso de sessão ativa e fica assim até o fim da carência, no máximo 30 s. Não vai para o login. Recarregar resolve na hora.
+5. **Resposta que demora:** uma renovação lenta segura as outras abas na fila da trava do navegador. Quando a resposta chega, todas continuam,
+   sem aviso, sem login e sem `auth/logout`. O aviso de sessão ativa só aparece quando a renovação fica sem veredito: um 409 que se repete
+   depois de a aba esperar 3 s pela vencedora, um 429, um erro do servidor ou falta de conexão. Ele fica até o fim da carência ou do `Retry-After`. No
+   caso do 409, isso leva no máximo 30 s. Não vai para o login.
 
 ### Várias abas
 
@@ -117,7 +120,7 @@ Depois de qualquer login, confira uma vez:
 1. Entre como administrador da plataforma e abra uma empresa. Clique em "Entrar como cliente". Uma nova aba abre com a faixa do acesso.
 2. Nessa aba, em **Network**, nenhum pedido tem `Cookie` nem `X-Orken-Session`. Todos têm `Authorization`.
 3. O Session Storage dessa aba tem o token curto (risco residual aceito no contrato). O Local Storage dela continua sem tokens.
-4. Clique em "Sair do acesso". A aba vai para "acesso encerrado".
+4. Clique em "Sair do acesso". A aba fecha. Se o navegador não deixar fechar, ela vai para "acesso encerrado".
 5. Na aba do administrador, recarregue. Continua logado como administrador. O valor do cookie só muda pela renovação da própria aba dele.
 
 ### Plataforma
@@ -132,7 +135,8 @@ Depois de qualquer login, confira uma vez:
 1. Peça a redefinição, siga o link e crie a nova senha. A tela vai para o login com o aviso. Entre com a nova.
 2. Em outra janela que já estava logada com a mesma pessoa, recarregue: vai para o login com "Seu acesso foi alterado". O cookie antigo não renova mais.
 3. Crie uma conta e siga o link do e-mail. Entra sozinho, com o cookie gravado e sem `refreshToken` no corpo de `auth/verify-email`.
-4. Abra o mesmo link de novo: "Link inválido ou expirado.", sem cookie novo.
+4. Abra o mesmo link de novo. A tela mostra "Link expirado ou inválido", e `auth/verify-email` responde 400 ("Link inválido ou expirado.")
+   sem `Set-Cookie`.
 
 ### Cozinha (tempo real)
 
@@ -236,6 +240,9 @@ Esse é o comportamento definido: enquanto o cookie vale, limpar o armazenamento
 
 ## 4. Resultado
 
+A rodada automatizada de 2026-11-10 no staging está registrada em
+[`homologacao-sessao-staging-2026-11-10.md`](homologacao-sessao-staging-2026-11-10.md), com o que ainda falta para a revisão humana.
+
 | Fluxo | Aprovado | Quem | Quando |
 |---|---|---|---|
 | Login | | | |
@@ -257,10 +264,30 @@ Esse é o comportamento definido: enquanto o cookie vale, limpar o armazenamento
 
 ## 5. Voltar atrás
 
-**A ordem importa: primeiro o bundle, depois a API, se ela também voltar.** A API anterior responde 400 a uma renovação sem corpo e volta a gravar `nexo_access`, então um bundle no modo cookie falando com ela perderia todas as sessões. Isso é raciocínio a partir do código: a volta não foi executada.
+**A ordem importa: primeiro o bundle, depois a API, se ela também voltar.** A API anterior responde 400 a uma renovação sem corpo e volta a
+gravar `nexo_access`, então um bundle no modo cookie falando com ela perderia todas as sessões.
 
-Publique o bundle sem `VITE_SESSION_MODE`. A API continua aceitando os dois modos, então nada muda nela. Quem migrou precisa entrar de novo, porque o bundle antigo não enxerga o cookie. O cookie
-que ficou no navegador expira sozinho, e nenhum pedido do bundle antigo o usa.
+Publique o bundle sem `VITE_SESSION_MODE`. A API continua aceitando os dois modos, então nada muda nela. Quem migrou precisa entrar de novo,
+porque o bundle antigo não enxerga o cookie. O cookie que ficou no navegador expira sozinho, e nenhum pedido do bundle antigo o usa.
+
+**A volta do bundle só alcança quem recebe o HTML novo.** Até o PR #181, o servidor do frontend mandava `no-cache` apenas para `/` e
+`/index.html`. Nas rotas do cliente (`/login`, `/dashboard`, …), o navegador guardava o HTML por horas sem consultar o servidor. Antes de
+voltar a API, confira:
+
+- `curl -I` numa rota do cliente responde `Cache-Control: no-cache`;
+- um navegador que já tinha o app aberto, ao abrir `/dashboard` de novo, deixa de mandar `X-Orken-Session`.
+
+A volta foi executada no staging em 2026-11-10 ([registro](homologacao-sessao-staging-2026-11-10.md), seção 3.1):
+
+- A volta da API (`8a164ce`) manteve a sessão do modo de hoje, e o login continuou entregando os tokens no corpo.
+- A volta do bundle não chegou ao navegador que já tinha o app aberto, pelo motivo acima.
+- A restauração voltou o staging ao modo cookie, com a conferência completa passando.
+
+Em 2026-11-11, depois do PR #181, a volta completa passou com abas e sessões abertas
+([registro](homologacao-sessao-staging-2026-11-10.md), seção 2.1). Uma aba no modo cookie que fica aberta sem recarregar continua com o bundle
+que já estava na memória. Se o token dela vencer enquanto a API está na versão anterior, a renovação recebe 400. A aba mostra o aviso de
+sessão ativa, sem ir ao login e sem `auth/logout`. Quando a API volta, ela renova pelo cookie sem novo login. Se for recarregada antes disso,
+vai ao login, como quem migrou.
 
 ## 6. Riscos aceitos
 
