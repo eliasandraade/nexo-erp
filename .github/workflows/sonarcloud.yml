@@ -4,7 +4,8 @@ name: sonarcloud
 # frontend: Vitest lcov). This is the project's analysis: it runs on every pull request and on every
 # commit that reaches master, and it is what sends coverage to SonarCloud (docs/engineering/SONARCLOUD_COVERAGE.md).
 #
-# Without SONAR_TOKEN (a fork's pull request, for example) every step below is skipped and the job passes.
+# Without SONAR_TOKEN on a pull request (a fork's, for example) every step below is skipped and the job passes. On a push to
+# master there is no such case: the job fails, because master-gate would otherwise pass with no verdict at all.
 # Called by ci.yml and master.yml, which set when it runs and what may cancel it.
 on:
   workflow_call:
@@ -23,6 +24,10 @@ jobs:
         id: gate
         run: |
           if [ -z "$SONAR_TOKEN" ]; then
+            if [ "$GITHUB_EVENT_NAME" != "pull_request" ]; then
+              echo "::error::SONAR_TOKEN not set on a push: no Quality Gate verdict, so master-gate must not pass. See docs/engineering/SONARCLOUD_COVERAGE.md."
+              exit 1
+            fi
             echo "::notice::SONAR_TOKEN not set — this run sends no analysis to SonarCloud. See docs/engineering/SONARCLOUD_COVERAGE.md."
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           else
@@ -71,10 +76,11 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         run: dotnet tool install --global dotnet-sonarscanner --version 11.3.0
 
-      # sonar.qualitygate.wait: on pull requests the job waits for the Quality Gate of the new code and fails
-      # when it is red, so it gates the merge. On pushes to master the analysis is uploaded without waiting:
-      # the master gate covers the whole history, and master-gate needs this job, so a red overall gate would
-      # block every promotion for findings that predate the change.
+      # sonar.qualitygate.wait: the job waits for the Quality Gate and fails when it is red, on pull requests and on pushes to
+      # master alike. On a pull request that gates the merge (ci-gate); on master it gates the promotion, because master-gate
+      # needs this job and production accepts only a commit with master-gate green. The master gate judges the new code of
+      # the project (the period set in SonarCloud), so a finding left open there blocks every promotion until it is fixed or
+      # reviewed in the panel: docs/engineering/SONARCLOUD_COVERAGE.md, "Quando o gate da master fica vermelho".
       - name: Begin analysis
         if: steps.gate.outputs.enabled == 'true'
         run: >-
@@ -87,7 +93,7 @@ jobs:
           /d:sonar.javascript.lcov.reportPaths="nexo-main/coverage/lcov.info"
           /d:sonar.coverage.exclusions="**/Persistence/Migrations/**,nexo-main/e2e/**,**/*.test.ts,**/*.test.tsx,nexo-main/src/**/test/**,nexo-backend/tools/**,.railway/**,scripts/**"
           /d:sonar.cpd.exclusions="**/Persistence/Migrations/**"
-          /d:sonar.qualitygate.wait=${{ github.event_name == 'pull_request' }}
+          /d:sonar.qualitygate.wait=true
           /d:sonar.qualitygate.timeout=300
 
       - name: Build backend

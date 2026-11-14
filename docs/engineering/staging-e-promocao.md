@@ -19,7 +19,7 @@ PR ──(ci-gate)──> master ──(CI completo)──> staging ──(valid
 - **`ci-gate`** (`ci.yml`): veredito de uma PR. Sempre reporta, então nunca fica pendente por causa de um job que o diff
   pulou. Um job pulado só vale se o diff não tocou aquela área; falha ou cancelamento reprova.
 - **`master-gate`** (`master.yml`): só existe em commit que chegou à `master` e passou em tudo (backend, frontend,
-  `auth-e2e`, `csp-e2e` e SonarCloud), sem nada pulado.
+  `auth-e2e`, `csp-e2e` e SonarCloud, com o Quality Gate da `master` aprovado), sem nada pulado.
 
 O `master-gate` fica num workflow próprio de propósito. Para checks obrigatórios, o GitHub trata como sucesso um job pulado
 por condição. Se ele fosse um job que a PR apenas pula, a ponta de uma branch não mesclada passaria pela proteção de
