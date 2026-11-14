@@ -52,7 +52,7 @@ export default function TransferenciasPage() {
       notes: notes.trim() || undefined,
     }),
     onSuccess: (t) => {
-      qc.invalidateQueries({ queryKey: STOCK_KEY });
+      void qc.invalidateQueries({ queryKey: STOCK_KEY });
       setQuantities({});
       setNotes("");
       toast.success(`Transferência #${t.number} concluída.`);

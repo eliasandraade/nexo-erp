@@ -32,7 +32,7 @@ export default function VerifyEmailPage() {
   useEffect(() => {
     if (!token) { setStatus("error"); return; }
 
-    verifyEmail(token).then((result) => {
+    void verifyEmail(token).then((result) => {
       if (result.success && result.session) {
         localStorage.removeItem("nexo:pending_email");
         setSessionFromVerify(result.session);

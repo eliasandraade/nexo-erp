@@ -103,7 +103,7 @@ export function ProductMainDataSection({ data, onChange, categories }: Props) {
               placeholder="EAN-13"
               className="flex-1"
               onKeyDown={(e) => {
-                if (e.key === "Enter") handleLookup();
+                if (e.key === "Enter") void handleLookup();
               }}
             />
             <Button

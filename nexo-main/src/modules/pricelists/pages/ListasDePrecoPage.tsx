@@ -51,7 +51,7 @@ export default function ListasDePrecoPage() {
 
   const create = useMutation({
     mutationFn: () => createPriceList({ name: newName.trim(), isDefault: !lists?.some((l) => l.isDefault) }),
-    onSuccess: (l) => { setNewName(""); setSelectedId(l.id); refresh(); toast.success("Lista criada."); },
+    onSuccess: (l) => { setNewName(""); setSelectedId(l.id); void refresh(); toast.success("Lista criada."); },
     onError: (e: Error) => toast.error(e.message),
   });
 
@@ -138,7 +138,7 @@ function ListEditor({ id, onChanged }: { id: string; onChanged: () => void }) {
       validUntil: toIso(form!.validUntil, true),
       priority: Number.parseInt(form!.priority, 10) || 0,   // the API takes an integer
     }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: [...PRICE_LISTS_KEY, id] }); onChanged(); setForm(null); toast.success("Lista atualizada."); },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: [...PRICE_LISTS_KEY, id] }); onChanged(); setForm(null); toast.success("Lista atualizada."); },
     onError: fail,
   });
   const addPrice = useMutation({
@@ -149,8 +149,8 @@ function ListEditor({ id, onChanged }: { id: string; onChanged: () => void }) {
   const removePrice = useMutation({ mutationFn: (p: string) => removeListPrice(id, p), onSuccess: apply, onError: fail });
   const addCustomer = useMutation({ mutationFn: () => linkCustomer(id, customerId), onSuccess: (d) => { setCustomerId(""); apply(d); }, onError: fail });
   const removeCustomer = useMutation({ mutationFn: (c: string) => unlinkCustomer(id, c), onSuccess: apply, onError: fail });
-  const makeDefault = useMutation({ mutationFn: () => setDefaultPriceList(id), onSuccess: () => { qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY }); }, onError: fail });
-  const toggle = useMutation({ mutationFn: (active: boolean) => setPriceListActive(id, active), onSuccess: () => { qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY }); }, onError: fail });
+  const makeDefault = useMutation({ mutationFn: () => setDefaultPriceList(id), onSuccess: () => { void qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY }); }, onError: fail });
+  const toggle = useMutation({ mutationFn: (active: boolean) => setPriceListActive(id, active), onSuccess: () => { void qc.invalidateQueries({ queryKey: PRICE_LISTS_KEY }); }, onError: fail });
 
   if (!list) return <Skeleton className="h-48 w-full" />;
   const editing = form ?? {

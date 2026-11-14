@@ -248,6 +248,9 @@ public static class AuthE2EHost
         ctx.Response.Headers.Remove("transfer-encoding");
         if (addressAsked && ctx.Response.Headers.ContainsKey("Access-Control-Allow-Origin"))
             ctx.Response.Headers.Append("Access-Control-Allow-Headers", TestAddressHeader);
+        // A 204 or 304 has no body. Copying one, even empty, makes Kestrel throw after the status line, and then close the
+        // connection the client had already put back in its keep-alive pool: the next request on it got "socket hang up".
+        if (ctx.Response.StatusCode is StatusCodes.Status204NoContent or StatusCodes.Status304NotModified) return;
         await response.Content.CopyToAsync(ctx.Response.Body);
     }
 
